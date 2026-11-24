@@ -131,6 +131,11 @@ class NameRow:
     # disambiguate policy (a relationship's FK column, a table's source, a junction's target).
     attribute: str | None = None
     warnings: tuple[NameWarning, ...] = ()
+    # REQ-194 (A COLUMN'S PRIME GROUNDED TERM): on each row of a column, the glossary Property
+    # term whose column refs name it, and that term's ontology name (REQ-2163); None on every
+    # other row and on a column no term owns.
+    prime_term: str | None = None
+    prime_term_ontology_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +192,11 @@ class NamesTable:
     rows: tuple[NameRow, ...]
     frozen_aliases: tuple[FrozenAlias, ...] = ()
     _sql_index: dict[tuple[tuple[str, ...], str], NameRow] = field(default_factory=dict)
+    # REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): each table of the model version as its
+    # names where it lives are derived (:func:`stored_name_rows`). Only the model version's table
+    # carries them (:func:`build_model_names`); a context's table resolves client names and
+    # names no estate (:func:`context_names`).
+    estate: tuple[EstateTable, ...] = ()
     # REQ-467: each object's row on each surface, and each table's (a table or a view, by id).
     _by_object: dict[tuple[str, str, str], NameRow] = field(default_factory=dict, init=False)
     _by_table: dict[tuple[int, str], NameRow] = field(default_factory=dict, init=False)
@@ -706,7 +716,7 @@ def build_model_names(
         enums=enums,
         sql_name_of={tm.table_id: semantic_table_name(tm) for tm in ctx.tables.values()},
     )
-    return build_names_table(rows, policy)
+    return replace(build_names_table(rows, policy), estate=estate_tables(ctx, si.tables))
 
 
 # ── the names a compilation context resolves by ───────────────────────────────────────────────
@@ -758,3 +768,225 @@ def root_table(ctx: CompilationContext, field_name: str) -> TableMeta:  # REQ-46
     if found is None:
         raise KeyError(field_name)
     return found[1]
+
+
+# ── the names of the data estate (REQ-194, THE NAMES TABLE SPANS THE DATA ESTATE) ──────────────
+
+
+@dataclass(frozen=True)
+class EstateTable:
+    """One table of a model version, as its names where it lives and where it is published are
+    derived: its registered address, the address the engine reads it at, the business name its
+    URI carries (REQ-1385) and its registered columns."""
+
+    table_id: int
+    kind: str  # table | view
+    source_id: str
+    schema_name: str
+    table_name: str  # the registered (source-native) table name
+    engine_address: str  # catalog.schema.table, as the bound engine reads it
+    business_name: str  # its alias, else its table name (model_uri.table_uri)
+    domain_id: str
+    label: str
+    # REQ-194 (ONLY ADMITTED OBJECTS, NOT EVERY NAME HAS A SOURCE NAME): registered from a source
+    # -- not a model-defined view and not a system or meta table.
+    admitted: bool
+    # Each registered column: its name, its alias (the name its URI carries) and its path at the
+    # source (None: the column is the source's column of that name).
+    columns: tuple[tuple[str, str | None, str | None], ...]
+
+
+@dataclass(frozen=True)
+class Estate:
+    """What the data estate holds of the model's objects when the names table is stored: the
+    bound engine and the replicas it keeps, every name an export target carries, and the
+    glossary terms the objects realise."""
+
+    org_id: str | None
+    engine: str  # the bound engine's name
+    # A replicated table's replica address in the engine's store, (schema, table), by the
+    # table's registered identity (source_id, schema_name, table_name).
+    replicas: Mapping[tuple[str, str, str], tuple[str, str]]
+    # Each export target's names, by the Provisa URI of what it carries (catalog_bindings):
+    # only what was exported to it.
+    exports: Mapping[str, Mapping[str, str]]
+    terms: Mapping[int, str]  # each glossary term in force, by id
+    column_terms: Mapping[
+        tuple[int, str], int
+    ]  # a column's owning Property term, by (table, column)
+    table_terms: Mapping[int, int]  # a table's Class term, by table id
+
+
+def estate_tables(ctx: CompilationContext, tables: Iterable[Mapping]) -> tuple[EstateTable, ...]:
+    """Each table of ``ctx`` (a model version's whole-model context) with its stored row from
+    ``tables``, as :class:`EstateTable`."""
+    from provisa.security.rights import SYSTEM_DOMAINS
+
+    stored = {t["id"]: t for t in tables}
+    out = []
+    for tm in sorted(
+        {tm.table_id: tm for tm in ctx.tables.values()}.values(), key=lambda m: m.table_id
+    ):
+        t = stored[tm.table_id]
+        view = bool(t.get("view_sql"))
+        out.append(
+            EstateTable(
+                table_id=tm.table_id,
+                kind="view" if view else "table",
+                source_id=t["source_id"],
+                schema_name=t["schema_name"],
+                table_name=t["table_name"],
+                engine_address=f"{tm.catalog_name}.{tm.schema_name}.{tm.table_name}",
+                business_name=t.get("alias") or t["table_name"],
+                domain_id=t["domain_id"],
+                label=_table_label(tm),
+                admitted=not view and tm.domain_id not in SYSTEM_DOMAINS,
+                columns=tuple(
+                    (c["column_name"], c.get("alias"), c.get("path")) for c in t["columns"]
+                ),
+            )
+        )
+    return tuple(out)
+
+
+def stored_name_rows(names: NamesTable, estate: Estate) -> list[NameRow]:  # REQ-194
+    """The rows the stored names table holds for model version ``names``: its client surfaces'
+    rows, each of a column carrying the column's prime grounded term, and the names of the data
+    estate -- each admitted object's ``source`` name, each table's ``engine:<engine>`` address
+    and its ``replica:<engine>`` one when it is replicated, ``export:<target>`` for each export
+    target that carries the object, and ``term:<id>`` for each glossary term it realises. None
+    is invented: an object with no such name has no such row."""
+    from provisa.core.model_uri import (
+        command_uri,
+        metric_uri,
+        named_column_uri,
+        named_table_uri,
+        source_uri,
+    )
+
+    by_table = {e.table_id: e for e in names.estate}
+    out: list[NameRow] = list(names.rows)
+
+    def exported(uri: str) -> list[tuple[str, str]]:
+        return [
+            (target, carried[uri])
+            for target, carried in sorted(estate.exports.items())
+            if uri in carried
+        ]
+
+    def estate_row(
+        kind: str,
+        oid: str,
+        surface: str,
+        name: str,
+        physical: str,
+        label: str,
+        e: EstateTable | None,
+    ) -> NameRow:
+        return NameRow(
+            kind,
+            oid,
+            surface,
+            name,
+            physical,
+            label,
+            domain_id=e.domain_id if e is not None else "",
+            table_id=e.table_id if e is not None else None,
+        )
+
+    def term_row(
+        kind: str, oid: str, term_id: int, physical: str, label: str, e: EstateTable
+    ) -> NameRow:
+        return estate_row(kind, oid, f"term:{term_id}", estate.terms[term_id], physical, label, e)
+
+    # The objects that are not a table's: a source, a command and a metric, each once.
+    others: dict[tuple[str, str], NameRow] = {}
+    for r in names.rows:
+        if r.object_kind in ("source", "command", "metric"):
+            others.setdefault((r.object_kind, r.object_id), r)
+    for (kind, oid), r in others.items():
+        if kind == "source":
+            uri, e = source_uri(estate.org_id, oid), None
+        elif kind == "command":
+            uri, e = command_uri(estate.org_id, oid), None
+        else:
+            assert r.table_id is not None  # a metric's row carries its table (_column_rows)
+            uri, e = metric_uri(estate.org_id, _column_key(oid)[1]), by_table[r.table_id]
+        for target, name in exported(uri):
+            out.append(estate_row(kind, oid, f"export:{target}", name, r.physical_name, r.label, e))
+
+    for e in names.estate:
+        oid = str(e.table_id)
+        identity = (e.source_id, e.schema_name, e.table_name)
+        if e.admitted:
+            out.append(
+                estate_row(
+                    e.kind,
+                    oid,
+                    "source",
+                    f"{e.schema_name}.{e.table_name}",
+                    e.table_name,
+                    e.label,
+                    e,
+                )
+            )
+        if e.kind == "table":
+            out.append(
+                estate_row(
+                    e.kind,
+                    oid,
+                    f"engine:{estate.engine}",
+                    e.engine_address,
+                    e.table_name,
+                    e.label,
+                    e,
+                )
+            )
+        replica = estate.replicas.get(identity)
+        if replica is not None:
+            out.append(
+                estate_row(
+                    e.kind,
+                    oid,
+                    f"replica:{estate.engine}",
+                    f"{replica[0]}.{replica[1]}",
+                    e.table_name,
+                    e.label,
+                    e,
+                )
+            )
+        table_address = named_table_uri(estate.org_id, e.domain_id, e.business_name)
+        for target, name in exported(table_address):
+            out.append(estate_row(e.kind, oid, f"export:{target}", name, e.table_name, e.label, e))
+        class_term = estate.table_terms.get(e.table_id)
+        if class_term is not None:
+            out.append(term_row(e.kind, oid, class_term, e.table_name, e.label, e))
+        for column, alias, path in e.columns:
+            coid = f"{e.table_id}:{column}"
+            clabel = f"{e.label}.{column}"
+            if e.admitted:
+                out.append(estate_row("column", coid, "source", path or column, column, clabel, e))
+            uri = named_column_uri(estate.org_id, e.domain_id, e.business_name, column, alias)
+            for target, name in exported(uri):
+                out.append(estate_row("column", coid, f"export:{target}", name, column, clabel, e))
+            term_id = estate.column_terms.get((e.table_id, column))
+            if term_id is not None:
+                out.append(term_row("column", coid, term_id, column, clabel, e))
+    return [_with_prime_term(r, estate) for r in out]
+
+
+def _with_prime_term(r: NameRow, estate: Estate) -> NameRow:
+    """``r`` carrying its column's prime grounded term, when it is a row of a column a term
+    owns directly (REQ-194, A COLUMN'S PRIME GROUNDED TERM)."""
+    if r.object_kind != "column":
+        return r
+    term_id = estate.column_terms.get(_column_key(r.object_id))
+    if term_id is None:
+        return r
+    term = estate.terms[term_id]
+    return replace(r, prime_term=term, prime_term_ontology_name=naming.ontology_name(term))
+
+
+def _column_key(object_id: str) -> tuple[int, str]:
+    table_id, column = object_id.split(":", 1)
+    return int(table_id), column

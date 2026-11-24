@@ -196,6 +196,7 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-packages.yml", "build-sdk-typescript"): (
         "provisa-sdk/typescript/dist/provisa-sdk-*.tgz",
     ),
+    ("release-packages.yml", "build-vscode-extension"): ("provisa-vscode/provisa-*.vsix",),
     ("release-packages.yml", "provisa-sbom"): ("provisa-sbom.cdx.json", "provisa-cve-report.json"),
 }
 #: Artifacts a release also keeps in the run, because a job of the same run reads them: the PyPI
@@ -300,6 +301,7 @@ def test_the_publish_leg_copies_no_asset_and_verifies_every_one():
         f"provisa_notebook-{py}-py3-none-any.whl",
         f"provisa_sdk-{py}-py3-none-any.whl",
         "provisa-sdk-${{ needs.metadata.outputs.npm_version }}.tgz",
+        "provisa-${{ needs.metadata.outputs.npm_version }}.vsix",
         f"provisa-{py}-cp312-cp312-manylinux_2_28_x86_64.whl",
         f"provisa-{py}-cp312-cp312-manylinux_2_28_aarch64.whl",
         f"provisa-{py}-cp312-cp312-macosx_*_arm64.whl",

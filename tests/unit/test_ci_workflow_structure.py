@@ -20,6 +20,7 @@ the shape, with no list of exceptions beyond the one stated below (the NixOS gue
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -2132,6 +2133,47 @@ def test_the_release_builds_provisa_pyspark_and_lists_it_on_the_index_like_duckd
     assert "scripts/release_wheel_index.py" in str(index_job["steps"])
 
 
+def test_the_release_builds_the_vscode_extension_and_attaches_the_vsix_to_the_draft():
+    """REQ-2112 (amended 2026-11-22): the VS Code extension is packaged in the packages leg,
+    stamped with the release's version, and attached to the draft release as a .vsix; a dry run
+    keeps it in the run instead. The undraft requires it."""
+    legs = dict(_release_legs().values())
+    job = legs["release-packages.yml"]["jobs"]["build-vscode-extension"]
+    run = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "cd provisa-vscode" in run and "npm run package" in run
+    assert "needs.metadata.outputs.npm_version" in run
+    assert not _LEAVES_THE_RUN.search(run)
+    uploads = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert [s["with"]["name"] for s in uploads] == ["vscode-extension-vsix"]
+    assert uploads[0]["if"] == "${{ !inputs.publish }}"
+    assert uploads[0]["with"]["if-no-files-found"] == "error"
+    [attach] = [s for s in job["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+    assert attach["if"] == "inputs.publish"
+    assert attach["with"]["files"] == "provisa-vscode/provisa-*.vsix"
+    publish = (REPO / ".github" / "workflows" / "release-publish.yml").read_text()
+    assert "provisa-${{ needs.metadata.outputs.npm_version }}.vsix" in publish
+    package = json.loads((REPO / "provisa-vscode" / "package.json").read_text())
+    assert "@vscode/vsce" in package["scripts"]["package"]
+    assert " package " in f"{package['scripts']['package']} "
+
+
+def test_no_workflow_publishes_the_vscode_extension_to_a_marketplace():
+    """REQ-2112 (amended 2026-11-22): no public registry, the Marketplace included, until the
+    maintainer changes channels: no workflow runs vsce or ovsx publish or holds a Marketplace
+    token, and the extension's own scripts publish nothing."""
+    marketplace = re.compile(
+        r"\b(vsce|ovsx)\b.*\bpublish\b|VSCE_PAT|OVSX_PAT|open-vsx\.org|marketplace\.visualstudio\.com"
+    )
+    for path in sorted((REPO / ".github").rglob("*.yml")):
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            assert not marketplace.search(line), f"{path.name}:{n}: {line.strip()}"
+    package = json.loads((REPO / "provisa-vscode" / "package.json").read_text())
+    for name, script in package["scripts"].items():
+        assert not marketplace.search(script) and "publish" not in name, name
+
+
 def test_no_workflow_publishes_to_npm():
     """Every package ships as a GitHub release asset only (maintainer 2026-11-21)."""
     for path in sorted((REPO / ".github").rglob("*.yml")):
@@ -2559,3 +2601,106 @@ def test_the_sweep_deletes_gone_branches_caches_and_image_caches_off_main_and_re
 def test_a_deleted_branch_loses_every_cache_it_saved(tmp_path):
     deleted = _run_with_fake_gh(tmp_path, _prune_script("deleted-branch"), {"BRANCH": "gone"})
     assert deleted == ["repos/o/r/actions/caches/7", "repos/o/r/actions/caches/8"]
+
+
+# REQ-1989 (CI caches): no test image floats. A floating CosmosDB emulator tag broke release 512's
+# integration lane on 2026-11-23, so every image docker-compose.test.yml pulls is pinned by digest.
+_PINNED_IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/-]*(?::[0-9]+/[a-z0-9._/-]+)?@sha256:[0-9a-f]{64}$")
+_TIDB_HEX = "49159e21bdb8671cca48394ab4b6dc4e92527a775d24daf5a4b4c8d6f175a9fe"
+
+
+def test_every_test_compose_image_is_pinned_by_digest_with_its_tag_beside_it():
+    path = REPO / "docker-compose.test.yml"
+    services = yaml.safe_load(path.read_text())["services"]
+    lines = path.read_text().splitlines()
+    pulled = {n: s["image"] for n, s in services.items() if "image" in s and "build" not in s}
+    assert pulled, "docker-compose.test.yml pulls no image"
+    for name, image in pulled.items():
+        assert _PINNED_IMAGE.match(image), f"{name}: {image} is not pinned by digest"
+    # Each pin's line (an alias line repeats the anchor's) carries the tag it was resolved from.
+    for line in lines:
+        if "@sha256:" in line and line.strip().startswith("image:"):
+            ref = line.split("@sha256:")[0].split()[-1]
+            comment = line.partition("#")[2].strip()
+            assert comment.startswith(f"{ref}:"), f"no tag comment beside: {line.strip()}"
+
+
+def _lane_step(name: str) -> dict:
+    lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
+    return next(s for s in lane["steps"] if s.get("name") == name)
+
+
+def _run_with_fake_docker(tmp_path: Path, script: str, image_ls: str, digests_ls: str) -> list:
+    """Runs a lane step's script with docker and zstd faked; returns each docker call's argv."""
+    log = tmp_path / "docker.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "ls.txt").write_text(image_ls)
+    (tmp_path / "digests.txt").write_text(digests_ls)
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/bin/bash\n"
+        'echo "$*" >> "$DOCKER_LOG"\n'
+        'case "$*" in\n'
+        '  "image ls --digests"*) cat "$FAKE_DIR/digests.txt" ;;\n'
+        '  "image ls"*) cat "$FAKE_DIR/ls.txt" ;;\n'
+        '  pull*) echo "Digest: sha256:x"; echo "Status: Downloaded newer image" ;;\n'
+        "  save*|load*) cat >/dev/null 2>&1 || true ;;\n"
+        "esac\n"
+    )
+    zstd = bin_dir / "zstd"
+    zstd.write_text("#!/bin/bash\ncat >/dev/null 2>&1 || true\n")
+    for f in (docker, zstd):
+        f.chmod(0o755)
+    subprocess.run(  # noqa: S603 -- the lane step's own script, against fakes
+        ["bash", "-eo", "pipefail", "-c", script],
+        check=True,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "DOCKER_LOG": str(log),
+            "FAKE_DIR": str(tmp_path),
+        },
+    )
+    return log.read_text().splitlines()
+
+
+def test_the_lane_image_cache_saves_digest_pinned_images_under_a_stable_tag(tmp_path):
+    """A digest-pulled image has no tag, and docker save restores only tags: without one it
+    dropped out of the cache and was pulled again on every run."""
+    calls = _run_with_fake_docker(
+        tmp_path,
+        _lane_step("Save images")["run"],
+        image_ls="trinodb/trino:481\n<none>:<none>\npingcap/tidb:<none>\n",
+        digests_ls=(
+            "481 trinodb/trino@sha256:" + "a" * 64 + "\n"
+            f"<none> pingcap/tidb@sha256:{_TIDB_HEX}\n"
+            "<none> <none>@<none>\n"
+        ),
+    )
+    pin = f"pingcap/tidb:pin-{_TIDB_HEX}"
+    assert f"tag pingcap/tidb@sha256:{_TIDB_HEX} {pin}" in calls
+    [save] = [c for c in calls if c.startswith("save ")]
+    assert save.split()[1:] == ["trinodb/trino:481", pin]
+
+
+def test_the_lane_image_cache_restores_each_pinned_images_digest_reference(tmp_path):
+    calls = _run_with_fake_docker(
+        tmp_path,
+        _lane_step("Load images")["run"],
+        image_ls=f"trinodb/trino:481\npingcap/tidb:pin-{_TIDB_HEX}\n",
+        digests_ls="",
+    )
+    assert "load" in calls
+    assert [c for c in calls if c.startswith("pull")] == [f"pull pingcap/tidb@sha256:{_TIDB_HEX}"]
+
+
+def test_the_lane_image_cache_key_changes_with_every_pin():
+    key = _lane_step("Lane cache key")["run"]
+    assert "hashFiles('docker-compose.core.yml', 'docker-compose.test.yml'" in key
+    for name in ("Restore images", "Cache images"):
+        assert _lane_step(name)["with"]["key"] == (
+            "images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}"
+        ), name

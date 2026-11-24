@@ -579,6 +579,56 @@ jobs:
           tag: ${{ inputs.version }}
           files: provisa-sdk/typescript/dist/provisa-sdk-*.tgz
 
+  # REQ-2112 (amended 2026-11-22): the VS Code extension ships as a .vsix release asset. It is
+  # packaged only; nothing publishes it to the Marketplace or any other registry until the
+  # maintainer changes channels.
+  build-vscode-extension:
+    name: Build the VS Code extension (.vsix)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Stamp the version and package
+        run: |
+          cd provisa-vscode
+          npm version "${{ needs.metadata.outputs.npm_version }}" --no-git-tag-version
+          npm run package
+
+      - name: Verify the .vsix carries the extension
+        run: |
+          set -euo pipefail
+          vsix="provisa-vscode/provisa-${{ needs.metadata.outputs.npm_version }}.vsix"
+          listing=$(unzip -Z1 "$vsix")
+          for member in extension/package.json extension/LICENSE.txt extension/src/extension.js extension/src/services.js; do
+            echo "$listing" | grep -qx "$member" || { echo "missing: $member"; exit 1; }
+          done
+
+      # A dry run keeps it in the run; the upload fails when the file is missing.
+      - name: Upload the .vsix
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: provisa-vscode/provisa-*.vsix
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Attach the .vsix to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: provisa-vscode/provisa-*.vsix
+
   build-jdbc:
     name: Build JDBC driver
     runs-on: ubuntu-latest
