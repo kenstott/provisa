@@ -224,7 +224,7 @@ def test_only_the_worker_that_made_the_change_writes_the_names_table(
             yield object()
 
     monkeypatch.setattr(_mn, "write_names_table", _write_names_table)
-    monkeypatch.setattr(app_mod.state, "model_db", _Db(), raising=False)
+    monkeypatch.setattr(app_mod, "state", SimpleNamespace(model_db=_Db()))
 
     steps = app_mod._after_answer_steps(
         runtime=SimpleNamespace(role_build_inputs={}),  # type: ignore[arg-type]
