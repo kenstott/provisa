@@ -21,7 +21,8 @@ How a write is found, in every ``.py`` under ``provisa/`` outside the model stor
   constructors are imported as, where ``T`` is the table object (by the name it is imported as,
   or as ``schema_org.roles``);
 * a method call ``T.delete()`` / ``T.insert()`` / ``T.update()``;
-* ``conn.upsert(T, ...)`` (an insert and an update);
+* ``conn.upsert(T, ...)`` / ``conn.upsert_returning(T, ...)`` (an insert and an update);
+* ``conn.insert_returning(T, ...)`` / ``conn.bulk_copy(T, ...)`` (an insert);
 * a string holding ``DELETE FROM T`` / ``INSERT INTO T`` / ``UPDATE T``, with or without a
   schema prefix — a docstring excepted.
 """
@@ -39,6 +40,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2] / "provisa"
 MODEL_STORE = ROOT / "core" / "repositories"
 
+_ALL = {"delete", "insert", "update"}
+
 # model table -> the operations only the model store may perform on it.
 CONVERTED: dict[str, set[str]] = {
     "roles": {"delete"},
@@ -46,13 +49,13 @@ CONVERTED: dict[str, set[str]] = {
     "registered_tables": {"delete"},
     "sources": {"delete"},
     "relationships": {"delete"},
-    "metrics": {"delete"},
+    "metrics": _ALL,
     "tracked_functions": {"delete"},
     "tracked_webhooks": {"delete"},
-    "data_products": {"delete"},
-    "tags": {"delete"},
-    "calendars": {"delete"},
-    "glossary_terms": {"delete"},
+    "data_products": _ALL,
+    "tags": _ALL,
+    "calendars": _ALL,
+    "glossary_terms": _ALL,
 }
 
 _CONSTRUCTORS = {
@@ -69,6 +72,13 @@ _CONSTRUCTORS = {
     "update": "update",
     "_update": "update",
     "sa_update": "update",
+}
+# The Connection methods (provisa/core/database.py) that write the table passed first.
+_CONNECTION_WRITES = {
+    "upsert": ("insert", "update"),
+    "upsert_returning": ("insert", "update"),
+    "insert_returning": ("insert",),
+    "bulk_copy": ("insert",),
 }
 _SQL = {
     "delete": r"DELETE\s+FROM\s+(?:[\w\"{}]+\.)?\"?{t}\"?\b",
@@ -145,8 +155,12 @@ def writes_in(source: str, table: str) -> list[tuple[int, str]]:
             first = node.args[0] if node.args else None
             if called in _CONSTRUCTORS and first is not None and _is_table(first, names, table):
                 found.append((node.lineno, _CONSTRUCTORS[called]))
-            elif called == "upsert" and first is not None and _is_table(first, names, table):
-                found += [(node.lineno, "insert"), (node.lineno, "update")]
+            elif (
+                called in _CONNECTION_WRITES
+                and first is not None
+                and _is_table(first, names, table)
+            ):
+                found += [(node.lineno, operation) for operation in _CONNECTION_WRITES[called]]
             elif (
                 isinstance(func, ast.Attribute)
                 and func.attr in ("delete", "insert", "update")
@@ -174,6 +188,9 @@ def writes_in(source: str, table: str) -> list[tuple[int, str]]:
         ('q = f"delete from {schema}.roles where id = 1"', [(1, "delete")]),
         ("await conn.execute_core(insert(roles).values(id=1))", [(1, "insert")]),
         ("await conn.upsert(roles, {}, index_elements=['id'])", [(1, "insert"), (1, "update")]),
+        ("await conn.upsert_returning(roles, {}, ['id'], 'id')", [(1, "insert"), (1, "update")]),
+        ("i = await conn.insert_returning(roles, {'name': n}, 'id')", [(1, "insert")]),
+        ("await conn.bulk_copy(roles, rows)", [(1, "insert")]),
         ("q = 'UPDATE roles SET capabilities = 1'", [(1, "update")]),
         ("q = 'UPDATE roles t SET capabilities = 1'", [(1, "update")]),
         # not writes to the table
@@ -200,23 +217,31 @@ def _modules_outside_the_model_store() -> list[Path]:
 NEVER_REMOVED = {"tags", "metrics"}  # metrics: metric.remove_where became retire_where
 
 
-def _inside(table: str) -> list[tuple[str, int]]:
+def _inside(table: str, operation: str) -> list[tuple[str, int]]:
     return [
         (p.name, line)
         for p in sorted(MODEL_STORE.glob("*.py"))
-        for line, operation in writes_in(p.read_text(), table)
-        if operation in CONVERTED[table]
+        for line, found in writes_in(p.read_text(), table)
+        if found == operation
     ]
 
 
-def test_the_model_store_is_where_the_converted_deletes_live():
-    for table in CONVERTED.keys() - NEVER_REMOVED:
-        assert _inside(table), f"no {sorted(CONVERTED[table])} of {table} found in the model store"
+@pytest.mark.parametrize(
+    ("table", "operation"),
+    sorted(
+        (table, operation)
+        for table, operations in CONVERTED.items()
+        for operation in operations
+        if not (table in NEVER_REMOVED and operation == "delete")
+    ),
+)
+def test_the_model_store_is_where_the_converted_writes_live(table, operation):
+    assert _inside(table, operation), f"no {operation} of {table} found in the model store"
 
 
 def test_a_kind_that_is_retired_and_never_removed_is_deleted_nowhere():
     for table in NEVER_REMOVED:
-        assert _inside(table) == [], f"{table} is retired, never removed (REQ-2248)"
+        assert _inside(table, "delete") == [], f"{table} is retired, never removed (REQ-2248)"
 
 
 @pytest.mark.parametrize("table", sorted(CONVERTED))
