@@ -31,6 +31,14 @@ def _server() -> ProvisaFlightServer:
     return server
 
 
+class _NoHeaders:
+    """A call that presents no headers: no minted token (REQ-2270), so get_flight_info answers it
+    as the catalog role the stubbed _as_catalog_role names."""
+
+    def get_middleware(self, _key):
+        return None
+
+
 def test_an_unexpected_failure_is_logged_with_its_traceback(caplog):
     def _fails(_descriptor, _role):
         raise TypeError("'NoneType' object is not iterable")
@@ -39,7 +47,7 @@ def test_an_unexpected_failure_is_logged_with_its_traceback(caplog):
     server._flight_info = _fails  # type: ignore[method-assign]
     with caplog.at_level(logging.ERROR, logger="provisa.api.flight.server"):
         with pytest.raises(TypeError):
-            server.get_flight_info(None, flight.FlightDescriptor.for_command(b"cmd"))
+            server.get_flight_info(_NoHeaders(), flight.FlightDescriptor.for_command(b"cmd"))
     (record,) = [r for r in caplog.records if r.name == "provisa.api.flight.server"]
     assert "get_flight_info" in record.getMessage()
     assert record.exc_info is not None and record.exc_info[0] is TypeError
@@ -53,5 +61,5 @@ def test_a_flight_error_is_the_answer_and_not_logged(caplog):
     server._flight_info = _not_found  # type: ignore[method-assign]
     with caplog.at_level(logging.ERROR, logger="provisa.api.flight.server"):
         with pytest.raises(flight.FlightServerError):
-            server.get_flight_info(None, flight.FlightDescriptor.for_path("d", "t"))
+            server.get_flight_info(_NoHeaders(), flight.FlightDescriptor.for_path("d", "t"))
     assert [r for r in caplog.records if r.name == "provisa.api.flight.server"] == []
