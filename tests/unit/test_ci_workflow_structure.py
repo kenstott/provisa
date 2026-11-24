@@ -1919,6 +1919,38 @@ def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a
     )
 
 
+def test_the_plugin_jars_are_cached_by_their_pin_and_downloaded_only_on_a_miss():
+    """Run 45293530114: the priming job missed the cache and Maven Central refused the first jar
+    with HTTP 429. The jars are cached under a key made of the pinned versions
+    (tests/trino_plugins.py), the restore comes first, and the download (whose 429s are retried a
+    bounded number of times, tests/unit/test_trino_plugins_pinned.py) and the save run only in the
+    priming phase on a miss, under the same key."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "trino-plugins" / "action.yml").read_text()
+    )["runs"]["steps"]
+    names = [s.get("name") for s in steps]
+    pin = steps[names.index("Trino plugin pin")]
+    restore = steps[names.index("Restore Trino plugins")]
+    download = steps[names.index("Download Trino plugins")]
+    save = steps[names.index("Cache Trino plugins")]
+    assert "tests/trino_plugins.py" in pin["run"]
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert save["uses"].startswith("actions/cache/save@")
+    key = restore["with"]["key"]
+    assert "${{ steps.trino-pin.outputs.version }}" in key and key.endswith("-jars")
+    assert save["with"]["key"] == key and save["with"]["path"] == restore["with"]["path"]
+    miss = "inputs.phase == 'prime' && steps.trino-plugins.outputs.cache-hit != 'true'"
+    assert download["if"] == miss and save["if"] == miss
+    assert download["run"] == "python3 tests/trino_plugins.py fetch"
+    assert (
+        names.index("Trino plugin pin")
+        < names.index("Restore Trino plugins")
+        < names.index("Download Trino plugins")
+        < names.index("Cache Trino plugins")
+        < names.index("Verify Trino plugins")
+    )
+
+
 _ZAYCHIK_ACTION = "./.github/actions/zaychik-image"
 
 
