@@ -15,8 +15,9 @@ table below return columns?
 The fixtures are the ones of ``test_govdata_trino_source_e2e.py`` (cold start, reachability,
 catalog from the product's ``TrinoGovdataConnector``). The test fails only on an error; its
 assertions are the column counts the run saw. It prints each count and writes, to
-``results/calcite-1416-probe/`` (the lane's artifact), the counts and the pgwire server's log
-lines around the first ``DESCRIBE``.
+``results/warehouse/calcite-1416-probe/`` (inside the warehouse lane's own directory of the
+artifact: a directory directly under ``results/`` is read as a lane, run 45469384210), the counts
+and the pgwire server's log lines around the first ``DESCRIBE``.
 
 Credentials: ``ASKAMERICA_API_KEY`` (a secret of the warehouse lane).
 """
@@ -219,7 +220,7 @@ _PROBED = (
     ("fec", "candidates"),
     ("ref", "countries"),
 )
-_RESULTS = Path("results") / "calcite-1416-probe"
+_RESULTS = Path("results") / "warehouse" / "calcite-1416-probe"
 _LOG_CONTEXT_LINES = 40
 
 
