@@ -115,7 +115,7 @@ _CALLED = re.compile(
         )
     )
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
-    r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
+    r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like|format"
     r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
     r"|regexp_split_to_table|strpos|pg_typeof|make_interval|overlaps|random_normal|trim_scale"
     r"|min_scale|int2vectorsend)\"?\s*\(",
@@ -158,6 +158,26 @@ def _is_null(node: exp.Expr) -> bool:
 
 def _cast_to(node: exp.Expr, *kinds: Any) -> bool:
     return isinstance(node, exp.Cast) and node.to.this in kinds
+
+
+def _character_literal(node: exp.Expr) -> bool:
+    """A text literal cast to character(n)."""
+    return (
+        _cast_to(node, exp.DataType.Type.CHAR)
+        and isinstance(node.this, exp.Literal)
+        and node.this.is_string
+    )
+
+
+def _held_character(node: exp.Expr) -> exp.Expr:
+    """A text literal cast to character(n) as PostgreSQL holds it: its first n characters padded
+    with spaces to n, n 1 where none is said. DuckDB holds the cast as the text. Any other value
+    is as it stands."""
+    if not isinstance(node, exp.Cast) or not _character_literal(node):
+        return node
+    params = node.to.expressions
+    length = int(params[0].this.this) if params else 1
+    return exp.Literal.string(node.this.this[:length].ljust(length))
 
 
 def _is_bytea(node: exp.Expr) -> bool:
@@ -542,13 +562,15 @@ def _as_text(node: exp.Expr) -> str:
 def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per form
     """A call of a function named for a type, as the cast it is."""
     if name == "char" and len(args) == 1 and _is_text(args[0]):
-        return f'CAST(LEFT({_sql(args[0])}, 1) AS "char")'
+        return f'CAST({_first_byte(_sql(args[0]))} AS "char")'
     if name == "char" and len(args) == 1 and _cast_to(args[0], *exp.DataType.INTEGER_TYPES):
         return _sql(_char_of_integer(args[0]))
     if name == "xid" and len(args) == 1:  # an xid8's low 32 bits
         return f"CAST(({_sql(args[0])}) % 4294967296 AS xid)"
     if name == "age" and len(args) == 1 and _is_kind(args[0], "xid"):
         return f"PROVISA_XID_AGE({_sql(args[0])})"
+    if name in ("text", "name") and len(args) == 1 and _character_literal(args[0]):
+        return None  # the polyfill grid's character literal row: its text without the padding
     if name in _TYPE_CALLS and len(args) == 1:
         return f"CAST({_sql(args[0])} AS {_TYPE_CALLS[name]})"
     if name == "numeric" and len(args) == 2:  # noqa: PLR2004 -- value and typmod
@@ -573,7 +595,7 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             sized = f"NUMERIC({packed >> 16}, {packed & 0xFFFF})"
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
-        return _sized(name, *(_sql(arg) for arg in args))
+        return _sized(name, _sql(_held_character(args[0])), *(_sql(arg) for arg in args[1:]))
     if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 3 and _cast_to(args[0], exp.DataType.Type.BIT):  # noqa: PLR2004
@@ -851,6 +873,28 @@ def _bytea_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911
     return None
 
 
+def _first_byte(text: str) -> str:
+    """ "char" of a text: its first byte (charin), which charout writes as \\ooo past 0x7F."""
+    point = f"ASCII(LEFT({text}, 1))"
+    byte = (
+        f"CASE WHEN {point} < 2048 THEN 192 | ({point} >> 6) "
+        f"WHEN {point} < 65536 THEN 224 | ({point} >> 12) ELSE 240 | ({point} >> 18) END"
+    )
+    octal = " || ".join(f"CAST((({byte}) >> {shift}) & 7 AS TEXT)" for shift in (6, 3, 0))
+    return f"CASE WHEN {point} < 128 THEN LEFT({text}, 1) ELSE '\\' || {octal} END"
+
+
+def _format_call(args: list[exp.Expr]) -> str:
+    """format of a template and its values (varlena.c's text_format), which DuckDB's format of
+    the name reads as fmt's {}: each value as its text, a VARIADIC array's elements as theirs."""
+    rest = args[1:]
+    if len(rest) == 1 and isinstance(rest[0], exp.Variadic):
+        values = f"CAST({_sql(rest[0].this)} AS TEXT[])"
+    else:
+        values = f"CAST([{', '.join(_as_text(a) for a in rest)}] AS TEXT[])"
+    return f"PROVISA_FORMAT({_as_text(args[0])}, {values})"
+
+
 def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
     if not args or not _cast_to(args[0], exp.DataType.Type.BIT):
         return None
@@ -976,6 +1020,7 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.Length: ("length", ("this", "encoding")),
         exp.GroupConcat: ("string_agg", ("this", "separator")),
         exp.StrPosition: ("position", ("this", "substr")),
+        exp.Format: ("format", ("this", "expressions")),
         exp.Sum: ("sum", ("this",)),
         exp.DateAdd: ("date_add", ("this", "expression", "unit")),
         exp.Time: ("time", ("this", "zone")),
@@ -1060,6 +1105,17 @@ def _call(node: exp.Expr) -> exp.Expr:
         or _time_call(name, args)
         or _mac_call(name, args)
     )
+    if (
+        written is None
+        and name == "position"
+        and isinstance(node, exp.Anonymous)
+        and len(args) == 2
+    ):  # noqa: PLR2004
+        # pg_catalog.position(a, b) is textpos(a, b): b found in a. sqlglot reads a call of
+        # position as SQL's POSITION(b, a), its substring first.
+        written = f"STRPOS({_sql(args[0])}, {_sql(args[1])})"
+    if written is None and name == "format" and args:
+        written = _format_call(args)
     if written is None and name == "convert" and len(args) == 3:  # noqa: PLR2004
         written = f"pg_convert({', '.join(_sql(a) for a in args)})"
     if written is None and name == "json_object" and len(args) in (1, 2):

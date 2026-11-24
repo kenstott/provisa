@@ -154,6 +154,17 @@ ROWS: tuple[Macro, ...] = (
     # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
     _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value, 'max'))"),
     _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value, 'min'))"),
+    # A character compares without its trailing spaces (bpcharcmp), in the session's collation.
+    _macro(
+        "max_character",
+        "value",
+        "arg_max(value, provisa_en_us_key(rtrim(value, ' '), 'max'))",
+    ),
+    _macro(
+        "min_character",
+        "value",
+        "arg_min(value, provisa_en_us_key(rtrim(value, ' '), 'min'))",
+    ),
     _pg("like", "a, b", _LIKE, _NO_CASE_SENSITIVE_LIKE),
     _pg("notlike", "a, b", f"NOT {_LIKE}", _NO_CASE_SENSITIVE_LIKE),
     _pg("textcat", "a, b", "CAST(a || b AS TEXT)"),

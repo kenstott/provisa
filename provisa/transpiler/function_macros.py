@@ -219,11 +219,8 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("round", 2, "decimal"): "round_numeric",
     ("trunc", 2, "decimal"): "trunc_numeric",
     ("text", 1, "inet"): "inet_text",
-    **{
-        (name, 1, of): f"{name}_collated"
-        for name in ("max", "min")
-        for of in ("text", "char", "bpchar", "varchar")
-    },
+    **{(name, 1, of): f"{name}_collated" for name in ("max", "min") for of in ("text", "varchar")},
+    **{(name, 1, of): f"{name}_character" for name in ("max", "min") for of in ("char", "bpchar")},
     **{
         (name, arity, of): f"{of}_{suffix}"
         for of in ("lseg", "line")
@@ -319,7 +316,32 @@ def said_type(node: exp.Expr) -> str | None:
 
 #: The rows of a type whose NULL answers NULL, whatever digits the function would give a value.
 _ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
-_COLLATED = frozenset({"max_collated", "min_collated"})
+_COLLATED = frozenset({"max_collated", "min_collated", "max_character", "min_character"})
+
+
+#: The rows answering one of a column's character(n) values.
+_OF_CHARACTERS = frozenset({"max_character", "min_character"})
+
+
+def _character_length(called: str, column: exp.Expr, dialect: str) -> int:
+    """The length every row of a VALUES column casts its character to, which bpchar's output pads
+    the answer to; a column of rows of more than one length, whose values keep each their own
+    padding, is refused."""
+    first = values_cast(column) if isinstance(column, exp.Column) else None
+    if first is None:
+        raise FunctionRefused(called, dialect)
+    rows = first.find_ancestor(exp.Values)
+    place = first.parent.expressions.index(first) if first.parent is not None else -1
+    lengths = set()
+    for row in rows.expressions if rows is not None else []:
+        cell = row.expressions[place]
+        if not (isinstance(cell, exp.Cast) and cell.to.is_type(exp.DataType.Type.CHAR)):
+            raise FunctionRefused(called, dialect)
+        params = cell.to.expressions
+        lengths.add(int(params[0].this.this) if params else 1)
+    if len(lengths) != 1:
+        raise FunctionRefused(called, dialect)
+    return lengths.pop()
 
 
 def _bucket_said(value: exp.Expr) -> str | None:
@@ -1507,6 +1529,15 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
             written = exp.Mul(this=args[0].transform(rewrite), expression=exp.Literal.number(0))
         else:
             written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
+        if name in _OF_CHARACTERS:  # bpchar's output pads the value DuckDB holds without it
+            written = exp.Anonymous(
+                this="rpad",
+                expressions=[
+                    written,
+                    exp.Literal.number(_character_length(called, args[0], dialect)),
+                    exp.Literal.string(" "),
+                ],
+            )
         if digits is not None:  # the scale PostgreSQL's numeric answers with, 0 for one below it
             scaled = f"DECIMAL(38, {max(digits, 0)})"
             written = exp.Cast(this=written, to=exp.DataType.build(scaled, dialect="postgres"))
