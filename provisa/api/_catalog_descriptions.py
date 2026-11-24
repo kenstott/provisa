@@ -77,6 +77,13 @@ _META: dict[str, str] = {
     "and member; a table may be a member of any number of products of its domain",
     "data_product_commands": "Every data product's member commands — one row per product and "
     "member command",
+    # REQ-2219 (amended 2026-11-24)
+    "data_product_owners": "Every data product's owners — one row per product and person whose "
+    "data_product_owner entitlement names it",
+    "domain_stewards": "Every domain's stewards — one row per domain and person whose "
+    "domain_steward entitlement names it or a domain above it",
+    "relationship_owners": "Every relationship's owners — one row per relationship and person "
+    "whose relationship_owner entitlement names it",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -440,6 +447,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "product_id": "The data product",
         "command_name": "A command that is a member of it",
     },
+    # REQ-2219 (amended 2026-11-24)
+    "data_product_owners": {
+        "id": "The product and its owner",
+        "product_id": "The data product",
+        "principal": "A person who owns it: the user id of a data_product_owner entitlement "
+        "naming it",
+    },
+    "domain_stewards": {
+        "id": "The domain and its steward",
+        "domain_id": "The domain",
+        "principal": "A person who stewards it: the user id of a domain_steward entitlement "
+        "naming it or a domain above it",
+    },
+    "relationship_owners": {
+        "id": "The relationship and its owner",
+        "relationship_id": "The relationship",
+        "principal": "A person who owns it: the user id of a relationship_owner entitlement "
+        "naming it",
+    },
     # REQ-2126
     "data_product_edges": {
         "id": "Edge identifier: product, kind and target",
@@ -489,8 +515,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",
         "created_at": "When the product was created",
-        "owners": "The people who own the product: each holds a data_product_owner entitlement "
-        "naming it",
     },
     # REQ-2188
     "metric_definitions": {
@@ -542,8 +566,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",
         "description": "What the domain covers",
-        "stewards": "The people who steward the domain: each holds a domain_steward entitlement "
-        "naming it or a domain above it; empty for a domain still pending a steward",
         "parent_domain_id": "Domain this one sits under; a role granted the parent reaches it too",
         "graphql_alias": "Name the domain is exposed under in GraphQL, when it differs",
         "org_id": "Org the domain was defined in",
@@ -575,8 +597,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "via_type_column": "Junction column that discriminates several relationship types",
         "via_type_value": "Discriminator value this edge is pinned to",
         "via_label_source": "Where the exposed type name comes from: column, table, or fixed",
-        "owners": "The people who own the edge definition: each holds a relationship_owner "
-        "entitlement naming it",
         "version": "Revision counter, incremented on every edit",
         "needs_review": "Whether the edge was inferred and awaits confirmation",
         "tenant_id": _TENANT,

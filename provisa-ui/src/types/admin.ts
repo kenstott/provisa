@@ -104,8 +104,8 @@ export interface DataProduct {
   id: string;
   domainId: string;
   name: string;
-  // REQ-2219 (amended 2026-11-23): its owners, people (user ids) whose data_product_owner rows
-  // name it.
+  // REQ-2219 (amended 2026-11-24): its owners, people (user ids) whose data_product_owner rows
+  // name it, read through its owners relationship (data_product_owners_meta).
   owners: string[];
   teamRole?: string | null;
   purpose: string;

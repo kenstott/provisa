@@ -108,7 +108,7 @@ describe("Admin > Domains: adding a domain", () => {
     createDomain.mockResolvedValueOnce({ success: true, message: "Domain 'finance' created" });
     await addDomain("finance");
     await waitFor(() => expect(screen.queryByTestId("new-domain-form")).toBeNull());
-    expect(createDomain).toHaveBeenCalledWith("finance", "", null, null, []);
+    expect(createDomain).toHaveBeenCalledWith("finance", "", null, null, [], []);
     expect(refetch).toHaveBeenCalled();
   });
 });

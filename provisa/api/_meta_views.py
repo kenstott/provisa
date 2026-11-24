@@ -1415,13 +1415,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "domains": """
         CREATE OR REPLACE VIEW domains_meta AS
         SELECT d.id, d.description, d.graphql_alias, d.parent_domain_id, d.org_id,
-               d.tenant_id,
-               -- its stewards, people whose domain_steward rows name it or a domain above it.
-               -- Last, so the view is replaced in place.
-               COALESCE(
-                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
-                    WHERE oo.object_kind = 'domain' AND oo.object_id = d.id),
-                   CAST('[]' AS JSONB)) AS stewards
+               d.tenant_id
         FROM domains d
         WHERE NOT d.retired
     """,
@@ -1435,13 +1429,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.via_type_value, r.via_label_source,
                r.source_json_key, r.parameters, r.version, r.needs_review,
                r.cypher_type, r.graphql_field,
-               r.tenant_id,
-               -- its owners, people whose relationship_owner rows name it. Last, so the view is
-               -- replaced in place.
-               COALESCE(
-                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
-                    WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id),
-                   CAST('[]' AS JSONB)) AS owners
+               r.tenant_id
         FROM relationships r
         WHERE NOT r.retired
     """,
@@ -1471,14 +1459,26 @@ _META_TABLE_VIEWS: dict[str, str] = {
                version, status, status_reason, retire_on, successor_id, support,
                support_contact, custom_properties,
                -- when the product was created; last, so the view is replaced in place.
-               created_at,
-               -- its owners, people whose data_product_owner rows name it. Last, so the view is
-               -- replaced in place.
-               COALESCE(
-                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
-                    WHERE oo.object_kind = 'data_product' AND oo.object_id = data_products.id),
-                   CAST('[]' AS JSONB)) AS owners
+               created_at
         FROM data_products
+    """,
+    # REQ-2219 (amended 2026-11-24, per REQ-2125): who owns or stewards an object is no column of
+    # its view. Each kind has its own view, one row per object and principal, computed from
+    # object_owners, and its object reaches it by a meta relationship (provisa.api._meta_seed).
+    "data_product_owners": """
+        CREATE OR REPLACE VIEW data_product_owners_meta AS
+        SELECT object_id || ':' || principal AS id, object_id AS product_id, principal
+        FROM object_owners WHERE object_kind = 'data_product'
+    """,
+    "domain_stewards": """
+        CREATE OR REPLACE VIEW domain_stewards_meta AS
+        SELECT object_id || ':' || principal AS id, object_id AS domain_id, principal
+        FROM object_owners WHERE object_kind = 'domain'
+    """,
+    "relationship_owners": """
+        CREATE OR REPLACE VIEW relationship_owners_meta AS
+        SELECT object_id || ':' || principal AS id, object_id AS relationship_id, principal
+        FROM object_owners WHERE object_kind = 'relationship'
     """,
     # REQ-1986: the parameter_* columns state a parameter's limits.
     "table_columns": """

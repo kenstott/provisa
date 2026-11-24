@@ -113,6 +113,21 @@
        }
       },
       {
+       "name": "m__dataProductOwners",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProductOwners"
+         }
+        }
+       }
+      },
+      {
        "name": "m__dataProductTables",
        "type": {
         "kind": "LIST",
@@ -153,6 +168,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__DerivedTags"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__domainStewards",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DomainStewards"
          }
         }
        }
@@ -288,6 +318,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__relationshipOwners",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RelationshipOwners"
          }
         }
        }
@@ -1853,13 +1898,6 @@
        }
       },
       {
-       "name": "owners",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "purpose",
        "type": {
         "kind": "SCALAR",
@@ -2029,6 +2067,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
+       "name": "owners",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProductOwners"
          }
         }
        }
@@ -2229,13 +2282,6 @@
        }
       },
       {
-       "name": "stewards",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "tenantId",
        "type": {
         "kind": "SCALAR",
@@ -2305,6 +2351,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__RlsRules"
+         }
+        }
+       }
+      },
+      {
+       "name": "stewards",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DomainStewards"
          }
         }
        }
@@ -2557,6 +2618,61 @@
       }
      ],
      "name": "M__Roles"
+    },
+    {
+     "fields": [
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "domain",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Domains"
+       }
+      }
+     ],
+     "name": "M__DomainStewards"
     },
     {
      "fields": [
@@ -2917,6 +3033,61 @@
       }
      ],
      "name": "M__DataProductTables"
+    },
+    {
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "product",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      }
+     ],
+     "name": "M__DataProductOwners"
     },
     {
      "fields": [
@@ -5090,13 +5261,6 @@
        }
       },
       {
-       "name": "owners",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "parameters",
        "type": {
         "kind": "SCALAR",
@@ -5238,6 +5402,21 @@
        }
       },
       {
+       "name": "owners",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RelationshipOwners"
+         }
+        }
+       }
+      },
+      {
        "name": "sourceTable",
        "type": {
         "kind": "OBJECT",
@@ -5260,6 +5439,61 @@
       }
      ],
      "name": "M__Relationships"
+    },
+    {
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "relationshipId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "relationship",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Relationships"
+       }
+      }
+     ],
+     "name": "M__RelationshipOwners"
     },
     {
      "fields": [
@@ -5924,6 +6158,11 @@
   },
   {
    "domain_id": "meta",
+   "graphql_field": "m__dataProductOwners",
+   "table_name": "data_product_owners"
+  },
+  {
+   "domain_id": "meta",
    "graphql_field": "m__dataProductTables",
    "table_name": "data_product_tables"
   },
@@ -5936,6 +6175,11 @@
    "domain_id": "meta",
    "graphql_field": "m__derivedTags",
    "table_name": "derived_tags"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__domainStewards",
+   "table_name": "domain_stewards"
   },
   {
    "domain_id": "meta",
@@ -5981,6 +6225,11 @@
    "domain_id": "meta",
    "graphql_field": "m__registeredTables",
    "table_name": "registered_tables"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__relationshipOwners",
+   "table_name": "relationship_owners"
   },
   {
    "domain_id": "meta",

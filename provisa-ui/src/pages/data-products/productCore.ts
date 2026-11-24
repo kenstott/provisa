@@ -46,9 +46,14 @@ export const PRODUCT_FIELDS = [
   "support_contact",
   "custom_properties",
   "created_at",
-  // REQ-2219 (amended 2026-11-23): its owners, people whose data_product_owner rows name it.
-  "owners",
 ] as const;
+
+/** REQ-2219 (amended 2026-11-24, per REQ-2125): a product's owners are rows of
+ * data_product_owners_meta, one per person, reached by its owners relationship. */
+const OWNERS: NonNullable<Selection["rels"]> = { owners: { sel: { fields: ["principal"] } } };
+
+/** A product's owners relationship as answered: undefined when the role cannot select it. */
+type OwnerRows = { principal: string }[] | null | undefined;
 
 /** A view's column name as the GraphQL field it is (REQ-416). */
 type Field<C extends string> = C extends `${infer H}_${infer T}`
@@ -72,6 +77,7 @@ const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
 const PANEL: Selection = {
   fields: ["id"],
   rels: {
+    ...OWNERS,
     // REQ-1634: a product's members are junction rows (data_product_tables), each reaching its
     // table; one a role cannot read reaches none.
     dataProductTables: {
@@ -305,6 +311,7 @@ export interface CoreCommand {
 
 interface PanelRow {
   id: string;
+  owners?: OwnerRows;
   dataProductTables?: { registeredTable?: CoreTable | null }[] | null;
   dataProductCommands?: { trackedFunction?: CoreCommand | null }[] | null;
   tags?: { tagId: string }[] | null;
@@ -324,17 +331,26 @@ export interface ProductCore {
 
 const text = (v: unknown) => (v == null ? null : String(v));
 
-/** A JSON column as read: a client that answers JSON as text gives it as a string. */
-const json = (v: unknown): unknown => (typeof v === "string" ? JSON.parse(v) : v);
+/** The people a product's owners relationship reaches. A role reads data_product_owners_meta
+ * exactly when it reads data_products_meta (both outside the default tier, granted by
+ * catalog_read: security.inheritance.expand_meta_grants), so a product read without it is a
+ * defect, not a product with no owners. */
+function ownersOf(product: unknown, owners: OwnerRows): string[] {
+  const rows = rowsOf(owners);
+  if (rows === undefined)
+    throw new Error(`data product ${String(product)} was read without its owners relationship`);
+  return rows.map((o) => o.principal);
+}
 
-/** A data_products_meta row as the page's DataProduct. */
-export function asProduct(row: ProductRow): DataProduct {
+/** A data_products_meta row, with the owners its relationship reaches, as the page's
+ * DataProduct. */
+export function asProduct(row: ProductRow, owners: OwnerRows): DataProduct {
   const custom = row.customProperties;
   return {
     id: String(row.id),
     domainId: String(row.domainId),
     name: String(row.name),
-    owners: json(row.owners) as string[],
+    owners: ownersOf(row.id, owners),
     teamRole: text(row.teamRole),
     purpose: String(row.purpose ?? ""),
     limitations: String(row.limitations ?? ""),
@@ -356,14 +372,19 @@ export function asProduct(row: ProductRow): DataProduct {
 
 /** The product list: every product the role reads. Null when it cannot read data_products_meta. */
 export function listQuery(m: MetaReader): string | null {
-  return rootQuery(m, "DataProducts", "data_products", { fields: [...PRODUCT_FIELDS] });
+  return rootQuery(m, "DataProducts", "data_products", {
+    fields: [...PRODUCT_FIELDS],
+    rels: OWNERS,
+  });
 }
 
 export async function loadProducts(m: MetaReader, role: string): Promise<DataProduct[] | null> {
   const q = listQuery(m);
   if (q === null) return null;
-  const { data_products } = await dataGraphql<{ data_products: ProductRow[] }>(q, {}, role);
-  return data_products.map(asProduct);
+  const { data_products } = await dataGraphql<{
+    data_products: (ProductRow & { owners?: OwnerRows })[];
+  }>(q, {}, role);
+  return data_products.map((row) => asProduct(row, row.owners));
 }
 
 const PRODUCTS_REF = { domainId: "meta", tableName: "data_products" };
@@ -445,7 +466,7 @@ export async function loadProductCore(
     for (const c of t.tableColumns ?? [])
       for (const r of c.glossaryRef ?? []) if (r.term) bound.set(r.term.id, r.term);
   return {
-    product: asProduct(productRow),
+    product: asProduct(productRow, row.owners),
     tables: members,
     commands: reachedBy(row.dataProductCommands, (m) => m.trackedFunction),
     tags: rowsOf(row.tags)?.map((t) => t.tagId),

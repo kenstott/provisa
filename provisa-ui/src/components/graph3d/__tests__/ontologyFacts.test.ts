@@ -66,7 +66,7 @@ const TERM: TermRow = {
               name: "customer_360",
               domainId: "sales",
               status: "live",
-              owners: '["sam"]',
+              owners: [{ principal: "sam" }],
             },
           },
         ],
@@ -80,7 +80,7 @@ const PRODUCT: ProductRow = {
   name: "customer_360",
   domainId: "sales",
   status: "live",
-  owners: '["sam"]',
+  owners: [{ principal: "sam" }],
   dataProductTables: [
     {
       registeredTable: {

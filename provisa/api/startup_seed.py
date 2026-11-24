@@ -79,7 +79,11 @@ from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 # By the time any function here is called, app.py is fully initialised and
 # `state`, `_META_TABLE_ALIAS`, `_META_TABLES` are bound in its namespace.
 from provisa.api.app import state  # noqa: E402
-from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES  # noqa: E402
+from provisa.api.app_loaders import (  # noqa: E402
+    META_COMPUTED_VIEWS,
+    _META_TABLE_ALIAS,
+    _META_TABLES,
+)
 from provisa.core.models import DERIVED_SOURCE_ID
 
 # REQ-1900: arbitrary fixed key for the Postgres session advisory lock that serializes
@@ -465,8 +469,10 @@ async def _seed_meta_domain(
         _registered_tables_t.c.table_name.not_in([*_META_TABLES, _ORG_REGISTRY_VIEW]),
     )
 
+    # A computed view restates no table of its own name (META_COMPUTED_VIEWS).
+    base_of = {tbl: None if tbl in META_COMPUTED_VIEWS else tbl for tbl in _META_TABLES}
     reflected = await _reflect_admin_views(
-        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
+        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): base_of[tbl] for tbl in _META_TABLES}
     )
     for tbl in _META_TABLES:
         await _register_admin_view(
@@ -474,7 +480,7 @@ async def _seed_meta_domain(
             "meta",
             schema_name,
             tbl,
-            base_table=tbl,
+            base_table=base_of[tbl],
             view_name=_META_TABLE_ALIAS.get(tbl, tbl),
             reflected=reflected,
         )

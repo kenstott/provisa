@@ -32,6 +32,7 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, columnFacts, facts, type ColumnFacts } from "./columnFacts";
+import { ownersFact, PRODUCT_NAMED, type OwnerRow } from "./productFacts";
 import { searchWhere } from "./ontologySearch";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
@@ -68,9 +69,6 @@ export const TABLE_FACTS: Selection = {
     checkedBy: { sel: { fields: ["latest_outcome", "latest_run_at"] } },
   },
 };
-
-/** A product's facts: its status and owners (its members are counted from the graph). */
-export const PRODUCT_FACTS = ["status", "owners"];
 
 /** A table's columns by their keys alone: how many the role reads, so a term's graph offers to
  * expand a table only when it has columns beyond those its terms reach (a product's graph reads
@@ -136,7 +134,7 @@ const RELATIONSHIP: Selection = {
             sel: {
               fields: [],
               rels: {
-                dataProduct: { sel: { fields: ["id", "name", "domain_id", ...PRODUCT_FACTS] } },
+                dataProduct: { sel: PRODUCT_NAMED },
               },
             },
           },
@@ -182,9 +180,7 @@ function productOf(s: QueryScope): NonNullable<Selection["rels"]> {
         fields: [],
         rels: {
           dataProduct: {
-            sel: {
-              fields: productsNamed(s) ? ["id", "name", "domain_id", ...PRODUCT_FACTS] : ["id"],
-            },
+            sel: productsNamed(s) ? PRODUCT_NAMED : { fields: ["id"] },
           },
         },
       },
@@ -519,8 +515,9 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
     m,
     "data_products",
     {
-      fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
+      fields: PRODUCT_NAMED.fields,
       rels: {
+        ...PRODUCT_NAMED.rels,
         ...productParts(s),
         dataProductTables: {
           sel: {
@@ -620,8 +617,8 @@ type ProductRef = {
   name?: string;
   domainId?: string;
   status?: string | null;
-  // REQ-2219: its owners, people, as the meta domain serves a JSON column: its text.
-  owners?: string | null;
+  // REQ-2219: its owners, people, each a row of its owners relationship.
+  owners?: OwnerRow[] | null;
 } | null;
 
 /** A table's rows of the membership junction, each reaching one of its data products. */
@@ -698,8 +695,8 @@ export interface ProductRow {
   name: string;
   domainId: string;
   status?: string | null;
-  // REQ-2219: its owners, people, as the meta domain serves a JSON column: its text.
-  owners?: string | null;
+  // REQ-2219: its owners, people, each a row of its owners relationship.
+  owners?: OwnerRow[] | null;
   // Under Commands.
   dataProductCommands?: { trackedFunction?: { name: string; domainId: string } | null }[] | null;
   // Under Product links: its relationship rows to other products.
@@ -840,19 +837,12 @@ function termEdgesDrawn(b: Builder, edges: TermEdgeRow[]) {
   }
 }
 
-/** A product's owners as its owner fact: the meta domain's JSON text of their principals. */
-function ownersFact(owners: string | null | undefined): string | undefined {
-  if (owners == null) return undefined;
-  const people = JSON.parse(owners) as string[];
-  return people.length > 0 ? people.join(", ") : undefined;
-}
-
 /** A product's node, its facts as read. */
 function productNodeOf(
   id: string,
   name: string,
   domain: string,
-  row: { status?: string | null; owners?: string | null },
+  row: { status?: string | null; owners?: OwnerRow[] | null },
 ): GraphNode {
   return {
     id: productNode(id),
@@ -1001,7 +991,7 @@ export function productMapGraph(
     id: string,
     name: string,
     domain: string,
-    row: { status?: string | null; owners?: string | null },
+    row: { status?: string | null; owners?: OwnerRow[] | null },
   ) => {
     node(productNodeOf(id, name, domain, row));
     if (nodes.has(`d:${domain}`)) edge(productNode(id), `d:${domain}`, "in_domain");

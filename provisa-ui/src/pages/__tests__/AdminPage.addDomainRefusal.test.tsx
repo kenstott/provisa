@@ -112,7 +112,9 @@ describe("Admin > Domains: adding a domain", () => {
 
   it("says a domain added as added", async () => {
     await add("finance");
-    await waitFor(() => expect(createDomain).toHaveBeenCalledWith("finance", "", null, null, []));
+    await waitFor(() =>
+      expect(createDomain).toHaveBeenCalledWith("finance", "", null, null, [], []),
+    );
     expect(await screen.findByTestId("domain-msg")).toHaveTextContent("finance");
     expect(screen.queryByTestId("new-domain-form")).toBeNull();
   });
