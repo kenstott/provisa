@@ -12,11 +12,13 @@
 REQ-2112): ``/admin/orgs/{org}/code-sources/{source}/services/{token}/{service}/{call}``.
 
 A valid personal access token reaches a services call answered under its source's grant, as its
-role; the call is in the org's trail. Another source, an unknown token, a revoked one and an
-expired one are each refused by name. The auth middleware lets the path through without a
-credential, since the token is the path's."""
+role, from the environment it was issued into (REQ-1503); the call is in the org's trail. Another
+source is refused by name. A path carrying no token, an unknown token, a revoked, suspended or
+expired one, and another organization's all get one opaque answer (REQ-1263; REQ-2106, amended
+2026-11-24), and the reason is in the org's trail only. The auth middleware lets the path through
+without a credential, since the token is the path's."""
 
-# Requirements: REQ-2106, REQ-2112
+# Requirements: REQ-2106, REQ-2112, REQ-1263, REQ-1503
 
 from __future__ import annotations
 
@@ -32,13 +34,17 @@ from provisa.api.admin import developer_services_router
 from provisa.auth.pat import PersonalAccessTokenStore, hash_token
 from provisa.core import schema_admin
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.schema_admin import orgs, personal_access_tokens
+from provisa.core.request_context import current_env
+from provisa.core.schema_admin import environments, orgs, personal_access_tokens
 from provisa.security.rights import Capability
 
 pytestmark = pytest.mark.asyncio
 
 ORG = "acme"
+SANDBOX = "sbx" + "0123456789ab"
 SOURCE = "rates"
+#: What every refused token is answered with, whatever the reason (REQ-1263).
+OPAQUE = (401, "Invalid token")
 _DEV = {
     "runtime": "python",
     "code": {"kind": "upload", "upload": "u1"},
@@ -59,8 +65,12 @@ async def world(monkeypatch):
     with db.engine.begin() as conn:
         schema_admin.metadata.create_all(conn)
     async with db.acquire() as conn:
-        for org_id in (ORG, "globex"):
+        for org_id in (ORG, "globex", SANDBOX):
             await conn.execute_core(insert(orgs).values(id=org_id, name=org_id))
+        await conn.execute_core(insert(environments).values(org_id=ORG, name="prod"))
+        await conn.execute_core(
+            insert(environments).values(org_id=ORG, name="dev", parent="prod", data_mode="inherit")
+        )
     state = SimpleNamespace(
         admin_db=db,
         roles={
@@ -69,18 +79,21 @@ async def world(monkeypatch):
         },
         udf_egress_allowlist=["api.example.com"],
     )
-    sources = [
+    prod_sources = [
         _source(SOURCE, "python", _DEV),
         _source("ledger", "python", {**_DEV, "mode": "built"}),
         _source("warehouse", "postgresql", {}),
     ]
+    # The dev environment's copy of the model: the same source, its setting tuned there.
+    dev_sources = [_source(SOURCE, "python", {**_DEV, "settings": {"region": "US"}})]
     trail: list[dict] = []
+    runtimes: list[tuple] = []
 
-    async def ensure_org_runtime(org_id):
-        return None
+    async def ensure_org_runtime(org_id, env=None):
+        runtimes.append((org_id, env))
 
     async def registered_sources(_state):
-        return sources
+        return {None: prod_sources, "prod": prod_sources, "dev": dev_sources}[current_env.get()]
 
     async def sign_in_roles(_state, identity, org_id):
         scopes = identity.raw_claims["scopes"]
@@ -101,13 +114,22 @@ async def world(monkeypatch):
     app = FastAPI()
     app.include_router(developer_services_router.router)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-    yield SimpleNamespace(db=db, pats=PersonalAccessTokenStore(db), client=client, trail=trail)
+    yield SimpleNamespace(
+        db=db, pats=PersonalAccessTokenStore(db), client=client, trail=trail, runtimes=runtimes
+    )
     await client.aclose()
 
 
-async def _token(world, *, org_id: str = ORG, scopes: tuple[str, ...] = ("developer",)) -> str:
+async def _token(
+    world,
+    *,
+    org_id: str = ORG,
+    scopes: tuple[str, ...] = ("developer",),
+    env_name: str = "prod",
+    name: str = "vscode",
+) -> str:
     secret, _row = await world.pats.issue(
-        user_id="ada", org_id=org_id, env_name="prod", name="vscode", scopes=list(scopes)
+        user_id="ada", org_id=org_id, env_name=env_name, name=name, scopes=list(scopes)
     )
     return secret
 
@@ -188,44 +210,98 @@ async def test_another_source_is_refused_by_name_and_audited(world):
     ]
 
 
-async def test_another_organizations_source_is_refused_by_name(world):
-    token = await _token(world, org_id="globex")
-    answered = await world.client.get(f"{_address(token)}/settings/region")
-    assert answered.status_code == 403
-    message = answered.json()["error"]["message"]
-    assert "'vscode' is another organization's" in message and "'acme'" in message
-    assert world.trail == []
+def _refusals(world) -> list[tuple[str, str, dict]]:
+    """The trail's token refusals: the actor, the org whose trail holds it, and its detail."""
+    return [
+        (e["actor_id"], e["org_id"], e["detail"])
+        for e in world.trail
+        if e["action"] == "code_source.services.token_refused"
+    ]
 
 
-async def test_an_unknown_token_is_refused_by_name(world):
-    answered = await world.client.get(f"{_address('provisa_pat_' + 'x' * 43)}/settings/region")
-    assert answered.status_code == 401
-    assert answered.json()["error"]["message"] == "the personal access token is not known here"
-    assert world.trail == []
+def _opaque(answered: httpx.Response, service: str = "settings") -> tuple[int, str]:
+    if service == "secrets":
+        return answered.status_code, answered.text
+    return answered.status_code, answered.json()["error"]["message"]
 
 
-async def test_a_path_carrying_no_token_is_refused_by_name(world):
-    answered = await world.client.get(f"{_address('tok-123')}/secrets/api_key")
-    assert answered.status_code == 401
-    assert answered.text == "the services address carries no personal access token"
-
-
-async def test_a_revoked_token_is_refused_by_name(world):
-    token = await _token(world)
-    await _set(world, token, revoked_at=datetime.datetime.now(datetime.timezone.utc))
-    answered = await world.client.get(f"{_address(token)}/settings/region")
-    assert answered.status_code == 401
-    assert answered.json()["error"]["message"] == "the personal access token 'vscode' is revoked"
-    assert world.trail == []
-
-
-async def test_an_expired_token_is_refused_by_name(world):
-    token = await _token(world)
+async def test_every_refused_token_gets_the_same_answer_and_the_trail_names_why(world):
     past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
-    await _set(world, token, expires_at=past)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    revoked = await _token(world, name="revoked")
+    suspended = await _token(world, name="suspended")
+    expired = await _token(world, name="expired")
+    await _set(world, revoked, revoked_at=now)
+    await _set(world, suspended, suspended_at=now, suspended_reason="role removed")
+    await _set(world, expired, expires_at=past)
+    cases = {
+        "not_a_token": "tok-123",
+        "unknown": "provisa_pat_" + "x" * 43,
+        "revoked": revoked,
+        "suspended": suspended,
+        "expired": expired,
+        "another_organization": await _token(world, org_id="globex"),
+    }
+    answers = set()
+    for service in ("settings", "secrets"):
+        for token in cases.values():
+            answered = await world.client.get(f"{_address(token)}/{service}/region")
+            answers.add((service, _opaque(answered, service)))
+    # One answer per service shape (a secret's is text, every other service's JSON), the same
+    # for every reason, and the one every sign-in gives.
+    assert answers == {("settings", OPAQUE), ("secrets", OPAQUE)}
+    refusals = _refusals(world)
+    assert [d["reason"] for _, _, d in refusals] == list(cases) * 2
+    by_reason = {d["reason"]: (actor, org, d) for actor, org, d in refusals}
+    assert {org for _, org, _ in refusals} == {ORG}  # the addressed org's trail
+    assert by_reason["unknown"][0] == "unknown-token"
+    assert by_reason["not_a_token"][0] == "unknown-token"
+    for reason in ("revoked", "suspended", "expired"):
+        assert by_reason[reason][0] == "ada"
+        assert by_reason[reason][2] == {"reason": reason, "token": reason, "token_org": ORG}
+    assert by_reason["another_organization"][2] == {
+        "reason": "another_organization",
+        "token": "vscode",
+        "token_org": "globex",
+    }
+    assert not any(token in repr(world.trail) for token in cases.values())
+    # No refused token reached a source, or built a runtime.
+    assert [e for e in world.trail if e["action"] != "code_source.services.token_refused"] == []
+    assert world.runtimes == []
+
+
+async def test_a_token_refused_on_a_path_naming_no_org_gets_the_same_answer(world):
+    answered = await world.client.get(
+        f"{_address('provisa_pat_' + 'x' * 43, org_id='nobody')}/settings/region"
+    )
+    assert _opaque(answered) == OPAQUE
+    assert world.trail == []
+    assert world.runtimes == []
+
+
+async def test_an_environment_bound_token_reaches_its_environments_source(world):
+    token = await _token(world, env_name="dev")
     answered = await world.client.get(f"{_address(token)}/settings/region")
-    assert answered.status_code == 401
-    assert answered.json()["error"]["message"] == "the personal access token 'vscode' has expired"
+    assert answered.status_code == 200, answered.text
+    assert answered.json() == {"value": "US"}  # dev's copy of the source, not prod's
+    assert world.runtimes == [(ORG, "dev")]
+
+
+async def test_a_prod_token_reaches_prods_source(world):
+    token = await _token(world)
+    answered = await world.client.get(f"{_address(token)}/settings/region")
+    assert answered.json() == {"value": "EU"}
+    assert world.runtimes == [(ORG, "prod")]
+
+
+async def test_a_token_bound_to_no_environment_uses_the_orgs_default(world):
+    token = await _token(world, org_id=SANDBOX, env_name="dev")
+    identity = await world.pats.resolve(token)
+    assert identity.credential_env is None  # REQ-2053: a demo sandbox's token names none
+    answered = await world.client.get(f"{_address(token, org_id=SANDBOX)}/settings/region")
+    assert answered.status_code == 200, answered.text
+    assert answered.json() == {"value": "EU"}  # prod, the default environment
+    assert world.runtimes == [(SANDBOX, "prod")]
 
 
 async def test_a_token_without_source_registration_is_refused_by_name(world):

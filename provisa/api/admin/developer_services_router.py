@@ -14,7 +14,9 @@
 ``/admin/orgs/{org_id}/code-sources/{source_id}/services/{token}/{service}/{call}``: the address
 the VS Code extension forwards as ``$PROVISA_SERVICES``, with what the module appends. The token
 is in the path, since the module sends no header, so the auth middleware lets this path through
-without a credential and :mod:`provisa.codesource.developer_services` resolves it here.
+without a credential and :mod:`provisa.codesource.developer_services` resolves it here: a refused
+token gets one opaque answer (REQ-1263), and a valid one is served from its environment
+(REQ-1503).
 """
 
 # Requirements: REQ-2106, REQ-2112
@@ -49,25 +51,42 @@ def _state():
 
 @router.api_route("/{token}/{rest:path}", methods=_METHODS, include_in_schema=False)
 async def call(request: Request, org_id: str, source_id: str, token: str, rest: str) -> Response:
-    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
 
     service, _, sub = rest.partition("/")
     bound = set_current_org(org_id)
     try:
         state = _state()
         try:
-            grant, developer = await developer_services.resolve(state, org_id, source_id, token)
+            identity, env = await developer_services.identify(state, org_id, token)
         except services.ServiceRefused as refused:
             return _response(services.refusal(service, refused))
-        body = await request.body()
-        answered = functools.partial(
-            services.answer_grant, grant, request.method, service, sub, body, developer.role
-        )
-        status, kind, out = await asyncio.wrap_future(
-            _answering.submit(contextvars.copy_context().run, answered)
-        )
-        await developer_services.audit(org_id, source_id, developer, service, sub, status)
-        return _response((status, kind, out))
+        # REQ-1503: served from the token's environment, as the org routing binds every other
+        # request's; the auth middleware let this path through unbound.
+        env_bound = set_current_env(env)
+        try:
+            try:
+                grant, developer = await developer_services.authorize(
+                    state, org_id, source_id, identity, env
+                )
+            except services.ServiceRefused as refused:
+                return _response(services.refusal(service, refused))
+            body = await request.body()
+            answered = functools.partial(
+                services.answer_grant, grant, request.method, service, sub, body, developer.role
+            )
+            status, kind, out = await asyncio.wrap_future(
+                _answering.submit(contextvars.copy_context().run, answered)
+            )
+            await developer_services.audit(org_id, source_id, developer, service, sub, status)
+            return _response((status, kind, out))
+        finally:
+            reset_current_env(env_bound)
     finally:
         reset_current_org(bound)
 

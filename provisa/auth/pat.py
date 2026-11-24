@@ -30,6 +30,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import secrets
+from dataclasses import dataclass
 
 from sqlalchemy import delete, select, update
 
@@ -92,12 +93,25 @@ class TokenNameTaken(ValueError):
 
 class TokenRefused(Exception):
     """Why a presented token is refused (REQ-2106): ``reason`` is unknown, revoked, suspended or
-    expired, and the message names the token by its label when it has one. Never a ValueError, so
-    no sign-in surface reports it in place of :meth:`PersonalAccessTokenStore.validate`'s."""
+    expired, and the message names the token by its label when it has one. ``owner`` is the
+    token's row (its user, org and label) when the token is known, and None when it is not. It is
+    for the audit trail only: no caller answers a request with it (REQ-1263; REQ-2106, amended
+    2026-11-24). Never a ValueError, so no sign-in surface reports it in place of
+    :meth:`PersonalAccessTokenStore.validate`'s."""
 
-    def __init__(self, reason: str, message: str) -> None:
+    def __init__(self, reason: str, message: str, owner: TokenOwner | None = None) -> None:
         super().__init__(message)
         self.reason = reason
+        self.owner = owner
+
+
+@dataclass(frozen=True)
+class TokenOwner:
+    """Whose a refused token is, as its row records it (REQ-2106, amended 2026-11-24)."""
+
+    user_id: str
+    org_id: str
+    token_name: str
 
 
 class PersonalAccessTokenStore:  # REQ-1263
@@ -176,9 +190,9 @@ class PersonalAccessTokenStore:  # REQ-1263
 
     async def resolve(self, token: str) -> AuthIdentity:  # REQ-1263, REQ-2106
         """:meth:`validate`'s identity, or :class:`TokenRefused` saying why the token is refused:
-        unknown, revoked, suspended or expired. Only the developer's services route (REQ-2106,
-        amended 2026-11-22) answers with the reason; every sign-in answers through
-        :meth:`validate`, which says only that the token is not valid."""
+        unknown, revoked, suspended or expired. The reason is the audit trail's alone: the
+        developer's services route (REQ-2106, amended 2026-11-24) records it and answers as
+        every sign-in does through :meth:`validate`, saying only that the token is not valid."""
         token_hash = hash_token(token)
         async with self._pool.acquire() as conn:
             result = await conn.execute_core(
@@ -206,18 +220,19 @@ class PersonalAccessTokenStore:  # REQ-1263
             if fetched is None:
                 raise TokenRefused("unknown", "the personal access token is not known here")
             row = dict(fetched._mapping)
+            owner = TokenOwner(row["user_id"], row["org_id"], row["name"])
             if row["revoked_at"] is not None:
                 raise TokenRefused(
-                    "revoked", f"the personal access token {row['name']!r} is revoked"
+                    "revoked", f"the personal access token {row['name']!r} is revoked", owner
                 )
             # REQ-2076: a suspended token is refused as a revoked one is, until an admin lifts it.
             if row["suspended_at"] is not None:
                 raise TokenRefused(
-                    "suspended", f"the personal access token {row['name']!r} is suspended"
+                    "suspended", f"the personal access token {row['name']!r} is suspended", owner
                 )
             if row["expires_at"] is not None and _as_aware(row["expires_at"]) <= _utcnow():
                 raise TokenRefused(
-                    "expired", f"the personal access token {row['name']!r} has expired"
+                    "expired", f"the personal access token {row['name']!r} has expired", owner
                 )
             await conn.execute_core(
                 update(personal_access_tokens)
