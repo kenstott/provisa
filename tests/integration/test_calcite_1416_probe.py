@@ -232,32 +232,51 @@ def _server_log_lines(source) -> list[str]:
     return (server._bundle_dir / pr.SERVER_LOG_NAME).read_text(errors="replace").splitlines()
 
 
+def _describe(cur, schema: str, table: str, source) -> list:
+    """The table's columns as Trino's DESCRIBE lists them. Trino answers a table whose columns it
+    maps none of with NOT_FOUND "has no supported columns" (warehouse run 45458949846): that is
+    the zero-column answer #1416 asks about, so it is counted as zero columns; any other error
+    fails the test."""
+    import trino.exceptions
+
+    sql = f"DESCRIBE {_CATALOG}.{schema}.{table}"
+    try:
+        cur.execute(sql)
+        return cur.fetchall()
+    except trino.exceptions.TrinoUserError as exc:
+        if exc.error_name == "NOT_FOUND" and "has no supported columns" in exc.message:
+            print(f"DESCRIBE {schema}.{table}: {exc.message}")
+            return []
+        with _step("describing the table", sql, source):
+            raise
+
+
+def _write(name: str, text: str) -> None:
+    (_RESULTS / name).write_text(text)
+
+
 def test_trino_describe_of_each_probed_table(catalog):
     cur, source = catalog
     _RESULTS.mkdir(parents=True, exist_ok=True)
 
     before = len(_server_log_lines(source))
+    start = max(0, before - _LOG_CONTEXT_LINES)
     counts: dict[str, int] = {}
-    first_window: list[str] = []
     for schema, table in _PROBED:
-        columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{schema}.{table}", source)
+        columns = _describe(cur, schema, table, source)
         counts[f"{schema}.{table}"] = len(columns)
         print(f"DESCRIBE {schema}.{table}: {len(columns)} columns {[c[0] for c in columns]}")
+        _write("counts.txt", "".join(f"{name}: {n} columns\n" for name, n in counts.items()))
         if (schema, table) == _PROBED[0]:
-            lines = _server_log_lines(source)
-            start = max(0, before - _LOG_CONTEXT_LINES)
-            first_window = lines[start:]
+            window = _server_log_lines(source)[start:]
+            _write(
+                "pgwire-log-around-first-describe.txt",
+                f"(server log lines from {start + 1}; the first DESCRIBE was sent after line "
+                f"{before})\n" + "\n".join(window) + "\n",
+            )
+            print("--- pgwire server log around the first DESCRIBE ---")
+            print("\n".join(window))
+    _write("pgwire-server.log", "\n".join(_server_log_lines(source)) + "\n")
 
-    (_RESULTS / "counts.txt").write_text(
-        "".join(f"{name}: {n} columns\n" for name, n in counts.items())
-    )
-    (_RESULTS / "pgwire-log-around-first-describe.txt").write_text(
-        f"(server log lines from {max(0, before - _LOG_CONTEXT_LINES) + 1}; "
-        f"the first DESCRIBE was sent after line {before})\n" + "\n".join(first_window) + "\n"
-    )
-    (_RESULTS / "pgwire-server.log").write_text("\n".join(_server_log_lines(source)) + "\n")
-    print("--- pgwire server log around the first DESCRIBE ---")
-    print("\n".join(first_window))
-
-    # The test fails only on an error (each DESCRIBE above raises through _step); this is what it saw.
+    # The test fails only on an error; these are the counts it saw, one per probed table.
     assert set(counts) == {f"{s}.{t}" for s, t in _PROBED}, counts
