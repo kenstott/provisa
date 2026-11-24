@@ -9,6 +9,14 @@
     "sending": "Envoi…",
     "sent_one": "Votre suggestion a été envoyée par e-mail à {{count}} propriétaire ou steward de {{domain}}.",
     "sent_other": "Votre suggestion a été envoyée par e-mail à {{count}} propriétaires et stewards de {{domain}}.",
-    "close": "Fermer"
+    "close": "Fermer",
+    "badgeTitle_one": "{{count}} suggestion cite cette table : l'ouvrir",
+    "badgeTitle_other": "{{count}} suggestions citent cette table : les ouvrir",
+    "listTitle": "Suggestions citant {{table}}",
+    "colWhen": "Quand",
+    "colBy": "Suggérée par",
+    "colTables": "Tables",
+    "colReason": "Pourquoi",
+    "none": "Aucune suggestion ne cite cette table."
   }
 }

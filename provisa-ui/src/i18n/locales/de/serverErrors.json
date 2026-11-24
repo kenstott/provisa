@@ -1000,7 +1000,8 @@
       "tables_required": "Ein Vorschlag nennt mindestens eine Tabelle.",
       "table_not_listed": "Tabelle {{tables}} ist für Sie nicht gelistet; ein Produkt wird aus einer Tabelle vorgeschlagen, die der Katalog listet.",
       "reason_required": "Ein Vorschlag nennt seinen Grund.",
-      "no_recipient": "Domäne {{domain}} hat keinen Datenproduktverantwortlichen und keinen Data Steward, der einen Vorschlag empfängt."
+      "no_recipient": "Domäne {{domain}} hat keinen Datenproduktverantwortlichen und keinen Data Steward, der einen Vorschlag empfängt.",
+      "not_a_recipient": "Die Vorschläge der Domäne {{domain}} lesen ihre Data Stewards und Datenproduktverantwortlichen."
     }
   }
 }

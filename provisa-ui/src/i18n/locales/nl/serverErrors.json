@@ -1000,7 +1000,8 @@
       "tables_required": "Een voorstel noemt ten minste één tabel.",
       "table_not_listed": "Tabel {{tables}} is niet aan u vermeld; een product wordt voorgesteld vanuit een tabel die de catalogus vermeldt.",
       "reason_required": "Een voorstel vermeldt de reden.",
-      "no_recipient": "Domein {{domain}} heeft geen dataproducteigenaar of data steward om een voorstel te ontvangen."
+      "no_recipient": "Domein {{domain}} heeft geen dataproducteigenaar of data steward om een voorstel te ontvangen.",
+      "not_a_recipient": "De suggesties van domein {{domain}} worden gelezen door de data stewards en eigenaren van dataproducten."
     }
   }
 }

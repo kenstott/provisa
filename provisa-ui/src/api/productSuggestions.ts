@@ -41,3 +41,32 @@ export async function suggestProduct(input: SuggestionInput): Promise<Suggestion
   }
   return resp.json() as Promise<Suggestion>;
 }
+
+/** How many suggestions name one table (REQ-2180, amended 2026-11-24). */
+export interface SuggestionCount {
+  table_id: number;
+  domain_id: string;
+  table_name: string;
+  suggestions: number;
+}
+
+async function readJson<T>(url: string, what: string): Promise<T> {
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed(what, resp.status)));
+  }
+  return resp.json() as Promise<T>;
+}
+
+/** The counts of the tables of the domains whose suggestions go to the caller: those they
+ *  steward and those holding a data product they own. */
+export function suggestionCounts(): Promise<SuggestionCount[]> {
+  return readJson(`${API_BASE}/admin/product-suggestions/counts`, "suggestionCounts");
+}
+
+/** The suggestions naming one table, newest first; read by its domain's stewards and owners. */
+export function tableSuggestions(domainId: string, tableName: string): Promise<Suggestion[]> {
+  const q = new URLSearchParams({ domain_id: domainId, table_name: tableName });
+  return readJson(`${API_BASE}/admin/product-suggestions?${q}`, "tableSuggestions");
+}

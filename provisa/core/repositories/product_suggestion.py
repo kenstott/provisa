@@ -14,7 +14,9 @@ PRODUCT FROM A LISTED TABLE).
 A listed table is not requested directly. A person who finds one they need (REQ-2153) suggests a
 product: the suggestion names the table, or several tables of the same domain, states its reason,
 and goes to the domain's data product owners and data stewards. Suggestions are counted per table,
-so a domain sees which of its listed tables are most wanted.
+so a domain sees which of its listed tables are most wanted; the counts and each table's
+suggestions are read by the domain's stewards and data product owners, the people they go to
+(amended 2026-11-24).
 
 A table is named as the catalog lists it to its reader: its domain and its table name. A reader
 suggests only from a table they see -- one with a listed (or public) column, or one in a domain
@@ -144,9 +146,9 @@ async def record(
     return {**row._asdict(), "tables": sorted({t.table_name for t in tables})}
 
 
-async def counts(conn: "Connection", reach: frozenset[str] | None) -> list[dict]:
-    """How many suggestions name each table, for the tables of the domains within ``reach``
-    (None: every domain), most wanted first."""
+async def counts(conn: "Connection", domain_ids: Collection[str]) -> list[dict]:
+    """How many suggestions name each table, for the tables of ``domain_ids``, most wanted
+    first."""
     n = func.count(product_suggestion_tables.c.suggestion_id).label("suggestions")
     query = (
         select(
@@ -164,7 +166,39 @@ async def counts(conn: "Connection", reach: frozenset[str] | None) -> list[dict]
             registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.table_name
         )
         .order_by(n.desc(), registered_tables.c.domain_id, registered_tables.c.table_name)
+        .where(registered_tables.c.domain_id.in_(sorted(domain_ids)))
     )
-    if reach is not None:
-        query = query.where(registered_tables.c.domain_id.in_(sorted(reach)))
     return [r._asdict() for r in (await conn.execute_core(query)).fetchall()]
+
+
+async def of_table(conn: "Connection", domain_id: str, table_name: str) -> list[dict]:
+    """The suggestions naming the table ``table_name`` of ``domain_id``, newest first, each with
+    every table it names."""
+    named = (
+        select(product_suggestion_tables.c.suggestion_id)
+        .join(registered_tables, registered_tables.c.id == product_suggestion_tables.c.table_id)
+        .where(
+            registered_tables.c.domain_id == domain_id,
+            registered_tables.c.table_name == table_name,
+        )
+    )
+    rows = (
+        await conn.execute_core(
+            select(*product_suggestions.c)
+            .where(product_suggestions.c.id.in_(named))
+            .order_by(product_suggestions.c.created_at.desc(), product_suggestions.c.id.desc())
+        )
+    ).fetchall()
+    if not rows:
+        return []
+    tables = (
+        await conn.execute_core(
+            select(product_suggestion_tables.c.suggestion_id, registered_tables.c.table_name)
+            .join(registered_tables, registered_tables.c.id == product_suggestion_tables.c.table_id)
+            .where(product_suggestion_tables.c.suggestion_id.in_([r.id for r in rows]))
+        )
+    ).fetchall()
+    names: dict[int, set[str]] = {r.id: set() for r in rows}
+    for t in tables:
+        names[t.suggestion_id].add(t.table_name)
+    return [{**r._asdict(), "tables": sorted(names[r.id])} for r in rows]

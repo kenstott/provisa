@@ -1000,7 +1000,8 @@
       "tables_required": "הצעה מציינת לפחות טבלה אחת.",
       "table_not_listed": "הטבלה {{tables}} אינה מוצגת לכם; מוצר מוצע מטבלה שהקטלוג מציג.",
       "reason_required": "הצעה מציינת את הסיבה שלה.",
-      "no_recipient": "לתחום {{domain}} אין בעלים של מוצר נתונים או Data Steward שיקבלו הצעה."
+      "no_recipient": "לתחום {{domain}} אין בעלים של מוצר נתונים או Data Steward שיקבלו הצעה.",
+      "not_a_recipient": "את ההצעות של התחום {{domain}} קוראים ה-Data Stewards ובעלי מוצרי הנתונים שלו."
     }
   }
 }

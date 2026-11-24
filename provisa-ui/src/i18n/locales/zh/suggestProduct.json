@@ -9,6 +9,14 @@
     "sending": "正在发送…",
     "sent_one": "您的建议已通过电子邮件发送给 {{domain}} 的 {{count}} 位所有者或数据管家。",
     "sent_other": "您的建议已通过电子邮件发送给 {{domain}} 的 {{count}} 位所有者和数据管家。",
-    "close": "关闭"
+    "close": "关闭",
+    "badgeTitle_one": "{{count}} 条建议提到此表：打开",
+    "badgeTitle_other": "{{count}} 条建议提到此表：打开",
+    "listTitle": "提到 {{table}} 的建议",
+    "colWhen": "时间",
+    "colBy": "建议人",
+    "colTables": "表",
+    "colReason": "原因",
+    "none": "没有建议提到此表。"
   }
 }

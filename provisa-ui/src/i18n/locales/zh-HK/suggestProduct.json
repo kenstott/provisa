@@ -9,6 +9,14 @@
     "sending": "正在發送…",
     "sent_one": "你的建議已透過電郵發送給 {{domain}} 的 {{count}} 位擁有者或數據管家。",
     "sent_other": "你的建議已透過電郵發送給 {{domain}} 的 {{count}} 位擁有者和數據管家。",
-    "close": "關閉"
+    "close": "關閉",
+    "badgeTitle_one": "{{count}} 項建議提及此表：開啟",
+    "badgeTitle_other": "{{count}} 項建議提及此表：開啟",
+    "listTitle": "提及 {{table}} 的建議",
+    "colWhen": "時間",
+    "colBy": "建議人",
+    "colTables": "表",
+    "colReason": "原因",
+    "none": "沒有建議提及此表。"
   }
 }

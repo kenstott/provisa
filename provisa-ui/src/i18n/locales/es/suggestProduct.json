@@ -9,6 +9,14 @@
     "sending": "Enviando…",
     "sent_one": "Su sugerencia se envió por correo a {{count}} propietario o steward de {{domain}}.",
     "sent_other": "Su sugerencia se envió por correo a {{count}} propietarios y stewards de {{domain}}.",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "badgeTitle_one": "{{count}} sugerencia nombra esta tabla: ábrela",
+    "badgeTitle_other": "{{count}} sugerencias nombran esta tabla: ábrelas",
+    "listTitle": "Sugerencias que nombran {{table}}",
+    "colWhen": "Cuándo",
+    "colBy": "Sugerida por",
+    "colTables": "Tablas",
+    "colReason": "Por qué",
+    "none": "Ninguna sugerencia nombra esta tabla."
   }
 }

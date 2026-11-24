@@ -9,6 +9,14 @@
     "sending": "Enviando…",
     "sent_one": "Sua sugestão foi enviada por e-mail a {{count}} proprietário ou steward de {{domain}}.",
     "sent_other": "Sua sugestão foi enviada por e-mail a {{count}} proprietários e stewards de {{domain}}.",
-    "close": "Fechar"
+    "close": "Fechar",
+    "badgeTitle_one": "{{count}} sugestão nomeia esta tabela: abrir",
+    "badgeTitle_other": "{{count}} sugestões nomeiam esta tabela: abrir",
+    "listTitle": "Sugestões que nomeiam {{table}}",
+    "colWhen": "Quando",
+    "colBy": "Sugerida por",
+    "colTables": "Tabelas",
+    "colReason": "Por quê",
+    "none": "Nenhuma sugestão nomeia esta tabela."
   }
 }

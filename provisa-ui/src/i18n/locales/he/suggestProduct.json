@@ -9,6 +9,14 @@
     "sending": "שולח…",
     "sent_one": "ההצעה שלכם נשלחה בדוא\"ל אל {{count}} בעלים או Steward של {{domain}}.",
     "sent_other": "ההצעה שלכם נשלחה בדוא\"ל אל {{count}} בעלים ו-Stewards של {{domain}}.",
-    "close": "סגירה"
+    "close": "סגירה",
+    "badgeTitle_one": "{{count}} הצעה מציינת טבלה זו: פתיחה",
+    "badgeTitle_other": "{{count}} הצעות מציינות טבלה זו: פתיחה",
+    "listTitle": "הצעות שמציינות את {{table}}",
+    "colWhen": "מתי",
+    "colBy": "הוצע על ידי",
+    "colTables": "טבלאות",
+    "colReason": "למה",
+    "none": "אף הצעה לא מציינת טבלה זו."
   }
 }

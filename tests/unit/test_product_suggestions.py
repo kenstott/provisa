@@ -196,9 +196,55 @@ async def test_suggestions_are_counted_per_table(db, mailer):
     assert [r["table_name"] for r in rows] == ["orders", "customers"]  # most wanted first
 
 
-async def test_counts_answer_only_the_domains_the_caller_reaches(db, mailer):
+async def test_counts_answer_only_the_domains_whose_suggestions_go_to_the_caller(db, mailer):
+    # REQ-2180 (amended 2026-11-24): the badge counts are seen by the domain's stewards and
+    # owners: ben stewards sales, ana owns its product c360; eve is neither.
     await router.suggest(_body("orders"), _request())
-    assert await router.suggestion_counts(_request()) == []  # eve reaches hr alone
+    assert await router.suggestion_counts(_request()) == []
+    rows = await router.suggestion_counts(_request(ANA))
+    assert [(r["domain_id"], r["table_name"], r["suggestions"]) for r in rows] == [
+        ("sales", "orders", 1)
+    ]
+
+
+async def test_reaching_a_domain_is_not_enough_to_read_its_counts(db, mailer, monkeypatch):
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(roles).values(id="wide", capabilities=[], domain_access=["*"], parents=[])
+        )
+        await conn.execute_core(
+            insert(user_role_assignments).values(user_id="zed", role_id="wide", domain_id="*")
+        )
+    await router.suggest(_body("orders"), _request())
+    assert await router.suggestion_counts(_request("zed")) == []  # zed reaches sales, holds none
+
+
+async def test_a_tables_suggestions_are_read_by_its_domains_stewards_and_owners(db, mailer):
+    await router.suggest(_body("orders"), _request())
+    await router.suggest(_body("orders", "customers", reason="segments"), _request(ANA))
+    await router.suggest(_body("customers", reason="other"), _request())
+    for reader in (ANA, BEN):
+        rows = await router.table_suggestions("sales", "orders", _request(reader))
+        assert [(r["suggested_by"], r["reason"], r["tables"]) for r in rows] == [
+            (ANA, "segments", ["customers", "orders"]),  # newest first
+            (EVE, "churn study", ["orders"]),
+        ]
+        assert all(isinstance(r["created_at"], str) for r in rows)
+    assert await router.table_suggestions("sales", "salaries", _request(BEN)) == []
+
+
+async def test_a_tables_suggestions_are_refused_to_anyone_else(db, mailer):
+    await router.suggest(_body("orders"), _request())
+    with pytest.raises(ApiError) as refused:
+        await router.table_suggestions("sales", "orders", _request())
+    assert (refused.value.status_code, refused.value.code) == (
+        403,
+        "product_suggestion.not_a_recipient",
+    )
+    assert refused.value.params == {"domain": "sales"}
+    with pytest.raises(ApiError) as anonymous:
+        await router.table_suggestions("sales", "orders", _request("anonymous"))
+    assert anonymous.value.status_code == 401
 
 
 @pytest.mark.parametrize("table", ["salaries", "no_such_table"])

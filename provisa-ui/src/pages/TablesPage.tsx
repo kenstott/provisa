@@ -74,6 +74,8 @@ import { namingConventionLabel } from "../hooks/useNamingConventions";
 import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ListedNamesBlock } from "./tables/ListedNamesBlock";
+import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
+import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
@@ -216,6 +218,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // REQ-2180 (amended 2026-11-24): each table's suggestion count, seen by its domain's stewards
+  // and owners, and the table whose suggestions are open.
+  const suggestionCounts = useSuggestionCounts(setError);
+  const [suggestionsOf, setSuggestionsOf] = useState<SuggestedTable | null>(null);
   // `?source=` seeds the filter box, and seeds it again whenever it changes while the page stays
   // mounted (the tour moves /tables?source=dq-checker -> /tables?source=pet-store-sqlite in place).
   const sourceParam = searchParams.get("source");
@@ -1422,6 +1428,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                <SuggestionsBadge
+                                  count={countOf(suggestionCounts, t)}
+                                  table={t}
+                                  onOpen={setSuggestionsOf}
+                                />
                                 {/* REQ-1921: out of production, by itself or through its source. */}
                                 {(t.withdrawn || t.sourceWithdrawn) && (
                                   <Badge
@@ -1640,6 +1651,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
               {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
+              <TableSuggestionsModal
+                table={suggestionsOf}
+                onClose={() => setSuggestionsOf(null)}
+              />
             </>
           )
         }

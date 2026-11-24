@@ -9,6 +9,14 @@
     "sending": "Sending…",
     "sent_one": "Your suggestion went to {{count}} owner or steward of {{domain}}, by email.",
     "sent_other": "Your suggestion went to {{count}} owners and stewards of {{domain}}, by email.",
-    "close": "Close"
+    "close": "Close",
+    "badgeTitle_one": "{{count}} suggestion names this table: open it",
+    "badgeTitle_other": "{{count}} suggestions name this table: open them",
+    "listTitle": "Suggestions naming {{table}}",
+    "colWhen": "When",
+    "colBy": "Suggested by",
+    "colTables": "Tables",
+    "colReason": "Why",
+    "none": "No suggestion names this table."
   }
 }

@@ -1000,7 +1000,8 @@
       "tables_required": "建议至少指定一张表。",
       "table_not_listed": "表 {{tables}} 未向您列出；产品应从目录列出的表中建议。",
       "reason_required": "建议需说明其原因。",
-      "no_recipient": "域 {{domain}} 没有可接收建议的数据产品所有者或数据管家。"
+      "no_recipient": "域 {{domain}} 没有可接收建议的数据产品所有者或数据管家。",
+      "not_a_recipient": "域 {{domain}} 的建议由其数据管家和数据产品所有者阅读。"
     }
   }
 }

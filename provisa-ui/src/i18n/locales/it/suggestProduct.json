@@ -9,6 +9,14 @@
     "sending": "Invio…",
     "sent_one": "Il tuo suggerimento è stato inviato via e-mail a {{count}} proprietario o steward di {{domain}}.",
     "sent_other": "Il tuo suggerimento è stato inviato via e-mail a {{count}} proprietari e steward di {{domain}}.",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "badgeTitle_one": "{{count}} suggerimento nomina questa tabella: aprilo",
+    "badgeTitle_other": "{{count}} suggerimenti nominano questa tabella: aprili",
+    "listTitle": "Suggerimenti che nominano {{table}}",
+    "colWhen": "Quando",
+    "colBy": "Suggerito da",
+    "colTables": "Tabelle",
+    "colReason": "Perché",
+    "none": "Nessun suggerimento nomina questa tabella."
   }
 }

@@ -1000,7 +1000,8 @@
       "tables_required": "A suggestion names at least one table.",
       "table_not_listed": "Table {{tables}} is not listed to you; a product is suggested from a table the catalog lists.",
       "reason_required": "A suggestion states its reason.",
-      "no_recipient": "Domain {{domain}} has no data product owner or data steward to receive a suggestion."
+      "no_recipient": "Domain {{domain}} has no data product owner or data steward to receive a suggestion.",
+      "not_a_recipient": "The suggestions of domain {{domain}} are read by its data stewards and data product owners."
     }
   }
 }

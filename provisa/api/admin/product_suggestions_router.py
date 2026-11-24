@@ -17,8 +17,10 @@ SUGGEST A PRODUCT FROM A LISTED TABLE).
 * The suggestion goes to the domain's data product owners and data stewards, as their entitlement
   rows name them (provisa.entitlements.owners), and each with an address is emailed through the
   org mail channel. A domain with no owner or steward has no one to receive it, and is refused.
-* Suggestions are counted per table: the counts answer the tables of the domains the caller
-  reaches.
+* Suggestions are counted per table (amended 2026-11-24): the counts, and each table's
+  suggestions, answer the domains whose suggestions go to the caller -- those they steward and
+  those holding a data product they own. The Tables page shows a count as a badge on its table,
+  which opens that table's suggestions.
 """
 
 # Requirements: REQ-2180, REQ-2153, REQ-2219
@@ -78,19 +80,32 @@ def _refused(refused: SuggestionRefused) -> ApiError:
     return error
 
 
-async def recipients_of(conn: Any, domain_id: str) -> list[str]:
-    """The domain's data stewards and the owners of its data products, by user id, sorted."""
+async def _receivers(conn: Any) -> dict[str, set[str]]:
+    """domain id -> its data stewards and the owners of its data products, by user id."""
     from provisa.core.schema_org import data_products
     from provisa.entitlements.owners import DOMAINS, holders, product_owners
 
-    stewards = (await holders(conn, DOMAINS)).get(domain_id, ())
-    products = (
-        await conn.execute_core(
-            select(data_products.c.id).where(data_products.c.domain_id == domain_id)
-        )
-    ).fetchall()
+    out: dict[str, set[str]] = {
+        d: set(people) for d, people in (await holders(conn, DOMAINS)).items()
+    }
     owners = await product_owners(conn)
-    return sorted({*stewards, *(p for r in products for p in owners.get(r.id, ()))})
+    products = (
+        await conn.execute_core(select(data_products.c.id, data_products.c.domain_id))
+    ).fetchall()
+    for product in products:
+        out.setdefault(product.domain_id, set()).update(owners.get(product.id, ()))
+    return out
+
+
+async def recipients_of(conn: Any, domain_id: str) -> list[str]:
+    """The domain's data stewards and the owners of its data products, by user id, sorted."""
+    return sorted((await _receivers(conn)).get(domain_id, ()))
+
+
+async def received_domains(conn: Any, user_id: str) -> frozenset[str]:
+    """The domains whose suggestions go to ``user_id``: those they steward, and those holding a
+    data product they own."""
+    return frozenset(d for d, people in (await _receivers(conn)).items() if user_id in people)
 
 
 def notice_text(org_id: str, suggestion: dict) -> tuple[str, str]:
@@ -160,10 +175,28 @@ async def suggest(body: SuggestionBody, request: Request) -> dict:
 
 @router.get("/counts")
 async def suggestion_counts(request: Request) -> list[dict]:
-    """How many suggestions name each table of the domains the caller reaches, most wanted
-    first."""
-    _suggester(request)
-    reach = allowed_domains_request(request)
+    """How many suggestions name each table of the domains whose suggestions go to the caller,
+    most wanted first."""
+    reader = _suggester(request)
     state = _state()
     async with state.model_db.acquire() as conn:
-        return await suggestions.counts(conn, reach)
+        return await suggestions.counts(conn, await received_domains(conn, reader))
+
+
+@router.get("")
+async def table_suggestions(domain_id: str, table_name: str, request: Request) -> list[dict]:
+    """The suggestions naming one table, newest first, for its domain's stewards and data
+    product owners; anyone else is refused."""
+    reader = _suggester(request)
+    state = _state()
+    async with state.model_db.acquire() as conn:
+        if domain_id not in await received_domains(conn, reader):
+            raise ApiError(
+                403,
+                "product_suggestion.not_a_recipient",
+                f"the suggestions of domain {domain_id} are read by its data stewards and data "
+                "product owners",
+                domain=domain_id,
+            )
+        rows = await suggestions.of_table(conn, domain_id, table_name)
+    return [_view(r) for r in rows]
