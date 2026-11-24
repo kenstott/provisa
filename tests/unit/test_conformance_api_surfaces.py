@@ -89,7 +89,7 @@ def test_write_fails_only_when_no_case_ran(tmp_path):
     )
     assert surface_cases.write(doc, "REST", out, md) == 0
     assert json.loads(out.read_text())["surface"] == "rest"
-    assert "1 cases: 1 passed, 0 skipped by design, 0 failed" in md.read_text()
+    assert "1 cases: 1 passed, 0 skipped by design, 0 documented limit, 0 failed" in md.read_text()
 
 
 # --- REST / OpenAPI ------------------------------------------------------------------------------

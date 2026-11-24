@@ -16,7 +16,8 @@ client can observe, named for its section: content negotiation, document structu
 data, query parameters, and errors. The resource type read is the first collection the surface's
 own OpenAPI document (/data/jsonapi/openapi.json) declares.
 
-Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28); the run is
+Every case is passed, skipped by design, a documented limit or failed (REQ-2167, amended
+2026-11-23); the run is
 judged by baseline_gate.py against scripts/conformance/expected/jsonapi.json.
 
 Usage: jsonapi_spec.py <base url> <role> <authorization> <out.json> <out.md>

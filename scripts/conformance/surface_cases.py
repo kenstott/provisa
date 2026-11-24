@@ -13,7 +13,8 @@
 
 Each of those surfaces' scenario sets is a fixed list of cases, each derived from a normative
 statement of its specification and named for the section it comes from. A case passes, is skipped
-by design (a group of scripts/conformance/by_design/<surface>.yaml excludes its failure), or fails:
+by design (a group of scripts/conformance/by_design/<surface>.yaml excludes its failure), is a
+documented limit (none of these surfaces states one, by_design.NO_DOCUMENTED_LIMITS), or fails:
 an exception its check raises is its failure, with the exception's text as the reason. The report
 has the shape every conformance artifact has (by_design.outcomes), so baseline_gate.py judges it
 and fill_docs.py writes its docs/conformance/<surface>.md page from it.
@@ -74,7 +75,7 @@ def run(cases: Iterable[Case]) -> list[Outcome]:
 
 
 def report(surface: str, suite: str, version: str, outcomes: list[Outcome]) -> dict:
-    """The run's artifact: the three counts, the by-design groups and the failures."""
+    """The run's artifact: the four counts, the by-design groups and the failures."""
     failures = [
         {"feature": o.feature, "scenario": o.scenario, "reason": o.reason}
         for o in outcomes

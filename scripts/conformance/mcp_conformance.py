@@ -21,7 +21,8 @@ Two parts, one report:
   server's own fixtures): cases derived from the MCP specification's lifecycle, tools, ping and
   authorization sections, run here through the MCP Python SDK.
 
-Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28); the run is
+Every case is passed, skipped by design, a documented limit or failed (REQ-2167, amended
+2026-11-23); the run is
 judged by baseline_gate.py against scripts/conformance/expected/mcp.json.
 
 Usage: mcp_conformance.py <mcp url> <suite results dir> <suite version> <out.json> <out.md>

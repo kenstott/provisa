@@ -22,7 +22,8 @@ normative statement a client observes, named for its source:
 - status codes (doc/statuscodes.md): which code a server answers each condition with;
 - a query of the first table RPC the service declares, answered OK with its rows.
 
-Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28); the run is
+Every case is passed, skipped by design, a documented limit or failed (REQ-2167, amended
+2026-11-23); the run is
 judged by baseline_gate.py against scripts/conformance/expected/grpc.json.
 
 Usage: grpc_conformance.py <host:port> <role> <authorization> <out.json> <out.md>
