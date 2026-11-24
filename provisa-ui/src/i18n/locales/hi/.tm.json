@@ -977,6 +977,8 @@
   "hi/codeSourceFields.json::codeSourceFields.originHint": "The code is installed and read when the source is saved; its functions tagged @table, @command or @stream become its tables, commands and live tables.",
   "hi/codeSourceFields.json::codeSourceFields.package": "Package",
   "hi/codeSourceFields.json::codeSourceFields.pypi": "PyPI package",
+  "hi/codeSourceFields.json::codeSourceFields.reference": "Reference",
+  "hi/codeSourceFields.json::codeSourceFields.referenceLink": "{{language}} reference",
   "hi/codeSourceFields.json::codeSourceFields.repository": "Repository URL",
   "hi/codeSourceFields.json::codeSourceFields.runtime": "Runtime",
   "hi/codeSourceFields.json::codeSourceFields.runtime_bun": "Bun",
