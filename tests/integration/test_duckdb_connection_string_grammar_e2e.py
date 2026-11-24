@@ -49,12 +49,18 @@ def _source(**fields) -> Source:
 def _sa_connect():
     import pyodbc
 
-    return pyodbc.connect(
+    conn = pyodbc.connect(
         "DRIVER={ODBC Driver 18 for SQL Server};"
         f"SERVER=localhost,{os.environ['SQLSERVER_PORT']};"
         f"UID=sa;PWD={_SA_PASSWORD};Encrypt=yes;TrustServerCertificate=yes",
         autocommit=True,
     )
+    # pyodbc pools a closed connection (pyodbc.pooling) and hands the same session to the next
+    # connect, still in the database its last batch USEd: the setup's USE of the test database.
+    # The teardown's DROP DATABASE from that session was refused (3702) with the session itself
+    # as the database's one holder (sa, python3.12, running). Every sa session starts in master.
+    conn.cursor().execute("USE master")
+    return conn
 
 
 def _sa_query(statement: str) -> list[tuple]:

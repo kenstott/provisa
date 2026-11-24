@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import zlib
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -461,95 +462,118 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
     reconcile all arrive here, so what a reconcile sends is what the admin saw it send —
     and the REQ-1389 binding lifecycle (load stored vendor ids before, persist captured
     ones after) rides every trigger for the same reason.
+
+    One publish of an org runs at a time, on every process of the deployment: the scheduled
+    reconcile firing during a **Publish now** sent the same catalog two snapshots at once, and
+    Atlas answered the concurrent creates of one typedef, glossary and entity with 409 and 500.
     """
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.core.repositories import catalog_binding, catalog_exchange
 
     token = set_current_org(org_id)
     try:
         _, targets = await _export_config(org_id, only=only)
-        snapshot = await org_snapshot(org_id)
         model_db = state.model_db
         assert model_db is not None  # _export_config refuses without one
-        results: dict[str, PublishResult] = {}
-        for target in targets:
-            if target.role is None:
-                # REQ-2152 (Q1): a catalog is published as a role; one naming none is sent nothing.
-                results[target.id] = PublishResult(
-                    provider_name=target.provider,
-                    errors=[
-                        AssetError(
-                            asset=AssetRefStub(target.id),
-                            message=(
-                                f"catalog {target.id!r} names no role to publish as: set the role "
-                                "whose reads it is sent"
-                            ),
-                        )
-                    ],
-                )
-                # REQ-2259: nothing was sent, so no product has an outcome; the entry's failure is kept.
-                await _record_publish(model_db, target.id, results[target.id], ())
-                continue
-            exporter = metadata_export(target)
-            published = await for_entry(state, snapshot, target.domains, target.role)
-            async with model_db.acquire() as conn:
-                # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
-                # so a physically re-addressed asset rebinds the SAME catalog entity instead of
-                # trusting the vendor's name-keyed upsert. Kept per target (REQ-2118).
-                exporter.stored_bindings = await catalog_binding.load_bindings(conn, target.id)
-            if exporter.needs_export_views:
-                # REQ-1912: the org (bound above) and the replica-served decision are worked out
-                # here, by the one decision the reconcile and the reads use, and passed in.
-                from provisa.federation.replica_routing import export_view_addresses
-
-                exporter.export_views = await export_view_addresses(state)
-            sent = _for_target(published, exporter.stored_bindings)
-            try:
-                result = await exporter.publish(sent)
-            except httpx.HTTPStatusError as exc:
-                # A refusal the adapter does not report per asset (its token, a listing) is the
-                # target's failure, named by the request and the catalog's answer, rather than
-                # a 500 that names neither and stops the targets after it.
-                result = PublishResult(
-                    provider_name=target.provider,
-                    errors=[
-                        AssetError(
-                            asset=AssetRefStub(target.id),
-                            message=(
-                                f"{exc.request.method} {exc.request.url}: HTTP "
-                                f"{exc.response.status_code}: {exc.response.text[:500]}"
-                            ),
-                        )
-                    ],
-                )
-            if result.ok and not exporter.binds_products:
-                # REQ-1634 STATUS: what this target now holds, so a retirement reaches it later.
-                for product in sent.data_products:
-                    result.bindings.setdefault(product.semantic_uri, (product.id, product.name))
-            if result.bindings:
-                async with model_db.acquire() as conn:
-                    await catalog_binding.upsert_bindings(conn, target.id, result.bindings)
-                    # What this publish captured is current, though it may name no snapshot
-                    # asset (a term relationship Purview lists with no author, REQ-1389).
-                    await catalog_binding.remove_stale_bindings(
-                        conn, target.id, keep_uris=_snapshot_uris(published) | set(result.bindings)
-                    )
-            if result.ok:
-                # REQ-2247: what this publish sent is the value last exchanged with the entry.
-                async with model_db.acquire() as conn:
-                    await catalog_exchange.record(
-                        conn,
-                        target.id,
-                        "export",
-                        ((v.kind, v.object, v.value) for v in provisa_values(sent).values()),
-                        decided_by=catalog_exchange.PUBLISH,
-                    )
-            await _record_publish(model_db, target.id, result, sent.data_products)
-            results[target.id] = result
-        return results
+        async with model_db.advisory_lock(publish_lock_key(org_id)):
+            # Read under the lock: a publish that waited sends the snapshot of its own moment.
+            snapshot = await org_snapshot(org_id)
+            return await _publish_targets(state, model_db, snapshot, targets)
     finally:
         reset_current_org(token)
+
+
+#: "MDXP" as ASCII: the high half of the key of an org's publish lock (the low half is the org).
+_PUBLISH_LOCK_CLASS = 0x4D445850
+
+
+def publish_lock_key(org_id: str) -> int:
+    """The advisory lock key of ``org_id``'s publish: one per org, so orgs publish in parallel."""
+    return (_PUBLISH_LOCK_CLASS << 32) | zlib.crc32(org_id.encode())
+
+
+async def _publish_targets(
+    state: Any, model_db: Any, snapshot: "MetadataSnapshot", targets: list[MetadataExportTarget]
+) -> dict[str, PublishResult]:
+    """Publish ``snapshot`` to each of ``targets`` in turn, by entry id (see publish_snapshot)."""
+    from provisa.core.repositories import catalog_binding, catalog_exchange
+
+    results: dict[str, PublishResult] = {}
+    for target in targets:
+        if target.role is None:
+            # REQ-2152 (Q1): a catalog is published as a role; one naming none is sent nothing.
+            results[target.id] = PublishResult(
+                provider_name=target.provider,
+                errors=[
+                    AssetError(
+                        asset=AssetRefStub(target.id),
+                        message=(
+                            f"catalog {target.id!r} names no role to publish as: set the role "
+                            "whose reads it is sent"
+                        ),
+                    )
+                ],
+            )
+            # REQ-2259: nothing was sent, so no product has an outcome; the entry's failure is kept.
+            await _record_publish(model_db, target.id, results[target.id], ())
+            continue
+        exporter = metadata_export(target)
+        published = await for_entry(state, snapshot, target.domains, target.role)
+        async with model_db.acquire() as conn:
+            # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
+            # so a physically re-addressed asset rebinds the SAME catalog entity instead of
+            # trusting the vendor's name-keyed upsert. Kept per target (REQ-2118).
+            exporter.stored_bindings = await catalog_binding.load_bindings(conn, target.id)
+        if exporter.needs_export_views:
+            # REQ-1912: the org (bound above) and the replica-served decision are worked out
+            # here, by the one decision the reconcile and the reads use, and passed in.
+            from provisa.federation.replica_routing import export_view_addresses
+
+            exporter.export_views = await export_view_addresses(state)
+        sent = _for_target(published, exporter.stored_bindings)
+        try:
+            result = await exporter.publish(sent)
+        except httpx.HTTPStatusError as exc:
+            # A refusal the adapter does not report per asset (its token, a listing) is the
+            # target's failure, named by the request and the catalog's answer, rather than
+            # a 500 that names neither and stops the targets after it.
+            result = PublishResult(
+                provider_name=target.provider,
+                errors=[
+                    AssetError(
+                        asset=AssetRefStub(target.id),
+                        message=(
+                            f"{exc.request.method} {exc.request.url}: HTTP "
+                            f"{exc.response.status_code}: {exc.response.text[:500]}"
+                        ),
+                    )
+                ],
+            )
+        if result.ok and not exporter.binds_products:
+            # REQ-1634 STATUS: what this target now holds, so a retirement reaches it later.
+            for product in sent.data_products:
+                result.bindings.setdefault(product.semantic_uri, (product.id, product.name))
+        if result.bindings:
+            async with model_db.acquire() as conn:
+                await catalog_binding.upsert_bindings(conn, target.id, result.bindings)
+                # What this publish captured is current, though it may name no snapshot
+                # asset (a term relationship Purview lists with no author, REQ-1389).
+                await catalog_binding.remove_stale_bindings(
+                    conn, target.id, keep_uris=_snapshot_uris(published) | set(result.bindings)
+                )
+        if result.ok:
+            # REQ-2247: what this publish sent is the value last exchanged with the entry.
+            async with model_db.acquire() as conn:
+                await catalog_exchange.record(
+                    conn,
+                    target.id,
+                    "export",
+                    ((v.kind, v.object, v.value) for v in provisa_values(sent).values()),
+                    decided_by=catalog_exchange.PUBLISH,
+                )
+        await _record_publish(model_db, target.id, result, sent.data_products)
+        results[target.id] = result
+    return results
 
 
 def _refused(error: AssetError, product: "DataProductAsset") -> bool:
