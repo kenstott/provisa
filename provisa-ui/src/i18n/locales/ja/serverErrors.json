@@ -891,8 +891,8 @@
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
       },
-      "owner_not_eligible": "{{owner}} は data_product_owner 権限を持つロールを保持していないため、データプロダクト {{data_product}} のオーナーに指定できません。先にそのようなロールを付与してください。",
-      "owner_role_not_eligible": "ロール {{role}} は data_product_owner 権限を持たないため、データプロダクト {{data_product}} のオーナーに指定できません。先にロールにその権限を付与してください。",
+      "owner_not_eligible": "{{owner}} は data_product_owner 機能を持つロールを保持していないため、データプロダクト {{data_product}} のオーナーに指定できません。先にそのようなロールを付与してください。",
+      "owner_role_not_eligible": "ロール {{role}} は data_product_owner 機能を持たないため、データプロダクト {{data_product}} のオーナーに指定できません。先にロールにその機能を付与してください。",
       "owners_change_refused": "データプロダクト {{data_product}} のオーナーを変更できるのは、組織管理者または現在のオーナーだけです。"
     },
     "erd": {
@@ -946,8 +946,8 @@
     "relationship": {
       "name_taken": "名前「{{name}}」はリレーションシップ「{{held_by}}」が使用しています。別の名前を付けてください。",
       "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。",
-      "owner_not_eligible": "{{owner}} は relationship_owner 権限を持つロールを保持していないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にそのようなロールを付与してください。",
-      "owner_role_not_eligible": "ロール {{role}} は relationship_owner 権限を持たないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にロールにその権限を付与してください。",
+      "owner_not_eligible": "{{owner}} は relationship_owner 機能を持つロールを保持していないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にそのようなロールを付与してください。",
+      "owner_role_not_eligible": "ロール {{role}} は relationship_owner 機能を持たないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にロールにその機能を付与してください。",
       "owners_change_refused": "リレーションシップ {{relationship}} のオーナーを変更できるのは、組織管理者または現在のオーナーだけです。"
     },
     "syncing": {
@@ -990,8 +990,8 @@
       "webhook_secret_required": "Webhook には、定期レビューの署名に使うシークレットが必要です"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} は domain_steward 権限を持つロールを保持していないため、ドメイン {{domain}} のスチュワードに指定できません。先にそのようなロールを付与してください。",
-      "steward_role_not_eligible": "ロール {{role}} は domain_steward 権限を持たないため、ドメイン {{domain}} のスチュワードに指定できません。先にロールにその権限を付与してください。",
+      "steward_not_eligible": "{{steward}} は domain_steward 機能を持つロールを保持していないため、ドメイン {{domain}} のスチュワードに指定できません。先にそのようなロールを付与してください。",
+      "steward_role_not_eligible": "ロール {{role}} は domain_steward 機能を持たないため、ドメイン {{domain}} のスチュワードに指定できません。先にロールにその機能を付与してください。",
       "stewards_change_refused": "ドメイン {{domain}} のスチュワードを変更できるのは、組織管理者または現在のスチュワードだけです。"
     }
   }

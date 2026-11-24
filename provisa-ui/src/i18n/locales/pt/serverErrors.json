@@ -574,7 +574,7 @@
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
-      "domain_stewards_saved": "Responsáveis pelo domínio '{{domain}}' salvos",
+      "domain_stewards_saved": "Stewards do domínio '{{domain}}' salvos",
       "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
       "file_types_differ": "O padrão {{glob}} corresponde a arquivos de mais de um tipo ({{types}}); os arquivos de uma tabela devem ser todos do mesmo tipo."
     },
@@ -946,9 +946,9 @@
     "relationship": {
       "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
       "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela.",
-      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade relationship_owner, por isso não pode ser nomeado proprietário da relação {{relationship}}. Atribua-lhe primeiro uma função assim.",
-      "owner_role_not_eligible": "A função {{role}} não tem a capacidade relationship_owner, por isso não pode ser nomeada proprietária da relação {{relationship}}. Atribua primeiro essa capacidade à função.",
-      "owners_change_refused": "Somente um administrador da organização ou um proprietário atual da relação {{relationship}} pode alterar os proprietários dela."
+      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade relationship_owner, por isso não pode ser nomeado proprietário do relacionamento {{relationship}}. Atribua-lhe primeiro uma função assim.",
+      "owner_role_not_eligible": "A função {{role}} não tem a capacidade relationship_owner, por isso não pode ser nomeada proprietária do relacionamento {{relationship}}. Atribua primeiro essa capacidade à função.",
+      "owners_change_refused": "Somente um administrador da organização ou um proprietário atual do relacionamento {{relationship}} pode alterar os proprietários dele."
     },
     "syncing": {
       "not_found": "Não existe nenhuma entrada {{entry}}.",
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Um webhook precisa do segredo com o qual as revisões agendadas são assinadas"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} não tem nenhuma função com a capacidade domain_steward, por isso não pode ser nomeado responsável pelo domínio {{domain}}. Atribua-lhe primeiro uma função assim.",
-      "steward_role_not_eligible": "A função {{role}} não tem a capacidade domain_steward, por isso não pode ser nomeada responsável pelo domínio {{domain}}. Atribua primeiro essa capacidade à função.",
-      "stewards_change_refused": "Somente um administrador da organização ou um responsável atual pelo domínio {{domain}} pode alterar os responsáveis por ele."
+      "steward_not_eligible": "{{steward}} não tem nenhuma função com a capacidade domain_steward, por isso não pode ser nomeado steward do domínio {{domain}}. Atribua-lhe primeiro uma função assim.",
+      "steward_role_not_eligible": "A função {{role}} não tem a capacidade domain_steward, por isso não pode ser nomeada steward do domínio {{domain}}. Atribua primeiro essa capacidade à função.",
+      "stewards_change_refused": "Somente um administrador da organização ou um steward atual do domínio {{domain}} pode alterar os stewards dele."
     }
   }
 }

@@ -574,7 +574,7 @@
       "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
       "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias.",
-      "domain_stewards_saved": "Administradores del dominio '{{domain}}' guardados",
+      "domain_stewards_saved": "Stewards del dominio '{{domain}}' guardados",
       "table_has_dependents": "La tabla '{{name}}' todavía es leída o referida por otros objetos: retírelos o cámbielos primero",
       "file_types_differ": "El patrón {{glob}} coincide con archivos de más de un tipo ({{types}}); los archivos de una tabla deben ser todos de un mismo tipo."
     },
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Un webhook necesita el secreto con el que se firman las revisiones programadas"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} no tiene ningún rol con la capacidad domain_steward, por lo que no puede ser nombrado administrador del dominio {{domain}}. Asígnele primero un rol así.",
-      "steward_role_not_eligible": "El rol {{role}} no tiene la capacidad domain_steward, por lo que no puede ser nombrado administrador del dominio {{domain}}. Otorgue primero esa capacidad al rol.",
-      "stewards_change_refused": "Solo un administrador de la organización o un administrador actual del dominio {{domain}} puede cambiar sus administradores."
+      "steward_not_eligible": "{{steward}} no tiene ningún rol con la capacidad domain_steward, por lo que no puede ser nombrado steward del dominio {{domain}}. Asígnele primero un rol así.",
+      "steward_role_not_eligible": "El rol {{role}} no tiene la capacidad domain_steward, por lo que no puede ser nombrado steward del dominio {{domain}}. Otorgue primero esa capacidad al rol.",
+      "stewards_change_refused": "Solo un administrador de la organización o un steward actual del dominio {{domain}} puede cambiar sus stewards."
     }
   }
 }

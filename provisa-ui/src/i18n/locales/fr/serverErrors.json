@@ -574,7 +574,7 @@
       "table_state_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et en a l'état de publication : elle n'est ni retirée ni remise en service seule",
       "table_region_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et a sa région : elle n'est pas déplacée seule vers une autre région",
       "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias.",
-      "domain_stewards_saved": "Responsables du domaine '{{domain}}' enregistrés",
+      "domain_stewards_saved": "Intendants du domaine '{{domain}}' enregistrés",
       "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord",
       "file_types_differ": "Le motif {{glob}} correspond à des fichiers de plusieurs types ({{types}}) ; les fichiers d'une table doivent tous être d'un même type."
     },
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Un webhook a besoin du secret avec lequel les revues planifiées sont signées"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé responsable du domaine {{domain}}. Attribuez-lui d'abord un tel rôle.",
-      "steward_role_not_eligible": "Le rôle {{role}} n'a pas la capacité domain_steward et ne peut donc pas être nommé responsable du domaine {{domain}}. Donnez d'abord cette capacité au rôle.",
-      "stewards_change_refused": "Seul un administrateur de l'organisation ou un responsable actuel du domaine {{domain}} peut modifier ses responsables."
+      "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Attribuez-lui d'abord un tel rôle.",
+      "steward_role_not_eligible": "Le rôle {{role}} n'a pas la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Donnez d'abord cette capacité au rôle.",
+      "stewards_change_refused": "Seul un administrateur de l'organisation ou un intendant actuel du domaine {{domain}} peut modifier ses intendants."
     }
   }
 }

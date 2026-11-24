@@ -574,7 +574,7 @@
       "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
       "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。",
-      "domain_stewards_saved": "已保存域 '{{domain}}' 的管理员",
+      "domain_stewards_saved": "已保存域 '{{domain}}' 的数据管家",
       "table_has_dependents": "表 '{{name}}' 仍被其他对象读取或引用：请先停用或修改这些对象",
       "file_types_differ": "模式 {{glob}} 匹配了多种类型的文件（{{types}}）；同一张表的文件必须为同一种类型。"
     },
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Webhook 需要用于为定期审查签名的密钥"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的管理员。请先授予其此类角色。",
-      "steward_role_not_eligible": "角色 {{role}} 不具备 domain_steward 能力，因此不能被指定为域 {{domain}} 的管理员。请先为该角色授予此能力。",
-      "stewards_change_refused": "只有组织管理员或域 {{domain}} 的现任管理员可以更改其管理员。"
+      "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的数据管家。请先授予其此类角色。",
+      "steward_role_not_eligible": "角色 {{role}} 不具备 domain_steward 能力，因此不能被指定为域 {{domain}} 的数据管家。请先为该角色授予此能力。",
+      "stewards_change_refused": "只有组织管理员或域 {{domain}} 的现任数据管家可以更改其数据管家。"
     }
   }
 }

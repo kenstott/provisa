@@ -225,6 +225,6 @@
     "apolloSubgraphNameHint": "超圖識別此子圖所用的名稱。",
     "apolloSubgraphRole": "服務角色",
     "apolloSubgraphRoleHint": "超級圖無法傳遞呼叫者的身分，因此路由器以此角色登入，此角色的行規則、遮罩和可見性會約束它擷取的每個實體。",
-    "stewardsHint": "對該域負責的人員；每人都需要擁有 domain_steward 的角色。"
+    "stewardsHint": "對該網域負責的人員；每人都需要擁有 domain_steward 的角色。"
   }
 }
