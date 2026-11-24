@@ -27,8 +27,10 @@ import sqlalchemy as sa
 
 from provisa.api.admin import spark_cluster_router as router
 from provisa.api.errors import ApiError
-from provisa.core import schema_admin, secrets_store, spark_cluster
+from provisa.core import schema_admin, secrets_providers, secrets_store, spark_cluster
 from provisa.core.spark_cluster import SparkClusterRefused
+from provisa.security import sandbox_egress
+from provisa.security.sandbox_egress import PrivateEndpointRefused
 
 pytestmark = pytest.mark.asyncio
 
@@ -212,9 +214,17 @@ def spark_connect():
     server.stop(None)
 
 
+@pytest.fixture
+def one_org_deployment(monkeypatch):
+    """A deployment holding one organisation (its own): only a sandbox org is held (REQ-2006)."""
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "acme")
+
+
+@pytest.mark.usefixtures("one_org_deployment")
 class TestTheConnectionTest:
     async def test_the_probe_asks_the_spark_version_and_answers_it(self, spark_connect):
-        assert spark_cluster.probe(spark_connect["address"]) == "4.3.0"
+        assert spark_cluster.probe(spark_connect["address"], org_id="acme") == "4.3.0"
         (request,) = spark_connect["requests"]
         fields = {n: v for n, _w, v in spark_cluster._fields(request)}
         assert set(fields) == {1, 2, 10} and fields[10] == b""
@@ -226,9 +236,85 @@ class TestTheConnectionTest:
 
         (port,) = lease_ports(1)
         with pytest.raises(SparkClusterRefused) as refused:
-            spark_cluster.probe(f"sc://127.0.0.1:{port}")
+            spark_cluster.probe(f"sc://127.0.0.1:{port}", org_id="acme")
         assert refused.value.code == "spark_cluster.unreachable"
         assert "UNAVAILABLE" in str(refused.value)
+
+    async def test_a_sandbox_orgs_probe_to_loopback_is_refused_before_any_dial(
+        self, spark_connect, monkeypatch
+    ):
+        """REQ-2006: the address an administrator typed is held to public destinations, as a
+        gRPC source's is; the live server on loopback is never called."""
+        dialed: list = []
+        for opener in ("insecure_channel", "secure_channel"):
+            real = getattr(grpc, opener)
+
+            def recording(*a, _real=real, **k):
+                dialed.append(a)
+                return _real(*a, **k)
+
+            monkeypatch.setattr(grpc, opener, recording)
+        with pytest.raises(PrivateEndpointRefused) as refused:
+            spark_cluster.probe(spark_connect["address"], org_id="sandbox")
+        assert refused.value.code == "egress.private_destination"
+        assert refused.value.params["host"] == "127.0.0.1"
+        assert dialed == [] and spark_connect["requests"] == []
+
+    @pytest.mark.parametrize(
+        "address",
+        ["sc://10.0.0.5:15002", "sc://192.168.1.9", "sc://[::1]:15002", "sc://localhost"],
+    )
+    async def test_a_sandbox_orgs_probe_to_a_private_address_is_refused_by_name(
+        self, address, monkeypatch
+    ):
+        dialed: list = []
+        monkeypatch.setattr(grpc, "insecure_channel", lambda *a, **k: dialed.append(a))
+        monkeypatch.setattr(grpc, "secure_channel", lambda *a, **k: dialed.append(a))
+        with pytest.raises(PrivateEndpointRefused):
+            spark_cluster.probe(address, org_id="sandbox")
+        assert dialed == []
+
+    async def test_a_sandbox_orgs_probe_dials_the_address_its_check_resolved(self, monkeypatch):
+        """A public name is dialed at the address it was checked at, its name kept for TLS, as a
+        gRPC source's channel is: no second lookup can turn it private."""
+        import socket
+
+        monkeypatch.setattr(
+            socket,
+            "getaddrinfo",
+            lambda host, *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 0))],
+        )
+        dialed: dict = {}
+
+        class _Unanswered(grpc.RpcError, grpc.Call):  # pyright: ignore[reportIncompatibleMethodOverride]
+            def code(self):  # pyright: ignore[reportIncompatibleMethodOverride]
+                return grpc.StatusCode.UNAVAILABLE
+
+            def details(self):  # pyright: ignore[reportIncompatibleMethodOverride]
+                return "stood in"
+
+        class _Channel:
+            def unary_unary(self, *a, **k):
+                def call(*a, **k):
+                    raise _Unanswered()
+
+                return call
+
+            def close(self):
+                pass
+
+        def secure(target, credentials, options=()):
+            dialed.update(target=target, options=list(options))
+            return _Channel()
+
+        monkeypatch.setattr(grpc, "secure_channel", secure)
+        with pytest.raises(SparkClusterRefused) as refused:
+            spark_cluster.probe("sc://spark.public.test/;use_ssl=true", org_id="sandbox")
+        assert refused.value.code == "spark_cluster.unreachable"
+        assert dialed == {
+            "target": "8.8.8.8:15002",
+            "options": [("grpc.ssl_target_name_override", "spark.public.test")],
+        }
 
     async def test_an_answer_without_a_version_is_not_spark_connect(self):
         with pytest.raises(ValueError, match="no Spark version"):
@@ -246,8 +332,9 @@ class TestTheAdminSurface:
                 raise ApiError(403, "secrets.org_settings_in_org_required", "no")
             return "uid-ada"
 
-        def probe(address):
+        def probe(address, *, org_id):
             seen["probed"].append(address)
+            seen["probed_for"] = org_id
             return "4.3.0"
 
         monkeypatch.setattr(router, "_org_guard", guard)
@@ -286,6 +373,7 @@ class TestTheAdminSurface:
             "target": "unsaved.acme.test:15002",
         }
         assert wired["probed"] == [f"sc://unsaved.acme.test/;token={TOKEN}"]
+        assert wired["probed_for"] == "acme"
 
     async def test_an_empty_test_calls_the_cluster_a_source_naming_none_uses(
         self, wired, monkeypatch

@@ -75,6 +75,7 @@ async def test_the_reconcile_worklist_resolves_a_native_nested_column_as_json(mo
         "landing_filter": None,
         "read_wait": None,
         "row_materialize": False,
+        "region": None,  # REQ-1921: fetch_tables always selects the table's region
         "columns": [
             {
                 "column_name": "id",
