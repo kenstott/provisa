@@ -262,12 +262,34 @@ class Requirement:
     secret: bool = False
 
 
+#: REQ-2267: the cardinalities a relationship the code declares may have, seen from its source
+#: table (core.models.Cardinality's values).
+CARDINALITIES = ("many-to-one", "one-to-many", "one-to-one")
+
+
+@dataclass(frozen=True)
+class Relationship:
+    """REQ-2267: a relationship ``@discover`` declares between two of the code's tables: each row
+    of ``source_table`` relates to the rows of ``target_table`` whose ``target_column`` equals its
+    ``source_column``."""
+
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    cardinality: str
+    description: str = ""
+
+
 @dataclass(frozen=True)
 class Manifest:
     exports: tuple[Export, ...]
     types: dict[str, ObjectType]
     #: REQ-2221: what the code declares it needs, across its exports, by name.
     requires: tuple[Requirement, ...] = ()
+    #: REQ-2267: the relationships ``@discover`` declares between the code's tables.
+    relationships: tuple[Relationship, ...] = ()
 
     def export(self, name: str) -> Export:
         return next(e for e in self.exports if e.name == name)
@@ -378,6 +400,19 @@ def manifest_json(manifest: Manifest) -> dict:
             for name, t in manifest.types.items()
         },
         "requires": [{"name": r.name, "secret": r.secret} for r in manifest.requires],
+        "relationships": [_relationship_json(r) for r in manifest.relationships],
+    }
+
+
+def _relationship_json(relationship: Relationship) -> dict:
+    return {
+        "name": relationship.name,
+        "source_table": relationship.source_table,
+        "source_column": relationship.source_column,
+        "target_table": relationship.target_table,
+        "target_column": relationship.target_column,
+        "cardinality": relationship.cardinality,
+        "description": relationship.description,
     }
 
 
@@ -436,7 +471,8 @@ def manifest_from_json(raw: dict) -> Manifest:
     }
     # A manifest kept before REQ-2221 was read when no code could declare one.
     requires = tuple(Requirement(r["name"], r["secret"]) for r in raw.get("requires", ()))
-    return Manifest(tuple(exports), types, requires)
+    relationships = tuple(Relationship(**r) for r in raw["relationships"])
+    return Manifest(tuple(exports), types, requires, relationships)
 
 
 class ManifestRefused(BundleRefused):
@@ -1061,6 +1097,66 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     handler=handler,
                 )
             )
+    relationships = _relationships(raw, exports, mapper.types, problems)
     if problems:
         raise ManifestRefused(problems)
-    return Manifest(tuple(exports), mapper.types, tuple(requires.values()))
+    return Manifest(tuple(exports), mapper.types, tuple(requires.values()), relationships)
+
+
+def _relationships(
+    raw: dict, exports: list[Export], types: dict[str, ObjectType], problems: list[str]
+) -> tuple[Relationship, ...]:
+    """REQ-2267: the relationships ``@discover`` declared, each between two of the code's tables
+    and on columns of their rows, with a cardinality Provisa has and a name of its own; every
+    other is a problem by name. Code with no ``@discover`` declares none: a reader that read one
+    writes them (Python's), and one that reads none writes no relationship."""
+    if not any(e.kind == DISCOVER for e in exports):
+        if raw.get("relationships"):
+            problems.append("relationships are declared by a @discover function, and none is read")
+        return ()
+    tables = {e.name: e for e in exports if e.kind == TABLE}
+    found: list[Relationship] = []
+    named: set[str] = set()
+    for given in raw["relationships"]:
+        relationship = Relationship(**given)
+        name = relationship.name
+        where = f"relationship {name}"
+        if not isinstance(name, str) or not name:
+            problems.append(f"{where}: a relationship has a name")
+            continue
+        if name in named:
+            problems.append(f"{where}: declared twice; every relationship has a name of its own")
+            continue
+        named.add(name)
+        if relationship.cardinality not in CARDINALITIES:
+            problems.append(
+                f"{where}: its cardinality {relationship.cardinality!r} is none of "
+                f"{', '.join(CARDINALITIES)}"
+            )
+        ends = (
+            ("source", relationship.source_table, relationship.source_column),
+            ("target", relationship.target_table, relationship.target_column),
+        )
+        good = True
+        for end, table, column in ends:
+            export = tables.get(table)
+            if export is None:
+                problems.append(f"{where}: its {end} table {table} is no table of the code's")
+                good = False
+                continue
+            if column not in {f.name for f in _row_fields(export, types)}:
+                problems.append(f"{where}: its {end} column {column} is no column of {table}")
+                good = False
+        if good and relationship.cardinality in CARDINALITIES:
+            found.append(relationship)
+    return tuple(found)
+
+
+def _row_fields(export: Export, types: dict[str, ObjectType]) -> tuple[Field, ...]:
+    """The fields of a table's row type: its columns."""
+    shape = export.returns
+    if isinstance(shape, Named):
+        return types[shape.name].fields
+    if isinstance(shape, Anonymous):
+        return shape.fields
+    return ()

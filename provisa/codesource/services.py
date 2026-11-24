@@ -110,7 +110,7 @@ def declared(raw: Any) -> dict[str, str | None]:
     if isinstance(raw, dict):
         for name, reference in raw.items():
             if reference is not None and not (
-                isinstance(reference, str) and _is_reference(reference)
+                isinstance(reference, str) and is_reference(reference)
             ):
                 raise BundleRefused(
                     "secrets_invalid",
@@ -158,7 +158,9 @@ def llm_cap(raw: Any) -> float | None:
     return float(cap)
 
 
-def _is_reference(value: str) -> bool:
+def is_reference(value: str) -> bool:
+    """Whether ``value`` is a reference to the org's vault or the deployment's environment, as a
+    steward types one (``${secret:NAME}``, ``${env:NAME}``), not a value."""
     return (value.startswith("${secret:") or value.startswith("${env:")) and value.endswith("}")
 
 
