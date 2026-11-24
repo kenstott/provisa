@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "当数据源未指定自己的集群时，Spark 脚本在此运行和验证。数据源如有自己的集群，则始终使用该集群。",
+    "address": "Spark Connect 地址",
+    "addressHelp": "集群的 Spark Connect 地址，例如 sc://spark.example.com:15002。不要在其中包含令牌：将令牌保存为密钥，并在下方指定。",
+    "credential": "令牌密钥",
+    "credentialHelp": "调用集群所用令牌的密钥引用，例如 ${secret:spark_token}。若集群不需要令牌，请留空。",
+    "inUseOrg": "未指定集群的数据源使用此默认集群（{{target}}）。",
+    "inUseLocal": "未指定集群的数据源使用本地测试集群（{{target}}）。设置默认集群即可使用您自己的集群。",
+    "inUseNone": "未配置 Spark 集群：未指定集群的数据源在设置默认集群之前无法运行。",
+    "test": "测试连接",
+    "tested": "已连接到 {{target}}：Spark {{version}}",
+    "saved": "已保存",
+    "removed": "已删除",
+    "remove": "移除默认集群"
+  }
+}

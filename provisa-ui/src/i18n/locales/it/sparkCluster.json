@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "Dove uno script Spark viene eseguito e validato quando la sua origine non indica un cluster proprio. Il cluster proprio di un'origine, se presente, viene sempre usato.",
+    "address": "Indirizzo Spark Connect",
+    "addressHelp": "L'indirizzo Spark Connect del cluster, ad esempio sc://spark.example.com:15002. Non includere il token: conservalo come segreto e indicalo qui sotto.",
+    "credential": "Segreto del token",
+    "credentialHelp": "Un riferimento al segreto del token con cui viene chiamato il cluster, ad esempio ${secret:spark_token}. Lascia vuoto per un cluster che non richiede token.",
+    "inUseOrg": "Le origini che non indicano un cluster usano questo predefinito ({{target}}).",
+    "inUseLocal": "Le origini che non indicano un cluster usano il cluster di test locale ({{target}}). Imposta un predefinito per usare il tuo cluster.",
+    "inUseNone": "Nessun cluster Spark configurato: un'origine che non ne indica uno non può essere eseguita finché non viene impostato un predefinito.",
+    "test": "Verifica connessione",
+    "tested": "Connesso a {{target}}: Spark {{version}}",
+    "saved": "Salvato",
+    "removed": "Rimosso",
+    "remove": "Rimuovi predefinito"
+  }
+}

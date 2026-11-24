@@ -42,6 +42,7 @@ export function ColumnsTable({
   testId,
   describeColumn,
   setError,
+  empty,
 }: {
   columns: ColumnForm[];
   /** Absent in read-only mode: nothing is edited. */
@@ -63,6 +64,8 @@ export function ColumnsTable({
   describeColumn?: (column: string) => Promise<string>;
   /** Where a describe that failed says so. */
   setError?: (e: string | null) => void;
+  /** Read-only: what each tab says in place of a header-only table when there are no columns. */
+  empty?: string;
 }) {
   if (readOnly) {
     return (
@@ -71,6 +74,7 @@ export function ColumnsTable({
         sourceType={sourceType}
         tableId={tableId}
         testId={testId}
+        empty={empty}
       />
     );
   }
@@ -124,11 +128,13 @@ function ReadOnlyColumns({
   sourceType,
   tableId,
   testId,
+  empty,
 }: {
   columns: ColumnForm[];
   sourceType: string;
   tableId?: number;
   testId?: string;
+  empty?: string;
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useColumnTab(METADATA_TABS);
@@ -136,82 +142,88 @@ function ReadOnlyColumns({
   return (
     <>
       <ColumnTabs value={tab} onChange={setTab} shown={METADATA_TABS} nested />
-      <Table.ScrollContainer minWidth={480}>
-        <Table striped withTableBorder verticalSpacing="xs" data-testid={testId}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
-              {tab === "naming" && (
-                <>
-                  <Table.Th>{t("registerTableForm.colHeaderAlias")}</Table.Th>
-                  <Table.Th w="60%">{t("registerTableForm.colHeaderDescription")}</Table.Th>
-                </>
-              )}
-              {tab === "type" && (
-                <>
-                  <Table.Th>{t("registerTableForm.colHeaderDataType")}</Table.Th>
-                  <Table.Th ta="center">{t("registerTableForm.colHeaderPk")}</Table.Th>
-                  <Table.Th>{t("registerTableForm.colHeaderScope")}</Table.Th>
-                </>
-              )}
-              {tab === "access" && (
-                <>
-                  <Table.Th>{t("registerTableForm.colHeaderVisibleTo")}</Table.Th>
-                  <Table.Th>{t("registerTableForm.colHeaderMasking")}</Table.Th>
-                </>
-              )}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {columns.map((col) => (
-              <Table.Tr key={col.name} data-testid={testId && `${testId}-col-${col.name}`}>
-                <Table.Td ff="monospace" fz="sm">
-                  <ColumnGlossaryHover
-                    tableId={tableId}
-                    columnName={col.name}
-                    definition={definitionOf(col)}
-                  >
-                    <Text
-                      ff="monospace"
-                      fz="sm"
-                      truncate="end"
-                      maw={220}
-                      component="span"
-                      style={{ display: "inline-block", verticalAlign: "bottom" }}
-                    >
-                      {col.name}
-                    </Text>
-                  </ColumnGlossaryHover>
-                  {col.masks.some((m) => m.mask) && (
-                    <ColumnBadge color="orange">{maskKinds(col, t)}</ColumnBadge>
-                  )}
-                </Table.Td>
+      {columns.length === 0 && empty !== undefined ? (
+        <Text size="sm" c="dimmed" data-testid={testId && `${testId}-empty`}>
+          {empty}
+        </Text>
+      ) : (
+        <Table.ScrollContainer minWidth={480}>
+          <Table striped withTableBorder verticalSpacing="xs" data-testid={testId}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
                 {tab === "naming" && (
                   <>
-                    <Table.Td fz="sm">{col.alias}</Table.Td>
-                    <Table.Td fz="sm">{col.description}</Table.Td>
+                    <Table.Th>{t("registerTableForm.colHeaderAlias")}</Table.Th>
+                    <Table.Th w="60%">{t("registerTableForm.colHeaderDescription")}</Table.Th>
                   </>
                 )}
                 {tab === "type" && (
                   <>
-                    <Table.Td fz="sm" ff="monospace">
-                      {shownType(col.dataType, col.subtype)}
-                    </Table.Td>
-                    <Table.Td ta="center">{col.isPrimaryKey ? "✓" : ""}</Table.Td>
-                    <Table.Td fz="sm">{col.scope}</Table.Td>
+                    <Table.Th>{t("registerTableForm.colHeaderDataType")}</Table.Th>
+                    <Table.Th ta="center">{t("registerTableForm.colHeaderPk")}</Table.Th>
+                    <Table.Th>{t("registerTableForm.colHeaderScope")}</Table.Th>
                   </>
                 )}
                 {tab === "access" && (
                   <>
-                    <Table.Td fz="sm">{col.visibleTo.join(", ")}</Table.Td>
-                    <Table.Td fz="sm">{maskKinds(col, t) || t("maskList.unmasked")}</Table.Td>
+                    <Table.Th>{t("registerTableForm.colHeaderVisibleTo")}</Table.Th>
+                    <Table.Th>{t("registerTableForm.colHeaderMasking")}</Table.Th>
                   </>
                 )}
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+            </Table.Thead>
+            <Table.Tbody>
+              {columns.map((col) => (
+                <Table.Tr key={col.name} data-testid={testId && `${testId}-col-${col.name}`}>
+                  <Table.Td ff="monospace" fz="sm">
+                    <ColumnGlossaryHover
+                      tableId={tableId}
+                      columnName={col.name}
+                      definition={definitionOf(col)}
+                    >
+                      <Text
+                        ff="monospace"
+                        fz="sm"
+                        truncate="end"
+                        maw={220}
+                        component="span"
+                        style={{ display: "inline-block", verticalAlign: "bottom" }}
+                      >
+                        {col.name}
+                      </Text>
+                    </ColumnGlossaryHover>
+                    {col.masks.some((m) => m.mask) && (
+                      <ColumnBadge color="orange">{maskKinds(col, t)}</ColumnBadge>
+                    )}
+                  </Table.Td>
+                  {tab === "naming" && (
+                    <>
+                      <Table.Td fz="sm">{col.alias}</Table.Td>
+                      <Table.Td fz="sm">{col.description}</Table.Td>
+                    </>
+                  )}
+                  {tab === "type" && (
+                    <>
+                      <Table.Td fz="sm" ff="monospace">
+                        {shownType(col.dataType, col.subtype)}
+                      </Table.Td>
+                      <Table.Td ta="center">{col.isPrimaryKey ? "✓" : ""}</Table.Td>
+                      <Table.Td fz="sm">{col.scope}</Table.Td>
+                    </>
+                  )}
+                  {tab === "access" && (
+                    <>
+                      <Table.Td fz="sm">{col.visibleTo.join(", ")}</Table.Td>
+                      <Table.Td fz="sm">{maskKinds(col, t) || t("maskList.unmasked")}</Table.Td>
+                    </>
+                  )}
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
     </>
   );
 }

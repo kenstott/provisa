@@ -84,6 +84,131 @@ class Infinite:
         return "infinity" if self.sign > 0 else "-infinity"
 
 
+_DAY_US = 86_400_000_000
+#: A date or timestamp BC as PostgreSQL writes it: the date, a clock, an offset, the era.
+_BC = re.compile(
+    r"\s*(?P<y>\d{4,})-(?P<m>\d{1,2})-(?P<d>\d{1,2})"
+    r"(?: (?P<h>\d{2}):(?P<mi>\d{2})(?::(?P<s>\d{2})(?:\.(?P<f>\d{1,6}))?)?)?"
+    r"(?P<z>[+-]\d{2}(?::?\d{2})?)? BC\s*"
+)
+#: 4714-11-24 BC (Julian day 0), PostgreSQL's first date, as days before 0001-01-01.
+_FIRST_DAY = -1_721_426
+
+
+def _days_from_civil(y: int, m: int, d: int) -> int:
+    """Days from 0001-01-01 of a proleptic Gregorian date, year 0 being 1 BC."""
+    y -= m <= 2  # noqa: PLR2004 -- January and February count with the year before
+    era = y // 400
+    yoe = y - era * 400
+    doy = (153 * ((m + 9) % 12) + 2) // 5 + d - 1
+    return era * 146_097 + yoe * 365 + yoe // 4 - yoe // 100 + doy - 306
+
+
+def _civil(days: int) -> tuple[int, int, int]:
+    """The (year, month, day) of days from 0001-01-01, year 0 being 1 BC."""
+    z = days + 306
+    era, doe = divmod(z, 146_097)
+    yoe = (doe - doe // 1460 + doe // 36_524 - doe // 146_096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    d = doy - (153 * mp + 2) // 5 + 1
+    m = mp + 3 if mp < 10 else mp - 9  # noqa: PLR2004
+    return yoe + era * 400 + (m <= 2), m, d  # noqa: PLR2004
+
+
+@dataclass(frozen=True, eq=False)
+class BeforeChrist:
+    """A date or timestamp bound BC, which Python's date and datetime do not hold (REQ-2236): its
+    microseconds from 0001-01-01 00:00:00 (in UTC, an instant's), whether it has a clock, and
+    whether it is an instant. It orders among dates and timestamps as the value it is."""
+
+    micros: int
+    clock: bool
+    zoned: bool
+
+    def _key(self, other: object) -> int | None:  # object-ok: the data model's own operand
+        if isinstance(other, BeforeChrist):
+            return other.micros
+        if isinstance(other, datetime):
+            naive = other.astimezone(timezone.utc).replace(tzinfo=None) if other.tzinfo else other
+            delta = naive - datetime(1, 1, 1)
+            return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+        if isinstance(other, date):
+            return (other.toordinal() - 1) * _DAY_US
+        return None
+
+    def __eq__(self, other: object) -> bool:  # object-ok: the data model's own signature
+        return self._key(other) == self.micros
+
+    def __hash__(self) -> int:
+        return hash(self.micros)
+
+    def __lt__(self, other: object) -> bool:  # object-ok: the data model's own signature
+        key = self._key(other)
+        return NotImplemented if key is None else self.micros < key
+
+    def __gt__(self, other: object) -> bool:  # object-ok: the data model's own signature
+        key = self._key(other)
+        return NotImplemented if key is None else self.micros > key
+
+    def __le__(self, other: object) -> bool:  # object-ok: the data model's own signature
+        return self < other or self == other
+
+    def __ge__(self, other: object) -> bool:  # object-ok: the data model's own signature
+        return self > other or self == other
+
+    def __add__(self, step: timedelta) -> Any:
+        """The value ``step`` later: a date or datetime once it is AD."""
+        micros = self.micros + (step.days * 86_400 + step.seconds) * 1_000_000 + step.microseconds
+        if micros < 0:
+            return BeforeChrist(micros, self.clock, self.zoned)
+        later = datetime(1, 1, 1) + timedelta(microseconds=micros)
+        if not self.clock:
+            return later.date()
+        return later.replace(tzinfo=timezone.utc) if self.zoned else later
+
+    def __str__(self) -> str:
+        """Its text as date_out, timestamp_out and timestamptz_out (in UTC) write it."""
+        days, rest = divmod(self.micros, _DAY_US)
+        y, m, d = _civil(days)
+        written = f"{1 - y:04d}-{m:02d}-{d:02d}"
+        if self.clock:
+            seconds, fraction = divmod(rest, 1_000_000)
+            written += f" {seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+            if fraction:
+                written += f".{fraction:06d}".rstrip("0")
+            if self.zoned:
+                written += "+00"
+        return written + " BC"
+
+
+def before_christ(written: str, element: str) -> BeforeChrist | None:
+    """A date or timestamp bound BC as PostgreSQL reads it, None for any other text; a date no
+    calendar holds is PostgreSQL's error, as one before 4714-11-24 BC is."""
+    bc = _BC.fullmatch(written)
+    if (
+        bc is None
+        or (element == "date") != (bc["h"] is None)
+        or (bc["z"] and element != "timestamptz")
+    ):
+        return None
+    year, month, day = 1 - int(bc["y"]), int(bc["m"]), int(bc["d"])
+    days = _days_from_civil(year, month, day)
+    if not 1 <= month <= 12 or _civil(days) != (year, month, day):  # noqa: PLR2004
+        raise PostgresError("22008", f'date/time field value out of range: "{written}"')
+    if days < _FIRST_DAY:
+        raise PostgresError("22008", f'date out of range: "{written}"')
+    clock = 0
+    if bc["h"] is not None:
+        clock = ((int(bc["h"]) * 60 + int(bc["mi"])) * 60 + int(bc["s"] or 0)) * 1_000_000
+        clock += int((bc["f"] or "").ljust(6, "0"))
+    if bc["z"]:
+        zone = bc["z"].replace(":", "")
+        east = int(zone[1:3]) * 3600 + int(zone[3:5] or 0) * 60
+        clock -= (east if zone[0] == "+" else -east) * 1_000_000
+    return BeforeChrist(days * _DAY_US + clock, bc["h"] is not None, element == "timestamptz")
+
+
 def _compare_values(a: Any, b: Any) -> int:
     if isinstance(a, Infinite) or isinstance(b, Infinite):
         a_sign = a.sign if isinstance(a, Infinite) else 0
@@ -169,9 +294,14 @@ def _timestamp(written: str, zoned: bool) -> Any:
     return aware.astimezone(timezone.utc)
 
 
-def read_element(rtype: RangeType, written: str) -> Any:
-    """A bound's value, read as the range's element type."""
+def read_element(rtype: RangeType, written: str, bc: bool = False) -> Any:
+    """A bound's value, read as the range's element type. ``bc``: a date or timestamp BC is read
+    (``before_christ``), where the engine the statement goes to holds one."""
     element = rtype.element
+    if bc and element in ("date", "timestamp", "timestamptz"):
+        held = before_christ(written, element)
+        if held is not None:
+            return held
     if element == "integer":
         return _integer(written, "integer", _INT4_MAX)
     if element == "bigint":
@@ -190,7 +320,7 @@ def _clock(value: datetime) -> str:
 
 def element_text(value: Any) -> str:
     """A bound's value in PostgreSQL's text form."""
-    if isinstance(value, Infinite):
+    if isinstance(value, (Infinite, BeforeChrist)):
         return str(value)
     if isinstance(value, datetime):
         if value.tzinfo is None:

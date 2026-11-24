@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "Waar een Spark-script draait en wordt gevalideerd als de bron geen eigen cluster noemt. Heeft een bron een eigen cluster, dan wordt altijd dat cluster gebruikt.",
+    "address": "Spark Connect-adres",
+    "addressHelp": "Het Spark Connect-adres van het cluster, bijvoorbeeld sc://spark.example.com:15002. Laat het token erbuiten: bewaar het token als secret en noem het hieronder.",
+    "credential": "Token-secret",
+    "credentialHelp": "Een secret-verwijzing naar het token waarmee het cluster wordt aangeroepen, bijvoorbeeld ${secret:spark_token}. Laat leeg voor een cluster zonder token.",
+    "inUseOrg": "Bronnen die geen cluster noemen, gebruiken deze standaard ({{target}}).",
+    "inUseLocal": "Bronnen die geen cluster noemen, gebruiken het lokale testcluster ({{target}}). Stel een standaard in om uw eigen cluster te gebruiken.",
+    "inUseNone": "Er is geen Spark-cluster geconfigureerd: een bron die er geen noemt, kan pas draaien als er een standaard is ingesteld.",
+    "test": "Verbinding testen",
+    "tested": "Verbonden met {{target}}: Spark {{version}}",
+    "saved": "Opgeslagen",
+    "removed": "Verwijderd",
+    "remove": "Standaard verwijderen"
+  }
+}

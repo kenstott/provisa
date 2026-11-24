@@ -207,3 +207,56 @@ async def call_mutation(  # REQ-1924
         )
     except grpc.aio.AioRpcError as exc:
         raise MutationRefused(f"{exc.code().name}: {exc.details()}") from exc
+
+
+# ---------------------------------------------------------------------------
+# A raw unary call: request and answer as bytes the caller encodes and reads
+# ---------------------------------------------------------------------------
+
+
+class UnaryCallFailed(Exception):
+    """A raw unary call the server did not answer: its status code name and what it said."""
+
+    def __init__(self, code: str, details: str | None) -> None:
+        super().__init__(f"{code}: {details}")
+        self.code = code
+        self.details = details
+
+
+def _as_is(message: bytes) -> bytes:
+    """The request and the answer go as the bytes the caller encoded."""
+    return message
+
+
+def call_unary_raw(  # REQ-2225
+    target: str,
+    *,
+    tls: bool,
+    method: str,
+    request: bytes,
+    timeout: float,
+    org_id: str,
+    refusal: Refusal,
+    metadata: tuple[tuple[str, str], ...] = (),
+) -> bytes:
+    """Call ``method`` on the server at ``target`` (``host:port``) once, blocking, with ``request``
+    as encoded bytes; return the answer's bytes. Raises :class:`UnaryCallFailed` with the server's
+    status code and words when it does not answer. For a held org (REQ-2006) ``target`` is checked
+    before any dial, refused as ``refusal`` when it is not public, and dialed at the address its
+    check resolved, its name kept for TLS, as :func:`open_channel` does."""
+    pinned, name = pinned_address(target, org_id, refusal)
+    if tls:
+        options = [("grpc.ssl_target_name_override", name)] if pinned != target else []
+        channel = grpc.secure_channel(pinned, grpc.ssl_channel_credentials(), options=options)
+    else:
+        channel = grpc.insecure_channel(pinned)
+    try:
+        call = channel.unary_unary(method, request_serializer=_as_is, response_deserializer=_as_is)
+        return call(request, timeout=timeout, metadata=metadata)
+    except grpc.RpcError as failed:
+        # A unary call's RpcError is also its grpc.Call, which carries the status and the words.
+        if not isinstance(failed, grpc.Call):
+            raise
+        raise UnaryCallFailed(failed.code().name, failed.details()) from None
+    finally:
+        channel.close()

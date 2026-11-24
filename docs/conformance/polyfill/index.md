@@ -6,17 +6,16 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-626 of the grid's 626 features are native on PostgreSQL and left out.
+627 of the grid's 627 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-270 of the grid's 626 features are native on DuckDB and left out.
+273 of the grid's 627 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -113,7 +112,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s zones each read now: abbreviation, offset and daylight flag.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timezone</strong><br>A value at a zone; a zone written as a POSIX offset (&#x27;+05:30&#x27;) is that many hours west of UTC.</td><td><pre><code>timezone($z::text, $v)
 =&gt;
-function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text PostgreSQL reads as a POSIX zone of a fixed offset, as the ICU zone of it.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text PostgreSQL reads as a POSIX zone of a fixed offset, as the ICU zone of it.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
 =&gt;
 ($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
@@ -362,55 +361,55 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acos($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE asin($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE atanh($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND ($x &lt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acosh($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE sin($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE cos($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE tan($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
 =&gt;
-CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
 =&gt;
-CASE WHEN isfinite($x) AND isinf(degrees($x)) THEN error(&#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) ELSE degrees($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -434,10 +433,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: integer &#x27;-2147483648&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;日本語テキスト😀&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;, time without time zone &#x27;00:00:00&#x27;, timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, integer &#x27;-2147483648&#x27;, smallint &#x27;-32768&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;, time without time zone &#x27;00:00:00&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, integer &#x27;-2147483648&#x27;, smallint &#x27;-32768&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -456,19 +455,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: date &#x27;infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN isinf(CAST($a AS DATE)) OR isinf(CAST($b AS DATE)) THEN error(&#x27;postgresql-error 22008: &#x27; || &#x27;cannot subtract infinite dates&#x27;) ELSE CAST(CAST($a AS DATE) - CAST($b AS DATE) AS INTEGER) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_bin</strong><br>A timestamp truncated to a stride counted from an origin.</td><td><pre><code>date_bin($s, $t, $o)
+=&gt;
+CASE WHEN isinf($t) THEN $t WHEN isinf($o) THEN error(&#x27;postgresql-error 22008: &#x27; || &#x27;origin out of range&#x27;) ELSE time_bucket($s, $t, $o) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -566,7 +567,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_set</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_set_lax</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_strip_nulls</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td></td><td><ul><li>Refused for a call of (text, interval) at some of its values. <code>22008</code> interval out of range</li><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td></td><td><ul><li>Refused for a call of (text, interval) at some of its values. <code>22008</code> interval out of range</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -576,25 +577,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on duckdb</li><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (interval) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on duckdb</li><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -658,130 +659,130 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._duckdb_rewrite: A string cast to interval on DuckDB, wherever it stands. DuckDB&#x27;s own interval input reads</code></pre></td><td><ul><li>A string cast to interval is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock are sent as written, which DuckDB reads alike; any other text is sent as the text of its three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB&#x27;s own reading, which is PostgreSQL&#x27;s. A text whose months, its years&#x27; and its own together, pass int32 (&#x27;178956971 years&#x27;) raises PostgreSQL&#x27;s 22008 &#x27;interval out of range&#x27;; any other text not read here (ISO 8601, the SQL standard&#x27;s, infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;5874897-12-31&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp without time zone &#x27;294276-12-31 23:59:59.999999&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: timestamp with time zone &#x27;294276-12-31 23:59:59.999999+00&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -885,9 +886,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
 =&gt;
-CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
 =&gt;
-list_transform(CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END, lambda _x: CASE WHEN _x = $n THEN NULL ELSE _x END)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text null.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
@@ -895,7 +896,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: oid &#x27;4294967296&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -907,7 +908,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 CASE WHEN $n = -2147483648 THEN $t ELSE right($t, $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>reverse</strong><br>A text&#x27;s characters in reverse order.</td><td><pre><code>reverse($t::text)
 =&gt;
-array_to_string(list_reverse(string_split($t, &#x27;&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;été&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>substr</strong><br>A text&#x27;s characters from a position, for a count.</td><td><pre><code>substr($t::text, $s::integer)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($t::text, $s::integer, $l::integer)
@@ -926,7 +927,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>ascii</strong><br>The code point of a text&#x27;s first character.</td><td><pre><code>ascii($t::text)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>character literal</strong><br>The lengths and text of a character(n) literal, its padding as PostgreSQL holds it.</td><td><pre><code>function provisa.transpiler.polyfill.texts._of_character_literal: char_length, length, octet_length, text and name of a character(n) literal, as PostgreSQL</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>btnamecmp</strong><br>btree&#x27;s comparison of two names: strncmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btnamecmp($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -953,10 +953,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;  padded  &#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1026,10 +1026,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-172 of the grid's 626 features are native on Trino and left out.
+173 of the grid's 627 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -1572,7 +1572,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td><ul><li>Raises XX000 at an edge value it does not hold as PostgreSQL does: date &#x27;infinity&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -1716,25 +1716,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on trino</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on trino</li></ul></td><td></td><td></td></tr>
@@ -2165,10 +2165,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-172 of the grid's 626 features are native on Presto and left out.
+173 of the grid's 627 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -2711,7 +2711,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2855,25 +2855,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on presto</li></ul></td><td></td><td></td></tr>
@@ -3304,10 +3304,10 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Athena](athena.md)
 
-172 of the grid's 626 features are native on Athena and left out.
+173 of the grid's 627 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -3850,7 +3850,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -3994,25 +3994,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on athena</li></ul></td><td></td><td></td></tr>
@@ -4443,10 +4443,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-82 of the grid's 626 features are native on ClickHouse and left out.
+83 of the grid's 627 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN length($a) &gt; 0 THEN countSubstrings(toTypeName($a), &#x27;Array(&#x27;) END AS Nullable(Int32))</code></pre></td><td></td><td></td><td></td></tr>
@@ -5669,12 +5669,12 @@ function provisa.transpiler.polyfill.bytea.substr_of_bytes: substr of a bytea he
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
 =&gt;
 function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its format is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. base64 breaks its text into lines of 76 characters, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: dexp(double precision), dlog1(double precision), text(xml), int8inc_any(bigint, &quot;any&quot;), int8dec_any(bigint, &quot;any&quot;), max(money), min(money), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).</td><td><pre><code>function provisa.transpiler.polyfill.ported._carried_by_the_grid: ``carried`` as the grid&#x27;s ClickHouse form, which reads a call apart from its statement.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: dexp(double precision), dlog1(double precision), text(xml), int8inc_any(bigint, &quot;any&quot;), int8dec_any(bigint, &quot;any&quot;), max(money), min(money), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).</td><td><pre><code>function provisa.transpiler.polyfill.ported.carried: A call of a listed overload on ClickHouse, in the form DuckDB answers it with.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-274 of the grid's 626 features are native on Snowflake and left out.
+275 of the grid's 627 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6693,7 +6693,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-274 of the grid's 626 features are native on Databricks and left out.
+275 of the grid's 627 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7712,7 +7712,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-274 of the grid's 626 features are native on BigQuery and left out.
+275 of the grid's 627 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8731,7 +8731,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-274 of the grid's 626 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+275 of the grid's 627 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9750,7 +9750,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-274 of the grid's 626 features are native on Redshift and left out.
+275 of the grid's 627 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10769,7 +10769,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-274 of the grid's 626 features are native on MySQL and left out.
+275 of the grid's 627 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11788,7 +11788,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-274 of the grid's 626 features are native on SingleStore and left out.
+275 of the grid's 627 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12807,7 +12807,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-274 of the grid's 626 features are native on SQLite and left out.
+275 of the grid's 627 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13826,7 +13826,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-274 of the grid's 626 features are native on Oracle and left out.
+275 of the grid's 627 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14845,7 +14845,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-274 of the grid's 626 features are native on Hive and left out.
+275 of the grid's 627 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15864,7 +15864,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-274 of the grid's 626 features are native on Exasol and left out.
+275 of the grid's 627 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16883,7 +16883,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-274 of the grid's 626 features are native on Druid and left out.
+275 of the grid's 627 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -17902,7 +17902,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Db2](db2.md)
 
-234 of the grid's 626 features are native on Db2 and left out.
+235 of the grid's 627 features are native on Db2 and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -18981,7 +18981,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SAP HANA](saphana.md)
 
-221 of the grid's 626 features are native on SAP HANA and left out.
+222 of the grid's 627 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

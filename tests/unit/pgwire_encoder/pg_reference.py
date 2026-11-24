@@ -63,6 +63,9 @@ DEFECTS = {
     "date_range": "a date PostgreSQL holds past year 9999 or BC is written as date_out writes it "
     "(Python's date holds years 1 to 9999: the product raised, and the error dropped the "
     "connection, J1367 D9)",
+    "timestamp_range": "a timestamp PostgreSQL holds BC is written as timestamp_out writes it, its "
+    "era after the clock and offset (Python's datetime holds years 1 to 9999: the product raised; "
+    "REQ-2236)",
 }
 
 
@@ -381,11 +384,15 @@ def to_date(v: Any) -> Any:
 
 
 def to_timestamp(v: Any) -> Any:
+    if isinstance(v, PgStamp):
+        return v
     inf = _infinity(v)
     return infinite_timestamp(inf, aware=False) if inf else srv._to_timestamp(v)
 
 
 def of_no_zone(v: Any) -> Any:
+    if isinstance(v, PgStamp):
+        return PgStamp(v + (v.offset or 0) * 1_000_000, None)
     inf = _infinity(v)
     return infinite_timestamp(inf, aware=False) if inf else ct._of_no_zone(v)
 
@@ -470,14 +477,105 @@ def _day_values(column: Any, read: Callable[[Any], list[Any]]) -> list[Any] | No
     ]
 
 
+# --- timestamps BC ---
+
+#: PostgreSQL's first instant, 4714-11-24 00:00:00 BC, and year 1's, as microseconds since
+#: 1970-01-01.
+_PG_FIRST_US = _PG_FIRST_DAY * DAY_US
+_PY_FIRST_US = _PY_FIRST_DAY * DAY_US
+
+
+class PgStamp(int):
+    """A timestamp PostgreSQL holds BC and Python's datetime does not: its microseconds since
+    1970-01-01 (UTC, a zoned one's), and its offset east in seconds (None: no zone)."""
+
+    offset: int | None
+
+    def __new__(cls, micros: int, offset: int | None) -> PgStamp:
+        made = super().__new__(cls, micros)
+        made.offset = offset
+        return made
+
+
+def _zone_offset(name: str) -> int:
+    """A zone's offset east, in seconds, at an instant before year 1: its first (LMT)."""
+    if name == "UTC":
+        return 0
+    if name[:1] in "+-":
+        hours, _, minutes = name[1:].partition(":")
+        east = int(hours) * 3600 + int(minutes or 0) * 60
+        return east if name[0] == "+" else -east
+    from zoneinfo import ZoneInfo
+
+    offset = ZoneInfo(name).utcoffset(datetime.datetime(1, 1, 1))
+    assert offset is not None
+    return int(offset.total_seconds())
+
+
+def _stamp_values(column: Any, read: Callable[[Any], list[Any]]) -> list[Any] | None:
+    """A microsecond timestamp column's values with each PostgreSQL holds BC (its instant, or its
+    local time in its zone) a PgStamp; None for any other column, and for one Python holds
+    whole."""
+    import pyarrow as pa
+
+    if not pa.types.is_timestamp(column.type) or column.type.unit != "us":
+        return None
+    zone = column.type.tz
+    offset = None if zone is None else _zone_offset(zone)
+    raw = column.cast(pa.int64()).to_pylist()
+    marks = {2**63 - 1, -(2**63 - 1)}
+
+    def bc(us: int | None) -> bool:
+        if us is None or us in marks:
+            return False
+        local = us + (offset or 0) * 1_000_000
+        return min(us, local) < _PY_FIRST_US and min(us, local) >= _PG_FIRST_US
+
+    if not any(bc(us) for us in raw):
+        return None
+    held = iter(read(column.filter(pa.array([not bc(us) for us in raw]))))
+    return [PgStamp(us, offset) if bc(us) else next(held) for us in raw]
+
+
 def _reading_days(read: Callable[[Any], list[Any]]) -> Callable[[Any], list[Any]]:
-    """The reference's read of a column, a date PostgreSQL holds past Python's years a PgDay."""
+    """The reference's read of a column, a date PostgreSQL holds past Python's years a PgDay, a
+    timestamp BC a PgStamp."""
 
     def values(column: Any) -> list[Any]:
         held = _day_values(column, read)
+        if held is None:
+            held = _stamp_values(column, read)
         return read(column) if held is None else held
 
     return values
+
+
+def timestamp_text(v: Any) -> str:
+    if not isinstance(v, PgStamp):
+        return _ORIGINAL_TIMESTAMP_TEXT(v)
+    local = v + (v.offset or 0) * 1_000_000
+    days, tod = divmod(local, DAY_US)
+    y, m, d = _civil(days)
+    seconds, fraction = divmod(tod, 1_000_000)
+    clock = f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+    if fraction:
+        clock += f".{fraction:06d}".rstrip("0")
+    zone = "" if v.offset is None else bp._pg_offset(datetime.timedelta(seconds=v.offset))
+    return f"{1 - y:04d}-{m:02d}-{d:02d} {clock}{zone} BC"
+
+
+def _stamp_binary(original: Callable[[Any], bytes], zoned: bool) -> Callable[[Any], bytes]:
+    def encode(v: Any) -> bytes:
+        if not isinstance(v, PgStamp):
+            return original(v)
+        if zoned and v.offset is None:
+            raise ValueError(f"timestamptz value without a time zone: {v!r}")
+        return struct.pack("!q", v - 946_684_800_000_000)
+
+    return encode
+
+
+_ORIGINAL_TIMESTAMP_TEXT = bp._timestamp_text
 
 
 def date_text(v: Any) -> str:
@@ -517,6 +615,9 @@ def pg17() -> Iterator[None]:
         table[t.CIDR] = (650, cidr_text, table[t.CIDR][2])
         table[t.TEXT] = (25, text_text, lambda v: text_text(v).encode("utf-8"))
         table[t.DATE] = (1082, date_text, date_binary)
+        for stamp, zoned in ((t.TIMESTAMP, False), (t.TIMESTAMPTZ, True)):
+            oid, _, binary = table[stamp]
+            table[stamp] = (oid, timestamp_text, _stamp_binary(binary, zoned))
         _setattr(stack, python_ref, "column_values", _reading_days(python_ref.column_values))
         table.update(_ranges())
         table.update(_arrays())

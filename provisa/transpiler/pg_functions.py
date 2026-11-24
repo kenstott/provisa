@@ -142,6 +142,29 @@ _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
 _SECOND_PARTS = frozenset({"s", "sec", "secs", "second", "seconds"})
 
 
+#: The units PostgreSQL answers of an infinite date or timestamp as an infinity of its sign
+#: (NonFiniteTimestampTzPart), in each spelling it reads; it answers NULL of any other unit.
+_INFINITE_UNITS = (
+    "y", "yr", "yrs", "year", "years", "dec", "decade", "decades", "decs", "c", "cent",
+    "centuries", "century", "mil", "millennia", "millennium", "millenniums", "mils", "j", "jd",
+    "julian", "isoyear", "epoch",
+)  # fmt: skip
+
+
+def _date_part(part: str, value: str) -> str:
+    """date_part of a unit and a value: DuckDB's, which answers NULL of an infinite date or
+    timestamp (and of no finite value), guarded with PostgreSQL's answer there (REQ-2236). An
+    infinity's text is "infinity" or "-infinity", so its sign is read of it whatever its type."""
+    units = ", ".join(f"'{unit}'" for unit in _INFINITE_UNITS)
+    own = f"{_DATE_PART}({part}, {value})"
+    return (
+        f"CASE WHEN {part} IS NOT NULL AND {value} IS NOT NULL AND {own} IS NULL THEN "
+        f"CASE WHEN LOWER({part}) IN ({units}) THEN CASE WHEN CAST({value} AS TEXT) LIKE '-%' "
+        "THEN CAST('-Infinity' AS DOUBLE PRECISION) ELSE CAST('Infinity' AS DOUBLE PRECISION) END "
+        f"END ELSE {own} END"
+    )
+
+
 def _of_a_second(node: exp.Extract) -> bool:
     """Whether ``node`` reads a second (of a value that has one: PostgreSQL refuses a date's)."""
     part = node.this.this if isinstance(node.this, exp.Cast) else node.this
@@ -421,7 +444,7 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         exact = f"(CAST({micros} AS DECIMAL(20, 0)) * CAST(0.000001 AS DECIMAL(7, 6)))"
         written = exact if isinstance(node.this, exp.Var) else f"CAST({exact} AS DOUBLE PRECISION)"
     elif isinstance(node, exp.Extract) and not isinstance(node.this, exp.Var):
-        written = f"{_DATE_PART}({text(node.this)}, {text(node.expression)})"
+        written = _date_part(text(node.this), text(node.expression))
     elif isinstance(node, exp.Encode) and node.args.get("charset") is not None:
         written = _decoded(text(node.this), node.args["charset"], "encode")
     elif isinstance(node, exp.Decode) and node.args.get("charset") is not None:

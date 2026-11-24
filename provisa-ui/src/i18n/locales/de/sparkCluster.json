@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "Hier läuft und wird ein Spark-Skript validiert, wenn seine Quelle keinen eigenen Cluster nennt. Hat eine Quelle einen eigenen Cluster, wird immer dieser verwendet.",
+    "address": "Spark-Connect-Adresse",
+    "addressHelp": "Die Spark-Connect-Adresse des Clusters, zum Beispiel sc://spark.example.com:15002. Das Token gehört nicht hinein: Bewahren Sie es als Secret auf und nennen Sie es unten.",
+    "credential": "Token-Secret",
+    "credentialHelp": "Eine Secret-Referenz auf das Token, mit dem der Cluster aufgerufen wird, zum Beispiel ${secret:spark_token}. Leer lassen für einen Cluster ohne Token.",
+    "inUseOrg": "Quellen ohne eigenen Cluster verwenden diesen Standard ({{target}}).",
+    "inUseLocal": "Quellen ohne eigenen Cluster verwenden den lokalen Test-Cluster ({{target}}). Legen Sie einen Standard fest, um Ihren eigenen Cluster zu verwenden.",
+    "inUseNone": "Kein Spark-Cluster konfiguriert: Eine Quelle ohne eigenen Cluster kann erst laufen, wenn ein Standard festgelegt ist.",
+    "test": "Verbindung testen",
+    "tested": "Verbunden mit {{target}}: Spark {{version}}",
+    "saved": "Gespeichert",
+    "removed": "Entfernt",
+    "remove": "Standard entfernen"
+  }
+}

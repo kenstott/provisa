@@ -21,6 +21,7 @@
     "addToFavorites": "Ajouter aux favoris",
     "autoImputeOn": "L'inférence automatique des relations est activée. Cliquez pour la désactiver.",
     "autoImputeOff": "Imputer automatiquement les relations entre les nœuds visibles",
+    "relNotImputed": "{{type}} non inféré : {{error}}",
     "groupTooltip": "Grouper les nœuds par attribut (double-cliquez sur une enveloppe pour la réduire ; double-cliquez sur un nœud réduit pour le développer)",
     "groupPlaceholder": "⬡ groupe",
     "wrapCellText": "Retour à la ligne dans les cellules",

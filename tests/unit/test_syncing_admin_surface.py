@@ -78,6 +78,10 @@ class _TenantDb:
     def acquire(self):
         return self._db.acquire()
 
+    def advisory_lock(self, key: int):
+        # The org's publish lock (publishing.publish_lock_key), on the same store.
+        return self._db.advisory_lock(key)
+
 
 @pytest.fixture
 def surface(monkeypatch, control_plane):

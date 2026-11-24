@@ -10,6 +10,7 @@
     "pairing": "配对码",
     "pairingHint": "容器首次启动时在 \"pairing code:\" 后打印的那一行。只使用一次，不会保留。",
     "secretHint": "要使用的组织密钥。其值绝不在此处输入。",
-    "fixedHint": "由此连接器设置，无法更改。"
+    "fixedHint": "由此连接器设置，无法更改。",
+    "sparkClusterDefaultHint": "留空则使用组织的默认 Spark 集群（管理 > Spark 集群）。"
   }
 }
