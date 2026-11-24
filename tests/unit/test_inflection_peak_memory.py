@@ -28,9 +28,19 @@ from lemminflect.codecs.InflectionLUCodec import InflectionLUCodec
 from lemminflect.codecs.LemmaLUCodec import LemmaLUCodec
 from provisa.core import inflection
 
-scale = 1 if sys.platform == "darwin" else 1024  # ru_maxrss: bytes on macOS, KiB on Linux
+def status_kib(field):
+    with open("/proc/self/status") as f:
+        return next(int(line.split()[1]) for line in f if line.startswith(field + ":"))
+
 gc.collect()
-before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+if sys.platform == "linux":
+    # The import's peak is above the load's, so reset the high-water mark (VmHWM) to the
+    # current RSS and measure from there.
+    with open("/proc/self/clear_refs", "w") as f:
+        f.write("5")
+    before = status_kib("VmRSS") * 1024
+else:
+    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # bytes on macOS
 if sys.argv[1] == "stream":
     inflection._lemminflect_nouns()
 else:
@@ -38,8 +48,11 @@ else:
     del lemmas
     inflections = InflectionLUCodec.load(config.inflection_lu_fn)
     del inflections
-after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-print((after - before) * scale)
+if sys.platform == "linux":
+    after = status_kib("VmHWM") * 1024
+else:
+    after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+print(after - before)
 """
 
 
