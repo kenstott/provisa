@@ -136,9 +136,7 @@ async def test_list_native_tables_refuses_without_table_registration():
         new=AsyncMock(return_value=[]),
     ):
         with pytest.raises(PermissionError, match="table_registration"):
-            await tools.list_native_tables(
-                _state_without_capability(), "analyst", "mydb"
-            )
+            await tools.list_native_tables(_state_without_capability(), "analyst", "mydb")
 
 
 async def test_describe_native_table_refuses_without_table_registration():
