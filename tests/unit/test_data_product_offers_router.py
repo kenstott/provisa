@@ -37,6 +37,7 @@ def _state(**more):
         roles={"viewer": {"capabilities": []}, "owner": {"capabilities": []}},
         role_chains={"steward": ["steward", "owner"], "owner": ["owner"], "viewer": ["viewer"]},
         meta_roles={"meta:viewer+steward": ["viewer", "steward"]},
+        role_owner_rows={},
         **more,
     )
 

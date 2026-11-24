@@ -368,6 +368,7 @@ def _runtime_state(held=None):
             }
         },
         held_entitlements=held or {},
+        role_owner_rows={},
         entitlement_masks=MaskCache(),
         data_product_refs=(),
         glossary_term_refs=(),
