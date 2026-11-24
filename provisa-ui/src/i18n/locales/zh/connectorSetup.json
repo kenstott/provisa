@@ -2,8 +2,10 @@
   "connectorSetup": {
     "identity": "连接器 {{name}}，跟随 {{ref}}。",
     "missing": "请填写连接器的主机、端口、配对码以及所有必需的值。",
+    "missingNative": "请填写连接器所需的每个值。",
     "image": "镜像",
     "imageHint": "您的部署运行的镜像。Provisa 在连接时据此检查主机。",
+    "native": "在此服务器上运行，由 {{path}} 构建。无需主机或配对码。",
     "host": "主机",
     "hostHint": "运行该镜像的主机，即 Provisa 访问它所用的地址。",
     "port": "端口",

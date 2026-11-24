@@ -29,6 +29,7 @@ import functools
 
 from fastapi import APIRouter, Request, Response
 
+from provisa.auth.models import AuthIdentity
 from provisa.codesource import developer_services, services
 
 router = APIRouter(prefix="/admin/orgs/{org_id}/code-sources/{source_id}/services", tags=["admin"])
@@ -49,6 +50,11 @@ def _state():
     return state
 
 
+async def _require_services_token(state, org_id: str, token: str) -> tuple[AuthIdentity, str]:
+    """REQ-2106: authenticates the caller by their PAT; raises ServiceRefused on any bad token."""
+    return await developer_services.identify(state, org_id, token)
+
+
 @router.api_route("/{token}/{rest:path}", methods=_METHODS, include_in_schema=False)
 async def call(request: Request, org_id: str, source_id: str, token: str, rest: str) -> Response:
     from provisa.core.request_context import (
@@ -63,7 +69,7 @@ async def call(request: Request, org_id: str, source_id: str, token: str, rest: 
     try:
         state = _state()
         try:
-            identity, env = await developer_services.identify(state, org_id, token)
+            identity, env = await _require_services_token(state, org_id, token)
         except services.ServiceRefused as refused:
             return _response(services.refusal(service, refused))
         # REQ-1503: served from the token's environment, as the org routing binds every other

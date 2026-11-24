@@ -190,9 +190,10 @@ _SKIP_PATHS = {
 }
 
 
-#: REQ-2106 (amended 2026-11-22): a dev-mode code source's services, reached by its developer's
+#: REQ-2106 (amended 2026-11-24): a dev-mode code source's services, reached by its developer's
 #: personal access token. The services module sends no header, so the token is in the path, and
-#: the route resolves it itself (provisa.codesource.developer_services), refusing it by name.
+#: the route resolves it itself (provisa.codesource.developer_services) with an opaque refusal
+#: on any bad token (REQ-1263); the reason is recorded only in the audit trail.
 _DEVELOPER_SERVICES_PATH = re.compile(r"^/admin/orgs/[^/]+/code-sources/[^/]+/services/[^/]+/")
 
 
@@ -418,7 +419,10 @@ async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
 
 
 async def org_env_capabilities(  # REQ-1573
-    identity: object, org_id: str, claims: list[str] | None = None
+    identity: object,
+    org_id: str,
+    claims: list[str]
+    | None = None,  # object-ok: AuthIdentity or SimpleNamespace(user_id, roles) when claims override roles
 ) -> set[str] | None:
     """The capabilities an ENVIRONMENT gate reads for ``identity`` in ``org_id``: judged by that
     org's own PROD role definitions (REQ-1266) -- never another org's, and never by the copy an

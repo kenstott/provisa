@@ -2,8 +2,10 @@
   "connectorSetup": {
     "identity": "Connector {{name}}, volgt {{ref}}.",
     "missing": "Vul de host, poort en koppelcode van de connector in, en elke vereiste waarde.",
+    "missingNative": "Vul elke waarde in die de connector nodig heeft.",
     "image": "Image",
     "imageHint": "De image die uw deployment uitvoert. Provisa controleert de host hiermee bij het verbinden.",
+    "native": "Draait op deze server, gebouwd uit {{path}}. Een host of koppelcode is niet nodig.",
     "host": "Host",
     "hostHint": "De host die de image uitvoert, zoals Provisa die bereikt.",
     "port": "Poort",

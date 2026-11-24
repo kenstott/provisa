@@ -50,6 +50,7 @@ from typing import Any
 
 import httpx
 
+from provisa.codesource import native_connector
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.remote import Identity, RemoteWorker, new_identity, pair
 from provisa.codesource.worker import duckdb_bounds
@@ -636,12 +637,9 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
     from provisa.core.request_context import require_current_org
 
     join = mapping.pop("connector_join")
-    name, host, port, code = (join.get(k) for k in ("connector", "host", "port", "pairing_code"))
-    host = (host or "").strip()
-    if not name or not host or not code or not isinstance(port, int) or not 0 < port < 65536:
-        raise RemoteRefused(
-            "address", "a connector is joined by its name, host, port and pairing code"
-        )
+    name = join.get("connector")
+    if not name:
+        raise RemoteRefused("address", "a connector is joined by its name")
     row = await _connector(name)
     if row["language"] != source_type:
         raise RemoteRefused(
@@ -649,10 +647,33 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             f"connector {name} is a {row['language']} source, not a {source_type} one",
             connector=name,
         )
+    native = native_connector.is_native(row)
+    host, port, code = (join.get(k) for k in ("host", "port", "pairing_code"))
+    if native:
+        given = sorted(k for k in ("host", "port", "pairing_code") if join.get(k))
+        if given:
+            raise RemoteRefused(
+                "connector_native",
+                f"connector {name} runs on this server; it is joined by its name alone, not "
+                f"{', '.join(given)}",
+                connector=name,
+            )
+    else:
+        host = (host or "").strip()
+        if not host or not code or not isinstance(port, int) or not 0 < port < 65536:
+            raise RemoteRefused(
+                "address", "a connector is joined by its name, host, port and pairing code"
+            )
     _given_requires(row, mapping, name)
     script = _script_of(row, mapping, name)
     org_id = require_current_org()
-    labels = await _image_labels(state, org_id, name, row)
+    if native:
+        # REQ-2225 (amended 2026-11-24): a checkout's demo runs the connector's host itself, from
+        # connectors/spark, and pairs with it as with a host its operator runs.
+        started = await asyncio.to_thread(native_connector.start_for_join, org_id, source_id, row)
+        host, port, code, labels = started.host, started.port, started.pairing, started.labels
+    else:
+        labels = await _image_labels(state, org_id, name, row)
     _held(row["code_hash"], labels, name)
     runtime = labels.get("runtime")
     if runtime not in LANGUAGES[row["language"]].runtimes:
@@ -725,6 +746,8 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             "exports": exports,
             "manifest": kept_manifest,
             **({} if names is None else {"names": names}),
+            # REQ-2225: run by this server, started again from its state after a restart.
+            **({"native": native_connector.script_value(row)} if native else {}),
         },
     )
 
@@ -740,7 +763,12 @@ def worker_for(
 ) -> RemoteWorker:
     """A built source's worker: its remote host, dialled, its hello checked against the code hash
     and exports the source is pinned to. ``setup`` (REQ-2221) gives a host that has just started
-    its setup values."""
+    its setup values. A host this server runs (REQ-2225) is started again first when it is not
+    running."""
+    if remote.get("native"):
+        native_connector.ensure_running(
+            org_id, source_id, code_hash, remote["native"], int(remote["port"])
+        )
     return RemoteWorker(
         source_id,
         code_hash,
