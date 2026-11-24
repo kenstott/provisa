@@ -21,6 +21,7 @@
     "addToFavorites": "Agregar a favoritos",
     "autoImputeOn": "La inferencia automática de relaciones está activada. Haga clic para desactivarla.",
     "autoImputeOff": "Imputar automáticamente relaciones entre nodos visibles",
+    "relNotImputed": "No se infirió {{type}}: {{error}}",
     "groupTooltip": "Agrupar nodos por atributo (doble clic en un contorno para contraer; doble clic en un nodo contraído para expandir)",
     "groupPlaceholder": "⬡ agrupar",
     "wrapCellText": "Ajustar texto de celda",

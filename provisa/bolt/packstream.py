@@ -33,7 +33,7 @@ import struct
 from decimal import Decimal
 from typing import Any
 
-from provisa.executor.serialize import decimal_text
+from provisa.core.numeric_type import decimal_text
 
 
 # ── Struct tag constants ───────────────────────────────────────────────────────
