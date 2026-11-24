@@ -30,7 +30,6 @@ import {
   Group,
   Menu,
   Modal,
-  Stack,
   Table,
   Text,
   TextInput,
@@ -74,7 +73,7 @@ import { diffEditedColumns } from "./tables/columnDiff";
 import { namingConventionLabel } from "../hooks/useNamingConventions";
 import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
-import { SuggestProductModal, type SuggestTarget } from "./tables/SuggestProductModal";
+import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
@@ -118,7 +117,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
-import { domainToSqlName, relationName } from "../naming";
+import { domainToSqlName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
@@ -148,7 +147,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
   const listedNames = useListedNames(); // REQ-2153
-  const [suggestTarget, setSuggestTarget] = useState<SuggestTarget | null>(null); // REQ-2180
   const { relationships } = useAllRelationships();
   // REQ-2241: the open table and its section are the URL (`?table=<id>&section=<section>`): a link
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
@@ -1641,47 +1639,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               })()}
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
-              {!viewsOnly && listedNames.length > 0 && (
-                <Stack gap="0.25rem" py="sm" data-testid="tables-listed-names">
-                  <Text size="sm" fw={600}>
-                    {translate("tablesPage.listedElsewhere")}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {translate("tablesPage.listedElsewhereHint")}
-                  </Text>
-                  {listedNames.map((n) => (
-                    <Group key={relationName(n)} gap="xs" wrap="nowrap">
-                      <Text size="sm" style={{ fontFamily: "monospace" }}>
-                        {relationName(n)}: {n.columnNames.join(", ")}
-                      </Text>
-                      {/* REQ-2180: a listed table is not requested; its reader suggests a product. */}
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        onClick={() =>
-                          setSuggestTarget({
-                            domainId: n.domainId,
-                            tableName: n.tableName,
-                            domainTables: listedNames
-                              .filter((m) => m.domainId === n.domainId)
-                              .map((m) => m.tableName),
-                          })
-                        }
-                        data-testid={`suggest-product-${relationName(n)}`}
-                      >
-                        {translate("tablesPage.suggestProduct")}
-                      </Button>
-                    </Group>
-                  ))}
-                </Stack>
-              )}
+              {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
             </>
           )
         }
       >
         {panelBody}
       </SplitPane>
-      <SuggestProductModal target={suggestTarget} onClose={() => setSuggestTarget(null)} />
       <Modal
         opened={regenTable !== null}
         onClose={() => setRegenTable(null)}
