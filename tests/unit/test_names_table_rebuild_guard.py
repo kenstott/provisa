@@ -223,17 +223,41 @@ def test_only_the_worker_that_made_the_change_writes_the_names_table(
         async def acquire(self) -> Any:
             yield object()
 
+    from provisa.compiler.names_table import Estate, NameRow, NamesTable
+    from provisa.core.request_context import current_org
+    from provisa.federation import replica_routing
+
+    async def _read_estate(_conn: Any, *, org_id: Any, engine: str, replicas: Any) -> Estate:
+        return Estate(org_id, engine, replicas, {}, {}, {}, {})
+
+    async def _no_replicas(_engine: Any, _state: Any) -> list[Any]:
+        return []
+
     monkeypatch.setattr(_mn, "write_names_table", _write_names_table)
-    monkeypatch.setattr(app_mod, "state", SimpleNamespace(model_db=_Db()))
+    # REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): the step reads the estate beside the
+    # model's names; this model has no replica, export or term.
+    monkeypatch.setattr(_mn, "read_estate", _read_estate)
+    monkeypatch.setattr(replica_routing, "replica_tables", _no_replicas)
+    engine = SimpleNamespace(name="duckdb", backend=None)
+    monkeypatch.setattr(
+        app_mod,
+        "state",
+        SimpleNamespace(model_db=_Db(), federation_engine=SimpleNamespace(engine=engine)),
+    )
+    row = NameRow("command", "top", "graphql_field", "top", "top", "command top")
 
     steps = app_mod._after_answer_steps(
         runtime=SimpleNamespace(role_build_inputs={}),  # type: ignore[arg-type]
         env=PROD,
         announce=announce,
         checked={},
-        names=SimpleNamespace(rows=("a row",)),  # type: ignore[arg-type]
+        names=NamesTable(rows=(row,)),
         build=SimpleNamespace(),  # type: ignore[arg-type]
     )
-    asyncio.run(steps[rebuild_trace.NAMES_TABLE]())
+    token = current_org.set("org-a")
+    try:
+        asyncio.run(steps[rebuild_trace.NAMES_TABLE]())
+    finally:
+        current_org.reset(token)
 
     assert len(written) == writes

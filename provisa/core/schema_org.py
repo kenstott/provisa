@@ -1301,6 +1301,10 @@ model_names = Table(
     Column("table_id", Integer),
     Column("is_alias", Boolean, nullable=False, server_default=false()),
     Column("warnings", JSON, nullable=False, server_default="[]"),
+    # REQ-194 (A COLUMN'S PRIME GROUNDED TERM): a column's owning Property term and its ontology
+    # name (REQ-2163), on each of the column's rows; NULL on every other row.
+    Column("prime_term", Text),
+    Column("prime_term_ontology_name", Text),
 )
 
 # REQ-194: the name clashes the last model build refused, each naming both objects.

@@ -49,7 +49,16 @@ def _refusal(refused: SparkClusterRefused) -> ApiError:
 
 
 async def _in_use(org_id: str) -> dict:
-    """What a source naming no cluster runs on now."""
+    """What a source naming no cluster runs on now. The local test cluster is shown, never
+    started: viewing the tab does not download Spark."""
+    if await spark_cluster.read(_admin_pool(), org_id) is None:
+        local = spark_cluster.local_test_target()
+        if local is not None:
+            return {
+                "origin": spark_cluster.ORIGIN_LOCAL,
+                "label": spark_cluster.LOCAL_TEST_LABEL,
+                "target": local,
+            }
     try:
         found = await spark_cluster.resolved(_admin_pool(), org_id, None)
     except SparkClusterRefused as refused:

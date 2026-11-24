@@ -25,6 +25,7 @@ from provisa.core import command_bindings
 from provisa.core.ir_arrays import ArrayType
 from provisa.core.numeric_type import numeric_size
 from provisa.compiler.schema_gen import (
+    RoleTables,
     SchemaInput,
     _assign_names,
     _build_domain_alias_map,
@@ -405,6 +406,8 @@ def generate_proto(
     si: SchemaInput,
     field_numbers: "FieldNumberAllocator | None" = None,
     authoritative: bool = False,
+    *,
+    found: RoleTables | None = None,
 ) -> str:  # REQ-039, REQ-045, REQ-051, REQ-1903
     """Generate a .proto file content string for a role's visible schema.
 
@@ -422,19 +425,19 @@ def generate_proto(
     # REQ-2154: a role served no table is not refused as such: its proto has no table's message
     # or RPC, and keeps the service's command and resolve RPCs, as its GraphQL schema does.
     # REQ-2190: what a SQL catalog reads has no message: a root is not all a table has here.
+    # ``found``: ``si``'s tables already found and named for the role's other parts (role_tables).
     tables = [
         t
-        for t in _build_visible_tables(si)
+        for t in (found.served_copies() if found is not None else _build_visible_tables(si))
         if (t.domain_id, t.table_name) not in SQL_CATALOG_TABLES
     ]
-
-    domain_alias_map = _build_domain_alias_map(si.domains)
-    _assign_names(
-        tables,
-        si.naming_rules,
-        domain_prefix=si.domain_prefix,
-        domain_alias_map=domain_alias_map,
-    )
+    if found is None:
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=_build_domain_alias_map(si.domains),
+        )
     table_lookup = {t.table_id: t for t in tables}
     visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
     # REQ-1929: each table relationship is a field of its source's {Type} message named by its

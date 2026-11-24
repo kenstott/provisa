@@ -64,45 +64,45 @@ legs:
   # --- containers the integration tests already start (docker-compose.test.yml) -------------
   - engine: clickhouse-server
     lane: free
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server@sha256:85b97f63dcfff47790d26bb5d5801637aaddb2b93e5e9aee27a686c2fb2b9916  # clickhouse/clickhouse-server:24.3
     service: clickhouse
     engine-url: clickhouse://default:provisa@127.0.0.1:8123/default
     source-host: runner
   - engine: mysql
     lane: free
-    image: mysql:8.4
+    image: mysql@sha256:8c233bad33d520a7aae1c1e619c3a9775f4a1ba2d463d692fada04ec7f40be00  # mysql:8.4
     service: mysql
     engine-url: mysql+pymysql://root:provisa@127.0.0.1:3307/provisa
     ready-sql: SELECT 1
   - engine: mariadb
     lane: free
-    image: mariadb:11
+    image: mariadb@sha256:e1d5495f445654134f226f55a41ce0da227116f6f27f283101f405c794d841fc  # mariadb:11
     service: mariadb
     engine-url: mariadb+pymysql://root:provisa@127.0.0.1:3306/provisa
     ready-sql: SELECT 1
   - engine: tidb
     lane: free
-    image: pingcap/tidb:latest
+    image: pingcap/tidb@sha256:49159e21bdb8671cca48394ab4b6dc4e92527a775d24daf5a4b4c8d6f175a9fe  # pingcap/tidb:latest
     service: tidb
     engine-url: mysql+pymysql://root@127.0.0.1:4000/test
     ready-sql: SELECT 1
   - engine: mssql
     lane: free
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f  # mcr.microsoft.com/mssql/server:2022-latest
     service: sqlserver
     engine-url: mssql+pyodbc://sa:Provisa_2026!@127.0.0.1:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
     ready-sql: SELECT 1
     odbc: true
   - engine: oracle
     lane: free
-    image: gvenzl/oracle-free:slim
+    image: gvenzl/oracle-free@sha256:48a3d9db7fa7c2a2fdbdf5fff7502c93e807349a2d625718fe61668cc3daa844  # gvenzl/oracle-free:slim
     service: oracle
     engine-url: oracle+oracledb://system:provisa@127.0.0.1:1521/?service_name=FREEPDB1
     ready-sql: SELECT 1 FROM DUAL
     wait: 900
   - engine: firebird
     lane: free
-    image: jacobalberty/firebird:v4
+    image: jacobalberty/firebird@sha256:aebff0bb0b7833d38608c707b8d183356e811b864b790e88232c10159d8c5b81  # jacobalberty/firebird:v4
     service: firebird
     engine-url: firebird+firebird://provisa:provisa@127.0.0.1:3050//firebird/data/test.fdb
     ready-sql: SELECT 1 FROM RDB$DATABASE
@@ -110,20 +110,20 @@ legs:
     apt: libfbclient2
   - engine: cockroachdb
     lane: free
-    image: cockroachdb/cockroach:v24.1.0
+    image: cockroachdb/cockroach@sha256:cc4e3ee67104d6f6434c81b555d69d4eb319f8aa0c5495931ffbe9273adfc4b5  # cockroachdb/cockroach:v24.1.0
     service: cockroachdb
     engine-url: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
     ready-sql: SELECT 1
     extras: dev cockroachdb
   - engine: yugabytedb
     lane: free
-    image: yugabytedb/yugabyte:2026.1.1.1-b2
+    image: yugabytedb/yugabyte@sha256:3926eedf0ff4b99426fbff533128ff16635ed5697a5cf086dde4fafec28e6f75  # yugabytedb/yugabyte:2026.1.1.1-b2
     service: yugabytedb
     engine-url: postgresql+psycopg2://yugabyte@127.0.0.1:5433/yugabyte
     ready-sql: SELECT 1
   - engine: greenplum
     lane: free
-    image: datagrip/greenplum:6.8
+    image: datagrip/greenplum@sha256:2e3cd903a69d41514e86ba2ce8929fa386e07b09e19aadfc61da3fa4550af10f  # datagrip/greenplum:6.8
     service: greenplum
     # docker-compose.test.yml publishes it on 15432 by default, where the workflow's PostgreSQL
     # service already listens.
@@ -133,7 +133,7 @@ legs:
     wait: 900
   - engine: exasol
     lane: free
-    image: exasol/docker-db:latest
+    image: exasol/docker-db@sha256:7159d8f8ac0278a203a02260e4e6f86e06f3a987dac2f6c23bdcb1ad3bce5f76  # exasol/docker-db:latest
     service: exasol
     engine-url: exa+websocket://sys:exasol@127.0.0.1:8563/PROVISA?SSLCertificate=SSL_VERIFY_NONE
     setup-url: exa+websocket://sys:exasol@127.0.0.1:8563?SSLCertificate=SSL_VERIFY_NONE
@@ -145,21 +145,21 @@ legs:
   # --- containers started for this run alone (docker-compose.test.yml, no test of their own) --
   - engine: monetdb
     lane: free
-    image: monetdb/monetdb:latest
+    image: monetdb/monetdb@sha256:a71e6e8c8402beadc51aebf944b465ee5b185c7ae4a9e6808b5d9133ee921786  # monetdb/monetdb:latest
     service: monetdb
     engine-url: monetdb://monetdb:monetdb@127.0.0.1:50000/provisa
     ready-sql: SELECT 1
     extras: dev monetdb
   - engine: opengauss
     lane: free
-    image: opengauss/opengauss:7.0.0-RC2.B015
+    image: opengauss/opengauss@sha256:67f83a8136117cf624a78ec76736d7189db8a536b70dc3d974f168ca2af75843  # opengauss/opengauss:7.0.0-RC2.B015
     service: opengauss
     engine-url: opengauss://gaussdb:Provisa_2026!@127.0.0.1:15433/postgres
     ready-sql: SELECT 1
     extras: dev opengauss
   - engine: db2
     lane: free
-    image: icr.io/db2_community/db2:11.5.9.0
+    image: icr.io/db2_community/db2@sha256:77095d4e04cf4448c0257086afcb2c166193d718dc33441da3b949f97e21efd5  # icr.io/db2_community/db2:11.5.9.0
     service: db2
     engine-url: db2+ibm_db://db2inst1:provisa@127.0.0.1:50001/PROVISA
     ready-sql: SELECT 1 FROM SYSIBM.SYSDUMMY1

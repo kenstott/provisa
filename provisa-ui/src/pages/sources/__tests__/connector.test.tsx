@@ -299,3 +299,45 @@ describe("ConnectorSetupFields", () => {
     });
   });
 });
+
+// REQ-2225 (amended 2026-11-24): a checkout's demo runs the Spark connector itself.
+describe("a connector this server runs", () => {
+  const NATIVE: Connector = {
+    ...CRM,
+    name: "spark",
+    git: "/work/provisa",
+    image: "",
+    digest: "",
+    requires: [
+      { name: "script", multiline: true },
+      { name: "cluster", org_default: "spark_cluster" },
+    ],
+    native: true,
+  };
+  const fields = { [requiredField("script")]: "print(1)" };
+
+  it("asks for no host, port or pairing code", () => {
+    expect(missingConnectorFields({}, NATIVE)).toEqual([requiredField("script")]);
+    expect(missingConnectorFields(fields, NATIVE)).toEqual([]);
+  });
+
+  it("is joined by its name alone", () => {
+    expect(JSON.parse(connectorMappingJson(fields, NATIVE))).toEqual({
+      connector_join: { connector: "spark" },
+      secrets: {},
+      settings: { script: "print(1)" },
+    });
+  });
+
+  it("shows where it runs from instead of an image and a host", () => {
+    renderInForm(
+      <ConnectorSetupFields connector={NATIVE} fields={fields} setFields={() => undefined} />,
+    );
+    expect(screen.getByTestId("connector-native").textContent).toContain("/work/provisa");
+    expect(screen.queryByTestId("connector-image")).toBeNull();
+    expect(screen.queryByTestId("connector-host")).toBeNull();
+    expect(screen.queryByTestId("connector-port")).toBeNull();
+    expect(screen.queryByTestId("connector-pairing")).toBeNull();
+    expect(screen.getByTestId("connector-require-script")).toBeTruthy();
+  });
+});

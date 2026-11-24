@@ -114,6 +114,11 @@ _VALIDATE_PROGRAM = (
     "importlib.import_module('host').load(sys.argv[2], sys.argv[3])\n"
     f"sys.exit(importlib.import_module(sys.argv[3] + '.{VALIDATOR}').main())\n"
 )
+#: REQ-2225: the address the front listens on. An image's front serves its container's port on
+#: every interface; a native host on the demo's machine is started on loopback alone
+#: (codesource/native_connector.py), so it is never reachable from the network.
+BIND_ENV = "PROVISA_FRONT_BIND"
+ALL_INTERFACES = ""
 
 
 # -- frames -------------------------------------------------------------------------------------
@@ -980,6 +985,7 @@ class Front(socketserver.ThreadingTCPServer):
         bounds: Bounds,
         script: Script | None = None,
         worker_argv: list[str] | None = None,
+        bind: str = ALL_INTERFACES,
     ) -> None:
         self.identity = identity
         self.worker = worker
@@ -994,7 +1000,7 @@ class Front(socketserver.ThreadingTCPServer):
                 names.update(json.loads((identity.state / SCRIPT_NAMES).read_text()))
             if script.held and identity.paired:
                 self._serve_script(script.read_tags())
-        super().__init__(("", port), _Handler)
+        super().__init__((bind, port), _Handler)
 
     def _serve_script(self, document: dict) -> None:
         """REQ-2225: start the worker on the script; a script that could not be read has no
@@ -1159,6 +1165,9 @@ def main(argv: list[str]) -> int:
         bounds=bounds,
         script=script,
         worker_argv=worker_argv,
+        # REQ-2225: an image host sets no bind and serves every interface; a native host sets
+        # loopback. The default is that design, not a recovery from a missing value.
+        bind=os.environ.get(BIND_ENV, ALL_INTERFACES),
     )
 
     def shut_down() -> None:

@@ -1557,6 +1557,10 @@ CREATE TABLE IF NOT EXISTS model_names (
     table_id      INTEGER,
     is_alias      BOOLEAN NOT NULL DEFAULT FALSE,
     warnings      JSONB NOT NULL DEFAULT '[]',
+    -- REQ-194 (A COLUMN'S PRIME GROUNDED TERM): a column's owning Property term and its ontology
+    -- name (REQ-2163), on each of the column's rows; NULL on every other row.
+    prime_term    TEXT,
+    prime_term_ontology_name TEXT,
     PRIMARY KEY (object_kind, object_id, surface)
 );
 
