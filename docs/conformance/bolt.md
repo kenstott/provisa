@@ -2,7 +2,7 @@
 
 **Suite:** neo4j-python-driver integration tests 6.2.0 (tests/integration).
 
-**Pass rate:** 100.0%: 286 passed, 9 skipped by design, 0 failed, of 295 cases.
+**Pass rate:** 100.0%: 286 passed, 9 skipped by design, 0 documented limit, 0 failed, of 295 cases.
 
 <!-- conformance-results:begin -->
 ## Skipped by design

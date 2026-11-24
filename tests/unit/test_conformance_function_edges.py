@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from provisa.transpiler.polyfill import Feature, Grid, Limitation, Rule, Side
+from provisa.transpiler.polyfill import Feature, Grid, Limitation, Refusal, Rule, Side
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))
@@ -47,6 +47,8 @@ TRUNC = Function(
 
 #: A bound as a grid row's limitation states one.
 STATED = ("Exact from 1900 to 2299; a value outside raises 0A000 (f() has no exact form).",)
+#: The message of the error ``STATED`` says its form raises.
+STATED_MESSAGE = "f() has no exact form"
 
 
 def _ok(*values: Any, oid: int = 23) -> dict[str, Any]:
@@ -72,12 +74,12 @@ def _route(_sql: str) -> str:
     return "PASS_THROUGH"
 
 
-def _no_bound(_statement: str, _engine: str) -> tuple[str, ...]:
+def _no_bound(_statement: str, _engine: str) -> tuple[Limitation, ...]:
     return ()
 
 
-def _bound(_statement: str, _engine: str) -> tuple[str, ...]:
-    return STATED
+def _bound(_statement: str, _engine: str) -> tuple[Limitation, ...]:
+    return tuple(Limitation(text) for text in STATED)
 
 
 def _measured(
@@ -144,6 +146,58 @@ def test_the_table_holds_each_kind_of_edge_the_measure_promises():
     intervals = {e.kind for e in edges.EDGES["interval"]}
     assert {edges.ZERO, edges.NEGATIVE} <= intervals
     assert "'{}'" in {e.literal for e in edges.EDGES["jsonb"]}
+
+
+_SHAPES = ("point", "line", "lseg", "box", "path", "polygon", "circle")
+
+
+@pytest.mark.parametrize("shape", _SHAPES)
+def test_every_geometric_shape_has_a_nan_and_an_infinite_edge(shape: str):
+    literals = [e.literal for e in edges.EDGES[shape]]
+    assert any("NaN" in lit for lit in literals) and any("Infinity" in lit for lit in literals)
+
+
+def test_a_two_shape_function_reaches_both_shapes_nan_and_infinite_edges():
+    distance = Function(
+        "dist_pb",
+        "point, box",
+        argtypes=("point", "box"),
+        volatility="i",
+        rettype="double precision",
+    )
+    planned = [c.edge for c in support.edge_calls(distance, "Geometric")]
+    assert planned.count("point special") == 2 and planned.count("box special") == 2
+
+
+def _regexp_overloads() -> list[Function]:
+    out = []
+    for key, given in support.ARG_VALUES.items():
+        name, _, args = key.partition("(")
+        if name.startswith("regexp_") and args and 1 in given:
+            argtypes = tuple(a.strip() for a in args.rstrip(")").split(","))
+            out.append(Function(name, ", ".join(argtypes), argtypes=argtypes, volatility="i"))
+    return out
+
+
+@pytest.mark.parametrize("fn", _regexp_overloads(), ids=lambda f: f"{f.name}({f.overload})")
+def test_every_regexp_overload_is_called_with_an_empty_pattern(fn: Function):
+    planned = support.edge_calls(fn, "String")
+    assert len(planned) <= edges.EDGE_CALLS_MAX
+    # The pattern is the second argument: ''::text there, the first sample's text before it.
+    patterns = [c.sql.split(", ")[1] for c in planned if c.edge == "text empty"]
+    assert "''::text" in patterns, [c.sql for c in planned]
+
+
+def test_the_empty_pattern_is_the_first_edge_call_of_a_regexp():
+    fn = Function(
+        "regexp_instr",
+        "text, text, integer, integer, integer, text, integer",
+        argtypes=("text", "text", "integer", "integer", "integer", "text", "integer"),
+        volatility="i",
+    )
+    first = support.edge_calls(fn, "String")[0]
+    assert first.edge == "text empty"
+    assert first.sql.startswith("SELECT pg_catalog.\"regexp_instr\"('abc'::text, ''::text, ")
 
 
 def test_a_one_argument_function_gets_its_types_edges_and_no_second_null():
@@ -252,7 +306,8 @@ def test_raising_the_same_class_postgresql_raises_agrees():
 
 def test_raising_where_postgresql_answers_is_within_a_stated_bound():
     greatest = _edge(ABS, "greatest")
-    entry = _measured({greatest: _ok("2147483647")}, {greatest: _raises("0A000")}, bounds=_bound)
+    raised = _raises("0A000", STATED_MESSAGE)
+    entry = _measured({greatest: _ok("2147483647")}, {greatest: raised}, bounds=_bound)
     assert entry["outcome"] == support.WITHIN_BOUND
     assert entry["detail"]["edge"] == "integer greatest"
     assert entry["bound_stated"] == list(STATED)
@@ -263,7 +318,8 @@ def test_raising_where_postgresql_answers_is_within_a_stated_bound():
 
 def test_raising_another_class_than_postgresql_is_within_a_stated_bound():
     past = _edge(ABS, "past the type")
-    entry = _measured({past: _raises("22003")}, {past: _raises("0A000")}, bounds=_bound)
+    raised = _raises("0A000", STATED_MESSAGE)
+    entry = _measured({past: _raises("22003")}, {past: raised}, bounds=_bound)
     assert entry["outcome"] == support.WITHIN_BOUND
     assert entry["detail"]["postgres"] == "22003 ERROR:  boom"
 
@@ -306,9 +362,62 @@ def test_an_overload_failing_its_samples_gets_no_edge_calls():
 
 
 def test_the_stated_raises_are_read_from_the_limitation_text():
-    assert edges.stated_raises(("a literal outside raises 0A000 (x)",)) == ["0A000"]
-    assert edges.stated_raises(("past its range raises PostgreSQL's 22003",)) == ["22003"]
-    assert edges.stated_raises(("Of an interval, refused by name.",)) == []
+    def raises(text: str) -> list[str]:
+        return edges.stated_raises((Limitation(text),))
+
+    assert raises("a literal outside raises 0A000 (x)") == ["0A000"]
+    assert raises("past its range raises PostgreSQL's 22003") == ["22003"]
+    assert raises("Of an interval, refused by name.") == []
+
+
+def test_a_limitation_states_each_error_its_sqlstate_and_its_message_where_given():
+    text = (
+        "Of more than 38 digits raises 0A000 (numeric_in() of a value of more than 38 digits "
+        "has no exact form on clickhouse); past the type it raises 22003."
+    )
+    assert edges.bound_errors(Limitation(text)) == (
+        edges.StatedError(
+            "0A000",
+            "numeric_in() of a value of more than 38 digits has no exact form on clickhouse",
+        ),
+        edges.StatedError("22003"),
+    )
+    refused = Limitation("Refused.", Refusal("0A000", "f does not read this value"))
+    assert edges.stated_errors(refused) == (
+        edges.StatedError("0A000", "f does not read this value"),
+    )
+    assert edges.bound_errors(refused) == ()
+
+
+def test_a_limitation_excuses_only_its_own_errors():
+    lim = Limitation(STATED[0])
+    assert edges.excuses(lim, {"sqlstate": "0A000", "error": f"ERROR:  {STATED_MESSAGE}\nLINE 1"})
+    assert not edges.excuses(lim, {"sqlstate": "0A000", "error": "ERROR:  boom"})
+    assert not edges.excuses(lim, {"sqlstate": "22003", "error": f"ERROR:  {STATED_MESSAGE}"})
+    alone = Limitation("Past the type it raises 22003.")
+    assert edges.excuses(alone, {"sqlstate": "22003", "error": "ERROR:  anything"})
+
+
+def test_an_edge_raise_no_limitation_of_the_row_states_is_an_error_not_within_bound():
+    greatest = _edge(ABS, "greatest")
+    entry = _measured({greatest: _ok("2147483647")}, {greatest: _raises("0A000")}, bounds=_bound)
+    assert entry["outcome"] == "error" and entry["error_at_edge"] is True
+    assert entry["detail"]["unstated"] == (
+        "it raises 0A000 'boom' at an edge value; no limitation of its grid row on clickhouse "
+        "states that error"
+    )
+
+
+def test_an_edge_raise_the_grid_states_of_the_values_own_reading_is_within_bound():
+    """numeric_in() of more than 38 digits is the ClickHouse numeric input row's stated error: a
+    call reading such a literal is within its bound whatever its own row states."""
+    message = "numeric_in() of a value of more than 38 digits has no exact form on clickhouse"
+    assert edges.stated_elsewhere("clickhouse", {"sqlstate": "0A000", "error": message})
+    greatest = _edge(ABS, "greatest")
+    raised = _raises("0A000", message)
+    entry = _measured({greatest: _ok("2147483647")}, {greatest: raised}, bounds=_bound)
+    assert entry["outcome"] == support.WITHIN_BOUND
+    assert entry["bound_raised"] is False
 
 
 def test_the_grid_states_a_bound_of_a_call_as_the_translator_reads_it():
@@ -398,8 +507,10 @@ def test_the_polyfill_check_holds_within_bound_and_fails_a_bound_never_raised():
         }
         return check.checked(run, grid)[0].verdict
 
-    assert verdict({"outcome": support.WITHIN_BOUND, "bound_raised": True}) == check.HOLDS
-    never = {"outcome": "pass", "bound_raised": False, "bound_sqlstates": ["0A000"]}
+    raised = {"sqlstate": "0A000", "error": f"ERROR:  {STATED_MESSAGE}"}
+    within = {"outcome": support.WITHIN_BOUND, "edges": {"calls": 4}, "edge_raised": [raised]}
+    assert verdict(within) == check.HOLDS
+    never = {"outcome": "pass", "edges": {"calls": 4}, "bound_raised": False}
     assert verdict(never) == check.FAILS
 
 
