@@ -28,7 +28,14 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-_IMAGE = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview"
+# Pinned by digest: the spike records what one emulator build answers, so the image must not move.
+# vnext-preview floats; on 2026-11-23 it moved to vnext-EN20261123, which answers FullTextContains
+# and FullTextScore with "InternalServerError: Internal error occurred (-2147418113)" instead of the
+# parse error asserted below. This digest is vnext-EN20261117pre.
+_IMAGE = (
+    "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:"
+    "11b42b669436fbbe00b33a58e9317dcc9f0cb23ed3196b0cbb1860e26527352c"
+)
 # The emulator's published, well-known account key (not a secret).
 _KEY = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
 _DOCS = [
