@@ -16,6 +16,7 @@ install the connector) to enable.
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 
 import pytest
 
@@ -30,6 +31,7 @@ _HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
 pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*_ENV)}"))
 
 from provisa.executor.pool import SourcePool  # noqa: E402
+from provisa.executor.result import is_arrow  # noqa: E402
 
 from tests.integration.live_teardown import run_name  # noqa: E402
 
@@ -69,9 +71,11 @@ def seeded():
             cur.execute(f"CREATE DATABASE IF NOT EXISTS {_DB}")
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_DB}.{_SCHEMA}")
             cur.execute(
-                f"CREATE OR REPLACE TABLE {_DB}.{_SCHEMA}.{_TABLE} (id NUMBER, name STRING)"
+                f"CREATE OR REPLACE TABLE {_DB}.{_SCHEMA}.{_TABLE} (id NUMBER, name STRING, price NUMBER(10,2))"
             )
-            cur.execute(f"INSERT INTO {_DB}.{_SCHEMA}.{_TABLE} VALUES (1,'a'),(2,'b'),(3,'c')")
+            cur.execute(
+                f"INSERT INTO {_DB}.{_SCHEMA}.{_TABLE} VALUES (1,'a',1.50),(2,'b',NULL),(3,'c',30.25)"
+            )
         finally:
             cur.close()
         yield f"{_DB}.{_SCHEMA}.{_TABLE}"
@@ -108,9 +112,16 @@ async def test_snowflake_named_source_reads_through_source_pool(seeded):
     assert pool.has(_SID)
     assert pool.dialect_for(_SID) == "snowflake"
     driver = pool.get(_SID)
-    result = await driver.execute(f"SELECT id, name FROM {seeded} ORDER BY id")
-    assert result.column_names == ["ID", "NAME"]  # Snowflake upper-cases unquoted identifiers
-    assert result.rows == [(1, "a"), (2, "b"), (3, "c")]
+    result = await driver.execute(f"SELECT id, name, price FROM {seeded} ORDER BY id")
+    # REQ-2194: read through the connector's Arrow fetch, handed on as the Arrow table.
+    assert is_arrow(result)
+    assert result.column_names == ["ID", "NAME", "PRICE"]  # unquoted identifiers upper-cased
+    assert result.rows == [
+        (1, "a", Decimal("1.50")),
+        (2, "b", None),
+        (3, "c", Decimal("30.25")),
+    ]
+    assert all(isinstance(r[2], Decimal) for r in result.rows if r[2] is not None)
     await driver.close()
 
 
