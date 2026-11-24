@@ -200,7 +200,9 @@ def _data_quality_facet(table: TableAsset, assertions: list[Any]) -> dict[str, A
     Carries what the spec facet has no room for: the checker and its dialect's own severity, the
     authored definition, the dataset the outcomes land in, and the last run's status in full —
     including ``never_run`` for a contract registered but not yet scanned, and the error/skipped
-    states that reached no verdict. A consumer that reads only ``dataQualityAssertions`` sees the
+    states that reached no verdict, and ``unreadable`` with the refusal's ``reason`` for a
+    results table the publishing role could not read (REQ-392; it has no ``success``, so the spec
+    facet omits it). A consumer that reads only ``dataQualityAssertions`` sees the
     passes and failures; one that reads this too can tell an unchecked column from a clean one.
     """
     return _custom_facet(
