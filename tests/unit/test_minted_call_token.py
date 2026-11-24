@@ -435,7 +435,7 @@ def test_a_call_hands_its_code_what_it_reads_with_and_the_token_ends_with_it(db,
     store = MintedTokenStore(db)
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, payload, remote=None):
+        async with table_reads.readable(_state(db), _SESSION, payload, remote=None, local="pgwire"):
             connection = payload["orders"]["connection"]
             assert await store.resolve(connection["password"], "call-9") is not None
         return connection, await store.resolve(connection["password"], "call-9")
@@ -449,7 +449,9 @@ def test_a_call_hands_its_code_what_it_reads_with_and_the_token_ends_with_it(db,
 
 def test_a_call_with_no_table_mints_nothing(db, port_set):
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, {"floor": 1}, remote=None):
+        async with table_reads.readable(
+            _state(db), _SESSION, {"floor": 1}, remote=None, local="pgwire"
+        ):
             pass
 
     _run(go())
@@ -459,7 +461,9 @@ def test_a_remote_host_is_given_the_deployments_address(db, port_set):
     payload = _payload()
 
     async def go():
-        async with table_reads.readable(_state(db, tls=True), _SESSION, payload, remote=_GO_HOST):
+        async with table_reads.readable(
+            _state(db, tls=True), _SESSION, payload, remote=_GO_HOST, local=None
+        ):
             return dict(payload["orders"]["connection"])
 
     connection = _run(go())
@@ -470,7 +474,7 @@ def test_a_remote_host_is_given_the_deployments_address(db, port_set):
 def test_a_remote_hosts_token_never_crosses_the_network_in_the_clear(db, port_set):
     async def go():
         async with table_reads.readable(
-            _state(db, tls=False), _SESSION, _payload(), remote=_GO_HOST
+            _state(db, tls=False), _SESSION, _payload(), remote=_GO_HOST, local=None
         ):
             pass
 
@@ -489,7 +493,7 @@ def test_a_python_remote_host_is_given_the_flight_address_and_a_token_that_ends_
 
     async def go():
         state = _state(db, listening=False, flight="tls")
-        async with table_reads.readable(state, _SESSION, payload, remote=_PYTHON_HOST):
+        async with table_reads.readable(state, _SESSION, payload, remote=_PYTHON_HOST, local=None):
             given = dict(payload["orders"]["flight"])
             call = await store.resolve(given["token"], given["call"])
         return given, call, await store.resolve(given["token"], given["call"])
@@ -506,7 +510,9 @@ def test_a_python_remote_host_is_given_the_flight_address_and_a_token_that_ends_
 def test_a_python_remote_hosts_token_never_crosses_the_network_in_the_clear(db, port_set):
     async def go():
         state = _state(db, flight="clear")
-        async with table_reads.readable(state, _SESSION, _payload(), remote=_PYTHON_HOST):
+        async with table_reads.readable(
+            state, _SESSION, _payload(), remote=_PYTHON_HOST, local=None
+        ):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="PROVISA_FLIGHT_CERT"):
@@ -515,7 +521,9 @@ def test_a_python_remote_hosts_token_never_crosses_the_network_in_the_clear(db, 
 
 def test_no_flight_server_refuses_a_python_remote_host_by_the_setting(db, port_set):
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, _payload(), remote=_PYTHON_HOST):
+        async with table_reads.readable(
+            _state(db), _SESSION, _payload(), remote=_PYTHON_HOST, local=None
+        ):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="server.flight_port"):
@@ -531,29 +539,97 @@ def test_a_loopback_host_name_refuses_a_python_remote_host(db, monkeypatch):
 
     async def go():
         state = _state(db, flight="tls")
-        async with table_reads.readable(state, _SESSION, _payload(), remote=_PYTHON_HOST):
+        async with table_reads.readable(
+            state, _SESSION, _payload(), remote=_PYTHON_HOST, local=None
+        ):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="set server.hostname"):
         _run(go())
 
 
-def test_a_local_python_worker_still_reads_over_its_sandboxes_one_port(db, port_set):
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_a_local_python_worker_reads_through_a_flight_listener_minted_for_the_call(db, monkeypatch):
+    """REQ-2226: a local worker whose host reads over Flight is given a loopback listener of the
+    configured block, opened for the call and closed when it ends; no pgwire listener is named."""
+    port = _free_port()
+    monkeypatch.setattr(
+        settings_registry,
+        "value",
+        {
+            "server.minted_pgwire_port": 6543,
+            "server.minted_flight_port": port,
+            "server.minted_flight_ports": 1,
+        }.__getitem__,
+    )
     payload = _payload()
 
     async def go():
-        async with table_reads.readable(_state(db, flight="tls"), _SESSION, payload, remote=None):
-            return dict(payload["orders"]["connection"])
+        async with table_reads.readable(_state(db), _SESSION, payload, remote=None, local="flight"):
+            given = dict(payload["orders"]["flight"])
+            with socket.create_connection(("127.0.0.1", port), timeout=5):
+                pass  # listening for the call
+        return given
 
-    assert _run(go())["port"] == 6543
-    assert "flight" not in payload["orders"]
+    given = _run(go())
+    assert given["uri"] == f"grpc://127.0.0.1:{port}"
+    assert given["call"] == "call-9"
+    assert "connection" not in payload["orders"]
+    with pytest.raises(OSError):  # closed with the call
+        socket.create_connection(("127.0.0.1", port), timeout=5).close()
+    assert _run(MintedTokenStore(db).resolve(given["token"], "call-9")) is None
+
+
+def test_no_flight_block_refuses_a_local_python_worker_by_the_setting(db, monkeypatch):
+    monkeypatch.setattr(
+        settings_registry,
+        "value",
+        {"server.minted_flight_port": 0, "server.minted_flight_ports": 16}.__getitem__,
+    )
+
+    async def go():
+        async with table_reads.readable(
+            _state(db), _SESSION, _payload(), remote=None, local="flight"
+        ):
+            pass
+
+    with pytest.raises(table_reads.TableNotReadable, match="server.minted_flight_port"):
+        _run(go())
+
+
+def test_a_full_flight_block_refuses_the_call_by_the_setting(db, monkeypatch):
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        monkeypatch.setattr(
+            settings_registry,
+            "value",
+            {"server.minted_flight_port": port, "server.minted_flight_ports": 1}.__getitem__,
+        )
+
+        async def go():
+            async with table_reads.readable(
+                _state(db), _SESSION, _payload(), remote=None, local="flight"
+            ):
+                pass
+
+        with pytest.raises(table_reads.TableNotReadable, match="server.minted_flight_ports"):
+            _run(go())
 
 
 def test_no_listener_refuses_by_the_setting(db, monkeypatch):
     monkeypatch.setattr(settings_registry, "value", {"server.minted_pgwire_port": 0}.__getitem__)
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, _payload(), remote=None):
+        async with table_reads.readable(
+            _state(db), _SESSION, _payload(), remote=None, local="pgwire"
+        ):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="server.minted_pgwire_port"):
@@ -564,7 +640,7 @@ def test_a_reference_that_is_no_table_name_is_refused(db, port_set):
     payload = {"orders": {"kind": "table_ref", "ref": "not a table;", "columns": []}}
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, payload, remote=None):
+        async with table_reads.readable(_state(db), _SESSION, payload, remote=None, local="pgwire"):
             pass
 
     with pytest.raises(CallTokenRefused):
@@ -597,7 +673,7 @@ def test_the_linux_launcher_names_the_port():
 @pytest.mark.parametrize("port", [6543, 0])
 def test_a_workers_sandbox_gets_the_port_of_the_setting_and_a_reader_never(monkeypatch, port):
     monkeypatch.setattr(settings_registry, "value", {"server.minted_pgwire_port": port}.__getitem__)
-    assert sandbox._minted_ports() == ((port,) if port else ())
+    assert sandbox._minted_ports("pgwire") == ((port,) if port else ())
     called: dict = {}
 
     def linux(_python, *, read, proxy_port, argv, connect_ports=()):
@@ -616,9 +692,60 @@ def test_a_workers_sandbox_gets_the_port_of_the_setting_and_a_reader_never(monke
         env={},
         cwd=Path("/"),
         egress=[],
+        table_reads="pgwire",
     )
     command.argv("sock")
     assert called["ports"] == ((port,) if port else ())
+    assert command.table_reads == "pgwire"
     called.clear()
     sandbox.sandboxed_once(["/r"], executable=Path("/py"), read=[], env={}, egress=[])
     assert called["ports"] == ()
+
+
+def test_a_python_workers_sandbox_opens_the_flight_block_and_never_the_main_flight_server(
+    monkeypatch,
+):
+    """REQ-2226: a host that reads over Flight may connect to the block its calls' listeners open
+    on, and to neither the main Flight server's port nor the pgwire listener's."""
+    monkeypatch.setattr(
+        settings_registry,
+        "value",
+        {
+            "server.minted_pgwire_port": 6543,
+            "server.flight_port": 8815,
+            "server.minted_flight_port": 27600,
+            "server.minted_flight_ports": 3,
+        }.__getitem__,
+    )
+    called: dict = {}
+
+    def linux(_python, *, read, proxy_port, argv, connect_ports=()):
+        called["ports"] = connect_ports
+        return list(argv)
+
+    monkeypatch.setattr(sandbox.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(sandbox, "launcher_argv", linux)
+    monkeypatch.setattr(
+        sandbox, "egress_proxy", lambda _allow: SimpleNamespace(port=1111, environment=dict)
+    )
+    command = sandbox.sandboxed(
+        lambda address: ["/w", address],
+        executable=Path("/py"),
+        read=[],
+        env={},
+        cwd=Path("/"),
+        egress=[],
+        table_reads="flight",
+    )
+    command.argv("sock")
+    assert called["ports"] == (27600, 27601, 27602)
+    assert command.table_reads == "flight"
+    text = macos_sandbox.profile(
+        executable=Path("/bin/python"),
+        read=[],
+        socket_path=None,
+        proxy_port=1111,
+        connect_ports=sandbox._minted_ports("flight"),
+    )
+    assert "localhost:8815" not in text and "localhost:6543" not in text
+    assert '(remote ip "localhost:27601")' in text

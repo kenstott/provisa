@@ -101,7 +101,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from provisa.core import request_deadline
 from provisa.core.request_context import current_acting_role
@@ -201,6 +201,10 @@ ARROW_FRAME = b"A"
 _EXACT = 2**53 - 1
 
 
+#: REQ-2226: how a local host's calls read their table arguments.
+TableReads = Literal["pgwire", "flight"]
+
+
 @dataclass(frozen=True)
 class HostCommand:
     """How a language starts its host for one source. ``argv`` is given the socket's address,
@@ -219,6 +223,11 @@ class HostCommand:
     #: REQ-2267: each item the code's @discover generated, by name, with the handler serving it
     #: (manifest.discovered_handlers); empty for code with no @discover.
     discovered: dict[str, str] = field(default_factory=dict)
+    #: REQ-2226: how its calls' table arguments reach it -- over the call's minted Flight listener
+    #: (Python, whose host carries pyarrow's Flight client) or the minted-token pgwire listener --
+    #: and so which ports its sandbox opens (provisa/codesource/sandbox.py). pgwire, the default,
+    #: is what a host given no sandbox's word reads over: REQ-2226 keeps TypeScript on it.
+    table_reads: TableReads = "pgwire"
 
     def argv_for(self, address: str) -> list[str]:
         return list(self.argv(address))

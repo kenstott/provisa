@@ -331,6 +331,36 @@ jobs:
           print(f"{len(names)} files kept, none downloaded")
           EOF
 
+  # The real key, primed (a hit builds nothing; a miss mirrors the extensions and builds the
+  # runner's platform's wheels once and saves them), then a restore on a runner whose directory was
+  # removed: a wheel per version part is back, named in PROVISA_DUCKDB_EXT_WHEELS, without a build.
+  duckdb-ext-wheels:
+    name: action / duckdb-ext-wheels (prime, then a restore that names every part's wheel)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prime
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: prime
+      - name: Remove the wheels
+        run: rm -rf "$PROVISA_DUCKDB_EXT_WHEELS"
+      - name: Restore
+        id: restore
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: restore
+      - name: A wheel of each version part, for this platform, in the named directory
+        env:
+          DIR: ${{ steps.restore.outputs.dir }}
+        run: |
+          [ "$PROVISA_DUCKDB_EXT_WHEELS" = "$DIR" ]
+          for part in $(python3 packaging/duckdb-ext/collect.py parts); do
+            ls "$DIR"/provisa_duckdb_ext-*."$part"-py3-none-"$(python3 packaging/duckdb-ext/collect.py wheel-tag linux-x64)".whl
+          done
+
   release-metadata:
     name: action / release-metadata
     needs: scope
@@ -460,6 +490,7 @@ jobs:
       - demo-bundle
       - trino-plugins
       - zaychik-image
+      - duckdb-ext-wheels
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
@@ -679,6 +710,7 @@ jobs:
       - demo-bundle
       - trino-plugins
       - zaychik-image
+      - duckdb-ext-wheels
       - pyodide-downloads
       - release-metadata
       - ensure-release-off

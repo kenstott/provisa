@@ -114,7 +114,7 @@ jobs:
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            time uv run python -c "from provisa.runtime_deps.pgwire_bundles import BundleResolver, bundle_spec_for; print(BundleResolver().resolve(bundle_spec_for(\"govdata\")))"
+            time uv run python -c "from provisa.runtime_deps.pgwire_bundles import BundleResolver, bundle_spec_for, download_release_asset; print(BundleResolver(downloader=download_release_asset).resolve(bundle_spec_for(\"govdata\")))"
           '
 
       # What the host owes a live AskAmerica source (US government open data), against the service
@@ -247,6 +247,13 @@ jobs:
       # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
+
+      # This commit's provisa-duckdb-ext wheels, which the AppImage's image stages (REQ-294): the
+      # Pages index holds only what a release already published.
+      - name: DuckDB extension wheels
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: prime
 
       # Fails if the packed runtime names a loader (require_static_runtime): such a file does not
       # start on NixOS at all.

@@ -39,6 +39,7 @@ import hashlib
 import json
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import duckdb
@@ -107,16 +108,22 @@ def _copy_trust(repos: Path, repo: str, dst_dir: Path) -> None:
 
 def main(out: Path) -> int:
     shutil.rmtree(out, ignore_errors=True)
-    repos = (out / "_repositories").resolve()  # where CREATE EXTENSION REPOSITORY writes its anchor
-    repos.mkdir(parents=True)
+    out.mkdir(parents=True)
+    # DuckDB installs into a scratch directory OUTSIDE the mirror, and only what is copied out of
+    # it is mirrored. Inside the mirror, what DuckDB autoloaded (httpfs, for bigquery and
+    # snowflake) rode into the wheel build on Windows, where the extensions this process loaded
+    # stay locked and the scratch directory cannot be removed while it runs (run 42828018954).
+    scratch = Path(tempfile.mkdtemp(prefix="duckdb-ext-mirror-")).resolve()
+    repos = scratch / "repositories"  # where CREATE EXTENSION REPOSITORY writes its anchor
+    repos.mkdir()
     con = duckdb.connect(config={"extension_repository_directory": str(repos)})
     (raw_version,) = con.execute("SELECT version()").fetchall()[0]  # "v2.0.0": the on-disk dir
     version = raw_version.lstrip("v")
     (platform,) = con.execute("PRAGMA platform").fetchall()[0]
     ext_dir = (
-        out / "_install"
-    ).resolve()  # DuckDB drops <ext_dir>/<version>/<platform>/<real>.duckdb_extension
-    ext_dir.mkdir(parents=True)
+        scratch / "install"
+    )  # DuckDB drops <ext_dir>/<version>/<platform>/<real>.duckdb_extension
+    ext_dir.mkdir()
     con.execute(f"SET extension_directory = '{ext_dir}'")
     from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
 
@@ -169,8 +176,9 @@ def main(out: Path) -> int:
             if required and f"{name}:" not in " ".join(failures):
                 failures.append(f"{name}: not available for {platform}@{version}")
 
-    shutil.rmtree(ext_dir, ignore_errors=True)
-    shutil.rmtree(repos, ignore_errors=True)
+    con.close()
+    # Outside the mirror: what a locked file keeps here never reaches a wheel.
+    shutil.rmtree(scratch, ignore_errors=True)
     (out / "manifest.json").write_text(
         json.dumps(
             {"duckdb_version": version, "platform": platform, "extensions": records}, indent=2

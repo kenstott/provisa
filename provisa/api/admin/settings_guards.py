@@ -61,17 +61,29 @@ class Refused(Exception):
         self.params = params
 
 
+# REQ-2226: the block of loopback ports a local code source's calls read their tables over.
+_FLIGHT_BLOCK = ("server.minted_flight_port", "server.minted_flight_ports")
+
+
 def _ports(values: dict[str, Any]) -> None:
-    changed = [key for key in _LISTENER_PORTS if key in values]
+    changed = [key for key in (*_LISTENER_PORTS, *_FLIGHT_BLOCK) if key in values]
     if not changed:
         return
     ports = {key: settings_registry.prospective(key, values) for key in _LISTENER_PORTS}
     for key in changed:
-        if ports[key] == 0:
+        if key in _FLIGHT_BLOCK or ports[key] == 0:
             continue
         for other, port in ports.items():
             if other != key and port == ports[key]:
                 raise Refused(key, "port_in_use", other=other)
+    first = settings_registry.prospective(_FLIGHT_BLOCK[0], values)
+    if not first:
+        return
+    block = range(first, first + settings_registry.prospective(_FLIGHT_BLOCK[1], values))
+    for other, port in ports.items():
+        if port and port in block:
+            field = next((k for k in changed if k in _FLIGHT_BLOCK), other)
+            raise Refused(field, "port_in_use", other=other)
 
 
 def _tls(values: dict[str, Any]) -> None:

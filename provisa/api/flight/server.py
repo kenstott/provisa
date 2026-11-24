@@ -480,6 +480,38 @@ class _CallHeadersFactory(flight.ServerMiddlewareFactory):  # pyright: ignore[re
         return _CallHeaders(headers)
 
 
+#: REQ-2226: the RPCs a listener minted for one call answers: a statement's FlightInfo and its
+#: ticket's rows.
+_ONE_CALL_METHODS = frozenset({flight.FlightMethod.GET_FLIGHT_INFO, flight.FlightMethod.DO_GET})  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
+class _OneCallHeadersFactory(_CallHeadersFactory):
+    """REQ-2226: the headers middleware of a listener minted for one code call. Before any handler
+    runs it refuses every call that does not present that call's token under its id, and every RPC
+    but a statement's read; what the token may read is checked as on the main server
+    (:meth:`ProvisaFlightServer._as_minted_caller`)."""
+
+    def __init__(self, call_id: str, token: str) -> None:
+        super().__init__()
+        self._call_id = call_id
+        self._token = token
+
+    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        import hmac
+
+        token = _bearer(headers)
+        if (
+            info.method not in _ONE_CALL_METHODS
+            or token is None
+            or not hmac.compare_digest(token.encode(), self._token.encode())
+            or _header(headers, "x-provisa-call") != self._call_id
+        ):
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                f'minted token refused for call "{self._call_id}"'
+            )
+        return super().start_call(info, headers)
+
+
 def _header(headers: dict[str, list[str]], name: str) -> str | None:
     """The first value of call header ``name`` (gRPC lowercases header names), if it was sent."""
     values = headers.get(name)
@@ -525,11 +557,16 @@ class ProvisaFlightServer(
         self,
         state: AppState,
         location: str = "grpc://0.0.0.0:8815",
+        *,
+        one_call: tuple[str, str] | None = None,
         **kwargs: object,  # object-ok: forwarded verbatim to FlightServerBase.__init__ which accepts arbitrary keyword args  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> None:
         # The call's headers, for the RPCs that carry no ticket (list_flights, get_flight_info,
         # get_schema): their credential and requested role arrive there (_catalog_role).
-        super().__init__(location, middleware={_HEADERS: _CallHeadersFactory()}, **kwargs)  # type: ignore[arg-type]
+        # REQ-2226: ``one_call`` (a call's id and its minted token) makes it the listener minted
+        # for that call, which answers that call's reads and nothing else (_OneCallHeadersFactory).
+        headers = _CallHeadersFactory() if one_call is None else _OneCallHeadersFactory(*one_call)
+        super().__init__(location, middleware={_HEADERS: headers}, **kwargs)  # type: ignore[arg-type]
         self._state = state
         #: REQ-2270: whether clients reach it over TLS -- a remote host is given a minted token for
         #: it only then (provisa/codesource/table_reads.py).

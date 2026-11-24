@@ -502,8 +502,21 @@ async def landing_worklist(
     guessed. A table kept row by row (``replica_converge.row_level``) is not here: its row cache,
     at the same address, holds bookkeeping columns of its own, and reconciled to the data columns
     it was re-created, dropping the rows a read had just fetched. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
-    which tables are reconciled — they differ only in what they do with each entry."""
-    return _worklist(engine, await replica_tables(engine, state))
+    which tables are reconciled — they differ only in what they do with each entry.
+
+    A table naming another region is not here either (REQ-1922): its replica is that region's,
+    read from that region's store, and a reconcile here would create an empty copy of it in this
+    region's store — the copy convergence has just retired and dropped."""
+    from provisa.federation.replica_converge import builds_here, home_region
+
+    return _worklist(
+        engine,
+        [
+            (src, reg)
+            for src, reg in await replica_tables(engine, state)
+            if builds_here(home_region(reg))
+        ],
+    )
 
 
 def _worklist(

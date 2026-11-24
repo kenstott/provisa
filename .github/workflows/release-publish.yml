@@ -70,7 +70,6 @@ jobs:
       trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
       trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
-      duckdb_extensions_name: ${{ steps.meta.outputs.duckdb_extensions_name }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -124,8 +123,6 @@ jobs:
             ${{ needs.metadata.outputs.trino_image_name }}
             ${{ needs.metadata.outputs.trino_image_amd64_name }}
             ${{ needs.metadata.outputs.plugins_name }}
-            ${{ needs.metadata.outputs.duckdb_extensions_name }}
-            ${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
             provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl

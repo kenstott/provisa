@@ -44,7 +44,7 @@ import yaml
 
 from tests.integration.test_code_source_llm import _MODEL, _Endpoint
 from tests.integration.test_code_sources_e2e import _archive
-from tests.port_lease import lease_ports
+from tests.port_lease import lease_ports, lease_run
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("view")]
 
@@ -176,6 +176,9 @@ def server(tmp_path_factory, endpoint):
             "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
             # REQ-2226: the port a code command given a table reads it through.
             "PROVISA_MINTED_PGWIRE_PORT": str(lease_ports(1)[0]),
+            # REQ-2226: a Python worker's call given a table opens a Flight listener on this block.
+            "PROVISA_MINTED_FLIGHT_PORT": str(lease_run(4)),
+            "PROVISA_MINTED_FLIGHT_PORTS": "4",
         },
     )
     srv.start(timeout=240)

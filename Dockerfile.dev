@@ -43,6 +43,13 @@ RUN case "$TARGETARCH" in \
 # once per pin (.github/actions/pyodide-downloads) and no image build asks the CDN again.
 FROM scratch AS pyodide-downloads
 
+# The provisa-duckdb-ext wheels the build's own run built (REQ-294; Dockerfile says why). Empty
+# here, so a plain `docker build` takes them from the release's Pages index. A build given
+# `--build-context duckdb-ext-wheels=DIR` has DIR in this stage's place: CI fills DIR
+# (.github/actions/duckdb-ext-wheels) and the tests that build this image pass it
+# (tests/duckdb_ext_wheels.py).
+FROM scratch AS duckdb-ext-wheels
+
 FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml .
@@ -74,6 +81,12 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 RUN cp /encoders/* ./provisa/ && rm -rf /encoders && python -c "import provisa._encoders.pgwire"
+# REQ-294: the image is built with its assets inside it (Dockerfile does the same).
+ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+# Neither source holding a wheel stops the build by name (stage_duckdb_extensions.pip_download).
+RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \
+    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets
 # REQ-2194: the wheel, for the code images this server builds (codesource/image_build.py).
 COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
 ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels

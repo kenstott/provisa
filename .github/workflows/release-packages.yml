@@ -144,7 +144,8 @@ jobs:
           retention-days: 1
 
   # REQ-2194: provisa's wheels. provisa carries provisa._encoders, Provisa's Rust encoders compiled
-  # by setuptools-rust, so it is one cp312 wheel per platform a `pip install provisa` runs on, each
+  # by setuptools-rust, so it is one cp312 wheel per supported platform (REQ-294: macOS arm64,
+  # Linux x86_64, Linux arm64 and Windows x86_64), each
   # with the UI built above, the config and buenavista. Linux wheels come from the Dockerfile's
   # provisa-wheel stage (manylinux_2_28, zig-linked); macOS (arm64 only: Intel Macs are not
   # supported) and Windows from `python -m build` on the runner. Each wheel is checked and imported
@@ -420,26 +421,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The SDK's tests read each decorator through Provisa's own reader and manifest
+      # (provisa.codesource, provisa.python), so they run in the project's locked environment:
+      # with pytest and pyright alone, provisa.core.package_registries could not import
+      # sqlalchemy (run 45024448489).
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        uses: ./.github/actions/setup-python
 
       - name: Test
-        run: |
-          pip install pytest pyright -q
-          python -m pytest provisa-sdk/python/tests -q
+        run: uv run --frozen python -m pytest provisa-sdk/python/tests -q
 
       - name: Stamp the version and build
         run: |
           sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
             provisa-sdk/python/pyproject.toml
-          pip install build -q
-          python -m build provisa-sdk/python/ --outdir provisa-sdk/python/dist/
+          uv build provisa-sdk/python/ --out-dir provisa-sdk/python/dist/
 
       - name: Verify the wheel carries the SDK and the stubs
         run: |
-          python - <<'PY'
+          uv run --frozen python - <<'PY'
           import glob, sys, zipfile
           [wheel] = glob.glob("provisa-sdk/python/dist/provisa_sdk-${{ needs.metadata.outputs.py_version }}-*.whl")
           names = set(zipfile.ZipFile(wheel).namelist())

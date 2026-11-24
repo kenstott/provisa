@@ -1,0 +1,39 @@
+name: zaychik image (main's cache)
+
+# The zaychik image entry in the default branch's cache scope. A branch run reads caches of its
+# own ref and of the default branch, never of a sibling branch. The integration suite runs on
+# branches and on dispatch, so the only zaychik entry was a branch's own, and every other branch's
+# priming job missed and built the image from zaychik/ by Maven: run 45044138083 died on Maven
+# Central's 429 for maven-dependency-plugin before any test. This job primes the entry on main
+# whenever zaychik/ or the action changes, so a branch's prime hits and builds nothing. The daily
+# schedule restores an entry the cache evicted (a hit builds nothing).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "zaychik/**"
+      - ".github/actions/zaychik-image/**"
+      - ".github/workflows/zaychik-image.yml"
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zaychik-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prime:
+    name: prime the zaychik image in main's cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prime the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime

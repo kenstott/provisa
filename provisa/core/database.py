@@ -1623,6 +1623,10 @@ def _prepared_for_scope(sc: sa.Connection, search_path: str | None) -> None:
 # --------------------------------------------------------------------------- #
 # database
 # --------------------------------------------------------------------------- #
+#: How often Database.advisory_lock asks again for a lock another session holds.
+_ADVISORY_LOCK_POLL_S = 0.25
+
+
 class Database:
     """A control-plane database handle backed by one shared, synchronous SQLAlchemy Engine.
 
@@ -1674,6 +1678,40 @@ class Database:
             if self._listener is None:
                 self._listener = _PgListener(self._engine)
             return self._listener
+
+    @asynccontextmanager
+    async def advisory_lock(self, key: int) -> AsyncGenerator[None]:
+        """Hold a session advisory lock keyed by ``key`` for the ``with`` block, released on exit.
+
+        Unlike :meth:`Connection.advisory_lock`, waiting yields to the event loop: the lock is
+        asked for without waiting and asked again until it is free, so a holder that is itself a
+        coroutine on this loop (two scheduled jobs of one org) is never starved by the waiter. No
+        pooled connection is kept for the block, which acquires what it needs. A no-op on backends
+        without advisory locks."""
+        import asyncio
+
+        caps = self.capabilities
+        if not caps.advisory_lock:
+            yield
+            return
+        if caps.dialect == "postgresql":
+            # A session of its own on the server itself, as Connection.advisory_lock's.
+            with control_plane_lock_connection(self._engine) as lock:
+                while not lock.execute(text(f"SELECT pg_try_advisory_lock({key})")).scalar():
+                    await asyncio.sleep(_ADVISORY_LOCK_POLL_S)
+                try:
+                    yield
+                finally:
+                    lock.execute(text(f"SELECT pg_advisory_unlock({key})"))
+            return
+        # MySQL's GET_LOCK belongs to the session that took it: that session is kept for the block.
+        async with self.acquire() as conn:
+            while not await conn.fetchval(f"SELECT GET_LOCK('{key}', 0)"):
+                await asyncio.sleep(_ADVISORY_LOCK_POLL_S)
+            try:
+                yield
+            finally:
+                await conn.execute(f"SELECT RELEASE_LOCK('{key}')")
 
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[Connection]:
@@ -1887,6 +1925,15 @@ def _pool_kwargs_for(url: str) -> dict[str, Any]:
     return {"pool_pre_ping": True}
 
 
+def _duckdb_connect_args() -> dict[str, Any]:
+    """REQ-294: connect_args of a ``duckdb:///`` engine. Without them DuckDB opens with auto-install
+    on and fetches a known extension from extensions.duckdb.org the first time a query names it;
+    the engine only loads what is staged, from the extension directory the runtime names."""
+    from provisa.core.engine_memory import load_only_config
+
+    return {"config": dict(load_only_config())}
+
+
 def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
     """A **sync** SQLAlchemy engine for single-writer sync callers (e.g. otlp2sql, whose
     inserts run on a worker of its own single-loop process) — applies
@@ -1894,6 +1941,10 @@ def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
     kwargs: dict[str, Any] = {"future": True, **_pool_kwargs_for(url)}
     if "pool_pre_ping" in kwargs:
         kwargs["pool_pre_ping"] = pool_pre_ping
+    from sqlalchemy import make_url
+
+    if make_url(url).get_backend_name() == "duckdb":
+        kwargs["connect_args"] = _duckdb_connect_args()
     return sa.create_engine(url, **kwargs)
 
 
@@ -1927,6 +1978,8 @@ def create_engine_from_url(
         import provisa.core.duckdb_store  # noqa: F401
 
     kwargs: dict[str, Any] = {"pool_pre_ping": True}
+    if backend == "duckdb":
+        kwargs["connect_args"] = _duckdb_connect_args()
     if backend == "sqlite":
         # The pooled sqlite3 connection is handed between request threads (one at a time).
         kwargs["connect_args"] = {"check_same_thread": False}

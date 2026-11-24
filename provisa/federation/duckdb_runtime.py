@@ -37,7 +37,7 @@ from typing import Any, TypeVar
 
 import duckdb
 
-from provisa.federation.duckdb_extensions import install_and_load
+from provisa.federation.duckdb_extensions import load_extension
 from provisa.federation.duckdb_quoting import ident, lit
 from provisa.federation.file_locks import ReadersWriterGate
 from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
@@ -91,7 +91,7 @@ def build_vss_index_connection(
     from provisa.federation.duckdb_extensions import connect
 
     con = connect()
-    install_and_load(con, "vss", from_community=False)
+    load_extension(con, "vss")
     con.execute(
         f"CREATE TABLE chunks (level VARCHAR, schema VARCHAR, tbl VARCHAR, "
         f"col VARCHAR, embedding FLOAT[{int(dim)}])"
@@ -291,17 +291,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(
         self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
     ) -> None:
-        # When PROVISA_DUCKDB_EXT_DIR is set (the embedded tier stages the pinned extension blobs there
-        # from the provisa-duckdb-ext PyPI package), load extensions from it and DISABLE network
-        # autoinstall — an air-gapped/enterprise install must never silently reach extensions.duckdb.org;
-        # a missing extension fails loud instead. Unset (dev/server) keeps DuckDB's default network path.
-        # The staged named repositories' trust anchors come with it (DuckDB 2.0 reads them at startup).
+        # REQ-294: an extension is only ever loaded, from PROVISA_DUCKDB_EXT_DIR where an install names
+        # it, and network autoinstall is off everywhere: a missing extension fails loud by name. The
+        # staged named repositories' trust anchors come with it (DuckDB 2.0 reads them at startup).
         from provisa.federation.duckdb_extensions import extension_config
 
         _cfg: dict[str, str | bool | int | float | list[str]] = dict(extension_config())
-        # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
-        # literal with no zone compared to one is UTC -- never the host's zone.
-        _cfg["TimeZone"] = "UTC"
         # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit), and the
         # deployment may cap every engine (engine.duckdb_memory_limit); unset is DuckDB's own.
         # DuckDB spills to disk past it and refuses, by name, what cannot spill.
@@ -317,6 +312,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
             _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
         self._con = engine_memory.connect(extra=_cfg)
+        # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
+        # literal with no zone compared to one is UTC -- never the host's zone. Set once open:
+        # TimeZone is icu's option, which a config cannot name with autoload off (REQ-294).
+        self._con.execute("SET GLOBAL TimeZone = 'UTC'")
         engine_memory.log_limit(self._con, "federation engine")
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
@@ -334,8 +333,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # operation actually needs it — the runtime is also built for introspection, which does not.
         self._materialize_dsn = materialize_dsn
         self._sqlite_loaded = False
-        self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
-        self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
+        self._pg_ext_loaded = False  # postgres DuckDB extension LOAD (source ATTACH)
+        self._httpfs_loaded = False  # httpfs LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         self._attached_store_dsn: str | None = None  # the store that attach was for
         # REQ-1922: the other regions' replicas stores this connection has attached, by alias.
@@ -437,12 +436,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         finally:
             close_cursor(cur)
 
-    def _install_and_load(self, extension: str, *, from_community: bool) -> None:
-        """install_and_load on a cursor of its own (:meth:`_on_instance`): a LOAD and its SET
+    def _load_extension(self, extension: str) -> None:
+        """load_extension on a cursor of its own (:meth:`_on_instance`): a LOAD and its SET
         GLOBAL settings act on the instance."""
         cur = open_cursor(self._con)
         try:
-            install_and_load(cur, extension, from_community=from_community)
+            load_extension(cur, extension)
         finally:
             close_cursor(cur)
 
@@ -481,14 +480,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             connector = self._engine.connector_for(source.type.value)
             ext = getattr(connector, "extension", None)
             if ext and ext not in self._ext_loaded:
-                self._install_and_load(
-                    ext,
-                    from_community=getattr(connector, "install_from_community", False),
-                )
+                self._load_extension(ext)
                 self._ext_loaded.add(ext)
             secret_ddl = details.get("secret_ddl")
             if secret_ddl and not self._httpfs_loaded:
-                self._install_and_load("httpfs", from_community=False)
+                self._load_extension("httpfs")
                 self._httpfs_loaded = True
             self._reach_location(details)
             scan = details["view_ddl"].split(" AS ", 1)[1]
@@ -618,8 +614,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         loaded once on this connection."""
         for ext in ("httpfs", "iceberg"):
             if ext not in self._ext_loaded:
-                self._on_instance(f"INSTALL {ext}")
-                self._on_instance(f"LOAD {ext}")
+                self._load_extension(ext)
                 self._ext_loaded.add(ext)
         self._httpfs_loaded = True
         with self._dbx_lock:
@@ -711,7 +706,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         )
 
         if not self._httpfs_loaded:
-            self._install_and_load("httpfs", from_community=False)
+            self._load_extension("httpfs")
             self._httpfs_loaded = True
         self._on_instance(details["secret_ddl"])
         base_url = details["clickhouse_http"]
@@ -794,9 +789,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def _ensure_postgres_loaded(self) -> None:
         """The postgres extension on this connection, once, with the settings every postgres load
-        has (``duckdb_extensions.install_and_load``; #241)."""
+        has (``duckdb_extensions.load_extension``; #241)."""
         if not self._pg_ext_loaded:
-            self._install_and_load("postgres", from_community=False)
+            self._load_extension("postgres")
             self._pg_ext_loaded = True
 
     def _sign_in_motherduck(self, source: Any) -> None:
@@ -827,10 +822,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         for ext in details.get("extensions", ()):
             if ext == "httpfs":
                 if not self._httpfs_loaded:
-                    self._install_and_load("httpfs", from_community=False)
+                    self._load_extension("httpfs")
                     self._httpfs_loaded = True
             elif ext not in self._ext_loaded:
-                self._install_and_load(ext, from_community=False)
+                self._load_extension(ext)
                 self._ext_loaded.add(ext)
         if details.get("secret_ddl"):
             self._on_instance(details["secret_ddl"])
@@ -841,7 +836,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         it exposes tables (postgres keeps its own schema, sqlite lands everything under ``main``,
         mongo maps databases to schemas); the runtime never hardcodes a per-type layout."""
         if source.type.value == "sqlite" and not self._sqlite_loaded:
-            self._install_and_load("sqlite", from_community=False)
+            self._load_extension("sqlite")
             self._sqlite_loaded = True
         elif source.type.value == "postgresql" and not self._pg_ext_loaded:
             self._ensure_postgres_loaded()
@@ -851,10 +846,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             connector = self._engine.connector_for(source.type.value)
             ext = getattr(connector, "extension", None)
             if ext and ext not in self._ext_loaded:
-                self._install_and_load(
-                    ext,
-                    from_community=getattr(connector, "install_from_community", False),
-                )
+                self._load_extension(ext)
                 self._ext_loaded.add(ext)
         self._reach_location(details)  # REQ-1997: a file database in a remote location
         if details.get("signs_in") == "motherduck":
@@ -1098,7 +1090,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         "duckdb": "duckdb",
     }
     _FILE_ATTACH_TYPES = frozenset({"sqlite", "duckdb"})  # ATTACH a file path, not a URL
-    _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
+    _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no LOAD needed
 
     def _see_store_writes(self) -> None:
         """Make what the server store's own connection just wrote readable here. This connection
@@ -1192,7 +1184,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             else:
                 if store_type not in self._NO_EXTENSION_TYPES:
                     # A Postgres store loads the extension with its settings too (#241).
-                    self._install_and_load(store_type, from_community=False)
+                    self._load_extension(store_type)
                 self._on_instance(
                     f"ATTACH {lit(str(target))} AS {self._MAT_STORE} (TYPE {store_type})"
                 )
@@ -1215,7 +1207,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not url.database:
             raise RuntimeError("the MotherDuck materialize store URL names no database")
         if "motherduck" not in self._ext_loaded:
-            self._install_and_load("motherduck", from_community=False)
+            self._load_extension("motherduck")
             self._ext_loaded.add("motherduck")
         self._sign_in_motherduck_as(token, "The materialize store")
         self._on_instance(f"ATTACH {lit('md:' + url.database)} AS {self._MAT_STORE}")
@@ -1256,7 +1248,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 return alias
             if store_type not in self._NO_EXTENSION_TYPES:
                 # A Postgres store loads the extension with its settings too (#241).
-                self._install_and_load(store_type, from_community=False)
+                self._load_extension(store_type)
             self._on_instance(
                 f"ATTACH {lit(_attach_url(url))} AS {ident(alias)} (TYPE {store_type}, READ_ONLY)"
             )
@@ -1563,7 +1555,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not columns:
             return
         if "vss" not in self._ext_loaded:
-            install_and_load(cur, "vss", from_community=False)
+            load_extension(cur, "vss")
             self._ext_loaded.add("vss")
         for column in columns:
             quoted = ident(column)
@@ -1671,7 +1663,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             if secret_sql is not None:
                 if not self._httpfs_loaded:
-                    self._install_and_load("httpfs", from_community=False)
+                    self._load_extension("httpfs")
                     self._httpfs_loaded = True
                 self._on_instance(secret_sql)
             cur = self._open_cursor(live_http=live_http, sql=copy_sql)
