@@ -13314,7 +13314,7 @@ Control-plane persistence is required for multi-instance fleet deployments. The 
 
 ### REQ-1246 · Authentication {#REQ-1246}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password path. No password is created for Firebase identities. Firebase ID token serves as the credential. Provisioning occurs in the initial POST /auth/register on a Firebase identity ([REQ-121](#REQ-121) validates Firebase auth; [REQ-124](#REQ-124) is hard-gated to provider=="basic" and cannot onboard Firebase identities). (Amended 2026-11-22 by the maintainer, to the built behaviour. The user_profile is upserted on every sign-in by the auth middleware, not provisioned only in POST /auth/register.)
 
@@ -13322,7 +13322,7 @@ First verified Firebase login provisions a user_profile record, decoupled from t
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/`, `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_auth_integration.py`
+**Tests:** `tests/unit/test_firebase_user_provisioning.py`, `tests/integration/test_auth_integration.py`
 
 ## 10. UI & Admin Surfaces
 

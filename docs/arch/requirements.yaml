@@ -41137,7 +41137,7 @@
     '
   notes: 'Roadmap audit 2026-10-13: superseded by REQ-1293. Org state is rows in the org schema on the control-plane database, reloaded on a config stamp (REQ-1293, complete).'
 - id: REQ-1246
-  status: in-progress
+  status: complete
   since: 2026-11
   group: 2. Authentication & Identity
   category: Authentication
@@ -41157,6 +41157,7 @@
   - provisa/core/schema_admin.py
   - provisa/auth/middleware.py
   tests:
+  - tests/unit/test_firebase_user_provisioning.py
   - tests/integration/test_auth_integration.py
   scenario: 'Given a user with a Firebase identity authenticating via /auth/register for the first time
 
