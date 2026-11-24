@@ -19,20 +19,63 @@ import { Input, useMantineColorScheme } from "@mantine/core";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { python } from "@codemirror/lang-python";
+import { yaml } from "@codemirror/lang-yaml";
 
-/** The languages a script field highlights. */
-const LANGUAGES = { python } as const;
+/** The languages a code field highlights: a connector's script (Python) and a code host's
+ * Compose file (YAML). */
+const LANGUAGES = { python, yaml } as const;
 export type CodeLanguage = keyof typeof LANGUAGES;
 
-interface Props {
-  label: string;
+interface EditorProps {
   value: string;
-  onChange: (value: string) => void;
   language: CodeLanguage;
-  required?: boolean;
-  readOnly?: boolean;
+  label: string;
+  /** Absent, the code is shown and not edited. */
+  onChange?: (value: string) => void;
   "data-testid"?: string;
 }
+
+/** The editor itself: CodeMirror in the app's theme, with line numbers and highlighting. */
+function CodeEditor({ value, language, label, onChange, "data-testid": testId }: EditorProps) {
+  const { colorScheme } = useMantineColorScheme();
+  const extensions = useMemo(() => [LANGUAGES[language](), EditorView.lineWrapping], [language]);
+  const readOnly = onChange === undefined;
+  return (
+    <CodeMirror
+      value={value}
+      onChange={onChange}
+      extensions={extensions}
+      // The toggle only ever writes "light"/"dark" (theme/ColorSchemeToggle.tsx), as in
+      // LineagePage: CodeMirror's own theme is the light one.
+      theme={colorScheme === "light" ? undefined : oneDark}
+      readOnly={readOnly}
+      editable={!readOnly}
+      minHeight={readOnly ? undefined : "9rem"}
+      maxHeight="36rem"
+      basicSetup={{ lineNumbers: true, highlightActiveLine: !readOnly, foldGutter: false }}
+      style={{
+        fontFamily: "var(--mantine-font-family-monospace)",
+        fontSize: "0.85rem",
+        border: "1px solid var(--mantine-color-default-border)",
+        borderRadius: "var(--mantine-radius-sm)",
+        overflow: "hidden",
+      }}
+      aria-label={label}
+      data-testid={testId}
+    />
+  );
+}
+
+type Props = {
+  label: string;
+  value: string;
+  language: CodeLanguage;
+  required?: boolean;
+  "data-testid"?: string;
+} & (
+  | { readOnly?: false; onChange: (value: string) => void }
+  | { readOnly: true; onChange?: (value: string) => void }
+);
 
 export function CodeEditorField({
   label,
@@ -43,32 +86,26 @@ export function CodeEditorField({
   readOnly,
   "data-testid": testId,
 }: Props) {
-  const { colorScheme } = useMantineColorScheme();
-  const extensions = useMemo(() => [LANGUAGES[language](), EditorView.lineWrapping], [language]);
   return (
     <Input.Wrapper label={label} required={required}>
-      <CodeMirror
+      <CodeEditor
+        label={label}
         value={value}
-        onChange={onChange}
-        extensions={extensions}
-        // The toggle only ever writes "light"/"dark" (theme/ColorSchemeToggle.tsx), as in
-        // LineagePage: CodeMirror's own theme is the light one.
-        theme={colorScheme === "light" ? undefined : oneDark}
-        readOnly={readOnly}
-        editable={!readOnly}
-        minHeight="9rem"
-        maxHeight="36rem"
-        basicSetup={{ lineNumbers: true, highlightActiveLine: !readOnly, foldGutter: false }}
-        style={{
-          fontFamily: "var(--mantine-font-family-monospace)",
-          fontSize: "0.85rem",
-          border: "1px solid var(--mantine-color-default-border)",
-          borderRadius: "var(--mantine-radius-sm)",
-          overflow: "hidden",
-        }}
-        aria-label={label}
+        language={language}
+        onChange={readOnly ? undefined : onChange}
         data-testid={testId}
       />
     </Input.Wrapper>
   );
 }
+
+// REQ-1984: a form read shows the code in the editor too, read-only, under the read row's label.
+CodeEditorField.readValue = (p: Record<string, unknown>) =>
+  p.value ? (
+    <CodeEditor
+      label={p.label as string}
+      value={p.value as string}
+      language={p.language as CodeLanguage}
+      data-testid={p["data-testid"] as string | undefined}
+    />
+  ) : null;

@@ -8,18 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1984, REQ-2225: a connector's script value is edited in the app's code editor; other multi-line
-// values stay a plain text area.
+// REQ-1984, REQ-2225: a connector's script value is edited in the app's code editor, with Python
+// highlighting, and a form read shows it there too, read-only; other multi-line values stay a
+// plain text area.
 
 import { describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
-import { renderInForm, screen } from "../../../test-utils/render";
+import { language } from "@codemirror/language";
+import { FormRead } from "../../../components/form/FormLayout";
+import { render, renderInForm, screen } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ activeOrgId: "acme" }) }));
 vi.mock("../../../api/secrets", () => ({ fetchSecrets: vi.fn(async () => ({ secrets: [] })) }));
 
 import type { Connector } from "../../../api/connectors";
-import { ConnectorSetupFields } from "../ConnectorSetupFields";
+import { ConnectorSetupFields, ConnectorSourceValues } from "../ConnectorSetupFields";
 import { requiredField } from "../connector";
 
 const SPARK: Connector = {
@@ -67,6 +70,29 @@ describe("a connector's script value", () => {
     expect(field.querySelector(".cm-lineNumbers")).not.toBeNull();
     expect(editorOf("connector-require-script").state.doc.toString()).toBe("df = spark.range(3)\n");
     expect(screen.getByText("script")).toBeInTheDocument();
+  });
+
+  it("is highlighted as Python", () => {
+    renderInForm(
+      <ConnectorSetupFields connector={SPARK} fields={FIELDS} setFields={() => undefined} />,
+    );
+    expect(editorOf("connector-require-script").state.facet(language)?.name).toBe("python");
+  });
+
+  it("reads, in a form read, as the code in the editor, read-only", () => {
+    const fields = {
+      code_connector_settings: JSON.stringify({ script: "df = spark.range(3)\n" }),
+    };
+    render(
+      <FormRead>
+        <ConnectorSourceValues connector={SPARK} fields={fields} setFields={() => undefined} />
+      </FormRead>,
+    );
+    const view = editorOf("connector-require-script");
+    expect(view.state.doc.toString()).toBe("df = spark.range(3)\n");
+    expect(view.state.readOnly).toBe(true);
+    expect(view.state.facet(language)?.name).toBe("python");
+    expect(screen.getByTestId("connector-require-script").closest("dd")).not.toBeNull();
   });
 
   it("sends each edit, whole, to the form's fields", () => {
