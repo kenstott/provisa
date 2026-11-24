@@ -212,3 +212,68 @@ def test_a_table_given_over_postgresql_is_not_read_over_flight():
 
 def test_the_server_says_whether_it_serves_tls(served):
     assert served.server.tls is False
+
+
+# -- REQ-2226: the listener minted for one call of a local worker ------------------------------
+
+
+@pytest.fixture
+def one_call(served, tmp_path):
+    """A listener minted for call-7 over the same state and pipeline as ``served``."""
+    token = asyncio.run(served.store.mint(_call()))
+    server = ProvisaFlightServer(
+        served.server._state, location="grpc://127.0.0.1:0", one_call=("call-7", token)
+    )
+    try:
+        yield types.SimpleNamespace(uri=f"grpc://127.0.0.1:{server.port}", token=token)
+    finally:
+        server.shutdown()
+
+
+def test_the_calls_listener_reads_its_table_as_the_calls_role(served, one_call):
+    rows = _ref(one_call.uri, one_call.token).read().to_pylist()
+    assert [(r["role"], r["user"], r["org"]) for r in rows] == [("analyst", "alice", "org1")]
+
+
+def test_the_calls_listener_refuses_another_calls_token(served, one_call):
+    other = asyncio.run(served.store.mint(_call(call_id="call-8")))
+    with pytest.raises(flight.FlightUnauthenticatedError, match="minted token refused"):
+        _ref(one_call.uri, other, call="call-8").read()
+    assert served.asked == []
+
+
+def test_the_calls_listener_refuses_a_call_with_no_token(served, one_call):
+    client = flight.connect(one_call.uri)
+    try:
+        descriptor = flight.FlightDescriptor.for_command(
+            services._statement_command(read_statement(ORDERS, ["id"]))
+        )
+        with pytest.raises(flight.FlightUnauthenticatedError, match="minted token refused"):
+            client.get_flight_info(descriptor)
+    finally:
+        client.close()
+    assert served.asked == []
+
+
+def test_the_calls_listener_answers_no_rpc_but_a_statements_read(one_call):
+    options = flight.FlightCallOptions(
+        headers=[
+            (b"authorization", f"Bearer {one_call.token}".encode()),
+            (b"x-provisa-call", b"call-7"),
+        ]
+    )
+    client = flight.connect(one_call.uri)
+    try:
+        with pytest.raises(flight.FlightUnauthenticatedError, match="minted token refused"):
+            list(client.list_flights(options=options))
+        with pytest.raises(flight.FlightUnauthenticatedError, match="minted token refused"):
+            list(client.do_action(flight.Action("healthcheck", b""), options))
+    finally:
+        client.close()
+
+
+def test_the_calls_listener_ends_with_its_token(served, one_call):
+    asyncio.run(served.store.retire(one_call.token))
+    with pytest.raises(flight.FlightUnauthenticatedError, match="minted token refused"):
+        _ref(one_call.uri, one_call.token).read()
+    assert served.asked == []

@@ -276,6 +276,14 @@
         "label": "Port wire PostgreSQL des jetons émis",
         "help": "Le port que le bac à sable d'une source de code peut atteindre pour lire la table qui lui a été donnée, et l'adresse communiquée à un hôte distant. Il n'accepte que les jetons émis pour un seul appel ; 0 le laisse désactivé, et une commande recevant une table est alors refusée. Redémarrage requis ; protégé car il ouvre ou ferme un port d'écoute."
       },
+      "minted_flight_port": {
+        "label": "Premier port des écouteurs Flight émis",
+        "help": "Le premier port du bloc de bouclage sur lequel le worker d'une source de code Python lit, via Arrow Flight, les tables qui lui sont données : un écouteur est ouvert pour chaque appel, n'accepte que le jeton de cet appel et se ferme à la fin de l'appel. Le bac à sable d'un worker peut ouvrir ces ports et aucun autre de Provisa. 0 le laisse désactivé, et une commande Python recevant une table est alors refusée. Redémarrage requis ; protégé car il ouvre ou ferme des écouteurs."
+      },
+      "minted_flight_ports": {
+        "label": "Ports des écouteurs Flight émis",
+        "help": "Le nombre de ports du bloc, donc le nombre d'appels de sources de code locales pouvant lire leurs tables en même temps ; un appel de plus est refusé. Redémarrage requis."
+      },
       "bolt_port": {
         "label": "Port Bolt",
         "help": "Le port sur lequel le serveur Bolt (Neo4j) écoute ; 0 le désactive. Redémarrage requis ; confirmation demandée car cela ouvre ou ferme un listener."

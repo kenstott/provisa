@@ -924,6 +924,35 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="server.minted_flight_port",
+        card="network",
+        type="int",
+        effect="restart",  # a worker's sandbox names the block when the worker starts
+        # REQ-2226: the first port of the loopback block a local code source's worker reads its
+        # call's tables over Arrow Flight on: a listener per call, answering only that call's
+        # token, and the only ports of Provisa's its sandbox may open. 0 is none: a Python
+        # command given a table is then refused, naming this setting.
+        req="REQ-2226",
+        env="PROVISA_MINTED_FLIGHT_PORT",
+        default=0,
+        min=0,
+        max=65535,
+        guard="confirm",
+    ),
+    Setting(
+        key="server.minted_flight_ports",
+        card="network",
+        type="int",
+        effect="restart",  # a worker's sandbox names the block when the worker starts
+        # REQ-2226: how many ports the block has, so how many calls of local code sources read
+        # their tables at once in this process; one more is refused, naming this setting.
+        req="REQ-2226",
+        env="PROVISA_MINTED_FLIGHT_PORTS",
+        default=16,
+        min=1,
+        max=1024,
+    ),
+    Setting(
         key="server.bolt_port",
         card="network",
         type="int",
