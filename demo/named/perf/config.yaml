@@ -39,6 +39,7 @@ data_products:
 - purpose: Pet health records — inventory and referral vets for care history
   domain_id: pet-store
   id: pet_health
+  offers: [{name: default, role_id: pet_analyst}]
   tables: [pets, vets]
   commands: [add_pet]
   name: Pet Health
@@ -47,6 +48,7 @@ data_products:
 - purpose: Shelter staffing — employee roster and shift coverage
   domain_id: shelter
   id: workforce_ops
+  offers: [{name: default, role_id: pet_analyst}]
   tables: [assignments, employees, schedules]
   name: Workforce Ops
   owner: org_admin

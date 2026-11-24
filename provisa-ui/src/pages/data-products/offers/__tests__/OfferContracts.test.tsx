@@ -15,7 +15,7 @@
 // opens from the offer's contract routes. Output Ports stay in the panel's header.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../../test-utils/render";
 import { DataProductDetailPanel } from "../../DataProductDetailPanel";
 import type { ProductCore } from "../../productCore";
 import type { OdcsContract } from "../../../../api/dataProductContracts";
@@ -303,6 +303,53 @@ describe("an offer's contracts (REQ-2180)", () => {
     openContracts();
     expect(await screen.findByText("No contracts derived yet.")).toBeInTheDocument();
     expect(rows()).toHaveLength(0);
+  });
+
+  it("say on every column tab when the offer's role reads no column of a dataset", async () => {
+    const none = offer(1);
+    none.contracts[0].contract.terms.fields = [];
+    offers.list = [none];
+    render(
+      <DataProductDetailPanel
+        p={PRODUCT}
+        core={CORE}
+        coreError={null}
+        reader={null}
+        canEdit={false}
+        canDelete={false}
+        owner
+        seesConsumers
+        lineageLoading={false}
+        lineageError=""
+        lineageGraph={LINEAGE}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        {...lifecycleProps()}
+      />,
+      { initialEntries: ["/data-products?product=pet_health"] },
+    );
+    await screen.findByTestId("offer-card-1");
+    openContracts();
+    fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
+    const contract = await screen.findByTestId("offer-1-contract-1");
+    for (const tab of ["naming", "type", "access"]) {
+      fireEvent.click(within(contract).getByTestId(`column-tab-${tab}`));
+      await waitFor(() =>
+        expect(within(contract).getByTestId("offer-1-contract-1-columns-empty")).toHaveTextContent(
+          "viewer reads no column of this dataset",
+        ),
+      );
+      // No header-only table in its place.
+      expect(within(contract).queryByTestId("offer-1-contract-1-columns")).toBeNull();
+    }
+  });
+
+  it("list the columns the offer's role reads, with no empty-state", async () => {
+    await panel(1);
+    openContracts();
+    fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
+    expect(await screen.findByTestId("offer-1-contract-1-columns-col-id")).toBeInTheDocument();
+    expect(screen.queryByTestId("offer-1-contract-1-columns-empty")).toBeNull();
   });
 
   it("have no row for a command or a checker", async () => {

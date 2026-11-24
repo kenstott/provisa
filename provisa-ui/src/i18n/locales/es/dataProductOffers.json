@@ -75,6 +75,7 @@
     "noContracts": "Aún no se han derivado contratos.",
     "rowRules": "Reglas de fila",
     "noRowRules": "Sin reglas de fila: todas las filas.",
+    "roleReadsNoColumn": "{{role}} no lee ninguna columna de este conjunto de datos",
     "profileTables": "Perfiles: {{tables}}",
     "preview": "Vista previa",
     "bid": "Solicitar",

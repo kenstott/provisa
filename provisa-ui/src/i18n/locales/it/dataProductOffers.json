@@ -75,6 +75,7 @@
     "noContracts": "Ancora nessun contratto derivato.",
     "rowRules": "Regole di riga",
     "noRowRules": "Nessuna regola di riga: tutte le righe.",
+    "roleReadsNoColumn": "{{role}} non legge alcuna colonna di questo dataset",
     "profileTables": "Profili: {{tables}}",
     "preview": "Anteprima",
     "bid": "Richiedi",

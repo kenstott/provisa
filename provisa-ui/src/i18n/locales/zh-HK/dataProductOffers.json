@@ -75,6 +75,7 @@
     "noContracts": "尚未衍生契約。",
     "rowRules": "行規則",
     "noRowRules": "沒有行規則：所有行。",
+    "roleReadsNoColumn": "{{role}} 不讀取此數據集的任何欄位",
     "profileTables": "剖析：{{tables}}",
     "preview": "預覽",
     "bid": "申請",

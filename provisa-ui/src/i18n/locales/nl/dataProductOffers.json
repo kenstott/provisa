@@ -75,6 +75,7 @@
     "noContracts": "Nog geen contracten afgeleid.",
     "rowRules": "Rijregels",
     "noRowRules": "Geen rijregels: alle rijen.",
+    "roleReadsNoColumn": "{{role}} leest geen enkele kolom van deze dataset",
     "profileTables": "Profielen: {{tables}}",
     "preview": "Voorbeeld",
     "bid": "Aanvragen",

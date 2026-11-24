@@ -75,6 +75,7 @@
     "noContracts": "Noch keine Contracts abgeleitet.",
     "rowRules": "Zeilenregeln",
     "noRowRules": "Keine Zeilenregeln: alle Zeilen.",
+    "roleReadsNoColumn": "{{role}} liest keine Spalte dieses Datensatzes",
     "profileTables": "Profile: {{tables}}",
     "preview": "Vorschau",
     "bid": "Anfragen",

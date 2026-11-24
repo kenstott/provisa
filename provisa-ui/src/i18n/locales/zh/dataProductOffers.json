@@ -75,6 +75,7 @@
     "noContracts": "尚未派生契约。",
     "rowRules": "行规则",
     "noRowRules": "无行规则：所有行。",
+    "roleReadsNoColumn": "{{role}} 不读取此数据集的任何列",
     "profileTables": "画像：{{tables}}",
     "preview": "预览",
     "bid": "申请",

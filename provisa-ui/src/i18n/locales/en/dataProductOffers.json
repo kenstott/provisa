@@ -75,6 +75,7 @@
     "noContracts": "No contracts derived yet.",
     "rowRules": "Row rules",
     "noRowRules": "No row rules: every row.",
+    "roleReadsNoColumn": "{{role}} reads no column of this dataset",
     "profileTables": "Profiles: {{tables}}",
     "preview": "Preview",
     "bid": "Bid",

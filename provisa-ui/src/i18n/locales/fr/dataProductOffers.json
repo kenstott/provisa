@@ -75,6 +75,7 @@
     "noContracts": "Aucun contrat dérivé pour l'instant.",
     "rowRules": "Règles de ligne",
     "noRowRules": "Aucune règle de ligne : toutes les lignes.",
+    "roleReadsNoColumn": "{{role}} ne lit aucune colonne de ce jeu de données",
     "profileTables": "Profils : {{tables}}",
     "preview": "Aperçu",
     "bid": "Demander",

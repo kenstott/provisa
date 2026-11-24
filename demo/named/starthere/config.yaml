@@ -636,6 +636,7 @@ data_products:
 - purpose: Pet health records — inventory and referral vets for care history
   domain_id: pet-store
   id: pet_health
+  offers: [{name: default, role_id: pet_analyst}]
   tables: [pets, pets_quality, vets, vets_quality]
   name: Pet Health
   owner: org_admin

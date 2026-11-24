@@ -1559,6 +1559,7 @@
   "ru/dataProductOffers.json::dataProductOffers.noGrantableRole": "No role you may grant reaches every dataset",
   "ru/dataProductOffers.json::dataProductOffers.noRole": "(no role chosen)",
   "ru/dataProductOffers.json::dataProductOffers.noRowRules": "No row rules: every row.",
+  "ru/dataProductOffers.json::dataProductOffers.roleReadsNoColumn": "{{role}} reads no column of this dataset",
   "ru/dataProductOffers.json::dataProductOffers.noSampleViews": "No views read this product's datasets",
   "ru/dataProductOffers.json::dataProductOffers.noSharingProducts": "No other product shares its datasets.",
   "ru/dataProductOffers.json::dataProductOffers.noTermsOfUse": "No terms of use stated.",

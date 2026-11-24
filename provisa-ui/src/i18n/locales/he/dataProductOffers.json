@@ -75,6 +75,7 @@
     "noContracts": "עדיין לא נגזרו חוזים.",
     "rowRules": "כללי שורה",
     "noRowRules": "אין כללי שורה: כל השורות.",
+    "roleReadsNoColumn": "{{role}} אינו קורא אף עמודה של מערך נתונים זה",
     "profileTables": "פרופילים: {{tables}}",
     "preview": "תצוגה מקדימה",
     "bid": "בקשה",

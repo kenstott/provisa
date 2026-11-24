@@ -75,6 +75,7 @@
     "noContracts": "コントラクトはまだ導出されていません。",
     "rowRules": "行ルール",
     "noRowRules": "行ルールなし: すべての行。",
+    "roleReadsNoColumn": "{{role}} はこのデータセットの列を読み取りません",
     "profileTables": "プロファイル: {{tables}}",
     "preview": "プレビュー",
     "bid": "リクエスト",

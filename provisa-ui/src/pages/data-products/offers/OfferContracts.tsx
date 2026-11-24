@@ -233,6 +233,7 @@ function DatasetContract({
         sourceType=""
         tableId={entry.table_id}
         testId={`${testId}-columns`}
+        empty={t("dataProductOffers.roleReadsNoColumn", { role: offer.role_id })}
       />
       <Text size="xs" fw={600}>
         {t("dataProductOffers.termsOfUse")}
