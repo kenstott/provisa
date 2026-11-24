@@ -218,7 +218,7 @@ async def test_a_table_argument_is_a_sample_read_over_flight_as_the_caller(
     )
     failed = await _validated(joined, script)
     said = _by_function(failed["dry_run"])["read_of"]["error"]
-    assert 'SELECT "id", "amount" FROM' in said
+    assert 'SELECT "orders"."id", "orders"."amount" FROM' in said
     assert said.endswith(f"LIMIT {script_validation.SAMPLE_ROWS}")
 
 
