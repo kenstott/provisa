@@ -2,7 +2,7 @@
 
 **Suite:** pgspec v1.5.11, against PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2).
 
-**Pass rate:** 100.0%: 346 passed, 9 skipped by design, 0 failed, of 355 cases. Catalog functions are reported by engine.
+**Pass rate:** 100.0%: 346 passed, 9 skipped by design, 0 documented limit, 0 failed, of 355 cases. Catalog functions are reported by engine.
 
 <!-- conformance-results:begin -->
 ## Skipped by design

@@ -845,6 +845,28 @@ class TestFirebaseBootstrapRealWiring:
         rows = _rows(control_plane, "SELECT user_id, provider FROM user_profiles")
         assert ("alice", "firebase") in rows
 
+    def test_real_provider_sign_in_creates_no_local_user(self, monkeypatch, control_plane):
+        # REQ-1246: a Firebase identity gets a user_profile, never a local_users/password row;
+        # the Firebase ID token is the credential and the principal still resolves.
+        self._patch_firebase(
+            monkeypatch,
+            {"tok-alice": {"uid": "alice", "email": "alice@example.com", "name": "Alice"}},
+        )
+        admin_db = _make_admin_db(control_plane)
+        tenant_db = _make_tenant_db(control_plane)
+        _claim_slot(control_plane, "alice")
+        client = TestClient(self._wire(admin_db, tenant_db), raise_server_exceptions=True)
+        assert _rows(control_plane, "SELECT id FROM local_users") == []
+
+        resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        assert resp.status_code == 200
+        assert resp.json() == {"user_id": "alice", "role": PLATFORM_ADMIN_ROLE}
+
+        assert ("alice", "firebase") in _rows(
+            control_plane, "SELECT user_id, provider FROM user_profiles"
+        )
+        assert _rows(control_plane, "SELECT id, username, email FROM local_users") == []
+
 
 # ---------------------------------------------------------------------------
 # REQ-121, REQ-122, REQ-123 — Provider interface contracts (no live IdP)

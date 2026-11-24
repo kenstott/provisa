@@ -22,7 +22,7 @@ import { profilerFieldsFromMapping } from "./profilerMapping";
 import { salesforceFieldsFromMapping } from "./salesforce";
 import { quickbooksFieldsFromMapping } from "./quickbooks";
 import { cloudopsFieldsFromMapping } from "./cloudops";
-import { sparqlFieldsFromMapping } from "./sparqlReasoner";
+import { sparqlCredentialFromSource, sparqlFieldsFromMapping } from "./sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
 import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
@@ -267,6 +267,12 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === "sparql" && s.mappingJson) {
     authFields = { ...authFields, ...sparqlFieldsFromMapping(s.mappingJson) }; // REQ-2138
+  }
+  if (s.type === "sparql") {
+    // REQ-2138: the credential it declares opens as it is held, in its auth mode's fields.
+    const credential = sparqlCredentialFromSource(s.mappingJson, s.username, s.passwordRef);
+    authType = credential.authType;
+    authFields = { ...authFields, ...credential.fields };
   }
 
   const sp =

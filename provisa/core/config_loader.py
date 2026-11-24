@@ -734,7 +734,6 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
 async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1683
     """Persist the config table's SPARQL as an api_endpoints row (plus its api_sources row)."""
     from provisa.sparql.persist import persist_sparql_table
-    from provisa.sparql.reasoning import source_reasoner
 
     assert tbl.query_template is not None  # _validate_neo4j_sources
     await persist_sparql_table(
@@ -745,8 +744,10 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
         query_template=tbl.query_template,
         columns=tbl.columns,
         ttl=tbl.cache_ttl or src.cache_ttl or 300,
+        options=src.mapping,  # REQ-2138: its reasoner and its credential's kind
+        username=src.username,  # REQ-2138: the credential, as held (resolved at each call)
+        password=src.password,
         default_graph_uri=src.federation_hints.get("default_graph_uri"),  # REQ-1740
-        reasoner=source_reasoner(src.id, src.mapping),  # REQ-2138
     )
 
 

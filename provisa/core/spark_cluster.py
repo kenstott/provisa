@@ -163,7 +163,7 @@ async def put(
     if credential is not None and not _REFERENCE.match(credential):
         raise SparkClusterRefused(
             "credential_not_reference",
-            "The credential is a secret reference, such as ${secret:spark_token}; a value is "
+            "The credential is a secret reference, such as ${secret:NAME}; a value is "
             "never kept here",
         )
     values = {
@@ -340,49 +340,32 @@ def version_of(response: bytes) -> str:
     raise ValueError("the server's answer carries no Spark version")
 
 
-def _raw(message: bytes) -> bytes:
-    """The request and the answer go as the bytes encoded here."""
-    return message
-
-
 def probe(address: str) -> str:
     """Call the cluster at ``address`` (a token in it when it takes one) and return its Spark
     version. Raises :class:`SparkClusterRefused` ``unreachable`` with the server's own words."""
-    import grpc
+    from provisa.grpc_remote.executor import UnaryCallFailed, call_unary_raw
 
     endpoint = parse(address)
     target = f"{endpoint.host}:{endpoint.port}"
-    channel = (
-        grpc.secure_channel(target, grpc.ssl_channel_credentials())
-        if endpoint.tls
-        else grpc.insecure_channel(target)
-    )
     metadata: tuple[tuple[str, str], ...] = (
         () if endpoint.token is None else (("authorization", f"Bearer {endpoint.token}"),)
     )
     try:
-        call = channel.unary_unary(
-            _SERVICE_METHOD,
-            request_serializer=_raw,
-            response_deserializer=_raw,
-        )
-        answer = call(
-            version_request(str(uuid.uuid4()), endpoint.params.get("user_id", "provisa")),
+        answer = call_unary_raw(
+            target,
+            tls=endpoint.tls,
+            method=_SERVICE_METHOD,
+            request=version_request(str(uuid.uuid4()), endpoint.params.get("user_id", "provisa")),
             timeout=PROBE_TIMEOUT_S,
             metadata=metadata,
         )
-    except grpc.RpcError as failed:
-        code = failed.code() if hasattr(failed, "code") else None
-        details = failed.details() if hasattr(failed, "details") else str(failed)
+    except UnaryCallFailed as failed:
         raise SparkClusterRefused(
             "unreachable",
-            f"The Spark cluster at {target} did not answer: "
-            f"{code.name if code is not None else 'error'}: {details}",
+            f"The Spark cluster at {target} did not answer: {failed}",
             status=502,
             target=target,
         ) from None
-    finally:
-        channel.close()
     try:
         return version_of(answer)
     except (ValueError, IndexError) as unread:

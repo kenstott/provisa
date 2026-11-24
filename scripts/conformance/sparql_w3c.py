@@ -23,7 +23,8 @@ the answer:
 * an update evaluation test: the update is accepted and the graph afterwards is the expected one.
 
 A dataset the model cannot state fails its cases with the reason, so no case silently leaves the
-count. Every case is passed, skipped by design (by_design/sparql.yaml) or failed.
+count. Every case is passed, skipped by design (by_design/sparql.yaml), documented limit (none:
+SPARQL states no limitation, REQ-2167 amended 2026-11-23) or failed.
 
 The results are written as in cypher_tck.py, with ``groups``: the three counts per test group.
 The exit status is non-zero only when the suite did not run, until SPARQL is at its baseline
@@ -186,7 +187,15 @@ def report(outcomes: list[Outcome], version: str, spec: str) -> dict:
     designed = {c["case"] for g in excluded for c in g["cases"]}
     tally: dict[str, dict[str, int]] = {}
     for o in outcomes:
-        row = tally.setdefault(o.feature, {"passed": 0, "by_design": 0, "failed": 0})
+        row = tally.setdefault(
+            o.feature,
+            {
+                "passed": 0,
+                "by_design": 0,
+                "documented_limit": by_design.NO_DOCUMENTED_LIMITS,
+                "failed": 0,
+            },
+        )
         if o.status == "passed":
             row["passed"] += 1
         elif f"{o.feature}::{o.scenario}" in designed:

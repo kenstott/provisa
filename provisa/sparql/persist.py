@@ -32,13 +32,33 @@ if TYPE_CHECKING:
 
 
 def sparql_config_from_source(
-    *, source_id: str, endpoint_url: str, default_graph_uri: str | None = None
-) -> "tuple[SparqlSourceConfig, ApiSource]":  # REQ-1683
-    """The endpoint config and api_sources record for a ``sparql`` Source row."""
-    from provisa.sparql.source import SparqlSourceConfig, build_api_source
+    *,
+    source_id: str,
+    endpoint_url: str,
+    options: dict,
+    username: str | None,
+    password: str | None,
+    default_graph_uri: str | None = None,
+) -> "tuple[SparqlSourceConfig, ApiSource]":  # REQ-1683, REQ-2138
+    """The endpoint config and api_sources record for a ``sparql`` Source row: its endpoint, and
+    the credential it declares (its ``options``' ``auth`` kind over its ``username`` and
+    ``password``, as held: values or secret references, resolved at each call). A source that
+    reads Provisa's own endpoint with no credential is refused by name
+    (``OwnEndpointNeedsCredential``)."""
+    from provisa.sparql.source import (
+        SparqlSourceConfig,
+        build_api_source,
+        require_credential,
+        sparql_auth,
+    )
 
+    auth = sparql_auth(source_id, options, username, password)
+    require_credential(source_id, endpoint_url, auth)
     cfg = SparqlSourceConfig(
-        source_id=source_id, endpoint_url=endpoint_url, default_graph_uri=default_graph_uri
+        source_id=source_id,
+        endpoint_url=endpoint_url,
+        default_graph_uri=default_graph_uri,
+        auth=auth,
     )
     return cfg, build_api_source(cfg)
 
@@ -52,18 +72,31 @@ async def persist_sparql_table(  # REQ-1683
     query_template: str,
     columns: list,
     ttl: int,
+    options: dict,  # REQ-2138: the source's options (reasoner, credential kind)
+    username: str | None,  # REQ-2138
+    password: str | None,  # REQ-2138: as held, a value or a secret reference
     default_graph_uri: str | None = None,  # REQ-1740
-    reasoner: tuple[str, str] | None = None,  # REQ-2138
 ) -> "tuple[ApiSource, ApiEndpoint]":
     """Persist one SPARQL-backed table: its source's api_sources row and its api_endpoints row.
     Returns the records so the caller can mirror them into live state."""
+    from provisa.sparql.reasoning import source_reasoner
     from provisa.sparql.source import build_endpoint
 
     cfg, api_source = sparql_config_from_source(
-        source_id=source_id, endpoint_url=endpoint_url, default_graph_uri=default_graph_uri
+        source_id=source_id,
+        endpoint_url=endpoint_url,
+        options=options,
+        username=username,
+        password=password,
+        default_graph_uri=default_graph_uri,
     )
     endpoint = build_endpoint(
-        cfg, table_name, query_template, api_columns_from_config(columns), ttl, reasoner
+        cfg,
+        table_name,
+        query_template,
+        api_columns_from_config(columns),
+        ttl,
+        source_reasoner(source_id, options),
     )
     await persist_api_source(conn, api_source)
     await persist_api_endpoint(conn, endpoint)

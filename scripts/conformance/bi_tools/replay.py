@@ -286,10 +286,11 @@ def _cell(text: Any) -> str:
 def _counts_row(t: dict[str, Any]) -> str:
     title = TITLES[t["tool"]]
     if t["version"] is None:
-        return f"| {title} | — | — | not captured | 0 | 0 | 0 | 0 | not tested |"
+        return f"| {title} | — | — | not captured | 0 | 0 | 0 | 0 | 0 | not tested |"
     return (
         f"| {title} | {_cell(t['version'])} | {t['captured']} | {_cell(t['method'])} "
-        f"| {t['statements']} | {t['passed']} | {t['by_design']} | {t['failed']} "
+        f"| {t['statements']} | {t['passed']} | {t['by_design']} | {t['documented_limit']} "
+        f"| {t['failed']} "
         f"| {t['not_tested']} |"
     )
 
@@ -306,9 +307,9 @@ def markdown(report: dict[str, Any], requirement: bool = False) -> str:
         "refusal where PostgreSQL refuses. Catalog content is not compared: it is the role's "
         "governed view of the model.",
         "",
-        "| Tool | Version | Captured | Method | Statements | Passed | Skipped by design | Failed "
-        "| Not tested |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Tool | Version | Captured | Method | Statements | Passed | Skipped by design "
+        "| Documented limit | Failed | Not tested |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         *(_counts_row(t) for t in tools),
         "",
     ]
@@ -367,7 +368,8 @@ def main(argv: list[str]) -> int:
     for t in report["tools"].values():
         print(
             f"{TITLES[t['tool']]}: {t['statements']} statements: {t['passed']} passed, "
-            f"{t['by_design']} skipped by design, {t['failed']} failed, "
+            f"{t['by_design']} skipped by design, {t['documented_limit']} documented limit, "
+            f"{t['failed']} failed, "
             f"{t['not_tested']} not tested" + ("" if t["version"] else " (not captured)")
         )
     if report["failed"]:

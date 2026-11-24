@@ -162,32 +162,22 @@ async def test_a_code_resolver_set_retires_together_and_then_its_tables_go(plane
     bridge = await _bridge(plane, code_resolver=SET_ID)
     set_names = code_resolver.names(SET_ID)
     async with plane.acquire() as conn:
-        for rel_id, source, target, via in (
-            (set_names.edge, stores, regions, bridge),
-            (set_names.matches, stores, bridge, None),
-            (set_names.target, bridge, regions, None),
-        ):
-            await conn.execute_core(
-                insert(relationships).values(
-                    id=rel_id,
-                    source_table_id=source,
-                    target_table_id=target,
-                    source_column="id",
-                    target_column="id",
-                    cardinality="many-to-one",
-                    code_resolver=SET_ID,
-                    **(
-                        {}
-                        if via is None
-                        else {
-                            "via_table_id": via,
-                            "via_source_column": "store_id",
-                            "via_target_column": "region_id",
-                            "via_label_source": "table",
-                        }
-                    ),
-                )
+        # REQ-2249: a set holds its bridge and one junction relationship through it.
+        await conn.execute_core(
+            insert(relationships).values(
+                id=set_names.edge,
+                source_table_id=stores,
+                target_table_id=regions,
+                source_column="id",
+                target_column="id",
+                cardinality="many-to-one",
+                code_resolver=SET_ID,
+                via_table_id=bridge,
+                via_source_column="store_id",
+                via_target_column="region_id",
+                via_label_source="table",
             )
+        )
     # The set's bridge cannot be deleted apart from it, and its tables are held under it.
     assert (await _delete_table(bridge)).code == "schema.code_resolver_part"
     assert (await _delete_table(stores)).code == "schema.table_has_dependents"

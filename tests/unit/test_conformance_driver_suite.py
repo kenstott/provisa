@@ -254,7 +254,10 @@ def test_every_listed_test_names_a_declared_reason_and_every_reason_is_used(tmp_
 
 def test_the_summary_gives_the_four_counts_and_what_the_gate_failed_on(tmp_path):
     text = ds.section(_doc(tmp_path), requirement=True)
-    assert "**Results:** 3 passed, 2 skipped by design, 2 failed, 2 not tested, of 9 tests." in text
+    assert (
+        "**Results:** 3 passed, 2 skipped by design, 0 documented limit, 2 failed, 2 not tested, of 9 tests."
+        in text
+    )
     assert "| writes | 2 | REQ-2203 | Tables are the model's. |" in text
     assert "| hold-cursor | 1 | WITH HOLD cursors are refused. |" in text
     assert "- failed, not listed: a.New::testBroken: unexpected EOF" in text
@@ -292,7 +295,7 @@ def test_main_writes_the_report_and_its_exit_status_is_the_gate(tmp_path, monkey
     assert doc["surface"] == "driver-pgjdbc" and doc["passed"] == 3
     out = capsys.readouterr().out
     assert (
-        "CONFORMANCE-COUNTS surface=driver-pgjdbc passed=3 by_design=2 failed=2 not_tested=2 "
+        "CONFORMANCE-COUNTS surface=driver-pgjdbc passed=3 by_design=2 documented_limit=0 failed=2 not_tested=2 "
         "total=9" in out
     )
     assert "DRIVER-UNEXPECTED-FAILURE a.New::testBroken" in out

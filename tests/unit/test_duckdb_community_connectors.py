@@ -12,8 +12,8 @@
 
 MSSQL, MongoDB, Snowflake, BigQuery, Firebird, Google Sheets, Airport — each references an
 external source via ATTACH (in place, never landed) and is backed by a DuckDB extension
-installed from the COMMUNITY registry. The probe is LOAD-ONLY (REQ-904): INSTALL ... FROM
-community + LOAD, then assert the scanner/attach symbol is registered — it never opens a live
+installed from the COMMUNITY registry at build time. The probe is LOAD-ONLY (REQ-904, REQ-294):
+LOAD, then assert the scanner/attach symbol is registered — it never opens a live
 source. Pure unit test: the async ``probe(fetch)`` is driven by a fake DuckDB fetch callable.
 """
 
@@ -90,13 +90,9 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
     assert c.mechanism is expected
     assert c.reads_in_place is True
     assert c.install_from_community is True  # community registry
-    if ext == "airport":  # DuckDB 2.0: Query.Farm's repository, not community
-        assert c._bring_up()[-2:] == [
-            "INSTALL airport FROM query_farm",
-            "LOAD airport FROM query_farm",
-        ]
-    else:
-        assert c._bring_up() == [f"INSTALL {ext} FROM community", f"LOAD {ext}"]
+    assert c._load_statement() == (
+        "LOAD airport FROM query_farm" if ext == "airport" else f"LOAD {ext}"
+    )
 
 
 def test_all_seven_community_connectors_are_present():
@@ -118,13 +114,11 @@ def test_all_seven_community_connectors_are_present():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("spec", _COMMUNITY, ids=_IDS)
 async def test_probe_available_when_extension_loads_and_symbol_registers(spec):
-    cls, ext, sym = spec[0], spec[3], spec[4]
+    cls, sym = spec[0], spec[4]
     fetch = _FakeDuckDB(registered={sym})
     result = await cls().probe(fetch)
     assert result.available is True
-    # staged from community, not core; airport from Query.Farm's repository on DuckDB 2.0
-    source = "query_farm" if ext == "airport" else "community"
-    assert fetch.installs == [f"INSTALL {ext} FROM {source}"]
+    assert fetch.installs == []  # REQ-294: staged at install, only ever loaded here
 
 
 @pytest.mark.asyncio

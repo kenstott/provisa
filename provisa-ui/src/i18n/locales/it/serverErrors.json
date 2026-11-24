@@ -626,7 +626,9 @@
       "columns_not_inferred": "Impossibile dedurre le colonne: il sondaggio non ha restituito righe e non sono state trovate variabili SELECT.",
       "probe_failed": "Sondaggio dell'endpoint SPARQL non riuscito: {{error}}",
       "source_not_found": "Origine SPARQL '{{source_id}}' non trovata",
-      "no_select_variables": "La query non nomina variabili SELECT (SELECT * o non è una query SELECT): le sue colonne non si possono leggere da essa"
+      "no_select_variables": "La query non nomina variabili SELECT (SELECT * o non è una query SELECT): le sue colonne non si possono leggere da essa",
+      "credential_invalid": "La sorgente '{{source}}' dichiara una credenziale {{kind}} incompleta: una credenziale bearer richiede il suo token, una basic nome utente e password (i tipi sono bearer e basic)",
+      "own_endpoint_needs_credential": "La sorgente '{{source}}' legge l'endpoint SPARQL di Provisa stesso e non dichiara alcuna credenziale: dichiara il token bearer oppure nome utente e password di un account Provisa riservato al servizio, i cui ruoli delimitano ciò che legge"
     },
     "subscribe": {
       "avro_topic_without_registry": "Il topic '{{topic}}' contiene messaggi Avro e la sua origine non indica alcun registro degli schemi per leggerli: imposta l'URL del registro degli schemi dell'origine",
