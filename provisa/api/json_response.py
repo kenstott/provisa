@@ -67,9 +67,9 @@ def _encode_unknown(value: Any) -> Any:  # noqa: ANN401 — whatever orjson cann
         # jsonable_encoder writes a timedelta as its total seconds, and a relativedelta not at all.
         return iso8601_duration(value)
     if isinstance(value, Decimal):
-        # Its exact digits, as the serializer writes a DECIMAL (serialize.decimal_text):
+        # Its exact digits, as the serializer writes a DECIMAL (numeric_type.decimal_text):
         # jsonable_encoder makes a float of it.
-        from provisa.executor.serialize import decimal_text
+        from provisa.core.numeric_type import decimal_text
 
         return decimal_text(value)
     sign = infinity_of(value)

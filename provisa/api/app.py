@@ -4299,7 +4299,10 @@ def _after_answer_steps(
         # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,
         # REQ-2006) skips it: its model is the prod's, the prod's pass writes it, and the
         # SHARE ROW EXCLUSIVE lock the write takes would hold up every concurrent sandbox open.
-        if env != PROD:
+        # ``announce=False`` (REQ-1914) is a reload of a change another worker made: that worker
+        # built the same model and writes its names table; this one serves from the names table
+        # it built in memory, and its meta reports read the one that worker stored.
+        if env != PROD or not announce:
             return
         assert state.model_db is not None
         assert names is not None, "the build stores the names table it built"

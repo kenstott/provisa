@@ -26,18 +26,21 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "conformance"))
 
-from function_support import difference  # noqa: E402
+from function_support import difference, type_form_difference  # noqa: E402
 
 REFUSED, DIFFERS, ERROR = "refused", "differs", "error"
 _REAL = 700
 
 
 def compared(oids: list[int], want: list[tuple], rows: list[tuple], values: bool, sql: str) -> bool:
-    """Whether ``rows`` are PostgreSQL's answer, as function_support compares one."""
+    """Whether ``rows`` are PostgreSQL's answer, as function_support compares one: one compared by
+    its types alone also by its NULLs and its types' text forms."""
     if any(len(row) != len(oids) for row in rows):
         return False
     left, right = {"fields": oids, "rows": want}, {"fields": oids, "rows": rows}
-    return difference(left, right, values=values, sql=sql) is None
+    if difference(left, right, values=values, sql=sql) is not None:
+        return False
+    return values or type_form_difference(left, right) is None
 
 
 def _real_text(value: float) -> str:

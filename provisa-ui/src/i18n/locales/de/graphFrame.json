@@ -21,6 +21,7 @@
     "addToFavorites": "Zu Favoriten hinzufügen",
     "autoImputeOn": "Automatisches Ableiten von Beziehungen ist aktiv. Zum Deaktivieren klicken.",
     "autoImputeOff": "Beziehungen zwischen sichtbaren Knoten automatisch ableiten",
+    "relNotImputed": "{{type}} nicht abgeleitet: {{error}}",
     "groupTooltip": "Knoten nach Attribut gruppieren (Doppelklick auf eine Hülle zum Einklappen; Doppelklick auf den eingeklappten Knoten zum Erweitern)",
     "groupPlaceholder": "⬡ gruppieren",
     "wrapCellText": "Zellentext umbrechen",
