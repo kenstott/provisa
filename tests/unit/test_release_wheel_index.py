@@ -45,6 +45,7 @@ _W510 = "provisa-0.1.0a510-cp312-cp312-macosx_11_0_arm64.whl"
 _CLIENT = "provisa_client-0.1.0a510-py3-none-any.whl"
 _NOTEBOOK = "provisa_notebook-0.1.0a510-py3-none-any.whl"
 _SDK = "provisa_sdk-0.1.0a510-py3-none-any.whl"
+_PYSPARK = "provisa_pyspark-0.1.0a510-py3-none-any.whl"
 _PG_EXT = "provisa_pg_ext-0.2.0-py3-none-any.whl"
 _DUCKDB_EXT = "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_x86_64.whl"
 
@@ -88,8 +89,8 @@ def test_only_the_projects_wheels_of_published_releases_are_listed(tmp_path):
     assert re.findall(r'href="([^"]+)"', root) == ["provisa/"]
 
 
-def test_the_client_notebook_and_sdk_wheels_are_indexed_beside_the_server(tmp_path):
-    names = [_W510, _CLIENT, _NOTEBOOK, _SDK]
+def test_the_client_notebook_sdk_and_pyspark_wheels_are_indexed_beside_the_server(tmp_path):
+    names = [_W510, _CLIENT, _NOTEBOOK, _SDK, _PYSPARK]
     listed = index.write_index(
         [_release("v0.1.0-alpha.510", [*names, _PG_EXT, _DUCKDB_EXT])], tmp_path
     )
@@ -102,11 +103,13 @@ def test_the_client_notebook_and_sdk_wheels_are_indexed_beside_the_server(tmp_pa
         "provisa-duckdb-ext/",
         "provisa-pg-ext/",
         "provisa-sdk/",
+        "provisa-pyspark/",
     ]
     for project, name in (
         ("provisa-client", _CLIENT),
         ("provisa-notebook", _NOTEBOOK),
         ("provisa-sdk", _SDK),
+        ("provisa-pyspark", _PYSPARK),
     ):
         page = (tmp_path / "simple" / project / "index.html").read_text()
         assert name in page

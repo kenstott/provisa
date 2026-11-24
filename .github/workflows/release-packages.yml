@@ -468,6 +468,67 @@ jobs:
             provisa-sdk/python/dist/provisa_sdk-*.whl
             provisa-sdk/python/dist/provisa_sdk-*.tar.gz
 
+  # REQ-2270: the Spark data source (provisa-pyspark), at the release's version. Built and tested
+  # here and attached to the draft release; the Pages index lists its wheel beside provisa-duckdb-ext.
+  # Nothing goes to PyPI (REQ-294, REQ-2112).
+  build-provisa-pyspark:
+    name: Build provisa-pyspark (Spark data source)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The data source's unit tests call Provisa's own Flight server, so they run in the
+      # project's locked environment.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Test
+        run: uv run --frozen python -m pytest tests/unit/test_provisa_pyspark.py -q
+
+      - name: Stamp the version and build
+        run: |
+          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
+            provisa-pyspark/pyproject.toml
+          uv build provisa-pyspark/ --out-dir provisa-pyspark/dist/
+
+      - name: Verify the wheel and sdist carry the data source
+        run: |
+          uv run --frozen python - <<'PY'
+          import glob, sys, tarfile, zipfile
+          version = "${{ needs.metadata.outputs.py_version }}"
+          [wheel] = glob.glob(f"provisa-pyspark/dist/provisa_pyspark-{version}-py3-none-any.whl")
+          [sdist] = glob.glob(f"provisa-pyspark/dist/provisa_pyspark-{version}.tar.gz")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          if "provisa_pyspark/__init__.py" not in names:
+              print("wheel lacks provisa_pyspark/__init__.py"); sys.exit(1)
+          members = tarfile.open(sdist).getnames()
+          if f"provisa_pyspark-{version}/provisa_pyspark/__init__.py" not in members:
+              print("sdist lacks provisa_pyspark/__init__.py"); sys.exit(1)
+          PY
+
+      # A dry run keeps it in the run; the upload fails when the file is missing.
+      - name: Upload dist
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-pyspark-dist
+          path: provisa-pyspark/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Attach the wheel and sdist to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: |
+            provisa-pyspark/dist/provisa_pyspark-*.whl
+            provisa-pyspark/dist/provisa_pyspark-*.tar.gz
+
   # REQ-1984: the TypeScript SDK (@provisa/sdk), at the release's version as semver. Packed here
   # and attached to the draft release as an asset: nothing goes to npm (maintainer 2026-11-21).
   build-sdk-typescript:

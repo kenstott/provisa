@@ -2096,6 +2096,42 @@ def test_the_release_builds_both_sdks_and_attaches_them_to_the_draft():
     assert not any("pypi" in job or "npm" in job for job in orchestrator)
 
 
+def test_the_release_builds_provisa_pyspark_and_lists_it_on_the_index_like_duckdb_ext():
+    """REQ-2270 (amended 2026-11-24): provisa-pyspark ships on the release's Pages index as
+    provisa-duckdb-ext does, never on PyPI (REQ-294, REQ-2112). The packages leg builds its wheel
+    and sdist at the release's version and attaches both to the draft (a dry run keeps them in the
+    run), the undraft requires both, and the index lists the project beside provisa-duckdb-ext."""
+    legs = dict(_release_legs().values())
+    job = legs["release-packages.yml"]["jobs"]["build-provisa-pyspark"]
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "needs.metadata.outputs.py_version" in runs and "provisa-pyspark/pyproject.toml" in runs
+    assert "uv build provisa-pyspark/" in runs
+    assert "tests/unit/test_provisa_pyspark.py" in runs
+    assert not _LEAVES_THE_RUN.search(runs)
+    assert "pypi" not in runs.lower() and "twine" not in runs
+    uploads = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert [s["with"]["name"] for s in uploads] == ["provisa-pyspark-dist"]
+    assert uploads[0]["if"] == "${{ !inputs.publish }}"
+    [attach] = [s for s in job["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+    assert attach["if"] == "inputs.publish"
+    for pattern in ("provisa_pyspark-*.whl", "provisa_pyspark-*.tar.gz"):
+        assert pattern in attach["with"]["files"], pattern
+    assert "id-token" not in job["permissions"]
+
+    publish = legs["release-publish.yml"]["jobs"]["publish-release"]
+    [verify] = [s for s in publish["steps"] if s["name"].startswith("Publish release")]
+    required = verify["env"]["REQUIRED"].splitlines()
+    py = "${{ needs.metadata.outputs.py_version }}"
+    assert f"provisa_pyspark-{py}-py3-none-any.whl" in [r.strip() for r in required]
+    assert f"provisa_pyspark-{py}.tar.gz" in [r.strip() for r in required]
+
+    script = (REPO / "scripts" / "release_wheel_index.py").read_text()
+    projects = script.split("PROJECTS = (")[1].split(")")[0]
+    assert '"provisa-duckdb-ext",' in projects and '"provisa-pyspark",' in projects
+    index_job = legs["release-publish.yml"]["jobs"]["publish-wheel-index"]
+    assert "scripts/release_wheel_index.py" in str(index_job["steps"])
+
+
 def test_no_workflow_publishes_to_npm():
     """Every package ships as a GitHub release asset only (maintainer 2026-11-21)."""
     for path in sorted((REPO / ".github").rglob("*.yml")):
