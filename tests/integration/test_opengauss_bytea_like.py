@@ -89,3 +89,60 @@ def test_bytea_like_answers_as_postgres_on_opengauss() -> None:
             assert not wrong, "\n".join(wrong)
     finally:
         conn.close()
+
+
+# PROBE (temporary, removed before the job's report): which bytea -> raw form keeps the bytes.
+_PROBE_FORMS = {
+    "hextoraw_encode": "hextoraw(encode({x}, 'hex'))",
+    "encode_cast_raw": "CAST(encode({x}, 'hex') AS raw)",
+    "text_cast_raw": "CAST(CAST({x} AS text) AS raw)",
+    "rawin_cast_varchar": "CAST(CAST(encode({x}, 'hex') AS varchar) AS raw)",
+}
+_PROBE_CASES = [
+    (r"'\xdeadbeef'::bytea", r"'\xdeadbeef'::bytea", True),
+    (r"'\xdeadbeef'::bytea", r"'\xde25'::bytea", True),
+    (r"'\xdeadbeef'::bytea", r"'\xad25'::bytea", False),
+    (r"'\xdeadbeef'::bytea", r"'\x5fadbeef'::bytea", True),
+    (r"'\xdeadbeef'::bytea", r"'\x5fad'::bytea", False),
+    (r"'\xdeadbeef'::bytea", r"'\x25'::bytea", True),
+    (r"'\x'::bytea", r"'\x'::bytea", True),
+    (r"'\x'::bytea", r"'\x25'::bytea", True),
+    (r"NULL::bytea", r"'\x25'::bytea", None),
+    (r"'\xdeadbeef'::bytea", r"NULL::bytea", None),
+]
+
+
+def test_probe_raw_forms() -> None:
+    conn = _connect()
+    report: list[str] = []
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT datcompatibility FROM pg_database WHERE datname = current_database()"
+            )
+            report.append(f"compat={cur.fetchone()}")
+            cur.execute("SELECT version()")
+            report.append(f"version={cur.fetchone()}")
+            for name, form in _PROBE_FORMS.items():
+                for fn, neg in (("rawlike", False), ("rawnlike", True)):
+                    for value, pattern, expected in _PROBE_CASES:
+                        want = None if expected is None else (expected != neg)
+                        sql = f"SELECT {fn}({form.format(x=value)}, {form.format(x=pattern)})"
+                        answers = set()
+                        try:
+                            for _ in range(_RUNS):
+                                cur.execute(sql)
+                                answers.add(cur.fetchone()[0])
+                        except psycopg2.Error as e:
+                            report.append(
+                                f"ERR {name} {fn} {value} {pattern}: {str(e).strip()[:120]}"
+                            )
+                            break
+                        ok = "OK " if answers == {want} else "BAD"
+                        report.append(
+                            f"{ok} {name} {fn} {value} {pattern}: {sorted(answers, key=str)} want {want}"
+                        )
+    finally:
+        conn.close()
+    raise AssertionError("PROBE\n" + "\n".join(report))
