@@ -20,6 +20,7 @@ the shape, with no list of exceptions beyond the one stated below (the NixOS gue
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -2094,6 +2095,47 @@ def test_the_release_builds_both_sdks_and_attaches_them_to_the_draft():
             assert pattern in attach["with"]["files"], pattern
     orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
     assert not any("pypi" in job or "npm" in job for job in orchestrator)
+
+
+def test_the_release_builds_the_vscode_extension_and_attaches_the_vsix_to_the_draft():
+    """REQ-2112 (amended 2026-11-22): the VS Code extension is packaged in the packages leg,
+    stamped with the release's version, and attached to the draft release as a .vsix; a dry run
+    keeps it in the run instead. The undraft requires it."""
+    legs = dict(_release_legs().values())
+    job = legs["release-packages.yml"]["jobs"]["build-vscode-extension"]
+    run = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "cd provisa-vscode" in run and "npm run package" in run
+    assert "needs.metadata.outputs.npm_version" in run
+    assert not _LEAVES_THE_RUN.search(run)
+    uploads = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert [s["with"]["name"] for s in uploads] == ["vscode-extension-vsix"]
+    assert uploads[0]["if"] == "${{ !inputs.publish }}"
+    assert uploads[0]["with"]["if-no-files-found"] == "error"
+    [attach] = [s for s in job["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+    assert attach["if"] == "inputs.publish"
+    assert attach["with"]["files"] == "provisa-vscode/provisa-*.vsix"
+    publish = (REPO / ".github" / "workflows" / "release-publish.yml").read_text()
+    assert "provisa-${{ needs.metadata.outputs.npm_version }}.vsix" in publish
+    package = json.loads((REPO / "provisa-vscode" / "package.json").read_text())
+    assert "@vscode/vsce" in package["scripts"]["package"]
+    assert " package " in f"{package['scripts']['package']} "
+
+
+def test_no_workflow_publishes_the_vscode_extension_to_a_marketplace():
+    """REQ-2112 (amended 2026-11-22): no public registry, the Marketplace included, until the
+    maintainer changes channels: no workflow runs vsce or ovsx publish or holds a Marketplace
+    token, and the extension's own scripts publish nothing."""
+    marketplace = re.compile(
+        r"\b(vsce|ovsx)\b.*\bpublish\b|VSCE_PAT|OVSX_PAT|open-vsx\.org|marketplace\.visualstudio\.com"
+    )
+    for path in sorted((REPO / ".github").rglob("*.yml")):
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            assert not marketplace.search(line), f"{path.name}:{n}: {line.strip()}"
+    package = json.loads((REPO / "provisa-vscode" / "package.json").read_text())
+    for name, script in package["scripts"].items():
+        assert not marketplace.search(script) and "publish" not in name, name
 
 
 def test_no_workflow_publishes_to_npm():
