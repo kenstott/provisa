@@ -468,3 +468,21 @@ def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) 
         app_loaders._RoleParts(appmod.state, runtime, inputs, {"id": "analyst"}, None).surface()
     assert seen == [runtime]
     assert appmod.state.org_registry.get(runtime_key("acme", "recopied")) is None
+
+
+def test_replacing_a_part_builds_no_role_it_drops() -> None:
+    """A test that replaces a part whole (``state.contexts = {}``) drops each role the map does
+    not name, and builds none of them. Removing the part from a role not built yet built it, and
+    against the test's own stand-in inputs the build raised (KeyError 'relationships'),
+    failing the setup of every test after the one that registered the role."""
+    from provisa.api.role_surface import install_surface
+
+    runtime = OrgRuntime(org_id="default")
+
+    def _fails():
+        raise KeyError("relationships")
+
+    lazy = LazySurface("data_writer", _fails)
+    install_surface(runtime, "data_writer", lazy)
+    runtime.contexts = {}
+    assert "data_writer" not in runtime.surfaces and not lazy.built
