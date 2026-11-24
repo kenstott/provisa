@@ -664,6 +664,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         db = getattr(state, "tenant_db", None)
         engine = getattr(state, "federation_engine", None)
         config = getattr(state, "config", None)
+        __import__("logging").getLogger("provisa.diag").warning(
+            "[DIAG] wire_event_loop seed=%s", seed
+        )
         if db is None or engine is None or config is None:
             log.info("event loop: prerequisites not ready — skipping")
             return 0
@@ -959,6 +962,12 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         log.info(
             "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
             len(processors),
+        )
+        __import__("logging").getLogger("provisa.diag").warning(
+            "[DIAG] event loop wired %s; mv cols for %s; awaiting %s",
+            sorted(p.node for p in processors),
+            sorted(_mv_cols),
+            sorted(state.views_awaiting_input),
         )
         return len(processors)
     except Exception:

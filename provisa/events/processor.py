@@ -328,7 +328,9 @@ class TableProcessor(ABC):
             if not peeked:
                 return None
             if not self._ready(peeked, now):
+                log.warning("[DIAG] %s deferred %d pending (not ready)", self.node, len(peeked))
                 return None
+            log.warning("[DIAG] %s ready with %d pending", self.node, len(peeked))
         newly = await queue.claim(
             conn,
             dependent_table=self.node,
@@ -384,8 +386,10 @@ class TableProcessor(ABC):
         # ABORT verdict (or a raise) surfaces as PreprocessError → fatal error event + poison; a
         # QUARANTINE verdict surfaces as PreflightQuarantine → non-fatal hold; ctx.warn accumulates
         # advisory reasons on ctx.
+        log.warning("[DIAG] %s handling %s", self.node, [e["event_type"] for e in pending])
         try:
             result = await self.handle(pending, prior_hash=prior_hash, ctx=ctx)
+            log.warning("[DIAG] %s handled -> %s", self.node, None if result is None else result[0])
         except PreprocessError as exc:
             return await self._emit_error(conn, claimed, now, {"error": str(exc)})
         except PreflightQuarantine as exc:

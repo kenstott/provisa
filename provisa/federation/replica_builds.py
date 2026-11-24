@@ -583,6 +583,12 @@ async def _post_built(state: Any, conn: Any, key: ReplicaKey, node: str, rows: i
         # No event loop wired in this process (nothing to tell), or the table has no node.
         dependents_of = getattr(state, "replica_dependents_of", None)
         listeners = dependents_of(node) if dependents_of is not None else []
+    log.warning(
+        "[DIAG] built %s: listeners %s (node wired: %s)",
+        node,
+        listeners,
+        key in (getattr(state, "replica_nodes", None) or {}),
+    )
     if not listeners:
         return
     event_id = await queue.post_event(

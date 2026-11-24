@@ -299,7 +299,11 @@ def make_mv_generate(
         forced: bool = False,
     ) -> tuple[str, dict, str | None] | None:
         del pending  # an MV refresh recomputes to current state; the claimed events are the trigger
+        import logging as _dl
+
+        _dl.getLogger("provisa.diag").warning("[DIAG] mv generate start")
         rows = await run_query()
+        _dl.getLogger("provisa.diag").warning("[DIAG] mv generate got %d rows", len(rows))
         # REQ-1165: preflight CHECK after the MV SQL, before land. Gates the land (ABORT/QUARANTINE
         # raise); CONTINUE lands the recomputed rows unchanged. An empty recompute still lands an
         # empty replace (a legitimately-emptied MV clears its table) — the check never mutates rows.
