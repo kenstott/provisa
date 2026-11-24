@@ -16,7 +16,6 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
-import copy
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, cast
@@ -119,20 +118,34 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
 class RoleTables:  # REQ-1882
     """One role's tables, found and named once for every part of its surface -- its schema,
     context, path map and proto -- which each found and named them again from the same input. Built
-    by :func:`role_tables` from one role's schema input and read only by that input's parts. Each
-    part reads its own copies: proto renames its tables and the schema gives them fields."""
+    by :func:`role_tables` from one role's schema input and read only by that input's parts. The
+    context and path map read the tables as found; the schema gives its tables fields and proto
+    renames its own, so each of those takes copies (:meth:`served_copies`)."""
 
     named: tuple[_TableInfo, ...]
     #: The ids of the tables the role reads on SQL alone (_visible_tables).
     sql_only: frozenset[int]
 
     def for_sql(self) -> list[_TableInfo]:
-        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named."""
-        return [copy.copy(t) for t in self.named]
+        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named; read, never
+        changed."""
+        return list(self.named)
 
     def served(self) -> list[_TableInfo]:
-        """The tables as ``_build_visible_tables(si)`` finds them, named."""
-        return [copy.copy(t) for t in self.named if t.table_id not in self.sql_only]
+        """The tables as ``_build_visible_tables(si)`` finds them, named; read, never changed."""
+        return [t for t in self.named if t.table_id not in self.sql_only]
+
+    def served_copies(self) -> list[_TableInfo]:
+        """:meth:`served`, each table a copy of its own to change: its fields and names."""
+        return [_copied(t) for t in self.served()]
+
+
+def _copied(table: _TableInfo) -> _TableInfo:
+    """A shallow copy of ``table``: its own attributes, its column lists shared (none is changed
+    in place). ``copy.copy`` rebuilds it through the pickle protocol, several times slower."""
+    out = object.__new__(_TableInfo)
+    out.__dict__.update(table.__dict__)
+    return out
 
 
 def role_tables(si: SchemaInput) -> RoleTables:
@@ -1424,7 +1437,7 @@ def generate_schema(
     # catalog's resolve field every role's Query has (_add_resolve_field), so it is still valid.
     domain_alias_map = _build_domain_alias_map(si.domains)
     if found is not None:
-        tables = found.served()
+        tables = found.served_copies()
     else:
         tables = _build_visible_tables(si)
         _assign_names(

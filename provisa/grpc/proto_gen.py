@@ -428,7 +428,7 @@ def generate_proto(
     # ``found``: ``si``'s tables already found and named for the role's other parts (role_tables).
     tables = [
         t
-        for t in (found.served() if found is not None else _build_visible_tables(si))
+        for t in (found.served_copies() if found is not None else _build_visible_tables(si))
         if (t.domain_id, t.table_name) not in SQL_CATALOG_TABLES
     ]
     if found is None:

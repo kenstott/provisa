@@ -18,11 +18,13 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 import functools
 from dataclasses import dataclass
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from provisa.core.inflection import plural, singular
-from provisa.core.request_context import acting_org_overrides
+from provisa.core.request_context import acting_org_overrides, current_env, current_org
 
 if TYPE_CHECKING:
     from types import SimpleNamespace
@@ -548,14 +550,55 @@ def _org_naming() -> dict:
     return acting_org_overrides().get("naming") or {}
 
 
+#: The org binding (org, environment) :func:`conventions_held` read its (GraphQL, SQL) conventions
+#: under, with them, for the block it holds them in.
+_held: ContextVar[tuple[str | None, str | None, str, str] | None] = ContextVar(
+    "naming_conventions_held", default=None
+)
+
+
+@contextmanager
+def conventions_held() -> Iterator[None]:  # REQ-1882
+    """The conventions of the org the block is bound to, read once when it begins and answered
+    for the rest of it while that binding holds. A role's surface names every column of every
+    table it serves, each name asking the org's settings for its convention; built in one block
+    bound to one org (an org's naming settings are changed only by a rebuild, which builds the
+    role again), the block's answer is the same at every name. Work in the block bound to another
+    org or environment reads that one's settings, as outside it."""
+    token = _held.set(
+        (current_org.get(), current_env.get(), _org_gql_convention(), _org_sql_convention())
+    )
+    try:
+        yield
+    finally:
+        _held.reset(token)
+
+
+def _held_conventions() -> tuple[str, str] | None:
+    held = _held.get()
+    if held is None or held[0] != current_org.get() or held[1] != current_env.get():
+        return None
+    return held[2], held[3]
+
+
 def active_gql_convention() -> str:  # REQ-471, REQ-1327
     """The GraphQL convention of the org this compile is bound to, else the deployment's."""
-    own = _org_naming().get("convention")
-    return normalize_convention(own) if own else _gql_convention
+    held = _held_conventions()
+    return held[0] if held is not None else _org_gql_convention()
 
 
 def active_sql_convention() -> str:  # REQ-1327
     """The SQL convention of the org this compile is bound to, else the deployment's."""
+    held = _held_conventions()
+    return held[1] if held is not None else _org_sql_convention()
+
+
+def _org_gql_convention() -> str:
+    own = _org_naming().get("convention")
+    return normalize_convention(own) if own else _gql_convention
+
+
+def _org_sql_convention() -> str:
     own = _org_naming().get("sql_convention")
     return normalize_convention(own) if own else _sql_convention
 

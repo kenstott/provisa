@@ -2003,9 +2003,10 @@ class _RoleParts:
             # that runtime's model through ``state`` -- its org's and its environment's,
             # registered or not yet.
             from provisa.api.org_runtime import serving
+            from provisa.compiler.naming import conventions_held
 
             state, runtime, inputs, role = self._state, self._runtime, self._inputs, self._role
-            with serving(runtime):
+            with serving(runtime), conventions_held():
                 # REQ-870: a role holding only command_execution reads nothing: its schema is
                 # its commands.
                 reads = reads_data(role.get("capabilities"))
@@ -2031,12 +2032,13 @@ class _RoleParts:
     def surface(self) -> Any:
         """The role's surface, every part built before any of it is served."""
         from provisa.api.org_runtime import serving
+        from provisa.compiler.naming import conventions_held
         from provisa.api.role_surface import RoleSurface
         from provisa.compiler.schema_gen import build_table_path_map
         from provisa.grpc.proto_gen import generate_proto
 
         si, ctx = self._schema_input_and_context()
-        with serving(self._runtime):
+        with serving(self._runtime), conventions_held():
             # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
             # surface holds that failure -- logged as an ERROR naming the role, and raised to
             # every read of it -- rather than serving a permanently cached "no schema available".
