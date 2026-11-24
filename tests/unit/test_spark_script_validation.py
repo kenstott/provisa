@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import textwrap
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -173,7 +174,7 @@ async def _validated(target: Target, script: str | None = None, **asked) -> dict
     asked.setdefault("keys", _KEYS)
     given = None if script is None else textwrap.dedent(script)
     return await script_validation.validate(
-        object(), target, Asked(script=given, **asked), "analyst"
+        SimpleNamespace(admin_db=None), target, Asked(script=given, **asked), "analyst"
     )
 
 
