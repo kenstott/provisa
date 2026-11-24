@@ -76,7 +76,8 @@ describe("suggesting a product from a listed table", () => {
     render(<SuggestProductModal target={TARGET} onClose={() => {}} />);
     const dialog = await screen.findByTestId("suggest-product-modal");
     await userEvent.click(within(dialog).getByTestId("suggest-product-tables"));
-    await userEvent.click(await screen.findByRole("option", { name: "payroll" }));
+    // The dropdown is mid-transition in jsdom, so its options are queried hidden.
+    await userEvent.click(await screen.findByRole("option", { name: "payroll", hidden: true }));
     await userEvent.type(within(dialog).getByTestId("suggest-product-reason"), "costs");
     await userEvent.click(within(dialog).getByTestId("suggest-product-send"));
     await waitFor(() =>
@@ -118,6 +119,8 @@ describe("suggesting a product from a listed table", () => {
 
   it("is closed with no target", () => {
     render(<SuggestProductModal target={null} onClose={() => {}} />);
-    expect(screen.queryByTestId("suggest-product-modal")).toBeNull();
+    // A closed Mantine Modal keeps its empty root; a closed dialog draws no form.
+    expect(screen.queryByTestId("suggest-product-reason")).toBeNull();
+    expect(screen.queryByTestId("suggest-product-send")).toBeNull();
   });
 });

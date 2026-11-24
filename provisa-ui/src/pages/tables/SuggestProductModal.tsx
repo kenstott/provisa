@@ -93,7 +93,7 @@ function SuggestForm({ target, onClose }: { target: SuggestTarget; onClose: () =
   }
   return (
     <FormLayout>
-      <FormField size="full" hint={t("suggestProduct.hint")}>
+      <FormField size="long" hint={t("suggestProduct.hint")}>
         <MultiSelect
           label={t("suggestProduct.tables")}
           required

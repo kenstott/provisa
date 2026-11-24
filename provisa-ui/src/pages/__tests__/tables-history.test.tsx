@@ -302,12 +302,16 @@ describe("names listed in other domains", () => {
     render(<TablesPage />);
     const listed = await screen.findByTestId("tables-listed-names");
     await userEvent.click(within(listed).getByTestId("suggest-product-hr.staff"));
-    const dialog = await screen.findByTestId("suggest-product-modal");
-    expect(screen.getByText(t("suggestProduct.title", { domain: "hr" }))).toBeInTheDocument();
+    // A closed Mantine Modal keeps its root, so wait for the dialog's title, not the root.
+    expect(
+      await screen.findByText(t("suggestProduct.title", { domain: "hr" })),
+    ).toBeInTheDocument();
+    const dialog = screen.getByTestId("suggest-product-modal");
     expect(within(dialog).getByText("staff")).toBeInTheDocument(); // the chosen table, picked
     await userEvent.click(within(dialog).getByTestId("suggest-product-tables"));
-    expect(await screen.findByRole("option", { name: "payroll" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "jobs" })).toBeNull(); // another domain's
+    // The dropdown is mid-transition in jsdom, so its options are queried hidden.
+    expect(await screen.findByRole("option", { name: "payroll", hidden: true })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "jobs", hidden: true })).toBeNull(); // another domain's
   });
 
   it("are not shown in the Views list", async () => {
