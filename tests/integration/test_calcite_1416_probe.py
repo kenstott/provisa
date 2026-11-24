@@ -105,7 +105,26 @@ def _container_reach() -> dict[str, str]:
 
 
 @pytest.fixture(scope="module")
-def served(tmp_path_factory):
+def staged_bundle():
+    """The pinned pgwire-govdata bundle, staged as the salesforce and servicenow lanes stage theirs
+    (REQ-294: a running Provisa never fetches a bundle; the warehouse lane stages none, run
+    45452708783: BundleNotStaged). Staged from the pinned GitHub release, the release the lane's
+    govdata jar comes from."""
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "provisa.runtime_deps.stage_pgwire_bundles",
+            "--only",
+            "govdata",
+            "--github-release",
+        ],
+        check=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def served(tmp_path_factory, staged_bundle):
     """The source's server, bound where the Trino container reaches it."""
     from provisa.federation import pgwire_replica as pr
 
