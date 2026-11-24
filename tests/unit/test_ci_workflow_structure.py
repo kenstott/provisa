@@ -846,6 +846,8 @@ _RELEASE_PYPI: tuple[str, ...] = ()
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
 _RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
+#: REQ-2269: legs that run on a dry run alone, so no publishing job waits for them.
+_RELEASE_DRY_RUN_ONLY = {"install-host"}
 #: Every orchestrator job that is not a leg.
 _RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
@@ -881,7 +883,7 @@ def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itse
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    builds = set(jobs) - {"publish"}
+    builds = set(jobs) - {"publish"} - _RELEASE_DRY_RUN_ONLY
     assert not any("pypi" in job for job in jobs)
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
@@ -2233,6 +2235,130 @@ def test_the_nightly_includes_every_lane_and_each_packaging_leg_with_publish_fal
     for workflow in every:
         triggers = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())[True]
         assert "workflow_dispatch" in triggers, workflow
+
+
+# --- the one-script Linux install, every night (REQ-2269) ----------------------------------------
+
+_INSTALL_LEG = REPO / ".github" / "workflows" / "release-install-host.yml"
+_INSTALL_ARTIFACTS = (
+    "provisa-wheel-linux-x86_64-dist",
+    "provisa-notebook-dist",
+    "provisa-duckdb-ext-wheels",
+    "trino-plugins",
+)
+
+
+def _install_job() -> dict:
+    (job,) = yaml.safe_load(_INSTALL_LEG.read_text())["jobs"].values()
+    return job
+
+
+def test_the_packaging_lane_installs_with_install_host_after_the_legs_that_build_its_assets():
+    """The nightly's packaging lane (build-dmg.yml, which release-ready requires green) carries
+    the install leg, given the run's version, after the legs whose artifacts it installs."""
+    gate = _script("release_gate")
+    assert "build-dmg.yml" in gate.NIGHTLY_LANES["packaging"]
+    jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    leg = jobs["install-host"]
+    assert leg["uses"] == "./.github/workflows/release-install-host.yml"
+    assert set(leg["needs"]) == {"prebuilt", "packages"}
+    assert leg["with"] == {
+        "version": "${{ inputs.version || github.ref_name }}",
+        "publish": _RELEASE_PUBLISH,
+    }
+    # A dry run's leg: no publishing job waits on it, so a release (where it is skipped) still
+    # publishes.
+    for job in (_RELEASE_IMAGE_PUSH, "publish"):
+        assert "install-host" not in jobs[job]["needs"], job
+
+
+def test_the_install_artifacts_are_ones_the_dry_run_uploads():
+    packages = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "release-packages.yml").read_text()
+    )["jobs"]
+    wheel = [s for s in packages["build-provisa-wheel"]["steps"] if s.get("name") == "Upload dist"]
+    assert wheel[0]["with"]["name"] == "provisa-wheel-${{ matrix.label }}-dist"
+    labels = {m["label"] for m in packages["build-provisa-wheel"]["strategy"]["matrix"]["include"]}
+    assert "linux-x86_64" in labels
+    uploaded = {
+        (s.get("with") or {}).get("name")
+        for path in ("release-packages.yml", "build-duckdb-extensions.yml")
+        for body in yaml.safe_load((REPO / ".github" / "workflows" / path).read_text())[
+            "jobs"
+        ].values()
+        for s in body.get("steps") or []
+    }
+    assert {"provisa-notebook-dist", "provisa-duckdb-ext-wheels"} <= uploaded
+    # trino-plugins: the plugins action's prime upload, which the tarball's own job downloads.
+    prebuilt = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "release-prebuilt.yml").read_text()
+    )["jobs"]
+    downloads = [
+        s["with"]["name"]
+        for s in prebuilt["package-plugins"]["steps"]
+        if str(s.get("uses", "")).startswith("actions/download-artifact@")
+    ]
+    assert downloads == ["trino-plugins"]
+    for step in _install_job()["steps"]:
+        if str(step.get("uses", "")).startswith("actions/download-artifact@"):
+            assert step["with"]["pattern"] == "{" + ",".join(_INSTALL_ARTIFACTS) + "}"
+
+
+def test_the_install_leg_runs_install_host_on_a_clean_runner_before_anything_of_provisas():
+    workflow = yaml.safe_load(_INSTALL_LEG.read_text())
+    job = _install_job()
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["if"] == "${{ !inputs.publish }}"
+    assert "container" not in job and "services" not in job
+    steps = job["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    install = next(i for i, r in enumerate(runs) if "scripts/install-host.sh" in r)
+    # As a user runs it: the script itself, under sudo, for the version, from the release's files.
+    assert runs[install] == 'sudo scripts/install-host.sh --version "$VERSION" --assets-dir assets'
+    assert steps[install]["env"]["VERSION"] == "${{ inputs.version }}"
+    assert "continue-on-error" not in steps[install]
+    # Nothing of Provisa's is set up on the host before the script runs.
+    for step in steps[:install]:
+        uses = str(step.get("uses", ""))
+        assert not uses.startswith("./.github/actions/setup-"), step.get("name")
+    assembled = next(
+        i for i, r in enumerate(runs) if "provisa-trino-plugins-${VERSION}.tar.gz" in r
+    )
+    assert assembled < install
+    # Dispatchable on its own, on the assets of a named dry run.
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]
+    assert set(dispatch) == {"version", "run_id"}
+    assert all(spec["required"] for spec in dispatch.values())
+    assert set(workflow[True]["workflow_call"]["inputs"]) == {"version", "publish"}
+
+
+def test_the_install_leg_runs_the_smoke_checks_against_the_installed_host():
+    steps = _install_job()["steps"]
+    runs = [" ".join(str(s.get("run", "")).split()) for s in steps]
+    install = next(i for i, r in enumerate(runs) if "scripts/install-host.sh" in r)
+    smoke = next(i for i, r in enumerate(runs) if "tests/smoke/test_main_is_startable.py" in r)
+    assert install < smoke
+    assert runs[smoke].startswith(".venv/bin/python -m pytest -m isolated ")
+    env = steps[smoke]["env"]
+    assert env["PROVISA_SMOKE_INSTALLED"] == "1"
+    # What the smoke run is told is what install-host.sh installed by default.
+    defaults = (REPO / "scripts" / "install-host.sh").read_text()
+    for key, default in (
+        ("PROVISA_SMOKE_INSTALL_PREFIX", "INSTALL_HOST_DEFAULT_PREFIX"),
+        ("PROVISA_SMOKE_INSTALL_CONFIG_DIR", "INSTALL_HOST_DEFAULT_CONFIG_DIR"),
+        ("PROVISA_SMOKE_INSTALL_DATA_DIR", "INSTALL_HOST_DEFAULT_DATA_DIR"),
+    ):
+        assert f'{default}="{env[key]}"' in defaults, key
+    assert f"INSTALL_HOST_DEFAULT_API_PORT={env['PROVISA_SMOKE_INSTALL_API_PORT']}" in defaults
+    assert f"INSTALL_HOST_DEFAULT_UI_PORT={env['PROVISA_SMOKE_INSTALL_UI_PORT']}" in defaults
+    # The smoke module reads every one of them in its installed-host mode.
+    module = (REPO / "tests" / "smoke" / "test_main_is_startable.py").read_text()
+    assert 'os.environ.get("PROVISA_SMOKE_INSTALLED") == "1"' in module
+    for name in ("PREFIX", "CONFIG_DIR", "DATA_DIR", "API_PORT", "UI_PORT"):
+        assert f'"{name}"' in module, name
+    assert "continue-on-error" not in steps[smoke]
+    upload = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact"))
+    assert upload["if"] == "always()"
 
 
 def test_the_dry_run_is_numbered_as_the_next_release(tmp_path):

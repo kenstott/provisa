@@ -1,7 +1,8 @@
 # Release: ready (REQ-1989, amended 2026-11-22)
 #
 # A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e
-# and the packaging dry run are all green on one main commit. This reads the runs the nightly on
+# and the packaging dry run are all green on one main commit. The packaging dry run includes the
+# one-script Linux install and the smoke checks against it (REQ-2269, release-install-host.yml). This reads the runs the nightly on
 # main (nightly-main.yml) started on its pin, nightly/main, and is green only when every lane's
 # latest run on that one commit is green; its summary names the commit, the cut point. A lane
 # failed, cancelled, still running or never run is not green.
