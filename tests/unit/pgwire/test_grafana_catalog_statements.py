@@ -25,9 +25,20 @@ import yaml
 from sqlglot import exp
 
 from provisa.compiler.sql_types import CompilationContext
-from provisa.compiler.sql_validator import _ROW_GENERATORS, client_table_function, validate_sql
+from provisa.compiler.sql_validator import (
+    _ROW_GENERATORS,
+    READ,
+    client_table_function,
+    validate_sql,
+)
 from provisa.compiler.stage2 import GovernanceContext
-from provisa.pgwire.catalog_route import CLIENT_TABLE_FUNCTIONS
+from provisa.pgwire.catalog_route import (
+    CLIENT_TABLE_FUNCTIONS,
+    CatalogRequest,
+    addressed_statement,
+)
+from provisa.pgwire.catalog_types import result_types
+from provisa.transpiler.metadata_facts import catalog_facts
 
 pytestmark = pytest.mark.unit
 
@@ -63,7 +74,7 @@ def _violations(sql: str, table_functions: frozenset[str]) -> list[str]:
 
 @pytest.mark.parametrize("statement_id", [4, 5, 6, 7, 8])
 def test_every_function_grafana_reads_in_from_is_a_client_table_function(statement_id):
-    tree = sqlglot.parse_one(_statement(statement_id), read="postgres")
+    tree = sqlglot.parse_one(_statement(statement_id), read=READ)
     functions = [
         t
         for t in tree.find_all(exp.Table)
@@ -85,9 +96,35 @@ def test_string_to_array_in_from_is_refused_on_any_other_statement():
 
 
 @pytest.mark.parametrize(
-    "fn", ["evil.string_to_array('a', ',') s", "cat.evil.string_to_array('a', ',') s"]
+    "fn",
+    [
+        "evil.string_to_array('a', ',') s",
+        "cat.evil.string_to_array('a', ',') s",
+        "split_by_string('a', ',') s",
+    ],
 )
-def test_a_string_to_array_of_another_schema_is_refused_on_a_catalog_statement(fn):
+def test_a_function_that_is_not_postgresqls_string_to_array_is_refused(fn):
     assert any(
         v.startswith("V006") for v in _violations(f"SELECT 1 FROM {fn}", CLIENT_TABLE_FUNCTIONS)
     )
+
+
+_REQUEST = CatalogRequest(
+    role_id="reader",
+    database="sales_db",
+    facts=catalog_facts("reader", {1: {"SELECT"}}),
+    settings={"server_version": "17.0", "search_path": '"$user", public'},
+)
+
+
+def test_grafanas_table_list_is_addressed_and_typed_as_postgresql_types_it():
+    sql = _statement(4)
+    assert addressed_statement(sql, _REQUEST)
+    assert [name for name, _ in result_types(sql)] == ["table"]
+
+
+@pytest.mark.parametrize("statement_id", [5, 6, 7, 8])
+def test_grafanas_column_list_is_addressed_and_typed_as_postgresql_types_it(statement_id):
+    sql = _statement(statement_id)
+    assert addressed_statement(sql, _REQUEST)
+    assert [name for name, _ in result_types(sql)] == ["column", "type"]

@@ -257,9 +257,10 @@ def _out_columns() -> dict[str, tuple[str, ...]]:
     return {name: next(iter(outs)) for name, outs in named.items() if len(outs) == 1}
 
 
-#: sqlglot's readings of PostgreSQL's one-column set-returning functions: unnest of one array, and
-#: generate_series.
-_ONE_COLUMN_FUNCTIONS = (exp.Explode, exp.GenerateSeries)
+#: sqlglot's readings of PostgreSQL's one-column functions in FROM: unnest of one array,
+#: generate_series, and string_to_array, a scalar function PostgreSQL reads in FROM as a one-row
+#: relation of its result (REQ-2204: Grafana reads the search path with it).
+_ONE_COLUMN_FUNCTIONS = (exp.Explode, exp.GenerateSeries, exp.StringToArray)
 
 
 def one_column_function(table: exp.Expr) -> exp.Table | None:  # REQ-2204

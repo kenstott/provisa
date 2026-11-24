@@ -78,6 +78,8 @@ from provisa.transpiler.xml_syntax import MAPPINGS
 # ``explode(a)`` and ``pg_catalog.explode(a)`` as it reads ``pg_catalog.unnest(a)``, an Explode.
 # PostgreSQL has no such functions, so a user's schema may.
 _EXPLODE_NAMES = frozenset({"EXPLODE", "EXPLODE_OUTER", "POSEXPLODE", "POSEXPLODE_OUTER"})
+# Likewise ``split_by_string(s, d)`` as ``string_to_array(s, d)``, a StringToArray (REQ-2204).
+_STRING_TO_ARRAY_NAMES = frozenset({"SPLIT_BY_STRING"})
 
 
 class PostgresAsWritten(Postgres):
@@ -88,7 +90,7 @@ class PostgresAsWritten(Postgres):
         FUNCTIONS = {
             name: build
             for name, build in Postgres.Parser.FUNCTIONS.items()
-            if name not in _EXPLODE_NAMES
+            if name not in _EXPLODE_NAMES | _STRING_TO_ARRAY_NAMES
         }
 
 
@@ -306,6 +308,12 @@ def _violations(
 # itself (provisa.federation.duckdb_pg_xml); what it is passed is the statement's own, governed as
 # the statement is (_check_masked_in_xmltable).
 _ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries, exp.XMLTable)
+#: The functions :data:`READ` reads as a typed node only when written by their PostgreSQL name, by
+#: that name. A subclass (``Posexplode``) is another function, so a node is matched by exact type.
+_TYPED_TABLE_FUNCTIONS: dict[type[exp.Expr], str] = {
+    exp.Explode: "unnest",
+    exp.StringToArray: "string_to_array",  # REQ-2204: Grafana reads the search path with it
+}
 
 
 def client_table_function(tbl: exp.Table, table_functions: Collection[str]) -> bool:
@@ -320,7 +328,8 @@ def client_table_function(tbl: exp.Table, table_functions: Collection[str]) -> b
     target = tbl.this
     if isinstance(target, exp.Anonymous):
         return target.name.lower() in table_functions
-    return type(target) is exp.Explode and "unnest" in table_functions
+    written = _TYPED_TABLE_FUNCTIONS.get(type(target))
+    return written is not None and written in table_functions
 
 
 def view_command(tbl: exp.Table, view_commands: Mapping[str, dict]) -> dict | None:
