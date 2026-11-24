@@ -229,7 +229,7 @@ def _app_state(db) -> Any:
         roles={"viewer": {"capabilities": []}, "owner": {"capabilities": []}},
         role_chains={"owner": ["owner"], "viewer": ["viewer"]},
         meta_roles={},
-        auth_config={"assignments_source": "claims"},
+        auth_config={"provider": "oidc", "assignments_source": "claims"},
         idp_entitlements={},
     )
 
