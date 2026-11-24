@@ -45,7 +45,9 @@ _ALL = {"delete", "insert", "update"}
 # model table -> the operations only the model store may perform on it.
 CONVERTED: dict[str, set[str]] = {
     "roles": _ALL,
-    "domains": {"delete"},
+    # update: the ops steward write in api/startup_seed.py is still outside (steward writes are
+    # another job's).
+    "domains": {"delete", "insert"},
     "registered_tables": {"delete"},
     "sources": {"delete"},
     "relationships": {"delete"},
@@ -87,13 +89,30 @@ _SQL = {
 }
 
 
+def _binds_locally(tree: ast.AST, name: str) -> bool:
+    """Whether the module gives ``name`` a value of its own: an assignment, a loop target or a
+    parameter (``domains: set[str] = set()``)."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+            return True
+        if isinstance(node, ast.arg) and node.arg == name:
+            return True
+    return False
+
+
 def _names_bound_to(tree: ast.AST, table: str) -> set[str]:
-    """The names this module refers to the table by: its own name, and any alias it is
-    imported under."""
-    names = {table}
+    """The names this module refers to the table by: any alias it is imported under, and its own
+    name unless the module binds that name to something else without importing the table."""
+    names: set[str] = set()
+    imported = False
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            names |= {a.asname for a in node.names if a.name == table and a.asname}
+            for a in node.names:
+                if a.name == table:
+                    names.add(a.asname or table)
+                    imported = imported or a.asname is None
+    if imported or not _binds_locally(tree, table):
+        names.add(table)
     return names
 
 
@@ -198,6 +217,8 @@ def writes_in(source: str, table: str) -> list[tuple[int, str]]:
         ("x = debug_trace_hint_roles.delete()", []),
         ("q = 'DELETE FROM user_roles WHERE x'", []),
         ("identity.roles.update(extra)", []),  # an attribute that shares the table's name
+        ("roles: set[str] = set()\nroles.update(extra)", []),  # a local that shares it
+        ("from provisa.core.schema_org import roles\nroles = 1\nroles.update()", [(3, "update")]),
         ('def f():\n    """Example: DELETE FROM roles WHERE id = 1"""\n', []),  # a docstring
     ],
 )
