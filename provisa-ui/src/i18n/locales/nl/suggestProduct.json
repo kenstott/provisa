@@ -1,0 +1,14 @@
+{
+  "suggestProduct": {
+    "title": "Een dataproduct voorstellen aan {{domain}}",
+    "tables": "Tabellen",
+    "hint": "Vermelde tabellen van dit domein die het product zou bevatten.",
+    "reason": "Waarom u het nodig hebt",
+    "reasonHint": "De dataproducteigenaren en data stewards van het domein lezen dit.",
+    "send": "Voorstel verzenden",
+    "sending": "Verzenden…",
+    "sent_one": "Uw voorstel is per e-mail naar {{count}} eigenaar of steward van {{domain}} gegaan.",
+    "sent_other": "Uw voorstel is per e-mail naar {{count}} eigenaren en stewards van {{domain}} gegaan.",
+    "close": "Sluiten"
+  }
+}

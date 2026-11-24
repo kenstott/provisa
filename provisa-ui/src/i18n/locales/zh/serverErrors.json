@@ -993,6 +993,14 @@
       "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的管理员。请先授予其此类角色。",
       "steward_role_not_eligible": "角色 {{role}} 不具备 domain_steward 能力，因此不能被指定为域 {{domain}} 的管理员。请先为该角色授予此能力。",
       "stewards_change_refused": "只有组织管理员或域 {{domain}} 的现任管理员可以更改其管理员。"
+    },
+    "product_suggestion": {
+      "database_not_connected": "数据库未连接",
+      "sign_in_required": "请登录以建议产品。",
+      "tables_required": "建议至少指定一张表。",
+      "table_not_listed": "表 {{tables}} 未向您列出；产品应从目录列出的表中建议。",
+      "reason_required": "建议需说明其原因。",
+      "no_recipient": "域 {{domain}} 没有可接收建议的数据产品所有者或数据管家。"
     }
   }
 }

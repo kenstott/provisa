@@ -2301,6 +2301,26 @@ ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS approver TEXT;
 ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS agreed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_data_product_bids_product ON data_product_bids(product_id);
 
+-- REQ-2180 (amended 2026-10-28, SUGGEST A PRODUCT FROM A LISTED TABLE): a reader's suggestion that a
+-- domain make a data product of tables the catalog lists to them (REQ-2153), and its reason.
+-- ``recipients`` the people it went to: the domain's data stewards and its products' owners.
+CREATE TABLE IF NOT EXISTS product_suggestions (
+    id            SERIAL PRIMARY KEY,
+    domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    suggested_by  TEXT NOT NULL,
+    reason        TEXT NOT NULL,
+    recipients    JSONB NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- The tables a suggestion names; counting these counts the suggestions per table.
+CREATE TABLE IF NOT EXISTS product_suggestion_tables (
+    suggestion_id INTEGER NOT NULL REFERENCES product_suggestions(id) ON DELETE CASCADE,
+    table_id      INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    PRIMARY KEY (suggestion_id, table_id)
+);
+CREATE INDEX IF NOT EXISTS idx_product_suggestion_tables_table
+    ON product_suggestion_tables(table_id);
+
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
 CREATE TABLE IF NOT EXISTS table_meta_links (

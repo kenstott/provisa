@@ -5825,6 +5825,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(data_product_offers_router)
+    from provisa.api.admin.product_suggestions_router import (  # REQ-2180
+        router as product_suggestions_router,
+    )
+
+    app.include_router(product_suggestions_router)
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)

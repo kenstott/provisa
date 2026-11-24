@@ -993,6 +993,14 @@
       "steward_not_eligible": "{{steward}} não tem nenhuma função com a capacidade domain_steward, por isso não pode ser nomeado responsável pelo domínio {{domain}}. Atribua-lhe primeiro uma função assim.",
       "steward_role_not_eligible": "A função {{role}} não tem a capacidade domain_steward, por isso não pode ser nomeada responsável pelo domínio {{domain}}. Atribua primeiro essa capacidade à função.",
       "stewards_change_refused": "Somente um administrador da organização ou um responsável atual pelo domínio {{domain}} pode alterar os responsáveis por ele."
+    },
+    "product_suggestion": {
+      "database_not_connected": "Banco de dados não conectado",
+      "sign_in_required": "Entre para sugerir um produto.",
+      "tables_required": "Uma sugestão nomeia pelo menos uma tabela.",
+      "table_not_listed": "A tabela {{tables}} não está listada para você; um produto é sugerido a partir de uma tabela que o catálogo lista.",
+      "reason_required": "Uma sugestão informa seu motivo.",
+      "no_recipient": "O domínio {{domain}} não tem proprietário de produto de dados nem data steward para receber uma sugestão."
     }
   }
 }

@@ -166,7 +166,11 @@ const ROLES = [
   { id: "trader", capabilities: [], domainAccess: ["*"] },
 ];
 // REQ-2153: what another domain lists, names only.
-const LISTED = [{ domainId: "hr", tableName: "staff", columnNames: ["id", "title"] }];
+const LISTED = [
+  { domainId: "hr", tableName: "staff", columnNames: ["id", "title"] },
+  { domainId: "hr", tableName: "payroll", columnNames: ["id"] },
+  { domainId: "ops2", tableName: "jobs", columnNames: ["id"] },
+];
 const ok = { success: true, message: "" };
 const refetchTables = vi.fn();
 const updateTable = vi.fn();
@@ -292,6 +296,18 @@ describe("names listed in other domains", () => {
     const listed = await screen.findByTestId("tables-listed-names");
     expect(listed).toHaveTextContent(t("tablesPage.listedElsewhere"));
     expect(listed).toHaveTextContent("hr.staff: id, title");
+  });
+
+  it("each offer to suggest a product, of the tables listed in its domain", async () => {
+    render(<TablesPage />);
+    const listed = await screen.findByTestId("tables-listed-names");
+    await userEvent.click(within(listed).getByTestId("suggest-product-hr.staff"));
+    const dialog = await screen.findByTestId("suggest-product-modal");
+    expect(screen.getByText(t("suggestProduct.title", { domain: "hr" }))).toBeInTheDocument();
+    expect(within(dialog).getByText("staff")).toBeInTheDocument(); // the chosen table, picked
+    await userEvent.click(within(dialog).getByTestId("suggest-product-tables"));
+    expect(await screen.findByRole("option", { name: "payroll" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "jobs" })).toBeNull(); // another domain's
   });
 
   it("are not shown in the Views list", async () => {

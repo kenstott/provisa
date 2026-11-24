@@ -993,6 +993,14 @@
       "steward_not_eligible": "{{steward}} hat keine Rolle mit der Berechtigung domain_steward und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
       "steward_role_not_eligible": "Die Rolle {{role}} hat die Berechtigung domain_steward nicht und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Geben Sie der Rolle zuerst diese Berechtigung.",
       "stewards_change_refused": "Nur ein Org-Administrator oder ein aktueller Steward der Domäne {{domain}} kann deren Stewards ändern."
+    },
+    "product_suggestion": {
+      "database_not_connected": "Datenbank nicht verbunden",
+      "sign_in_required": "Melden Sie sich an, um ein Produkt vorzuschlagen.",
+      "tables_required": "Ein Vorschlag nennt mindestens eine Tabelle.",
+      "table_not_listed": "Tabelle {{tables}} ist für Sie nicht gelistet; ein Produkt wird aus einer Tabelle vorgeschlagen, die der Katalog listet.",
+      "reason_required": "Ein Vorschlag nennt seinen Grund.",
+      "no_recipient": "Domäne {{domain}} hat keinen Datenproduktverantwortlichen und keinen Data Steward, der einen Vorschlag empfängt."
     }
   }
 }

@@ -74,6 +74,7 @@ import { diffEditedColumns } from "./tables/columnDiff";
 import { namingConventionLabel } from "../hooks/useNamingConventions";
 import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
+import { SuggestProductModal, type SuggestTarget } from "./tables/SuggestProductModal";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
@@ -147,6 +148,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
   const listedNames = useListedNames(); // REQ-2153
+  const [suggestTarget, setSuggestTarget] = useState<SuggestTarget | null>(null); // REQ-2180
   const { relationships } = useAllRelationships();
   // REQ-2241: the open table and its section are the URL (`?table=<id>&section=<section>`): a link
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
@@ -1648,9 +1650,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     {translate("tablesPage.listedElsewhereHint")}
                   </Text>
                   {listedNames.map((n) => (
-                    <Text key={relationName(n)} size="sm" style={{ fontFamily: "monospace" }}>
-                      {relationName(n)}: {n.columnNames.join(", ")}
-                    </Text>
+                    <Group key={relationName(n)} gap="xs" wrap="nowrap">
+                      <Text size="sm" style={{ fontFamily: "monospace" }}>
+                        {relationName(n)}: {n.columnNames.join(", ")}
+                      </Text>
+                      {/* REQ-2180: a listed table is not requested; its reader suggests a product. */}
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        onClick={() =>
+                          setSuggestTarget({
+                            domainId: n.domainId,
+                            tableName: n.tableName,
+                            domainTables: listedNames
+                              .filter((m) => m.domainId === n.domainId)
+                              .map((m) => m.tableName),
+                          })
+                        }
+                        data-testid={`suggest-product-${relationName(n)}`}
+                      >
+                        {translate("tablesPage.suggestProduct")}
+                      </Button>
+                    </Group>
                   ))}
                 </Stack>
               )}
@@ -1660,6 +1681,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       >
         {panelBody}
       </SplitPane>
+      <SuggestProductModal target={suggestTarget} onClose={() => setSuggestTarget(null)} />
       <Modal
         opened={regenTable !== null}
         onClose={() => setRegenTable(null)}

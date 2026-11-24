@@ -1,0 +1,14 @@
+{
+  "suggestProduct": {
+    "title": "Suggerisci un prodotto dati a {{domain}}",
+    "tables": "Tabelle",
+    "hint": "Tabelle elencate di questo dominio che il prodotto conterrebbe.",
+    "reason": "Perché ti serve",
+    "reasonHint": "Lo leggono i proprietari dei prodotti dati e i data steward del dominio.",
+    "send": "Invia suggerimento",
+    "sending": "Invio…",
+    "sent_one": "Il tuo suggerimento è stato inviato via e-mail a {{count}} proprietario o steward di {{domain}}.",
+    "sent_other": "Il tuo suggerimento è stato inviato via e-mail a {{count}} proprietari e steward di {{domain}}.",
+    "close": "Chiudi"
+  }
+}

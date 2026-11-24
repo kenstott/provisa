@@ -1,0 +1,14 @@
+{
+  "suggestProduct": {
+    "title": "הצעת מוצר נתונים ל-{{domain}}",
+    "tables": "טבלאות",
+    "hint": "טבלאות מוצגות של תחום זה שהמוצר יכלול.",
+    "reason": "למה אתם צריכים אותו",
+    "reasonHint": "בעלי מוצרי הנתונים וה-Data Stewards של התחום יקראו זאת.",
+    "send": "שליחת הצעה",
+    "sending": "שולח…",
+    "sent_one": "ההצעה שלכם נשלחה בדוא\"ל אל {{count}} בעלים או Steward של {{domain}}.",
+    "sent_other": "ההצעה שלכם נשלחה בדוא\"ל אל {{count}} בעלים ו-Stewards של {{domain}}.",
+    "close": "סגירה"
+  }
+}

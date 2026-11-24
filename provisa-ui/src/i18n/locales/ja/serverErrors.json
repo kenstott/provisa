@@ -993,6 +993,14 @@
       "steward_not_eligible": "{{steward}} は domain_steward 権限を持つロールを保持していないため、ドメイン {{domain}} のスチュワードに指定できません。先にそのようなロールを付与してください。",
       "steward_role_not_eligible": "ロール {{role}} は domain_steward 権限を持たないため、ドメイン {{domain}} のスチュワードに指定できません。先にロールにその権限を付与してください。",
       "stewards_change_refused": "ドメイン {{domain}} のスチュワードを変更できるのは、組織管理者または現在のスチュワードだけです。"
+    },
+    "product_suggestion": {
+      "database_not_connected": "データベースが接続されていません",
+      "sign_in_required": "プロダクトを提案するにはサインインしてください。",
+      "tables_required": "提案には少なくとも 1 つのテーブルを指定します。",
+      "table_not_listed": "テーブル {{tables}} はあなたに掲載されていません。プロダクトはカタログが掲載するテーブルから提案します。",
+      "reason_required": "提案には理由を記載します。",
+      "no_recipient": "ドメイン {{domain}} には提案を受け取るデータプロダクトオーナーもデータスチュワードもいません。"
     }
   }
 }

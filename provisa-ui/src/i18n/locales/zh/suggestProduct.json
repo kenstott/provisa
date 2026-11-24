@@ -1,0 +1,14 @@
+{
+  "suggestProduct": {
+    "title": "向 {{domain}} 建议一个数据产品",
+    "tables": "表",
+    "hint": "该产品将包含的此域中已列出的表。",
+    "reason": "您为何需要它",
+    "reasonHint": "该域的数据产品所有者和数据管家会阅读此内容。",
+    "send": "发送建议",
+    "sending": "正在发送…",
+    "sent_one": "您的建议已通过电子邮件发送给 {{domain}} 的 {{count}} 位所有者或数据管家。",
+    "sent_other": "您的建议已通过电子邮件发送给 {{domain}} 的 {{count}} 位所有者和数据管家。",
+    "close": "关闭"
+  }
+}
