@@ -147,13 +147,13 @@
   "opengauss": {
    "total": 3319,
    "base": {
-    "passed": 1439,
-    "wrong_answer": 187,
+    "passed": 1441,
+    "wrong_answer": 185,
     "engine_error": 858,
     "refused_by_name": 0
    },
    "edge": {
-    "served": 1093,
+    "served": 1095,
     "wrong_answer": 299,
     "engine_error": 47
    }
