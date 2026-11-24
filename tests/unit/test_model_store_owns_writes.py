@@ -44,7 +44,7 @@ _ALL = {"delete", "insert", "update"}
 
 # model table -> the operations only the model store may perform on it.
 CONVERTED: dict[str, set[str]] = {
-    "roles": {"delete"},
+    "roles": _ALL,
     "domains": {"delete"},
     "registered_tables": {"delete"},
     "sources": {"delete"},
