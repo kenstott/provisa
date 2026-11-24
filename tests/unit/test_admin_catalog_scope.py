@@ -135,6 +135,8 @@ class _Conn:
             return _Rows([])  # no table here is retired
         if "domains.retired IS true" in sql:
             return _Rows([])  # no domain here is retired
+        if "FROM entitlements" in sql:
+            return _Rows([])  # no Steward field names anyone here (REQ-2219)
         if "table_columns.scope" in sql:
             # REQ-2153: the listed columns, outside the domains the query names as reached.
             reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
@@ -229,7 +231,7 @@ def _model(monkeypatch):
     monkeypatch.setattr(
         schema_query,
         "_domain_from_row",
-        lambda row, _stewards, _effective_stewards: types.SimpleNamespace(**row),
+        lambda row, _stewards, _effective_stewards, _field: types.SimpleNamespace(**row),
     )
 
     async def _no_stewards(conn, kind, *, exact=False):  # noqa: ARG001
