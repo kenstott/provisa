@@ -108,6 +108,31 @@ const STATIC_FAILED: ValidationReport = {
   keys: { status: "not_run", functions: [], reason: "the static check failed" },
 };
 
+const PURGE = {
+  name: "purge",
+  kind: "command",
+  tables: ["orders"],
+  arguments: [],
+  columns: [],
+  resolver: false,
+};
+
+const WITH_COMMAND: ValidationReport = {
+  ...PASSED,
+  static: { ...PASSED.static, functions: [...FUNCTIONS, PURGE] },
+  dry_run: {
+    status: "ok",
+    functions: [
+      ...PASSED.dry_run.functions,
+      {
+        function: "purge",
+        status: "not_run_by_design",
+        reason: "a @command may write or call out: it is checked statically and not run",
+      },
+    ],
+  },
+};
+
 function show(script = SCRIPT) {
   renderInForm(<ScriptValidationPanel orgId="acme" sourceId="spark_prod" script={script} />);
 }
@@ -222,6 +247,21 @@ describe("ScriptValidationPanel", () => {
     expect(screen.getByTestId("script-validation-cluster")).toHaveTextContent(
       "No Spark cluster is configured",
     );
+  });
+
+  it("shows a command as checked statically and not run, with no table to pick", async () => {
+    vi.mocked(validateScript).mockResolvedValue(WITH_COMMAND);
+    show();
+    fireEvent.click(screen.getByTestId("script-validation-run"));
+    await screen.findByTestId("script-validation-report");
+    expect(screen.getByTestId("script-validation-status-dry_run")).toHaveTextContent("Passed");
+    const purge = screen.getByTestId("script-validation-fn-dry_run-purge");
+    expect(purge).toHaveTextContent("Not run by design");
+    expect(within(purge).getByTestId("script-validation-by-design")).toHaveTextContent(
+      "A command may write or call out, so it is checked statically and not run",
+    );
+    expect(within(purge).queryByTestId("script-validation-input-purge-orders")).toBeNull();
+    expect(screen.getByTestId("script-validation-input-read_of-orders")).toBeInTheDocument();
   });
 
   it("names a request the server refused", async () => {

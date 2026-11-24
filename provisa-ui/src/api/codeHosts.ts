@@ -138,8 +138,15 @@ export async function fetchExports(orgId: string, sourceId: string): Promise<Cod
 
 /** A step's outcome: `incomplete` when an input or a key is not named yet. */
 export type StepStatus = "ok" | "failed" | "incomplete" | "not_run";
-/** One function's outcome within a step. */
-export type FunctionStatus = "ok" | "empty" | "mismatch" | "error" | "needs_input" | "not_run";
+/** One function's outcome within a step: a @command's dry run is `not_run_by_design`. */
+export type FunctionStatus =
+  | "ok"
+  | "empty"
+  | "mismatch"
+  | "error"
+  | "needs_input"
+  | "not_run"
+  | "not_run_by_design";
 
 /** A table, query or command of the script, as its static check read it. */
 export interface ScriptFunction {
@@ -168,6 +175,8 @@ export interface DryRunResult {
   mismatches?: string[];
   /** The table parameters not given a table. */
   missing?: string[];
+  /** Why a function was not run. */
+  reason?: string;
 }
 
 export interface KeyResult {

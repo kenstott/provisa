@@ -42,8 +42,10 @@ import importlib
 import inspect
 import itertools
 import json
+import linecache
 import os
 import sys
+import traceback
 from typing import Any
 
 OK, MISMATCH, ERROR, EMPTY, NOT_RUN = "ok", "mismatch", "error", "empty", "not_run"
@@ -53,6 +55,23 @@ SCRIPT_MODULE = "connector_script"
 
 def _failed(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
+
+
+def _failed_at(function: str, exc: BaseException) -> str:
+    """The script's failure as a dry run reports it: the function, the line of the script that
+    raised (its innermost frame in the script) and the exception. A failure outside the script's
+    own lines (its rows read back from the cluster) names the function and the exception, whose
+    own words name the column."""
+    lines = [
+        (frame.f_code.co_filename, lineno)
+        for frame, lineno in traceback.walk_tb(exc.__traceback__)
+        if frame.f_globals.get("__name__") == SCRIPT_MODULE
+    ]
+    if not lines:
+        return f"{function}: {_failed(exc)}"
+    filename, lineno = lines[-1]
+    source = linecache.getline(filename, lineno).strip()
+    return f"{function}, line {lineno}: {source}: {_failed(exc)}"
 
 
 def _host() -> Any:  # provisa/python/host.py, beside which the front end runs this
@@ -206,7 +225,7 @@ def dry_run(module: Any, call: dict) -> tuple[dict, list[dict] | None]:
             actual, mismatches, rows = _compare_arrow(taken, schema)
             compared = True
     except Exception as exc:  # noqa: BLE001 -- the script's own failure, reported by name
-        return {**report, "status": ERROR, "error": _failed(exc)}, None
+        return {**report, "status": ERROR, "error": _failed_at(name, exc)}, None
     status = MISMATCH if mismatches else (OK if compared else EMPTY)
     return {
         **report,

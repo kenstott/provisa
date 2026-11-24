@@ -22,6 +22,8 @@
     "fn_error": "Erro",
     "fn_needs_input": "Requer entrada",
     "fn_not_run": "Não executado",
+    "fn_not_run_by_design": "Não executado por design",
+    "commandNotRun": "Um comando pode gravar ou fazer chamadas externas, por isso é verificado estaticamente e não é executado",
     "rows_one": "{{count}} linha",
     "rows_other": "{{count}} linhas",
     "functions_one": "{{count}} tabela, consulta ou command",

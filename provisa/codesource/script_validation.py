@@ -19,11 +19,13 @@ cluster ``spark_cluster.resolved`` gives the source:
    and parameter type mappable, every table argument a ``TableRef`` of a declared row type on a
    ``@query`` or ``@command``, and nothing required that the connector does not offer. It needs no
    cluster.
-2. DRY RUN. Each ``@table``, ``@query`` and ``@command`` runs once on the cluster, on a sample of
-   its governed inputs: each table argument is a governed table the caller names, read over Arrow
+2. DRY RUN. Each ``@table`` and ``@query`` runs once on the cluster, on a sample of its governed
+   inputs: each table argument is a governed table the caller names, read over Arrow
    Flight as the caller's role (provisa/codesource/table_reads.py), at most :data:`SAMPLE_ROWS`
    of it, and its rows are compared with its declared row type. Row counts and errors are
-   reported. A function whose table arguments are not named is reported as needing them.
+   reported. A function whose table arguments are not named is reported as needing them. A
+   ``@command``, which may write or call out, is not run: it is checked statically and reported
+   as not run by design (REQ-2225, amended 2026-11-24).
 3. KEYS. A two-table ``@query`` used to match rows (a code resolver, REQ-2249) carries the key of
    each side in every row: the keys the caller names are checked against its declared columns and
    against its dry-run rows.
@@ -41,7 +43,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from provisa.codesource.bundle import BundleRefused
-from provisa.codesource.manifest import COMMANDS, TABLE, Export, Manifest, TableOf
+from provisa.codesource.manifest import COMMAND, COMMANDS, TABLE, Export, Manifest, TableOf
 
 if TYPE_CHECKING:
     from provisa.codesource.remote import RemoteWorker
@@ -52,6 +54,8 @@ SAMPLE_ROWS = 100
 OK, FAILED, INCOMPLETE, NOT_RUN = "ok", "failed", "incomplete", "not_run"
 #: A function's own results beside the validator's (connectors/spark/provisa_spark/validate.py).
 NEEDS_INPUT, MISMATCH, ERROR = "needs_input", "mismatch", "error"
+#: A ``@command``'s dry-run result: it is checked statically and never run.
+BY_DESIGN = "not_run_by_design"
 
 
 class ScriptValidationRefused(BundleRefused):
@@ -118,8 +122,17 @@ def _is_resolver(manifest: Manifest, export: Export) -> bool:
 
 
 def _validated_exports(manifest: Manifest) -> list[Export]:
-    """The functions a dry run runs: the script's tables, queries and commands."""
+    """The functions validation checks: the script's tables, queries and commands."""
     return [e for e in manifest.exports if e.kind == TABLE or e.kind in COMMANDS]
+
+
+def _not_run(export: Export) -> dict:
+    """A ``@command``'s dry-run result: it may write or call out, so it is not run."""
+    return {
+        "function": export.name,
+        "status": BY_DESIGN,
+        "reason": "a @command may write or call out: it is checked statically and not run",
+    }
 
 
 def _described(manifest: Manifest, export: Export) -> dict:
@@ -379,6 +392,9 @@ async def validate(state: Any, target: Target, asked: Asked, role_id: str) -> di
     calls: list[dict] = []
     async with AsyncExitStack() as held:
         for export in _validated_exports(manifest):
+            if export.kind == COMMAND:
+                known.append(_not_run(export))
+                continue
             call, references, missing = _call(manifest, export, asked.inputs.get(export.name, {}))
             if missing:
                 known.append({"function": export.name, "status": NEEDS_INPUT, "missing": missing})

@@ -300,13 +300,55 @@ async def test_a_function_that_raises_is_a_dry_run_error(joined, made_readable, 
     report = await _validated(joined, script)
     assert report["dry_run"]["status"] == "failed"
     found = _by_function(report["dry_run"])["orders"]
+    raised = "raise RuntimeError('the cluster refused the job')"
+    line = textwrap.dedent(script).splitlines().index(f"    {raised}") + 1
+    # The error names the function, the script's line that failed and what it raised.
     assert found == {
         "function": "orders",
         "rows": 0,
         "status": "error",
-        "error": "RuntimeError: the cluster refused the job",
+        "error": f"orders, line {line}: {raised}: RuntimeError: the cluster refused the job",
     }
     assert _by_function(report["dry_run"])["read_of"]["status"] == "ok"
+
+
+async def test_a_dry_run_error_names_the_expression_that_failed(joined, made_readable, cluster):
+    script = _changed(
+        _GOOD, "return [Read(statement=orders.sql)]", "return [Read(statement=orders.sql())]"
+    )
+    report = await _validated(joined, script)
+    found = _by_function(report["dry_run"])["read_of"]
+    assert found["status"] == "error"
+    assert found["error"].startswith("read_of, line "), found
+    assert "orders.sql()" in found["error"]
+    assert found["error"].endswith("TypeError: 'str' object is not callable")
+
+
+_COMMAND = '''
+
+def purge(orders: TableRef[Order]) -> int:
+    """Delete the orders' rows: it writes, so validation never runs it.
+
+    @command
+    """
+    raise RuntimeError("a @command ran during validation")
+'''
+
+
+async def test_a_command_is_checked_statically_and_not_run(joined, made_readable, cluster):
+    report = await _validated(
+        joined, _GOOD + _COMMAND, inputs={**_INPUTS, "purge": {"orders": "sales.orders"}}
+    )
+    assert report["static"]["status"] == "ok", report["static"]
+    assert {f["name"]: f["kind"] for f in report["static"]["functions"]}["purge"] == "command"
+    assert report["dry_run"]["status"] == "ok", report["dry_run"]
+    assert _by_function(report["dry_run"])["purge"] == {
+        "function": "purge",
+        "status": "not_run_by_design",
+        "reason": "a @command may write or call out: it is checked statically and not run",
+    }
+    # Its table is not read: only the @query's tables are made readable.
+    assert sorted(r["ref"] for r in made_readable) == ["geo.regions", "geo.stores", "sales.orders"]
 
 
 async def test_a_function_whose_tables_are_not_named_needs_them(joined, made_readable, cluster):

@@ -22,6 +22,8 @@
     "fn_error": "Fout",
     "fn_needs_input": "Invoer nodig",
     "fn_not_run": "Niet uitgevoerd",
+    "fn_not_run_by_design": "Bewust niet uitgevoerd",
+    "commandNotRun": "Een opdracht kan schrijven of externe aanroepen doen, dus wordt deze statisch gecontroleerd en niet uitgevoerd",
     "rows_one": "{{count}} rij",
     "rows_other": "{{count}} rijen",
     "functions_one": "{{count}} tabel, query of opdracht",

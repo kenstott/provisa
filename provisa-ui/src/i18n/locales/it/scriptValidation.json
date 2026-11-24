@@ -22,6 +22,8 @@
     "fn_error": "Errore",
     "fn_needs_input": "Input necessario",
     "fn_not_run": "Non eseguito",
+    "fn_not_run_by_design": "Non eseguito per scelta progettuale",
+    "commandNotRun": "Un comando può scrivere o effettuare chiamate esterne, quindi viene controllato staticamente e non eseguito",
     "rows_one": "{{count}} riga",
     "rows_other": "{{count}} righe",
     "functions_one": "{{count}} tabella, query o comando",

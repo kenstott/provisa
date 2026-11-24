@@ -22,6 +22,8 @@
     "fn_error": "エラー",
     "fn_needs_input": "入力が必要",
     "fn_not_run": "未実行",
+    "fn_not_run_by_design": "設計上未実行",
+    "commandNotRun": "コマンドは書き込みや外部呼び出しを行う可能性があるため、静的にチェックされ、実行されません",
     "rows_one": "{{count}} 行",
     "rows_other": "{{count}} 行",
     "functions_one": "{{count}} 件のテーブル、クエリ、またはコマンド",

@@ -9,9 +9,10 @@
 // permission from the copyright holder.
 
 // REQ-2225: a saved Spark source's script, as its form holds it, validated by the source's host in
-// three steps -- the static check of its tags and types, a dry run of each function on a sample of
-// the governed tables picked for its table parameters, and each resolver's two keys -- with each
-// step's result and each function's.
+// three steps -- the static check of its tags and types, a dry run of each table and query on a
+// sample of the governed tables picked for its table parameters (a @command is checked statically
+// and not run, by design), and each resolver's two keys -- with each step's result and each
+// function's.
 
 // Requirements: REQ-2225
 
@@ -52,6 +53,7 @@ const FUNCTION_COLOR: Record<FunctionStatus, string> = {
   error: "red",
   needs_input: "yellow",
   not_run: "gray",
+  not_run_by_design: "gray",
 };
 
 type Inputs = Record<string, Record<string, string>>;
@@ -128,6 +130,8 @@ function DryRunRow({
   setInput: (parameter: string, table: string) => void;
 }) {
   const { t } = useTranslation();
+  // REQ-2225: a @command may write or call out, so its dry run is never asked for.
+  const command = fn.kind === "command";
   return (
     <Stack gap={4} data-testid={`script-validation-fn-dry_run-${fn.name}`}>
       <Group gap="sm">
@@ -138,6 +142,11 @@ function DryRunRow({
           </Text>
         )}
       </Group>
+      {result?.status === "not_run_by_design" && (
+        <Text size="sm" c="dimmed" data-testid="script-validation-by-design">
+          {t("scriptValidation.commandNotRun")}
+        </Text>
+      )}
       {result?.error && <Lines lines={[result.error]} testId="script-validation-error" />}
       {result?.mismatches && (
         <Lines lines={result.mismatches} testId="script-validation-mismatch" />
@@ -147,7 +156,7 @@ function DryRunRow({
           {t("scriptValidation.needsTables", { tables: result.missing.join(", ") })}
         </Text>
       )}
-      {fn.tables.length > 0 && (
+      {fn.tables.length > 0 && !command && (
         <FieldGroup>
           {fn.tables.map((parameter) => (
             <FormField key={parameter} size="medium">

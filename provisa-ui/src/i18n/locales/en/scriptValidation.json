@@ -22,6 +22,8 @@
     "fn_error": "Error",
     "fn_needs_input": "Needs input",
     "fn_not_run": "Not run",
+    "fn_not_run_by_design": "Not run by design",
+    "commandNotRun": "A command may write or call out, so it is checked statically and not run",
     "rows_one": "{{count}} row",
     "rows_other": "{{count}} rows",
     "functions_one": "{{count}} table, query or command",

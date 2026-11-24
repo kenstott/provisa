@@ -22,6 +22,8 @@
     "fn_error": "Fehler",
     "fn_needs_input": "Eingabe nötig",
     "fn_not_run": "Nicht ausgeführt",
+    "fn_not_run_by_design": "Absichtlich nicht ausgeführt",
+    "commandNotRun": "Ein Befehl kann schreiben oder externe Aufrufe ausführen, daher wird er statisch geprüft und nicht ausgeführt",
     "rows_one": "{{count}} Zeile",
     "rows_other": "{{count}} Zeilen",
     "functions_one": "{{count}} Tabelle, Abfrage oder Befehl",

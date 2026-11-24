@@ -22,6 +22,8 @@
     "fn_error": "錯誤",
     "fn_needs_input": "需要輸入",
     "fn_not_run": "未執行",
+    "fn_not_run_by_design": "按設計不執行",
+    "commandNotRun": "命令可能會寫入資料或呼叫外部服務，因此只作靜態檢查，不會執行",
     "rows_one": "{{count}} 列",
     "rows_other": "{{count}} 列",
     "functions_one": "{{count}} 個表、查詢或指令",

@@ -22,6 +22,8 @@
     "fn_error": "Erreur",
     "fn_needs_input": "Entrée requise",
     "fn_not_run": "Non exécuté",
+    "fn_not_run_by_design": "Non exécuté par conception",
+    "commandNotRun": "Une commande peut écrire ou faire des appels externes : elle est donc vérifiée statiquement et non exécutée",
     "rows_one": "{{count}} ligne",
     "rows_other": "{{count}} lignes",
     "functions_one": "{{count}} table, requête ou commande",
