@@ -17,6 +17,7 @@ start fails the source by name."""
 
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -352,3 +353,49 @@ def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
     finally:
         process.terminate()
         process.wait(timeout=10)
+
+
+# -- a deleted source's host -----------------------------------------------------------------------
+
+
+def _hosted(work: Path, monkeypatch) -> subprocess.Popen:
+    """A host process for ``acme/spark_jobs`` as :func:`native_connector._launch` leaves one: its
+    own session, its state under ``work``."""
+    (work / "state").mkdir(parents=True)
+    monkeypatch.setattr(native_connector, "_hosts", {})
+    process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
+        [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True
+    )
+    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, 40123)  # pyright: ignore[reportPrivateUsage]
+    return process
+
+
+def test_stopping_a_source_ends_its_host_and_removes_its_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    work = tmp_path / "acme" / "spark_jobs"
+    process = _hosted(work, monkeypatch)
+    native_connector.stop("acme", "spark_jobs")
+    assert process.poll() is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(process.pid, 0)
+    assert not work.exists()
+    assert native_connector.running("acme", "spark_jobs") is None
+    # A later restart finds nothing to start again.
+    with pytest.raises(NativeHostFailed, match="has no state"):
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", 40123)
+
+
+def test_stopping_a_source_whose_host_is_not_running_removes_its_state(tmp_path, monkeypatch):
+    """After a restart of Provisa and before the source is dialled, its host is not running but
+    its state is kept: the deletion removes it all the same."""
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    work = tmp_path / "acme" / "spark_jobs"
+    (work / "state").mkdir(parents=True)
+    native_connector.stop("acme", "spark_jobs")
+    assert not work.exists()
+
+
+def test_only_a_native_sources_mapping_is_native():
+    assert remote_sources.is_native({"mode": "built", "remote": {"native": "script"}})
+    assert not remote_sources.is_native({"mode": "built", "remote": {"host": "10.0.0.9"}})
+    assert not remote_sources.is_native({"mode": "dev"})

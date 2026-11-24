@@ -2583,6 +2583,16 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
             from provisa.codesource.source import forget
 
             forget(id)
+            from provisa.codesource import remote_sources
+
+            if remote_sources.is_native(_existing["mapping"]):
+                # REQ-2225: a host this server runs for the source stops and its state goes.
+                import asyncio
+
+                from provisa.codesource import native_connector
+                from provisa.core.request_context import require_current_org
+
+                await asyncio.to_thread(native_connector.stop, require_current_org(), id)
         return MutationResult(
             success=True,
             message=f"Source {id!r} deleted",

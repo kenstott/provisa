@@ -257,3 +257,68 @@ async def test_the_deletion_does_not_wait_for_a_catalog_walk_inside_an_adapter_r
     finally:
         answer.set()
     await asyncio.wait_for(asyncio.wrap_future(walk), 5)
+
+
+# --- a code source's native host (REQ-2225) ------------------------------------------------------
+
+
+@pytest.fixture
+def hosted(plane, served, tmp_path, monkeypatch):
+    """Code sources ``spark_jobs`` (a host this server runs, running) and ``spark_ext`` (a host
+    its operator runs), deleted in org ``acme``."""
+    import subprocess
+    import sys
+
+    from provisa.codesource import native_connector
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    monkeypatch.setattr(native_connector, "_hosts", {})
+    work = tmp_path / "acme" / "spark_jobs"
+    (work / "state").mkdir(parents=True)
+    process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
+        [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True
+    )
+    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, 40123)  # pyright: ignore[reportPrivateUsage]
+    token = set_current_org("acme")
+    yield {"process": process, "work": work}
+    reset_current_org(token)
+    native_connector.stop_all()
+
+
+async def _insert_code_source(plane: Database, source_id: str, remote: dict) -> None:
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(sources).values(
+                id=source_id, type="python", mapping={"mode": "built", "remote": remote}
+            )
+        )
+
+
+async def test_deleting_a_native_source_stops_its_host_and_removes_its_state(plane, hosted):
+    import os
+
+    from provisa.codesource import native_connector
+
+    await _insert_code_source(plane, "spark_jobs", {"host": "127.0.0.1", "native": "script"})
+    assert (await _delete_source("spark_jobs")).success
+    process = hosted["process"]
+    assert process.poll() is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(process.pid, 0)
+    assert not hosted["work"].exists()
+    with pytest.raises(native_connector.NativeHostFailed, match="has no state"):
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", 40123)
+
+
+async def test_deleting_an_image_source_touches_no_host(plane, hosted, monkeypatch):
+    from provisa.codesource import native_connector
+
+    def refuse(*_args):
+        raise AssertionError("an image source's host is its operator's")
+
+    monkeypatch.setattr(native_connector, "stop", refuse)
+    await _insert_code_source(plane, "spark_ext", {"host": "10.0.0.9", "port": 7443})
+    assert (await _delete_source("spark_ext")).success
+    assert hosted["process"].poll() is None
+    assert hosted["work"].exists()
