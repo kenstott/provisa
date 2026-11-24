@@ -628,6 +628,8 @@ class _Writer:
 
     def __init__(self, dialect: str) -> None:
         self.dialect = dialect
+        #: Whether the engine holds a date or timestamp BC, so a bound BC is read (REQ-2236).
+        self.bc = dialect == "duckdb"
         #: A fold's item already read (ClickHouse): its text's form, and the range read of it.
         self._preparsed: dict[str, _R] = {}
         self.serial = 0
@@ -679,7 +681,7 @@ class _Writer:
         # A literal, or a literal cast to its type ('2020-01-10'::date): read as a bound's text is.
         written = _string_literal(inner.this if isinstance(inner, exp.Cast) else inner)
         if written is not None:
-            return self._literal_bound(pg_range.read_element(rtype, written), rtype)
+            return self._literal_bound(pg_range.read_element(rtype, written, self.bc), rtype)
         return self.typed(node, rtype.element)
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
@@ -766,8 +768,28 @@ class _Writer:
 
     def element_text(self, value: exp.Expr, rtype: RangeType) -> exp.Expr:
         if rtype.element in ("timestamp", "timestamptz"):
-            return self.clock_text(value, rtype.element == "timestamptz")
-        return _text_cast(value)
+            written = self.clock_text(value, rtype.element == "timestamptz")
+        else:
+            written = _text_cast(value)
+        if not self.bc or rtype.element not in ("date", "timestamp", "timestamptz"):
+            return written
+        # DuckDB writes a year BC with its era after the date, 4713-01-01 (BC): written after the
+        # value as PostgreSQL writes it, a date then quoted as range_out quotes a bound with a
+        # space (a timestamp's quotes are the range's).
+        era = self.raw(
+            "regexp_replace({a}, '^([0-9]+-[0-9]+-[0-9]+) [(]BC[)](.*)$', '\\1\\2 BC')", a=written
+        )
+        if rtype.element != "date":
+            return era
+        return _case(
+            [
+                (
+                    _eq(_substring(era, _minus(_length(era), _int(2)), _int(3)), _string(" BC")),
+                    _concat(_string('"'), era, _string('"')),
+                )
+            ],
+            era,
+        )
 
     def after(self, value: exp.Expr, steps: exp.Expr, rtype: RangeType) -> exp.Expr:
         """The discrete value ``steps`` after ``value``."""
@@ -930,8 +952,8 @@ class _Writer:
             return self.literal(
                 pg_range.make_range(
                     rtype,
-                    _constant_element(low_arg, rtype),
-                    _constant_element(high_arg, rtype),
+                    _constant_element(low_arg, rtype, self.bc),
+                    _constant_element(high_arg, rtype, self.bc),
                     known[0] == "[",
                     known[1] == "]",
                 )
@@ -951,7 +973,10 @@ class _Writer:
             high = _case([(upper_inc, self.step(high, rtype))], high)
             lower_inc, upper_inc = _not(lower_inf), exp.false()
             holds_none = exp.GTE(this=low.copy(), expression=high.copy())
-            written_low, written_high = _text_cast(low), _text_cast(high)
+            written_low, written_high = (
+                self.element_text(low, rtype),
+                self.element_text(high, rtype),
+            )
         else:
             holds_none = _or(
                 exp.GT(this=low.copy(), expression=high.copy()),
@@ -1524,11 +1549,13 @@ def _constant(node: exp.Expr) -> bool:
     return isinstance(inner, exp.Cast) and _constant(inner.this)
 
 
-def _constant_element(node: exp.Expr, rtype: RangeType) -> object:  # object-ok: an element or None
+def _constant_element(
+    node: exp.Expr, rtype: RangeType, bc: bool
+) -> object:  # object-ok: an element or None
     inner = _unwrapped(node)
     if _null_value(inner):
         return None
-    return pg_range.read_element(rtype, _constant_text(inner))
+    return pg_range.read_element(rtype, _constant_text(inner), bc)
 
 
 def _constant_text(node: exp.Expr) -> str:

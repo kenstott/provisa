@@ -892,11 +892,23 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
                 Ok(())
             }
             PyVal::DateTime(d) => {
+                // A year BC (an engine's timestamp of one, REQ-2236) numbered before year 1, its
+                // era after the clock and offset, as timestamp_out writes it.
+                let days = d.local.div_euclid(DAY_US) as i64;
+                let (y, m, day) = temporal::civil(days);
                 let mut s = String::new();
-                pyval_date(d.local.div_euclid(DAY_US) as i64, &mut s);
+                if y <= 0 {
+                    s.push_str(&format!("{:04}-{m:02}-{day:02}", 1 - y));
+                } else {
+                    pyval_date(days, &mut s);
+                }
                 text(out, &s);
                 out.push(b' ');
-                clock_of(v, out)
+                clock_of(v, out)?;
+                if y <= 0 {
+                    out.extend_from_slice(b" BC");
+                }
+                Ok(())
             }
             _ => Err(type_error("object has no attribute 'hour'", v)),
         },
