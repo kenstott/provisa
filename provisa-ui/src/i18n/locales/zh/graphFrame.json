@@ -21,6 +21,7 @@
     "addToFavorites": "添加到收藏",
     "autoImputeOn": "自动推断关系已开启。点击以关闭。",
     "autoImputeOff": "自动推断可见节点之间的关系",
+    "relNotImputed": "未推断 {{type}}：{{error}}",
     "groupTooltip": "按属性对节点分组（双击外壳可折叠；双击折叠节点可展开）",
     "groupPlaceholder": "⬡ 分组",
     "wrapCellText": "单元格文本换行",

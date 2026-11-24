@@ -33,6 +33,7 @@ from provisa.compiler.cursor import encode_cursor
 from provisa.compiler.sql_types import is_integer_type, is_json_type
 from provisa.core.ir_types import bytea_hex, infinity_of, iso8601_duration
 from provisa.core.json_refusal import JsonValueRefused
+from provisa.core.numeric_type import decimal_text
 from provisa.core.statement_warnings import ServerWarning
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 from provisa.executor.result import QueryResult
@@ -49,13 +50,6 @@ def temporal_text(value: date) -> str:
     if sign:
         return "infinity" if sign > 0 else "-infinity"
     return _FRACTION_ZEROS.sub(r"\1", value.isoformat())
-
-
-def decimal_text(value: Decimal) -> str:
-    """A DECIMAL as the JSON string of its exact digits (REQ-1867): never a float, which loses
-    digits past about 17 and cannot hold a value past 2^64. Positional, never an exponent:
-    ``Decimal("1E+3")`` is ``"1000"``, ``Decimal("0E-7")`` is ``"0.0000000"``."""
-    return format(value, "f")
 
 
 class JsonNumber(float):

@@ -21,6 +21,7 @@
     "addToFavorites": "Add to favorites",
     "autoImputeOn": "Auto-impute relationships is on. Click to disable.",
     "autoImputeOff": "Auto-impute relationships between visible nodes",
+    "relNotImputed": "{{type}} not imputed: {{error}}",
     "groupTooltip": "Group nodes by attribute (double-click a hull to collapse; double-click collapsed node to expand)",
     "groupPlaceholder": "⬡ group",
     "wrapCellText": "Wrap cell text",

@@ -37,6 +37,7 @@ import time
 import httpx
 import pytest
 
+from tests.integration.sse_subscription import open_subscription
 from tests.integration.test_code_source_llm import _MODEL, _Endpoint
 from tests.integration.worker_boot_harness import WorkerBoot, _config
 
@@ -184,40 +185,26 @@ def test_a_role_with_no_request_rate_is_never_refused(server):
 # --- REQ-369: concurrent SSE subscriptions -------------------------------------------------------
 
 
-def _subscribe(boot, role: str) -> httpx.Response:
-    return httpx.get(
-        _url(boot, "/data/subscribe/orders"),
-        headers={"X-Provisa-Role": role, "Accept": "text/event-stream"},
-        timeout=_TIMEOUT,
-    )
+_STREAMER_HEADERS = {"X-Provisa-Role": _STREAMER, "Accept": "text/event-stream"}
 
 
 def test_a_second_subscription_past_the_roles_cap_is_refused_until_the_first_closes(server):
-    with httpx.Client(timeout=_TIMEOUT) as client:
-        with client.stream(
-            "GET",
-            _url(server, "/data/subscribe/orders"),
-            headers={"X-Provisa-Role": _STREAMER, "Accept": "text/event-stream"},
-        ) as first:
-            assert first.status_code == 200, first.read()
-            assert next(first.iter_lines()) == ": connected"
-            second = _subscribe(server, _STREAMER)
-            assert second.status_code == 429, second.text
-            assert "max concurrent SSE subscriptions" in second.text, second.text
+    url = _url(server, "/data/subscribe/orders")
+    with httpx.Client(timeout=_TIMEOUT) as client, httpx.Client(timeout=_TIMEOUT) as other:
+        with open_subscription(client, url, _STREAMER_HEADERS) as first:
+            assert first.status_code == 200, first.text
+            with open_subscription(other, url, _STREAMER_HEADERS) as second:
+                assert second.status_code == 429, "a second subscription was admitted"
+                assert "max concurrent SSE subscriptions" in second.text, second.text
 
     # The server sees the close within its disconnect poll and releases the slot.
     deadline = time.monotonic() + 30
     with httpx.Client(timeout=_TIMEOUT) as client:
         while True:
-            with client.stream(
-                "GET",
-                _url(server, "/data/subscribe/orders"),
-                headers={"X-Provisa-Role": _STREAMER, "Accept": "text/event-stream"},
-            ) as third:
+            with open_subscription(client, url, _STREAMER_HEADERS) as third:
                 if third.status_code == 200:
-                    assert next(third.iter_lines()) == ": connected"
                     break
-                assert third.status_code == 429, third.read()
+                assert third.status_code == 429, third.text
             assert time.monotonic() < deadline, "the closed subscription's slot was never released"
             time.sleep(1)
 

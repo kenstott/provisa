@@ -8,14 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { GNode, GEdge, FrameData } from "../graph-model";
 import { extractElements } from "../graph-model";
 
 type OverlayMap = Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>;
 
-/** Keeps the `__remaining_rels` overlay in sync with the autoImpute toggle.
+/** A relationship type the imputation could not read, with the server's reason (REQ-392). */
+export type UnreadRel = { type: string; error: string };
+
+/** Keeps the `__remaining_rels` overlay in sync with the autoImpute toggle, and returns each
+ * relationship type the last imputation could not read (REQ-392: shown, never hidden).
  *
  * Split out of GraphFrame: the imputation round-trip and its teardown are self-contained, and
  * the overlay key it owns is written nowhere else.
@@ -24,7 +28,13 @@ export function useAutoImpute(
   frame: FrameData,
   autoImpute: boolean,
   setOverlayData: Dispatch<SetStateAction<OverlayMap>>,
-) {
+): UnreadRel[] {
+  // What the last imputation could not read, and the node set it was asked about: shown only
+  // while auto-impute is on and the frame still holds that node set.
+  const [unread, setUnread] = useState<{ nodes: FrameData["nodes"]; rels: UnreadRel[] } | null>(
+    null,
+  );
+
   // When autoImpute is turned off, clear its overlay
   useEffect(() => {
     if (!autoImpute) {
@@ -40,6 +50,7 @@ export function useAutoImpute(
   useEffect(() => {
     if (!autoImpute || frame.status !== "done" || frame.nodes.size === 0) return;
     let cancelled = false;
+    const nodes = frame.nodes;
     const nodeList = [...frame.nodes.values()].map((n) => ({ label: n.label, id: n.id }));
     (async () => {
       const res = await fetch("/data/impute-relationships", {
@@ -62,6 +73,8 @@ export function useAutoImpute(
       const data = await res.json();
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const result = extractElements(rows);
+      if (cancelled) return;
+      setUnread({ nodes, rels: data.unread as UnreadRel[] });
       if (!cancelled && (result.nodes.size > 0 || result.edges.size > 0)) {
         setOverlayData((prev) => new Map(prev).set("__remaining_rels", result));
       }
@@ -70,4 +83,6 @@ export function useAutoImpute(
       cancelled = true;
     };
   }, [autoImpute, frame.status, frame.nodes, setOverlayData]);
+
+  return autoImpute && unread !== null && unread.nodes === frame.nodes ? unread.rels : [];
 }

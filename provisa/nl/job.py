@@ -40,7 +40,10 @@ def _json_default(obj: Any) -> Any:
     import decimal
 
     if isinstance(obj, decimal.Decimal):
-        return float(obj)
+        # REQ-1961 (amended 2026-11-24): a sized numeric is the string of its exact digits.
+        from provisa.core.numeric_type import decimal_text
+
+        return decimal_text(obj)
     if isinstance(obj, (datetime.date, datetime.datetime, datetime.time)):
         return obj.isoformat()
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")

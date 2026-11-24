@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "ソースのセットアップ",
+    "connect": "ソースを接続",
+    "register": "テーブルを登録",
+    "relate": "リレーションシップを検出",
+    "query": "クエリ",
+    "tablesCount_one": "{{count}} 個のテーブル",
+    "tablesCount_other": "{{count}} 個のテーブル",
+    "registerHint": "このソースのテーブルを登録すると、クエリできるようになります。",
+    "registerAction": "テーブルを登録",
+    "relateHint": "新しいテーブル同士、およびすべてのソースのテーブルと関連付けます。",
+    "relateAction": "リレーションシップを検出",
+    "nothingToRelate": "関連付けるものはありません",
+    "nothingToRelateHint": "これらのテーブルを関連付ける対象はまだありません。そのままクエリに進んでください。",
+    "relateNotAllowed": "権限がありません",
+    "relateNotAllowedHint": "リレーションシップの作成にはリレーションシップ作成の権限が必要です。そのままテーブルのクエリに進んでください。",
+    "queryHint": "{{table}} に対するスターター クエリでクエリエクスプローラーを開きます。",
+    "queryAction": "スターター クエリを開く",
+    "complete": "セットアップ完了"
+  }
+}
