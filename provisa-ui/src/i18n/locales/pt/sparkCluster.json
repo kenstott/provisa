@@ -12,6 +12,35 @@
     "tested": "Conectado a {{target}}: Spark {{version}}",
     "saved": "Salvo",
     "removed": "Removido",
-    "remove": "Remover padrão"
+    "remove": "Remover padrão",
+    "host": "Host do cluster Spark",
+    "hostHelp": "O nome do host ou o endereço do servidor Spark Connect do cluster, sem sc:// nem porta.",
+    "port": "Porta",
+    "tls": "TLS",
+    "tlsHelp": "Conectar via TLS. Um token só é enviado via TLS, então informar um token o ativa.",
+    "userId": "ID do usuário",
+    "userIdHelp": "O usuário com que o cluster executa o script, quando ele pede um. Opcional.",
+    "badHost": "Um nome de host ou endereço, sem sc://, porta ou caminho",
+    "badPort": "Uma porta de 1 a 65535",
+    "badToken": "Uma referência de segredo, como ${secret:spark_token}",
+    "extra": "Outros parâmetros, mantidos como informados: {{params}}",
+    "paste": "Colar endereço",
+    "pasteTitle": "Colar um endereço do Spark Connect",
+    "pasteHelp": "Um endereço sc://, como sc://spark.example.com:15002/;use_ssl=true. Ele é dividido nos campos; um token nele é guardado como segredo.",
+    "pasteApply": "Preencher os campos",
+    "pasteToken": "O endereço contém um token. Ele é guardado como segredo da organização e o cluster indica esse segredo; o token em si não é guardado no endereço.",
+    "pasteSecretName": "Nome do segredo",
+    "pasteSecretHelp": "O segredo da organização em que o token é guardado. Um segredo com este nome é substituído.",
+    "pasteKeep": "Guardar o token como segredo",
+    "storedUnread": "O cluster guardado para esta fonte não pode ser lido: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} não é um endereço do Spark Connect: ele começa com sc://",
+      "host": "{{part}} não indica um host",
+      "port": "{{part}} não é uma porta de 1 a 65535",
+      "param": "{{part}} não é um parâmetro nome=valor"
+    },
+    "blankUsesOrg": "Em branco, esta fonte é executada no cluster Spark padrão da organização ({{target}}).",
+    "blankUsesLocal": "Em branco, esta fonte é executada no cluster de teste local ({{target}}).",
+    "blankUsesNone": "Em branco, esta fonte não tem cluster para ser executada: {{detail}}"
   }
 }

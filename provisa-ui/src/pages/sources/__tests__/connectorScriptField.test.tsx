@@ -20,6 +20,12 @@ import { render, renderInForm, screen } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ activeOrgId: "acme" }) }));
 vi.mock("../../../api/secrets", () => ({ fetchSecrets: vi.fn(async () => ({ secrets: [] })) }));
+vi.mock("../../../api/sparkCluster", () => ({
+  fetchSparkSource: vi.fn(async () => ({
+    host: {},
+    default_cluster: { origin: "local_test", label: "local test cluster", target: "127.0.0.1" },
+  })),
+}));
 
 import type { Connector } from "../../../api/connectors";
 import { ConnectorSetupFields, ConnectorSourceValues } from "../ConnectorSetupFields";

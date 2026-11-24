@@ -224,7 +224,13 @@ def test_an_orgs_model_cannot_offer_a_connector_named_spark():
 
     with pytest.raises(ValidationError, match="spark: a built-in source type, not a connector"):
         ProvisaConfig.model_validate(
-            {"sources": [], "connectors": [_ledger(name="spark").model_dump()]}
+            {
+                "sources": [],
+                "domains": [],
+                "tables": [],
+                "roles": [],
+                "connectors": [_ledger(name="spark").model_dump()],
+            }
         )
 
 

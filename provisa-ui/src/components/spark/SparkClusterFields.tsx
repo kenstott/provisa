@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { putSecret } from "../../api/secrets";
 import { fetchSparkSource, type SparkClusterInUse } from "../../api/sparkCluster";
 import { useAuth } from "../../context/AuthContext";
-import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import {
   clusterProblems,
   composeAddress,
@@ -54,7 +54,11 @@ function DefaultCluster({ inUse, testId }: { inUse: SparkClusterInUse; testId: s
         : t("sparkCluster.blankUsesNone", { detail: inUse.detail ?? "" });
   return (
     <FormField size="long">
-      <Text size="sm" c={inUse.origin === null ? "orange" : "dimmed"} data-testid={`${testId}-default`}>
+      <Text
+        size="sm"
+        c={inUse.origin === null ? "orange" : "dimmed"}
+        data-testid={`${testId}-default`}
+      >
         {text}
       </Text>
     </FormField>
@@ -211,16 +215,23 @@ export function SparkClusterFields({
         </FormField>
         {!readOnly && (
           <FormField size="short" afterLabel>
-            <Button variant="default" onClick={() => setPasting(true)} data-testid={`${testId}-paste`}>
+            <Button
+              variant="default"
+              onClick={() => setPasting(true)}
+              data-testid={`${testId}-paste`}
+            >
               {t("sparkCluster.paste")}
             </Button>
           </FormField>
         )}
       </FieldGroup>
       {defaultCluster && !fields.host.trim() && (
-        <DefaultCluster inUse={defaultCluster} testId={testId} />
+        // A line of its own, under the host it stands in for.
+        <FieldGroup row>
+          <DefaultCluster inUse={defaultCluster} testId={testId} />
+        </FieldGroup>
       )}
-      <FieldGroup>
+      <FormChecks>
         <FormField size="short" help={t("sparkCluster.tlsHelp")}>
           <Switch
             label={t("sparkCluster.tls")}
@@ -230,6 +241,8 @@ export function SparkClusterFields({
             data-testid={`${testId}-tls`}
           />
         </FormField>
+      </FormChecks>
+      <FieldGroup>
         <FormField size="medium" help={t("sparkCluster.userIdHelp")}>
           <TextInput
             label={t("sparkCluster.userId")}
@@ -256,7 +269,9 @@ export function SparkClusterFields({
       {fields.extra.length > 0 && (
         <FormField size="long">
           <Text size="sm" c="dimmed" data-testid={`${testId}-extra`}>
-            {t("sparkCluster.extra", { params: fields.extra.map(([k, v]) => `${k}=${v}`).join("; ") })}
+            {t("sparkCluster.extra", {
+              params: fields.extra.map(([k, v]) => `${k}=${v}`).join("; "),
+            })}
           </Text>
         </FormField>
       )}

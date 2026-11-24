@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A checkout's demo offers the Spark connector, run natively (REQ-2225, amended 2026-11-24): the
-platform read offers it in a checkout's demo, never outside a demo, and a released package reads
-its own block unchanged. A native connector is joined by its name alone, and a host that fails to
-start fails the source by name."""
+"""A checkout's demo runs the Spark host natively (REQ-2225, amended 2026-11-24): the platform
+read has it in a checkout's demo, never outside a demo, and a released package reads its own block
+unchanged. Spark is a built-in source type, never an offered connector: a spark source joins the
+host by its name alone, the form reads the host and the default cluster from the built-in sources
+API, and a host that fails to start fails the source by name."""
 
 # Requirements: REQ-2225
 
@@ -129,6 +130,53 @@ async def test_a_checkouts_native_spark_never_shadows_a_filled_block(
     spark = connector_repo.builtin("spark")
     assert spark is not None
     assert "native" not in spark and spark["digest"] == "sha256:" + "b" * 64
+
+
+# -- the built-in sources API ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def unguarded(monkeypatch):
+    from provisa.api.admin import connectors_router, spark_cluster_router
+
+    async def guard(_request, org_id):
+        return "uid-ada"
+
+    async def in_use(org_id):
+        return {"origin": "local_test", "label": "local test cluster", "target": "127.0.0.1"}
+
+    monkeypatch.setattr(connectors_router, "_guard", guard)
+    monkeypatch.setattr(spark_cluster_router, "in_use", in_use)
+    return connectors_router
+
+
+async def test_the_spark_form_reads_its_host_and_the_default_cluster(demo, unguarded):
+    found = await unguarded.builtin(cast(Any, None), "acme", "spark")
+    assert found["host"]["name"] == "spark" and found["host"]["native"] is True
+    assert "path" not in found["host"] and "build_command" not in found["host"]
+    assert found["default_cluster"] == {
+        "origin": "local_test",
+        "label": "local test cluster",
+        "target": "127.0.0.1",
+    }
+
+
+async def test_an_installation_with_no_spark_host_says_so_by_name(not_demo, unguarded):
+    from provisa.api.errors import ApiError
+
+    with pytest.raises(ApiError) as refused:
+        await unguarded.builtin(cast(Any, None), "acme", "spark")
+    assert refused.value.status_code == 409
+    assert refused.value.code == "codesource.builtin_unavailable"
+
+
+async def test_only_a_builtin_source_type_is_read_there(demo, unguarded):
+    from provisa.api.errors import ApiError
+
+    with pytest.raises(ApiError) as refused:
+        await unguarded.builtin(cast(Any, None), "acme", "python")
+    assert refused.value.status_code == 404
+    assert refused.value.code == "codesource.not_builtin"
 
 
 # -- the join --------------------------------------------------------------------------------------

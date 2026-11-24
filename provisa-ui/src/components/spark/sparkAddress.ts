@@ -51,7 +51,9 @@ const goodHost = (host: string) => /^[A-Za-z0-9._-]+$|^\[[0-9A-Fa-f:.]+\]$/.test
 
 /** What is wrong with the fields, by field; empty when they compose an address. A blank host is
  * not wrong: it is a cluster left unset. */
-export function clusterProblems(f: ClusterFields): Partial<Record<"host" | "port" | "token", string>> {
+export function clusterProblems(
+  f: ClusterFields,
+): Partial<Record<"host" | "port" | "token", string>> {
   const out: Partial<Record<"host" | "port" | "token", string>> = {};
   if (!f.host.trim()) return out;
   if (!goodHost(f.host.trim())) out.host = "host";
@@ -91,18 +93,23 @@ export class NotSparkAddress extends Error {
 
 /** A Spark Connect address split into the fields. A token found in it is returned apart, never
  * put in a field unless it is a secret reference already: a value is to be kept as a secret. */
-export function splitAddress(address: string): { fields: ClusterFields; tokenValue: string | null } {
+export function splitAddress(address: string): {
+  fields: ClusterFields;
+  tokenValue: string | null;
+} {
   const text = address.trim();
   if (!text.startsWith(SCHEME)) throw new NotSparkAddress("scheme", text);
   const rest = text.slice(SCHEME.length);
   const slash = rest.indexOf("/");
   const head = slash < 0 ? rest : rest.slice(0, slash);
   const tail = slash < 0 ? "" : rest.slice(slash + 1);
+  // A credential in the authority is refused, as the server refuses it: the token is a parameter.
+  if (head.includes("@")) throw new NotSparkAddress("host", head);
   const bracket = head.startsWith("[") ? head.indexOf("]") : -1;
   const colon = bracket >= 0 ? head.indexOf(":", bracket) : head.lastIndexOf(":");
   const host = colon < 0 ? head : head.slice(0, colon);
   const port = colon < 0 ? DEFAULT_SPARK_PORT : head.slice(colon + 1);
-  if (!host || host.includes("@") || !goodHost(host)) throw new NotSparkAddress("host", head);
+  if (!host || !goodHost(host)) throw new NotSparkAddress("host", head);
   const portNumber = Number(port);
   if (!/^\d+$/.test(port) || portNumber < 1 || portNumber > 65535)
     throw new NotSparkAddress("port", port);

@@ -44,6 +44,7 @@ import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
+import { sourceFormLanded } from "./loadManagement";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
 import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
@@ -879,8 +880,9 @@ export function SourceFormFieldsExtended({
       {/* REQ-1907: the load and timeliness controls are offered at create as well as edit — a
           source whose tables land needs its cache TTL before a table is registered. */}
       {/* The short step asks for them only where the source cannot exist without one: a kind
-          whose tables land must state its Cache TTL. */}
-      {(!essential || landsWithTtl) && (
+          whose tables land, or a source that starts replicated (a Spark source, REQ-2225), must
+          state its Cache TTL. */}
+      {(!essential || sourceFormLanded(form, landsWithTtl)) && (
         <FormSection id="load">
           <SourceLoadManagementPanel
             form={form}
