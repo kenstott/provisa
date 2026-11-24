@@ -4306,8 +4306,30 @@ def _after_answer_steps(
             return
         assert state.model_db is not None
         assert names is not None, "the build stores the names table it built"
+        from provisa.compiler.names_table import stored_name_rows
+        from provisa.federation.replica_routing import replica_tables
+
+        # REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): beside the model's own names, each
+        # object's name where it lives -- the bound engine and the replicas it keeps, the export
+        # targets that carry it, the glossary terms it realises.
+        engine = state.federation_engine.engine
+        replicas = {}
+        for src, reg in await replica_tables(engine, state):
+            address = engine.backend.replica_address(
+                state,
+                source_id=src.id,
+                schema_name=reg["schema_name"],
+                table_name=reg["table_name"],
+            )
+            replicas[(src.id, reg["schema_name"], reg["table_name"])] = (
+                address.schema,
+                address.table,
+            )
         async with state.model_db.acquire() as conn:
-            await _model_names.write_names_table(conn, names.rows)
+            estate = await _model_names.read_estate(
+                conn, org_id=require_current_org(), engine=engine.name, replicas=replicas
+            )
+            await _model_names.write_names_table(conn, stored_name_rows(names, estate))
 
     async def announce_change() -> None:
         # ``announce=False`` (REQ-1914) is a reload: the worker that made the change derives and
@@ -4784,6 +4806,18 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.codesource.worker import pool as _code_workers
 
         _code_workers.stop_all()
+
+    # REQ-2225: the demo's local test cluster, a JVM in its own session, stops with the demo.
+    with tolerate_shutdown_failure("local test cluster stop"):
+        from provisa.core import demo_spark
+
+        await asyncio.to_thread(demo_spark.stop)
+
+    # REQ-2225: the Spark connector hosts a checkout's demo runs stop with it.
+    with tolerate_shutdown_failure("native connector hosts stop"):
+        from provisa.codesource import native_connector
+
+        await asyncio.to_thread(native_connector.stop_all)
 
     # Stop every org's Live Query Engine (Phase AM, REQ-1266)
     for _live in state.org_registry.live_engines():

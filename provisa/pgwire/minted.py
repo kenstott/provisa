@@ -209,9 +209,11 @@ def table_key(ref: str) -> tuple[str, ...]:
 
 
 def read_statement(ref: str, columns: list[str]) -> str:
-    """The statement that reads a call's table: its declared columns, or all the role sees."""
-    projection = [exp.column(c, quoted=True) for c in columns] if columns else [exp.Star()]
-    return exp.select(*projection).from_(_reference(ref)).sql(dialect="postgres")
+    """The statement that reads a call's table: its declared columns, or all the role sees -- the
+    read a stored view's reader is judged by too (``sql_validator.view_command_reads``)."""
+    from provisa.compiler.sql_validator import table_read
+
+    return table_read(_reference(ref), columns).sql(dialect="postgres")
 
 
 def _refuse_session_statement(tree: exp.Expr) -> None:

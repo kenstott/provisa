@@ -5789,6 +5789,20 @@
        }
       },
       {
+       "name": "primeTerm",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "primeTermOntologyName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
        "name": "surface",
        "type": {
         "kind": "SCALAR",

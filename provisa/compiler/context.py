@@ -738,15 +738,23 @@ def _instant_columns(
 
 def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    *,
+    found: object = None,  # object-ok: schema_gen.RoleTables, imported inside (circular boundary)
 ) -> (
     CompilationContext
 ):  # object-ok: circular import boundary — SchemaInput imported inside function body
     """Build CompilationContext from a SchemaInput.
 
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
-    to produce the same field_name/type_name mapping.
+    to produce the same field_name/type_name mapping. ``found``: ``si``'s tables already found and
+    named for the role's other parts (schema_gen.role_tables).
     """
-    from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
+    from provisa.compiler.schema_gen import (
+        RoleTables,
+        SchemaInput,
+        _assign_names,
+        _build_visible_tables,
+    )
 
     assert isinstance(si, SchemaInput)
     ctx = CompilationContext(role_id=si.role["id"])
@@ -754,13 +762,21 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     from provisa.compiler.naming import domain_alias_map as _domain_alias_map
 
     domain_alias_map = _domain_alias_map(si.domains)
-    tables = _build_visible_tables(si, for_sql=True)
+    if found is not None:
+        assert isinstance(found, RoleTables)
+        tables = found.for_sql()
+    else:
+        tables = _build_visible_tables(si, for_sql=True)
     if not tables:
         _register_missing_capabilities(si, ctx, domain_alias_map)  # REQ-1132
         return ctx
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
-    )
+    if found is None:
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=domain_alias_map,
+        )
 
     table_lookup = {t.table_id: t for t in tables}
     physical_map = getattr(si, "physical_table_map", None) or {}
