@@ -645,6 +645,7 @@ def object_agg(pairs: list[dict[str, Any]], strict: bool, unique: bool, called: 
     """The _strict and _unique object aggregates: ``pairs`` the group's keys and to_json values."""
     binary = _is_binary(called)
     members: dict[str, Any] = {}
+    seen: set[str] = set()  # every key, a skipped NULL value's too (json.c's skipped_keys)
     written: list[str] = []  # json's: each pair as json_object_agg writes it, in the group's order
     for pair in pairs:
         key, value = pair["k"], pair["v"]
@@ -652,11 +653,12 @@ def object_agg(pairs: list[dict[str, Any]], strict: bool, unique: bool, called: 
             if binary:
                 raise _error("22023", "field name must not be null")
             raise _error("22004", "null value not allowed for object key")
-        if strict and value is None:
-            continue
-        if unique and key in members:
+        if unique and key in seen:
             shown = "" if binary else f": {json.dumps(key, ensure_ascii=False)}"
             raise _error("22030", f"duplicate JSON object key value{shown}")
+        seen.add(key)
+        if strict and value is None:
+            continue
         members[key] = None if value is None else _jsonb(value)
         written.append(
             f"{json.dumps(key, ensure_ascii=False)} : {'null' if value is None else value}"

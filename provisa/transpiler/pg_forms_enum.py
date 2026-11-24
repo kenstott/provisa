@@ -369,7 +369,11 @@ def _names(args: list[exp.Expr]) -> list[str] | None:
             return []
         if isinstance(held, exp.Literal) and held.is_string:
             inner = held.this.strip().removeprefix("{").removesuffix("}")
-            return [name.strip() for name in inner.split(",") if name.strip()]
+            names = [name.strip() for name in inner.split(",") if name.strip()]
+            # An unquoted NULL is a NULL element, which PostgreSQL reads no publication name of.
+            if any(name.upper() == "NULL" for name in names):
+                raise PostgresError("22004", "null array element not allowed in this context")
+            return names
         args = held.expressions if isinstance(held, exp.Array) else [held]
     named_ = [a.this if isinstance(a, exp.Cast) else a for a in args]
     if all(isinstance(a, exp.Literal) and a.is_string for a in named_):

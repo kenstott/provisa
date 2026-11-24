@@ -363,11 +363,15 @@ LEFT_RIGHT: tuple[Feature, ...] = (
             rules=(
                 Rule(
                     "right($t::text, $n::integer)",
-                    _ch(
-                        ch_once(
-                            f"if({_NULL_OF}, NULL, if($n = -2147483648, $t, rightUTF8($t, $n)))"
-                        )
-                    ),
+                    {
+                        **_ch(
+                            ch_once(
+                                f"if({_NULL_OF}, NULL, if($n = -2147483648, $t, rightUTF8($t, $n)))"
+                            )
+                        ),
+                        # DuckDB's right of the least integer is the empty text.
+                        "duckdb": "CASE WHEN $n = -2147483648 THEN $t ELSE right($t, $n) END",
+                    },
                 ),
             )
         ),

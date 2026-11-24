@@ -16,7 +16,34 @@ provisa.transpiler.rows collects into provisa.transpiler.function_macros.MACROS.
 from __future__ import annotations
 
 from provisa.core.pg_error import raising
-from provisa.transpiler.rows.base import Macro, _macro, _pg, _udf
+from provisa.transpiler.rows.base import Macro, _macro, _pg, _udf, strict
+
+
+_BITS = "CAST(value AS VARCHAR)"
+_BITS_LENGTH = f"length({_BITS})"
+
+
+def _shifted_left(by: str) -> str:
+    """varbit.c's bitshiftleft by ``by`` (bitshiftright is it by its negation): the length kept,
+    a shift at or past the length all zeros. The shift is held within the length before it is
+    negated or added, so an integer's least shifts as PostgreSQL's clamp to VARBITMAXLEN does."""
+    shift = by.replace("n", "CAST(n AS BIGINT)")
+    k = f"least(greatest({shift}, -{_BITS_LENGTH}), {_BITS_LENGTH})"
+    return (
+        f"CAST(CASE WHEN {k} >= 0 THEN substr({_BITS}, {k} + 1) || repeat('0', {k}) "
+        f"ELSE repeat('0', -{k}) || left({_BITS}, {_BITS_LENGTH} + {k}) END AS BIT)"
+    )
+
+
+#: varbit(value, n, explicit), varbit.c's length coercion: a length of 0 or less (no typmod)
+#: keeps the value; past it, an explicit cast truncates and an implicit one is 22001.
+_VARBIT = (
+    "CAST(CASE WHEN n <= 0 OR length(CAST(value AS VARCHAR)) <= n THEN CAST(value AS VARCHAR) "
+    "WHEN explicit THEN left(CAST(value AS VARCHAR), n) "
+    "ELSE "
+    + raising("22001", "'bit string too long for type bit varying(' || n || ')'")
+    + " END AS BIT)"
+)
 
 
 def _in_bytea(index: str, size: str) -> str:
@@ -36,18 +63,8 @@ ROWS: tuple[Macro, ...] = (
     _udf("bytealike", "a, b", "provisa_bytea_like(a, b)"),
     _udf("byteanlike", "a, b", "NOT provisa_bytea_like(a, b)"),
     _pg("bitcat", "a, b", "CAST(CAST(a AS TEXT) || CAST(b AS TEXT) AS BIT)"),
-    _macro(
-        "bitshiftleft",
-        "value, n",
-        "CAST(substr(CAST(value AS VARCHAR), n + 1) || "
-        "repeat('0', least(n, length(CAST(value AS VARCHAR)))) AS BIT)",
-    ),
-    _macro(
-        "bitshiftright",
-        "value, n",
-        "CAST(repeat('0', least(n, length(CAST(value AS VARCHAR)))) || "
-        "left(CAST(value AS VARCHAR), greatest(length(CAST(value AS VARCHAR)) - n, 0)) AS BIT)",
-    ),
+    _macro("bitshiftleft", "value, n", strict("value, n", "BIT", _shifted_left("n"))),
+    _macro("bitshiftright", "value, n", strict("value, n", "BIT", _shifted_left("-n"))),
     _macro(
         "get_byte",
         "value, n",
@@ -61,11 +78,5 @@ ROWS: tuple[Macro, ...] = (
         "ELSE unhex(left(hex(value), n * 2) || printf('%02X', new_byte & 255) || "
         "substr(hex(value), n * 2 + 3)) END",
     ),
-    _macro(
-        "varbit",
-        "value, n, explicit",
-        "CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
-        "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
-        "AS BIT) END",
-    ),
+    _macro("varbit", "value, n, explicit", strict("value, n, explicit", "BIT", _VARBIT)),
 )

@@ -1026,7 +1026,10 @@ OVERLAPS = held(
 
 
 def _scale(precision: str) -> str:
-    return f"CAST(pow(10, 6 - {precision}) AS BIGINT)"
+    """10 to the digits past ``precision``. The forms read it only where the precision is 0 to 6;
+    it is held there, so a constant precision outside (an integer's least) is not folded into an
+    overflow of ``6 - precision`` before the branch that answers it is chosen."""
+    return f"CAST(pow(10, 6 - least(greatest({precision}, 0), 6)) AS BIGINT)"
 
 
 def _rounded_micros(micros: str, precision: str) -> str:
