@@ -37,7 +37,7 @@ from provisa.auth.models import AuthIdentity
 from provisa.core.org_ids import is_demo_sandbox
 from provisa.core.schema_admin import personal_access_tokens, user_profiles
 
-# Requirements: REQ-1263
+# Requirements: REQ-1263, REQ-2106
 
 TOKEN_PREFIX = "provisa_pat_"
 
@@ -88,6 +88,16 @@ class TokenNameTaken(ValueError):
     def __init__(self, name: str) -> None:
         self.name = name
         super().__init__(f"A token named {name!r} already exists")
+
+
+class TokenRefused(Exception):
+    """Why a presented token is refused (REQ-2106): ``reason`` is unknown, revoked, suspended or
+    expired, and the message names the token by its label when it has one. Never a ValueError, so
+    no sign-in surface reports it in place of :meth:`PersonalAccessTokenStore.validate`'s."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class PersonalAccessTokenStore:  # REQ-1263
@@ -159,6 +169,16 @@ class PersonalAccessTokenStore:  # REQ-1263
         label rides in ``raw_claims["token_name"]``, which is what distinguishes *which*
         credential of theirs was used.
         """
+        try:
+            return await self.resolve(token)
+        except TokenRefused:
+            raise ValueError("Invalid token") from None
+
+    async def resolve(self, token: str) -> AuthIdentity:  # REQ-1263, REQ-2106
+        """:meth:`validate`'s identity, or :class:`TokenRefused` saying why the token is refused:
+        unknown, revoked, suspended or expired. Only the developer's services route (REQ-2106,
+        amended 2026-11-22) answers with the reason; every sign-in answers through
+        :meth:`validate`, which says only that the token is not valid."""
         token_hash = hash_token(token)
         async with self._pool.acquire() as conn:
             result = await conn.execute_core(
@@ -184,13 +204,21 @@ class PersonalAccessTokenStore:  # REQ-1263
             )
             fetched = result.fetchone()
             if fetched is None:
-                raise ValueError("Invalid token")
+                raise TokenRefused("unknown", "the personal access token is not known here")
             row = dict(fetched._mapping)
+            if row["revoked_at"] is not None:
+                raise TokenRefused(
+                    "revoked", f"the personal access token {row['name']!r} is revoked"
+                )
             # REQ-2076: a suspended token is refused as a revoked one is, until an admin lifts it.
-            if row["revoked_at"] is not None or row["suspended_at"] is not None:
-                raise ValueError("Invalid token")
+            if row["suspended_at"] is not None:
+                raise TokenRefused(
+                    "suspended", f"the personal access token {row['name']!r} is suspended"
+                )
             if row["expires_at"] is not None and _as_aware(row["expires_at"]) <= _utcnow():
-                raise ValueError("Invalid token")
+                raise TokenRefused(
+                    "expired", f"the personal access token {row['name']!r} has expired"
+                )
             await conn.execute_core(
                 update(personal_access_tokens)
                 .where(personal_access_tokens.c.token_hash == token_hash)

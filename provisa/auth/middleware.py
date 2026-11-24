@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import re
 from collections.abc import Callable
 
 import jwt
@@ -187,6 +188,12 @@ _SKIP_PATHS = {
     "/orgs/branding",
     "/orgs/branding/logo",
 }
+
+
+#: REQ-2106 (amended 2026-11-22): a dev-mode code source's services, reached by its developer's
+#: personal access token. The services module sends no header, so the token is in the path, and
+#: the route resolves it itself (provisa.codesource.developer_services), refusing it by name.
+_DEVELOPER_SERVICES_PATH = re.compile(r"^/admin/orgs/[^/]+/code-sources/[^/]+/services/[^/]+/")
 
 
 def _loaded_roles() -> dict[str, dict]:  # REQ-1337
@@ -773,8 +780,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
-        if request.url.path in _SKIP_PATHS or request.url.path.startswith(
-            ("/public/invite-info/", "/public/demos/")  # REQ-1602; REQ-2006: before any sign-in
+        if (
+            request.url.path in _SKIP_PATHS
+            or request.url.path.startswith(
+                ("/public/invite-info/", "/public/demos/")  # REQ-1602; REQ-2006: before any sign-in
+            )
+            or _DEVELOPER_SERVICES_PATH.match(request.url.path)  # REQ-2106: its token is its path's
         ):
             return None
 
