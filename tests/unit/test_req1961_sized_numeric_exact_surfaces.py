@@ -21,6 +21,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+import orjson
 import pyarrow as pa
 import pytest
 import sqlglot
@@ -239,8 +240,10 @@ def test_a_sized_numeric_parameter_stays_a_double_as_its_graphql_argument_is_a_f
     assert '"_nf_floor" = 10.5' in sql
 
 
-def test_a_bolt_row_keeps_a_decimal_for_its_exact_digits_where_cypher_http_writes_a_float():
-    """Bolt's rows pass ``keep_values``: the decimal reaches packstream, which sends its digits."""
+def test_a_bolt_row_keeps_a_decimal_for_its_exact_digits_and_cypher_http_writes_them():
+    """Bolt's rows pass ``keep_values``: the decimal reaches packstream, which sends its digits.
+    Cypher over HTTP (and every JSON surface) writes the same digits as a string (amended
+    2026-11-24)."""
     from provisa.bolt.packstream import pack, unpack
     from provisa.gql.assembler import to_serializable
 
@@ -248,4 +251,50 @@ def test_a_bolt_row_keeps_a_decimal_for_its_exact_digits_where_cypher_http_write
     kept = to_serializable(row, keep_values=True)
     assert kept == {"amount": Decimal("12.50"), "ratio": 0.5}
     assert unpack(pack(kept["amount"])) == "12.50"
-    assert to_serializable(row) == {"amount": 12.5, "ratio": 0.5}
+    assert to_serializable(row) == {"amount": "12.50", "ratio": 0.5}
+
+
+def test_cypher_over_http_writes_a_sized_numeric_as_its_exact_digits():
+    """The rows the Cypher HTTP routes (cypher_router, neo4j_compat_router, Flight's Cypher
+    stream, NL) take from to_serializable, encoded by the app's JSON response: a scalar decimal
+    and one a node property holds are each the string of its exact digits, never an exponent."""
+    from provisa.api.json_response import dumps
+    from provisa.gql.assembler import to_serializable
+    from provisa.gql.assembler import Node
+
+    node = Node(
+        id="Orders:1", label="Orders", table_label="orders", properties={"amount": Decimal("12.50")}
+    )
+    row = {
+        "a": Decimal("12.50"),
+        "big": Decimal("12345678901234567.89"),
+        "e": Decimal("1E+3"),
+        "o": node,
+        "xs": [Decimal("0.10")],
+    }
+    out = to_serializable(row)
+    assert out["a"] == "12.50"
+    assert out["big"] == "12345678901234567.89"
+    assert out["e"] == "1000"
+    assert out["xs"] == ["0.10"]
+    body = orjson.loads(dumps([out]))
+    assert body[0]["o"]["properties"] == {"amount": "12.50"}
+
+
+def test_the_neo4j_query_api_writes_a_node_property_decimal_as_its_exact_digits():
+    from provisa.api.json_response import OrjsonResponse
+    from provisa.api.rest import neo4j_compat_router
+
+    assert neo4j_compat_router.OrjsonResponse is OrjsonResponse
+    value = neo4j_compat_router._to_query_v2_value(
+        {"id": 1, "label": "Orders", "properties": {"amount": Decimal("12.50")}}
+    )
+    assert orjson.loads(OrjsonResponse(value).body)["properties"] == {"amount": "12.50"}
+
+
+def test_an_nl_job_stores_a_sized_numeric_as_its_exact_digits():
+    import json
+
+    from provisa.nl.job import _json_default
+
+    assert json.loads(json.dumps({"a": Decimal("12.50")}, default=_json_default)) == {"a": "12.50"}
