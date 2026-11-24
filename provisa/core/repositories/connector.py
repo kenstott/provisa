@@ -21,6 +21,10 @@ Sources shows nothing of the platform until a release fills it. It is read here 
 it is not the organization's model, so :func:`list_all` leaves it out and it does not promote. An
 organization's own connector of the same name keeps that name, so what a release adds never changes
 what a source of theirs runs.
+
+A demo run from a checkout offers the Spark connector beside the package's block, run as a native
+Python code host from ``connectors/spark`` (provisa/codesource/native_connector.py, REQ-2225
+amended 2026-11-24); a released package reads its block alone.
 """
 
 # Requirements: REQ-2221, REQ-2225
@@ -72,7 +76,11 @@ def _platform() -> list[dict[str, Any]]:
     except ValidationError as exc:
         wrong = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
         raise ValueError(f"{_PLATFORM_FILE.name}: {wrong}") from None
-    return [_values(entry) for entry in entries]
+    from provisa.codesource import native_connector
+
+    packaged = [_values(entry) for entry in entries]
+    names = {row["name"] for row in packaged}
+    return [*packaged, *(r for r in native_connector.platform_rows() if r["name"] not in names)]
 
 
 async def upsert(conn: "Connection", connector: "ConnectorConfig") -> None:

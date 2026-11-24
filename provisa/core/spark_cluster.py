@@ -26,6 +26,7 @@ over the same gRPC Spark Connect clients speak, so it needs no Spark client here
 # Requirements: REQ-2225
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import uuid
@@ -195,19 +196,49 @@ async def forget(admin_db: "Database", org_id: str) -> bool:
 
 def local_test_cluster() -> str | None:
     """The demo's one-node Spark (REQ-2225): its address in a demo or local install, None in a
-    production one, which has no default until an administrator sets one."""
+    production one, which has no default until an administrator sets one. Started on demand: the
+    first use downloads and starts it (provisa/core/demo_spark.py), unless
+    :data:`LOCAL_TEST_CLUSTER_ENV` already names one. Blocks while it starts."""
+    from provisa.core.demo import is_demo
+
+    if not is_demo():
+        return None
+    address = os.environ.get(LOCAL_TEST_CLUSTER_ENV)
+    if address:
+        return address
+    from provisa.core import demo_spark
+
+    try:
+        return demo_spark.ensure()
+    except demo_spark.DemoSparkFailed as failed:
+        if failed.code == "demo_spark.unsupported_platform":
+            raise SparkClusterRefused(
+                "local_test_unavailable",
+                f"The local test cluster is unavailable: {failed}",
+                status=503,
+            ) from failed
+        raise SparkClusterRefused(
+            "local_test_failed",
+            f"The local test cluster could not be started: {failed}",
+            status=503,
+        ) from failed
+
+
+def local_test_target() -> str | None:
+    """Where the local test cluster is, without starting it: ``host:port`` while it runs, its
+    loopback host alone before its first use (its port is picked when it starts), None in a
+    production install."""
     from provisa.core.demo import is_demo
 
     if not is_demo():
         return None
     address = os.environ.get(LOCAL_TEST_CLUSTER_ENV)
     if not address:
-        raise SparkClusterRefused(
-            "local_test_unset",
-            f"This demo install has no local test cluster: {LOCAL_TEST_CLUSTER_ENV} is not set",
-            status=503,
-        )
-    return address
+        from provisa.core.demo_spark import LOOPBACK
+
+        return LOOPBACK
+    shown = parse(address)
+    return f"{shown.host}:{shown.port}"
 
 
 @dataclass(frozen=True)
@@ -224,7 +255,8 @@ async def _resolved_default(admin_db: "Database", org_id: str) -> Resolved:
 
     kept = await read(admin_db, org_id)
     if kept is None:
-        local = local_test_cluster()
+        # Off the loop: its first use downloads and starts the cluster.
+        local = await asyncio.to_thread(local_test_cluster)
         if local is None:
             raise SparkClusterRefused(
                 "not_configured",
@@ -365,12 +397,43 @@ def probe(address: str, *, org_id: str) -> str:
             metadata=metadata,
         )
     except UnaryCallFailed as failed:
-        raise SparkClusterRefused(
-            "unreachable",
-            f"The Spark cluster at {target} did not answer: {failed}",
-            status=502,
-            target=target,
-        ) from None
+        raise _unreachable(target, failed) from None
+    return _version_answered(answer, target)
+
+
+def answers_locally(address: str) -> str:
+    """The Spark version the Spark Connect server Provisa started itself at ``address`` answers,
+    such as the demo's (REQ-2225). Its address is Provisa's own, not an administrator's, so no
+    organisation's egress rule applies (REQ-2006); it is dialed on loopback only, and any other
+    host is refused by name as :class:`~provisa.grpc_remote.executor.NotLoopback` before any dial.
+    Raises :class:`SparkClusterRefused` ``unreachable`` while the server does not answer yet."""
+    from provisa.grpc_remote.executor import UnaryCallFailed, call_unary_loopback
+
+    endpoint = parse(address)
+    target = f"{endpoint.host}:{endpoint.port}"
+    try:
+        answer = call_unary_loopback(
+            endpoint.host,
+            endpoint.port,
+            method=_SERVICE_METHOD,
+            request=version_request(str(uuid.uuid4()), "provisa"),
+            timeout=PROBE_TIMEOUT_S,
+        )
+    except UnaryCallFailed as failed:
+        raise _unreachable(target, failed) from None
+    return _version_answered(answer, target)
+
+
+def _unreachable(target: str, failed: Exception) -> SparkClusterRefused:
+    return SparkClusterRefused(
+        "unreachable",
+        f"The Spark cluster at {target} did not answer: {failed}",
+        status=502,
+        target=target,
+    )
+
+
+def _version_answered(answer: bytes, target: str) -> str:
     try:
         return version_of(answer)
     except (ValueError, IndexError) as unread:
