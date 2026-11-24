@@ -471,7 +471,8 @@ def manifest_from_json(raw: dict) -> Manifest:
     }
     # A manifest kept before REQ-2221 was read when no code could declare one.
     requires = tuple(Requirement(r["name"], r["secret"]) for r in raw.get("requires", ()))
-    relationships = tuple(Relationship(**r) for r in raw["relationships"])
+    # A manifest kept before REQ-2267 was read when no code could declare one.
+    relationships = tuple(Relationship(**r) for r in raw.get("relationships", ()))
     return Manifest(tuple(exports), types, requires, relationships)
 
 

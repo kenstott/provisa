@@ -56,8 +56,10 @@ def held_as_reference(
     if not (isinstance(reference, str) and is_reference(reference)):
         raise BundleRefused(
             "credential_not_reference",
-            f"{source}: its {field} is a reference to the vault or the environment "
-            "(${secret:NAME}, ${env:NAME}); a credential is never written where its code is",
+            "{}: its {} is a reference to the vault or the environment"
+            " (${{secret:NAME}}, ${{env:NAME}}); a credential is never written where its code is".format(
+                source, field
+            ),
             source=source,
             field=field,
         )
