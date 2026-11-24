@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "Bron instellen",
+    "connect": "Bron verbinden",
+    "register": "Tabellen registreren",
+    "relate": "Relaties ontdekken",
+    "query": "Query",
+    "tablesCount_one": "{{count}} tabel",
+    "tablesCount_other": "{{count}} tabellen",
+    "registerHint": "Registreer de tabellen van deze bron om ze te bevragen.",
+    "registerAction": "Tabellen registreren",
+    "relateHint": "Relateer de nieuwe tabellen aan elkaar en aan tabellen in elke bron.",
+    "relateAction": "Relaties ontdekken",
+    "nothingToRelate": "Niets te relateren",
+    "nothingToRelateHint": "Er is nog niets om deze tabellen aan te relateren. Ga verder en bevraag ze.",
+    "relateNotAllowed": "Niet toegestaan",
+    "relateNotAllowedHint": "Voor het maken van relaties is het recht om relaties te maken nodig. Ga verder en bevraag de tabellen.",
+    "queryHint": "Opent de query-explorer met een startquery op {{table}}.",
+    "queryAction": "Startquery openen",
+    "complete": "Instellen voltooid"
+  }
+}

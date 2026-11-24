@@ -190,3 +190,50 @@ def test_schema_version_increments_before_names_table_write(
         "registered_tables cache is stale-free during the lock; "
         f"expected [{version_before + 1}], got {version_at_write}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 4: one worker writes the stored names table; a worker reloading its change does not
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("announce", "writes"), [(True, 1), (False, 0)])
+def test_only_the_worker_that_made_the_change_writes_the_names_table(
+    monkeypatch: pytest.MonkeyPatch, announce: bool, writes: int
+) -> None:
+    """REQ-194, REQ-1914: every worker rebuilds on a change, and each builds the same names table
+    in memory. The worker that made the change (``announce``) stores it; a worker reloading that
+    change (``announce=False``) serves from its own and stores nothing, so the change costs one
+    write, not one per worker."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import provisa.api.app as app_mod
+    import provisa.core.repositories.model_names as _mn
+    from provisa.api import rebuild_trace
+    from provisa.core.environments import PROD
+
+    written: list[Any] = []
+
+    async def _write_names_table(_conn: Any, rows: Any) -> None:
+        written.append(rows)
+
+    class _Db:
+        @asynccontextmanager
+        async def acquire(self) -> Any:
+            yield object()
+
+    monkeypatch.setattr(_mn, "write_names_table", _write_names_table)
+    monkeypatch.setattr(app_mod, "state", SimpleNamespace(model_db=_Db()))
+
+    steps = app_mod._after_answer_steps(
+        runtime=SimpleNamespace(role_build_inputs={}),  # type: ignore[arg-type]
+        env=PROD,
+        announce=announce,
+        checked={},
+        names=SimpleNamespace(rows=("a row",)),  # type: ignore[arg-type]
+        build=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    asyncio.run(steps[rebuild_trace.NAMES_TABLE]())
+
+    assert len(written) == writes

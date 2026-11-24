@@ -16,10 +16,10 @@ is a model change of its own."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import and_, delete, insert, update
+from sqlalchemy import and_, bindparam, delete, insert, select, update
 
 from provisa.core.repositories.build_output import replacing_build_output
 from provisa.core.schema_org import (
@@ -30,30 +30,62 @@ from provisa.core.schema_org import (
 )
 
 
-async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
-    """Replace the stored names table with ``rows`` (names_table.NameRow) and clear the refused
-    clashes: a build that stored a names table refused none."""
-    values = [
-        {
-            "object_kind": r.object_kind,
-            "object_id": r.object_id,
-            "surface": r.surface,
-            "name": r.name,
-            "physical_name": r.physical_name,
-            "label": r.label,
-            "domain_id": r.domain_id,
-            "table_id": r.table_id,
-            "is_alias": r.alias,
-            "warnings": [{"code": w.code, "message": w.message} for w in r.warnings],
-        }
-        for r in rows
+_NAME_KEY = ("object_kind", "object_id", "surface")
+
+
+def _stored_row(r: Any) -> dict[str, Any]:
+    """A names-table row (names_table.NameRow) as ``model_names`` stores it."""
+    return {
+        "object_kind": r.object_kind,
+        "object_id": r.object_id,
+        "surface": r.surface,
+        "name": r.name,
+        "physical_name": r.physical_name,
+        "label": r.label,
+        "domain_id": r.domain_id,
+        "table_id": r.table_id,
+        "is_alias": r.alias,
+        "warnings": [{"code": w.code, "message": w.message} for w in r.warnings],
+    }
+
+
+def names_table_changes(
+    stored: Iterable[Mapping[str, Any]], rows: Iterable[Any]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """What turns the ``stored`` names table into the one of ``rows`` (names_table.NameRow): the
+    keys of the stored rows to delete (each gone or changed) and the rows to insert (each new or
+    changed). A row the build left as it was is in neither, so a registration writes the names
+    of the tables it changed, not the whole model's."""
+    wanted = {tuple(v[k] for k in _NAME_KEY): v for v in map(_stored_row, rows)}
+    held = {tuple(s[k] for k in _NAME_KEY): dict(s) for s in stored}
+    gone = [
+        {f"key_{k}": part for k, part in zip(_NAME_KEY, key, strict=True)}
+        for key, s in held.items()
+        if wanted.get(key) != s
     ]
-    # One statement however many names: a multi-row VALUES binds ten parameters a name, and
-    # PostgreSQL refuses a statement of more than 65535.
+    new = [v for key, v in wanted.items() if held.get(key) != v]
+    return gone, new
+
+
+async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
+    """Make the stored names table the one of ``rows`` (names_table.NameRow) and clear the refused
+    clashes: a build that stored a names table refused none. Only the rows that differ from the
+    stored ones are written (:func:`names_table_changes`)."""
     async with replacing_build_output(conn, model_names):
-        await conn.execute_core(delete(model_names))
+        # Read under the lock: the change is made to what the last build committed.
+        stored = (await conn.execute_core(select(*model_names.c))).mappings().all()
+        gone, new = names_table_changes(stored, rows)
+        # One statement each however many names: the keys and rows travel beside it (a multi-row
+        # VALUES binds ten parameters a name, and PostgreSQL refuses a statement of more than
+        # 65535).
+        await conn.execute_core_many(
+            delete(model_names).where(
+                and_(*(model_names.c[k] == bindparam(f"key_{k}") for k in _NAME_KEY))
+            ),
+            gone,
+        )
         await conn.execute_core(delete(model_name_clashes))
-        await conn.execute_core_many(insert(model_names), values)
+        await conn.execute_core_many(insert(model_names), new)
 
 
 async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:

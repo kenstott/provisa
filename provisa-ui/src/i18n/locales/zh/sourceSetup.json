@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "数据源设置",
+    "connect": "连接数据源",
+    "register": "注册表",
+    "relate": "发现关系",
+    "query": "查询",
+    "tablesCount_one": "{{count}} 个表",
+    "tablesCount_other": "{{count}} 个表",
+    "registerHint": "注册此数据源的表即可查询它们。",
+    "registerAction": "注册表",
+    "relateHint": "将新表彼此关联，并与所有数据源中的表关联。",
+    "relateAction": "发现关系",
+    "nothingToRelate": "没有可关联的内容",
+    "nothingToRelateHint": "这些表目前还没有可关联的对象。请直接查询它们。",
+    "relateNotAllowed": "无权限",
+    "relateNotAllowedHint": "创建关系需要创建关系的权限。请直接查询这些表。",
+    "queryHint": "在查询浏览器中打开针对 {{table}} 的入门查询。",
+    "queryAction": "打开入门查询",
+    "complete": "设置完成"
+  }
+}
