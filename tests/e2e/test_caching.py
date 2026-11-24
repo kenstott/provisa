@@ -38,6 +38,7 @@ class FakeStore(CacheStore):
     def __init__(self):
         self._data: dict[str, tuple[bytes, dict]] = {}
         self._table_index: dict[str, set[str]] = {}
+        self._encoded: dict[str, dict[str, bytes]] = {}  # REQ-1867: beside each entry
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         if key not in self._data:
@@ -56,6 +57,7 @@ class FakeStore(CacheStore):
         import time
 
         self._data[key] = (data, {"cached_at": time.time(), "ttl": ttl})
+        self._encoded.pop(key, None)
         if table_ids:
             for tid in table_ids:
                 tkey = f"_table:{tid}"
@@ -70,10 +72,22 @@ class FakeStore(CacheStore):
         keys = self._table_index.pop(tkey)
         count = 0
         for k in keys:
+            self._encoded.pop(k, None)
             if k in self._data:
                 del self._data[k]
                 count += 1
         return count
+
+    async def get_encoded(self, key: str, field: str, tenant_id: str | None = None) -> bytes | None:
+        return self._encoded.get(key, {}).get(field)
+
+    async def set_encoded(self, entry: CachedResult, field: str, data: bytes) -> bool:
+        assert entry.key is not None
+        held = self._data.get(entry.key)
+        if held is None or held[1]["cached_at"] != entry.cached_at:
+            return False
+        self._encoded.setdefault(entry.key, {})[field] = data
+        return True
 
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         return 0

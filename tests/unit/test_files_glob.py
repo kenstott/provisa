@@ -183,3 +183,25 @@ def test_files_operand_has_no_tables_without_glob_tables(tmp_path):
         path=str(tmp_path / "d"), mapping={}, file_glob_tables=[],
     )  # fmt: skip
     assert "tables" not in _files_operand(source)
+
+
+def test_a_pattern_naming_no_type_reads_as_the_type_its_files_share():  # REQ-2234
+    from provisa.file_source.files_glob import glob_file_type
+
+    assert glob_file_type("complaint*", ["/d/complaints_1.csv", "/d/complaints_2.CSV"]) == "csv"
+
+
+def test_files_of_more_than_one_type_are_refused_naming_each_type():  # REQ-2234
+    from provisa.file_source.files_glob import FileTypesDiffer, glob_file_type
+
+    with pytest.raises(FileTypesDiffer) as refused:
+        glob_file_type("complaint*", ["/d/c.csv", "/d/c.parquet", "/d/c.txt"])
+    assert refused.value.code == "schema.file_types_differ"
+    assert refused.value.params["types"] == "csv, parquet, txt"
+
+
+def test_validating_a_glob_table_refuses_mixed_types_before_reading_any():  # REQ-2234
+    from provisa.file_source.files_glob import FileTypesDiffer, validate_glob_table
+
+    with pytest.raises(FileTypesDiffer):
+        validate_glob_table("c*", ["/d/c.csv", "/d/c.parquet"], lambda _p: ["id"])

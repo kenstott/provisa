@@ -35,6 +35,7 @@ from provisa.api.metadata_export.model import (
     DataProductAsset,
     DataQualityAssertion,
     DataQualityOutcome,
+    LatestOutcomes,
     DomainAsset,
     GlossaryAxiom,
     GlossaryTermAsset,
@@ -590,7 +591,7 @@ def _dq_assertions(
     config: ProvisaConfig,
     keep: set[tuple[str, ...]],
     published_columns: set[tuple[str, ...]],
-    dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome],
+    dq_outcomes: LatestOutcomes,
     contexts: Mapping,
     product_ids: Mapping[tuple[str, ...], tuple[str, ...]],
 ) -> list[DataQualityAssertion]:  # REQ-1443
@@ -605,13 +606,16 @@ def _dq_assertions(
     ``dq_outcomes`` is the last scan's verdicts, keyed the way a results row identifies its check:
     (target table, column name, check type). A check the map does not name has not run — the
     contract may be newly registered, or the scan may never have fired — and publishes as
-    ``never_run``, which is a state a catalog should show, not an absence it should hide.
+    ``never_run``, which is a state a catalog should show, not an absence it should hide. A check
+    whose results table the publishing role could not read publishes that table's ``unreadable``
+    outcome (REQ-392).
     """
     assertions: list[DataQualityAssertion] = []
     for results, contract in _checker_tables(config):
         results_ref = table_ref(results)
         if results_ref.parts not in keep:
             continue
+        refused = dq_outcomes.unreadable.get(results_ref.parts)
         checker, observed = _contract_target(config, results, contract, contexts)
         observed_table_ref = table_ref(observed)
         if observed_table_ref.parts not in keep:
@@ -641,7 +645,9 @@ def _dq_assertions(
                     definition=check_definition(check, checker),
                     severity=check_severity(check, checker),
                     results_table=results_ref,
-                    outcome=dq_outcomes.get(
+                    outcome=refused
+                    if refused is not None
+                    else dq_outcomes.by_check.get(
                         outcome_key, DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
                     ),
                     owner_product_ids=product_ids.get(table_ref(results).parts, ()),
@@ -843,7 +849,7 @@ def build_snapshot(
     uri_org_id: str | None = None,
     dialect: str,
     glossary: dict | None = None,
-    dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
+    dq_outcomes: LatestOutcomes | None = None,
     contexts: Mapping,
     data_products_only: bool = True,
     documentation_base_url: str | None = None,
@@ -990,7 +996,12 @@ def build_snapshot(
         grounded_terms=grounded_terms,
         grounded_edges=grounded_edges,
         assertions=_dq_assertions(
-            config, keep, published_columns, dq_outcomes or {}, contexts, product_ids
+            config,
+            keep,
+            published_columns,
+            dq_outcomes if dq_outcomes is not None else LatestOutcomes(),
+            contexts,
+            product_ids,
         ),
         sensitive_tags=frozenset(
             tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive

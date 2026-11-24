@@ -37,7 +37,7 @@ from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 from provisa.core.statement_warnings import warn
-from provisa.cypher.counters import count_unknown_warning
+from provisa.cypher.counters import count_unknown_warning, relationship_unread_warning
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -1590,7 +1590,11 @@ async def _impute_relationships(
         )
         try:
             _cols, rrows, _ = await _execute_cypher(query, {}, role_id, include_ops=include_ops)
-        except Exception:
+        except Exception as exc:  # allow-ble: one relationship unread is said below
+            # REQ-392: that relationship's edges are left out with its reason -- logged and sent as
+            # a warning notification -- never silently, and never failing the other relationships.
+            log.warning("[BOLT] imputed relationship not read: %s: %s", query, exc)
+            warn(relationship_unread_warning(query, str(exc)))
             continue
         for row in rrows:
             edge = row[0] if row else None
