@@ -1233,12 +1233,14 @@ STAMP = Feature(
             "clickhouse": (
                 Limitation(
                     "Held as DateTime64(6, 'UTC'). A text the statement writes is read where the "
-                    "statement is transpiled (provisa.transpiler.transpile): an "
+                    "statement is transpiled (provisa.transpiler.transpile). Of a timestamp, an "
                     "infinity, a year BC or past 9999, and a value outside "
-                    f"{instants.STAMP_BOUND} (a timestamp's) or {instants.BOUND} (a timestamptz's, its "
-                    "offset read) raise 0A000 "
-                    f"({instants.out_of_bound('timestamptz_in')}), where ClickHouse would hold "
-                    "it at its type's end. A timestamp's offset is dropped, as PostgreSQL's "
+                    f"{instants.STAMP_BOUND} raise 0A000 "
+                    f"({instants.out_of_bound('timestamp_in', instants.STAMP_BOUND)}); of a "
+                    "timestamptz, an infinity, a year BC or past 9999, and a value outside "
+                    f"{instants.BOUND} (its offset read) raise 0A000 "
+                    f"({instants.out_of_bound('timestamptz_in')}). ClickHouse would hold each at "
+                    "its type's end. A timestamp's offset is dropped, as PostgreSQL's "
                     "input drops it (ClickHouse's cast reads it). A text in another form, and a "
                     "text column's cast, keep ClickHouse's own read."
                 ),

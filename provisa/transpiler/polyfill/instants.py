@@ -304,6 +304,21 @@ def _part(value: exp.Expr) -> _Read | None:
     return None
 
 
+def _beyond(argument: exp.Expr, operand: _Operand) -> bool:
+    """Whether ``argument`` is a literal of an instant or a timestamp in no ISO form that is
+    outside the bound: infinity, a year BC or past 9999 (input_outside), which ClickHouse's cast
+    does not read as PostgreSQL's input does."""
+    value = argument.unnest()
+    if operand.day_only or not isinstance(value, exp.Cast):
+        return False
+    if not _of_its_type(trino.said(value), operand):
+        return False
+    text = value.this.unnest()
+    if not (isinstance(text, exp.Literal) and text.is_string):
+        return False
+    return input_outside(text.this, operand is _OF["timestamptz"]) is True
+
+
 def _checked(argument: exp.Expr, operand: _Operand) -> _Read | None:
     """What the row reads of ``argument``; None where it does not read it (its type is not said,
     or its text is no ISO form)."""
@@ -398,6 +413,8 @@ def _rewrite(
         if plain and not all(_plain(arg) for arg in call[1]):
             return None
         read = [_checked(arg, _OF[kind]) for arg, kind in zip(call[1], kinds)]
+        beyond = [r is None and _beyond(a, _OF[k]) for r, a, k in zip(read, call[1], kinds)]
+        read = [_Read.OUTSIDE if b else r for r, b in zip(read, beyond)]
         if None in read:
             return None
         literal = _Read.LITERAL in read or _Read.OUTSIDE in read
@@ -407,7 +424,8 @@ def _rewrite(
             _read_by_row(*call[1])
             return raised(function, dialect, pattern, returns)
         if not bounded:
-            _read_by_row(*call[1])
+            # a literal ClickHouse's cast does not read raises its input's 0A000 (outside_cast)
+            _read_by_row(*(a for a, b in zip(call[1], beyond) if not b))
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
     return rewrite
@@ -456,10 +474,10 @@ _SPOKEN = {"timestamptz": "an instant", "date": "a date", "timestamp": "a timest
 
 _HELD = (
     "Held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31. A literal outside "
-    f"{BOUND} raises 0A000 ({{}}() of a value outside {BOUND} has no exact form on "
-    "clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO "
-    "form (a date, then a time to microseconds), infinity, and a value whose type no statement "
-    "says are refused by name."
+    f"{BOUND} (infinity, a year BC or past 9999 among them) raises 0A000 ({{}}() of a value "
+    f"outside {BOUND} has no exact form on clickhouse); ClickHouse would hold it at the nearest "
+    "end of its range. Any other literal not in ISO form (a date, then a time to microseconds), "
+    "and a value whose type no statement says, are refused by name."
 )
 _ZONED = (
     " On a session off UTC, a call of a literal instant{} is refused by name ({}() has no form "
@@ -546,9 +564,9 @@ def _of_one(
 
 _ONE_HELD = (
     "Held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31. A literal outside "
-    f"{BOUND} raises 0A000 ({{}}() of a value outside {BOUND} has no exact form on "
-    "clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says "
-    "are refused by name."
+    f"{BOUND} (infinity, a year BC or past 9999 among them) raises 0A000 ({{}}() of a value "
+    f"outside {BOUND} has no exact form on clickhouse). Any other literal not in ISO form, and a "
+    "value whose type no statement says, are refused by name."
 )
 _ONE_ZONED = (
     " On a session off UTC it is refused by name ({}() has no form on clickhouse): its answer is "
@@ -595,8 +613,9 @@ def _one_feature(
 
 _UNBOUNDED = (
     "Held as DateTime64(6, 'UTC'): exact, as its answer reads only that a value is there "
-    "(ClickHouse holds no infinity). A literal not in ISO form, infinity, and a value whose type "
-    "no statement says are refused by name."
+    "(ClickHouse holds no infinity). Infinity, and a literal of a year BC or past 9999, raises "
+    f"0A000 ({out_of_bound('timestamptz_in')}). Any other literal not in ISO form, and a value "
+    "whose type no statement says, are refused by name."
 )
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in

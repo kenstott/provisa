@@ -353,6 +353,36 @@ def _bucket_row(args: list[exp.Expr]) -> str:
     return "width_bucket" if any(a.find(exp.Column) for a in args[:3]) else "width_bucket_float8"
 
 
+#: The functions that read an array's elements alone, in storage order, and none of its
+#: dimensions (array.c's hash_array): an array of any dimensions is the overload of its element's
+#: array, read as its elements (:func:`_flattened`).
+_OF_ELEMENTS_ALONE = frozenset({"hash_array", "hash_array_extended"})
+#: A type's array brackets, one dimension or more.
+_ONE_DIMENSION = re.compile(r"(?:\[\])+$")
+
+
+def _flattened(value: exp.Expr) -> exp.Expr:
+    """An array literal of more than one dimension as its elements in storage order, an array of
+    one dimension of its element's type; any other value as it is."""
+    node = value.unnest()
+    if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Array):
+        return value
+    element = node.to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    if node.to.expressions and node.to.expressions[0] is element:
+        return value  # one dimension already
+
+    def leaves(item: exp.Expr) -> list[exp.Expr]:
+        inner = item.unnest()
+        if isinstance(inner, exp.Array):
+            return [leaf for sub in inner.expressions for leaf in leaves(sub)]
+        return [item.copy()]
+
+    one = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element.copy()], nested=True)
+    return exp.Cast(this=exp.Array(expressions=leaves(node.this)), to=one)
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
@@ -361,7 +391,10 @@ def overload(name: str, args: list[exp.Expr]) -> str:
     said = said_type(args[0]) if args else None
     if said is None:
         return name
-    row = OVERLOADS.get((name, len(args), said.split("(")[0]), name)
+    key = said.split("(")[0]
+    if name in _OF_ELEMENTS_ALONE:
+        key = _ONE_DIMENSION.sub("[]", key)
+    row = OVERLOADS.get((name, len(args), key), name)
     if row in _ANSWERED_BY_A_NULL and isinstance(args[0].unnest().this, exp.Null):
         return name
     if row in _COLLATED and args[0].find(exp.Column) is None:
@@ -1462,6 +1495,8 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             args = [_digits_as_written(args[0]), *args[1:]]
         if name in _ARRAY_INPUT:
             args = [_array_elements_as_written(a) for a in args]
+        if name in pg_forms_hash.ARRAY_ROWS:
+            args = [_flattened(args[0]), *args[1:]]
         if name in pg_forms_hash.TEXT_ARRAY_ROWS:
             args = [_array_as_text(args[0]), *args[1:]]
         if any(_is_null(a) for a in args):
