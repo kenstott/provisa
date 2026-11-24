@@ -105,67 +105,12 @@ from provisa.compiler.schema_inputs import (
 
 
 def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
-    si: SchemaInput, *, for_sql: bool = False
+    si: SchemaInput, *, for_sql: bool = False, sql_only: set[int] | None = None
 ) -> list[_TableInfo]:
     """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
     default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
-    describe what it reads of its data, and to it meta is no domain."""
-    tables, sql_only = _visible_tables(si)
-    return tables if for_sql else [t for t in tables if t.table_id not in sql_only]
-
-
-@dataclass(frozen=True)
-class RoleTables:  # REQ-1882
-    """One role's tables, found and named once for every part of its surface -- its schema,
-    context, path map and proto -- which each found and named them again from the same input. Built
-    by :func:`role_tables` from one role's schema input and read only by that input's parts. The
-    context and path map read the tables as found; the schema gives its tables fields and proto
-    renames its own, so each of those takes copies (:meth:`served_copies`)."""
-
-    named: tuple[_TableInfo, ...]
-    #: The ids of the tables the role reads on SQL alone (_visible_tables).
-    sql_only: frozenset[int]
-
-    def for_sql(self) -> list[_TableInfo]:
-        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named; read, never
-        changed."""
-        return list(self.named)
-
-    def served(self) -> list[_TableInfo]:
-        """The tables as ``_build_visible_tables(si)`` finds them, named; read, never changed."""
-        return [t for t in self.named if t.table_id not in self.sql_only]
-
-    def served_copies(self) -> list[_TableInfo]:
-        """:meth:`served`, each table a copy of its own to change: its fields and names."""
-        return [_copied(t) for t in self.served()]
-
-
-def _copied(table: _TableInfo) -> _TableInfo:
-    """A shallow copy of ``table``: its own attributes, its column lists shared (none is changed
-    in place). ``copy.copy`` rebuilds it through the pickle protocol, several times slower."""
-    out = object.__new__(_TableInfo)
-    out.__dict__.update(table.__dict__)
-    return out
-
-
-def role_tables(si: SchemaInput) -> RoleTables:
-    """``si``'s role's tables, found and named once (:class:`RoleTables`). A table's names do not
-    depend on which other tables are named with it, so naming the SQL tables names the served ones
-    too; a domain holding two tables of one SQL address raises here, as building the role's context
-    does."""
-    tables, sql_only = _visible_tables(si)
-    _assign_names(
-        tables,
-        si.naming_rules,
-        domain_prefix=si.domain_prefix,
-        domain_alias_map=_build_domain_alias_map(si.domains),
-    )
-    return RoleTables(named=tuple(tables), sql_only=sql_only)
-
-
-def _visible_tables(si: SchemaInput) -> tuple[list[_TableInfo], frozenset[int]]:
-    """The role's tables as SQL reads them (``_build_visible_tables(si, for_sql=True)``), and the
-    ids of those it reads on SQL alone: meta's default tier, for a role with no meta grant."""
+    describe what it reads of its data, and to it meta is no domain. ``sql_only``, given with
+    ``for_sql``, collects the ids of those tables the role reads on SQL alone (role_tables)."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
     # empty list is no domains, and a system domain is reached by its capability
@@ -202,7 +147,6 @@ def _visible_tables(si: SchemaInput) -> tuple[list[_TableInfo], frozenset[int]]:
         )
 
     result: list[_TableInfo] = []
-    sql_only: set[int] = set()
     for table in si.tables:
         # REQ-2163: a Class table's column is served where one of the columns it is bound to is,
         # and the Class is reached by a reader served any of them.
@@ -211,7 +155,10 @@ def _visible_tables(si: SchemaInput) -> tuple[list[_TableInfo], frozenset[int]]:
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
         if table["domain_id"] == META_DOMAIN_ID and not reaches:
-            sql_only.add(table["id"])
+            if not for_sql:
+                continue
+            if sql_only is not None:
+                sql_only.add(table["id"])
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -341,7 +288,57 @@ def _visible_tables(si: SchemaInput) -> tuple[list[_TableInfo], frozenset[int]]:
             )
         )
 
-    return result, frozenset(sql_only)
+    return result
+
+
+@dataclass(frozen=True)
+class RoleTables:  # REQ-1882
+    """One role's tables, found and named once for every part of its surface -- its schema,
+    context, path map and proto -- which each found and named them again from the same input. Built
+    by :func:`role_tables` from one role's schema input and read only by that input's parts. The
+    context and path map read the tables as found; the schema gives its tables fields and proto
+    renames its own, so each of those takes copies (:meth:`served_copies`)."""
+
+    named: tuple[_TableInfo, ...]
+    #: The ids of the tables the role reads on SQL alone (_build_visible_tables).
+    sql_only: frozenset[int]
+
+    def for_sql(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named; read, never
+        changed."""
+        return list(self.named)
+
+    def served(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si)`` finds them, named; read, never changed."""
+        return [t for t in self.named if t.table_id not in self.sql_only]
+
+    def served_copies(self) -> list[_TableInfo]:
+        """:meth:`served`, each table a copy of its own to change: its fields and names."""
+        return [_copied(t) for t in self.served()]
+
+
+def _copied(table: _TableInfo) -> _TableInfo:
+    """A shallow copy of ``table``: its own attributes, its column lists shared (none is changed
+    in place). ``copy.copy`` rebuilds it through the pickle protocol, several times slower."""
+    out = object.__new__(_TableInfo)
+    out.__dict__.update(table.__dict__)
+    return out
+
+
+def role_tables(si: SchemaInput) -> RoleTables:
+    """``si``'s role's tables, found and named once (:class:`RoleTables`). A table's names do not
+    depend on which other tables are named with it, so naming the SQL tables names the served ones
+    too; a domain holding two tables of one SQL address raises here, as building the role's context
+    does."""
+    sql_only: set[int] = set()
+    tables = _build_visible_tables(si, for_sql=True, sql_only=sql_only)
+    _assign_names(
+        tables,
+        si.naming_rules,
+        domain_prefix=si.domain_prefix,
+        domain_alias_map=_build_domain_alias_map(si.domains),
+    )
+    return RoleTables(named=tuple(tables), sql_only=frozenset(sql_only))
 
 
 def _served_as_text(

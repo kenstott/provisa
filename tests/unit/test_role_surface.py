@@ -67,7 +67,9 @@ class _State:
 
 def _build_stubs(monkeypatch, generation: str, looked: list):
     """The four builders of a surface, each returning an object tagged with ``generation`` — and
-    each, when called, looking at the role's surface the way a request does at that moment."""
+    each, when called, looking at the role's surface the way a request does at that moment. The
+    role's tables, which those builders share (schema_gen.role_tables), are found by a stand-in
+    too: the schema input here is a bare stand-in."""
     from provisa.api import app_loaders
     from provisa.compiler import schema_gen
     from provisa.grpc import proto_gen
@@ -81,6 +83,7 @@ def _build_stubs(monkeypatch, generation: str, looked: list):
         return _build
 
     monkeypatch.setattr(app_loaders, "schema_input_for", lambda *_a, **_k: object())
+    monkeypatch.setattr(app_loaders, "role_tables", lambda *_a, **_k: object())
     monkeypatch.setattr(app_loaders, "generate_schema", _part("schema"))
     monkeypatch.setattr(app_loaders, "build_context", _part("context"))
     monkeypatch.setattr(schema_gen, "build_table_path_map", _part("path_map"))
