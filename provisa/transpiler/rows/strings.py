@@ -103,16 +103,41 @@ _QUOTED_IDENTIFIER = (
 )
 
 
+def _strict_text(params: str, answer: str) -> str:
+    """``answer``, or a NULL text where one of ``params`` is NULL."""
+    nulls = " OR ".join(f"{p} IS NULL" for p in params.split(", "))
+    return f"CASE WHEN {nulls} THEN CAST(NULL AS TEXT) ELSE {answer} END"
+
+
 #: PostgreSQL's substr counts positions before the first: a start at or below 0 takes fewer.
 _SUBSTR_START = "GREATEST(start, 1)"
 
 ROWS: tuple[Macro, ...] = (
     *_text_matches(),
-    Macro("substr", ("value", "start"), {_EVERY: Pg(f"SUBSTRING(value, {_SUBSTR_START})")}),
+    Macro(
+        "substr",
+        ("value", "start"),
+        {
+            # Strict: DuckDB's GREATEST passes over a NULL start, which took the whole text.
+            _DUCKDB: Pg(_strict_text("start", f"SUBSTRING(value, {_SUBSTR_START})")),
+            _EVERY: Pg(f"SUBSTRING(value, {_SUBSTR_START})"),
+        },
+    ),
     Macro(
         "substr",
         ("value", "start", "n"),
         {
+            # Strict, a negative length PostgreSQL's 22011, and the end counted in a bigint, which
+            # a start of an integer's greatest plus a length would overflow.
+            _DUCKDB: Pg(
+                _strict_text(
+                    "start, n",
+                    "CASE WHEN n < 0 THEN "
+                    f"{pg_forms_types.fails('22011', 'negative substring length not allowed', 'TEXT')} "
+                    f"ELSE SUBSTRING(value, {_SUBSTR_START}, "
+                    f"GREATEST(CAST(start AS BIGINT) + n - {_SUBSTR_START}, 0)) END",
+                )
+            ),
             # text_substring: a negative length is PostgreSQL's 22011, which the form below reads
             # as none (run 44670380355 answered '' of substr('abc', 3, -2147483648) on Trino).
             _TRINO: Pg(

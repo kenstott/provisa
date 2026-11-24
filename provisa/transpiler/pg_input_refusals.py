@@ -55,7 +55,7 @@ _NAN_READERS = {
 }
 #: Whether a statement may hold a literal or a call ``refuse_past_inputs`` reads.
 _PAST_INPUT = re.compile(
-    r"(::|\bas)\s*\"?(oid|smallint|integer|bigint|int[248]?|date)\b"
+    r"(::|\bas)\s*\"?(oid|smallint|integer|bigint|int[248]?|date|bytea)\b"
     r"|\b(money|pg_lsn_pli|pg_lsn_mii|numeric_pl_pg_lsn|oid|date_part)\"?\s*\(",
     re.IGNORECASE,
 )
@@ -110,10 +110,33 @@ def _int8_constant(node: exp.Expr) -> int | None:
     return None
 
 
+#: bytea's escape format (byteain): a backslash starts a doubled backslash or three octal digits.
+_BYTEA_ESCAPED = re.compile(r"(?:[^\\]|\\\\|\\[0-3][0-7]{2})*", re.ASCII | re.DOTALL)
+_HEX_DIGIT = re.compile(r"[0-9a-fA-F]", re.ASCII)
+
+
+def _refuse_bytea(text: str) -> None:
+    """Raise byteain's error for a text it does not read: hex (\\x) of a digit that is no hex digit
+    or of an odd count, or an escape of a backslash not before a backslash or an octal byte."""
+    if text.startswith("\\x"):
+        digits = [c for c in text[2:] if c not in " \t\n\r"]
+        bad = next((c for c in digits if not _HEX_DIGIT.fullmatch(c)), None)
+        if bad is not None:
+            raise PostgresError("22023", f'invalid hexadecimal digit: "{bad}"')
+        if len(digits) % 2:
+            raise PostgresError("22023", "invalid hexadecimal data: odd number of digits")
+        return
+    if _BYTEA_ESCAPED.fullmatch(text) is None:
+        raise PostgresError("22P02", "invalid input syntax for type bytea")
+
+
 def _refuse_input(cast: exp.Cast) -> None:
     """Raise the input function's error for a string literal cast past its type."""
     text = _string_cast(cast)
     if text is None:
+        return
+    if cast.to.is_type(exp.DataType.Type.VARBINARY):
+        _refuse_bytea(text)
         return
     if _cast_name(cast) == "oid":
         read_oid(text)  # oidin's range, -2147483648 to 4294967295
