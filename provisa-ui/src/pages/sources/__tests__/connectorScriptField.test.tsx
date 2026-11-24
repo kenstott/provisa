@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2225: a connector's script value is edited in the app's code editor; other multi-line
+// REQ-1984, REQ-2225: a connector's script value is edited in the app's code editor; other multi-line
 // values stay a plain text area.
 
 import { describe, expect, it, vi } from "vitest";

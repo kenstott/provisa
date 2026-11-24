@@ -12,7 +12,7 @@
 // the Data Science and Lineage editors) under a field label, with line numbers and highlighting,
 // growing with its content. Its value and onChange are a Textarea's: the text, whole.
 
-// Requirements: REQ-2225
+// Requirements: REQ-1984, REQ-2225
 
 import { useMemo } from "react";
 import { Input, useMantineColorScheme } from "@mantine/core";
