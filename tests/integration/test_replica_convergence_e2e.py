@@ -25,10 +25,12 @@ from __future__ import annotations
 import subprocess
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 import psycopg
+from psycopg import sql
 import pytest
 import yaml
 
@@ -150,6 +152,36 @@ def _replica_rows(pg: _SourceAndEngine) -> int | None:
         except psycopg.errors.UndefinedTable:
             # Dropped (the retirement this module waits for) between the lookup and the count.
             return None
+
+
+def _retired_at(pg: _SourceAndEngine) -> datetime:
+    """When the replica of ``orders`` was retired, as its record in the control plane holds it."""
+    with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
+        schemas = [
+            row[0]
+            for row in conn.execute(
+                "SELECT table_schema FROM information_schema.tables "
+                "WHERE table_name = 'replica_state'"
+            ).fetchall()
+        ]
+        stamps = [
+            row[0]
+            for schema in schemas
+            for row in conn.execute(
+                sql.SQL(
+                    "SELECT retired_at FROM {}.replica_state WHERE source_id = 'src' "
+                    "AND schema_name = 'public' AND table_name = 'orders' "
+                    "AND retired_at IS NOT NULL"
+                ).format(sql.Identifier(schema))
+            ).fetchall()
+        ]
+    (stamp,) = stamps
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
+
+
+def _since(stamp: datetime) -> float:
+    """Seconds from ``stamp`` to now, on the wall clock the server stamps with (same host)."""
+    return (datetime.now(UTC) - stamp).total_seconds()
 
 
 def _wait(
@@ -277,25 +309,27 @@ def test_a_declared_replica_is_built_retired_and_dropped_with_no_read(databases)
             assert build["lastError"] is None and shown["convergenceError"] is None
 
             # No longer declared: retired first, standing through the grace, then dropped.
+            # The grace runs from the retirement the record holds (REQ-1915), which the setting's
+            # own model rebuild may stamp before the mutation answers.
             _mutate(srv, 'updateSourceReplicate(sourceId: "src", replicate: -1)')
-            changed = time.monotonic()
             _wait(
                 lambda: _builds(srv)["builds"] and _builds(srv)["builds"][0]["state"] == "retired",
                 seconds=30,
                 what="the replica being retired",
                 watching=(srv,),
             )
-            if time.monotonic() - changed < _GRACE_S:
-                assert _replica_rows(pg) == len(
-                    _ROWS
-                )  # it stands while nodes may still route to it
+            retired = _retired_at(pg)
+            standing = _replica_rows(pg)
+            # Read before the clock is: a read the clock still places inside the grace was one.
+            if _since(retired) < _GRACE_S:
+                assert standing == len(_ROWS)  # it stands while nodes may still route to it
             _wait(
                 lambda: _replica_rows(pg) is None,
                 seconds=60,
                 what="the replica's drop",
                 watching=(srv,),
             )
-            assert time.monotonic() - changed >= _GRACE_S
+            assert _since(retired) >= _GRACE_S
             _wait(
                 lambda: _builds(srv)["builds"] == [],
                 seconds=30,
