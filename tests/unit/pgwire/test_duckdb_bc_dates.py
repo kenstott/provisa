@@ -33,6 +33,8 @@ _DAY = "'2024-06-15'::date"
 _AT = "'2024-06-15 12:30:45'::timestamp without time zone"
 _ATZ = "'2024-06-15 12:30:45+00'::timestamp with time zone"
 _IVL = "'1 day 02:03:04'::interval"
+#: The day PostgreSQL 17 answered age(_TS): its one-argument age reads CURRENT_DATE.
+_CAPTURED = "'2026-11-23 00:00:00'::timestamp without time zone"
 _TIME = "'12:30:45'::time without time zone"
 _TIMETZ = "'12:30:45+02'::time with time zone"
 #: The microseconds from 2000-01-01 of 4713-01-01 00:00:00 BC, and its days.
@@ -51,7 +53,7 @@ def _of_two(name: str, value: str) -> str:
 
 #: statement -> the text PostgreSQL 17 answers.
 ANSWERED: dict[str, str] = {
-    _call("age", _TS): "6738 years 10 mons 22 days",
+    _call("age", _CAPTURED, _TS): "6738 years 10 mons 22 days",
     _call("age", _TS, _AT): "-6736 years -5 mons -14 days -12:30:45",
     _call("date", _TZ): "4713-01-01 BC",
     _call("date", _TS): "4713-01-01 BC",
@@ -210,6 +212,15 @@ def _answer(conn: Any, sql: str) -> str:
 @pytest.mark.parametrize(("sql", "answer"), list(ANSWERED.items()), ids=list(ANSWERED))
 def test_a_value_bc_answers_as_postgresql_answers_it(conn: Any, sql: str, answer: str):
     assert _answer(conn, sql) == answer
+
+
+def test_age_of_one_value_bc_measures_from_today_as_postgresql_defines_it(conn: Any):
+    """PostgreSQL 17 defines age(timestamp) as ``age((CURRENT_DATE)::timestamp, $1)``
+    (catalog_pg17_procs, oid 2059). Both sides run in one statement, so they read one clock; the
+    value against a fixed day is the captured answer in ANSWERED."""
+    one = f'pg_catalog."age"({_TS})'
+    two = f'pg_catalog."age"((CURRENT_DATE)::timestamp without time zone, {_TS})'
+    assert _answer(conn, f"SELECT {one} = {two} AS v") == "t"
 
 
 #: The hash of a timestamp is int8's hash of its microseconds (timestamp_hash is hashint8).
