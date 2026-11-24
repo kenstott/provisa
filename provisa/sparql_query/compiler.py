@@ -73,6 +73,7 @@ from provisa.gql.expr_ast import (
     FunctionCall,
     IriConst,
     IsNull,
+    LabelPredicate,
     ListLiteral,
     Literal,
     Property,
@@ -102,9 +103,11 @@ from provisa.gql.ir import (
     ReturnItem,
     SeqPath,
     TripleTemplate,
+    UnwindClause,
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
+from provisa.gql.label_map import GRAPH_ID, is_session_node
 from provisa.gql.terms import subject_key, union_allowance, union_refusal
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
@@ -119,6 +122,7 @@ from provisa.sparql_query.vocabulary import (
     XSD,
     ColumnPredicate,
     Vocabulary,
+    under_base,
 )
 
 _ORDER_PREFIX = "__ord"
@@ -228,6 +232,15 @@ class SparqlRefused(CypherTranslateError):
     """A SPARQL query the front end does not lower; the message names what."""
 
 
+def model_graph_refusal(what: str, base: str) -> SparqlRefused:
+    """A graph IRI under the model's base IRI names the model's own graph (REQ-2135, amended
+    2026-11-23): refused by name."""
+    return SparqlRefused(
+        f"{what} names the model's own graph, under its base IRI <{base}>: write its rows without "
+        "a graph, and keep session objects in a graph outside the base"
+    )
+
+
 @dataclass
 class CompiledSparql:
     """The IR of one SPARQL query. ``form`` is SELECT, ASK or CONSTRUCT; ``variables`` are a
@@ -258,6 +271,16 @@ class _Group:
     absent: list["_Group"] = field(default_factory=list)
     #: FILTER EXISTS patterns: this group holds where each of them does.
     present: list["_Group"] = field(default_factory=list)
+    #: The terms a GRAPH pattern reads in a named graph: (term, the graph's IRI). Every other
+    #: node is the default graph's (REQ-2135, amended 2026-11-23).
+    graph_nodes: list[tuple[Any, str]] = field(default_factory=list)
+    #: A GRAPH pattern's own variable for a variable it reads -> that variable (_in_graph), until
+    #: _resolve_graphs settles them.
+    aliases: dict[str, str] = field(default_factory=dict)
+    #: A GRAPH pattern's own variable for an IRI it reads -> the IRI: the node it names there.
+    pins: dict[str, str] = field(default_factory=dict)
+    #: Pairs of node variables that are one term read in two graphs, joined by their IRI.
+    same: list[tuple[str, str]] = field(default_factory=list)
 
     def joined(self, other: "_Group") -> "_Group":
         return _Group(
@@ -267,7 +290,115 @@ class _Group:
             [*self.optionals, *other.optionals],
             [*self.absent, *other.absent],
             [*self.present, *other.present],
+            [*self.graph_nodes, *other.graph_nodes],
+            {**self.aliases, **other.aliases},
+            {**self.pins, **other.pins},
+            [*self.same, *other.same],
         )
+
+
+_GRAPH_VARS = itertools.count()
+
+
+def _in_graph(group: _Group, graph: str, scoped: dict[Any, RdfVariable] | None = None) -> None:
+    """Read the node terms of ``group`` (its subjects, and each object no literal and no class)
+    in the named ``graph``, its OPTIONALs and EXISTS patterns too: each is a variable of the
+    graph's own, standing for its term (``aliases``, ``pins``), since a term is a node of its own
+    in each graph that holds it (an IRI's session node is the graph's, a blank node is never
+    shared). A term a GRAPH pattern inside it read in its own graph stays there. ``scoped`` is
+    each term's variable in this graph, one for the term across the pattern."""
+    scoped = {} if scoped is None else scoped
+    inner = {term for term, _ in group.graph_nodes}
+
+    def put(term: Any) -> Any:
+        if isinstance(term, RdfLiteral) or term in inner:
+            return term
+        if term not in scoped:
+            scoped[term] = RdfVariable(f"__g{next(_GRAPH_VARS)}")
+        fresh = scoped[term]
+        if fresh not in held:
+            held.add(fresh)
+            group.graph_nodes.append((fresh, graph))
+        if _is_var(term):
+            group.aliases[str(fresh)] = str(term)
+        elif isinstance(term, URIRef):
+            group.pins[str(fresh)] = str(term)
+        return fresh
+
+    held = set(inner)
+    triples = []
+    for s, p, o in group.triples:
+        if _is_axiom(p, o):
+            triples.append((s, p, o))  # read from ontology._axioms: no node of any graph
+            continue
+        node_object = not (isinstance(p, URIRef) and str(p) == RDF_TYPE)
+        triples.append((put(s), p, put(o) if node_object else o))
+    group.triples = triples
+    for nested in (*group.optionals, *group.absent, *group.present):
+        _in_graph(nested, graph, scoped)
+
+
+def _renamed(group: _Group, old: str, new: str) -> None:
+    """``group`` (its OPTIONALs and EXISTS patterns too) with the variable ``old`` named
+    ``new``."""
+    was, now = RdfVariable(old), RdfVariable(new)
+
+    def put(term: Any) -> Any:
+        return now if term == was else term
+
+    group.triples = [(put(s), put(p), put(o)) for s, p, o in group.triples]
+    group.graph_nodes = [(put(t), g) for t, g in group.graph_nodes]
+    group.aliases.pop(old, None)
+    if old in group.pins:
+        group.pins[new] = group.pins.pop(old)
+    group.same = [(new if a == old else a, new if b == old else b) for a, b in group.same]
+    for nested in (*group.optionals, *group.absent, *group.present):
+        _renamed(nested, old, new)
+
+
+_FRESH_GRAPH_VAR = re.compile(r"__g\d+")
+
+
+def _numbered(group: _Group) -> _Group:
+    """``group`` with the variables GRAPH patterns gave it named by their order in it, so one
+    query compiles to one statement whatever was compiled before it."""
+    order: list[str] = []
+
+    def collect(g: _Group) -> None:
+        for triple in g.triples:
+            for t in triple:
+                name = str(t)
+                if _is_var(t) and _FRESH_GRAPH_VAR.fullmatch(name) and name not in order:
+                    order.append(name)
+        for nested in (*g.optionals, *g.absent, *g.present):
+            collect(nested)
+
+    collect(group)
+    for i, name in enumerate(order):
+        _renamed(group, name, f"__gv{i}")
+    return group
+
+
+def _resolve_graphs(group: _Group, outer: frozenset[str] = frozenset()) -> _Group:
+    """Settle the variables GRAPH patterns gave the terms they read (_in_graph): a variable read
+    in one place (one graph, or the default graph) keeps its name; one read in several is a node
+    in each, the copies joined by their IRI (``same``; SPARQL 18.6, a variable is one term
+    across the patterns that read it). ``outer`` holds the enclosing group's variables."""
+    copies: dict[str, list[str]] = {}
+    for fresh, var in group.aliases.items():
+        copies.setdefault(var, []).append(fresh)
+    own = {str(t) for triple in group.triples for t in triple if _is_var(t)}
+    for var, fresh in copies.items():
+        if var not in own and var not in outer:
+            _renamed(group, fresh[0], var)
+            fresh = fresh[1:]
+        group.same.extend((var, f) for f in fresh)
+    group.aliases = {}
+    held = outer | {str(t) for triple in group.triples for t in triple if _is_var(t)}
+    group.optionals = [_resolve_graphs(o, held) for o in group.optionals]
+    group.absent = [_resolve_graphs(a, held) for a in group.absent]
+    group.present = [_resolve_graphs(w, held) for w in group.present]
+    return group
 
 
 def _conjuncts(e: Any) -> list[Any]:
@@ -315,11 +446,18 @@ def _substituted(group: _Group, row: dict[Any, Any]) -> _Group:
     def put(term: Any) -> Any:
         return row.get(term, term)
 
+    # A GRAPH pattern's variable for a variable the row binds to an IRI names that IRI there.
+    given = {str(k): v for k, v in row.items() if isinstance(v, URIRef)}
+    pins = {**group.pins, **{f: str(given[v]) for f, v in group.aliases.items() if v in given}}
+    aliases = {f: v for f, v in group.aliases.items() if v not in given}
     return dataclasses.replace(
         group,
         triples=[(put(s), put(p), put(o)) for s, p, o in group.triples],
+        graph_nodes=[(put(t), g) for t, g in group.graph_nodes],
         optionals=[_substituted(o, row) for o in group.optionals],
         absent=[_substituted(a, row) for a in group.absent],
+        aliases=aliases,
+        pins=pins,
     )
 
 
@@ -385,6 +523,14 @@ def _alternatives(p: CompValue) -> list[_Group]:
         groups = _alternatives(p.p1)
         for g in groups:
             g.optionals.append(optional[0])
+        return groups
+    if name == "Graph":
+        # REQ-2135 (amended 2026-11-23): a GRAPH pattern reads a session graph's objects alone.
+        if not isinstance(p.term, URIRef):
+            raise SparqlRefused("A GRAPH pattern names its graph by a variable; name it by its IRI")
+        groups = _alternatives(p.p)
+        for g in groups:
+            _in_graph(g, str(p.term))
         return groups
     rows = _values_rows(p)
     if rows is not None:
@@ -739,6 +885,9 @@ class _Lowering:
         self._axioms = 0  # REQ-2163: the ontology._axioms nodes placed so far
         self._rows = 0  # the subject-row joins placed in this statement
         self._opened: set[str] = set()  # this part's variable predicates and their objects
+        self._items = 0  # the UNWINDs of a property of many values placed so far
+        #: Each node variable of the statement read in a named graph -> the graph's IRI.
+        self._graph_of: dict[str, str] = {}
 
     # -- node labels ----------------------------------------------------------------------
 
@@ -761,9 +910,41 @@ class _Lowering:
     def interpretations(self, group: _Group, outer: dict[str, str]) -> list[dict[str, str]]:
         """Every assignment of one label to each node variable of ``group`` its triples allow.
         ``outer`` holds the labels of variables already assigned (an OPTIONAL's enclosing group)."""
+        admissible, named = self._admissible(group, outer)
+        names = list(admissible)
+        found = []
+        for combo in itertools.product(*admissible.values()):
+            assignment = dict(zip(names, combo))
+            if self._holds(group, assignment, named):
+                found.append(assignment)
+        return found
+
+    def _graphs_of(
+        self, group: _Group, named: dict[str, str], keys: dict[str, tuple]
+    ) -> dict[str, str]:
+        """Each node variable a GRAPH pattern reads -> its graph's IRI. A graph under the base
+        IRI (the model's own) is refused by name."""
+        out: dict[str, str] = {}
+        for term, graph in group.graph_nodes:
+            if under_base(graph, self.vocab.base):
+                raise model_graph_refusal(f"GRAPH <{graph}>", self.vocab.base)
+            if isinstance(term, RdfLiteral):
+                continue
+            out[self._subject_node(term, named, keys)] = graph
+        return out
+
+    def _session_iri(self, iri: str) -> bool:
+        """Whether ``iri`` names a session object (an IRI outside the base, in a session)."""
+        return self.vocab.session is not None and not under_base(iri, self.vocab.base)
+
+    def _admissible(
+        self, group: _Group, outer: dict[str, str]
+    ) -> tuple[dict[str, list[str]], dict[str, str]]:
+        """Each node variable of ``group`` -> the labels its triples allow, and the node variable
+        each constant names."""
         allowed: dict[str, set[str] | None] = {}
         named: dict[str, str] = {}
-        keys: dict[str, tuple] = {}
+        keys: dict[str, tuple] = {v: (iri,) for v, iri in group.pins.items()}
 
         def allow(var: str, labels: set[str] | None) -> None:
             current = allowed.get(var)
@@ -804,7 +985,12 @@ class _Lowering:
                 constraints.append(("edge-target", ov, iri))
                 continue
             allow(sv, set())  # a predicate the vocabulary does not have: no solution
+        session = self.vocab.session
         for var, iri_tuple in keys.items():
+            if self._session_iri(iri_tuple[0]):
+                assert session is not None
+                allow(var, set(session.labels))  # an IRI outside the base: a session node
+                continue
             ref = parse_subject_iri(self.vocab.base, iri_tuple[0])
             labels = {
                 label
@@ -812,26 +998,37 @@ class _Lowering:
                 if ref is not None and self._is_table(label, ref.domain, ref.table)
             }
             allow(var, labels)
+        graphs = self._graphs_of(group, named, keys)
         # A subject nothing constrains names no class, so it is no request for one whose subjects
         # the role cannot name.
         everything = {label for label in self.vocab.classes_of if self._node(label).key_readable}
-        options = []
-        names = []
+        # REQ-2135 (amended 2026-11-23): a node of a named graph is a session node of it; a node
+        # of the default graph is a model row or a session node of no named graph.
+        session_labels = session.labels if session is not None else frozenset()
+        tags = set(session.tags.values()) if session is not None else set()
+        in_default = (everything | session_labels) - tags
+        admissible: dict[str, list[str]] = {}
         for var, labels in allowed.items():
             if var in outer:
                 labels = {outer[var]} if labels is None or outer[var] in labels else set()
-            names.append(var)
-            options.append(sorted(everything if labels is None else labels))
-        found = []
-        for combo in itertools.product(*options):
-            assignment = dict(zip(names, combo))
-            if self._holds(group, assignment, named):
-                found.append(assignment)
-        return found
+            held = everything if labels is None else labels
+            if session is not None:
+                held = (held if labels is not None else held | session_labels) & (
+                    session_labels if var in graphs else in_default
+                )
+            elif var in graphs:
+                held = set()  # no session: no named graph holds anything
+            admissible[var] = sorted(held)
+        return admissible, named
 
     def _is_table(self, label: str, domain: str, table: str) -> bool:
         nm = self._node(label)
-        return nm.domain_id == domain and nm.table_name == table
+        session = self.vocab.session
+        # A model label the session overlays is read from a session relation of its own name;
+        # its subjects are its model table's.
+        overlaid = session is not None and label in session.model_tables
+        name = session.model_tables[label] if overlaid else nm.table_name  # type: ignore[union-attr]
+        return nm.domain_id == domain and name == table
 
     def _node(self, label: str) -> Any:
         return self._lm.nodes[label]
@@ -861,14 +1058,17 @@ class _Lowering:
         deferred: "_Deferred | None" = None,
         reads: dict[int, Predicate] | None = None,
         through_rows: bool = False,
+        unwinds: list[UnwindClause] | None = None,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
         variable the group binds to a value: (its expression, its datatype). ``reads`` is the
         predicate each variable predicate stands for in this part, by its triple's place in the
         group (:meth:`predicate_reads`); ``through_rows`` reads them through the subject's rows
-        where its table has no key (:meth:`_row_of`)."""
+        where its table has no key (:meth:`_row_of`). ``unwinds`` gains the UNWIND of each
+        property of many values the group reads (:meth:`_value_of`); None where an UNWIND has no
+        place (an OPTIONAL's, MINUS's or EXISTS's group)."""
         named: dict[str, str] = {}
-        keys: dict[str, tuple] = {}
+        keys: dict[str, tuple] = {v: (iri,) for v, iri in group.pins.items()}
         conditions: list[CypherExpr] = []
         edges: list[tuple[str, RelPattern, str]] = []
         nodes: list[str] = []
@@ -922,6 +1122,8 @@ class _Lowering:
                     try:
                         if str(o) in labels:
                             raise _NoSolution  # a class is no subject of the data
+                        if labels[sv] not in self.vocab.classes_of:
+                            raise _NoSolution  # a session node of no class (REQ-2135)
                         _bind_iri(str(o), self.vocab.classes_of[labels[sv]][0], bindings)
                     except _NoSolution:
                         if not optional:
@@ -933,7 +1135,7 @@ class _Lowering:
                 edges.append((sv, RelPattern(None, [rel_type], None, None, "right"), node(o)))
                 continue
             cp = self._column(iri, labels[sv])
-            value: CypherExpr = Property(Variable(sv), cp.prop)
+            value = self._value_of(sv, labels[sv], cp.prop, iri, unwinds)
             if _is_var(o):
                 if str(o) in labels:
                     conditions.append(Literal(False, "boolean"))  # a node is no value
@@ -947,8 +1149,17 @@ class _Lowering:
             else:
                 conditions.append(Binary("=", value, _literal(o)))
 
+        graphs = self._graphs_of(group, named, keys)
+        self._graph_of.update(graphs)
         for var, (iri,) in keys.items():
-            conditions.extend(self._key_conditions(var, labels[var], iri))
+            conditions.extend(self._key_conditions(var, labels[var], iri, graphs.get(var)))
+        if self.vocab.session is not None:
+            conditions.extend(self._session_conditions(group, labels, graphs, nodes, bound_before))
+        for a, b in group.same:
+            if a in labels and b in labels:
+                conditions.append(self._same_term(a, b, labels))
+            else:
+                conditions.append(self._equal_to(RdfVariable(a), RdfVariable(b), bindings, labels))
         for var, expr in group.binds:
             if deferred is not None and not _free_vars(expr) <= {*bindings, *labels}:
                 deferred.binds.append((var, expr))
@@ -1043,6 +1254,9 @@ class _Lowering:
                 [*group.binds, *opt.binds],
                 [*before, *opt.optionals, *after],
                 list(group.absent),
+                graph_nodes=[*group.graph_nodes, *opt.graph_nodes],
+                pins={**group.pins, **opt.pins},
+                same=[*group.same, *opt.same],
             )
             unmatched = dataclasses.replace(
                 group, optionals=[*before, *after], absent=[*group.absent, opt]
@@ -1549,17 +1763,100 @@ class _Lowering:
         self._placed |= placed
         return clauses
 
+    def _session_conditions(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        graphs: dict[str, str],
+        nodes: list[str],
+        bound_before: set[str],
+    ) -> list[CypherExpr]:
+        """Where each session node of ``group`` is read (REQ-2135, amended 2026-11-23): in its
+        GRAPH pattern's graph, which tags it, or in the default graph, tagged by none; and under
+        one label only, the first of the labels its triples allow that it carries -- a node of
+        two classes is one subject. A subject whose class is a variable is read under each of
+        its classes, one solution each."""
+        session = self.vocab.session
+        assert session is not None
+        admissible, _ = self._admissible(group, {})
+        typed = {
+            str(s)
+            for s, p, o in group.triples
+            if _is_var(s) and isinstance(p, URIRef) and str(p) == RDF_TYPE and _is_var(o)
+        }
+        tags = sorted(set(session.tags.values()))
+        out: list[CypherExpr] = []
+        for var in nodes:
+            label = labels.get(var)
+            if label is None or label not in session.labels or var in bound_before:
+                continue
+            node = Variable(var)
+            if var in graphs:
+                tag = session.tags.get(graphs[var])
+                if tag is None:
+                    out.append(Literal(False, "boolean"))  # the session holds no such graph
+                elif tag != label:
+                    out.append(LabelPredicate(node, [tag]))
+            else:
+                out.extend(Unary("NOT", LabelPredicate(node, [t])) for t in tags)
+            if var in typed:
+                continue
+            out.extend(
+                Unary("NOT", LabelPredicate(node, [before]))
+                for before in admissible.get(var, [])
+                if before < label and (before in self.vocab.classes_of or before in tags)
+            )
+        return out
+
+    def _value_of(
+        self, var: str, label: str, prop: str, iri: str, unwinds: list[UnwindClause] | None
+    ) -> CypherExpr:
+        """The value ``var`` holds of ``prop``: the property, or, where a session label holds it
+        as JSON (many values of one predicate widen to a list, REQ-2135 amended 2026-11-23), one
+        of its values, an UNWIND of the property placed in ``unwinds``: a triple of each value,
+        one solution each."""
+        value: CypherExpr = Property(Variable(var), prop)
+        nm = self._node(label)
+        if not is_session_node(nm) or dict(nm.property_types).get(prop) != "json":
+            return value
+        if unwinds is None:
+            raise SparqlRefused(
+                f"<{iri}> holds several values of a session object, and an OPTIONAL, MINUS or "
+                "EXISTS pattern reading such a predicate is not supported"
+            )
+        item = f"__item{self._items}"
+        self._items += 1
+        unwinds.append(UnwindClause(value, item))
+        return Variable(item)
+
     def _column(self, iri: str, label: str) -> ColumnPredicate:
         for cp in self.vocab.columns.get(iri, []):
             if cp.label == label:
                 return cp
         raise SparqlRefused(f"<{iri}> is no predicate of {label}")
 
-    def _key_conditions(self, var: str, label: str, iri: str) -> list[CypherExpr]:
-        """``var`` is the row its IRI names: its key columns equal the key values."""
+    def _key_conditions(
+        self, var: str, label: str, iri: str, graph: str | None = None
+    ) -> list[CypherExpr]:
+        """``var`` is the row its IRI names: its key columns equal the key values. In a graph
+        session an IRI outside the base names the session node it names in ``graph`` (None: the
+        default graph), and a model row read from the session is named by its graph identity."""
+        session = self.vocab.session
+        if self._session_iri(iri):
+            assert session is not None
+            held = session.nodes_of(iri, graph)
+            if not held:
+                return [Literal(False, "boolean")]
+            return [Binary("=", Property(Variable(var), GRAPH_ID), Literal(held[0], "string"))]
         ref = parse_subject_iri(self.vocab.base, iri)
         nm = self._node(label)
         assert ref is not None  # the interpretation only labels it with the table it names
+        if session is not None and label in session.model_tables:
+            # provisa.gql.select_builder.node_identity: Label|key, a compound key's values
+            # escaped and joined by "|".
+            escaped = [str(k).replace("\\", "\\\\").replace("|", "\\|") for k in ref.keys]
+            identity = f"{nm.label}|{'|'.join(escaped) if len(escaped) > 1 else ref.keys[0]}"
+            return [Binary("=", Property(Variable(var), GRAPH_ID), Literal(identity, "string"))]
         key_columns = subject_key(nm)
         if len(key_columns) != len(ref.keys):
             return [Literal(False, "boolean")]
@@ -1740,7 +2037,10 @@ class _Lowering:
         return self._relational(relation, bindings, labels)
 
     def _same_node(self, a: str, b: str, labels: dict[str, str]) -> CypherExpr:
-        """Whether two subjects are the same: rows of one table with equal keys."""
+        """Whether two subjects are the same: rows of one table with equal keys; two nodes read
+        from the graph session with one graph identity."""
+        if is_session_node(self._node(labels[a])) and is_session_node(self._node(labels[b])):
+            return Binary("=", Property(Variable(a), GRAPH_ID), Property(Variable(b), GRAPH_ID))
         if labels[a] != labels[b]:
             return Literal(False, "boolean")
         nm = self._node(labels[a])
@@ -1755,10 +2055,56 @@ class _Lowering:
         assert out is not None
         return out
 
-    def _iri_match(self, var: str, iri: str, labels: dict[str, str]) -> CypherExpr:
+    def _same_term(self, a: str, b: str, labels: dict[str, str]) -> CypherExpr:
+        """Whether the nodes ``a`` and ``b``, one term read in two graphs (_resolve_graphs), are
+        one IRI: some IRI a session node of a named graph holds names both, each in its own graph
+        (a blank node is no graph's but its own, so never)."""
+        session = self.vocab.session
+        graph_a, graph_b = self._graph_of.get(a), self._graph_of.get(b)
+        if session is None:
+            return Literal(False, "boolean")  # no session: no named graph holds anything
+        named = graph_b if graph_b is not None else graph_a
+        out: CypherExpr | None = None
+        for iri, graph in sorted(session.nodes):
+            if graph != named:
+                continue
+            ca = self._names_in(a, labels[a], iri, graph_a)
+            cb = self._names_in(b, labels[b], iri, graph_b)
+            if ca is None or cb is None:
+                continue
+            both = Binary("AND", ca, cb)
+            out = both if out is None else Binary("OR", out, both)
+        return out if out is not None else Literal(False, "boolean")
+
+    def _names_in(self, var: str, label: str, iri: str, graph: str | None) -> CypherExpr | None:
+        """That ``var`` (of ``label``) is the node ``iri`` names in ``graph`` (None: the default
+        graph); None where it cannot be."""
+        session = self.vocab.session
+        assert session is not None
+        if is_session_node(self._node(label)):
+            held = session.nodes_of(iri, graph)
+            if not held:
+                return None
+            return Binary("=", Property(Variable(var), GRAPH_ID), Literal(held[0], "string"))
         ref = parse_subject_iri(self.vocab.base, iri)
-        if ref is None or not self._is_table(labels[var], ref.domain, ref.table):
-            return Literal(False, "boolean")
+        if graph is not None or ref is None or not self._is_table(label, ref.domain, ref.table):
+            return None  # a model row is the default graph's, named by an IRI of its table
+        conds = self._key_conditions(var, label, iri)
+        out = conds[0]
+        for c in conds[1:]:
+            out = Binary("AND", out, c)
+        return out
+
+    def _iri_match(self, var: str, iri: str, labels: dict[str, str]) -> CypherExpr:
+        session = self.vocab.session
+        if self._session_iri(iri):
+            assert session is not None
+            if labels[var] not in session.labels:
+                return Literal(False, "boolean")
+        else:
+            ref = parse_subject_iri(self.vocab.base, iri)
+            if ref is None or not self._is_table(labels[var], ref.domain, ref.table):
+                return Literal(False, "boolean")
         conds = self._key_conditions(var, labels[var], iri)
         out = conds[0]
         for c in conds[1:]:
@@ -2079,10 +2425,13 @@ class _Lowering:
         labels: dict[str, str],
         reads: dict[int, Predicate],
         through_rows: bool,
-    ) -> tuple[list[MatchStep], dict[str, tuple[CypherExpr, str | None]], dict[str, str]]:
+    ) -> tuple[
+        list[MatchStep | UnwindClause], dict[str, tuple[CypherExpr, str | None]], dict[str, str]
+    ]:
         """The steps of ``group`` under one interpretation, what each variable is bound to, and
         the labels with its OPTIONALs' nodes."""
         self._placed = set()
+        self._graph_of = {}
         self._rows = 0
         self._opened = _opened_vars(group)
         labels = dict(labels)
@@ -2090,7 +2439,8 @@ class _Lowering:
         # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
         # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
         deferred = _Deferred() if group.optionals else None
-        steps = [
+        unwinds: list[UnwindClause] = []
+        steps: list[MatchStep | UnwindClause] = [
             self.lower_group(
                 group,
                 labels,
@@ -2099,9 +2449,11 @@ class _Lowering:
                 deferred=deferred,
                 reads=reads,
                 through_rows=through_rows,
+                unwinds=unwinds,
             )
         ]
         labels = self._lower_optionals(group, labels, bindings, steps)
+        steps.extend(unwinds)
         conditions: list[CypherExpr] = []
         if deferred is not None:
             for var, expr in deferred.binds:
@@ -2114,6 +2466,7 @@ class _Lowering:
         for wanted in group.present:
             conditions.append(self._exists(wanted, labels, bindings))
         first = steps[0]
+        assert isinstance(first, MatchStep)
         if first.where is not None:
             conditions.insert(0, first.where.expression)
         if conditions:
@@ -2207,9 +2560,9 @@ class _Lowering:
             # A subject that is not a key is no value of the group.
             labels = {v: lab for v, lab in labels.items() if v in aggregation.keys}
 
-        ast = CypherAST(
-            pipeline=list(steps), return_clause=None, order_by=[], skip=None, limit=None
-        )
+        # A pipeline holds UNWINDs too, as the Cypher parser's does (an untyped list there).
+        pipeline: list = list(steps)
+        ast = CypherAST(pipeline=pipeline, return_clause=None, order_by=[], skip=None, limit=None)
         if form == "CONSTRUCT":
             ast.construct = [
                 TripleTemplate(
@@ -2289,8 +2642,9 @@ class _Lowering:
             items.append(ReturnItem(value, f"{_INPUT_PREFIX}{j}", name=f"{_INPUT_PREFIX}{j}"))
         if not items:
             items.append(ReturnItem(Literal(1, "number"), "one", name="one"))
+        pipeline: list = list(steps)  # UNWINDs too, as in statement()
         return CypherAST(
-            pipeline=list(steps),
+            pipeline=pipeline,
             return_clause=ReturnClause(items),
             order_by=[],
             skip=None,
@@ -2377,7 +2731,7 @@ class _Lowering:
         group: _Group,
         labels: dict[str, str],
         bindings: dict[str, tuple[CypherExpr, str | None]],
-        steps: list[MatchStep],
+        steps: list[MatchStep | UnwindClause],
     ) -> dict[str, str]:
         """``group``'s OPTIONALs, each an OPTIONAL MATCH after the steps it extends, and the
         OPTIONALs nested in each after it: an inner OPTIONAL extends its outer one's solutions
@@ -2493,7 +2847,7 @@ def _compile_algebra(form: str, algebra: CompValue, vocab: Vocabulary, lm: Any) 
     lowering = _Lowering(vocab, lm, limit, allowed)
     specs = []
     combinations = 0
-    alternatives = _alternatives(pattern)
+    alternatives = [_numbered(_resolve_graphs(g)) for g in _alternatives(pattern)]
     for group in alternatives:
         for expanded in lowering.expand_axiom_joins(group):
             for labels in lowering.interpretations(expanded, {}):

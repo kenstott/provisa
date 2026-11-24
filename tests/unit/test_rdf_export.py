@@ -334,10 +334,10 @@ def routed(monkeypatch):
     async def vocabulary_for(state, role_id, ctx, label_map):
         return model.vocab
 
-    def semantic_statement(compiled, graph, surface, role_id, state):
+    def semantic_statement(compiled, read, surface, role_id, state):
         assert compiled.ast is not None
-        sql, _, graph_vars = cypher_to_sql(compiled.ast, graph, {})
-        sql = apply_graph_rewrites(sql, graph_vars, graph)
+        sql, _, graph_vars = cypher_to_sql(compiled.ast, read.graph, {})
+        sql = apply_graph_rewrites(sql, graph_vars, read.graph)
         return make_semantic_sql(sql.sql(dialect="postgres"), model.ctx), graph_vars
 
     async def answer_rows(query, lowered, role_id, state, *, cache_hint, serve_cached, as_of):

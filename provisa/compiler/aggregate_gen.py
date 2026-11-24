@@ -33,7 +33,12 @@ from graphql import (
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import hasura_type_name
-from provisa.compiler.type_map import FILTER_TYPE_MAP, column_type_to_graphql
+from provisa.compiler.type_map import (
+    FILTER_TYPE_MAP,
+    column_type_to_graphql,
+    registered_filter_type,
+    registered_graphql_type,
+)
 
 GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
@@ -201,7 +206,9 @@ def build_agg_fields_type(  # REQ-196
     if comparable_cols:
         min_fields = {}
         for col_name, column_type in comparable_cols:
-            gql_type = column_type_to_graphql(column_type)
+            gql_type = registered_graphql_type(
+                column_type, None
+            )  # REQ-1961: a sized numeric's digits
             min_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         min_type = cast(
             GraphQLObjectType,
@@ -214,7 +221,9 @@ def build_agg_fields_type(  # REQ-196
     if comparable_cols:
         max_fields = {}
         for col_name, column_type in comparable_cols:
-            gql_type = column_type_to_graphql(column_type)
+            gql_type = registered_graphql_type(
+                column_type, None
+            )  # REQ-1961: a sized numeric's digits
             max_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         max_type = cast(
             GraphQLObjectType,
@@ -289,9 +298,7 @@ def build_having_exp_type(  # REQ-197
         if comparable_cols:
             sub_fields: dict[str, GraphQLInputField] = {}
             for col_name, column_type in comparable_cols:
-                gql_type = column_type_to_graphql(column_type)
-                scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
-                filter_type = FILTER_TYPE_MAP.get(scalar)  # type: ignore[arg-type]
+                filter_type = registered_filter_type(column_type, None)
                 if filter_type:
                     sub_fields[col_name] = GraphQLInputField(filter_type)
             if sub_fields:

@@ -206,10 +206,10 @@ class TestREQ538ProtoTypeMappings:
         proto = self._proto_for([("name", "varchar(255)")])
         assert "string name" in proto
 
-    def test_decimal_maps_to_double(self):
-        # REQ-538
-        proto = self._proto_for([("price", "decimal(10,2)")])
-        assert "double price" in proto
+    def test_a_sized_decimal_maps_to_string_and_an_unsized_one_to_double(self):
+        # REQ-538; REQ-1961 (amended 2026-11-23): a sized numeric is its exact digits.
+        assert "string price" in self._proto_for([("price", "decimal(10,2)")])
+        assert "double price" in self._proto_for([("price", "decimal")])
 
     def test_boolean_maps_to_bool(self):
         # REQ-538

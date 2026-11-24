@@ -574,7 +574,8 @@
       "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
       "table_region_from_function": "De tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar regio: ze wordt niet op zichzelf naar een andere regio verplaatst",
       "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias.",
-      "domain_stewards_saved": "Stewards van domein '{{domain}}' opgeslagen"
+      "domain_stewards_saved": "Stewards van domein '{{domain}}' opgeslagen",
+      "table_has_dependents": "Tabel '{{name}}' wordt nog gelezen of genoemd door andere objecten: trek ze eerst in of wijzig ze"
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",

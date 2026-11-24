@@ -71,6 +71,10 @@ PETS = list(enumerate(PET_NAMES, start=1))
 _SEED_SOURCE_PG = """
 CREATE TABLE smoke_accounts (id integer PRIMARY KEY, owner text NOT NULL);
 INSERT INTO smoke_accounts VALUES (1, 'Ada'), (2, 'Grace'), (3, 'Linus');
+CREATE TABLE smoke_unregistered_a (id integer PRIMARY KEY, label text NOT NULL);
+INSERT INTO smoke_unregistered_a VALUES (1, 'a1'), (2, 'a2');
+CREATE TABLE smoke_unregistered_b (id integer PRIMARY KEY, label text NOT NULL);
+INSERT INTO smoke_unregistered_b VALUES (1, 'b1');
 """
 
 
@@ -87,6 +91,9 @@ class Instance:
     # The demo pet store's base URL, built from the port this harness leased for it.
     petstore: str
     env: dict[str, str] = field(default_factory=dict)
+    # Stops the backend and starts it again on the same home, control plane and ports; returns
+    # once it answers /health. A test reproducing what a restart of the app does calls it.
+    restart_backend: Any = None
 
     @property
     def url(self) -> str:
@@ -254,7 +261,37 @@ def instance() -> Iterator[Instance]:
             env,
         )
         processes.append(backend)
-        running = Instance(api, grpc_port, flight, pgwire, mcp, bolt, ui, log_dir, petstore, base)
+        restarts = 0
+
+        def _restart_backend() -> None:
+            nonlocal backend, restarts
+            os.killpg(backend.pid, signal.SIGTERM)
+            backend.wait(timeout=60)
+            restarts += 1
+            # A log of its own: the earlier backends' are kept.
+            name = f"backend-restart-{restarts}"
+            backend = _spawn(
+                name,
+                ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(api)],
+                log_dir,
+                env,
+            )
+            processes.append(backend)
+            _wait_for_health(backend, running.url, log_dir / f"{name}.log")
+
+        running = Instance(
+            api,
+            grpc_port,
+            flight,
+            pgwire,
+            mcp,
+            bolt,
+            ui,
+            log_dir,
+            petstore,
+            base,
+            restart_backend=_restart_backend,
+        )
         _wait_for_health(backend, running.url, log_dir / "backend.log")
         seat_principal(database_url)
         yield running

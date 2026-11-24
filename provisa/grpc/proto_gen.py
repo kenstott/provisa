@@ -23,6 +23,7 @@ from provisa.compiler.context import ModelNotServable, _join_field_name
 from provisa.compiler.naming import _to_snake_case, to_pascal_case
 from provisa.core import command_bindings
 from provisa.core.ir_arrays import ArrayType
+from provisa.core.numeric_type import numeric_size
 from provisa.compiler.schema_gen import (
     SchemaInput,
     _assign_names,
@@ -82,6 +83,11 @@ _PROTO_TYPE_MAP: dict[str, str] = {
 
 
 def _physical_to_proto(column_type: str) -> str:
+    if numeric_size(column_type) is not None:
+        # REQ-1961 (amended 2026-11-23): proto has no exact decimal; a numeric whose size the
+        # model records is the string of its exact digits, as GraphQL declares it. An unsized
+        # numeric stays double.
+        return "string"
     normalized = column_type.lower().strip()
     if normalized in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[normalized]
@@ -106,11 +112,17 @@ def _physical_to_proto(column_type: str) -> str:
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")
 
 
+def parameter_proto(column_type: str) -> str:  # REQ-1986
+    """The proto type of a parameter (or an array parameter's item) of ``column_type``. A
+    parameter is an argument, typed as its GraphQL argument is (type_map.array_graphql_type): a
+    numeric argument is a Float whatever its size, where a sized numeric COLUMN is its exact
+    digits (REQ-1961)."""
+    return "double" if numeric_size(column_type) is not None else _physical_to_proto(column_type)
+
+
 def _array_element_proto(typed: ArrayType) -> str:
     """The proto type of a typed array's element: a decimal with a declared precision is a
     string, exact on every engine, as GraphQL declares it."""
-    if typed.element.startswith("numeric("):
-        return "string"
     return _physical_to_proto(typed.element)
 
 
@@ -248,7 +260,7 @@ def _parameter_proto_types(t) -> dict[str, str]:  # REQ-1986
         else:
             array = _is_array_type(meta.data_type)
             typed = meta.data_type.strip()[len("array(") : -1] if array else meta.data_type
-            proto_type = _physical_to_proto(typed)
+            proto_type = parameter_proto(typed)
         filter_proto = "string" if proto_type == "google.protobuf.Timestamp" else proto_type
         label = "repeated" if array else "optional"
         types[parameter_name(nfc["column_name"])] = f"{label} {filter_proto}"

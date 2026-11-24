@@ -1,4 +1,5 @@
 {
+  "adminPage.json::adminPage.stewardsHint": "People who answer for the domain; each must hold a role with domain_steward.",
   "dataProductsTab.json::dataProductsTab.colSync": "Sync",
   "dataProductsTab.json::dataProductsTab.syncEntryFailed": "{{entry}}: failed {{when}}",
   "dataProductsTab.json::dataProductsTab.syncEntryPublished": "{{entry}}: published {{when}}",
@@ -7673,6 +7674,7 @@
   "de/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
   "de/serverErrors.json::serverErrors.schema.table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
   "de/serverErrors.json::serverErrors.schema.table_draft_set": "Table {{table}} set as draft",
+  "de/serverErrors.json::serverErrors.schema.table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first",
   "de/serverErrors.json::serverErrors.schema.table_id_not_found": "Table {{id}} not found",
   "de/serverErrors.json::serverErrors.schema.table_load_protection_set": "load protection set for table {{table}}",
   "de/serverErrors.json::serverErrors.schema.table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
@@ -11399,12 +11401,11 @@
   "de/yourData.json::yourData.sql": "SQL",
   "de/yourData.json::yourData.title": "Your data",
   "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
-  "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
-  "syncingTab.json::syncingTab.productFilterLabel": "Data products",
-  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product",
   "serverErrors.json::serverErrors.data_product.owner_not_eligible": "{{owner}} holds no role with the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Grant them such a role first.",
   "serverErrors.json::serverErrors.domain.steward_not_eligible": "{{steward}} holds no role with the domain_steward capability, so cannot be named a steward of domain {{domain}}. Grant them such a role first.",
   "serverErrors.json::serverErrors.relationship.owner_not_eligible": "{{owner}} holds no role with the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Grant them such a role first.",
   "serverErrors.json::serverErrors.schema.domain_stewards_saved": "Domain '{{domain}}' stewards saved",
-  "adminPage.json::adminPage.stewardsHint": "People who answer for the domain; each must hold a role with domain_steward."
+  "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
+  "syncingTab.json::syncingTab.productFilterLabel": "Data products",
+  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product"
 }

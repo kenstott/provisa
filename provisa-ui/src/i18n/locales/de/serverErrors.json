@@ -574,7 +574,8 @@
       "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
       "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias.",
-      "domain_stewards_saved": "Stewards der Domäne '{{domain}}' gespeichert"
+      "domain_stewards_saved": "Stewards der Domäne '{{domain}}' gespeichert",
+      "table_has_dependents": "Die Tabelle '{{name}}' wird noch von anderen Objekten gelesen oder referenziert: Ziehen Sie diese zuerst zurück oder ändern Sie sie"
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",

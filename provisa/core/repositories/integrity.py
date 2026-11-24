@@ -44,6 +44,7 @@ with the publish gate's own matcher (``provisa.mv.relationship_gate``).
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -455,11 +456,35 @@ def names_in_sql(sql: str) -> tuple[set[str], set[str]]:
             metric_names.add(table.name)
         else:
             relations.add(table.name)
+    relations |= _tables_passed_to_calls(statement)
     aliases = {t.alias for t in statement.find_all(exp.Table) if t.alias}
     for column in statement.find_all(exp.Column):
         if column.table and column.table not in aliases and column.table not in defined:
             relations.add(column.table)
     return relations, metric_names
+
+
+#: A table named as a statement writes it, ``domain.table`` or ``table``.
+_TABLE_NAME_LITERAL = re.compile(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*")
+
+
+def _tables_passed_to_calls(statement: exp.Expr) -> set[str]:
+    """REQ-1986: the tables a call in FROM position reads through its arguments. A function that
+    takes tables (a code resolver's bridge, codesource/resolver.call_sql) is given each as a string
+    naming it, ``'domain.table'``; the view reads those tables as surely as one it selects from.
+    Each string argument written as a table name counts, by the name after its last dot."""
+    passed: set[str] = set()
+    for table in statement.find_all(exp.Table):
+        if not isinstance(table.this, exp.Func):
+            continue
+        for argument in table.this.expressions:
+            if (
+                isinstance(argument, exp.Literal)
+                and argument.is_string
+                and _TABLE_NAME_LITERAL.fullmatch(argument.this)
+            ):
+                passed.add(argument.this.rsplit(".", 1)[-1])
+    return passed
 
 
 def _matches(reference: Reference, value: Any, wanted: Any) -> bool:

@@ -574,7 +574,8 @@
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
-      "domain_stewards_saved": "Responsáveis pelo domínio '{{domain}}' salvos"
+      "domain_stewards_saved": "Responsáveis pelo domínio '{{domain}}' salvos",
+      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",

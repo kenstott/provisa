@@ -574,7 +574,8 @@
       "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
       "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
-      "domain_stewards_saved": "已儲存域 '{{domain}}' 的管理員"
+      "domain_stewards_saved": "已儲存域 '{{domain}}' 的管理員",
+      "table_has_dependents": "表 '{{name}}' 仍被其他物件讀取或引用：請先停用或修改這些物件"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",

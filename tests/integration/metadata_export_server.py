@@ -36,7 +36,7 @@ from typing import Any
 import httpx
 import yaml
 
-from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLES
+from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLE_RIGHTS, STANDARD_ROLES
 from provisa.security.rights import ORG_ADMIN_ROLE
 
 SCHEMA = "mdx_e2e"
@@ -78,9 +78,20 @@ CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
 # The roles a catalog's governance tags name: the model's, and every standard role (REQ-2155) that
 # reaches a domain -- org_admin among them, platform_admin (which reaches none) not. A column read
-# by the model's roles alone is visibility-restricted for the standard ones.
+# by the model's roles alone is visibility-restricted for the standard ones. A role holding no
+# capability, own or inherited, holds no domain and is served nothing: public, which starts holding
+# nothing (REQ-1058, REQ-1059), is no data audience until it is given a read right.
 MODEL_ROLES = ["analyst", "data_owner", "admin"]
-AUDIENCE = sorted({*MODEL_ROLES, *(r for r in SEEDED_ROLE_IDS if STANDARD_ROLES[r].domain_access)})
+AUDIENCE = sorted(
+    {
+        *MODEL_ROLES,
+        *(
+            r
+            for r in SEEDED_ROLE_IDS
+            if STANDARD_ROLES[r].domain_access and STANDARD_ROLE_RIGHTS[r]
+        ),
+    }
+)
 
 VIEW = "order_totals"
 VIEW_SQL = f'SELECT o.id AS id, o.amount * 2 AS net FROM "{DOMAIN}"."orders" o'

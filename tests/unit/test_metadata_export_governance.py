@@ -427,3 +427,40 @@ def test_a_mask_names_only_the_roles_the_column_is_served_to():
     assert masked.exempt_roles == ("admin",)
     [hidden] = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
     assert hidden.restricted_roles == _but("admin", "clerk")
+
+
+def test_public_granted_a_column_is_no_audience_of_its_tags():
+    """REQ-1058, REQ-1059: public holds no capability, so the engine serves it nothing even when a
+    column's grant and mask list name it; the export says what the engine does and names it in no
+    tag, restricted or exempt."""
+    from provisa.security.rights import PUBLIC_ROLE
+
+    config = _config(
+        tables=[
+            _table(
+                "customers",
+                [
+                    Column(
+                        name="ssn",
+                        data_type="text",
+                        visible_to=[*_EVERYONE, PUBLIC_ROLE],
+                        masks=[
+                            {"to": ["admin"], "mask": None},
+                            {"mask": {"type": "constant", "value": "x"}},
+                        ],
+                    ),
+                    Column(name="margin", data_type="numeric", visible_to=["admin"]),
+                ],
+            )
+        ]
+    )
+    tags = build_governance_tags(config, "acme")
+    assert {t.signal for t in tags} >= {
+        GovernanceSignal.MASKED,
+        GovernanceSignal.VISIBILITY_RESTRICTED,
+    }
+    for tag in tags:
+        assert PUBLIC_ROLE not in tag.restricted_roles, tag
+        assert PUBLIC_ROLE not in tag.exempt_roles, tag
+    [masked] = [t for t in tags if t.signal is GovernanceSignal.MASKED]
+    assert masked.restricted_roles == _but("admin")

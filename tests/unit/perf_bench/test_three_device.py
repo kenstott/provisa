@@ -128,7 +128,24 @@ def test_the_round_trip_is_timed_tcp_connects(listener: tuple[str, int]) -> None
 
 
 @pytest.fixture
-def agent(listener: tuple[str, int]) -> Iterator[str]:
+def agent(listener: tuple[str, int], monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    # /host reads the machine (lscpu, GCE metadata, sysfs). A unit test reads none of it: four live
+    # metadata.google.internal lookups (2 s timeout each) off GCE outlast the client's 5 s read
+    # timeout whenever the runner's DNS is slow (unit run 45242767108).
+    read_host = host_agent.host_facts
+    meta = {
+        "machine-type": "projects/123/machineTypes/c4d-standard-32",
+        "zone": "projects/123/zones/us-east1-b",
+        "cpu-platform": "AMD Turin",
+        "id": "4242",
+    }
+    monkeypatch.setattr(
+        host_agent,
+        "host_facts",
+        lambda facts: read_host(
+            facts, lscpu=lambda: LSCPU, metadata=meta.__getitem__, nics=lambda: {"ens4": "gve"}
+        ),
+    )
     server = host_agent.ThreadingHTTPServer(
         ("127.0.0.1", 0),
         host_agent.handler(
@@ -150,6 +167,7 @@ def agent(listener: tuple[str, int]) -> Iterator[str]:
 def test_the_agent_answers_its_facts_cpu_containers_and_round_trips(agent: str) -> None:
     host = httpx.get(f"{agent}/host").json()
     assert host["facts"] == {"telemetry": "on", "engine": "pg"}
+    assert host["machine_type"] == "c4d-standard-32" and host["errors"] == {}
     assert host["rtt_targets"] == ["backends"]
     assert httpx.get(f"{agent}/cpu").json()["pid"] == os.getpid()
     assert httpx.get(f"{agent}/rtt/backends").json()["connects"] == host_agent.RTT_CONNECTS

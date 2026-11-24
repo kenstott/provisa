@@ -574,7 +574,8 @@
       "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
       "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。",
-      "domain_stewards_saved": "已保存域 '{{domain}}' 的管理员"
+      "domain_stewards_saved": "已保存域 '{{domain}}' 的管理员",
+      "table_has_dependents": "表 '{{name}}' 仍被其他对象读取或引用：请先停用或修改这些对象"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",

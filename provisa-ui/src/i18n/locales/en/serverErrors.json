@@ -574,7 +574,8 @@
       "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
       "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
-      "domain_stewards_saved": "Domain '{{domain}}' stewards saved"
+      "domain_stewards_saved": "Domain '{{domain}}' stewards saved",
+      "table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",

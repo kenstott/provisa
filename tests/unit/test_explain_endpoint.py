@@ -203,7 +203,7 @@ class TestEachLanguage:
         compiled = SimpleNamespace(empty=False)
         monkeypatch.setattr(
             "provisa.api.rest.sparql_router.compiled_query",
-            AsyncMock(return_value=(compiled, MagicMock(), MagicMock())),
+            AsyncMock(return_value=(compiled, MagicMock())),
         )
         monkeypatch.setattr(
             "provisa.api.rest.sparql_router.semantic_statement",
@@ -219,7 +219,7 @@ class TestEachLanguage:
     async def test_a_sparql_answered_without_a_statement_describes_none(self, door, monkeypatch):
         monkeypatch.setattr(
             "provisa.api.rest.sparql_router.compiled_query",
-            AsyncMock(return_value=(SimpleNamespace(empty=True), MagicMock(), MagicMock())),
+            AsyncMock(return_value=(SimpleNamespace(empty=True), MagicMock())),
         )
         response = await _explain(door, "sparql", "ASK {}")
         assert response.json() == {"language": "sparql", "statements": []}

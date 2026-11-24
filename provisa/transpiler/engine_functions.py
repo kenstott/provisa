@@ -45,6 +45,7 @@ _NAMED = frozenset(
         "json_size",  # size() of an item of a list of several types (expr_visitor)
         "json_order_key",  # its place in openCypher's order (expr_visitor)
         "json_list_compare",  # two JSON lists compared element by element (expr_visitor)
+        "json_items",  # the items of a property held as JSON, an UNWIND's (translator)
         "json_kind",  # its kind: string, number, boolean, list, map or null (expr_visitor)
         "is_nan",  # a float comparison's NaN guard (expr_visitor)
         "range_step",  # a range's computed step, refused at 0 (expr_visitor)
@@ -55,7 +56,7 @@ _NAMED = frozenset(
 #: A statement naming none of them is not parsed: the check is on every direct route.
 _MENTIONED = re.compile(
     r"\b(map|element_at|filter|transform|any_match|all_match|none_match|reduce|slice|sequence"
-    r"|json_size|json_order_key|json_kind|json_list_compare|is_nan|range_step|type_refused|json_keys)\s*\(",
+    r"|json_size|json_order_key|json_kind|json_list_compare|json_items|is_nan|range_step|type_refused|json_keys)\s*\(",
     re.IGNORECASE,
 )
 

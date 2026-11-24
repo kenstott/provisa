@@ -574,7 +574,8 @@
       "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
       "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias.",
-      "domain_stewards_saved": "Administradores del dominio '{{domain}}' guardados"
+      "domain_stewards_saved": "Administradores del dominio '{{domain}}' guardados",
+      "table_has_dependents": "La tabla '{{name}}' todavía es leída o referida por otros objetos: retírelos o cámbielos primero"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",

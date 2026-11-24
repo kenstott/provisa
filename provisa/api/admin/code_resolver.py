@@ -12,7 +12,7 @@
 serves.
 
 A person picks one code resolver (``provisa.codesource.resolver``) to relate a source table to a
-target table. Provisa keeps that as four objects of kinds that already exist, saved by the
+target table. Provisa keeps that as two objects of kinds that already exist, saved by the
 mutations that save each kind, with every right and check those ask:
 
 * the bridge, a materialized view over the resolver's call (``call_sql``), named by the set's id,
@@ -21,18 +21,15 @@ mutations that save each kind, with every right and check those ask:
   that step, so a bridge that is not landed would never call its resolver;
 * ``<id>``, the junction relationship from the source table to the target table through the
   bridge, named in Cypher by its fixed label (the id in upper case), each match's other columns
-  (a score) its properties;
-* ``<id>_matches``, the source table to the bridge, one-to-many, on the source table's key and the
-  match's column carrying it, served under the set's id;
-* ``<id>_target``, the bridge to the target table, many-to-one, on the match's column carrying the
-  target's key and the target table's key, served under the target table's name.
+  (a score) its properties, and served in GraphQL under the set's id, reaching the target's rows.
 
-GraphQL nests the two plain relationships; Cypher serves the junction as one edge and leaves the
-plain ones out, as a junction's table is no node.
+GraphQL serves junction relationships (REQ-1586), so the two plain relationships (source to
+bridge, bridge to target) are not saved (REQ-2249, amended 2026-11-15): a GraphQL reader follows
+the junction to the matched target rows, without the score; Cypher's edge carries the score.
 
 Each carries the set's id (``code_resolver``), so the set is found again from its objects. They
 are changed and retired together, through the set: the ordinary pages refuse to change or retire
-one of them apart from it (:func:`held_by_set`). Retiring the set retires all four (REQ-2248).
+one of them apart from it (:func:`held_by_set`). Retiring the set retires both (REQ-2248).
 
 A bridge column is visible to the roles that see both tables' keys: a role that cannot see one
 end's key does not see which rows of it match."""
@@ -74,22 +71,18 @@ _VIEW_SCHEMA = "views"
 
 @dataclass(frozen=True)
 class SetNames:
-    """The names of a set's objects: its bridge view and its three relationships."""
+    """The names of a set's objects: its bridge view and its one junction relationship."""
 
     bridge: str
     edge: str
-    matches: str
-    target: str
 
     @property
     def relationships(self) -> list[str]:
-        return [self.edge, self.matches, self.target]
+        return [self.edge]
 
 
 def names(set_id: str) -> SetNames:
-    return SetNames(
-        bridge=set_id, edge=set_id, matches=f"{set_id}_matches", target=f"{set_id}_target"
-    )
+    return SetNames(bridge=set_id, edge=set_id)
 
 
 @contextmanager
@@ -263,10 +256,10 @@ def _bridge_input(
     )
 
 
-def _edges(input: "CodeResolverInput", target: dict) -> list[Any]:
-    """The set's three relationships. The junction is the one edge Cypher serves, its matches'
-    other columns (a score) its properties; the two plain ones are the levels GraphQL nests, and
-    are left out of Cypher, where a junction's table is no node."""
+def _edges(input: "CodeResolverInput") -> list[Any]:
+    """The set's one relationship: the junction from source to target through the bridge. Cypher
+    serves it as one edge, its matches' other columns (a score) its properties; GraphQL serves it
+    under the set's id, reaching the target's rows (REQ-1586)."""
     from provisa.api.admin.types import RelationshipInput
 
     set_names = names(input.id)
@@ -279,30 +272,11 @@ def _edges(input: "CodeResolverInput", target: dict) -> list[Any]:
             target_column=input.target_column,
             cardinality="one-to-many",
             alias=input.id.upper(),
+            graphql_alias=input.id,
             via_table=set_names.bridge,
             via_source_column=input.source_match,
             via_target_column=input.target_match,
             via_label_source="fixed",
-        ),
-        RelationshipInput(
-            id=set_names.matches,
-            source_table_id=input.source_table,
-            target_table_id=set_names.bridge,
-            source_column=input.source_column,
-            target_column=input.source_match,
-            cardinality="one-to-many",
-            graphql_alias=input.id,
-            disable_cypher=True,
-        ),
-        RelationshipInput(
-            id=set_names.target,
-            source_table_id=set_names.bridge,
-            target_table_id=input.target_table,
-            source_column=input.target_match,
-            target_column=input.target_column,
-            cardinality="many-to-one",
-            graphql_alias=target["alias"] or target["table_name"],
-            disable_cypher=True,
         ),
     ]
 
@@ -399,7 +373,7 @@ async def save(
         async with pool.acquire() as raw:
             made = await _table(cast("Connection", raw), names(input.id).bridge)
         assert made is not None  # just saved
-        for edge in _edges(input, target):
+        for edge in _edges(input):
             saved = await _save_relationship_as_caller(info, edge, creating=creating)
             if not saved.success:
                 if creating:
@@ -421,7 +395,7 @@ async def save(
 async def retire(
     info: "StrawberryInfo", set_id: str, reason: str | None = None
 ) -> "MutationResult":
-    """Retire the set: its three relationships and its bridge, together (REQ-2248). Their names
+    """Retire the set: its junction relationship and its bridge, together (REQ-2248). Their names
     stay taken. Refused as a whole when any of them may not be retired."""
     from provisa.api.admin.capabilities import require_capability
     from provisa.api.admin.domain_guard import require_domains
@@ -446,7 +420,7 @@ async def retire(
         domains = {bridge["domain_id"]}
         for rel_id in set_names.relationships:
             rel = await rel_repo.get(conn, rel_id)
-            assert rel is not None  # a set holds both its relationships
+            assert rel is not None  # a set holds its relationship
             for table_id in (rel["source_table_id"], rel["target_table_id"]):
                 end = await table_repo.get(conn, table_id)
                 assert end is not None
@@ -493,41 +467,32 @@ async def listed(conn: "Connection") -> list[dict]:
     ).fetchall()
     for bridge in bridges:
         set_id = bridge.code_resolver
-        set_names = names(set_id)
-        edges = {
-            r.id: r
-            for r in (
-                await conn.execute_core(
-                    select(relationships).where(
-                        relationships.c.id.in_([set_names.matches, set_names.target])
-                    )
-                )
-            ).fetchall()
-        }
-        matches, to_target = edges[set_names.matches], edges[set_names.target]
+        edge = (
+            await conn.execute_core(
+                select(relationships).where(relationships.c.id == names(set_id).edge)
+            )
+        ).one()
         tables = {
             r.id: r
             for r in (
                 await conn.execute_core(
                     select(registered_tables).where(
-                        registered_tables.c.id.in_(
-                            [matches.source_table_id, to_target.target_table_id]
-                        )
+                        registered_tables.c.id.in_([edge.source_table_id, edge.target_table_id])
                     )
                 )
             ).fetchall()
         }
-        source, target = tables[matches.source_table_id], tables[to_target.target_table_id]
+        source, target = tables[edge.source_table_id], tables[edge.target_table_id]
         out.append(
             {
                 "id": set_id,
                 "resolver": called(bridge.view_sql),
                 "source_table": source.alias or source.table_name,
-                "source_column": matches.source_column,
-                "source_match": matches.target_column,
+                "source_column": edge.source_column,
+                "source_match": edge.via_source_column,
                 "target_table": target.alias or target.table_name,
-                "target_column": to_target.target_column,
-                "target_match": to_target.source_column,
+                "target_column": edge.target_column,
+                "target_match": edge.via_target_column,
                 "refresh_interval": int(bridge.mv_refresh_interval),
                 "incremental": bool(bridge.mv_incremental),
                 "rebuild_every": bridge.mv_rebuild_every,

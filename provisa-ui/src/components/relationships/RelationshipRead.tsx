@@ -14,6 +14,7 @@ import type { Relationship } from "../../types/admin";
 import { domainToSqlName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
 import { FkBadge } from "./FkBadge";
+import { EntityLink } from "../EntityLink";
 
 /** A heading over a group of the read view's fields, as the form heads its own. */
 function ReadHeading({ children }: { children: string }) {
@@ -58,6 +59,15 @@ export function RelationshipRead({
     fixed: t("addRelationshipForm.viaLabelSourceFixed"),
   };
   const domain = (id: string | null | undefined) => or(id ? domainToSqlName(id) : null);
+  // A table the edge names opens that table's detail (REQ-2259); one it names none of shows empty.
+  const table = (id: number | null, name: string | null, testId: string) =>
+    id === null || !name ? (
+      none
+    ) : (
+      <EntityLink kind="table" id={id} testId={testId}>
+        {name}
+      </EntityLink>
+    );
   return (
     <div className="detail-groups" data-testid="relationship-read">
       {/* Not a field: the form has nothing to set it with, the server derives it from the id. */}
@@ -84,7 +94,10 @@ export function RelationshipRead({
           ...(domainsEnabled
             ? [{ label: t("relationshipRow.domainLabel"), value: domain(r.sourceDomainId) }]
             : []),
-          { label: t("relationshipRow.tableLabel"), value: or(r.sourceTableName) },
+          {
+            label: t("relationshipRow.tableLabel"),
+            value: table(r.sourceTableId, r.sourceTableName, "relationship-read-source-table"),
+          },
           { label: t("relationshipRow.columnLabel"), value: or(r.sourceColumn) },
         ]}
       />
@@ -114,7 +127,14 @@ export function RelationshipRead({
                       },
                     ]
                   : []),
-                { label: t("relationshipRow.tableLabel"), value: or(r.targetTableName) },
+                {
+                  label: t("relationshipRow.tableLabel"),
+                  value: table(
+                    r.targetTableId,
+                    r.targetTableName,
+                    "relationship-read-target-table",
+                  ),
+                },
                 { label: t("relationshipRow.columnLabel"), value: or(r.targetColumn) },
                 { label: t("relationshipRow.cardinality"), value: or(r.cardinality) },
               ]),
@@ -142,7 +162,10 @@ export function RelationshipRead({
           <DetailFields
             testId="relationship-read-junction"
             fields={[
-              { label: t("addRelationshipForm.viaTableLabel"), value: or(r.viaTableName) },
+              {
+                label: t("addRelationshipForm.viaTableLabel"),
+                value: table(r.viaTableId, r.viaTableName, "relationship-read-junction-table"),
+              },
               {
                 label: t("addRelationshipForm.viaSourceColumnLabel"),
                 value: or(r.viaSourceColumn),

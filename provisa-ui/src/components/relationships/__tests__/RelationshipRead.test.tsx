@@ -15,6 +15,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import type { Relationship } from "../../../types/admin";
+
+const auth = vi.hoisted(() => ({ capabilities: ["table_registration"] as string[] }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
+
 import { RelationshipDetail } from "../RelationshipDetail";
 
 const base: Relationship = {
@@ -189,5 +193,33 @@ describe("a relationship's read view", () => {
   it("leaves out the domain fields where domains are off, as the form does", () => {
     show(base, false);
     expect(fields("relationship-read-source").map(([label]) => label)).toEqual(["Table", "Column"]);
+  });
+
+  it("links the source, target and junction tables to their table's detail", () => {
+    auth.capabilities = ["table_registration"];
+    show(base);
+    const links: [string, string, string][] = [
+      ["relationship-read-source-table", "pets", "/tables?table=1"],
+      ["relationship-read-target-table", "pets", "/tables?table=2"],
+      ["relationship-read-junction-table", "pet_relations", "/tables?table=9"],
+    ];
+    for (const [testId, name, href] of links) {
+      const link = screen.getByTestId(testId);
+      expect(link.tagName).toBe("A");
+      expect(link).toHaveTextContent(name);
+      expect(link).toHaveAttribute("href", href);
+    }
+  });
+
+  it("shows the table names as plain text to a viewer who cannot open the Tables page", () => {
+    auth.capabilities = ["query_development"];
+    show(base);
+    for (const testId of [
+      "relationship-read-source-table",
+      "relationship-read-target-table",
+      "relationship-read-junction-table",
+    ])
+      expect(screen.getByTestId(testId)).not.toHaveAttribute("href");
+    expect(fields("relationship-read-junction")[0]).toEqual(["Junction table", "pet_relations"]);
   });
 });
