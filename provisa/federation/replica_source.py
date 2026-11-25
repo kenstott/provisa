@@ -37,7 +37,7 @@ from typing import Any, Protocol
 
 import pyarrow as pa
 
-from provisa.core.ir_arrow import arrow_schema, rows_to_batch
+from provisa.core.ir_arrow import arrow_schema, arrow_value, rows_to_batch
 from provisa.federation.data_replicator import BuildNote, SourceCaps, SourceRead
 
 #: The default bound on one batch, in rows: the engines' own stream batch size.
@@ -121,9 +121,18 @@ class DirectTableSource:
         self._columns = columns
 
     async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
+        from provisa.executor.drivers.base import DirectArrowStream
+
         schema = arrow_schema(self._columns)
         stream = await self._open()
         try:
+            if isinstance(stream, DirectArrowStream):
+                # REQ-2194: a driver that fetches Arrow hands on its own record batches, each
+                # column cast to its registered type -- never built into rows and back.
+                while (batch := await stream.fetch_arrow()) is not None:
+                    for part in _bounded(batch, batch_rows):
+                        yield _registered_batch(part, stream, self._columns, schema)
+                return
             names = list(stream.column_names)
             while True:
                 chunk = await stream.fetch(batch_rows)
@@ -133,6 +142,46 @@ class DirectTableSource:
                 yield rows_to_batch(rows, self._columns, schema)
         finally:
             await stream.close()
+
+
+def _registered_batch(
+    batch: pa.RecordBatch, stream: Any, columns: list[tuple[str, str]], schema: pa.Schema
+) -> pa.RecordBatch:  # REQ-2194, REQ-1961
+    """A driver's record batch as the table's registered columns, by name and in their order.
+
+    A column of its registered type passes through as it is; any other is cast to it by Arrow's
+    safe cast, a cast that would change a value refused naming the column
+    (``runtime_support.cast_arrow_column``). A column the replica holds as text (an unsized
+    numeric, a time, an interval, a uuid) is the text :func:`~provisa.core.ir_arrow.arrow_value`
+    writes of the driver's own value (``stream.to_rows`` of that column alone), as the row read
+    writes it: Arrow has no cast to that text for some (an interval) and another text for others
+    (a time's microseconds). A registered column the driver's result does not carry is an error
+    naming it."""
+    from provisa.federation.runtime_support import cast_arrow_column
+
+    present = set(batch.schema.names)
+    missing = [name for name, _ in columns if name not in present]
+    if missing:
+        raise ValueError(
+            f"the source's result carries no column {missing!r} of the replica's registered "
+            f"columns; it returned {batch.schema.names!r}"
+        )
+    arrays = []
+    for i, (name, ir) in enumerate(columns):
+        column = batch.column(name)
+        target = schema.field(i).type
+        if column.type == target:
+            arrays.append(column)
+        elif pa.types.is_string(target) and not (
+            pa.types.is_string(column.type)
+            or pa.types.is_large_string(column.type)
+            or pa.types.is_string_view(column.type)
+        ):
+            values = [row[0] for row in stream.to_rows(batch.select([name]))]
+            arrays.append(pa.array([arrow_value(v, ir) for v in values], type=target))
+        else:
+            arrays.append(cast_arrow_column(column, target, name))
+    return pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
 class CursorSource:

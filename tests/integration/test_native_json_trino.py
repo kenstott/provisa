@@ -73,8 +73,9 @@ def _read_sql(trino_type: str, value: str) -> str:
     nested = NestedColumn(typing.native_type, typing.array_depth, typing.element_type)
     marker = native_json_marker(exp.column("v", "t", quoted=True), nested)
     return transpile_to_trino(
-        f'SELECT {marker.sql(dialect="postgres")} AS "v" FROM src AS "t"'
-        # Not VALUES: Trino spreads a row-typed expression in a VALUES row into one column per field., generated=False
+        f'SELECT {marker.sql(dialect="postgres")} AS "v" FROM src AS "t"',
+        # Not VALUES: Trino spreads a row-typed expression in a VALUES row into one column per field.
+        generated=False,
     ).replace("FROM src", f"FROM (SELECT CAST({value} AS {trino_type}) UNION ALL SELECT NULL) ")
 
 

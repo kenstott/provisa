@@ -21,26 +21,33 @@ from __future__ import annotations
 
 import asyncio
 
+import pyarrow as pa
+
 from provisa.executor.drivers.clickhouse import ClickHouseDriver
 
+#: A server new enough to write every type as Arrow (REQ-2194).
+_SERVER_VERSION = "26.8.46.6"
 
-class _FakeResult:
-    def __init__(self, rows, cols):
-        self.result_rows = rows
-        self.column_names = cols
+
+def _arrow(rows, cols) -> pa.Table:
+    """The table the server's Arrow output reads as for ``rows`` under ``cols`` (REQ-2194)."""
+    columns = list(zip(*rows)) if rows else [[] for _ in cols]
+    return pa.table({c: pa.array(list(v)) for c, v in zip(cols, columns)})
 
 
 class _FakeClient:
+    server_version = _SERVER_VERSION
+
     def __init__(self, rows=None, cols=None):
         self._rows = rows or []
         self._cols = cols or []
         self.last_sql: str | None = None
         self.last_parameters = None
 
-    def query(self, sql, parameters=None, settings=None):
+    def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
         self.last_sql = sql
         self.last_parameters = parameters
-        return _FakeResult(self._rows, self._cols)
+        return _arrow(self._rows, self._cols)
 
     def close(self):
         pass
@@ -121,12 +128,14 @@ class TestClickHouseDriverSessions:
         lock = threading.Lock()
 
         class _Session:
+            server_version = _SERVER_VERSION
+
             def __init__(self) -> None:
                 self.in_flight = 0
                 self.overlapped = False
                 self.closed = False
 
-            def query(self, sql, parameters=None, settings=None):
+            def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
                 import time
 
                 with lock:
@@ -135,7 +144,7 @@ class TestClickHouseDriverSessions:
                 time.sleep(0.05)
                 with lock:
                     self.in_flight -= 1
-                return _FakeResult([(1,)], ["n"])
+                return _arrow([(1,)], ["n"])
 
             def close(self):
                 self.closed = True
@@ -194,6 +203,8 @@ def test_a_pooled_client_names_no_server_session(monkeypatch):
     asked: list[dict] = []
 
     class _Client:
+        server_version = _SERVER_VERSION
+
         def command(self, *_a, **_k):
             return None
 

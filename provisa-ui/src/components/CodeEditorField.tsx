@@ -12,9 +12,9 @@
 // the Data Science and Lineage editors) under a field label, with line numbers and highlighting,
 // growing with its content. Its value and onChange are a Textarea's: the text, whole.
 
-// Requirements: REQ-1984, REQ-2225
+// Requirements: REQ-1984, REQ-2225, REQ-2115
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Input, useMantineColorScheme } from "@mantine/core";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -24,6 +24,7 @@ import { python } from "@codemirror/lang-python";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
 import { turtle } from "@codemirror/legacy-modes/mode/turtle";
+import { codeFieldMark, type CodeFieldName } from "../mcp/codeFields";
 
 const turtleLanguage = StreamLanguage.define(turtle);
 
@@ -41,7 +42,8 @@ export type CodeLanguage = keyof typeof LANGUAGES;
 interface EditorProps {
   value: string;
   language: CodeLanguage;
-  label: string;
+  /** Its accessible name, on the editor's textbox. */
+  name: CodeFieldName;
   /** Absent, the code is shown and not edited. */
   onChange?: (value: string) => void;
   placeholder?: string;
@@ -52,13 +54,23 @@ interface EditorProps {
 function CodeEditor({
   value,
   language,
-  label,
+  name,
   onChange,
   placeholder,
   "data-testid": testId,
 }: EditorProps) {
   const { colorScheme } = useMantineColorScheme();
-  const extensions = useMemo(() => [LANGUAGES[language](), EditorView.lineWrapping], [language]);
+  // REQ-2115: marked with its name and language, so Polly reads and fills it (mcp/codeFields.ts).
+  // By value: a caller builds the name on every render, and only a change reconfigures the editor.
+  const nameKey = JSON.stringify(name);
+  const extensions = useMemo(
+    () => [
+      LANGUAGES[language](),
+      EditorView.lineWrapping,
+      codeFieldMark(JSON.parse(nameKey) as CodeFieldName, language),
+    ],
+    [language, nameKey],
+  );
   const readOnly = onChange === undefined;
   return (
     <CodeMirror
@@ -81,14 +93,16 @@ function CodeEditor({
         borderRadius: "var(--mantine-radius-sm)",
         overflow: "hidden",
       }}
-      aria-label={label}
       data-testid={testId}
     />
   );
 }
 
 type Props = {
-  label: string;
+  /** Text, or (from a FormField with help) a label node whose text `aria-labelledby` names. */
+  label: ReactNode;
+  "aria-labelledby"?: string;
+  "aria-description"?: string;
   value: string;
   language: CodeLanguage;
   required?: boolean;
@@ -107,12 +121,18 @@ export function CodeEditorField({
   required,
   readOnly,
   placeholder,
+  "aria-labelledby": labelledBy,
+  "aria-description": description,
   "data-testid": testId,
 }: Props) {
+  let name: CodeFieldName;
+  if (labelledBy !== undefined) name = { labelledBy, description };
+  else if (typeof label === "string") name = { label, description };
+  else throw new Error("CodeEditorField: a label that is not text needs aria-labelledby");
   return (
     <Input.Wrapper label={label} required={required}>
       <CodeEditor
-        label={label}
+        name={name}
         value={value}
         language={language}
         onChange={readOnly ? undefined : onChange}
@@ -127,7 +147,7 @@ export function CodeEditorField({
 CodeEditorField.readValue = (p: Record<string, unknown>) =>
   p.value ? (
     <CodeEditor
-      label={p.label as string}
+      name={{ label: p.label as string }}
       value={p.value as string}
       language={p.language as CodeLanguage}
       data-testid={p["data-testid"] as string | undefined}

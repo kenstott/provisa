@@ -12,6 +12,35 @@
     "tested": "Conectado a {{target}}: Spark {{version}}",
     "saved": "Guardado",
     "removed": "Eliminado",
-    "remove": "Quitar predeterminado"
+    "remove": "Quitar predeterminado",
+    "host": "Host del clúster de Spark",
+    "hostHelp": "El nombre de host o la dirección del servidor Spark Connect del clúster, sin sc:// ni puerto.",
+    "port": "Puerto",
+    "tls": "TLS",
+    "tlsHelp": "Conectar mediante TLS. Un token solo se envía por TLS, así que indicar un token lo activa.",
+    "userId": "ID de usuario",
+    "userIdHelp": "El usuario con el que el clúster ejecuta el script, si lo solicita. Opcional.",
+    "badHost": "Un nombre de host o una dirección, sin sc://, puerto ni ruta",
+    "badPort": "Un puerto de 1 a 65535",
+    "badToken": "Una referencia a un secreto, como ${secret:spark_token}",
+    "extra": "Otros parámetros, conservados tal cual: {{params}}",
+    "paste": "Pegar dirección",
+    "pasteTitle": "Pegar una dirección de Spark Connect",
+    "pasteHelp": "Una dirección sc://, como sc://spark.example.com:15002/;use_ssl=true. Se divide en los campos; un token incluido se guarda como secreto.",
+    "pasteApply": "Rellenar los campos",
+    "pasteToken": "La dirección incluye un token. Se guarda como secreto de la organización y el clúster hace referencia a ese secreto; el token no se guarda en la dirección.",
+    "pasteSecretName": "Nombre del secreto",
+    "pasteSecretHelp": "El secreto de la organización en el que se guarda el token. Un secreto con este nombre se reemplaza.",
+    "pasteKeep": "Guardar el token como secreto",
+    "storedUnread": "No se puede leer el clúster guardado para este origen: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} no es una dirección de Spark Connect: empieza por sc://",
+      "host": "{{part}} no indica un host",
+      "port": "{{part}} no es un puerto de 1 a 65535",
+      "param": "{{part}} no es un parámetro nombre=valor"
+    },
+    "blankUsesOrg": "Si se deja en blanco, este origen se ejecuta en el clúster de Spark predeterminado de la organización ({{target}}).",
+    "blankUsesLocal": "Si se deja en blanco, este origen se ejecuta en el clúster de prueba local ({{target}}).",
+    "blankUsesNone": "Si se deja en blanco, este origen no tiene clúster en el que ejecutarse: {{detail}}"
   }
 }

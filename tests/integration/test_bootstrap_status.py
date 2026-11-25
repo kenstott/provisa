@@ -29,7 +29,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
 
 import provisa.core
-from provisa.core.db import add_missing_columns, assert_standard_roles
+from provisa.core.db import add_missing_columns
+from provisa.core.repositories.standard_roles import assert_standard_roles
 from provisa.api.auth_router import router as auth_router
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES

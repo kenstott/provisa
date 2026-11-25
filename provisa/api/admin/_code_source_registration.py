@@ -36,6 +36,14 @@ async def join_connector(
     from provisa.codesource.bundle import BundleRefused
 
     if "connector_join" not in mapping:
+        if source_type in _builtin() and mapping.get("mode") != "built":
+            # REQ-2225: a built-in source type's code is its host's; it is made by joining it.
+            return MutationResult(
+                success=False,
+                message=f"A {source_type} source is created by joining its host, from its form",
+                code="codesource.builtin_join_on_create",
+                params={"source": source_id, "type": source_type},
+            )
         return None
     try:
         await remote_sources.join_connector(state, source_id, source_type, mapping)
@@ -46,15 +54,23 @@ async def join_connector(
     return None
 
 
-async def record_code(source_id: str, source_type: str, mapping: dict) -> "MutationResult | None":
+async def record_code(
+    source_id: str, source_type: str, mapping: dict, path: str | None = None
+) -> "MutationResult | None":
     """Prepare a code source being saved and record its content hash in ``mapping`` (in place).
-    None when it is not a code source or it is ready; else the refusal."""
+    None when it is not a code source or it is ready; else the refusal. An OpenAPI or remote
+    GraphQL source is saved as a built-in code source (REQ-2267): its code is written from the
+    source as saved (``path``: its spec or endpoint) before it is prepared."""
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.codesource import remote_sources
     from provisa.codesource.bundle import BundleRefused
+    from provisa.codesource.languages import BUILTIN_TYPES
     from provisa.codesource.source import CODE_SOURCE_TYPES, context_for, forget, prepare
     from provisa.runtime_deps.code_runtimes import RuntimeUnavailable
 
+    if source_type in BUILTIN_TYPES:
+        return await _record_builtin(source_id, source_type, mapping, path)
     if source_type not in CODE_SOURCE_TYPES:
         return None
     if "connector_join" in mapping:  # REQ-2221: taken at create (join_connector), never kept
@@ -64,6 +80,13 @@ async def record_code(source_id: str, source_type: str, mapping: dict) -> "Mutat
             code="codesource.connector_join_on_create",
             params={"source": source_id},
         )
+    if mapping.get("org_defaults"):
+        try:  # REQ-2225: a source's own cluster, edited, is held to what a join holds it to
+            remote_sources.check_stood_in(mapping["org_defaults"], mapping.get("settings"))
+        except BundleRefused as refused:
+            return MutationResult(
+                success=False, message=str(refused), code=refused.code, params=refused.params
+            )
     forget(source_id)  # whatever was prepared for an earlier save of it
     if mapping.get("mode") != "built":
         mapping.pop("content_hash", None)  # pinned afresh: the code as it is now
@@ -91,6 +114,30 @@ async def record_code(source_id: str, source_type: str, mapping: dict) -> "Mutat
 #: The code sources being pinned now, and those whose code was refused, by (org, env, source):
 #: each refused one with the code it was refused for, so a later build tries it again only once
 #: its code has changed.
+async def _record_builtin(
+    source_id: str, source_type: str, mapping: dict, path: str | None
+) -> "MutationResult | None":
+    """REQ-2267: the built-in's code written for the source being saved, its kind, declared
+    secrets and content hash recorded in ``mapping`` (in place), and the code read as the runtime
+    reads it. None when it is ready; else the refusal, by name."""
+    from provisa.api.admin.types import MutationResult
+    from provisa.api.app import state
+    from provisa.codesource import builtin
+    from provisa.codesource.bundle import BundleRefused
+    from provisa.codesource.source import context_for, forget, prepare
+
+    forget(source_id)  # whatever was prepared for an earlier save of it
+    try:
+        ctx = await context_for(state)
+        await builtin.write(source_id, source_type, mapping, path, ctx, state.config.graphql_remote)
+        await prepare(source_id, source_type, mapping, ctx)
+    except BundleRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
 _pinning: set[tuple[str, str, str]] = set()
 _refused: dict[tuple[str, str, str], str] = {}
 
@@ -105,6 +152,12 @@ def unpinned(sources: dict[str, dict]) -> list[tuple[str, str, dict]]:
         and not (row.get("mapping") or {}).get("content_hash")
         and ((row.get("mapping") or {}).get("code") or {}).get("kind") != "directory"
     ]
+
+
+def _builtin() -> frozenset[str]:
+    from provisa.core.models import BUILTIN_CONNECTORS
+
+    return BUILTIN_CONNECTORS
 
 
 def _code_types() -> frozenset[str]:

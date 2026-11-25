@@ -5,7 +5,7 @@
     "missingNative": "Renseignez chaque valeur requise par le connecteur.",
     "image": "Image",
     "imageHint": "L'image exécutée par votre déploiement. Provisa vérifie l'hôte par rapport à celle-ci lors de la connexion.",
-    "native": "S'exécute sur ce serveur, construit depuis {{path}}. Aucun hôte ni code d'appairage n'est nécessaire.",
+    "native": "S'exécute sur ce serveur, construit à partir de {{path}}. Aucun hôte ni code d'appairage n'est nécessaire.",
     "host": "Hôte",
     "hostHint": "L'hôte qui exécute l'image, tel que Provisa l'atteint.",
     "port": "Port",
@@ -13,6 +13,7 @@
     "pairingHint": "La ligne affichée par le conteneur lors de son premier démarrage, après \"pairing code:\". Elle est utilisée une seule fois et n'est pas conservée.",
     "secretHint": "Le secret de l'organisation à utiliser. Sa valeur n'est jamais saisie ici.",
     "fixedHint": "Défini par ce connecteur. Non modifiable.",
-    "sparkClusterDefaultHint": "Laissez vide pour utiliser le cluster Spark par défaut de l'organisation (Admin, Cluster Spark)."
+    "sparkClusterDefaultHint": "Laissez vide pour utiliser le cluster Spark par défaut de l'organisation (Admin, Cluster Spark).",
+    "builtinIdentity": "L'hôte Spark, qui suit {{ref}}."
   }
 }

@@ -1451,7 +1451,13 @@ def _said_number(number: int, sql_type: str) -> exp.Expr:
 
 
 def _said_refusal(refusal: literals.Refused) -> exp.Expr:
-    """An expression that raises PostgreSQL's error, whatever type the call would have answered."""
+    """An expression that raises PostgreSQL's error, whatever type the call would have answered.
+
+    Uses CAST(CAST(text AS INTEGER) AS TEXT): every engine raises on the invalid cast, and
+    provisa.core.pg_error.from_engine reads the SQLSTATE and message back from the error text.
+    MySQL-family dialects silently return '0' instead of raising; those are listed in
+    functions.json as known wrong answers (provisa_raise cannot be used here because it is
+    not installed on pg-compatible federated engines and has no form on non-SQL engines)."""
     quoted = "'" + refusal.message.replace("'", "''") + "'"
     return sqlglot.parse_one(refused(refusal.sqlstate, quoted, "TEXT"), read="postgres")
 

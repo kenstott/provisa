@@ -12,6 +12,35 @@
     "tested": "Verbunden mit {{target}}: Spark {{version}}",
     "saved": "Gespeichert",
     "removed": "Entfernt",
-    "remove": "Standard entfernen"
+    "remove": "Standard entfernen",
+    "host": "Spark-Cluster-Host",
+    "hostHelp": "Hostname oder Adresse des Spark-Connect-Servers des Clusters, ohne sc:// und ohne Port.",
+    "port": "Port",
+    "tls": "TLS",
+    "tlsHelp": "Über TLS verbinden. Ein Token wird nur über TLS gesendet; ein angegebenes Token schaltet TLS daher ein.",
+    "userId": "Benutzer-ID",
+    "userIdHelp": "Der Benutzer, unter dem der Cluster das Skript ausführt, falls er einen verlangt. Optional.",
+    "badHost": "Ein Hostname oder eine Adresse, ohne sc://, Port oder Pfad",
+    "badPort": "Ein Port von 1 bis 65535",
+    "badToken": "Eine Secret-Referenz, z. B. ${secret:spark_token}",
+    "extra": "Weitere Parameter, unverändert übernommen: {{params}}",
+    "paste": "Adresse einfügen",
+    "pasteTitle": "Spark-Connect-Adresse einfügen",
+    "pasteHelp": "Eine sc://-Adresse, z. B. sc://spark.example.com:15002/;use_ssl=true. Sie wird in die Felder aufgeteilt; ein enthaltenes Token wird als Secret gespeichert.",
+    "pasteApply": "Felder ausfüllen",
+    "pasteToken": "Die Adresse enthält ein Token. Es wird als Organisations-Secret gespeichert, und der Cluster verweist auf dieses Secret; das Token selbst wird nicht in der Adresse gespeichert.",
+    "pasteSecretName": "Secret-Name",
+    "pasteSecretHelp": "Das Organisations-Secret, in dem das Token gespeichert wird. Ein Secret mit diesem Namen wird ersetzt.",
+    "pasteKeep": "Token als Secret speichern",
+    "storedUnread": "Der für diese Quelle gespeicherte Cluster kann nicht gelesen werden: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} ist keine Spark-Connect-Adresse: Sie beginnt mit sc://",
+      "host": "{{part}} nennt keinen Host",
+      "port": "{{part}} ist kein Port von 1 bis 65535",
+      "param": "{{part}} ist kein Parameter der Form name=value"
+    },
+    "blankUsesOrg": "Leer gelassen, läuft diese Quelle auf dem Standard-Spark-Cluster der Organisation ({{target}}).",
+    "blankUsesLocal": "Leer gelassen, läuft diese Quelle auf dem lokalen Test-Cluster ({{target}}).",
+    "blankUsesNone": "Leer gelassen, hat diese Quelle keinen Cluster, auf dem sie laufen kann: {{detail}}"
   }
 }

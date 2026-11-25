@@ -1,0 +1,22 @@
+{
+  "suggestProduct": {
+    "title": "Suggérer un produit de données à {{domain}}",
+    "tables": "Tables",
+    "hint": "Tables listées de ce domaine que le produit contiendrait.",
+    "reason": "Pourquoi vous en avez besoin",
+    "reasonHint": "Les propriétaires de produits de données et les data stewards du domaine le liront.",
+    "send": "Envoyer la suggestion",
+    "sending": "Envoi…",
+    "sent_one": "Votre suggestion a été envoyée par e-mail à {{count}} propriétaire ou steward de {{domain}}.",
+    "sent_other": "Votre suggestion a été envoyée par e-mail à {{count}} propriétaires et stewards de {{domain}}.",
+    "close": "Fermer",
+    "badgeTitle_one": "{{count}} suggestion cite cette table : l'ouvrir",
+    "badgeTitle_other": "{{count}} suggestions citent cette table : les ouvrir",
+    "listTitle": "Suggestions citant {{table}}",
+    "colWhen": "Quand",
+    "colBy": "Suggérée par",
+    "colTables": "Tables",
+    "colReason": "Pourquoi",
+    "none": "Aucune suggestion ne cite cette table."
+  }
+}

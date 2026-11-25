@@ -12,6 +12,35 @@
     "tested": "Verbonden met {{target}}: Spark {{version}}",
     "saved": "Opgeslagen",
     "removed": "Verwijderd",
-    "remove": "Standaard verwijderen"
+    "remove": "Standaard verwijderen",
+    "host": "Host van het Spark-cluster",
+    "hostHelp": "De hostnaam of het adres van de Spark Connect-server van het cluster, zonder sc:// of poort.",
+    "port": "Poort",
+    "tls": "TLS",
+    "tlsHelp": "Verbinden via TLS. Een token wordt alleen via TLS verzonden, dus een token opgeven zet TLS aan.",
+    "userId": "Gebruikers-ID",
+    "userIdHelp": "De gebruiker waaronder het cluster het script uitvoert, als het daarom vraagt. Optioneel.",
+    "badHost": "Een hostnaam of adres, zonder sc://, poort of pad",
+    "badPort": "Een poort van 1 tot 65535",
+    "badToken": "Een secret-verwijzing, zoals ${secret:spark_token}",
+    "extra": "Overige parameters, ongewijzigd bewaard: {{params}}",
+    "paste": "Adres plakken",
+    "pasteTitle": "Een Spark Connect-adres plakken",
+    "pasteHelp": "Een sc://-adres, zoals sc://spark.example.com:15002/;use_ssl=true. Het wordt over de velden verdeeld; een token erin wordt als secret bewaard.",
+    "pasteApply": "Velden invullen",
+    "pasteToken": "Het adres bevat een token. Het wordt bewaard als secret van de organisatie en het cluster verwijst naar dat secret; het token zelf wordt niet in het adres bewaard.",
+    "pasteSecretName": "Naam van het secret",
+    "pasteSecretHelp": "Het secret van de organisatie waarin het token wordt bewaard. Een secret met deze naam wordt vervangen.",
+    "pasteKeep": "Token als secret bewaren",
+    "storedUnread": "Het cluster dat voor deze bron is bewaard, kan niet worden gelezen: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} is geen Spark Connect-adres: het begint met sc://",
+      "host": "{{part}} noemt geen host",
+      "port": "{{part}} is geen poort van 1 tot 65535",
+      "param": "{{part}} is geen parameter van de vorm naam=waarde"
+    },
+    "blankUsesOrg": "Leeg gelaten draait deze bron op het standaard Spark-cluster van de organisatie ({{target}}).",
+    "blankUsesLocal": "Leeg gelaten draait deze bron op het lokale testcluster ({{target}}).",
+    "blankUsesNone": "Leeg gelaten heeft deze bron geen cluster om op te draaien: {{detail}}"
   }
 }

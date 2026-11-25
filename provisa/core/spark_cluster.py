@@ -280,21 +280,54 @@ async def _resolved_default(admin_db: "Database", org_id: str) -> Resolved:
     return Resolved(with_token(kept.address, token), ORIGIN_ORG)
 
 
+async def _own_resolved(admin_db: "Database", org_id: str, address: str) -> str:
+    """A source's own cluster with the secret reference its token is kept as resolved in
+    ``org_id``'s vault; as kept when it carries no token."""
+    from provisa.core.secrets import resolve_secrets
+
+    reference = parse(address).token
+    if reference is None:
+        return address
+    async with secrets_store.bound(admin_db, org_id):
+        try:
+            token = resolve_secrets(reference)
+        except (KeyError, ValueError) as unresolved:
+            reason = unresolved.args[0] if unresolved.args else type(unresolved).__name__
+            raise SparkClusterRefused(
+                "unresolved",
+                f"The token of the source's Spark cluster could not be resolved: {reason}",
+                status=409,
+            ) from None
+    return address.replace(f"token={reference}", f"token={token}", 1)
+
+
 async def resolved(admin_db: "Database", org_id: str, own: str | None) -> Resolved:
-    """The cluster of a source whose own cluster is ``own``: that one when it is set, else the
-    organisation's default, else (demo and local installs) the local test cluster. Refused as
-    not configured when there is none."""
+    """The cluster of a source whose own cluster is ``own``: that one when it is set (its token
+    resolved), else the organisation's default, else (demo and local installs) the local test
+    cluster. Refused as not configured when there is none."""
     mine = own_cluster(own)
-    return Resolved(mine, ORIGIN_SOURCE) if mine else await _resolved_default(admin_db, org_id)
+    if mine:
+        return Resolved(await _own_resolved(admin_db, org_id, mine), ORIGIN_SOURCE)
+    return await _resolved_default(admin_db, org_id)
 
 
 def own_cluster(own: str | None) -> str | None:
-    """A source's own cluster when it is set, else None."""
+    """A source's own cluster when it is set, else None. Refused by name (REQ-2225, amended
+    2026-11-24): an address that is not a Spark Connect address, and one whose token is a value
+    rather than a ``${secret:NAME}`` reference (the token is kept in the vault, never in the
+    source)."""
     # REQ-2225: "a source's own cluster, when set": an empty value is a cluster left unset.
     if own is None or not own.strip():
         return None
-    parse(own.strip())
-    return own.strip()
+    address = own.strip()
+    token = parse(address).token
+    if token is not None and not _REFERENCE.match(token):
+        raise SparkClusterRefused(
+            "token_not_reference",
+            "The Spark cluster's token is a secret reference, such as ${secret:NAME}; a token "
+            "value is never kept in a source",
+        )
+    return address
 
 
 # -- the connection test ----------------------------------------------------------------------------

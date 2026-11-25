@@ -28,7 +28,7 @@ from decimal import Decimal
 from typing import Any
 
 from provisa.core.pg_error import END, MARK
-from provisa.federation.duckdb_pg_format import pg_format
+from provisa.federation.duckdb_pg_format import array_out, elements_out, interval_out, pg_format
 from provisa.federation.duckdb_pg_numeric import (
     en_us_key,
     numeric_binary,
@@ -797,6 +797,9 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
     ("provisa_aclitem", aclitem, ["VARCHAR", "VARCHAR", "VARCHAR", "BOOLEAN"], "VARCHAR"),
     ("provisa_typemod", typemod, ["VARCHAR"], "INTEGER"),
+    ("provisa_interval_out", interval_out, ["VARCHAR"], "VARCHAR"),
+    ("provisa_array_out", array_out, ["VARCHAR[]", "VARCHAR"], "VARCHAR"),
+    ("provisa_elements_out", elements_out, ["VARCHAR[]", "VARCHAR"], "VARCHAR[]"),
 )
 
 #: Strict UDFs that answer NULL themselves.

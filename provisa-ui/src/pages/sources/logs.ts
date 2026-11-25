@@ -9,9 +9,24 @@
 // (provisa/logs/settings.py).
 
 import { requestFailed, serverMessage } from "../../i18n/serverMessage";
+import { mappingKey, whenChoices } from "./descriptor";
 
 export const LOGS = "logs";
-export const LOGS_REGEX = "regex";
+
+// REQ-2114: the mapping keys, and the format that takes a pattern, are the descriptor's
+// (provisa/api/admin/source_types.py). The form holds each as `logs_<key>`.
+const GLOB = mappingKey(LOGS, "glob");
+const FORMAT = mappingKey(LOGS, "format");
+const PATTERN = mappingKey(LOGS, "pattern");
+const RECORD_START = mappingKey(LOGS, "record_start");
+const field = (key: string) => `logs_${key}`;
+
+/** The format that is a pattern the source states (the one its pattern is stated for). */
+export const LOGS_REGEX = ((): string => {
+  const [regex, ...others] = whenChoices(LOGS, "mappingJson", FORMAT);
+  if (!regex || others.length) throw new Error("the logs descriptor states no one pattern format");
+  return regex;
+})();
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -45,10 +60,10 @@ const trimmed = (value: string | undefined) => (value ?? "").trim();
 /** The fields still needed before the source can be saved. */
 export function logsMissing(fields: Record<string, string>): string[] {
   const missing: string[] = [];
-  if (!trimmed(fields.logs_glob)) missing.push("logs_glob");
-  if (!trimmed(fields.logs_format)) missing.push("logs_format");
-  if (fields.logs_format === LOGS_REGEX && !trimmed(fields.logs_pattern)) {
-    missing.push("logs_pattern");
+  if (!trimmed(fields[field(GLOB)])) missing.push(field(GLOB));
+  if (!trimmed(fields[field(FORMAT)])) missing.push(field(FORMAT));
+  if (fields[field(FORMAT)] === LOGS_REGEX && !trimmed(fields[field(PATTERN)])) {
+    missing.push(field(PATTERN));
   }
   return missing;
 }
@@ -56,13 +71,13 @@ export function logsMissing(fields: Record<string, string>): string[] {
 /** The source's mapping for what the fields say. */
 export function logsMapping(fields: Record<string, string>): Record<string, string> {
   const mapping: Record<string, string> = {
-    glob: trimmed(fields.logs_glob),
-    format: trimmed(fields.logs_format),
+    [GLOB]: trimmed(fields[field(GLOB)]),
+    [FORMAT]: trimmed(fields[field(FORMAT)]),
   };
-  if (mapping.format === LOGS_REGEX) {
-    mapping.pattern = trimmed(fields.logs_pattern);
-    const start = trimmed(fields.logs_record_start);
-    if (start) mapping.record_start = start;
+  if (mapping[FORMAT] === LOGS_REGEX) {
+    mapping[PATTERN] = trimmed(fields[field(PATTERN)]);
+    const start = trimmed(fields[field(RECORD_START)]);
+    if (start) mapping[RECORD_START] = start;
   }
   return mapping;
 }
@@ -70,12 +85,9 @@ export function logsMapping(fields: Record<string, string>): Record<string, stri
 /** The fields an existing source's mapping fills in. */
 export function logsFieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, string>;
-  return {
-    logs_glob: mapping.glob ?? "",
-    logs_format: mapping.format ?? "",
-    logs_pattern: mapping.pattern ?? "",
-    logs_record_start: mapping.record_start ?? "",
-  };
+  return Object.fromEntries(
+    [GLOB, FORMAT, PATTERN, RECORD_START].map((key) => [field(key), mapping[key] ?? ""]),
+  );
 }
 
 async function answered<T>(res: Response, op: string): Promise<T> {

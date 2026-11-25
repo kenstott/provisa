@@ -16,9 +16,15 @@ once per database, in ``public`` (:data:`SCHEMA`). An org's connections have onl
 on their search_path, so the type, its functions and its operators are always named with that
 schema. A control plane that cannot carry pgvector is refused when an org's schema is laid out
 (:func:`require`), naming pgvector.
+
+This module is also the single place Provisa registers custom type names with SQLAlchemy's
+PostgreSQL dialect (``ischema_names``). PostgreSQL's OID-alias types (``regproc``, ``regtype``,
+...) are not in SQLAlchemy's built-in registry, so reflecting any relation that carries them would
+emit ``SAWarning: Did not recognize type 'regproc'``. They are registered here as
+:data:`_REG_OID_TYPES` (REQ-2190).
 """
 
-# Requirements: REQ-2185
+# Requirements: REQ-2185, REQ-2190
 
 from __future__ import annotations
 
@@ -26,7 +32,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import cast, text
 from sqlalchemy.dialects.postgresql.base import ischema_names
-from sqlalchemy.types import UserDefinedType
+from sqlalchemy.dialects.postgresql.types import REGCONFIG
+from sqlalchemy.types import TypeEngine, UserDefinedType
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -35,6 +42,75 @@ if TYPE_CHECKING:
 SCHEMA = "public"
 #: The most dimensions pgvector's HNSW index takes for a ``vector``.
 MAX_INDEXED_DIMENSIONS = 2000
+
+
+# REQ-2190: PostgreSQL's OID-alias types (reg*). Each is an OID whose text form is the named
+# object's name. SQLAlchemy's PostgreSQL dialect knows only ``regclass`` and ``REGCONFIG`` by
+# default; the rest are absent from ``ischema_names``, so reflecting any relation that carries them
+# emits ``SAWarning: Did not recognize type``. Each class's ``__visit_name__`` is the uppercase
+# type name; ``str(instance)`` → ``compile()`` → that name, lowercased by ``_column_records`` to
+# the canonical IR name (e.g. ``"regproc"``). ``REGCONFIG`` is reused from SQLAlchemy's own
+# types; ``regclass`` is already in ``ischema_names``, so it is not re-registered here.
+
+
+class _RegOidAlias(TypeEngine[str]):  # allow-complexity: one base class, ten thin subclasses
+    """Base for PostgreSQL OID-alias types: an OID whose text form is a pg object name."""
+
+    cache_ok = True
+
+
+class REGPROC(_RegOidAlias):
+    __visit_name__ = "REGPROC"
+
+
+class REGPROCEDURE(_RegOidAlias):
+    __visit_name__ = "REGPROCEDURE"
+
+
+class REGOPER(_RegOidAlias):
+    __visit_name__ = "REGOPER"
+
+
+class REGOPERATOR(_RegOidAlias):
+    __visit_name__ = "REGOPERATOR"
+
+
+class REGTYPE(_RegOidAlias):
+    __visit_name__ = "REGTYPE"
+
+
+class REGROLE(_RegOidAlias):
+    __visit_name__ = "REGROLE"
+
+
+class REGNAMESPACE(_RegOidAlias):
+    __visit_name__ = "REGNAMESPACE"
+
+
+class REGDICTIONARY(_RegOidAlias):
+    __visit_name__ = "REGDICTIONARY"
+
+
+class REGCOLLATION(_RegOidAlias):
+    __visit_name__ = "REGCOLLATION"
+
+
+#: Every reg* OID-alias type registered here, keyed by its lowercase pg type name.
+_REG_OID_TYPES: dict[str, type[TypeEngine[str]]] = {
+    "regproc": REGPROC,
+    "regprocedure": REGPROCEDURE,
+    "regoper": REGOPER,
+    "regoperator": REGOPERATOR,
+    "regtype": REGTYPE,
+    "regrole": REGROLE,
+    "regnamespace": REGNAMESPACE,
+    "regconfig": REGCONFIG,
+    "regdictionary": REGDICTIONARY,
+    "regcollation": REGCOLLATION,
+}
+
+for _name, _cls in _REG_OID_TYPES.items():
+    ischema_names[_name] = _cls
 
 
 class PgvectorUnavailable(RuntimeError):

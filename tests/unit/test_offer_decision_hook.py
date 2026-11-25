@@ -544,6 +544,31 @@ async def test_a_replayed_signed_accept_after_a_decline_is_refused(control_plane
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("outcome", "reason"),
+    [("accepted", None), ("declined", "too broad")],
+)
+async def test_a_signed_decision_with_a_past_decided_at_is_accepted(
+    control_plane, external, outcome, reason
+):
+    """REQ-2180 (amended 2026-11-24): a signed decision is accepted whatever its decided_at,
+    since an external approval can arrive late and a decided request cannot be decided again."""
+    past = (_NOW - timedelta(days=30)).isoformat()
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db)
+        answer = await _post_signed(
+            _decision_body(held, outcome=outcome, reason=reason, decided_at=past)
+        )
+        assert (answer["id"], answer["status"]) == (held["id"], outcome)
+        async with db.acquire() as conn:
+            stored = await offers.get_bid(conn, held["id"])
+        assert stored is not None
+        assert stored["status"] == outcome
+
+
+@pytest.mark.asyncio
 async def test_a_signed_in_owner_still_decides_unsigned_as_themselves(
     control_plane, front_door, monkeypatch
 ):

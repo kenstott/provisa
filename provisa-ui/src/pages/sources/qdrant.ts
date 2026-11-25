@@ -13,13 +13,17 @@
 // Its one schema is "default"; a collection is a table, and a search is a table whose
 // arguments are the search's (provisa/qdrant/table.py).
 
+import { hintKey } from "./descriptor";
+
 export const QDRANT = "qdrant";
+// REQ-2114: the hint key is the descriptor's (provisa/api/admin/source_types.py).
+const PREFER_GRPC = hintKey(QDRANT, "prefer_grpc");
 export const QDRANT_SCHEMA = "default";
 
 /** The source's federation hints for what the fields say. */
 export function qdrantHints(fields: Record<string, string>): Record<string, string> {
   // Text, as every hint is: the server resolves each one as a secret reference.
-  return { prefer_grpc: fields.qdrant_grpc === "true" ? "true" : "false" };
+  return { [PREFER_GRPC]: fields.qdrant_grpc === "true" ? "true" : "false" };
 }
 
 /** The fields an existing source's hints fill in. */
@@ -27,7 +31,7 @@ export function qdrantFieldsFromHints(
   hintsJson: string | null | undefined,
 ): Record<string, string> {
   const hints = hintsJson ? (JSON.parse(hintsJson) as Record<string, unknown>) : {};
-  return { qdrant_grpc: String(hints.prefer_grpc) === "true" ? "true" : "false" };
+  return { qdrant_grpc: String(hints[PREFER_GRPC]) === "true" ? "true" : "false" };
 }
 
 /** The argument a search's query names ("@q" names "q"), or null where the text names none. */

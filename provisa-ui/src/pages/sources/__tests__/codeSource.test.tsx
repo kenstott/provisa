@@ -42,15 +42,20 @@ import { codeFieldsFromMapping, codeMappingJson, missingCodeFields } from "../co
 import { NO_CONNECTION_TYPES, SOURCE_TYPES } from "../constants";
 
 describe("the source pick list", () => {
-  it("offers Node.js, Python, Go and Rust as code sources, with no connection fields", () => {
+  it("offers Node.js, Python, Go, Rust and Spark as code sources, with no connection fields", () => {
+    // REQ-2225 (amended 2026-11-24): Spark is a built-in type in the Code group.
     expect(SOURCE_TYPES.filter((s) => s.category === "Code").map((s) => s.value)).toEqual([
       "node",
       "python",
       "go",
       "rust",
+      "spark",
     ]);
     expect(SOURCE_TYPES.find((s) => s.value === "rust")?.label).toBe("Rust");
-    expect(["node", "python", "go", "rust"].every((t) => NO_CONNECTION_TYPES.has(t))).toBe(true);
+    expect(SOURCE_TYPES.find((s) => s.value === "spark")?.label).toBe("Spark");
+    expect(["node", "python", "go", "rust", "spark"].every((t) => NO_CONNECTION_TYPES.has(t))).toBe(
+      true,
+    );
   });
 });
 

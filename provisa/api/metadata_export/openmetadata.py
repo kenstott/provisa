@@ -1756,6 +1756,8 @@ class OpenMetadataExport(MetadataExport, CatalogReader):  # REQ-1069
         # fullyQualifiedName -> server-assigned UUID, harvested from the table upserts and
         # consumed by the lineage requests that follow them.
         table_ids: dict[str, str] = {}
+        # Provisa URI (each table entity's sourceUrl) -> the table, whose columns are bound.
+        tables_by_uri = {table.semantic_uri: table for table in snapshot.tables}
         # steward id -> server-assigned UUID, harvested from the user upserts and consumed by
         # the domains they steward.
         user_ids: dict[str, str] = {}
@@ -1902,6 +1904,11 @@ class OpenMetadataExport(MetadataExport, CatalogReader):  # REQ-1069
                         body["id"],
                         body["fullyQualifiedName"],
                     )
+                    # REQ-194: each column under its own fullyQualifiedName (the table's and
+                    # its name), which is how OpenMetadata addresses a column.
+                    for column in tables_by_uri[entity.body["sourceUrl"]].columns:
+                        column_fqn = f"{body['fullyQualifiedName']}.{column.name}"
+                        result.bindings[column.semantic_uri] = (column_fqn, column_fqn)
                 if entity.kind == "user" and response.status_code < 400:
                     user_ids[entity.body["name"]] = response.json()["id"]
                 if entity.kind == "data_product" and response.status_code < 400:

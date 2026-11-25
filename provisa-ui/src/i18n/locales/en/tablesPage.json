@@ -51,7 +51,7 @@
     "firstPage": "First page",
     "lastPage": "Last page",
     "listedElsewhere": "Listed in other domains",
-    "listedElsewhereHint": "Names other domains list. Ask that domain for access to read them.",
+    "listedElsewhereHint": "Names other domains list. Suggest a product to ask that domain for a table.",
     "pageOf": "Page {{page}} / {{totalPages}}",
     "loadFailed": "Could not load registered tables: {{message}}",
     "editViewDefinitionTitle": "Edit view definition",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Withdrawn",
     "withdrawnTitle": "Out of production: no role reads it until it is put back",
-    "sourceWithdrawnTitle": "Its source {{source}} is withdrawn: no role reads it until the source is put back"
+    "sourceWithdrawnTitle": "Its source {{source}} is withdrawn: no role reads it until the source is put back",
+    "suggestProduct": "Suggest a product"
   }
 }
