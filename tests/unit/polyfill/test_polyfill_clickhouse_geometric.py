@@ -20,6 +20,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import duckdb
 import pytest
 import sqlglot
 
@@ -27,6 +28,7 @@ from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.polyfill import Refusal, GRID, geometric, trino
+from provisa.transpiler.polyfill.notation import Rewrite
 from provisa.transpiler.transpile import transpile
 
 
@@ -93,6 +95,40 @@ _PI = 3.141592653589793
 )  # fmt: skip
 def test_a_measure_answers_postgresql_on_clickhouse(runtime, sql, answer):
     assert _one(runtime, sql) == answer
+
+
+_NAN = float("nan")
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # PostgreSQL 17's answers of a shape holding NaN or an infinity (geo_ops.c's own rules).
+        (_call("area", ("'(NaN,1),(0,0)'", "box")), _NAN),
+        (_call("area", ("'<(0,0),Infinity>'", "circle")), math.inf),
+        (_call("area", ("'((0,0),(NaN,1),(1,1))'", "path")), _NAN),
+        (_call("center", ("'<(NaN,0),1>'", "circle")), "(NaN,0)"),
+        (_call("diagonal", ("'(NaN,1),(0,0)'", "box")), "[(NaN,1),(0,0)]"),
+        (_call("height", ("'(NaN,1),(0,0)'", "box")), 1.0),
+        (_call("width", ("'(NaN,1),(0,0)'", "box")), _NAN),
+        (_call("radius", ("'<(NaN,0),1>'", "circle")), 1.0),
+        (_call("isvertical", ("'{NaN,1,0}'", "line")), False),
+        (_call("isvertical", ("'(NaN,1)'", "point"), ("'(1,2)'", "point")), False),
+        (_call("ishorizontal", ("'[(0,0),(NaN,1)]'", "lseg")), False),
+        (_call("isparallel", ("'[(0,0),(NaN,1)]'", "lseg"), ("'[(0,0),(3,4)]'", "lseg")), False),
+        (_call("lseg_length", ("'[(0,0),(NaN,1)]'", "lseg")), _NAN),
+        (_call("path_length", ("'((0,0),(NaN,1),(1,1))'", "path")), _NAN),
+        (_call("pt_contained_circle", ("'(NaN,1)'", "point"), ("'<(0,0),1>'", "circle")), False),
+        (_call("pt_contained_poly", ("'(NaN,1)'", "point"), ("'((0,0),(1,0),(1,1))'", "polygon")), True),
+    ],
+)  # fmt: skip
+@pytest.mark.parametrize("engine", ["clickhouse", "duckdb"])
+def test_a_measure_of_a_shape_not_finite_answers_postgresql(runtime, sql, answer, engine):
+    if engine == "duckdb":
+        got = duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
+    else:
+        got = _one(runtime, sql)
+    assert got == answer or (isinstance(answer, float) and math.isnan(answer) and math.isnan(got))
 
 
 # --- the same steps in the same order ---------------------------------------------------------
@@ -181,11 +217,18 @@ def test_the_33_measures_are_rows_and_every_other_dialect_keeps_what_it_had():
     assert len(calls) == 33
     call = sqlglot.parse_one(_call("area", ("'(3,4),(0,0)'", "box")), read="postgres")
     node = call.selects[0].this.expression  # past pg_catalog
-    for dialect in ("duckdb", "trino", "snowflake"):
+    for dialect in ("clickhouse", "duckdb", "trino"):
+        applied = GRID.read(node, dialect)
+        assert applied is not None and isinstance(applied.form, Rewrite)
+        assert applied.form.function.__name__ == f"measured_area_1_{dialect}"
+    for dialect in ("presto", "snowflake"):
         applied = GRID.read(node, dialect)
         # The old table's form, or, where it has none, its refusal stated (polyfill.measured).
         refused = Refusal("0A000", f"area() has no form on {dialect}")
         assert applied is not None and applied.form in (trino.KEPT, refused)
     for feature in geometric.FEATURES:
-        (stated,) = feature.read.limitations["clickhouse"]
-        assert "exact" in stated.text and "0A000" in stated.text
+        for dialect in ("clickhouse", "duckdb", "trino"):
+            (stated,) = feature.read.limitations[dialect]
+            assert "exact" in stated.text and "0A000" in stated.text
+            # No edge value overflows, so the row states no raise an edge call is held to.
+            assert "raises 0A000" not in stated.text

@@ -8,17 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A shape's measures on ClickHouse (REQ-2236; REQ-2167, AN ANSWER WITHIN A STATED BOUND COMES
-BEFORE A REFUSAL).
+"""A shape's measures on ClickHouse, DuckDB and Trino (REQ-2236; REQ-2167, AN ANSWER WITHIN A
+STATED BOUND COMES BEFORE A REFUSAL).
 
-The old table answers area, center, diagonal, height, width, radius, isclosed, isopen,
-ishorizontal, isvertical, isparallel, isperp, lseg_length, path_length, pt_contained_circle and
-pt_contained_poly on DuckDB and Trino only. On ClickHouse each is the form pg_forms_geometric
-writes of its geo_ops.c row (pg_forms_geometric.MEASURES): the same floating-point steps in the
-same order, a sum added in turn, so the answer is PostgreSQL's. A shape holding NaN or an infinity,
-and an answer that is not finite, raises 0A000 naming the row. An overload of a name is told by
-the type the statement says of its argument; one it does not say keeps its refusal by name. Every
-other dialect keeps what it had."""
+area, center, diagonal, height, width, radius, isclosed, isopen, ishorizontal, isvertical,
+isparallel, isperp, lseg_length, path_length, pt_contained_circle and pt_contained_poly are each the
+form pg_forms_geometric writes of its geo_ops.c row (pg_forms_geometric.MEASURES) on each of the
+three: the same floating-point steps in the same order, a sum added in turn, so the answer is
+PostgreSQL's, NaN and infinities included. An answer that is not finite of arguments all finite, an
+overflow float8's arithmetic raises 22003 on, is refused by name with 0A000 naming the row: no edge
+value reaches it, so the row states no raise it is held to. An overload of a name is told by the
+type the statement says of its argument; one it does not say is the old table's (pg_forms), which
+answers it on DuckDB and Trino and refuses it by name on ClickHouse. Every other dialect keeps what
+it had."""
 
 # Requirements: REQ-2236, REQ-2167
 
@@ -35,9 +37,8 @@ from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitati
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 
-FAMILY = "geometric measures on ClickHouse"
+FAMILY = "geometric measures"
 
-_CLICKHOUSE = "clickhouse"
 #: Each call a statement writes of a measure -> its overloads: the types the statement must say of
 #: its arguments (None: the name's only overload, which PostgreSQL resolves a value of no said type
 #: to) and the row of each.
@@ -94,8 +95,9 @@ def _with_holes(form: str, params: tuple[str, ...]) -> str:
 
 _STATED = (
     "geo_ops.c's {} in the same floating-point steps and order (pg_forms_geometric.MEASURES): "
-    "exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 "
-    "({} does not read this value)."
+    "exact, NaN and infinities as float8 and geo_ops.c's FP macros treat them. An answer that is "
+    "not finite of arguments all finite, an overflow (PostgreSQL's 22003), is refused by name with "
+    "0A000 ({} does not read this value)."
 )
 _OVERLOADED = (
     " An argument whose type the statement does not say is refused by name: PostgreSQL resolves "
@@ -104,9 +106,17 @@ _OVERLOADED = (
 _ROWS = {row.name: row for row in pg_forms_geometric.MEASURES}
 
 
-def _written(row_name: str) -> str:
+#: The engines each measure is pg_forms_geometric's form on, by the grid's column.
+_ENGINES = {
+    "clickhouse": pg_forms_geometric.CLICKHOUSE,
+    "duckdb": pg_forms_geometric.DUCKDB,
+    "trino": pg_forms_geometric.TRINO,
+}
+
+
+def _written(row_name: str, column: str) -> str:
     row = _ROWS[row_name]
-    form, params = pg_forms_geometric.measure_form(pg_forms_geometric.CLICKHOUSE, row)
+    form, params = pg_forms_geometric.measure_form(_ENGINES[column], row)
     return _with_holes(form, params)
 
 
@@ -117,7 +127,7 @@ def _held(argument: exp.Expr) -> exp.Expr:
     return exp.Paren(this=(value.this if isinstance(value, exp.Cast) else value).copy())
 
 
-def _measured(name: str, arity: int) -> Callable[[exp.Expr, str], exp.Expr | None]:
+def _measured(name: str, arity: int, column: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
     overloads = _CALLS[(name, arity)]
     pattern = f"{name}({', '.join('$' + h for h in 'ab'[:arity])})"
 
@@ -132,11 +142,11 @@ def _measured(name: str, arity: int) -> Callable[[exp.Expr, str], exp.Expr | Non
         )
         if row is None:
             return None
-        tree = replacement(_written(row), dialect, pattern)
+        tree = replacement(_written(row, column), dialect, pattern)
         return graft(tree, {h: _held(a) for h, a in zip("ab", call[1])})
 
-    measured.__doc__ = f"{name} of a shape: geo_ops.c's row of its type, in ClickHouse's form."
-    measured.__qualname__ = measured.__name__ = f"measured_{name}_{arity}"
+    measured.__doc__ = f"{name} of a shape: geo_ops.c's row of its type, in {column}'s form."
+    measured.__qualname__ = measured.__name__ = f"measured_{name}_{arity}_{column}"
     return measured
 
 
@@ -149,7 +159,7 @@ def _features() -> tuple[Feature, ...]:
             stated += _OVERLOADED.format(name)
         forms = {
             **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-            _CLICKHOUSE: Rewrite(_measured(name, arity)),
+            **{column: Rewrite(_measured(name, arity, column)) for column in _ENGINES},
         }
         holes = ", ".join("$" + h for h in "ab"[:arity])
         features.append(
@@ -159,7 +169,7 @@ def _features() -> tuple[Feature, ...]:
                 f"PostgreSQL's {', '.join(rows)}.",
                 read=Side(
                     rules=(Rule(f"{name}({holes})", forms),),
-                    limitations={_CLICKHOUSE: (Limitation(stated),)},
+                    limitations={column: (Limitation(stated),) for column in _ENGINES},
                 ),
             )
         )

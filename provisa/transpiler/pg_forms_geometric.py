@@ -13,13 +13,20 @@ does the same floating-point steps in the same order and writes float8out's text
 
 A shape is its text on the engine (provisa.transpiler.pg_held_types). A form reads that text into
 a list of doubles, computes, and writes the answer's text, so one definition serves each
-:class:`Engine`. A box is read as high x, high y, low x, low y, whatever order its text gave. A
-shape holding NaN or an infinity, and an answer that is not finite, is refused by name: PostgreSQL's
-float8 checks and its NaN rules are not reproduced. An engine with no entry refuses by name.
+:class:`Engine`. A box is read as high x, high y, low x, low y, whatever order its text gave.
+
+A coordinate is read as float8in reads it, NaN and the infinities in any spelling, and written as
+float8out writes it. Each comparison is the one geo_ops.c makes: its FP macros and plain
+comparisons are C's, false of a NaN (:func:`_cmp`); float8_lt, float8_eq and the bounding boxes'
+float8_min and float8_max sort a NaN above every number (:func:`_float8_lt`); pg_hypot answers
+Infinity before NaN. An answer that is not finite of arguments all finite is an overflow, which
+float8's arithmetic raises and a form does not check: it is refused by name. An engine with no entry
+refuses by name.
 
 Containment of one polygon in another does not recurse as lseg_inside_poly does: each edge of the
 inner polygon is split where the outer polygon's boundary meets it, and the midpoint of each piece
-must pass point_inside.
+must pass point_inside. Where the boxes pass and a coordinate is infinite it is refused by name: an
+edge with an infinite end holds every point, which the recursion meets and the splits do not.
 
 Each geo_ops.c helper a form calls more than once is written once, inside a map over its calls, so a
 form's size is the sum of its helpers and not their product: line_interpt_line is :func:`_meet`,
