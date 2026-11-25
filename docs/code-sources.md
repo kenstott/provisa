@@ -1969,8 +1969,6 @@ These are from `provisa_sdk`; each is an alias of its standard Python equivalent
 
 A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come from TypeScript. The optional `@provisa/sdk` package wraps each function with a branded type, so your type checker can hold it to its tag's rules before Provisa reads the code.
 
-Node reads every tag Python does except `@discover`, which is read from a Python code source only.
-
 #### Tags
 
 **`@table`**
@@ -1978,6 +1976,11 @@ Node reads every tag Python does except `@discover`, which is read from a Python
 === "JSDoc"
 
     ```typescript
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
     /** Sales regions.
      * @table
      */
@@ -1991,6 +1994,12 @@ Node reads every tag Python does except `@discover`, which is read from a Python
     ```typescript
     import { table } from "@provisa/sdk";
 
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
+    /** Sales regions. */
     export const regions = table(async function regions(): Promise<Region[]> {
       return [{ code: "emea", name: "Europe, Middle East and Africa" }];
     });
@@ -2003,24 +2012,64 @@ Node reads every tag Python does except `@discover`, which is read from a Python
     ```typescript
     import type { ReadContext } from "@provisa/services";
 
-    /** @table
+    export interface ScoreInputs {
+      customer_id?: string;
+    }
+
+    export interface Score {
+      customer_id: string;
+      score: number;
+    }
+
+    /** Churn score of each customer in the batch.
+     * @table
      * @loader
      */
     export async function churnScore(
       inputs: ScoreInputs,
       context: ReadContext,
     ): Promise<Score[] | Record<string, Score[]>> {
-      ...
+      const keys = context.keys ?? { "": { customer_id: inputs.customer_id } };
+      const out: Record<string, Score[]> = {};
+      for (const [h, key] of Object.entries(keys)) {
+        out[h] = [{ customer_id: String(key.customer_id), score: 0.5 }];
+      }
+      return context.keys ? out : out[""];
     }
     ```
 
 === "SDK"
 
     ```typescript
-    import { table } from "@provisa/sdk";
+    import { table, type ReadContext } from "@provisa/sdk";
 
-    export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
+    export interface ScoreInputs {
+      customer_id?: string;
+    }
+
+    export interface Score {
+      customer_id: string;
+      score: number;
+    }
+
+    /** Churn score of each customer in the batch. */
+    export const churnScore = table(
+      async function churnScore(
+        inputs: ScoreInputs,
+        context: ReadContext,
+      ): Promise<Score[] | Record<string, Score[]>> {
+        const keys = context.keys ?? { "": { customer_id: inputs.customer_id } };
+        const out: Record<string, Score[]> = {};
+        for (const [h, key] of Object.entries(keys)) {
+          out[h] = [{ customer_id: String(key.customer_id), score: 0.5 }];
+        }
+        return context.keys ? out : out[""];
+      },
+      { loader: true },
+    );
     ```
+
+`{ loader: 50 }` is `@loader 50`.
 
 **`@stream`**
 
@@ -2029,11 +2078,20 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @stream */
-    export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
-      for await (const event of tailLog()) {
-        yield event;
-      }
+    export interface AuditInputs {
+      user?: string;
+    }
+
+    export interface AuditEvent {
+      user: string;
+      action: string;
+    }
+
+    /** Audit events as they happen.
+     * @stream
+     */
+    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {
+      yield { user: inputs.user ?? "admin", action: "login" };
     }
     ```
 
@@ -2042,7 +2100,21 @@ The function is an async generator.
     ```typescript
     import { stream } from "@provisa/sdk";
 
-    export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
+    export interface AuditInputs {
+      user?: string;
+    }
+
+    export interface AuditEvent {
+      user: string;
+      action: string;
+    }
+
+    /** Audit events as they happen. */
+    export const auditEvents = stream(async function* auditEvents(
+      inputs: AuditInputs,
+    ): AsyncGenerator<AuditEvent> {
+      yield { user: inputs.user ?? "admin", action: "login" };
+    });
     ```
 
 **`@command`**
@@ -2050,9 +2122,11 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command */
+    /** Cancels an order.
+     * @command
+     */
     export async function cancelOrder(orderId: number): Promise<boolean> {
-      return api.cancel(orderId);
+      return orderId > 0;
     }
     ```
 
@@ -2061,8 +2135,9 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
+    /** Cancels an order. */
     export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-      ...
+      return orderId > 0;
     });
     ```
 
@@ -2071,10 +2146,18 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command
+    export interface Order {
+      id: number;
+      status: string;
+    }
+
+    /** Adds orders.
+     * @command
      * @insert orders
      */
-    export async function addOrders(rows: Order[]): Promise<number> { ... }
+    export async function addOrders(rows: Order[]): Promise<number> {
+      return rows.length;
+    }
     ```
 
 === "SDK"
@@ -2082,7 +2165,18 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
-    export const addOrders = command(addOrdersFn, { insert: "orders" });
+    export interface Order {
+      id: number;
+      status: string;
+    }
+
+    /** Adds orders. */
+    export const addOrders = command(
+      async function addOrders(rows: Order[]): Promise<number> {
+        return rows.length;
+      },
+      { insert: "orders" },
+    );
     ```
 
 **`@query`**
@@ -2092,19 +2186,46 @@ The function is an async generator.
     ```typescript
     import type { TableRef } from "@provisa/services";
 
-    /** @query */
-    export async function storesInRegions(
-      stores: TableRef<Store>,
-      regions: TableRef<Region>,
-    ): Promise<Match[]> { ... }
+    export interface Store {
+      id: number;
+      region: string;
+    }
+
+    export interface Match {
+      store_id: number;
+      region: string;
+    }
+
+    /** The stores in one region.
+     * @query
+     */
+    export async function storesInRegion(stores: TableRef<Store>, region: string): Promise<Match[]> {
+      return [{ store_id: stores.columns.length, region }];
+    }
     ```
 
 === "SDK"
 
     ```typescript
-    import { query } from "@provisa/sdk";
+    import { query, type TableRef } from "@provisa/sdk";
 
-    export const storesInRegions = query(storesInRegionsFn);
+    export interface Store {
+      id: number;
+      region: string;
+    }
+
+    export interface Match {
+      store_id: number;
+      region: string;
+    }
+
+    /** The stores in one region. */
+    export const storesInRegion = query(async function storesInRegion(
+      stores: TableRef<Store>,
+      region: string,
+    ): Promise<Match[]> {
+      return [{ store_id: stores.columns.length, region }];
+    });
     ```
 
 **`@columns`**
@@ -2112,8 +2233,17 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @columns */
-    export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Splits a raw address.
+     * @columns
+     */
+    export async function parseAddress(raw: string[]): Promise<Address[]> {
+      return raw.map((r) => ({ street: r.split(",")[0], city: r.split(",")[1] ?? "" }));
+    }
     ```
 
 === "SDK"
@@ -2121,8 +2251,14 @@ The function is an async generator.
     ```typescript
     import { columns } from "@provisa/sdk";
 
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Splits a raw address. */
     export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
-      ...
+      return raw.map((r) => ({ street: r.split(",")[0], city: r.split(",")[1] ?? "" }));
     });
     ```
 
@@ -2131,6 +2267,23 @@ The function is an async generator.
 Write each line in the JSDoc comment. No SDK wrapper.
 
 ```typescript
+import type { TableRef } from "@provisa/services";
+
+export interface Store {
+  id: number;
+}
+
+export interface Region {
+  code: string;
+}
+
+export interface Changed {
+  store_id: number;
+  region_id: string;
+  removed: boolean;
+  seq: number;
+}
+
 /** Store-region matches changed since `since`.
  * @change table=store_regions
  * @change key=store_id,region_id
@@ -2141,16 +2294,22 @@ export async function storeRegionChanges(
   stores: TableRef<Store>,
   regions: TableRef<Region>,
   since?: number,
-): Promise<Changed[]> { ... }
+): Promise<Changed[]> {
+  return [];
+}
 ```
 
 **`@on-start`**
 
+The function takes nothing, or the setup values: the values its `@requires` tags name.
+
 === "JSDoc"
 
     ```typescript
-    /** @on-start */
-    export async function setup(values: Record<string, string>): Promise<void> { ... }
+    /** Connects.
+     * @on-start
+     */
+    export async function setup(values: Record<string, string>): Promise<void> {}
     ```
 
 === "SDK"
@@ -2158,7 +2317,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    export const setup = onStart(async function setup(values: Record<string, string>) { ... });
+    /** Connects. */
+    export const setup = onStart(async function setup(values: Record<string, string>): Promise<void> {});
     ```
 
 **`@on-stop`**
@@ -2166,8 +2326,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-stop */
-    export async function teardown(): Promise<void> { ... }
+    /** Disconnects.
+     * @on-stop
+     */
+    export async function teardown(): Promise<void> {}
     ```
 
 === "SDK"
@@ -2175,7 +2337,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStop } from "@provisa/sdk";
 
-    export const teardown = onStop(async function teardown() { ... });
+    /** Disconnects. */
+    export const teardown = onStop(async function teardown(): Promise<void> {});
     ```
 
 **`@health`**
@@ -2194,7 +2357,9 @@ export async function storeRegionChanges(
     ```typescript
     import { health } from "@provisa/sdk";
 
-    export const status = health(function status(): string { return "ok"; });
+    export const status = health(function status(): string {
+      return "ok";
+    });
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
@@ -2202,11 +2367,23 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @table
+    export interface Inputs {
+      account: string;
+    }
+
+    export interface Row {
+      account: string;
+      balance: number;
+    }
+
+    /** Balances.
+     * @table
      * @requires REGION
      * @requires API_KEY:secret
      */
-    export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
+    export async function balances(inputs: Inputs): Promise<Row[]> {
+      return [{ account: inputs.account, balance: 0 }];
+    }
     ```
 
 === "SDK"
@@ -2214,8 +2391,27 @@ export async function storeRegionChanges(
     ```typescript
     import { table } from "@provisa/sdk";
 
-    export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
+    export interface Inputs {
+      account: string;
+    }
+
+    export interface Row {
+      account: string;
+      balance: number;
+    }
+
+    /** Balances. */
+    export const balances = table(
+      async function balances(inputs: Inputs): Promise<Row[]> {
+        return [{ account: inputs.account, balance: 0 }];
+      },
+      { requires: ["REGION", "API_KEY:secret"] },
+    );
     ```
+
+**`@discover`**
+
+Node reads every tag Python does except `@discover`, which is read from a Python code source only.
 
 #### Parameter types
 
