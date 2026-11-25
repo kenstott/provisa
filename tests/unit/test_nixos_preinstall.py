@@ -346,3 +346,31 @@ def test_first_launch_installs_the_wheels_it_carries_online_or_not():
     assert '--no-index --find-links "$wheels" "provisa[embedded]"' in body
     installs = (_ROOT / "packaging/nixos/ci/appimage-installs.sh").read_text()
     assert "PROVISA_INSTALL_SOURCE" not in installs
+
+
+def test_first_launch_native_venv_checks_use_isolated_mode():
+    """The AppImage's first-launch.sh verifies provisa._encoders with python -I so the check
+    imports from the venv's site-packages, not the working directory.
+
+    vm-run changes to ~/provisa before every command; without -I, python -c imports the
+    checkout's provisa/ (which carries no compiled _encoders.so), masking a successful install
+    and causing a spurious failure.  Commit dc53c8fd1a fixed the same bug in the macOS and
+    Windows installers; this test ensures the Linux AppImage has the same guard.
+
+    # REQ-2194: the Rust encoders ship inside the provisa wheel; first-launch must verify the
+    # installed wheel carries them, not the source checkout.
+    """
+    body = (_ROOT / "packaging/linux/first-launch.sh").read_text()
+    # Isolate just the setup_native_venv function body.
+    start = body.index("setup_native_venv() {")
+    end = body.index("\n}\n", start)
+    fn = body[start:end]
+    # Every python invocation that imports provisa or provisa._encoders must use -I.
+    # Match lines that call python3 -c with an import of provisa (but not sysconfig/pure stdlib).
+    for line in fn.splitlines():
+        line = line.strip()
+        if "python3" in line and "-c" in line and "import provisa" in line:
+            assert " -I " in line or line.startswith("python3 -I") or '"-I"' in line, (
+                f"python3 -c without -I will import provisa from cwd (the checkout) "
+                f"instead of the venv; add -I: {line!r}"
+            )

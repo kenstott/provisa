@@ -267,6 +267,11 @@ services:
     # Pin a fixed, project-neutral image tag so every compose project (dev
     # `provisa`, isolated `provisa-e2e`, worktrees) reuses the one built image
     # instead of rebuilding a per-project `<project>-zaychik` tag.
+    # pull_policy: build — zaychik:latest is local-only; Docker Compose 5.4.0
+    # attempts to pull every image: tag, treating a pull failure as fatal even
+    # when build: is set.  `build` skips the pull entirely (run 45618797367).
+    # REQ-144: zaychik must start cleanly.
+    pull_policy: build
     image: zaychik:latest
     ports:
       - "${PROVISA_STORE_BIND_IP:?the address the stores publish on: 127.0.0.1 alone, or the node private address its peers dial}:${ZAYCHIK_PORT:-8480}:8480"

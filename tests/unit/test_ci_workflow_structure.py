@@ -3030,3 +3030,26 @@ def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
     ), props
     # No mirror or alternate repository: artifacts come only from Maven Central.
     assert "mirror" not in text.lower() and "settings.xml" not in text, text
+
+
+def test_zaychik_compose_service_has_pull_policy_build():
+    """Runs 45618797367 (installer ci host): Docker Compose 5.4.0 attempts to pull every service
+    whose `image:` tag is set, even when `build:` is also present, and treats a pull failure as
+    fatal before attempting to build.  zaychik:latest exists only locally (built from ./zaychik)
+    and is never pushed to any registry, so the pull always fails with "access denied" on a fresh
+    runner.  The failure exits compose non-zero, which the `provisa start` command reports as a
+    service startup failure.
+
+    `pull_policy: build` tells Compose to skip the pull and go straight to the local build,
+    eliminating the failure.
+
+    # REQ-144: Zaychik Arrow Flight SQL proxy; the compose service must start cleanly.
+    """
+    compose = yaml.safe_load((REPO / "docker-compose.core.yml").read_text())
+    zaychik = compose["services"]["zaychik"]
+    assert "build" in zaychik, "zaychik must have a build: directive"
+    assert zaychik.get("pull_policy") == "build", (
+        "zaychik:latest is a local-only image; without pull_policy: build, "
+        "Docker Compose 5.4.0 attempts to pull it from Docker Hub and fails "
+        "with 'access denied' before falling back to build"
+    )
