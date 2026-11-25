@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on SQLite. A f
 
 When SQLite is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 401, of which 251 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 403, of which 253 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-279 of the grid's 633 features are native on SQLite and left out.
+279 of the grid's 635 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -405,9 +405,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

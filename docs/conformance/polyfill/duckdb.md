@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 405, of which 321 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 323 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-270 of the grid's 633 features are native on DuckDB and left out.
+270 of the grid's 635 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -399,9 +399,15 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

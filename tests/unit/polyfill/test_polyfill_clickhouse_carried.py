@@ -35,16 +35,6 @@ from provisa.transpiler.polyfill import ported
 from provisa.transpiler.transpile import transpile
 
 ANSWERED = [
-    ("SELECT pg_catalog.dexp(709.0::double precision) AS v", 8.218407461554972e307),
-    ("SELECT pg_catalog.dexp(1.0::double precision) AS v", 2.718281828459045),
-    ("SELECT pg_catalog.dexp(0.123456789::double precision) AS v", 1.1314011145122336),
-    ("SELECT pg_catalog.dexp(50.5::double precision) AS v", 8.548134287298057e21),
-    ("SELECT pg_catalog.dexp('Infinity'::double precision) AS v", float("inf")),
-    ("SELECT pg_catalog.dexp('NaN'::double precision) AS v", float("nan")),
-    ("SELECT pg_catalog.dlog1(1e-300::double precision) AS v", -690.7755278982137),
-    ("SELECT pg_catalog.dlog1(2.718281828459045::double precision) AS v", 1.0),
-    ("SELECT pg_catalog.dlog1('Infinity'::double precision) AS v", float("inf")),
-    ("SELECT pg_catalog.dlog1(123.456::double precision) AS v", 4.815884817283264),
     ("SELECT pg_catalog.text('<a>x &amp; y</a>'::xml) AS v", "<a>x &amp; y</a>"),
     (
         "SELECT pg_catalog.text('<?xml version=\"1.0\"?><r/>'::xml) AS v",
@@ -75,17 +65,6 @@ ANSWERED = [
     ("SELECT pg_catalog.tidsmaller('(2,1)'::tid, '(10,0)'::tid) AS v", "(2,1)"),
     ("SELECT pg_catalog.tidsmaller('(2,10)'::tid, '(2,9)'::tid) AS v", "(2,9)"),
     ("SELECT pg_catalog.tidsmaller('(3,3)'::tid, '(3,3)'::tid) AS v", "(3,3)"),
-    ("SELECT pg_catalog.dexp(708.9::double precision) AS v", 7.436322587880697e307),
-    ("SELECT pg_catalog.dexp(-708.5::double precision) AS v", 2.006132305331306e-308),
-    ("SELECT pg_catalog.dexp(1e-20::double precision) AS v", 1.0),
-    ("SELECT pg_catalog.dexp('-Infinity'::double precision) AS v", 0.0),
-    ("SELECT pg_catalog.dexp(3.14159::double precision) AS v", 23.14063122695496),
-    ("SELECT pg_catalog.dexp(-0.5::double precision) AS v", 0.6065306597126334),
-    ("SELECT pg_catalog.dlog1('NaN'::double precision) AS v", float("nan")),
-    ("SELECT pg_catalog.dlog1(1.0::double precision) AS v", 0.0),
-    ("SELECT pg_catalog.dlog1(5e-324::double precision) AS v", -744.4400719213812),
-    ("SELECT pg_catalog.dlog1(1.7976931348623157e308::double precision) AS v", 709.782712893384),
-    ("SELECT pg_catalog.dlog1(0.999999::double precision) AS v", -1.000000500029089e-06),
     ("SELECT pg_catalog.text('<a b=\"1\"/>'::xml) AS v", '<a b="1"/>'),
     ("SELECT pg_catalog.text('<a>日本</a>'::xml) AS v", "<a>日本</a>"),
     ("SELECT pg_catalog.text(NULL::xml) AS v", None),
@@ -159,11 +138,6 @@ ANSWERED = [
     ("SELECT pg_catalog.int8dec_any(0::bigint, NULL::integer) AS v", None),
 ]
 RAISED = [
-    ("SELECT pg_catalog.dexp(710.0::double precision) AS v", "22003"),
-    ("SELECT pg_catalog.dexp(-746.0::double precision) AS v", "22003"),
-    ("SELECT pg_catalog.dlog1(-1.0::double precision) AS v", "2201E"),
-    ("SELECT pg_catalog.dlog1(0.0::double precision) AS v", "2201E"),
-    ("SELECT pg_catalog.dexp(-1000.0::double precision) AS v", "22003"),
     ("SELECT pg_catalog.int8inc_any(9223372036854775807::bigint, 1::integer) AS v", "22003"),
     ("SELECT pg_catalog.int8dec_any((-9223372036854775808)::bigint, 1::integer) AS v", "22003"),
     ("SELECT pg_catalog.int8inc_any(1::bigint, 2147483648::integer) AS v", "22003"),
@@ -248,7 +222,8 @@ def test_a_call_inside_another_is_carried(runtime):
     [
         # btrim and regexp_like of flags are ClickHouse's own rows now, not DuckDB's carried form
         # (polyfill.texts, polyfill.regex; tests/unit/polyfill/test_polyfill_clickhouse_texts.py),
-        # as exp of a double is (polyfill.floats; test_polyfill_clickhouse_exponentials.py).
+        # as exp of a double is (polyfill.floats; test_polyfill_clickhouse_exponentials.py), and
+        # its pg_proc names dexp and dlog1 (test_polyfill_clickhouse_libm.py).
         "SELECT pg_catalog.oidvectorlt('10'::oidvector, '9'::oidvector) AS v",
         'SELECT pg_catalog."exp"(710.0::numeric) AS v',
     ],

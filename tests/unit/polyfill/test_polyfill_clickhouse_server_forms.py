@@ -228,14 +228,14 @@ def test_a_row_states_no_raise_of_what_is_no_bound(function, overload):
 
 
 @pytest.mark.parametrize("function", ["exp", "ln"])
-def test_the_server_s_approximation_is_a_stated_difference(function):
+def test_the_server_s_answer_is_no_stated_difference(function):
+    """REQ-2236 (amended c7fedd61de): no answer is approximated. The server's own exp and log are
+    approximations, so the row's form is glibc's (transpiler.clickhouse_libm), and it states no
+    difference: its only limitations are the measured refusals of another overload (numeric's)."""
     applied = GRID.read(polyfill_check.call_of(function, "double precision"), "clickhouse")
     assert applied is not None
-    # The row's measured refusals (another overload's, such as numeric's) are limitations beside
-    # it; the difference is the one limitation that refuses nothing.
     limitations = applied.feature.read.limitations["clickhouse"]
-    (stated,) = [lim for lim in limitations if lim.refusal is None]
-    assert "24.3" in stated.text
+    assert [lim.text for lim in limitations if lim.refusal is None] == []
 
 
 #: NULL calls whose ClickHouse form is an untyped NULL column, with the result type oid PostgreSQL

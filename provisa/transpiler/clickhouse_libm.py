@@ -155,9 +155,9 @@ def _top12(p: _Program, x: str) -> str:
 def planned(sql: str, dialect: str) -> str:
     """A ClickHouse statement holding one of these forms, as ClickHouse plans it in a tenth of a
     second: by its old analyzer. The new one (24.3's default) takes seconds over these nested
-    lambdas (log's 4 s on chDB 26, more on a constant), the old one 0.07 s, with the same answers,
-    as pg_forms_geometric.planned plans a shape's form. A statement that already says its settings
-    is left as it is."""
+    lambdas (35 s for log of a constant on chDB 26), the old one under 0.1 s, with the same
+    answers, as pg_forms_geometric.planned plans a shape's form. A statement that already says its
+    settings is left as it is."""
     if dialect != "clickhouse" or not _NAMED.search(sql) or "SETTINGS" in sql.upper():
         return sql
     return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
@@ -358,7 +358,15 @@ def tanh(argument: str, answer: Answer) -> str:
     let, x = p.let, p.x
     hx = _high(p, x)
     magnitude = let(f"abs({x})")
-    t = _expm1(p, let(f"if({hx} >= 1072693248, 2.0 * {magnitude}, -2.0 * {magnitude})"))
+    # ClickHouse computes every branch: past 22, and of NaN, expm1 is not read, and is given 0,
+    # at which none of its steps fails (2^k of an infinite k would)
+    t = _expm1(
+        p,
+        let(
+            f"multiIf(isNaN({x}) OR {hx} >= 1077280768, 0.0, "
+            f"{hx} >= 1072693248, 2.0 * {magnitude}, -2.0 * {magnitude})"
+        ),
+    )
     z = let(f"if({hx} >= 1072693248, 1.0 - 2.0 / ({t} + 2.0), -{t} / ({t} + 2.0))")
     signed = let(f"if({x} < 0, -{z}, {z})")
     value = let(

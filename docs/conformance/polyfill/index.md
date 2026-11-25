@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-633 of the grid's 633 features are native on PostgreSQL and left out.
+635 of the grid's 635 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-270 of the grid's 633 features are native on DuckDB and left out.
+270 of the grid's 635 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -402,9 +402,15 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1035,7 +1041,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-177 of the grid's 633 features are native on Trino and left out.
+177 of the grid's 635 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -1521,9 +1527,15 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2176,7 +2188,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-177 of the grid's 633 features are native on Presto and left out.
+177 of the grid's 635 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -2662,9 +2674,15 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3317,7 +3335,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Athena](athena.md)
 
-177 of the grid's 633 features are native on Athena and left out.
+177 of the grid's 635 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -3803,9 +3821,15 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4458,7 +4482,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-87 of the grid's 633 features are native on ClickHouse and left out.
+87 of the grid's 635 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td><ul><li>Of an array the statement writes with nested braces only: a column&#x27;s array of arrays keeps each call&#x27;s own form. array_larger and array_smaller of arrays of different dimensions are refused by name: either is the answer, and ClickHouse&#x27;s CASE answers one type. <code>0A000</code> array_larger() of arrays of different dimensions has no form on clickhouse</li><li>array_smaller of arrays of different dimensions is refused by name. <code>0A000</code> array_smaller() of arrays of different dimensions has no form on clickhouse</li><li>array_cat of an array of more than one dimension is refused by name where another call reads its answer: that call would read an array of arrays as an array of one dimension. <code>0A000</code> array_cat() of an array of more than one dimension read by another call has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -4913,13 +4937,19 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no num
 function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> log() has no form on clickhouse</li><li>Refused for a call of (numeric). <code>0A000</code> log10() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>On a ClickHouse server of 24.3, its exp is its own approximation, not libm&#x27;s, and can differ from PostgreSQL&#x27;s answer from the 12th significant digit; chDB answers PostgreSQL&#x27;s digits.</li><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_dexp: dexp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>On a ClickHouse server of 24.3, its log is its own approximation, not libm&#x27;s, and can differ from PostgreSQL&#x27;s answer from the 12th significant digit; chDB answers PostgreSQL&#x27;s digits.</li><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_dlog1: dlog1($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_tanh: tanh($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>The ratio of ClickHouse&#x27;s sinh and cosh, within 2 units in the last place of libm&#x27;s tanh (ClickHouse&#x27;s own tanh answers 0 for a value below 1e-90); 1 in magnitude past 22, where tanh rounds to 1.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_tanh: tanh($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric), (numeric, numeric). <code>0A000</code> power() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -5686,12 +5716,12 @@ function provisa.transpiler.polyfill.bytea.substr_of_bytes: substr of a bytea he
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
 =&gt;
 function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its format is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. base64 breaks its text into lines of 76 characters, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: dexp(double precision), dlog1(double precision), text(xml), int8inc_any(bigint, &quot;any&quot;), int8dec_any(bigint, &quot;any&quot;), max(money), min(money), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).</td><td><pre><code>function provisa.transpiler.polyfill.ported._carried_by_the_grid: ``carried`` as the grid&#x27;s ClickHouse form, which reads a call apart from its statement.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: text(xml), int8inc_any(bigint, &quot;any&quot;), int8dec_any(bigint, &quot;any&quot;), max(money), min(money), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).</td><td><pre><code>function provisa.transpiler.polyfill.ported._carried_by_the_grid: ``carried`` as the grid&#x27;s ClickHouse form, which reads a call apart from its statement.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-279 of the grid's 633 features are native on Snowflake and left out.
+279 of the grid's 635 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6086,9 +6116,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6712,7 +6748,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-279 of the grid's 633 features are native on Databricks and left out.
+279 of the grid's 635 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7107,9 +7143,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7733,7 +7775,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-279 of the grid's 633 features are native on BigQuery and left out.
+279 of the grid's 635 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8128,9 +8170,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8754,7 +8802,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-279 of the grid's 633 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+279 of the grid's 635 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9149,9 +9197,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9775,7 +9829,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-279 of the grid's 633 features are native on Redshift and left out.
+279 of the grid's 635 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10170,9 +10224,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10796,7 +10856,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-279 of the grid's 633 features are native on MySQL and left out.
+279 of the grid's 635 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11191,9 +11251,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -11817,7 +11883,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-279 of the grid's 633 features are native on SingleStore and left out.
+279 of the grid's 635 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12212,9 +12278,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -12838,7 +12910,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-279 of the grid's 633 features are native on SQLite and left out.
+279 of the grid's 635 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13233,9 +13305,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -13859,7 +13937,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-279 of the grid's 633 features are native on Oracle and left out.
+279 of the grid's 635 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14254,9 +14332,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -14880,7 +14964,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-279 of the grid's 633 features are native on Hive and left out.
+279 of the grid's 635 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15275,9 +15359,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -15901,7 +15991,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-279 of the grid's 633 features are native on Exasol and left out.
+279 of the grid's 635 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16296,9 +16386,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -16922,7 +17018,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-279 of the grid's 633 features are native on Druid and left out.
+279 of the grid's 635 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -17317,9 +17413,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -17943,7 +18045,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Db2](db2.md)
 
-239 of the grid's 633 features are native on Db2 and left out.
+239 of the grid's 635 features are native on Db2 and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -18356,9 +18458,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (double precision), (numeric). <code>0A000</code> exp has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on db2</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (double precision), (numeric). <code>0A000</code> ln has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on db2</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: tanh($x). <code>0A000</code> tanh has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
@@ -19024,7 +19132,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SAP HANA](saphana.md)
 
-226 of the grid's 633 features are native on SAP HANA and left out.
+226 of the grid's 635 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -19437,9 +19545,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (double precision), (numeric). <code>0A000</code> exp has no form on SAP HANA that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dexp</strong><br>exp: e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>dexp($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (double precision), (numeric). <code>0A000</code> ln has no form on SAP HANA that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>dlog1</strong><br>ln: the natural logarithm of a value above zero.</td><td><pre><code>dlog1($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: tanh($x). <code>0A000</code> tanh has no form on SAP HANA that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
