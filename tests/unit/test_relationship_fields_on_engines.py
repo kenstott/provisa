@@ -194,3 +194,62 @@ def test_trino_reads_the_same_grouped_form(meta, query):  # noqa: F811
     _root, sql = _semantic(meta, query)
     trino = transpile_to_trino(sql, generated=True)
     assert "_grel_" not in trino and "_read" in trino, trino
+
+
+def _capped(sql: str, limit: int) -> str:
+    """``sql`` with a role's list cap (REQ-005) on each list it nests, as governance applies it."""
+    from provisa.compiler.list_cap import cap_lists
+
+    from tests.unit.test_nested_field_arguments import _COLUMNS
+
+    def columns_of(table: exp.Expr) -> list[str] | None:  # pyright: ignore[reportPrivateImportUsage]
+        # Governance knows a registered table's columns (stage2); here the meta model's.
+        if not isinstance(table, exp.Table):
+            return None
+        return [c for c, _type in _COLUMNS[f"_{table.name}"]]
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert cap_lists(tree, limit, columns_of)
+    return tree.sql(dialect="postgres")
+
+
+@pytest.mark.parametrize("query", [_TO_MANY, _NESTED], ids=["to-many", "nested"])
+def test_a_roles_list_cap_holds_on_every_engine(meta, pg, clickhouse, query):  # noqa: F811
+    """A grouped read's list, numbered per key under the cap (list_cap: FILTER), reads alike:
+    ledger's three edges and customer's three are held to two. Which two is no engine's promise:
+    the lengths are compared."""
+    root, sql = _semantic(meta, query)
+    capped = _capped(sql, 2)
+    duck = meta[2].execute(transpile_to_duckdb(capped, generated=True)).fetchall()
+    on_pg = pg.execute(
+        rewrite_json_object_to_build_object(transpile(capped, "postgres", generated=True))
+    ).fetchall()
+    on_ch = [
+        tuple(r)
+        for r in clickhouse.run_sync(transpile(capped, "clickhouse", generated=True)).iter_rows()
+    ]
+
+    def lengths(rows) -> list:
+        def walk(value):
+            if isinstance(value, dict):
+                return {k: walk(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [len(value), sorted((walk(v) for v in value), key=repr)]
+            return None
+
+        return [walk(r) for r in _answered(root, rows)]
+
+    assert lengths(on_ch) == lengths(duck) == lengths(on_pg)
+    assert all(len(v) <= 2 for r in _answered(root, on_ch) for v in _lists_in(r)), _answered(
+        root, on_ch
+    )
+
+
+def _lists_in(value):
+    if isinstance(value, dict):
+        for v in value.values():
+            yield from _lists_in(v)
+    elif isinstance(value, list):
+        yield value
+        for v in value:
+            yield from _lists_in(v)

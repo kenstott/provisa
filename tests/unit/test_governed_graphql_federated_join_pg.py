@@ -11,13 +11,12 @@
 """The perf bench's federated_join over GraphQL, governed, on the pg engine: the order range
 reaches the far tables' reads (REQ-039, REQ-1880).
 
-The GraphQL compile reads each nested relationship in a correlated subquery. On PostgreSQL a
-correlated subquery runs once per outer row, so the literal propagation copies the outer range
-into it and reads a one-row relationship once, as a LEFT JOIN (``read_once``). Before the
-propagation read through governed relations, the governed statement got neither: the far tables
-were read per order with no range, and federated_join over GraphQL on the pg engine went from
-238 to 8355 ms (J670 mini bench, both rounds). The engine statement is pinned here: main's, with
-each table read through its governed relation."""
+The GraphQL compile reads each nested relationship as a grouped read of its table joined back by
+key (#362). The literal propagation copies the outer range onto each read's own rows, so the far
+table is read for those orders alone. Before the propagation read through governed relations, the
+governed statement got none: the far tables were read with no range, and federated_join over
+GraphQL on the pg engine went from 238 to 8355 ms (J670 mini bench, both rounds). The engine
+statement is pinned here, each table read through its governed relation."""
 
 # Requirements: REQ-039, REQ-1880
 
@@ -124,34 +123,38 @@ def _engine_sql() -> str:
             for n in ("orders", "order_events", "order_docs")
         },
         allow_params=True,
-        read_once=True,
     )
 
 
 def test_the_pg_engine_statement_is_mains_read_through_governed_relations():
     assert _engine_sql() == (
         'SELECT "t0"."order_id", "t0"."amount", '
-        "COALESCE((SELECT JSON_AGG(_t) FROM ("
-        'SELECT JSON_OBJECT(\'eventType\': "t1"."event_type") AS _t FROM ('
-        'SELECT "t1"."order_id" AS "order_id", "t1"."event_type" AS "event_type" '
-        'FROM "ch"."perf_bench"."order_events" AS "t1") AS "t1" '
-        'WHERE ("t1"."order_id" = "t0"."order_id" AND "t1"."order_id" >= $1) '
-        'AND "t1"."order_id" <= $2 LIMIT 100) AS _sub), CAST(\'[]\' AS JSON)) AS "orderEvents", '
-        '"_read_0"."_value" AS "orderDoc" '
+        'COALESCE("t1_read"."_value", CAST(\'[]\' AS JSON)) AS "orderEvents", '
+        '"t2_read"."_value" AS "orderDoc" '
         'FROM (SELECT "t0"."order_id" AS "order_id", "t0"."amount" AS "amount" '
         'FROM "pg"."perf_bench"."orders" AS "t0") AS "t0" '
-        'LEFT JOIN (SELECT DISTINCT ON ("t2"."order_id") "t2"."order_id" AS "_key", '
-        'JSON_OBJECT(\'status\': "t2"."status") AS "_value" FROM ('
-        'SELECT "t2"."order_id" AS "order_id", "t2"."status" AS "status" '
+        'LEFT JOIN (SELECT "t1"."order_id" AS "_key0", '
+        'JSON_AGG(JSON_OBJECT(\'eventType\': "t1"."event_type")) '
+        'FILTER(WHERE "t1".__list_rn <= 100) AS "_value" '
+        'FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY "t1"."order_id") AS __list_rn '
+        'FROM (SELECT "t1"."event_id" AS "event_id", "t1"."order_id" AS "order_id", '
+        '"t1"."event_type" AS "event_type" '
+        'FROM "ch"."perf_bench"."order_events" AS "t1") AS "t1" '
+        'WHERE "t1"."order_id" >= $1 AND "t1"."order_id" <= $2) AS t1 '
+        'GROUP BY "t1"."order_id") AS "t1_read" ON "t1_read"."_key0" = "t0"."order_id" '
+        'LEFT JOIN (SELECT "_key0", "_value" FROM (SELECT "t2"."order_id" AS "_key0", '
+        'JSON_OBJECT(\'status\': "t2"."status") AS "_value", '
+        'ROW_NUMBER() OVER (PARTITION BY "t2"."order_id") AS "_row" '
+        'FROM (SELECT "t2"."order_id" AS "order_id", "t2"."status" AS "status" '
         'FROM "mongo"."perf_bench"."order_docs" AS "t2") AS "t2" '
-        'WHERE "t2"."order_id" >= $1 AND "t2"."order_id" <= $2) AS "_read_0" '
-        'ON "_read_0"."_key" = "t0"."order_id" '
+        'WHERE "t2"."order_id" >= $1 AND "t2"."order_id" <= $2) AS "_rows" '
+        'WHERE "_row" = 1) AS "t2_read" ON "t2_read"."_key0" = "t0"."order_id" '
         'WHERE "t0"."order_id" >= $1 AND "t0"."order_id" <= $2 LIMIT 100'
     )
 
 
 def test_the_order_range_reaches_each_far_table():
     sql = _engine_sql()
-    assert '"t1"."order_id" >= $1' in sql  # the events, in the correlated subquery
-    assert '"t2"."order_id" >= $1' in sql  # the document, read once
-    assert 'LEFT JOIN (SELECT DISTINCT ON ("t2"."order_id")' in sql
+    # Each relationship is a grouped read joined by key (#362), its rows bounded by the range.
+    assert 'AS "t1" WHERE "t1"."order_id" >= $1' in sql  # the events
+    assert 'AS "t2" WHERE "t2"."order_id" >= $1' in sql  # the document

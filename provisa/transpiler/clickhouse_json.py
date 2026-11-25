@@ -127,12 +127,45 @@ def _aggregated(node: exp.Expr) -> exp.Expr | None:
     return None
 
 
-def _list(value: exp.Expr, built: set[int]) -> exp.Expr:
-    members = exp.Anonymous(this="groupArray", expressions=[_member(value, built)])
+def _list(value: exp.Expr, built: set[int], kept: exp.Expr | None = None) -> exp.Expr:
+    """json_agg(value), or json_agg(value) FILTER (WHERE kept): the list cap's (REQ-005)."""
+    member = _member(value, built)
+    if kept is None:
+        members = exp.Anonymous(this="groupArray", expressions=[member])
+    else:
+        members = exp.Anonymous(this="groupArrayIf", expressions=[member, kept.copy()])
     return _form(
         "if(empty(_m), NULL, concat('[', arrayStringConcat(_m, ','), ']'))",
         m=members,
     )
+
+
+def _is_json_list_default(node: exp.Expr) -> bool:
+    """CAST('[]' AS JSON): a list field's empty default (sql_selection.EMPTY_JSON_LIST)."""
+    return (
+        isinstance(node, exp.Cast)
+        and node.to.is_type(exp.DataType.Type.JSON)
+        and isinstance(node.this, exp.Literal)
+        and node.this.this == "[]"
+    )
+
+
+def _written(node: exp.Expr, built: set[int]) -> exp.Expr | None:
+    """``node`` in ClickHouse's JSON text, or None for a node this pass does not write. An
+    aggregate under a FILTER is written with its filter, not alone."""
+    if _is_json_list_default(node):
+        return exp.Literal.string("[]")
+    if isinstance(node, exp.JSONObject):
+        return _object(node, built)
+    if isinstance(node, exp.Filter):
+        collected = _aggregated(node.this)
+        if collected is None:
+            return None
+        return _list(collected, built, node.expression.this)
+    collected = _aggregated(node)
+    if collected is None or isinstance(node.parent, exp.Filter):
+        return None
+    return _list(collected, built)
 
 
 def relationship_json(tree: exp.Expr) -> exp.Expr:
@@ -140,35 +173,20 @@ def relationship_json(tree: exp.Expr) -> exp.Expr:
     (CAST('[]' AS JSON)), as ClickHouse's JSON text. Inner first, so a value already written is
     told by ``built`` and embedded as the JSON it is."""
     built: set[int] = set()
-    nodes = [
-        n
-        for n in tree.find_all(exp.JSONObject, exp.JSONArrayAgg, exp.Anonymous, exp.Cast)
-        if isinstance(n, (exp.JSONObject, exp.Cast)) or _aggregated(n) is not None
-    ]
-    if not nodes:
-        return tree
+    nodes = list(
+        tree.find_all(exp.JSONObject, exp.JSONArrayAgg, exp.Anonymous, exp.Cast, exp.Filter)
+    )
     nodes.sort(key=lambda n: -n.depth)
     for node in nodes:
-        if isinstance(node, exp.Cast):
-            if not (
-                node.to.is_type(exp.DataType.Type.JSON)
-                and isinstance(node.this, exp.Literal)
-                and node.this.this == "[]"
-            ):
-                continue
-            written: exp.Expr = exp.Literal.string("[]")
-        elif isinstance(node, exp.JSONObject):
-            written = _object(node, built)
-        else:
-            collected = _aggregated(node)
-            assert collected is not None
-            written = _list(collected, built)
+        written = _written(node, built)
+        if written is None:
+            continue
         built.add(id(written))
         if node is tree:
             tree = written
         else:
             node.replace(written)
-    if isinstance(tree, exp.Select):
+    if built and isinstance(tree, exp.Select):
         settings = list(tree.args.get("settings") or [])
         settings.append(exp.EQ(this=exp.column(_DECIMAL_SCALE), expression=exp.Literal.number(1)))
         tree.set("settings", settings)
