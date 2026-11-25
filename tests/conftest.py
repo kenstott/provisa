@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: be5aefb1-047c-45bf-bbd3-3d7280b5f906
+# Canary: 0af7033b-7200-40ea-ab3a-7740fad6b1f3
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -32,6 +32,7 @@ from tests.itest_stack import (
     reap_orphaned_server_processes,
     release_stack_slot,
 )
+from tests.compose_pull_retry import pull_images_with_retry
 from tests.otlp_receiver import start_discarding_receiver
 from tests.port_lease import lease_port, lease_ports
 
@@ -766,6 +767,21 @@ class _DockerServiceManager:
             check=False,
         )
 
+        # Pull only the images this run will start, retrying on truncated downloads
+        # (unexpected EOF, short read).  compose up does not re-pull a layer it thinks
+        # it already has, so a corrupt layer from a cut-off pull would fail the
+        # start-up silently; pulling first catches and recovers from registry hiccups
+        # before up runs.  Pulling the whole file would pull druid, cassandra, splunk
+        # and other heavy images the lane never starts, wasting bandwidth and runner
+        # time (REQ-1742).
+        up_services = [svc for batch in batches for svc in batch]
+        pull_images_with_retry(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS],
+            cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
+            services=_pullable_services(up_services),
+        )
+
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
         # exported at import time, its own network — the dev stack is never touched. One
         # `up --wait` per batch, so each set is healthy before the next one starts booting
@@ -887,6 +903,25 @@ def _dump_service_diagnostics(services: list[str]) -> None:
             check=False,
         )
         print(f"[conftest] {service} logs:\n{logs.stdout}{logs.stderr}")
+
+
+def _pullable_services(services: list[str]) -> list[str]:
+    """Filter ``services`` to those that can be pulled (no ``build:`` in the compose config).
+
+    Services with a ``build:`` key (e.g. zaychik, airport-shim) are locally built and have no
+    registry image; including them in ``compose pull`` fails with "pull access denied" (REQ-1742).
+    """
+    config = subprocess.run(
+        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "config", "--format", "json"],
+        cwd=_REPO_ROOT,
+        env=_itest_compose_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    model = json.loads(config.stdout)
+    built = {name for name, svc in model["services"].items() if "build" in svc}
+    return [s for s in services if s not in built]
 
 
 def _named_volumes(services: list[str]) -> list[str]:
