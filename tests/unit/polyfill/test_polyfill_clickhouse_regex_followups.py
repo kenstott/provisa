@@ -86,6 +86,17 @@ ANSWERED = [
     ("SELECT a ~ b AS v FROM (VALUES ('abc', '[[:alpha:]]+')) AS t(a, b)", "t"),
     ("SELECT regexp_replace(a, b, 'X', 'g') AS v FROM (VALUES ('abab', 'b')) AS t(a, b)", "aXaX"),
     ("SELECT regexp_replace(a, b, 'X', 'g') AS v FROM (VALUES (E'a\\nb', 'a.b')) AS t(a, b)", "X"),
+    # The catalog's functions of the match operators, substring and SIMILAR TO.
+    ("SELECT pg_catalog.\"textregexeq\"(E'a\\nc'::text, 'a.c'::text) AS v", "t"),
+    ("SELECT pg_catalog.\"textregexne\"('abc'::text, '\\b'::text) AS v", "t"),
+    ("SELECT pg_catalog.\"texticregexeq\"('ABC'::text, 'b'::text) AS v", "t"),
+    ("SELECT pg_catalog.\"texticregexne\"('ABC'::text, 'b'::text) AS v", "f"),
+    ("SELECT pg_catalog.\"nameregexeq\"('abc'::name, 'b'::text) AS v", "t"),
+    ("SELECT pg_catalog.\"bpcharregexeq\"('ab'::character(2), 'b'::text) AS v", "t"),
+    ("SELECT pg_catalog.\"textregexsubstr\"('abc'::text, 'b.'::text) AS v", "bc"),
+    ("SELECT pg_catalog.\"similar_to_escape\"('abc'::text) AS v", "^(?:abc)$"),
+    ("SELECT pg_catalog.\"similar_to_escape\"('a#%'::text, '#'::text) AS v", "^(?:a\\%)$"),
+    ("SELECT pg_catalog.\"similar_escape\"('abc'::text, NULL::text) AS v", "^(?:abc)$"),
     # 4. PostgreSQL's longest match among alternatives, where an order of them is exact.
     ("SELECT regexp_substr('ab', 'a|ab') AS v", "ab"),
     ("SELECT regexp_replace('ab', 'a|ab', 'X') AS v", "X"),
@@ -108,6 +119,8 @@ NULLS = [
     "SELECT substring('abc' from NULL::text) AS v",
     "SELECT substring('abc' from 'a' for '#') AS v",
     "SELECT NULL::text SIMILAR TO 'a' AS v",
+    'SELECT pg_catalog."similar_to_escape"(NULL::text) AS v',
+    "SELECT pg_catalog.\"similar_escape\"(NULL::text, '#'::text) AS v",
 ]
 
 #: (statement, SQLSTATE): PostgreSQL's error, or a form's 0A000 within its stated bound.

@@ -888,13 +888,53 @@ def _ch_similar(node: exp.Expr) -> exp.Expr | None:
     return _ch_bounded(value, re2, matched)
 
 
+#: The catalog's functions of the match operators: ~ (regexeq), !~, ~* and !~*, of a text, a
+#: name and a bpchar (its text).
+_MATCH_FUNCTIONS = {
+    f"{kind}{suffix}": (suffix.startswith("ic"), suffix.endswith("ne"), kind == "bpchar")
+    for kind in ("text", "name", "bpchar")
+    for suffix in ("regexeq", "regexne", "icregexeq", "icregexne")
+}
+
+
+def _ch_similar_escape(name: str, args: list[exp.Expr]) -> exp.Expr | None:
+    """similar_to_escape(pattern [, escape]) and similar_escape(pattern, escape) of literals: the
+    ARE PostgreSQL writes (are_re2.similar_to). similar_escape reads a NULL escape as the default;
+    similar_to_escape is strict. A pattern or escape that is no literal is refused by name."""
+    if _is_null(args[0]) or (name == "similar_to_escape" and any(_is_null(a) for a in args)):
+        return _null_of("Nullable(String)")
+    pattern = _literal_text(args[0])
+    escape = "\\" if len(args) == 1 or _is_null(args[1]) else _literal_text(args[1])
+    if pattern is None or escape is None:
+        raise Refused(_ch_refusal(name, "of a pattern or escape that is no literal"), ruling=True)
+    return exp.Literal.string(_similar_are(f"{name}()", pattern, escape))
+
+
 def _ch_sql_patterns(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """substring of a pattern, and SIMILAR TO, on ClickHouse: its substring reads a position, and
-    it has no SIMILAR TO."""
+    it has no SIMILAR TO. The catalog's functions of them (textregexsubstr, similar_to_escape,
+    similar_escape) and of the match operators (textregexeq ...) are read as the call they name."""
     if isinstance(node, exp.Substring):
         return _ch_substring(node)
     if isinstance(node, (exp.SimilarTo, exp.Escape)):
         return _ch_similar(node)
+    if not isinstance(node, exp.Anonymous):
+        return None
+    name, args = node.name.lower(), list(node.expressions)
+    if name == "textregexsubstr" and len(args) == 2:  # noqa: PLR2004 -- text, pattern
+        return _ch_substring(exp.Substring(this=args[0], start=args[1]))
+    if name in ("similar_to_escape", "similar_escape") and len(args) in (1, 2):
+        if name == "similar_escape" and len(args) == 1:
+            return None
+        return _ch_similar_escape(name, args)
+    if name in _MATCH_FUNCTIONS and len(args) == 2:  # noqa: PLR2004 -- value, pattern
+        no_case, negated, padded = _MATCH_FUNCTIONS[name]
+        value = exp.cast(args[0], "text") if padded else args[0]
+        kind = exp.RegexpILike if no_case else exp.RegexpLike
+        matched = _ch_regexp(kind(this=value, expression=args[1]), dialect)
+        if matched is None:
+            return None
+        return exp.Not(this=exp.Paren(this=matched)) if negated else matched
     return None
 
 
@@ -982,7 +1022,8 @@ SQL_PATTERNS = Feature(
                 {
                     _CH: Rewrite(
                         _ch_sql_patterns,
-                        mentions=r"\bsimilar\b|\bsubstring\b|\bsubstr\b",
+                        mentions=r"\bsimilar\b|\bsimilar_(?:to_)?escape\b|\bsubstring\b"
+                        r"|\bsubstr\b|\btextregexsubstr\b|\b(?:text|name|bpchar)(?:ic)?regex(?:eq|ne)\b",
                         first=True,
                     )
                 },
