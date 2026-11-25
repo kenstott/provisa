@@ -27393,3 +27393,15 @@ Maintainer 2026-11-25. Extends [REQ-1494](#REQ-1494). A JSON column can declare 
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2280 · Registration & Governance {#REQ-2280}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-25. The File Crawler reads files from OneDrive and Google Drive as two more transports beside file, ftp, sftp, s3, s3a and http(s), so a server or hosted install, where no desktop sync client runs, reaches files kept there. onedrive:// lists and reads through the Microsoft Graph drive API under the same Microsoft sign-in the SharePoint source uses (OneDrive for Business is a SharePoint drive), and gdrive:// through the Google Drive API under a Google service account or OAuth, as the Google Sheets source signs in (files must be shared with a service account, which owns no storage). A path or glob names the folder and files as for the other transports; only the files a glob names are read, when they are read; formats, live and replica modes and governance are the same as every other transport. Each transport has its typed connection form and its credentials are secrets. iCloud Drive offers no server API, so it is not a transport; a desktop install reads a synced iCloud, OneDrive or Google Drive folder through file://.
+
+**Code:** —
+
+**Tests:** —

@@ -98549,4 +98549,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   scenario: 'Given a JSON column contact with a template fake {"email": email(), "phone": phone_number()},
     when the column is read in the fake environment on DuckDB and on Trino, then each row holds an object with
     an email-shaped email and a phone-shaped phone, and the same row gives the same object on both engines.'
+- id: REQ-2280
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Registration & Governance
+  feature: connector-catalog-files-and-lake
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-25. The File Crawler reads files from OneDrive and Google Drive as two more
+    transports beside file, ftp, sftp, s3, s3a and http(s), so a server or hosted install, where no desktop
+    sync client runs, reaches files kept there. onedrive:// lists and reads through the Microsoft Graph drive
+    API under the same Microsoft sign-in the SharePoint source uses (OneDrive for Business is a SharePoint
+    drive), and gdrive:// through the Google Drive API under a Google service account or OAuth, as the Google
+    Sheets source signs in (files must be shared with a service account, which owns no storage). A path or
+    glob names the folder and files as for the other transports; only the files a glob names are read, when
+    they are read; formats, live and replica modes and governance are the same as every other transport.
+    Each transport has its typed connection form and its credentials are secrets. iCloud Drive offers no
+    server API, so it is not a transport; a desktop install reads a synced iCloud, OneDrive or Google Drive
+    folder through file://.'
+  scenario: 'Given a OneDrive folder and a Google Drive folder each holding a CSV shared with the source''s
+    identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
+    install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
