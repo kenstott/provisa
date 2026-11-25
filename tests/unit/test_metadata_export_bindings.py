@@ -57,6 +57,17 @@ from tests.unit.openmetadata_product_mock import product_assets_response
 
 TABLE_FQN = "wh.public.orders"
 OM_TABLE_FQN = "wh.default.public.orders"
+# The Collibra assets an import of the snapshot creates: the table and each of its columns.
+COLLIBRA_ASSETS = [
+    {"id": "collibra-uuid-1", "name": TABLE_FQN},
+    {"id": "collibra-col-id", "name": f"{TABLE_FQN}.id"},
+    {"id": "collibra-col-amount", "name": f"{TABLE_FQN}.amount"},
+]
+
+
+def _column_uris(snapshot) -> dict[str, str]:
+    """Each column's Provisa URI, by column name."""
+    return {c.name: c.semantic_uri for t in snapshot.tables for c in t.columns}
 
 
 @pytest.fixture
@@ -339,6 +350,17 @@ async def test_openmetadata_captures_the_table_uuid_from_the_put_response(snapsh
 
 
 @pytest.mark.asyncio
+async def test_openmetadata_binds_each_column_by_its_fully_qualified_name(snapshot, monkeypatch):
+    """REQ-194: a column is bound under its own fullyQualifiedName, the table's and its name."""
+    _mock_openmetadata(monkeypatch)
+    result = await OpenMetadataExport(_config("openmetadata")).publish(snapshot)
+    assert result.ok
+    for name, uri in _column_uris(snapshot).items():
+        address = f"{OM_TABLE_FQN}.{name}"
+        assert result.bindings[uri] == (address, address)
+
+
+@pytest.mark.asyncio
 async def test_openmetadata_fqn_change_succeeds_the_old_entity_by_stored_uuid(
     snapshot, monkeypatch
 ):
@@ -415,7 +437,7 @@ def _mock_collibra(monkeypatch, *, lookup_results=None):
     async def _get(self, url, params=None, headers=None):
         order.append("lookup")
         calls["gets"].append((url, params))
-        found = lookup_results or []
+        found = [r for r in lookup_results or [] if r["name"] == params["name"]]
         if params["name"] == PRODUCT_FQN:
             # REQ-1634: the product the table publishes through is bound as its own asset.
             found = [{"id": PRODUCT_UUID, "name": PRODUCT_FQN}]
@@ -434,9 +456,7 @@ def _mock_collibra(monkeypatch, *, lookup_results=None):
 
 @pytest.mark.asyncio
 async def test_collibra_captures_the_asset_uuid_after_a_first_import(snapshot, monkeypatch):
-    calls, _ = _mock_collibra(
-        monkeypatch, lookup_results=[{"id": "collibra-uuid-1", "name": TABLE_FQN}]
-    )
+    calls, _ = _mock_collibra(monkeypatch, lookup_results=COLLIBRA_ASSETS)
     result = await CollibraExport(_config("collibra")).publish(snapshot)
     assert result.ok
     uri = snapshot.tables[0].semantic_uri
@@ -445,12 +465,27 @@ async def test_collibra_captures_the_asset_uuid_after_a_first_import(snapshot, m
 
 
 @pytest.mark.asyncio
+async def test_collibra_captures_each_column_asset_uuid(snapshot, monkeypatch):
+    """REQ-194: each column row carries its Provisa URI, so its asset UUID is captured under
+    its full name as a table's is."""
+    _mock_collibra(monkeypatch, lookup_results=COLLIBRA_ASSETS)
+    result = await CollibraExport(_config("collibra")).publish(snapshot)
+    assert result.ok
+    uris = _column_uris(snapshot)
+    assert result.bindings[uris["id"]] == ("collibra-col-id", f"{TABLE_FQN}.id")
+    assert result.bindings[uris["amount"]] == ("collibra-col-amount", f"{TABLE_FQN}.amount")
+
+
+@pytest.mark.asyncio
 async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(snapshot, monkeypatch):
     calls, _ = _mock_collibra(monkeypatch)
     export = CollibraExport(_config("collibra"))
     uri = snapshot.tables[0].semantic_uri
+    columns = _column_uris(snapshot)
     export.stored_bindings = {
         uri: ("collibra-uuid-1", TABLE_FQN),
+        columns["id"]: ("collibra-col-id", f"{TABLE_FQN}.id"),
+        columns["amount"]: ("collibra-col-amount", f"{TABLE_FQN}.amount"),
         snapshot.data_products[0].semantic_uri: (PRODUCT_UUID, PRODUCT_FQN),
     }
     result = await export.publish(snapshot)
@@ -463,9 +498,7 @@ async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(sna
 @pytest.mark.asyncio
 async def test_collibra_renames_the_bound_asset_before_the_name_keyed_import(snapshot, monkeypatch):
     """The import upserts by full name; renaming first is what makes it hit the SAME asset."""
-    calls, order = _mock_collibra(
-        monkeypatch, lookup_results=[{"id": "collibra-uuid-1", "name": TABLE_FQN}]
-    )
+    calls, order = _mock_collibra(monkeypatch, lookup_results=COLLIBRA_ASSETS)
     export = CollibraExport(_config("collibra"))
     uri = snapshot.tables[0].semantic_uri
     export.stored_bindings = {uri: ("collibra-uuid-1", "legacy.public.orders")}
@@ -515,6 +548,21 @@ async def test_datahub_captures_the_dataset_urn_as_the_vendor_id(snapshot, monke
     assert result.ok
     uri = snapshot.tables[0].semantic_uri
     assert result.bindings[uri] == (_datahub_urn(TABLE_FQN), TABLE_FQN)
+
+
+@pytest.mark.asyncio
+async def test_datahub_binds_each_column_by_its_schema_field_urn(snapshot, monkeypatch):
+    """REQ-194: a column is the dataset's schemaField, its URN the vendor id, named by the
+    table's qualifiedName and its fieldPath."""
+    monkeypatch.setattr(DataHubExport, "tag_merge", False)
+    _mock_datahub(monkeypatch)
+    result = await DataHubExport(_config("datahub")).publish(snapshot)
+    assert result.ok
+    for name, uri in _column_uris(snapshot).items():
+        assert result.bindings[uri] == (
+            f"urn:li:schemaField:({_datahub_urn(TABLE_FQN)},{name})",
+            f"{TABLE_FQN}.{name}",
+        )
 
 
 @pytest.mark.asyncio
