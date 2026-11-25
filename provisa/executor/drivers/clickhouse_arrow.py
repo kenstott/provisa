@@ -122,12 +122,14 @@ def clickhouse_arrow_result(
     return ArrowResult(row_values_table(table, types, zone_of), to_rows=row_builder(types))
 
 
+def _check_width(types: Sequence[CHType], width: int) -> None:
+    if len(types) != width:
+        raise ValueError(f"DESCRIBE named {len(types)} columns for an Arrow result of {width}")
+
+
 def row_values_table(table: pa.Table, types: Sequence[CHType], zone_of: ZoneOf) -> pa.Table:
     """``table`` with each column holding what the row read gives of its ClickHouse type."""
-    if len(types) != table.num_columns:
-        raise ValueError(
-            f"DESCRIBE named {len(types)} columns for an Arrow result of {table.num_columns}"
-        )
+    _check_width(types, table.num_columns)
     columns = [
         pa.chunked_array(
             [_convert(chunk, t, zone_of) for chunk in column.chunks],
@@ -136,6 +138,30 @@ def row_values_table(table: pa.Table, types: Sequence[CHType], zone_of: ZoneOf) 
         for column, t in zip(table.columns, types, strict=True)
     ]
     return pa.Table.from_arrays(columns, names=table.column_names)
+
+
+def row_values_schema(schema: pa.Schema, types: Sequence[CHType], zone_of: ZoneOf) -> pa.Schema:
+    """The schema ``row_values_table`` gives a table of ``schema``: a stream's, known before its
+    first batch."""
+    _check_width(types, len(schema))
+    return pa.schema(
+        [
+            pa.field(field.name, _converted_type(field.type, t, zone_of))
+            for field, t in zip(schema, types, strict=True)
+        ]
+    )
+
+
+def row_values_batch(
+    batch: pa.RecordBatch, types: Sequence[CHType], zone_of: ZoneOf, schema: pa.Schema
+) -> pa.RecordBatch:
+    """One record batch of a stream converted as ``row_values_table`` converts a whole result;
+    ``schema`` is the stream's ``row_values_schema``."""
+    _check_width(types, batch.num_columns)
+    return pa.RecordBatch.from_arrays(
+        [_convert(column, t, zone_of) for column, t in zip(batch.columns, types, strict=True)],
+        schema=schema,
+    )
 
 
 def _converted_type(arrow_type: pa.DataType, t: CHType, zone_of: ZoneOf) -> pa.DataType:

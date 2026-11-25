@@ -273,3 +273,76 @@ def test_an_address_or_uuid_in_arrow_is_the_text_postgresql_writes():
     assert [column_values(c)[0] for c in result.table.columns] == [text_of(v, None) for v in row]
     assert result.rows == [row]
     assert isinstance(result.rows[0][0], ipaddress.IPv4Address)
+
+
+# -- A whole read and a streamed read give the same values ---------------------------------------
+
+
+class _StreamContext:
+    """clickhouse-connect's StreamContext over ClickHouse's ArrowStream output: ``gen`` is
+    pyarrow's stream reader, iterated a record batch at a time."""
+
+    def __init__(self, raw: bytes) -> None:
+        self.gen = pa.ipc.open_stream(io.BytesIO(raw))
+
+    def __enter__(self) -> _StreamContext:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        pass
+
+    def __iter__(self):
+        return iter(self.gen)
+
+
+class _ChdbStreamClient(_ChdbClient):
+    def query_arrow_stream(self, sql, parameters=None, use_strings=None, settings=None):
+        self.calls.append(("stream", sql, {"use_strings": use_strings, "settings": settings}))
+        pinned = {k: v for k, v in (settings or {}).items() if k != "query_id"}
+        return _StreamContext(_chdb(sql, "ArrowStream", {**self.server_settings, **pinned}))
+
+
+_AMBIGUOUS = (
+    "SELECT toUInt32(number) AS n,"
+    " if(number % 3 = 0, NULL, toIPv4(toUInt32(number) * 16777619)) AS ip,"
+    " toDateTime(1700000000 + number * 3601) AS naive,"
+    " toDateTime(1700000000 + number * 3601, 'Asia/Tokyo') AS tokyo,"
+    " CAST(if(number % 2 = 0, 'a', 'b') AS Enum8('a' = 1, 'b' = -2)) AS e,"
+    " if(number % 4 = 0, NULL, reinterpretAsUUID(reverse(unhex(lpad(hex(number * 2654435761), 32, '0'))))) AS id"
+    " FROM numbers(7)"
+)
+
+
+def test_a_streamed_read_gives_what_a_whole_read_gives():
+    # Blocks of 2 rows: the stream answers in four batches, the whole read in one table.
+    whole_client = _ChdbClient({"max_block_size": "2"})
+    whole = _execute(_AMBIGUOUS, whole_client)
+
+    stream_client = _ChdbStreamClient({"max_block_size": "2"})
+
+    async def read_stream() -> tuple[Any, list[pa.RecordBatch]]:
+        stream = await _driver(stream_client).open_stream(_AMBIGUOUS)
+        batches = []
+        while (batch := await stream.fetch_arrow()) is not None:
+            batches.append(batch)
+        return stream, batches
+
+    stream, batches = asyncio.run(read_stream())
+    assert len(batches) == 4
+    streamed = pa.Table.from_batches(batches, schema=stream.schema)
+
+    assert stream.schema == whole.table.schema
+    assert streamed.equals(whole.table)
+    # The schema was resolved once, before the first batch: one DESCRIBE.
+    assert [kind for kind, *_ in stream_client.calls] == ["stream", "query"]
+    assert stream_client.calls[1][1] == f"DESCRIBE ({_AMBIGUOUS})"
+
+    # The row face of the stream gives the whole read's rows, typed alike.
+    async def stream_rows() -> list[tuple]:
+        stream = await _driver(_ChdbStreamClient({"max_block_size": "2"})).open_stream(_AMBIGUOUS)
+        return await stream.fetch(100)
+
+    assert _typed(asyncio.run(stream_rows())) == _typed(whole.rows)
+    assert isinstance(whole.rows[1][1], ipaddress.IPv4Address)
+    assert isinstance(whole.rows[1][5], uuid.UUID)
+    assert whole.rows[1][4] == "b"

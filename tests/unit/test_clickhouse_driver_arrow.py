@@ -9,14 +9,14 @@
 # permission from the copyright holder.
 
 """REQ-2194: a ClickHouse DIRECT result is read as Arrow (clickhouse-connect's ``query_arrow`` and
-``query_arrow_stream``), never as clickhouse-connect's Python rows, with the types the server
-wrote: Decimal as decimal128, DateTime64 in a zone as a zoned timestamp, an Array as a list, a UUID as
-Arrow's uuid. Arrow
-output needs ClickHouse 26 or later (earlier servers refuse UUID in it), so an older server is
-refused at connect, by name, with its version and the minimum.
+``query_arrow_stream``), never as clickhouse-connect's Python rows. A column whose Arrow type names
+no single ClickHouse type is typed by ``DESCRIBE`` and holds the row read's value: a UUID as its
+text, a DateTime64 as a microsecond timestamp in its zone; Decimal stays decimal128 and an Array a
+list. Arrow output needs ClickHouse 26 or later (earlier servers refuse UUID in it), so an older
+server is refused at connect, by name, with its version and the minimum.
 
 The clients are fakes standing in for clickhouse-connect's: ``query_arrow`` hands back the pyarrow
-table the server's Arrow output reads as."""
+table the server's Arrow output reads as, and ``query`` answers only ``DESCRIBE``."""
 
 # Requirements: REQ-2194
 
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -53,22 +53,46 @@ _TYPED = pa.table(
 )
 
 
+# What ClickHouse's DESCRIBE answers for _TYPED's statement: (name, type).
+_TYPED_DESCRIBED = [
+    ["id", "Nullable(UUID)"],
+    ["amount", "Nullable(Decimal(18, 4))"],
+    ["at", f"Nullable(DateTime64(3, '{_ZONE}'))"],
+    ["tags", "Array(String)"],
+    ["name", "String"],
+]
+
+
+def _query_context(query=None, parameters=None, **_kw):
+    from clickhouse_connect.driver.query import QueryContext
+
+    return QueryContext(
+        query=query or "", parameters=parameters, server_tz=timezone.utc, apply_server_tz=True
+    )
+
+
 class _Client:
-    """clickhouse-connect's client: ``query_arrow`` answers with ``table``; ``query`` (its Python
-    rows) must not be called for a read."""
+    """clickhouse-connect's client: ``query_arrow`` answers with ``table``; ``query`` answers
+    ``DESCRIBE`` with ``described`` and must not be called to read a result's rows."""
 
     server_version = "26.8.46.6"
+    create_query_context = staticmethod(_query_context)
 
-    def __init__(self, table: pa.Table) -> None:
+    def __init__(self, table: pa.Table, described: list[list[str]] | None = None) -> None:
         self._table = table
+        self._described = described
         self.arrow_calls: list[tuple[str, Any, dict]] = []
+        self.described_calls: list[str] = []
 
     def query_arrow(self, sql, parameters=None, settings=None, use_strings=None, **_kw):
         self.arrow_calls.append((sql, parameters, {"use_strings": use_strings, **settings}))
         return self._table
 
-    def query(self, *_a, **_k):
-        raise AssertionError("a DIRECT read built clickhouse-connect's Python rows")
+    def query(self, sql, parameters=None, **_k):
+        if not sql.startswith("DESCRIBE (") or self._described is None:
+            raise AssertionError("a DIRECT read built clickhouse-connect's Python rows")
+        self.described_calls.append(sql)
+        return SimpleNamespace(result_rows=self._described, column_names=("name", "type"))
 
     def close(self):
         pass
@@ -82,12 +106,23 @@ def _driver(client: Any) -> ClickHouseDriver:
     return driver
 
 
-def test_a_result_is_the_servers_arrow_table_with_its_types():
-    client = _Client(_TYPED)
+def test_a_result_is_arrow_with_each_ambiguous_column_typed_by_describe():
+    client = _Client(_TYPED, _TYPED_DESCRIBED)
     result = asyncio.run(_driver(client).execute("SELECT id, amount, at, tags, name FROM t"))
 
     assert isinstance(result, ArrowResult) and is_arrow(result)
-    assert result.table.schema == _TYPED.schema
+    # UUID (an extension type) and the timestamp name no single ClickHouse type: DESCRIBE types them.
+    assert client.described_calls == ["DESCRIBE (SELECT id, amount, at, tags, name FROM t)"]
+    assert result.table.schema == pa.schema(
+        [
+            ("id", pa.string()),
+            ("amount", pa.decimal128(18, 4)),
+            ("at", pa.timestamp("us", tz=_ZONE)),
+            ("tags", pa.list_(pa.string())),
+            ("name", pa.string()),
+        ]
+    )
+    assert result.table.column("id").to_pylist() == [str(_ID), None]
     assert result.column_names == ["id", "amount", "at", "tags", "name"]
     assert result.rows == [
         (
@@ -183,6 +218,7 @@ def test_a_stream_hands_on_the_servers_record_batches_and_kills_one_closed_early
     class _StreamClient:
         server_version = "26.8.46.6"
         settings: dict | None = None
+        create_query_context = staticmethod(_query_context)
 
         def query_arrow_stream(self, sql, parameters=None, settings=None, use_strings=None):
             _StreamClient.settings = {"use_strings": use_strings, **settings}

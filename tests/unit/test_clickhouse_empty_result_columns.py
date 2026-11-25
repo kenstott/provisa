@@ -57,6 +57,11 @@ class _Client:
         self.described = described
         self.queries: list[tuple[str, object]] = []
 
+    def create_query_context(self, query=None, parameters=None, **_kw):
+        from clickhouse_connect.driver.query import QueryContext
+
+        return QueryContext(query=query or "", parameters=parameters)
+
     def _schema(self):
         return pa.schema([(n, pa.string()) for n, _t in self.described])
 
@@ -95,14 +100,9 @@ def test_a_query_with_no_rows_names_the_statements_columns():
     that matches no row still carries the statement's schema: its columns are named from it,
     with no DESCRIBE."""
     import pyarrow as pa
-    from clickhouse_connect.driver.query import QueryContext
-
     from provisa.core.sync_pool import BlockingPool
 
     class _Arrow(_Client):
-        def create_query_context(self, query=None, parameters=None, **_kw):
-            return QueryContext(query=query or "", parameters=parameters)
-
         def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
             self.queries.append((sql, parameters))
             return pa.schema([("event_type", pa.string()), ("order_id", pa.uint64())]).empty_table()

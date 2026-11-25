@@ -15,7 +15,8 @@ directly (HTTP via clickhouse-connect) then lands a replica. The same client fam
 federation engine uses. Port defaults to the HTTP interface (8123); ``secure`` (TLS) is an optional
 ``federation_hints`` flag. Reads use ClickHouse's native columnar output (REQ-986): every result is
 read as Arrow (``query_arrow``, ``query_arrow_stream``), never as clickhouse-connect's Python rows
-(REQ-2194). A whole result holds the values clickhouse-connect's row read gives (``clickhouse_arrow``).
+(REQ-2194). A whole result and a streamed one hold the same values, those clickhouse-connect's row
+read gives (``clickhouse_arrow``).
 Arrow output needs ClickHouse 26 or later -- earlier servers refuse UUID in it -- so a client that
 reaches an older server is refused as it opens (:class:`ClickHouseServerTooOld`).
 
@@ -48,6 +49,9 @@ from provisa.executor.drivers.clickhouse_arrow import (
     clickhouse_arrow_result,
     described_types,
     needs_types,
+    row_builder,
+    row_values_batch,
+    row_values_schema,
 )
 from provisa.executor.result import QueryResult
 
@@ -230,8 +234,9 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
 
     async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
         """The result a batch at a time: ClickHouse's Arrow stream (REQ-2194), read batch by batch
-        as a fetch asks, on a pooled client; ``KILL QUERY`` by the statement's id stops one still
-        sending batches."""
+        as a fetch asks, on a pooled client, each batch converted as ``execute`` converts a whole
+        result, so both reads give the same values; ``KILL QUERY`` by the statement's id stops one
+        still sending batches."""
         from provisa.compiler.params import (
             extract_params_comment,
             substitute_positional_placeholders,
@@ -247,13 +252,21 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             )
             ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
         query_id = uuid.uuid4().hex
+        # The stream's one cursor: its rows are built with the types it resolved as it opened.
+        opened: list[_ArrowStreamCursor] = []
+
+        def open_cursor(client: Any) -> _ArrowStreamCursor:  # noqa: ANN401 — a clickhouse-connect client
+            cursor = _ArrowStreamCursor(client)
+            opened.append(cursor)
+            return cursor
+
         return PooledArrowCursorStream(
             self._require_pool(),
-            open_cursor=_ArrowStreamCursor,
+            open_cursor=open_cursor,
             execute=lambda cur: cur.execute(exec_sql, ch_params, query_id),
             columns=lambda cur: list(cur.schema.names),
             cancel=lambda _client, _cur: self._kill_query(query_id),
-            to_rows=arrow_table_rows,
+            to_rows=lambda batch: opened[0].to_rows(batch),
         )
 
     async def execute_arrow(self, sql: str, params: dict[str, Any] | None = None) -> Any:
@@ -312,23 +325,40 @@ def result_names(
 class _ArrowStreamCursor:
     """A ClickHouse Arrow stream read for :class:`PooledArrowCursorStream` (REQ-2194):
     ``schema`` is the stream's Arrow schema, and ``fetch_batch`` hands on the server's next record
-    batch, taken from the server only when it is asked for; never clickhouse-connect's rows."""
+    batch, taken from the server only when it is asked for; never clickhouse-connect's rows.
+
+    Each batch holds what ``execute`` gives of a whole result (``clickhouse_arrow``): when the
+    server's Arrow schema is ambiguous, the ClickHouse types are read from ``DESCRIBE`` once, as
+    the stream opens and before its first batch, and every batch is converted with them."""
 
     def __init__(self, client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
         self._client = client
         self._context: Any = None
         self._batches: Iterator[Any] | None = None
+        self._types: list[Any] | None = None
+        self._zone_of: Any = None
         self.schema: Any = None
         self.description: list[tuple[str]] | None = None
 
     def execute(self, sql: str, parameters: dict[str, Any] | None, query_id: str) -> None:
+        query = self._client.create_query_context(query=sql, parameters=parameters)
+        self._zone_of = query.active_tz
         self._context = self._client.query_arrow_stream(
-            sql, parameters=parameters, use_strings=True, settings={"query_id": query_id}
+            sql,
+            parameters=parameters,
+            use_strings=True,
+            settings={"query_id": query_id, **ARROW_SETTINGS},
         )
         stream = self._context.__enter__()
         # clickhouse-connect's Arrow stream is pyarrow's stream reader over the response
         # (``gen``), which has read the schema message as it opened.
-        self.schema = stream.gen.schema
+        schema = stream.gen.schema
+        if needs_types(schema):
+            # The client names no server session (see the module note), so DESCRIBE runs beside
+            # the open stream.
+            self._types = described_types(self._client, sql, parameters)
+            schema = row_values_schema(schema, self._types, self._zone_of)
+        self.schema = schema
         self.description = [(name,) for name in self.schema.names]
         self._batches = iter(stream)
 
@@ -338,7 +368,16 @@ class _ArrowStreamCursor:
         batch = next(self._batches, None)
         if batch is None:
             self._batches = None
-        return batch
+            return None
+        if self._types is None:
+            return batch
+        return row_values_batch(batch, self._types, self._zone_of, self.schema)
+
+    def to_rows(self, batch: Any) -> list[tuple]:  # noqa: ANN401 — a pyarrow RecordBatch
+        """A fetched batch's rows, each value as ``execute``'s rows hold it."""
+        if self._types is None:
+            return arrow_table_rows(batch)
+        return row_builder(self._types)(batch)
 
     def close(self) -> None:
         context, self._context = self._context, None
