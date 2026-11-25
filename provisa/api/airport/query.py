@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Iterator, NamedTuple
 import pyarrow as pa
 
 from provisa.core.connection_loop import run_on_connection_loop
+from provisa.executor.result import ArrowResult, ArrowStreamResult, is_arrow
 
 if TYPE_CHECKING:
     from provisa.executor.result import ResultStream
@@ -180,6 +181,14 @@ def governed_table_scan_stream(
                         plan.exec_params or [],
                     )
                 )
+            if is_arrow(stream):
+                # REQ-2194: the driver's own record batches, each registered column cast to its
+                # registered type (a lossy cast refused naming the column), never rebuilt from rows.
+                arrow_schema, arrow_gen = _declared_direct_arrow(plan, stream)
+                _finalize_scan_audit(plan, 200, state)
+                return ScanStream(
+                    arrow_schema, permits.guard(_audited(plan, arrow_gen)), plan.warnings
+                )
             declared = _declared_types(plan, stream.column_names)
             typed = _direct_typed_schema(stream.column_names, stream.column_types, declared)
             _finalize_scan_audit(plan, 200, state)
@@ -295,6 +304,11 @@ def governed_table_scan_schema(
                     plan.exec_params or [],
                     run=run_on_connection_loop,
                 )
+                if isinstance(stream, ArrowStreamResult):
+                    # REQ-2194: what the scan streams of the driver's own batches (above).
+                    arrow_schema, _ = _declared_direct_arrow(plan, stream, batches=iter(()))
+                    stream.close()  # release the eagerly-opened server-side cursor; no rows fetched
+                    return arrow_schema
                 typed = _direct_typed_schema(
                     stream.column_names,
                     stream.column_types,
@@ -310,6 +324,8 @@ def governed_table_scan_schema(
                     plan.exec_params or [],
                 )
             )
+        if is_arrow(result):
+            return _declared_direct_arrow(plan, result, batches=iter(()))[0]
         return _direct_typed_schema(
             result.column_names,
             result.column_types,
@@ -327,6 +343,28 @@ def _declared_engine_stream(state: AppState, plan) -> tuple[pa.Schema, Iterator[
     schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
     kept = plan.result_shape
     return declared_arrow_stream(schema, batch_gen, None if kept is None else kept.now())
+
+
+def _declared_direct_arrow(
+    plan,
+    result: ArrowResult | ArrowStreamResult,
+    *,
+    batches: Iterator[pa.RecordBatch] | None = None,
+) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:  # REQ-2194, REQ-1961
+    """A DIRECT read whose driver fetched Arrow, as its own record batches with each registered
+    column cast to the type the model declares for it (``runtime_support.declared_arrow_stream``,
+    the rule the ENGINE scan takes): the schema is the driver's, the registered columns as
+    declared, the same for no rows as for many. ``batches`` replaces the result's own for a
+    schema-only probe, which pulls none."""
+    from provisa.federation.runtime_support import declared_arrow_stream
+
+    schema = result.schema if isinstance(result, ArrowStreamResult) else result.table.schema
+    kept = plan.result_shape
+    return declared_arrow_stream(
+        schema,
+        result.arrow_batches() if batches is None else batches,
+        None if kept is None else kept.now(),
+    )
 
 
 def _declared_types(plan, column_names: list[str]) -> list[pa.DataType | None]:  # REQ-1961
