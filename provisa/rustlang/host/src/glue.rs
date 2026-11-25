@@ -15,6 +15,7 @@
 // A build calls the helpers its functions need, and leaves the others unused.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use serde::de::DeserializeOwned;
@@ -23,12 +24,13 @@ use serde_json::{Map, Value};
 
 use crate::wire::{absent, from_wire};
 
-/// One set of a call's arguments: their values as the wire gives them, and their parameters'
-/// names.
+/// One set of a call's arguments: their values as the wire gives them, their parameters' names,
+/// and the read context the set is called in (REQ-2100; null when the call gives none).
 pub struct Args<'a> {
     pub export: &'a str,
     pub args: &'a [Value],
     pub names: &'a [String],
+    pub context: &'a Value,
 }
 
 /// Rows, one at a time: each a row's serde form, or the code's failure.
@@ -39,6 +41,8 @@ pub enum Answer {
     Nothing,
     Value(Value),
     Rows(Rows),
+    /// REQ-2100: a @loader's map of each key's hash to its rows, in the order of the hashes.
+    Keyed(Vec<(String, Rows)>),
 }
 
 /// A code function, as exports.rs registers it.
@@ -75,6 +79,11 @@ pub fn inputs<T: DeserializeOwned>(a: &Args) -> Result<T, String> {
     serde_json::from_value(Value::Object(given)).map_err(|e| format!("{}: its inputs: {e}", a.export))
 }
 
+/// REQ-2100: a @table's or @stream's read context, decoded into the type the code declares for it.
+pub fn context<T: DeserializeOwned>(a: &Args) -> Result<T, String> {
+    serde_json::from_value(from_wire(a.context)).map_err(|e| format!("{}: its read context: {e}", a.export))
+}
+
 /// The code's own failure, as its error says it.
 pub fn failed<E: Display>(error: E) -> String {
     error.to_string()
@@ -108,4 +117,21 @@ where
     Ok(Answer::Rows(Box::new(
         collection.into_iter().map(|item| item.map_err(failed).and_then(serialized)),
     )))
+}
+
+/// REQ-2100: a @loader's map of each key's hash to its rows (a `HashMap` or a `BTreeMap`), its
+/// keys in order.
+pub fn keyed<M, I>(map: M) -> Result<Answer, String>
+where
+    M: IntoIterator<Item = (String, I)>,
+    I: IntoIterator + 'static,
+    I::Item: Serialize,
+{
+    let sorted: BTreeMap<String, I> = map.into_iter().collect();
+    Ok(Answer::Keyed(
+        sorted
+            .into_iter()
+            .map(|(hash, rows)| (hash, Box::new(rows.into_iter().map(serialized)) as Rows))
+            .collect(),
+    ))
 }

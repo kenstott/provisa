@@ -37,6 +37,10 @@
 //! is a literal; anything else, and an SDK macro invoked anywhere but at the crate's root, is
 //! refused by name. The SDK's type aliases (`provisa_sdk::Rows<T>` and the rest) are read as the
 //! types they name.
+//!
+//! A parameter of a type named `ReadContext` is the read context (REQ-2100), as one named
+//! `TableRef<Row>` is a table argument: the code declares the type itself, with the fields of the
+//! context it reads, and the host gives it the context serde makes of it.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -71,6 +75,8 @@ const SDK_MACROS: &[(&str, &str)] = &[
 const SDK_MACRO_NAMES: &[&str] =
     &["table", "stream", "command", "query", "columns", "change", "on_start", "on_stop", "health"];
 const READ_OPTIONS: &[&str] = &["requires", "secret"];
+/// REQ-2100: a table's options, its read options and `loader` (`true`, or its largest batch).
+const TABLE_OPTIONS: &[&str] = &["requires", "secret", "loader"];
 const COMMAND_OPTIONS: &[&str] = &["requires", "secret", "insert", "update", "delete"];
 const CHANGE_PARTS: &[&str] = &["table", "key", "removed", "cursor"];
 const SDK_TYPES: &[&str] = &["Rows", "Stream", "Batch", "Results", "Text", "BigInt", "Double", "Boolean"];
@@ -85,6 +91,7 @@ fn sdk_options(name: &str) -> Vec<&'static str> {
         "command" => COMMAND_OPTIONS.to_vec(),
         "change" => [CHANGE_PARTS, READ_OPTIONS].concat(),
         "on_stop" | "health" => Vec::new(),
+        "table" => TABLE_OPTIONS.to_vec(),
         _ => READ_OPTIONS.to_vec(),
     }
 }
@@ -204,6 +211,18 @@ fn literal(value: &Expr, list: bool) -> Option<String> {
         }
         Expr::Paren(p) => literal(&p.expr, list),
         Expr::Group(g) => literal(&g.expr, list),
+        _ => None,
+    }
+}
+
+/// A registration's `loader` option (REQ-2100): `true` is a loader (`Some(None)`), an integer
+/// literal its largest batch (`Some(Some(digits))`); anything else is not one.
+fn loader_option(value: &Expr) -> Option<Option<String>> {
+    match value {
+        Expr::Lit(ExprLit { lit: Lit::Bool(b), .. }) if b.value => Some(None),
+        Expr::Lit(ExprLit { lit: Lit::Int(i), .. }) => Some(Some(i.base10_digits().to_string())),
+        Expr::Paren(p) => loader_option(&p.expr),
+        Expr::Group(g) => loader_option(&g.expr),
         _ => None,
     }
 }
@@ -500,6 +519,12 @@ impl Reader {
         if name == "TableRef" && args.len() == 1 {
             return json!({"kind": "table_ref", "row": self.tree(args[0])});
         }
+        // REQ-2100: the read context a @table or @stream function takes after its inputs. As with
+        // TableRef, the code declares ReadContext itself (the fields of it serde reads); it is
+        // known by its name and never read: its fields are Provisa's.
+        if name == "ReadContext" && args.is_empty() {
+            return json!({"kind": "ref", "name": "ReadContext"});
+        }
         let local = segments.len() == 1 || matches!(first.as_str(), "crate" | "self" | "super");
         if local && self.declared.contains_key(&name) {
             return self.named(&name, ty);
@@ -522,9 +547,10 @@ impl Reader {
                 json!({"kind": "array", "element": self.tree(inner)})
             }
             ("Box" | "Rc" | "Arc" | "Cow", [inner]) => self.tree(inner),
-            ("HashMap" | "BTreeMap" | "IndexMap", [key, _value, ..]) => {
+            ("HashMap" | "BTreeMap" | "IndexMap", [key, value, ..]) => {
                 match self.tree(key).get("kind").and_then(Value::as_str) {
-                    Some("string") => json!({"kind": "record"}),
+                    // REQ-2100: its value's type, which a @loader's map of each key's rows is read by.
+                    Some("string") => json!({"kind": "record", "value": self.tree(value)}),
                     _ => unsupported(&text(ty)),
                 }
             }
@@ -600,6 +626,7 @@ impl Reader {
         let allowed = sdk_options(item);
         let mut added = Vec::new();
         let mut parts = Vec::new();
+        let mut loading = false;
         for argument in arguments {
             let Expr::Assign(assign) = &argument else {
                 self.diagnostics.push(format!(
@@ -619,12 +646,19 @@ impl Reader {
                 }
             };
             if !allowed.contains(&key.as_str()) {
-                let why = if key == "loader" {
-                    ": a Rust source has no read context, so no @loader".to_string()
-                } else {
-                    String::new()
-                };
-                self.diagnostics.push(format!("{function}: provisa_sdk::{item}! takes no option {key}{why}"));
+                self.diagnostics.push(format!("{function}: provisa_sdk::{item}! takes no option {key}"));
+                continue;
+            }
+            if key == "loader" {
+                // REQ-2100: `loader = true` is @loader, `loader = N` is @loader N.
+                match loader_option(&assign.right) {
+                    Some(None) => loading = true,
+                    Some(Some(size)) => added.push(json!({"tag": "loader", "text": size})),
+                    None => self.diagnostics.push(format!(
+                        "{function}: provisa_sdk::{item}!'s loader is true or a batch size, not {}",
+                        text(&*assign.right)
+                    )),
+                }
                 continue;
             }
             let Some(value) = literal(&assign.right, key == "key") else {
@@ -655,6 +689,9 @@ impl Reader {
             let tags = export["tags"].as_array_mut().expect("an export's tags");
             if !tags.iter().any(|t| t == tag) {
                 tags.push(Value::String(tag.to_string()));
+            }
+            if loading && !tags.iter().any(|t| t == "loader") {
+                tags.push(Value::String("loader".to_string()));
             }
         }
         export["tag_arguments"].as_array_mut().expect("an export's tag arguments").extend(added);
@@ -833,6 +870,7 @@ impl Reader {
                 None => (self.tree(ty), false),
             },
         };
+        let context = parameters.iter().any(|p| p["type"] == json!({"kind": "ref", "name": "ReadContext"}));
         if sig.generics.params.iter().any(|p| !matches!(p, GenericParam::Lifetime(_))) {
             returns = unsupported("a generic function");
         }
@@ -844,7 +882,7 @@ impl Reader {
             "tags": tags,
             "tag_arguments": tag_arguments,
             "description": kept.join("\n").trim(),
-            "signatures": [{"parameters": parameters, "returns": returns, "context": false, "fails": fails}],
+            "signatures": [{"parameters": parameters, "returns": returns, "context": context, "fails": fails}],
         })
     }
 }

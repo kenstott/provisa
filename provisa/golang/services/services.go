@@ -516,3 +516,34 @@ func Metric(ctx context.Context, name string, value float64, kind string, attrib
 func Audit(ctx context.Context, event string, fields map[string]any) error {
 	return ask(ctx, "audit", "POST", "audit", map[string]any{"event": event, "fields": orEmpty(fields)}, nil)
 }
+
+// Filter is a condition a read puts on a return column (REQ-2100): Column Op Value. Op is one of
+// eq, ne, gt, gte, lt, lte, in (Value a list) and like (a SQL pattern).
+type Filter struct {
+	Column string `json:"column"`
+	Op     string `json:"op"`
+	Value  any    `json:"value"`
+}
+
+// Order is a key a read orders its rows by (REQ-2100): a return column, descending or not, its
+// nulls first or last.
+type Order struct {
+	Column     string `json:"column"`
+	Descending bool   `json:"descending"`
+	NullsFirst bool   `json:"nulls_first"`
+}
+
+// ReadContext is what a read asks of a @table or @stream function's rows (REQ-2100), given to a
+// function that takes one after its inputs struct. Every part is a hint, and Provisa applies the
+// whole statement to the rows the function returns. A function that applies Limit applies every
+// filter and the order first; otherwise it ignores it. Limit is nil when every row counts. Keys
+// are a @loader's join keys, each key's hash to its inputs ({hash: {input: value}}), answered
+// with a map of each hash to its rows; nil for any other read. A landed read gives an empty
+// context.
+type ReadContext struct {
+	Filters []Filter                  `json:"filters"`
+	OrderBy []Order                   `json:"order_by"`
+	Limit   *int64                    `json:"limit"`
+	Columns []string                  `json:"columns"`
+	Keys    map[string]map[string]any `json:"keys"`
+}
