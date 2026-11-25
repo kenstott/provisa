@@ -90,6 +90,8 @@ def test_a_like_matches_on_trino_as_on_postgresql(trino_over_postgres, condition
     sql = f'SELECT "v" FROM "{_SCHEMA}"."t" WHERE {condition}'
     with psycopg.connect(_pg_dsn()) as conn:
         expected = sorted(r[0] for r in conn.execute(cast(LiteralString, sql)).fetchall())
-    lowered = transpile(f'SELECT "v" FROM "{_CATALOG}"."{_SCHEMA}"."t" WHERE {condition}', "trino")
+    lowered = transpile(
+        f'SELECT "v" FROM "{_CATALOG}"."{_SCHEMA}"."t" WHERE {condition}', "trino", generated=False
+    )
     trino_over_postgres.execute(lowered)
     assert sorted(r[0] for r in trino_over_postgres.fetchall()) == expected, lowered

@@ -35,7 +35,11 @@ _ENGINES = (*_TRINO, "clickhouse")
 
 
 def _sent(sql: str, dialect: str = "trino") -> str:
-    return transpile_to_trino(sql) if dialect == "trino" else transpile(sql, dialect)
+    return (
+        transpile_to_trino(sql, generated=False)
+        if dialect == "trino"
+        else transpile(sql, dialect, generated=False)
+    )
 
 
 def _tree(sql: str, dialect: str = "trino") -> exp.Expr:
@@ -124,7 +128,7 @@ def test_age_of_a_timestamp_is_still_refused_by_name(dialect):
 
 
 def test_age_of_xid_on_duckdb_is_unchanged():
-    assert "TXID_CURRENT" in transpile_to_duckdb(_DATAGRIP_AGE).upper()
+    assert "TXID_CURRENT" in transpile_to_duckdb(_DATAGRIP_AGE, generated=False).upper()
 
 
 # --- set 1: mxid_age ---------------------------------------------------------------------------
@@ -204,7 +208,7 @@ def test_pg_char_to_encoding_answers_postgresqls_number_on_trino(table):
 @pytest.mark.parametrize("table", [_PG_ENCODINGS, _WRITTEN], ids=["pg_encname_tbl", "written"])
 def test_pg_char_to_encoding_answers_postgresqls_number_on_duckdb(table):
     names = list(table)
-    sql = transpile_to_duckdb(_encoding_statement(names))
+    sql = transpile_to_duckdb(_encoding_statement(names), generated=False)
     answered = [r[0] for r in duckdb.connect().execute(sql).fetchall()]
     assert answered == [table[n] for n in names]
 

@@ -47,6 +47,7 @@ from provisa.transpiler.polyfill.numbers import (
     ch_fail,
     ch_once,
     ch_only,
+    duckdb_of_trino,
     fail,
 )
 
@@ -60,6 +61,11 @@ def _ch_trino(form: str, trino_form: str) -> dict[str, Form]:
     """ClickHouse's ``form`` (its holes each read once) and Trino's ``trino_form``; every other
     dialect keeps what it had."""
     return {**_ch(form), **trino.on_trino(trino_form)}
+
+
+def _ch_trino_duckdb(form: str, trino_form: str, duckdb_form: str | None = None) -> dict[str, Form]:
+    """_ch_trino's forms, and DuckDB's ``duckdb_form`` (else Trino's ported, duckdb_of_trino)."""
+    return {**_ch_trino(form, trino_form), "duckdb": duckdb_form or duckdb_of_trino(trino_form)}
 
 
 def _doubles(pattern: str, form: str) -> Rewrite:
@@ -83,10 +89,12 @@ def _doubles(pattern: str, form: str) -> Rewrite:
 
 def _of_no_numeric(pattern: str, form: str, trino_form: str | None = None) -> dict[str, Form]:
     """ClickHouse's ``form`` (its holes each read once), and Trino's ``trino_form`` where one is
-    given, of a call none of whose arguments the statement says is a numeric (_doubles)."""
+    given (DuckDB's too, ported: duckdb_of_trino), of a call none of whose arguments the statement
+    says is a numeric (_doubles)."""
     forms: dict[str, Form] = {**ch_only(_doubles(pattern, ch_once(form)))}
     if trino_form is not None:
         forms.update(trino.on_trino(_doubles(pattern, trino_form)))
+        forms["duckdb"] = _doubles(pattern, duckdb_of_trino(trino_form))
     return forms
 
 
@@ -210,7 +218,8 @@ def _domain(
     trino_answer: str = "",
 ) -> Feature:
     """``name`` of a double, PostgreSQL's 22003 where ``outside`` (of ``$x``) holds; on Trino
-    where ``trino_outside`` holds, else ``trino_answer``."""
+    where ``trino_outside`` holds, else ``trino_answer``; on DuckDB where ``trino_outside`` holds of
+    a number, else DuckDB's own."""
     return Feature(
         name,
         FAMILY,
@@ -219,12 +228,25 @@ def _domain(
             rules=(
                 Rule(
                     f"{name}($x)",
-                    _ch_trino(
+                    _ch_trino_duckdb(
                         ch_checked(
                             [_OUT_OF_RANGE.format(condition=outside)], answer or f"{name}($x)"
                         ),
                         _t_checked(
                             [(trino_outside, "22003", "input is out of range")], trino_answer
+                        ),
+                        # DuckDB's own of each, NaN (above every value there) never outside.
+                        duckdb_of_trino(
+                            _t_checked(
+                                [
+                                    (
+                                        f"NOT is_nan($x) AND ({trino_outside})",
+                                        "22003",
+                                        "input is out of range",
+                                    )
+                                ],
+                                answer or f"{name}($x)",
+                            )
                         ),
                     ),
                 ),
@@ -493,7 +515,7 @@ DEGREES = Feature(
         rules=(
             Rule(
                 "degrees($x)",
-                _ch_trino(
+                _ch_trino_duckdb(
                     ch_checked(
                         [
                             _OVERFLOW.format(
@@ -886,6 +908,8 @@ _T_IN_RANGE_FLOATS = (
     f"WHEN is_infinite({_T_O}) AND is_infinite({_T_B}) AND IF($s, {_T_B} > 0, {_T_B} < 0) THEN 1 "
     f"WHEN IF($l, {_T_V} <= {_T_FLOAT_SUM}, {_T_V} >= {_T_FLOAT_SUM}) THEN 1 ELSE 0 END"
 )
+#: The same on DuckDB, ported: each comparison is read only where no value is NaN.
+_D_IN_RANGE_FLOATS = duckdb_of_trino(_T_IN_RANGE_FLOATS)
 _IN_RANGE = "in_range($v, $b, $o, $s, $l)"
 _INTEGER_NAMES = frozenset({"smallint", "integer", "bigint"})
 _FLOAT_NAMES = frozenset({"real", "double precision"})
@@ -894,8 +918,8 @@ _FLOAT_NAMES = frozenset({"real", "double precision"})
 def in_range_of_numbers(
     said: list[exp.Expr], args: list[exp.Expr], dialect: str
 ) -> exp.Expr | None:
-    """in_range of integers or of floats on ClickHouse, and of floats on Trino, of ``args``, as
-    the statement says the value's and the offset's types (of ``said``, the arguments as written);
+    """in_range of integers or of floats on ClickHouse, and of floats on Trino and DuckDB, of
+    ``args``, as the statement says the value's and the offset's types (of ``said``, the arguments as written);
     None for any other (a date's, a numeric's, a column no statement types), which keeps what it
     had. pg_ranges lowers every in_range before the grid runs, and asks here first."""
     if len(args) != 5:  # noqa: PLR2004 -- PostgreSQL's five arguments
@@ -904,6 +928,9 @@ def in_range_of_numbers(
     if dialect in trino.TRINO and value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
         bindings = dict(zip("vbosl", args, strict=True))
         return graft(replacement(_T_IN_RANGE_FLOATS, written_in(dialect), _IN_RANGE), bindings)
+    if dialect == "duckdb" and value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
+        bindings = dict(zip("vbosl", args, strict=True))
+        return graft(replacement(_D_IN_RANGE_FLOATS, dialect, _IN_RANGE), bindings)
     if dialect != "clickhouse":
         return None
     if value in _INTEGER_NAMES and offset in _INTEGER_NAMES:

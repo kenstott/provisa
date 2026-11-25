@@ -341,7 +341,7 @@ def test_sequence_functions_stay_refused():
 
     for call in ("nextval('s')", "currval('s')", "setval('s', 1)"):
         with pytest.raises(FunctionRefused):
-            transpile(f"SELECT {call} AS v", "postgres")
+            transpile(f"SELECT {call} AS v", "postgres", generated=False)
 
 
 # --- the drivers --------------------------------------------------------------------------------

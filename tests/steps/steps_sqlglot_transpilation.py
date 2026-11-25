@@ -73,12 +73,12 @@ def the_transpiler_processes_it(shared_data: dict) -> None:
     pg_sql = shared_data["pg_sql"]
 
     # Canonical → Trino
-    shared_data["trino_sql"] = transpile_to_trino(pg_sql)
+    shared_data["trino_sql"] = transpile_to_trino(pg_sql, generated=False)
 
     # Canonical → every supported RDBMS dialect
     dialect_outputs: dict[str, str] = {}
     for dialect in sorted(SUPPORTED_DIALECTS):
-        dialect_outputs[dialect] = transpile(pg_sql, dialect)
+        dialect_outputs[dialect] = transpile(pg_sql, dialect, generated=False)
     shared_data["dialect_outputs"] = dialect_outputs
 
 
@@ -179,7 +179,7 @@ def a_query_is_transpiled(shared_data: dict) -> None:
     # Target dialect for transpilation comes from the registration-time record.
     target_dialect = source_dialects[source_id]
     shared_data["target_dialect"] = target_dialect
-    shared_data["transpiled_sql"] = transpile(pg_sql, target_dialect)
+    shared_data["transpiled_sql"] = transpile(pg_sql, target_dialect, generated=False)
 
 
 @then("the target SQL dialect matches the source type recorded at registration time")
@@ -210,8 +210,8 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
 
     # Cross-check: re-transpiling the same query to the recorded dialect is stable
     # and differs from a different target dialect (proving dialect actually applies).
-    mysql_again = transpile(shared_data["query_pg_sql"], recorded_dialect)
-    postgres_variant = transpile(shared_data["query_pg_sql"], "postgres")
+    mysql_again = transpile(shared_data["query_pg_sql"], recorded_dialect, generated=False)
+    postgres_variant = transpile(shared_data["query_pg_sql"], "postgres", generated=False)
     assert mysql_again == transpiled_sql
     assert mysql_again != postgres_variant, "dialect selection must change rendered SQL"
 
@@ -231,13 +231,13 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
     # Verify that each supported source type produces SQL that differs from the
     # PostgreSQL canonical form, confirming real dialect-specific transformation.
     canonical_pg_sql = shared_data["query_pg_sql"]
-    postgres_out = transpile(canonical_pg_sql, "postgres")
+    postgres_out = transpile(canonical_pg_sql, "postgres", generated=False)
     # Dialects that are syntactically compatible with postgres for the canonical
     # test SQL (double-quote identifiers, $N params, LIMIT) and therefore produce
     # identical output — excluded from the "must differ" assertion.
     _POSTGRES_COMPAT_DIALECTS = {"postgres", "duckdb", "snowflake"}
     for stype, dialect in _SOURCE_TYPE_TO_DIALECT.items():
-        dialect_out = transpile(canonical_pg_sql, dialect)
+        dialect_out = transpile(canonical_pg_sql, dialect, generated=False)
         assert dialect_out, f"transpilation to '{dialect}' (from source '{stype}') is empty"
         assert "orders" in dialect_out.lower(), (
             f"transpilation to '{dialect}' lost the orders table"
@@ -347,7 +347,7 @@ def the_query_is_transpiled_to_trino(shared_data: dict) -> None:
     rewritten_pg = rewrite_correlated_subqueries_for_trino(pg_sql)
     shared_data["rewritten_pg"] = rewritten_pg
 
-    trino_sql = transpile_to_trino(pg_sql)
+    trino_sql = transpile_to_trino(pg_sql, generated=False)
     shared_data["trino_sql"] = trino_sql
 
 

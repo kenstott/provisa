@@ -102,13 +102,13 @@ _MERGE = (
 def test_a_trino_family_write_renders_without_a_target_alias(dialect, sql, rendered):
     from provisa.transpiler.transpile import transpile
 
-    assert transpile(sql, dialect) == rendered
+    assert transpile(sql, dialect, generated=False) == rendered
 
 
 @pytest.mark.parametrize("dialect", ["athena", "trino"])
 def test_a_trino_family_merge_keeps_its_accepted_target_alias(dialect):
     from provisa.transpiler.transpile import transpile
 
-    out = transpile(_MERGE, dialect)
+    out = transpile(_MERGE, dialect, generated=False)
     assert out.startswith('MERGE INTO "s"."t" AS "t" USING')
     sqlglot.parse_one(out, read=dialect)

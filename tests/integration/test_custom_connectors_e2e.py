@@ -95,7 +95,7 @@ async def test_config_driven_duckdb_attach_federates_ducklake(tmp_path, monkeypa
         src = _src("lake", "ducklake", "events", path=str(cat), hints={"data_path": str(data)})
         rt.attach_source(src)
 
-        res = await rt.execute(f"SELECT id, kind FROM {_phys(src)} ORDER BY id")
+        res = await rt.execute(f"SELECT id, kind FROM {_phys(src)} ORDER BY id", generated=False)
         assert res.column_names == ["id", "kind"]
         assert [r[0] for r in res.rows] == [1, 2, 3]
         assert res.rows[0][1] == "shipped"
@@ -136,7 +136,7 @@ async def test_config_driven_duckdb_scan_federates_excel(tmp_path, monkeypatch):
         src = _src("sales", "excel", "sales", path=str(xlsx), hints={"sheet": "Q1"})
         rt.attach_source(src)
 
-        res = await rt.execute(f"SELECT id, name FROM {_phys(src)} ORDER BY id")
+        res = await rt.execute(f"SELECT id, name FROM {_phys(src)} ORDER BY id", generated=False)
         assert res.column_names == ["id", "name"]
         assert [r[0] for r in res.rows] == [1, 2]
         assert res.rows[1][1] == "bob"

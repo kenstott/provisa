@@ -28,7 +28,7 @@ _HALF = "'2024-01-01 10:00:00.5+00'::timestamptz"
 def _run(sql: str) -> str:
     conn = duckdb.connect()
     conn.execute("SET TimeZone = 'UTC'")
-    return conn.execute(transpile_to_duckdb(sql)).fetchone()[0]
+    return conn.execute(transpile_to_duckdb(sql, generated=False)).fetchone()[0]
 
 
 @pytest.mark.parametrize(

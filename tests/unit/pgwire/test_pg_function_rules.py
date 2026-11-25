@@ -146,7 +146,13 @@ def test_only_a_replay_put_an_engine_tweak_beside_a_form():
         ("int8pl(9223372036854775806, 1)", 9223372036854775807),
     ],
 )
-@pytest.mark.parametrize("write", [transpile_to_duckdb, lambda sql: transpile(sql, "duckdb")])
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda sql: transpile_to_duckdb(sql, generated=False),
+        lambda sql: transpile(sql, "duckdb", generated=False),
+    ],
+)
 def test_a_bigint_keeps_its_low_bits_on_either_path(sql: str, want: int, write: Any):
     assert duckdb.connect().execute(write(f"SELECT {sql} AS v")).fetchone()[0] == want
 
@@ -176,39 +182,46 @@ def rows():
     ],
 )
 def test_a_form_reads_a_column_as_it_reads_a_value(rows: Any, sql: str, want: list[Any]):
-    written = transpile_to_duckdb(f"SELECT {sql} AS v FROM t")
+    written = transpile_to_duckdb(f"SELECT {sql} AS v FROM t", generated=False)
     assert [row[0] for row in rows.execute(written).fetchall()] == want
 
 
 def test_a_form_never_writes_a_volatile_argument_twice():
     written = transpile_to_duckdb(
-        "SELECT int4larger(CAST(x + random() * 1000000 AS INTEGER), y) AS v FROM t"
+        "SELECT int4larger(CAST(x + random() * 1000000 AS INTEGER), y) AS v FROM t", generated=False
     )
     assert written.lower().count("random()") == 1
 
 
 def test_a_form_naming_an_argument_once_keeps_its_own_shape():
-    written = transpile_to_duckdb("SELECT int4eq(CAST(random() * 9 AS INTEGER), y) AS v FROM t")
+    written = transpile_to_duckdb(
+        "SELECT int4eq(CAST(random() * 9 AS INTEGER), y) AS v FROM t", generated=False
+    )
     assert written.lower().count("random()") == 1
     assert "SELECT CAST(" not in written.split("FROM")[0].split("SELECT", 2)[-1]
 
 
 def test_a_volatile_argument_that_is_held_differs_from_row_to_row(rows: Any):
     written = transpile_to_duckdb(
-        "SELECT int4larger(CAST(g + random() * 1000000 AS INTEGER), 0) AS v FROM range(200) r(g)"
+        "SELECT int4larger(CAST(g + random() * 1000000 AS INTEGER), 0) AS v FROM range(200) r(g)",
+        generated=False,
     )
     assert len({row[0] for row in rows.execute(written).fetchall()}) > 100
 
 
 def test_a_statement_with_one_row_holds_a_volatile_argument_once(rows: Any):
-    written = transpile_to_duckdb("SELECT int4larger(CAST(random() * 9 AS INTEGER), 0) AS v")
+    written = transpile_to_duckdb(
+        "SELECT int4larger(CAST(random() * 9 AS INTEGER), 0) AS v", generated=False
+    )
     assert written.lower().count("random()") == 1
     assert rows.execute(written).fetchone()[0] >= 0
 
 
 def test_a_volatile_argument_no_row_correlates_is_refused_by_name():
     with pytest.raises(FunctionRefused, match=r"int4larger\(\) has no form"):
-        transpile_to_duckdb("SELECT int4larger(CAST(random() * 9 AS INTEGER), 0) AS v FROM t")
+        transpile_to_duckdb(
+            "SELECT int4larger(CAST(random() * 9 AS INTEGER), 0) AS v FROM t", generated=False
+        )
 
 
 @pytest.mark.parametrize(
@@ -237,19 +250,21 @@ def test_set_masklen_of_a_value_of_no_said_network_type_is_refused_by_name(sql: 
     """A cidr column and an inet column are the same text: the inet row would keep the host bits
     the cidr row clears, so set_masklen(c, 8) of 10.1.0.0/16 would answer 10.1.0.0/8."""
     with pytest.raises(FunctionRefused, match=r"set_masklen\(\) has no form on duckdb"):
-        transpile_to_duckdb(f"SELECT {sql} AS v FROM t")
+        transpile_to_duckdb(f"SELECT {sql} AS v FROM t", generated=False)
 
 
 def test_set_masklen_of_a_column_answers_once_the_statement_says_its_type():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT '10.1.0.0/16' AS c")
     for said, want in (("inet", "10.1.0.0/8"), ("cidr", "10.0.0.0/8")):
-        written = transpile_to_duckdb(f"SELECT set_masklen(c::{said}, 8) AS v FROM t")
+        written = transpile_to_duckdb(
+            f"SELECT set_masklen(c::{said}, 8) AS v FROM t", generated=False
+        )
         assert connection.execute(written).fetchone()[0] == want
 
 
 def test_set_masklen_of_an_unknown_literal_is_inet_as_postgresql_resolves_it():
-    written = transpile_to_duckdb("SELECT set_masklen('10.1.0.0/16', 8) AS v")
+    written = transpile_to_duckdb("SELECT set_masklen('10.1.0.0/16', 8) AS v", generated=False)
     assert duckdb.connect().execute(written).fetchone()[0] == "10.1.0.0/8"
 
 
@@ -278,7 +293,7 @@ def test_an_overflow_that_could_answer_a_wrong_value_is_refused_by_name(dialect:
     with pytest.raises(
         FunctionRefused, match=rf"{call.split('(')[0]}\(\) has no form on {dialect}"
     ):
-        transpile(f"SELECT {call} AS v FROM t", dialect)
+        transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
 
 
 @pytest.mark.parametrize("dialect", _CHECKED_CAST)

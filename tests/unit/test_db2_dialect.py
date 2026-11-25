@@ -26,7 +26,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _db2(sql: str) -> str:
-    return transpile(sql, "db2")
+    return transpile(sql, "db2", generated=False)
 
 
 def test_db2_is_a_registered_sqlglot_dialect() -> None:

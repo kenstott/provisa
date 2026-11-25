@@ -52,7 +52,7 @@ def _series(sql: str, dialect: str) -> list[tuple[type, list[int]]]:
 
 
 def _postgres(statement: str) -> str:
-    sql = transpile(_semantic_sql(statement), "postgres")
+    sql = transpile(_semantic_sql(statement), "postgres", generated=False)
     assert "sequence" not in sql.lower(), sql
     return sql
 
@@ -82,7 +82,7 @@ def test_a_returned_range_on_postgres_is_an_array():
 
 
 def test_unwind_range_on_trino_is_sequence():
-    sql = transpile_to_trino(_semantic_sql(_UNWIND))
+    sql = transpile_to_trino(_semantic_sql(_UNWIND), generated=False)
     assert "generate_series" not in sql.lower(), sql
     assert "SEQUENCE(1, 40)" in sql.upper(), sql
     assert _series(sql, "trino") == [(exp.GenerateSeries, [1, 40])], sql
@@ -97,6 +97,6 @@ def test_unwind_range_on_trino_is_sequence():
     ],
 )
 def test_unwind_range_on_duckdb_is_inclusive(statement, expected):
-    sql = transpile_to_duckdb(_semantic_sql(statement))
+    sql = transpile_to_duckdb(_semantic_sql(statement), generated=False)
     assert "sequence" not in sql.lower(), sql
     assert [r[0] for r in duckdb.connect().execute(sql).fetchall()] == expected

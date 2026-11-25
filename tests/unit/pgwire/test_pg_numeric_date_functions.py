@@ -176,9 +176,9 @@ def test_a_row_answers_with_the_engines_own_sql_and_no_udf(name: str, arity: int
 
 
 def test_an_integer_comparison_is_any_dialects_and_arithmetic_stays_the_federation_engines():
-    assert "=" in transpile("SELECT int24eq(a, b) FROM t", "trino")
+    assert "=" in transpile("SELECT int24eq(a, b) FROM t", "trino", generated=False)
     with pytest.raises(FunctionRefused, match=r"int24pl\(\) has no form on mysql"):
-        transpile("SELECT int24pl(a, b) FROM t", "mysql")
+        transpile("SELECT int24pl(a, b) FROM t", "mysql", generated=False)
 
 
 def test_erf_is_clickhouses_own_function_first():
@@ -186,7 +186,10 @@ def test_erf_is_clickhouses_own_function_first():
 
 
 def test_justify_stays_bigquerys_own_function():
-    assert "JUSTIFY_DAYS" in transpile("SELECT justify_days(x) FROM t", "bigquery").upper()
+    assert (
+        "JUSTIFY_DAYS"
+        in transpile("SELECT justify_days(x) FROM t", "bigquery", generated=False).upper()
+    )
 
 
 @pytest.fixture
@@ -211,15 +214,15 @@ def new_york():
     ],
 )
 def test_the_session_zone_reads_as_postgresql_reads_it(new_york, call: str, want: str):
-    written = transpile_to_duckdb(f"SELECT {call} AS v")
+    written = transpile_to_duckdb(f"SELECT {call} AS v", generated=False)
     assert new_york.execute(f"SELECT v::VARCHAR FROM ({written})").fetchone()[0] == want
-    transpiled = transpile(f"SELECT {call} AS v", "duckdb")
+    transpiled = transpile(f"SELECT {call} AS v", "duckdb", generated=False)
     assert new_york.execute(f"SELECT v::VARCHAR FROM ({transpiled})").fetchone()[0] == want
 
 
 def test_a_time_takes_the_sessions_offset_today(new_york):
     offset = new_york.execute("SELECT date_part('timezone', now()) / 3600").fetchone()[0]
-    written = transpile_to_duckdb("SELECT timetz('12:30:01.5'::time) AS v")
+    written = transpile_to_duckdb("SELECT timetz('12:30:01.5'::time) AS v", generated=False)
     assert new_york.execute(f"SELECT v::VARCHAR FROM ({written})").fetchone()[0] == (
         f"12:30:01.5-{-int(offset):02d}"
     )

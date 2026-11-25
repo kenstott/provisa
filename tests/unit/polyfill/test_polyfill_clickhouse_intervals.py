@@ -430,13 +430,13 @@ def _text(value: Any) -> str | None:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
 def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
     with pytest.raises(Exception) as raised:
-        list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+        list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     error = from_engine(raised.value)
     assert error is not None, str(raised.value)[:300]
     return error
@@ -542,7 +542,7 @@ def test_the_reader_reads_postgresql_s_input(runtime, text, want):
 def test_a_form_the_reader_does_not_read_is_refused_by_name(text):
     assert intervals.interval_read(text) is None
     with pytest.raises(FunctionRefused, match="interval_pl"):
-        transpile(_call("interval_pl", _i(text), _i("00:00")), "clickhouse")
+        transpile(_call("interval_pl", _i(text), _i("00:00")), "clickhouse", generated=False)
 
 
 # --- PostgreSQL's errors, and the bound ---------------------------------------------------------
@@ -659,7 +659,7 @@ def test_isfinite_of_an_instant_is_still_instants_row(runtime):
 def test_an_interval_answer_read_by_no_row_here_is_refused_by_name(around):
     call = "pg_catalog.\"interval_pl\"('1 day'::interval, '1 hour'::interval)"
     with pytest.raises(FunctionRefused):
-        transpile(f"SELECT {around.format(call)} AS v", "clickhouse")
+        transpile(f"SELECT {around.format(call)} AS v", "clickhouse", generated=False)
 
 
 def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
@@ -667,7 +667,11 @@ def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
     an INTERVAL type it has none of (an engine error)."""
     # * 1 is interval_mul's row since J1337: the outermost operator no row reads is the one named
     with pytest.raises(RowRefused, match="interval_mul"):
-        transpile("SELECT ('1 day'::interval + '1 hour'::interval) * 1 IS NULL AS v", "clickhouse")
+        transpile(
+            "SELECT ('1 day'::interval + '1 hour'::interval) * 1 IS NULL AS v",
+            "clickhouse",
+            generated=False,
+        )
 
 
 # --- the grid -----------------------------------------------------------------------------------
@@ -697,9 +701,12 @@ _KEPT = {
 @pytest.mark.parametrize("dialect", sorted(_KEPT))
 def test_every_other_dialect_keeps_what_it_had(dialect):
     """The base's own text of the call, on each dialect no row here has a form on."""
-    assert transpile(_call("interval_pl", _i("1 day"), _i("1 hour")), dialect) == _KEPT[dialect]
+    assert (
+        transpile(_call("interval_pl", _i("1 day"), _i("1 hour")), dialect, generated=False)
+        == _KEPT[dialect]
+    )
 
 
 def test_trino_keeps_its_refusal_by_name():
     with pytest.raises(FunctionRefused, match="trino"):
-        transpile(_call("interval_pl", _i("1 day"), _i("1 hour")), "trino")
+        transpile(_call("interval_pl", _i("1 day"), _i("1 hour")), "trino", generated=False)

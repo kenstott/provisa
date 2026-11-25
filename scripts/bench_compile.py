@@ -102,8 +102,9 @@ def _graphql_statements() -> list[tuple[str, str, Callable[[], Any]]]:
         schema, ctx = models[entry["model"]]
         return graphql_golden.compile_read(schema, ctx, entry["graphql"], entry["variables"])
 
-    def transpiled(entry: dict, to_dialect: Callable[[str], str]) -> list[str]:
-        return [to_dialect(statement["sql"]) for statement in physical(entry)]
+    def transpiled(entry: dict, to_dialect: Callable[..., str]) -> list[str]:
+        # REQ-2236: GraphQL's compiled SQL is Provisa's own, from the graph IR.
+        return [to_dialect(statement["sql"], generated=True) for statement in physical(entry)]
 
     out: list[tuple[str, str, Callable[[], Any]]] = []
     for entry in _jsonl(GRAPHQL / "entries.jsonl"):

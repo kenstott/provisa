@@ -63,10 +63,12 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     refused = [name for name in _REFUSED_BY_DECISION if f'"{name}"(' in sql]
     if refused:
         with pytest.raises(FunctionRefused, match=rf"{refused[0]}\(\) has no form on duckdb"):
-            transpile(_on_the_engine(sql), "duckdb")
+            transpile(_on_the_engine(sql), "duckdb", generated=False)
         return
     try:
-        rows = connection.execute(transpile(_on_the_engine(sql), "duckdb")).fetchall()
+        rows = connection.execute(
+            transpile(_on_the_engine(sql), "duckdb", generated=False)
+        ).fetchall()
     except PostgresError as raised:  # settled by the statement's shape, before any engine
         assert ("err", raised.sqlstate, str(raised)) == want
         return
@@ -82,7 +84,11 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
 @pytest.mark.parametrize("dialect", (*_ENGINES, "postgres"))
 def test_pg_notify_is_refused_by_name_on_every_engine(dialect: str):
     with pytest.raises(FunctionRefused, match=f"pg_notify\\(\\) has no form on {dialect}"):
-        transpile("SELECT pg_catalog.pg_notify('conformance_probe', 'payload') AS v", dialect)
+        transpile(
+            "SELECT pg_catalog.pg_notify('conformance_probe', 'payload') AS v",
+            dialect,
+            generated=False,
+        )
 
 
 @pytest.mark.parametrize("sql", [s for s, want in RECORDED.items() if want[0] == "ok"])
@@ -102,7 +108,7 @@ def test_a_column_says_the_recorded_type(sql: str):
 @pytest.mark.parametrize("dialect", _ENGINES)
 def test_a_column_is_refused_by_name_for_its_storage_is_its_sources(sql: str, dialect: str):
     with pytest.raises(FunctionRefused, match=f"has no form on {dialect}"):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
 
 
 @pytest.mark.parametrize(
@@ -112,13 +118,13 @@ def test_a_column_is_refused_by_name_for_its_storage_is_its_sources(sql: str, di
 def test_what_a_search_keeps_of_its_place_is_refused_by_name(pattern: str, replacement: str):
     sql = f"SELECT regexp_replace('abc', '{pattern}', '{replacement}', 1, 1) AS v"
     with pytest.raises(duckdb.Error, match=rf"{MARK} 0A000: regexp_replace does not read"):
-        duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall()
 
 
 def test_an_anchor_duckdb_cannot_read_is_its_own_error_never_an_answer():
     sql = r"SELECT regexp_replace('abc', '\yb', 'x', 1, 1) AS v"
     with pytest.raises(duckdb.Error, match="invalid escape sequence"):
-        duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall()
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
@@ -128,7 +134,7 @@ def test_caret_anchor_in_5arg_regexp_replace_reaches_the_engine_not_provisa_fail
     ``fail()``/``throwIf()`` refusal for the '^' anchor — that call is what _refused_by_its_form
     detects.  The engine must encounter the pattern at runtime and raise its own error."""
     sql = "SELECT regexp_replace('12', '^1', '12', 42, 42) AS v"
-    written = transpile(sql, dialect)
+    written = transpile(sql, dialect, generated=False)
     # Provisa's own refusal guard for '^' — _refused_by_its_form catches these strings.
     # After commit 1850a660e7, neither engine should embed them for the '^' anchor.
     assert "strpos(" not in written.lower() or "'^'" not in written, (
@@ -190,19 +196,19 @@ def test_an_engine_with_no_form_refuses_by_name(dialect: str):
 def test_repeat_on_trino_is_a_text_as_postgresql_answers(value: str, count: str, want: str | None):
     """Trino's own repeat builds an array. No Trino runs here: DuckDB's rpad pads the same way but
     for its size's type, and tests/integration/test_system_forms_on_engines.py replays on Trino."""
-    sql = transpile(f"SELECT repeat({value}, {count}) AS v", "trino")
+    sql = transpile(f"SELECT repeat({value}, {count}) AS v", "trino", generated=False)
     engine = duckdb.connect()
     engine.execute("CREATE MACRO trino_rpad(s, n, p) AS rpad(s, CAST(n AS INTEGER), p)")
     assert engine.execute(sql.replace("RPAD(", "trino_rpad(")).fetchall() == [(want,)]
 
 
 def test_a_form_that_means_trinos_array_repeat_keeps_it():
-    assert "REPEAT(1, " in transpile("SELECT array_fill(1, ARRAY[2])", "trino")
+    assert "REPEAT(1, " in transpile("SELECT array_fill(1, ARRAY[2])", "trino", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "clickhouse", "spark", "snowflake"])
 def test_repeat_stays_the_engines_own_elsewhere(dialect: str):
-    assert "REPEAT('x', 3)" in transpile("SELECT repeat('x', 3) AS v", dialect)
+    assert "REPEAT('x', 3)" in transpile("SELECT repeat('x', 3) AS v", dialect, generated=False)
 
 
 _STRICT_REPEAT = [
@@ -221,20 +227,20 @@ _STRICT_REPEAT = [
 
 @pytest.mark.parametrize(("value", "count", "want"), _STRICT_REPEAT)
 def test_repeat_is_strict_on_duckdb(value: str, count: str, want: str | None):
-    written = transpile(f"SELECT repeat({value}, {count}) AS v", "duckdb")
+    written = transpile(f"SELECT repeat({value}, {count}) AS v", "duckdb", generated=False)
     assert duckdb.connect().execute(written).fetchall() == [(want,)]
 
 
 @pytest.mark.parametrize(("value", "count", "want"), _STRICT_REPEAT)
 def test_repeat_is_strict_on_clickhouse(value: str, count: str, want: str | None):
-    written = transpile(f"SELECT repeat({value}, {count}) AS v", "clickhouse")
+    written = transpile(f"SELECT repeat({value}, {count}) AS v", "clickhouse", generated=False)
     answer = chdb.query(written, "CSV").bytes().decode().strip()
     assert answer == ("\\N" if want is None else f'"{want}"')
 
 
 @pytest.mark.parametrize("dialect", ["spark", "snowflake", "bigquery", "mysql", "tsql"])
 def test_repeat_of_nothing_is_null_for_any_count_elsewhere(dialect: str):
-    written = transpile("SELECT repeat(a, b) AS v FROM t", dialect)
+    written = transpile("SELECT repeat(a, b) AS v FROM t", dialect, generated=False)
     assert re.search(r"\ba\W* IS NOT NULL", written), written
 
 
@@ -244,7 +250,7 @@ def test_the_six_argument_form_is_refused_whatever_its_flag(n: int):
     sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
     for dialect in _ENGINES:
         with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
-            transpile(sql, dialect)
+            transpile(sql, dialect, generated=False)
 
 
 @pytest.mark.parametrize("flags", ["'gi'", "'i'", "f"])
@@ -252,7 +258,7 @@ def test_the_six_argument_form_is_refused_whatever_its_flag(n: int):
 def test_a_flag_beside_n_is_refused_by_name(flags: str, dialect: str):
     sql = f"SELECT regexp_replace(a, 'X', '-', 1, 2, {flags}) AS v FROM t"
     with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
 
 
 @pytest.mark.parametrize(
@@ -265,13 +271,15 @@ def test_a_flag_beside_n_is_refused_by_name(flags: str, dialect: str):
     ],
 )
 def test_clickhouse_answers_null_before_it_refuses_a_value(call: str):
-    written = transpile(f"SELECT regexp_replace({call}) AS v", "clickhouse")
+    written = transpile(f"SELECT regexp_replace({call}) AS v", "clickhouse", generated=False)
     assert chdb.query(written, "CSV").bytes().decode().strip() == "\\N"
 
 
 def test_clickhouse_builds_no_array_from_a_nullable():
     """Its 24.3 refuses Nullable(Array) when it reads the statement, whatever the values, which
     chdb's own version allows. So past the checks each operand is taken out of Nullable."""
-    written = transpile("SELECT regexp_replace(a, 'p', c, d, e) FROM t", "clickhouse")
+    written = transpile(
+        "SELECT regexp_replace(a, 'p', c, d, e) FROM t", "clickhouse", generated=False
+    )
     answer = written[written.index(" THEN CONCAT(") :].removesuffix(" FROM t")
     assert re.findall(r"\b[acde]\b", re.sub(r"assumeNotNull\([acde]\)", "", answer)) == []

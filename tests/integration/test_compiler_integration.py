@@ -174,39 +174,39 @@ class TestSQLGlotTranspilation:
     def test_transpile_pg_to_physical(self):
         # REQ-066, REQ-068: PG SQL transpiles to Trino
         pg_sql = 'SELECT "id", "amount" FROM "public"."orders" WHERE "status" = $1'
-        result = transpile(pg_sql, "trino")
+        result = transpile(pg_sql, "trino", generated=False)
         assert "orders" in result.lower()
         assert "SELECT" in result.upper()
 
     def test_transpile_pg_to_mysql(self):
         # REQ-068: PG SQL transpiles to MySQL dialect
         pg_sql = 'SELECT "id" FROM "public"."orders" LIMIT 10'
-        result = transpile(pg_sql, "mysql")
+        result = transpile(pg_sql, "mysql", generated=False)
         assert "orders" in result.lower()
         assert "10" in result
 
     def test_transpile_pg_to_duckdb(self):
         # REQ-068: PG SQL transpiles to DuckDB dialect
         pg_sql = 'SELECT "id", "amount" FROM "public"."orders"'
-        result = transpile(pg_sql, "duckdb")
+        result = transpile(pg_sql, "duckdb", generated=False)
         assert "orders" in result.lower()
 
     def test_transpile_pg_to_snowflake(self):
         # REQ-068: PG SQL transpiles to Snowflake dialect
         pg_sql = 'SELECT "id" FROM "public"."orders" WHERE "region" = $1'
-        result = transpile(pg_sql, "snowflake")
+        result = transpile(pg_sql, "snowflake", generated=False)
         assert "orders" in result.lower()
 
     def test_transpile_pg_to_bigquery(self):
         # REQ-068: PG SQL transpiles to BigQuery dialect
         pg_sql = 'SELECT "id", "amount" FROM "public"."orders"'
-        result = transpile(pg_sql, "bigquery")
+        result = transpile(pg_sql, "bigquery", generated=False)
         assert "orders" in result.lower()
 
     def test_transpile_pg_to_tsql(self):
         # REQ-068: PG SQL transpiles to SQL Server (T-SQL) dialect
         pg_sql = 'SELECT "id" FROM "public"."orders"'
-        result = transpile(pg_sql, "tsql")
+        result = transpile(pg_sql, "tsql", generated=False)
         assert "orders" in result.lower()
 
     def test_compiled_graphql_produces_pg_sql(self):
@@ -232,7 +232,7 @@ class TestSQLGlotTranspilation:
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         pg_sql = results[0].sql
-        trino_sql = transpile(pg_sql, "trino")
+        trino_sql = transpile(pg_sql, "trino", generated=False)
         assert "orders" in trino_sql.lower()
         assert "SELECT" in trino_sql.upper()
 

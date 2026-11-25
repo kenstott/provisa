@@ -39,13 +39,13 @@ def _held(value: Any) -> Any:
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
 def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
     with pytest.raises(Exception) as raised:
-        list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+        list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     error = from_engine(raised.value)
     assert error is not None, str(raised.value)[:300]
     return error
@@ -185,7 +185,7 @@ def test_a_column_of_values_reads_each_row(runtime):
         'SELECT pg_catalog."octet_length"(c) AS v FROM '
         f"(VALUES ({_b('0102')}), ('abc'::bytea), (NULL::bytea)) AS t(c)"
     )
-    rows = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    rows = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     # ClickHouse reads a VALUES list as a union of its rows, in no order.
     assert sorted(rows, key=repr) == sorted([(2,), (3,), (None,)], key=repr)
 
@@ -236,13 +236,15 @@ def test_outside_the_value_raises_postgresql_s_sqlstate(runtime, sql, sqlstate, 
 )  # fmt: skip
 def test_what_clickhouse_would_not_hold_as_the_bytes_is_refused_by_name(sql, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert str(refused.value) == f"{function}() has no form on clickhouse"
 
 
 def test_a_text_keeps_its_own_form():
     # The rows read a bytea; a text's call is the old table's still.
-    written = transpile("SELECT pg_catalog.\"btrim\"('xax'::text, 'x'::text) AS v", "clickhouse")
+    written = transpile(
+        "SELECT pg_catalog.\"btrim\"('xax'::text, 'x'::text) AS v", "clickhouse", generated=False
+    )
     assert "splitByString" not in written
 
 

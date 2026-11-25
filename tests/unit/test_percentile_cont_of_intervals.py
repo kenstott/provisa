@@ -148,7 +148,7 @@ def _duckdb(sql: str) -> list[tuple]:
     """DuckDB's answer, each interval as interval_out writes its months, days and microseconds:
     its driver's timedelta has no months."""
     connection = duckdb.connect()
-    written = transpile_to_duckdb(sql)
+    written = transpile_to_duckdb(sql, generated=False)
     relation = connection.sql(written)
     kinds = [str(kind) for kind in relation.types]
     selected = ", ".join(_selected(n, k) for n, k in zip(relation.columns, kinds))
@@ -158,7 +158,7 @@ def _duckdb(sql: str) -> list[tuple]:
 
 @pytest.mark.parametrize("sql", STATEMENTS)
 def test_duckdb_answers_percentile_cont_as_postgresql(postgres: Any, sql: str):
-    assert _duckdb(sql) == _postgresql(postgres, sql), transpile_to_duckdb(sql)
+    assert _duckdb(sql) == _postgresql(postgres, sql), transpile_to_duckdb(sql, generated=False)
 
 
 def test_the_function_check_s_call_reaches_the_wire_as_postgresql_s(postgres: Any, conn: Any):

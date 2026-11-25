@@ -141,7 +141,9 @@ def _solutions(s: Session, op, vocab) -> list[dict]:
     ast, ordered, graph_vars = cypher_to_sql(compiled.ast, s.model, {})
     ast = apply_graph_rewrites(ast, graph_vars, s.model)
     assert not ordered
-    result = s.duck.execute(transpile_to_duckdb(ast.sql(dialect="postgres")).replace("memory.", ""))
+    result = s.duck.execute(
+        transpile_to_duckdb(ast.sql(dialect="postgres"), generated=True).replace("memory.", "")
+    )
     columns = [d[0] for d in result.description]
     raw = [
         {c: json.loads(v) if isinstance(v, str) and v.startswith("{") else v for c, v in r}

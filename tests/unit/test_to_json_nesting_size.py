@@ -68,13 +68,15 @@ def test_a_value_that_is_a_map_or_a_list_is_encoded_once(sql):
 
 @pytest.mark.parametrize("level", [_MAP_LEVEL, _LIST_OF_MAP_LEVEL])
 def test_a_nested_map_s_statement_grows_by_a_constant_per_level(level):
-    sizes = [len(transpile_to_duckdb(_statement(level, depth))) for depth in range(1, 7)]
+    sizes = [
+        len(transpile_to_duckdb(_statement(level, depth), generated=False)) for depth in range(1, 7)
+    ]
     steps = [b - a for a, b in zip(sizes, sizes[1:], strict=False)]
     assert max(steps) == min(steps), sizes
 
 
 def test_no_map_is_named_by_the_form_that_tells_an_instant():
-    written = transpile_to_duckdb(_statement(_MAP_LEVEL, 3)).upper()
+    written = transpile_to_duckdb(_statement(_MAP_LEVEL, 3), generated=False).upper()
     assert "TYPEOF(MAP(" not in written
 
 
@@ -95,7 +97,7 @@ def test_no_map_is_named_by_the_form_that_tells_an_instant():
 def test_an_instant_under_nested_maps_reads_as_postgresql_writes_it(level, expected):
     con = duckdb.connect()
     con.execute("CREATE TABLE x AS SELECT TIMESTAMP '2026-07-01 08:00:00' AS t")
-    answer = con.execute(transpile_to_duckdb(_statement(level, 2))).fetchone()
+    answer = con.execute(transpile_to_duckdb(_statement(level, 2), generated=False)).fetchone()
     assert answer is not None
     assert answer[0] == expected
 
@@ -108,7 +110,10 @@ def _to_json_of_to_json(depth: int) -> str:
 
 
 def test_a_to_json_of_a_to_json_grows_by_a_constant_per_level():
-    sizes = [len(transpile_to_duckdb(_to_json_of_to_json(depth))) for depth in range(2, 8)]
+    sizes = [
+        len(transpile_to_duckdb(_to_json_of_to_json(depth), generated=False))
+        for depth in range(2, 8)
+    ]
     steps = [b - a for a, b in zip(sizes, sizes[1:], strict=False)]
     assert max(steps) == min(steps), sizes
 
@@ -116,6 +121,6 @@ def test_a_to_json_of_a_to_json_grows_by_a_constant_per_level():
 def test_an_instant_under_a_to_json_of_a_to_json_reads_as_postgresql_writes_it():
     con = duckdb.connect()
     con.execute("CREATE TABLE x AS SELECT TIMESTAMP '2026-07-01 08:00:00' AS t")
-    answer = con.execute(transpile_to_duckdb(_to_json_of_to_json(3))).fetchone()
+    answer = con.execute(transpile_to_duckdb(_to_json_of_to_json(3), generated=False)).fetchone()
     assert answer is not None
     assert answer[0] == '"2026-07-01T08:00:00"'

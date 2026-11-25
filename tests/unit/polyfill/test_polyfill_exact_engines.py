@@ -101,7 +101,7 @@ def test_every_refusal_the_dialect_names_is_a_row(dialect: str):
 )
 def test_the_refusal_is_the_rows_sqlstate_and_message(dialect: str, sql: str, message: str):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert str(refused.value) == message
     assert getattr(refused.value, "sqlstate") == "0A000"  # the row's, set by the dialect
     assert refused.value.params["dialect"] == dialect

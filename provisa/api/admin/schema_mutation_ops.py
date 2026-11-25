@@ -1089,7 +1089,7 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         )
 
     dialect = state.source_pools.dialect_for(target_source_id) or "postgres"
-    native_sql = transpile(physical_sql, dialect)
+    native_sql = transpile(physical_sql, dialect, generated=False)  # REQ-2236: a steward's SQL
 
     ddl = f'CREATE OR REPLACE VIEW "{target_schema}"."{view_name}" AS {native_sql}'
     await state.source_pools.execute_ddl(target_source_id, ddl)

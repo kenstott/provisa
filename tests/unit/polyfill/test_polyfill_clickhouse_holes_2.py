@@ -39,7 +39,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
@@ -48,7 +48,7 @@ def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
 
 
 def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
-    statement = transpile(sql, "clickhouse")
+    statement = transpile(sql, "clickhouse", generated=False)
     with pytest.raises(Exception) as raised:
         list(runtime.run_sync(statement).iter_rows())
     error = from_engine(raised.value)
@@ -58,7 +58,7 @@ def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
 
 def _refused(sql: str) -> FunctionRefused:
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     return refused.value
 
 
@@ -110,7 +110,7 @@ def test_like_escape_of_a_null_is_null(runtime, sql):
 
 def test_an_escape_of_more_than_one_character_is_postgresql_s_error():
     with pytest.raises(RowRefused) as refused:
-        transpile("SELECT 'a' LIKE 'a' ESCAPE '##' AS v", "clickhouse")
+        transpile("SELECT 'a' LIKE 'a' ESCAPE '##' AS v", "clickhouse", generated=False)
     assert (refused.value.sqlstate, str(refused.value)) == ("22025", "invalid escape string")
 
 
@@ -130,7 +130,7 @@ def test_like_escape_with_no_exact_form_is_refused_by_name(sql, function):
 
 @pytest.mark.parametrize("dialect", [d for d in grid.DIALECTS if d != "clickhouse"])
 def test_every_other_dialect_s_writer_keeps_escape(dialect):
-    written = transpile("SELECT c LIKE 'a#_' ESCAPE '#' AS v FROM t", dialect)
+    written = transpile("SELECT c LIKE 'a#_' ESCAPE '#' AS v FROM t", dialect, generated=False)
     assert "ESCAPE '#'" in written
 
 
@@ -188,7 +188,7 @@ def test_a_timestamp_s_text_inside_the_bound_answers(runtime, sql, answer):
 def test_isfinite_of_a_literal_outside_the_bound_is_still_read_as_there():
     # isfinite reads only that a value is there: J1305's row, unchanged.
     sql = "SELECT pg_catalog.\"isfinite\"('2300-01-01 00:00:00+00'::timestamp with time zone) AS v"
-    assert "throwIf" not in transpile(sql, "clickhouse")
+    assert "throwIf" not in transpile(sql, "clickhouse", generated=False)
 
 
 # --- 3. a range's bound a row computes ----------------------------------------------------------
@@ -296,7 +296,7 @@ def test_a_bytea_like_with_no_exact_form_is_refused_by_name(sql):
 
 def test_text_like_bytea_is_postgresql_s_error():
     with pytest.raises(RowRefused) as refused:
-        transpile("SELECT 'abc'::text LIKE '_'::bytea AS v", "clickhouse")
+        transpile("SELECT 'abc'::text LIKE '_'::bytea AS v", "clickhouse", generated=False)
     assert (refused.value.sqlstate, str(refused.value)) == (
         "42883",
         "operator does not exist: text ~~ bytea",
@@ -319,7 +319,7 @@ def test_text_like_bytea_is_postgresql_s_error():
 )  # fmt: skip
 def test_bytea_ilike_is_postgresql_s_error(sql, message):
     with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert (refused.value.sqlstate, str(refused.value)) == ("42883", message)
 
 
@@ -403,11 +403,11 @@ def test_to_char_s_template_beside_an_instant_with_an_offset_is_postgresql_s(run
         "'2024-01-01 00:00:00+00'::timestamptz AS w"
     )
     assert _rows(runtime, sql)[0][0] == "%4"
-    assert "'%Y'" not in transpile(sql, "trino")
+    assert "'%Y'" not in transpile(sql, "trino", generated=False)
 
 
 def test_to_char_s_template_on_postgresql_is_the_one_written():
-    assert "'%Y'" in transpile("SELECT to_char(c, '%Y') AS v FROM t", "postgres")
+    assert "'%Y'" in transpile("SELECT to_char(c, '%Y') AS v FROM t", "postgres", generated=False)
 
 
 def test_an_escape_null_clause_is_taken_out_of_the_text(runtime):

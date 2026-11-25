@@ -486,7 +486,8 @@ def test_an_xmltable_column_name_stays_a_name():
     name = """x" , (SELECT 1) AS "y"""
     quoted = name.replace('"', '""')
     written = transpile_to_duckdb(
-        f"""SELECT * FROM XMLTABLE('/r' PASSING ('<r/>'::xml) COLUMNS "{quoted}" text) t"""
+        f"""SELECT * FROM XMLTABLE('/r' PASSING ('<r/>'::xml) COLUMNS "{quoted}" text) t""",
+        generated=False,
     )
     tree = xml_mapping.sqlglot.parse_one(written, read="duckdb")
     derived = tree.find(xml_mapping.exp.Subquery)
@@ -511,18 +512,18 @@ def test_an_xmltable_column_name_stays_a_name():
 )
 def test_a_dialect_with_no_xml_refuses_the_function_by_name(dialect, sql, name):
     with pytest.raises(XmlFunctionRefused, match=f"{name} .*{dialect}"):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
 
 
 def test_a_document_already_answered_is_a_value_on_any_dialect():
-    written = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "mysql")
+    written = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "mysql", generated=False)
     assert "PROVISA_XML" not in written and "<a/>" in written
-    native = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "postgres")
+    native = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "postgres", generated=False)
     assert native == "SELECT CAST('<a/>' AS XML) AS v, id FROM t"
 
 
 def test_a_statement_with_no_xml_function_is_left_alone():
-    assert transpile("SELECT xml_notes, document FROM t", "mysql")
+    assert transpile("SELECT xml_notes, document FROM t", "mysql", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -562,7 +563,7 @@ def test_governance_refuses_a_call_no_surface_read_for_it(monkeypatch, call):
     ],
 )
 def test_a_statement_crosses_governance_and_reaches_postgresql_as_written(sql):
-    assert transpile(sql, "postgres") == sql
+    assert transpile(sql, "postgres", generated=False) == sql
 
 
 # --- a role reads what it may: each read is a governed statement of the session ------------------

@@ -79,7 +79,7 @@ def _rows(con, query: str) -> list[dict]:
     lm = _model()
     sql, _, graph_vars = cypher_to_sql(parse_cypher(query), lm, {})
     sql = apply_graph_rewrites(sql, graph_vars, lm)
-    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     return assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
 

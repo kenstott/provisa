@@ -70,7 +70,11 @@ def _rows(query: str, labels: tuple[str, ...] = ("A", "B")) -> list[tuple]:
     lm = CypherLabelMap(nodes=nodes, relationships={})
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query, lm), lm, {})
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, lm)
-    return sorted(duck.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall())
+    return sorted(
+        duck.execute(
+            transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+        ).fetchall()
+    )
 
 
 def test_a_property_of_one_type_everywhere_keeps_it():

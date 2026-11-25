@@ -108,7 +108,7 @@ def test_the_search_path_is_read_as_postgresql_reads_it():
         "string_to_array(current_setting('search_path'),',') s ORDER BY i",
         _REQUEST,
     )
-    written = transpile_to_duckdb(addressed)
+    written = transpile_to_duckdb(addressed, generated=False)
     assert duckdb.connect().execute(written).fetchall() == [("analyst",), ("public",)]
 
 
@@ -123,7 +123,7 @@ def test_the_search_path_is_read_as_postgresql_reads_it():
 )
 def test_a_scalar_function_in_from_is_one_row_named_as_postgresql_names_it(from_item, column):
     addressed = addressed_statement(f"SELECT * FROM {from_item}", _REQUEST)
-    written = transpile_to_duckdb(addressed)
+    written = transpile_to_duckdb(addressed, generated=False)
     answered = duckdb.connect().execute(written)
     assert [d[0] for d in answered.description] == [column]
     assert answered.fetchall() == [(["a", "b"],)]

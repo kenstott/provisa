@@ -104,5 +104,5 @@ STATEMENTS = [
 
 @pytest.mark.parametrize("sql", STATEMENTS)
 def test_the_postgresql_engine_answers_as_postgresql(pg: Any, sql: str):
-    written = transpile(sql, "postgres")
+    written = transpile(sql, "postgres", generated=False)
     assert _answer(pg, written) == _answer(pg, sql), written

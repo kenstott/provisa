@@ -29,7 +29,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _clickhouse(sql: str) -> str:
-    return transpile(sql, "clickhouse")
+    return transpile(sql, "clickhouse", generated=False)
 
 
 def test_each_row_is_in_the_grid():
@@ -69,7 +69,9 @@ def test_array_agg_of_distinct_a_filter_or_a_window_keeps_its_form(sql):
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_array_agg_on_another_engine_is_unchanged(dialect):
-    written = transpile('SELECT pg_catalog."array_agg"(NULL::integer) AS v', dialect)
+    written = transpile(
+        'SELECT pg_catalog."array_agg"(NULL::integer) AS v', dialect, generated=False
+    )
     assert "groupArray" not in written
 
 
@@ -88,11 +90,14 @@ def test_current_schemas_is_refused_by_name_on_clickhouse(sql):
 
 def test_current_schemas_is_still_refused_on_trino():
     with pytest.raises(RowRefused, match="current_schemas"):
-        transpile("SELECT current_schemas(true) AS v", "trino")
+        transpile("SELECT current_schemas(true) AS v", "trino", generated=False)
 
 
 def test_current_schemas_on_duckdb_is_unchanged():
-    assert "current_schemas" in transpile("SELECT current_schemas(true) AS v", "duckdb").lower()
+    assert (
+        "current_schemas"
+        in transpile("SELECT current_schemas(true) AS v", "duckdb", generated=False).lower()
+    )
 
 
 def test_array_agg_of_an_order_is_refused_by_name():
@@ -200,4 +205,4 @@ def test_a_multirange_of_an_aggregated_array_on_trino_keeps_its_forms_own_substr
 
     statement = "SELECT tstzmultirange(VARIADIC array_agg(v ORDER BY i))::text AS r FROM s.t"
     marked = mark_subtype_operations(statement, {("s", "t"): {"v": "tstzrange"}})
-    assert "GREATEST(" not in transpile(marked, "trino").upper()
+    assert "GREATEST(" not in transpile(marked, "trino", generated=False).upper()

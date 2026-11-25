@@ -139,7 +139,10 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answers(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 def _text(value: object) -> str | None:
@@ -163,7 +166,7 @@ def test_clickhouse_reads_an_untyped_array_literal_as_text_array(runtime, sql, w
 @pytest.mark.parametrize("name", ["jsonb_exists_any", "jsonb_exists_all"])
 def test_an_untyped_literal_not_an_array_is_refused_by_name(name):
     with pytest.raises(FunctionRefused):
-        transpile(f"SELECT {name}('{{\"a\":1}}', 'abc')", "clickhouse")
+        transpile(f"SELECT {name}('{{\"a\":1}}', 'abc')", "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(("sql", "state"), RAISED)
@@ -196,4 +199,4 @@ def test_object_keys_answers_each_key_in_postgresql_s_order(runtime, sql, want):
 
 def test_trino_keeps_its_refusal():
     with pytest.raises(Exception):
-        transpile("SELECT jsonb_exists('{\"a\":1}'::jsonb, 'a')", "trino")
+        transpile("SELECT jsonb_exists('{\"a\":1}'::jsonb, 'a')", "trino", generated=False)

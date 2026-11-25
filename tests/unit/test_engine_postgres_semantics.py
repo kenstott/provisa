@@ -33,7 +33,9 @@ def _on_duckdb(pg_sql: str) -> list[tuple]:
     # Read as every DuckDB read is (REQ-2194): through its Arrow export.
     with duckdb.connect() as con:
         con.execute(LOSSLESS_ARROW)
-        return arrow_rows(con.execute(transpile_to_duckdb(pg_sql)).to_arrow_table())
+        return arrow_rows(
+            con.execute(transpile_to_duckdb(pg_sql, generated=False)).to_arrow_table()
+        )
 
 
 @pytest.mark.parametrize(
@@ -188,5 +190,5 @@ def test_a_to_char_element_not_carried_is_refused_by_name(call, element):
     from provisa.pgwire.server import _sqlstate_of
 
     with pytest.raises(NotImplementedError, match=re.escape(element)) as refused:
-        transpile_to_duckdb(f"SELECT {call}")
+        transpile_to_duckdb(f"SELECT {call}", generated=False)
     assert _sqlstate_of(refused.value) == "0A000"

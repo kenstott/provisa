@@ -119,7 +119,7 @@ def glossary():
 
 
 def _run(con, sql: str, params=()) -> tuple[list[str], list[list]]:
-    cursor = con.execute(transpile_to_duckdb(sql), list(params))
+    cursor = con.execute(transpile_to_duckdb(sql, generated=False), list(params))
     return [d[0] for d in cursor.description], [list(r) for r in cursor.fetchall()]
 
 
