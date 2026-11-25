@@ -43,8 +43,9 @@ async def offered(request: Request, org_id: str) -> dict:
 
 @builtin_router.get("/{name}")
 async def builtin(request: Request, org_id: str, name: str) -> dict:
-    """The host a ``name`` source joins and the organisation's cluster in use; refused by name
-    when ``name`` is not a built-in source type or this installation carries no host for it."""
+    """The host a ``name`` source joins and the organisation's cluster in use; ``host`` is null
+    when this installation carries no host for it (a release package ships one; a checkout's demo
+    runs the native one). 404 when ``name`` is not a built-in source type at all."""
     from provisa.api.admin.spark_cluster_router import in_use
     from provisa.api.errors import ApiError
     from provisa.core.models import BUILTIN_CONNECTORS
@@ -60,13 +61,8 @@ async def builtin(request: Request, org_id: str, name: str) -> dict:
             type=name,
         )
     row = connector_repo.builtin(name)
-    if row is None:
-        raise ApiError(
-            409,
-            "codesource.builtin_unavailable",
-            f"This installation carries no {name} host: a {name} source runs on the host a "
-            "release package ships, or on the native one a checkout's demo runs",
-            None,
-            type=name,
-        )
-    return {"host": connector_repo.public(row), "default_cluster": await in_use(org_id)}
+    # REQ-2225: null host means this installation does not ship a Spark host (e.g. e2e test
+    # environments). The UI already initialises sparkHost to null and handles the absent-host
+    # case; a 409 here logged as a browser console error and broke every Sources-page test.
+    host = connector_repo.public(row) if row is not None else None
+    return {"host": host, "default_cluster": await in_use(org_id)}
