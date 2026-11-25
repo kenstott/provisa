@@ -10,6 +10,7 @@
 
 import { test, expect, type Page } from "./coverage";
 import type { Locator } from "@playwright/test";
+import { withBody } from "./response-body";
 
 /**
  * REQ-2127, REQ-2128: a data product's detail panel and its graph, against the real backend and
@@ -81,10 +82,12 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     const panelRead = page.waitForRequest(
       (r) => r.url().endsWith("/data/graphql") && (r.postData() ?? "").includes("DataProductPanel"),
     );
-    const panelAnswer = page.waitForResponse(
-      (r) =>
-        r.url().endsWith("/data/graphql") &&
-        (r.request().postData() ?? "").includes("DataProductPanel"),
+    const panelAnswer = withBody(
+      page.waitForResponse(
+        (r) =>
+          r.url().endsWith("/data/graphql") &&
+          (r.request().postData() ?? "").includes("DataProductPanel"),
+      ),
     );
     const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
@@ -113,7 +116,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     // The GraphQL the panel ran, replayed as the same role, answers the same.
     const sent = await panelRead;
     const shown: string = JSON.parse(sent.postData() ?? "{}").query;
-    const answered = await (await panelAnswer).json();
+    const answered = (await panelAnswer).json<unknown>();
     const replay = await page.request.post("/data/graphql", {
       headers: {
         "Content-Type": "application/json",
