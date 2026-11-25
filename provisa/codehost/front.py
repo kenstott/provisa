@@ -47,7 +47,7 @@ Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's 
 image beside this program; the code's own environment is the code's.
 """
 
-# Requirements: REQ-2098, REQ-2100, REQ-2221
+# Requirements: REQ-2098, REQ-2100, REQ-2221, REQ-2267
 from __future__ import annotations
 
 import base64
@@ -418,15 +418,20 @@ class Worker:
         self.process = subprocess.Popen(argv, pass_fds=tuple(theirs), env=env)  # noqa: S603  # nosec B603
         for _, t in pairs:
             t.close()
+        self._attach([mine for mine, _ in pairs])
+
+    def _attach(self, conns: list[socket.socket]) -> None:
+        """The worker's connections, each said hello on, read on a thread of its own. REQ-2267: a
+        dev-mode source's pgwire sidecar (sidecar.py) attaches the connections Provisa gave it."""
         hello: dict = {}
-        for mine, _ in pairs:
+        for mine in conns:
             body = read_body(mine)
             if body is None or body[:1] != _JSON:
                 raise RuntimeError("the code's worker ended before it said hello")
             hello = json.loads(body[1:])
         self.hello = hello
         self._ids = itertools.count(1)
-        self._lanes = [_Lane(mine) for mine, _ in pairs]
+        self._lanes = [_Lane(mine) for mine in conns]
         self._idle = list(self._lanes)
         self._leases = threading.Condition()
         self._running: dict[tuple[int, int], _Running] = {}
