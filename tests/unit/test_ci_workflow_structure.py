@@ -2830,3 +2830,33 @@ def test_the_lane_image_cache_key_changes_with_every_pin():
         assert _lane_step(name)["with"]["key"] == (
             "images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}"
         ), name
+
+
+def _zaychik_dockerfile() -> str:
+    return (REPO / "zaychik" / "Dockerfile").read_text()
+
+
+def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
+    """Run 45456550808: `mvn ...:go-offline -q` failed the image build on one "Could not find
+    artifact maven-dependency-plugin:jar:3.11.0 in central" for a jar Central serves; `-q` hid the
+    resolver's detail. The fetch logs in full (-B -e, no -q) and transient failures are retried by
+    the resolver's own retry settings, not by a shell loop around mvn."""
+    text = _zaychik_dockerfile()
+    runs = re.findall(r"^RUN (.*?)(?<!\\)$", text, re.M | re.S)
+    go_offline = [r for r in runs if "go-offline" in r]
+    assert len(go_offline) == 1, go_offline
+    cmd = go_offline[0]
+    assert cmd.split() == ["mvn", "-B", "-e", "${DEPENDENCY_PLUGIN}:go-offline"], cmd
+    assert not any(re.search(r"\b(for|while|until)\b", r) for r in runs), runs
+    maven_args = re.search(r'^ENV MAVEN_ARGS="([^"]*)"$', text, re.M)
+    assert maven_args, "the resolver's transport retry settings are gone"
+    props = dict(p.removeprefix("-D").split("=", 1) for p in maven_args.group(1).split())
+    assert int(props["aether.connector.http.retryHandler.count"]) >= 5, props
+    assert int(props["aether.connector.http.retryHandler.interval"]) >= 10000, props
+    assert int(props["aether.connector.http.retryHandler.intervalMax"]) >= 60000, props
+    assert int(props["maven.wagon.http.retryHandler.count"]) >= 5, props
+    assert {"429", "502", "503", "504"} <= set(
+        props["aether.connector.http.retryHandler.serviceUnavailable"].split(",")
+    ), props
+    # No mirror or alternate repository: artifacts come only from Maven Central.
+    assert "mirror" not in text.lower() and "settings.xml" not in text, text
