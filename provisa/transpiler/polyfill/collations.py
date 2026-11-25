@@ -132,16 +132,32 @@ COLLATED_ORDERS: tuple[Feature, ...] = tuple(
     _collated_order(name, summary) for name, summary in _COLLATED_ORDERS.items()
 )
 
-#: The character(n) max/min aggregates: they compare without trailing spaces (bpcharcmp) in the
-#: session's collation and pad the result to the column's declared length. On every non-postgres
-#: dialect the padding length is read from the column's character(n) cast in a VALUES clause;
-#: any other form is refused.
-_CHARACTER_AGG_LIMITATION = (
-    Limitation(
-        "Requires every row of the input column to be cast to the same character(n) width "
-        "in a VALUES clause; refused otherwise.",
-    ),
-)
+
+#: The character(n) max/min aggregates: max or min of a column the statement says is character(n).
+#: DuckDB compares without trailing spaces (bpcharcmp) in the session's collation and pads the
+#: answer to the width read from the column's character(n) cast in a VALUES clause; every other
+#: column form, and every non-postgres dialect but DuckDB, is refused (function_macros.
+#: _character_length and the DuckDB-only macro in rows/strings.py). A column whose type the
+#: statement does not say, such as a table column, is not this overload.
+def _character_agg_limitations(called: str) -> dict[str, tuple[Limitation, ...]]:
+    return {
+        dialect: (
+            Limitation(
+                "Over a column the statement says is character(n): answered when every row of "
+                "its VALUES clause casts the column to the same character(n) width, the answer "
+                f'padded to that width. Refused, with "{called}() has no form on duckdb", when the '
+                "rows cast to different widths, a row is not cast, or the cast is of a table "
+                f"column ({called}(c::char(3))).",
+            )
+            if dialect == "duckdb"
+            else Limitation(
+                "Over a column the statement says is character(n): refused, with "
+                f'"{called}() has no form on {dialect}".',
+            ),
+        )
+        for dialect in _EVERY
+    }
+
 
 _CHARACTER_AGGS = {
     "max_character": "The maximum character(n) value in the database's collation, "
@@ -155,7 +171,7 @@ CHARACTER_AGG_FEATURES: tuple[Feature, ...] = tuple(
         name,
         FAMILY,
         summary,
-        read=Side(limitations=dict.fromkeys(_EVERY, _CHARACTER_AGG_LIMITATION)),
+        read=Side(limitations=_character_agg_limitations(name.removesuffix("_character"))),
     )
     for name, summary in _CHARACTER_AGGS.items()
 )
