@@ -2180,6 +2180,13 @@ def transpile(
 
     if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
         function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a call of literals, one a date or a timestamp ClickHouse's calendar does not
+        # read, answered from PostgreSQL's integers before any step reads its instant
+        # (a range's subdiff among them).
+        from provisa.transpiler.polyfill import held_instants
+
+        lowered = held_instants.folded(pg_sql, lowered)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges
