@@ -27371,3 +27371,15 @@ Maintainer 2026-11-25. Provisa's UI is dense like a cloud console or an IDE and 
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2278 · Security {#REQ-2278}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-25. A column rule keyed on a tag or a classification: for each role it hides the column or applies a mask to every column that carries the tag or classification, wherever it is, without naming the columns. One shared column rule applies it to table columns and to command output columns alike. A column's own visibility and masks still apply; where both apply, the stricter result holds (hidden over masked, masked over plain). Tagging or classifying a column brings it under the rule at once, and removing the tag releases it.
+
+**Code:** —
+
+**Tests:** —
