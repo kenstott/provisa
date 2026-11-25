@@ -17,7 +17,6 @@ import {
   NumberInput,
   Select,
   Switch,
-  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -53,6 +52,7 @@ import {
   FormLayout,
 } from "../../components/form/FormLayout";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { CodeEditorField } from "../../components/CodeEditorField";
 
 interface CommandFormFieldsProps {
   /** The short step that creates a command: only what it needs in order to exist -- what it
@@ -375,13 +375,12 @@ export function CommandFormFields({
                   help={t("commandFormFields.bindingSqlHint", { placeholder: "{{name}}" })}
                   size="long"
                 >
-                  <Textarea
+                  <CodeEditorField
                     label={t("commandFormFields.bindingSql")}
                     required
-                    autosize
-                    minRows={4}
                     value={bindingStr("sql")}
-                    onChange={(e) => setBinding("sql", e.currentTarget.value)}
+                    onChange={(v) => setBinding("sql", v)}
+                    language="sql"
                     placeholder="INSERT INTO kb.docs (id, title) SELECT id, subject FROM support.tickets WHERE updated_at > {{since}}"
                     data-testid="command-binding-sql"
                   />
@@ -406,13 +405,12 @@ export function CommandFormFields({
                     help={t("commandFormFields.nativeSqlHint", { placeholder: "{{name}}" })}
                     size="long"
                   >
-                    <Textarea
+                    <CodeEditorField
                       label={t("commandFormFields.nativeSql")}
                       required
-                      autosize
-                      minRows={4}
                       value={bindingStr("sql")}
-                      onChange={(e) => setBinding("sql", e.currentTarget.value)}
+                      onChange={(v) => setBinding("sql", v)}
+                      language="sql"
                       placeholder={
                         "INSERT INTO app.notes (id, body) VALUES ({{id}}, {{body}});\nSELECT id, body FROM app.notes WHERE id = {{id}}"
                       }
@@ -426,13 +424,12 @@ export function CommandFormFields({
                   help={t("commandFormFields.bindingTemplateHint", { placeholder: "{name}" })}
                   size="long"
                 >
-                  <Textarea
+                  <CodeEditorField
                     label={t("commandFormFields.bindingTemplate")}
                     required
-                    autosize
-                    minRows={2}
                     value={bindingStr("sql")}
-                    onChange={(e) => setBinding("sql", e.currentTarget.value)}
+                    onChange={(v) => setBinding("sql", v)}
+                    language="sql"
                     placeholder="array_to_string({list}, {delimiter})"
                     data-testid="command-binding-template"
                   />
@@ -802,12 +799,10 @@ export function CommandFormFields({
                     </FieldGroup>
                   );
                   // REQ-1159: a dataset arg (table_ref/result_set) carries an IR-typed column contract.
-                  if (
-                    !(
-                      form.actionType === "function" &&
-                      DATASET_ARG_KINDS.has(arg.argKind ?? "column_value")
-                    )
-                  )
+                  if (!(
+                    form.actionType === "function" &&
+                    DATASET_ARG_KINDS.has(arg.argKind ?? "column_value")
+                  ))
                     return <React.Fragment key={i}>{row}</React.Fragment>;
                   return (
                     <FormEntry key={i}>

@@ -19,12 +19,18 @@ import {
   Select,
   Text,
   TextInput,
-  Textarea,
   NumberInput,
 } from "@mantine/core";
 import { API_AUTH_TYPES } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 import { FormField } from "../../components/form/FormLayout";
+import { CodeEditorField, type CodeLanguage } from "../../components/CodeEditorField";
+
+/** REQ-1984: an OpenAPI document is a JSON object or YAML. JSON's text opens with its root object's
+ * brace; any other text is YAML. */
+function openApiSpecLanguage(spec: string): CodeLanguage {
+  return spec.trimStart().startsWith("{") ? "json" : "yaml";
+}
 
 interface OpenApiFormSectionProps {
   openapiSpecMode: "path" | "inline";
@@ -108,17 +114,15 @@ export function OpenApiFormSection({
         </FormField>
       ) : (
         <FormField size="full">
-          <Textarea
+          <CodeEditorField
             required
             label={t("openApiFormSection.specInlineLabel")}
             value={openapiSpecInline}
-            onChange={(e) => setOpenapiSpecInline(e.target.value)}
+            onChange={setOpenapiSpecInline}
+            language={openApiSpecLanguage(openapiSpecInline)}
             placeholder={
               "openapi: '3.0.0'\ninfo:\n  title: My API\n  version: '1.0'\npaths:\n  /items:\n    get:\n      operationId: listItems\n      responses:\n        '200':\n          description: OK"
             }
-            styles={{ input: { fontFamily: "monospace", fontSize: "0.8rem" } }}
-            autosize
-            minRows={8}
             data-testid="openapi-spec-inline-input"
           />
         </FormField>

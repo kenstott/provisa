@@ -31,6 +31,8 @@ import {
 } from "../../api/environments";
 import type { RepoCommit } from "../../api/environments";
 import { ConfigDiffView } from "./ConfigDiffView";
+import { CodeEditorField } from "../CodeEditorField";
+import { languageForPath } from "../codeLanguage";
 
 function shortSha(sha: string): string {
   return sha.slice(0, 8);
@@ -200,11 +202,13 @@ export function RepoBrowser({ orgId }: { orgId: string }) {
               readOnly
             />
           ) : (
-            <ScrollArea h={420}>
-              <Code block data-testid="repo-file-text">
-                {text}
-              </Code>
-            </ScrollArea>
+            <CodeEditorField
+              readOnly
+              label={path}
+              value={text}
+              language={languageForPath(path)}
+              data-testid="repo-file-text"
+            />
           )}
         </Grid.Col>
       </Grid>
