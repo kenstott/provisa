@@ -283,13 +283,18 @@ class Grid:
                 return Applied(feature, rule, form, {}, rewritten)
         return None
 
-    def read_first(self, node: exp.Expr, dialect: str) -> Applied | None:
+    def read_first(
+        self, node: exp.Expr, dialect: str, skipped: tuple[Feature, ...]
+    ) -> Applied | None:
         """The rule over every call (Rewrite.first) that rewrites ``node`` on ``dialect``, before
-        any pattern is read; None where none does."""
+        any pattern is read; None where none does. A rule of a feature in ``skipped`` is not read
+        (the statement's origin rules it out: function_macros.inline's ``generated``)."""
         column = column_of(dialect)
         if column is None:
             return None
         for feature, rule in self._first:
+            if feature in skipped:
+                continue
             form = rule.forms.get(column)
             if isinstance(form, Rewrite):
                 rewritten = form.function(node, dialect)

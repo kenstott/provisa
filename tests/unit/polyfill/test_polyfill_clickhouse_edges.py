@@ -976,7 +976,10 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answers(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 @pytest.mark.parametrize(("sql", "want"), ANSWERED)
@@ -1043,7 +1046,7 @@ def test_an_array_constructor_of_arrays_is_of_dimensions(runtime, sql, want):
     ],
 )
 def test_trino_keeps_its_form(sql):
-    written = transpile(sql, "trino")
+    written = transpile(sql, "trino", generated=False)
     assert "reinterpretAsUInt64" not in written and "arrayFlatten" not in written
     assert "reinterpretAsUInt8" not in written
 
@@ -1073,5 +1076,5 @@ def test_money_divided_by_an_integer_keeps_every_cent(runtime, sql, want):
 def test_ts_lexize_of_no_lexeme_is_a_text_array(runtime):
     """An empty array of no type is ClickHouse's Array(Nothing), described as json (oid 114)."""
     sql = "SELECT pg_catalog.\"ts_lexize\"('simple'::regdictionary, ''::text) AS v"
-    assert "Array(Nullable(String))" in transpile(sql, "clickhouse")
+    assert "Array(Nullable(String))" in transpile(sql, "clickhouse", generated=False)
     assert _answers(runtime, sql) == [[]]

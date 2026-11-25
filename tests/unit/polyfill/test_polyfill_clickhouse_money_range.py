@@ -128,7 +128,7 @@ def conn(pgwire: int, runtime: ClickHouseFederationRuntime) -> Iterator[psycopg.
 
     async def _govern(text, _role_id, _params=None, _wire_formats=None, *, deliver, as_of=None):
         del deliver, as_of
-        return _plan(transpile(text, "clickhouse"))
+        return _plan(transpile(text, "clickhouse", generated=False))
 
     async def _no_cache(_plan_, _state):
         return None
@@ -185,7 +185,7 @@ def test_money_past_its_range_raises_postgresql_s_error_and_keeps_the_connection
 
 
 def test_a_money_literal_reaches_clickhouse_as_its_text():
-    written = transpile("SELECT '$92233720368547758.07'::money AS v", "clickhouse")
+    written = transpile("SELECT '$92233720368547758.07'::money AS v", "clickhouse", generated=False)
     assert "'92233720368547758.07'" in written
 
 

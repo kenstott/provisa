@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2188: RW from an Owner field reaches the products naming a role the caller holds, itself or
-// through an ancestor; a holder of data_product_rw sees the owner's view of every product.
+// REQ-2188, REQ-2219 (amended 2026-11-23): RW from an Owner field reaches the products naming the
+// signed-in person among their owners; a holder of data_product_rw sees the owner's view of every
+// product.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "../../test-utils/render";
@@ -37,9 +38,11 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
   OntologySnippet: () => null,
 }));
-// The caller acts as vet_lead, which inherits care_owner: it owns pet_health, not workforce_ops.
+// The caller, vera, acts as vet_lead, which inherits data_product_owner: she is named among
+// pet_health's owners, not workforce_ops's.
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
+    userId: "vera",
     role: { id: "vet_lead", capabilities: [] },
     selectedRoles: [
       { id: "vet_lead", parents: ["care_owner"], effectiveCapabilities: [], domain_access: [] },
@@ -99,7 +102,8 @@ const products = [
     limitations: "",
     usage: "",
     customProperties: {},
-    ownerRole: "care_owner",
+    owners: ["vera"],
+    namedOwners: [{ principal: "vera", kind: "person" as const }],
   },
   {
     id: "workforce_ops",
@@ -109,7 +113,8 @@ const products = [
     limitations: "",
     usage: "",
     customProperties: {},
-    ownerRole: "ops_owner",
+    owners: ["sam"],
+    namedOwners: [{ principal: "sam", kind: "person" as const }],
   },
 ];
 
@@ -150,7 +155,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 import { DataProductsPage } from "../DataProductsPage";
 
 describe("editing a product with RW from an Owner field (REQ-2188)", () => {
-  it("edits and deletes the product whose owner role it inherits", async () => {
+  it("edits and deletes the product naming the caller among its owners", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
     const panel = await screen.findByTestId("panel-pet_health");
     expect(panel).toHaveAttribute("data-edit", "true");
@@ -158,7 +163,7 @@ describe("editing a product with RW from an Owner field (REQ-2188)", () => {
     expect(panel).toHaveAttribute("data-owner", "true");
   });
 
-  it("edits no product whose owner role it does not hold, and sees the owner's view of it", async () => {
+  it("edits no product not naming the caller, and sees the owner's view of it", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=workforce_ops"] });
     const panel = await screen.findByTestId("panel-workforce_ops");
     expect(panel).toHaveAttribute("data-edit", "false");

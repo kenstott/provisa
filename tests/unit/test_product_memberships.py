@@ -66,7 +66,7 @@ def _config(
     ids = source_ids or sorted({t.source_id for t in tables})
     return ProvisaConfig(
         sources=[Source(id=sid, type=SourceType.postgresql, description=sid) for sid in ids],
-        domains=[Domain(id="sales", description="Sales", steward="admin")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=tables,
         data_products=products,
         roles=[],
@@ -202,7 +202,7 @@ async def test_the_export_model_carries_the_stores_seeded_names(monkeypatch):
     def live_config(members: list[str]) -> dict:
         return {
             "sources": [],
-            "domains": [{"id": "sales", "description": "Sales", "steward": "admin"}],
+            "domains": [{"id": "sales", "description": "Sales"}],
             "tables": [],
             "roles": [],
             "data_products": [

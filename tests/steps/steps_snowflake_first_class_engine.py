@@ -53,7 +53,7 @@ def given_single_source_query(shared_data):
 @when("physical SQL is transpiled")
 def when_transpiled(shared_data):
     assert "snowflake" in SUPPORTED_DIALECTS
-    shared_data["out"] = transpile(shared_data["pg_sql"], "snowflake")
+    shared_data["out"] = transpile(shared_data["pg_sql"], "snowflake", generated=False)
 
 
 @then("it targets the Snowflake dialect and routes directly with no Trino detour")

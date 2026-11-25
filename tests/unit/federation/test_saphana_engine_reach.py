@@ -52,10 +52,10 @@ def test_saphana_engine_lands_a_hana_source_too(hana: engine_mod.FederationEngin
 def test_saphana_engine_refuses_a_source_it_cannot_land_by_name(
     hana: engine_mod.FederationEngine,
 ) -> None:
-    stripe = Source(id="billing", type=SourceType.stripe, host="h", port=443, database="d")
-    assert hana.reachable("stripe") is False
-    with pytest.raises(UnreachableSource, match="'saphana'.*'stripe'"):
-        hana.resolve(stripe)
+    hubspot = Source(id="crm", type=SourceType.hubspot, host="h", port=443, database="d")
+    assert hana.reachable("hubspot") is False
+    with pytest.raises(UnreachableSource, match="'saphana'.*'hubspot'"):
+        hana.resolve(hubspot)
 
 
 def test_saphana_engine_reads_no_other_regions_replicas(hana: engine_mod.FederationEngine) -> None:

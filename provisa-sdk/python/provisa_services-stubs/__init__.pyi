@@ -11,7 +11,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
-__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors']
+__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredRelationship', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'answer_cut', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors', 'warn']
 
 class ServiceError(Exception):
     """A service refused or failed: ``service`` names it, ``status`` is its HTTP status (0 when
@@ -159,6 +159,19 @@ def audit(event: str, /, **fields: Any) -> None:
     at most 64 KB. A secret value does not belong in it, and is redacted if it is there."""
     ...
 
+def warn(code: str, message: str, **params: Any) -> None:
+    """REQ-2267: the call's answer carries this warning: ``code`` names it (``serverErrors.<code>``
+    in Provisa's catalog), ``message`` is its English text and ``params`` fill it. The same warning
+    twice is carried once. Outside a call Provisa serves there is no answer to carry it, and it is
+    an error."""
+    ...
+
+def answer_cut(table: str, max_pages: int, rows: int) -> None:
+    """REQ-2267: the read of ``table`` stopped at its page limit, ``max_pages``, with ``rows`` rows
+    and more to read: its rows carry the answer-was-cut warning Provisa's own API sources give
+    (provisa/api_source/caller.py answer_cut_warning, REQ-1350)."""
+    ...
+
 @dataclass(frozen=True)
 class Filter:
     """A condition the read puts on a return column: ``column op value``. ``op`` is one of eq, ne,
@@ -263,12 +276,27 @@ class DiscoveredCommand:
     description: str = ...
 
 @dataclass(frozen=True)
+class DiscoveredRelationship:
+    """A relationship between two of the code's tables (generated or hand-written): each row of
+    ``source_table`` relates to the rows of ``target_table`` whose ``target_column`` equals its
+    ``source_column``; ``cardinality`` is ``many-to-one``, ``one-to-many`` or ``one-to-one``, as
+    seen from the source table. ``name`` names it among the code's relationships."""
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    cardinality: str = ...
+    description: str = ...
+
+@dataclass(frozen=True)
 class Discovered:
-    """What ``@discover`` returns: its generated items, and the handler of each kind it
-    generates."""
+    """What ``@discover`` returns: its generated items, the relationships between its tables, and
+    the handler of each kind it generates."""
     tables: Sequence[DiscoveredTable] = ...
     queries: Sequence[DiscoveredQuery] = ...
     commands: Sequence[DiscoveredCommand] = ...
+    relationships: Sequence[DiscoveredRelationship] = ...
     table_handler: Callable[..., Any] | None = ...
     query_handler: Callable[..., Any] | None = ...
     command_handler: Callable[..., Any] | None = ...

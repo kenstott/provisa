@@ -877,8 +877,6 @@ Comme pour toute source OpenAPI, chaque opération `GET` est une table proposée
 
 **Exclusions.** L'intégration de paiement dépréciée de Stripe, les jetons et Sources, est laissée hors de la spécification livrée. La liste se trouve sous [Exclusions sur une source construite à partir d'une spécification](#exclusions-on-a-specification-built-source). Les `exclusions` propres à un opérateur s'ajoutent à celles de la marque.
 
-`stripe` figure aussi dans `SourceType` parmi les types `wrappers` Supabase factices. Une source Stripe ajoutée par le formulaire est une source `openapi`, non ce type factice.
-
 #### Exclusions sur une source construite à partir d'une spécification {: #exclusions-on-a-specification-built-source }
 
 Une spécification OpenAPI publiée décrit tout ce que l'API distante accepte, y compris ce que son éditeur a déprécié et ce qu'un déploiement ne doit jamais envoyer. Une source OpenAPI peut porter des exclusions : des éléments de la spécification que la source n'offre pas.

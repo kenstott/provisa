@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
+import { PeopleMultiPicker } from "../components/entitlements/PeoplePicker";
 import { useLocation } from "react-router-dom";
 import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
@@ -43,7 +44,7 @@ import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import { domainAliasMap, domainGqlAlias } from "../types/admin";
+import { domainAliasMap, domainGqlAlias, type Domain } from "../types/admin";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
@@ -135,6 +136,15 @@ const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
 };
 
 /** Admin overview page — dashboard, config management, platform settings. */
+/** REQ-2219 (amended 2026-11-24): what a domain's Steward field names, people and roles as
+ * entered. */
+const namedStewards = (d: Domain) => [...d.stewardField.people, ...d.stewardField.roles];
+
+/** A domain's stewards as its row shows them: its field as entered, or with none of its own the
+ * people it answers to (REQ-1363). */
+const shownStewards = (d: Domain) =>
+  namedStewards(d).length > 0 ? namedStewards(d) : d.effectiveStewards;
+
 export function AdminPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -152,8 +162,16 @@ export function AdminPage() {
   const [newDomainAlias, setNewDomainAlias] = useState("");
   // REQ-1363: the domain the new one sits under; "" = none.
   const [newDomainParent, setNewDomainParent] = useState("");
+  // REQ-609, REQ-2219 (amended 2026-11-23): the new domain's Steward field names people.
+  const [newDomainStewards, setNewDomainStewards] = useState<string[]>([]);
+  // ...and roles (every holder of each a steward).
+  const [newDomainStewardRoles, setNewDomainStewardRoles] = useState<string[]>([]);
   // The last domain change's outcome: done (green), or the server's refusal or error (red).
   const [domainMsg, setDomainMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const onStewardSearchError = useCallback(
+    (e: unknown) => setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false }),
+    [setDomainMsg],
+  );
   const [loading, setLoading] = useState(true);
   // REQ-1349: the settings this page still reads. The cards that EDIT them moved to the tabs whose
   // subject they are (settingsCards.tsx); what is left is the domain mode, which decides whether
@@ -174,6 +192,10 @@ export function AdminPage() {
   const { createDomain } = useCreateDomain();
   const { deleteDomain } = useDeleteDomain();
   const allRoles = roles.map((r) => r.id);
+  // REQ-2219 (amended 2026-11-23): the roles a Steward field may name, those holding domain_steward.
+  const stewardRoleOptions = roles
+    .filter((r) => r.effectiveCapabilities.includes("domain_steward"))
+    .map((r) => r.id);
 
   // Update state and stats when hook data arrives
   useEffect(() => {
@@ -239,8 +261,8 @@ export function AdminPage() {
     {
       key: "steward",
       label: t("adminPage.colSteward"),
-      sortValue: (d) => d.steward ?? "",
-      groupValue: (d) => d.steward ?? "",
+      sortValue: (d) => d.effectiveStewards.join(", "),
+      groupValue: (d) => d.effectiveStewards.join(", "),
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
@@ -273,6 +295,8 @@ export function AdminPage() {
     setNewDomainDesc("");
     setNewDomainAlias("");
     setNewDomainParent("");
+    setNewDomainStewards([]);
+    setNewDomainStewardRoles([]);
   };
 
   const handleAddDomain = async () => {
@@ -285,6 +309,8 @@ export function AdminPage() {
         newDomainDesc.trim(),
         newDomainAlias.trim() || null,
         newDomainParent || null,
+        newDomainStewards,
+        newDomainStewardRoles,
       );
     } catch (e) {
       setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -421,6 +447,18 @@ export function AdminPage() {
                       searchable
                     />
                   </FormField>
+                  <FormField size="long" hint={t("adminPage.stewardsHint")}>
+                    <PeopleMultiPicker
+                      label={t("adminPage.colSteward")}
+                      value={newDomainStewards}
+                      onChange={setNewDomainStewards}
+                      roleOptions={stewardRoleOptions}
+                      roles={newDomainStewardRoles}
+                      onRolesChange={setNewDomainStewardRoles}
+                      onError={onStewardSearchError}
+                      testId="new-domain-stewards"
+                    />
+                  </FormField>
                   <FormField size="medium">
                     <TextInput
                       label={t("adminPage.colGqlAlias")}
@@ -497,16 +535,22 @@ export function AdminPage() {
                               <Table.Td>{d.parentDomainId || "—"}</Table.Td>
                               <Table.Td>
                                 <Group gap={4} wrap="nowrap">
-                                  <Text fz="sm">{d.effectiveSteward || "—"}</Text>
+                                  <Text fz="sm" data-testid={`domain-stewards-${d.id}`}>
+                                    {shownStewards(d).length > 0
+                                      ? shownStewards(d).join(", ")
+                                      : "—"}
+                                  </Text>
                                   {/* REQ-1363: no steward of its own -- it answers to an ancestor's. */}
-                                  {!d.steward && d.effectiveSteward && (
+                                  {namedStewards(d).length === 0 &&
+                                    d.stewards.length === 0 &&
+                                    d.effectiveStewards.length > 0 && (
                                     <Text fz="xs" c="dimmed" data-testid="steward-inherited">
                                       {t("adminPage.stewardInherited")}
                                     </Text>
                                   )}
-                                  {d.effectiveSteward && (
+                                  {shownStewards(d).length > 0 && (
                                     <OwnerResolutionIcon
-                                      refs={[d.effectiveSteward]}
+                                      refs={shownStewards(d)}
                                       ariaLabel={t("adminPage.resolveSteward", { id: d.id })}
                                     />
                                   )}

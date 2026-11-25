@@ -23,6 +23,7 @@ import asyncio
 from collections.abc import Iterator
 from typing import Any
 
+from provisa.executor.drivers.arrow_result import source_arrow_result
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
 
@@ -79,10 +80,9 @@ class BigQueryDriver(DirectDriver):
         del params  # BigQuery read SQL arrives fully formed from the governed pipeline
 
         def _run() -> QueryResult:
-            it = self._client.query(sql).result()
-            cols = [f.name for f in it.schema]
-            rows = [tuple(row.values()) for row in it]
-            return QueryResult(rows=rows, column_names=cols)
+            # REQ-2194: the job's result through the client's Arrow interface (the Storage Read
+            # API where the result spans more than its first page), never its rows.
+            return source_arrow_result(self._client.query(sql).to_arrow())
 
         return await asyncio.to_thread(_run)
 

@@ -237,7 +237,7 @@ desktop = ["mcp-proxy"]
 docs = ["mkdocs-material", "pymdown-extensions", "mkdocs-static-i18n"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
-oracle = ["oracledb"]
+oracle = ["oracledb>=26.1"]
 # SAP HANA source type: a generic self-only landing engine (build_sqlalchemy_engine, engine.py's
 # _RDB_KINDS) reached via the hana+hdbcli SQLAlchemy dialect. hdbcli is SAP's own DBAPI driver;
 # sqlalchemy-hana registers the dialect SQLAlchemy needs to speak it.
@@ -256,7 +256,7 @@ vertica = ["sqlalchemy-vertica-python>=0.6,<1", "vertica-python>=1.4,<2"]  # MIT
 # REQ-1676: Cassandra read natively over CQL (Apache-2.0). The Trino connector needs nothing here.
 cassandra = ["cassandra-driver>=3.29"]
 all-drivers = [
-    "aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29",
+    "aiomysql", "aioodbc", "oracledb>=26.1", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29",
     "provisa[cockroachdb,db2,exasol,firebird,monetdb,opengauss,vertica]",
 ]
 # REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
@@ -344,7 +344,7 @@ dev = [
     # Direct-driver libraries the unit suite exercises (test_drivers/routing/transpiler).
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.
     "aiomysql",
-    "oracledb",
+    "oracledb>=26.1",
     # REQ-1759: test_cassandra_fetch.py imports provisa.cassandra.fetch unconditionally (no
     # importorskip) — undeclared, it hard-fails collection/the test itself rather than skipping,
     # caught running the full unit suite for the first time in CI.

@@ -69,7 +69,7 @@ def answer():
     def _answer(cypher: str) -> list[dict]:
         sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), _LM, {})
         sql = apply_graph_rewrites(sql_ast, graph_vars, _LM).sql(dialect="postgres")
-        cur = con.execute(transpile_to_duckdb(sql))
+        cur = con.execute(transpile_to_duckdb(sql, generated=False))
         names = [d[0] for d in cur.description]
         return assemble_rows([dict(zip(names, r, strict=True)) for r in cur.fetchall()], graph_vars)
 

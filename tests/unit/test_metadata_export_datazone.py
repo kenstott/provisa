@@ -108,7 +108,6 @@ def _snapshot(*, status="draft", members=True):
                 id="sales_360",
                 domain_id="sales",
                 name="Sales 360",
-                owner_role="data_owner",
                 purpose="Every sale",
                 usage="Join on customer_id",
                 version="1.2.0",
@@ -119,7 +118,13 @@ def _snapshot(*, status="draft", members=True):
         ],
         roles=[],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    return build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"sales_360": ("data_owner",)},
+    )
 
 
 @pytest.fixture

@@ -41,7 +41,7 @@ def shared_data() -> dict:
 def _governed_config(shared_data):
     shared_data["config"] = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=[
             Table(
                 source_id="wh",

@@ -158,7 +158,9 @@ async def test_runtime_federates_all_demo_source_types():
         )[0]
         # Drive the runtime with catalog-physical names (catalog.schema.table) — exactly what the
         # request path (rewrite_semantic_to_catalog_physical) emits to every engine backend.
-        res = await rt.execute(rewrite_semantic_to_catalog_physical(compiled.sql, ctx))
+        res = await rt.execute(
+            rewrite_semantic_to_catalog_physical(compiled.sql, ctx), generated=True
+        )
 
         # 30 orders (sqlite), each carrying its customer (csv) and product (parquet).
         assert len(res.rows) == 30
@@ -178,10 +180,12 @@ async def test_runtime_federates_all_demo_source_types():
         )
         lowered = address_replicas('SELECT count(*) AS n FROM "evt"."main"."events" AS "e"', routes)
         assert f'"mat_store"."{replica_schema}"."{replica_table}"' in lowered
-        evt = await rt.execute(lowered)
+        evt = await rt.execute(lowered, generated=False)
         assert evt.rows[0][0] == 2
         with pytest.raises(duckdb.Error):
-            await rt.execute('SELECT count(*) FROM "evt"."main"."events"')  # no exposure there
+            await rt.execute(
+                'SELECT count(*) FROM "evt"."main"."events"', generated=False
+            )  # no exposure there
     finally:
         pg = await asyncpg.connect(dsn=_dsn())
         await pg.execute(f'DROP SCHEMA IF EXISTS "{REPLICAS_SCHEMA}" CASCADE')

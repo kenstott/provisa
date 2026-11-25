@@ -35,7 +35,9 @@ def _value(query: str):
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
-    ((value,),) = con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+    ((value,),) = con.execute(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall()
     return value
 
 
@@ -86,9 +88,9 @@ def test_a_duration_read_back_from_its_text_is_itself(components, text):
     )
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
-    assert con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall() == [
-        (text, True)
-    ]
+    assert con.execute(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall() == [(text, True)]
 
 
 def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
@@ -102,7 +104,7 @@ def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
         " nanoseconds: 1}) AS d RETURN toString(d) AS ts, duration(toString(d)) = d AS b"
     )
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
-    sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
+    sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
     assert sum(1 for _ in sql_ast.walk()) < 2_000
     assert sum(1 for _ in sqlglot.parse_one(sql, read="duckdb").walk()) < 2_000
     assert len(sql) < 20_000
@@ -222,6 +224,6 @@ def test_a_date_time_read_in_utc_is_written_without_a_region(query, text):
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
     con.execute(LOSSLESS_ARROW)
-    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True))
     ((value,),) = arrow_rows(con.to_arrow_table())
     assert cypher_text(value) == text

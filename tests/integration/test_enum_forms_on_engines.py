@@ -39,7 +39,7 @@ def _shown(value: Any) -> str | None:
 def _check(run: Callable[[str], list[Any]], dialect: str) -> None:
     wrong = {}
     for sql in ENUM_STATEMENTS:
-        written = transpile(with_source_enums(sql, ENUMS), dialect)
+        written = transpile(with_source_enums(sql, ENUMS), dialect, generated=False)
         try:
             got = [_shown(row[-1]) for row in run(written)]
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the difference shown

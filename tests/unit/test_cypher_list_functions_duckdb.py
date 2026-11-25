@@ -38,7 +38,9 @@ def run():
         sql_ast, _, _ = cypher_to_sql(
             parse_cypher(f"MATCH (t:GlossaryTerm) RETURN {expression} AS v"), lm, {}
         )
-        (row,) = con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+        (row,) = con.execute(
+            transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+        ).fetchall()
         return row[0]
 
     return _run

@@ -40,7 +40,7 @@ import json
 import re
 import struct
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Generator, Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -116,12 +116,20 @@ class ArrowResult(QueryResult):
     """Arrow rows as a query result, a batch at a time: each batch handed to the encoder as it is
     read (REQ-2100, REQ-2194)."""
 
-    def __init__(self, rows: pa.Table | pa.RecordBatchReader) -> None:
+    def __init__(
+        self,
+        rows: pa.Table | pa.RecordBatchReader,
+        *,
+        _cancel: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
         self.reader = rows.to_reader() if isinstance(rows, pa.Table) else rows
         self.schema = self.reader.schema
         self.count = 0
         self._data: ResultData | None = None
+        # Called by close() to synchronously cancel the worker's call and free its lane; set by
+        # _read() when the result is a live function call, not an already-read table.
+        self._cancel = _cancel
 
     def has_results(self) -> bool:
         return True
@@ -144,10 +152,16 @@ class ArrowResult(QueryResult):
             yield _as_sent(batch)
 
     def close(self) -> None:
-        """The rows not read: what answers them (the function's call, DuckDB) is stopped -- by
-        letting go of the reader, whose generators end when the last reference to them goes."""
+        """The rows not read: what answers them (the function's call, DuckDB) is stopped.
+        ``_cancel`` (set by :meth:`FrontSession._read` for a live call) is called first so the
+        worker's lane is freed synchronously -- pyarrow's ``close()`` alone does not propagate
+        ``GeneratorExit`` through Python generator chains, so the lane would otherwise stay leased
+        until the cyclic GC happened to collect the chain."""
         self.reader.close()
         self.reader = pa.RecordBatchReader.from_batches(self.schema, iter(()))
+        if self._cancel is not None:
+            cancel, self._cancel = self._cancel, None
+            cancel()
 
     def status(self) -> str:
         return f"SELECT {self.count}"
@@ -467,7 +481,7 @@ class FrontSession(Session):
             raise ValueError(
                 f"a statement reads one function's table at a time; this one reads {sorted(set(functions))}"
             )
-        return ArrowResult(self._read(functions[0], _bound(sql, params)))
+        return self._read(functions[0], _bound(sql, params))
 
     def _cursor_statement(self, sql: str, params: list | None) -> QueryResult | None:
         """DECLARE, FETCH and CLOSE of a cursor (postgres_fdw reads a foreign table through
@@ -502,7 +516,7 @@ class FrontSession(Session):
             return StatusResult("CLOSE CURSOR")
         return None
 
-    def _read(self, function: str, sql: str) -> pa.RecordBatchReader:
+    def _read(self, function: str, sql: str) -> "ArrowResult":
         table = self.catalog.names[function]
         # Its inputs are the statement's own conditions on its parameters' columns; what it asks
         # of the rows is the function's read context (REQ-2100).
@@ -516,7 +530,7 @@ class FrontSession(Session):
         schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(table["schema"]))).schema
         catalog = self.catalog
 
-        def counted() -> Iterator[pa.RecordBatch]:
+        def counted() -> Generator[pa.RecordBatch, None, None]:
             # The function's rows as they come; its count kept for the planner once all came.
             count = 0
             for batch in residual.batches(
@@ -528,7 +542,11 @@ class FrontSession(Session):
                 yield batch
             catalog.answered(function, count)
 
-        rows = pa.RecordBatchReader.from_batches(schema, counted())
+        # Keep a direct reference to the generator so close() can cancel it synchronously.
+        # pyarrow's RecordBatchReader.close() does not propagate GeneratorExit through Python
+        # generator chains, so the worker's lane would stay leased until the cyclic GC ran.
+        counted_gen = counted()
+        rows = pa.RecordBatchReader.from_batches(schema, counted_gen)
         arguments = pa.Table.from_pylist(
             [{p["parameter"]: _cell(given.get(p["parameter"]), p["type"]) for p in parameters}],
             schema=pa.schema(
@@ -542,7 +560,10 @@ class FrontSession(Session):
                 ]
             ),
         )
-        return residual.answer(sql, "postgres", function, residual.with_arguments(rows, arguments))
+        reader = residual.answer(
+            sql, "postgres", function, residual.with_arguments(rows, arguments)
+        )
+        return ArrowResult(reader, _cancel=counted_gen.close)
 
 
 #: What SHOW answers, as a PostgreSQL server would.

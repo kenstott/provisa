@@ -126,7 +126,7 @@ _RAISED = [(sql, want[1]) for sql, want in PG if isinstance(want, tuple)]
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -140,7 +140,7 @@ def test_clickhouse_answers_postgresql_s(runtime, sql, want):
 @pytest.mark.parametrize(("sql", "state"), _RAISED)
 def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
     with pytest.raises(Exception) as raised:
-        list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+        list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == state, str(raised.value)[:300]
 
@@ -154,6 +154,7 @@ def test_an_infinite_factor_s_infinite_answer_is_refused(runtime):
                     "SELECT pg_catalog.\"interval_mul\"('1 day'::interval, "
                     "'Infinity'::double precision) AS v",
                     "clickhouse",
+                    generated=False,
                 )
             ).iter_rows()
         )
@@ -182,14 +183,14 @@ def test_a_factor_a_row_computes_is_refused_by_name():
         "FROM (VALUES (0.5::double precision)) AS t(c)"
     )
     with pytest.raises(FunctionRefused, match="interval_mul"):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "postgres"])
 def test_every_other_dialect_keeps_what_it_had(dialect):
     """No row here has a form outside ClickHouse: no tuple of fields is written elsewhere."""
     sql = "SELECT pg_catalog.\"interval_mul\"('1 day'::interval, 0.5::double precision) AS v"
-    written = transpile(sql, dialect)
+    written = transpile(sql, dialect, generated=False)
     assert "tupleElement" not in written and "provisa_iv" not in written
     if dialect == "postgres":
         assert 'pg_catalog."interval_mul"' in written

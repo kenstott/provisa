@@ -39,7 +39,7 @@ register(_CON)
 
 
 def _on_duckdb(sql: str):
-    return _CON.execute(transpile_to_duckdb(sql)).fetchall()[0][0]
+    return _CON.execute(transpile_to_duckdb(sql, generated=False)).fetchall()[0][0]
 
 
 @pytest.mark.parametrize(
@@ -69,7 +69,7 @@ def test_a_numeric_literal_keeps_its_scale(dialect, decimal):
     """On Trino the literal's decimal is of its digits alone (pg_literals.TIGHT): Trino's own
     arithmetic widens it to the type an answer needs, where room beside it pushed a sum's type
     past 38 digits and Trino held it at a smaller scale."""
-    written = transpile("SELECT 2.5::numeric AS v", dialect)
+    written = transpile("SELECT 2.5::numeric AS v", dialect, generated=False)
     assert decimal in written.replace("Decimal", "DECIMAL")
 
 
@@ -108,7 +108,7 @@ def test_a_said_scale_is_the_answers_scale(sql, text):
 
 def test_a_scale_only_a_row_knows_is_refused():
     with pytest.raises(FunctionRefused, match="round"):
-        transpile("SELECT round(2.5::numeric, n) AS v FROM t", "duckdb")
+        transpile("SELECT round(2.5::numeric, n) AS v FROM t", "duckdb", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -150,7 +150,7 @@ def test_an_exact_answer_on_duckdb_has_postgresqls_digits(sql, text):
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_a_dialect_with_no_exact_digits_refuses_by_name(dialect):
     with pytest.raises(FunctionRefused, match="sqrt"):
-        transpile("SELECT sqrt(2.5::numeric) AS v", dialect)
+        transpile("SELECT sqrt(2.5::numeric) AS v", dialect, generated=False)
 
 
 def test_an_order_the_key_cannot_say_is_refused_for_that_value():
@@ -162,7 +162,7 @@ def test_an_order_the_key_cannot_say_is_refused_for_that_value():
     "sql", ["SELECT sqrt(NULL::numeric) AS v", "SELECT stddev(NULL::integer) AS v"]
 )
 def test_a_null_has_no_digits_to_differ_in(sql):
-    assert transpile(sql, "duckdb")
+    assert transpile(sql, "duckdb", generated=False)
 
 
 def test_one_value_has_no_order():
@@ -170,20 +170,22 @@ def test_one_value_has_no_order():
 
 
 def test_an_average_of_floats_is_the_engines_own():
-    assert "AVG" in transpile("SELECT avg(c1) FROM (VALUES (1.5::float8)) AS t(c1)", "duckdb")
+    assert "AVG" in transpile(
+        "SELECT avg(c1) FROM (VALUES (1.5::float8)) AS t(c1)", "duckdb", generated=False
+    )
 
 
 def test_a_row_replay_found_another_answer_of_is_refused_there():
     function = "pg_lsn_pli('0/1'::pg_lsn, 2.5::numeric)"
     with pytest.raises(FunctionRefused):
-        transpile(f"SELECT {function} AS v", "clickhouse")
+        transpile(f"SELECT {function} AS v", "clickhouse", generated=False)
     # Trino reads the form's 2^64 as no literal (run 43307392116): the grid refuses it by name.
     with pytest.raises(FunctionRefused, match=r"pg_lsn_pli\(\) has no form on trino"):
-        transpile(f"SELECT {function} AS v", "trino")
+        transpile(f"SELECT {function} AS v", "trino", generated=False)
 
 
 def test_a_clickhouse_timestamp_keeps_its_fraction():
-    written = transpile("SELECT now() AS a, NULL::timestamp AS b", "clickhouse")
+    written = transpile("SELECT now() AS a, NULL::timestamp AS b", "clickhouse", generated=False)
     assert "now64(6, 'UTC')" in written
     assert "Nullable(DateTime64(6, 'UTC'))" in written
 
@@ -191,18 +193,24 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
     # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
     # answered on ClickHouse since CONF-CH4)
-    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
+    written = transpile(
+        "SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse", generated=False
+    )
     assert "accurateCast(materialize(" in written
 
 
 def test_money_divided_by_an_integer_truncates():
-    assert "/" in transpile("SELECT cash_div_int4('1.00'::money, 3) AS v", "trino")
-    assert "DOUBLE" not in transpile("SELECT cash_div_int4('1.00'::money, 3) AS v", "trino")
+    assert "/" in transpile("SELECT cash_div_int4('1.00'::money, 3) AS v", "trino", generated=False)
+    assert "DOUBLE" not in transpile(
+        "SELECT cash_div_int4('1.00'::money, 3) AS v", "trino", generated=False
+    )
 
 
 def test_a_null_shape_is_a_null_on_trino():
     # The statement after its routine definitions (REQ-2171: Trino defines a shape's helpers).
-    _, written = routines_apart(transpile("SELECT center(NULL::box) AS v", "trino"))
+    _, written = routines_apart(
+        transpile("SELECT center(NULL::box) AS v", "trino", generated=False)
+    )
     assert written.startswith("SELECT CASE WHEN NULL IS NULL")
 
 
@@ -251,9 +259,9 @@ def test_a_clickhouse_time_is_read_as_its_text_says():
 
     with closing(ClickHouseFederationRuntime.embedded()) as runtime:
         equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
-        assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
+        assert runtime.run_sync(transpile(equal, "clickhouse", generated=False)).rows == [(1,)]
         missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
-        assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
+        assert runtime.run_sync(transpile(missing, "clickhouse", generated=False)).rows == [(None,)]
 
 
 def test_a_null_scale_answers_null():
@@ -285,7 +293,7 @@ def test_a_clickhouse_time_is_a_time_on_the_wire():
     ],
 )
 def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
-    assert " oid" not in transpile(sql, dialect).lower()
+    assert " oid" not in transpile(sql, dialect, generated=False).lower()
 
 
 # ClickHouse answers both: the polyfill grid's rows (tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
@@ -299,4 +307,4 @@ def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
 )
 def test_the_calls_of_an_oid_a_replay_refused_stay_refused(sql, dialect):
     with pytest.raises(FunctionRefused):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)

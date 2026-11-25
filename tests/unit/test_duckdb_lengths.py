@@ -22,16 +22,20 @@ def test_lengths_of_a_bytea_and_a_text():
     con = duckdb.connect()
     con.execute("CREATE TABLE t AS SELECT 'héllo'::VARCHAR AS s, '\\xDE\\xAD'::BLOB AS b")
     sql = transpile_to_duckdb(
-        "SELECT length(s), length(b), octet_length(s), octet_length(b) FROM t"
+        "SELECT length(s), length(b), octet_length(s), octet_length(b) FROM t", generated=False
     )
     assert con.execute(sql).fetchall() == [(5, 2, 6, 2)]
 
 
 def test_a_statement_without_a_length_is_left_as_it_is():
-    assert transpile_to_duckdb("SELECT upper(s) FROM t") == "SELECT UPPER(s) FROM t"
+    assert (
+        transpile_to_duckdb("SELECT upper(s) FROM t", generated=False) == "SELECT UPPER(s) FROM t"
+    )
 
 
 def test_the_length_of_a_list_is_its_elements():
     con = duckdb.connect()
-    sql = transpile_to_duckdb("SELECT length(ARRAY[1, 2, 3]), length('héllo'), length(42)")
+    sql = transpile_to_duckdb(
+        "SELECT length(ARRAY[1, 2, 3]), length('héllo'), length(42)", generated=False
+    )
     assert con.execute(sql).fetchall() == [(3, 5, 2)]

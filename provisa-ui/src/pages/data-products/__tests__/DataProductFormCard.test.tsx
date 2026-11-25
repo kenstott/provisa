@@ -13,9 +13,17 @@
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import { DataProductFormCard } from "../DataProductFormCard";
 import { EMPTY_FORM, type DataProductForm } from "../types";
+
+// REQ-2219: the Owner field's one search for people.
+vi.mock("../../../api/entitlements", async (orig) => ({
+  ...(await orig<typeof import("../../../api/entitlements")>()),
+  searchPeople: vi.fn(async () => [
+    { principal: "okta|7", name: "Ana Ruiz", email: "ana@acme.example" },
+  ]),
+}));
 
 const INPUT_TESTIDS = [
   "data-product-id-input",
@@ -75,6 +83,8 @@ function Harness({
       setForm={setForm}
       domainOptions={["sales"]}
       roleOptions={["admin"]}
+      ownerRoleOptions={[]}
+      onPeopleError={vi.fn()}
       tables={[]}
       selectedTableIds={tableIds}
       setSelectedTableIds={setTableIds}
@@ -109,6 +119,46 @@ describe("DataProductFormCard", () => {
     }
     expect(screen.getByTestId("data-product-save-button")).toBeInTheDocument();
     expect(screen.getByTestId("data-product-cancel-button")).toBeInTheDocument();
+  });
+
+  it("names the product's owners as people, by their principals (REQ-2219)", async () => {
+    function Spy() {
+      const [form, setForm] = useState<DataProductForm>({ ...EDITED, owners: ["okta|9"] });
+      return (
+        <>
+          <output data-testid="owners-held">{form.owners.join(",")}</output>
+          <DataProductFormCard
+            editingId="p1"
+            form={form}
+            setForm={setForm}
+            domainOptions={["sales"]}
+            roleOptions={["admin"]}
+            ownerRoleOptions={[]}
+            onPeopleError={vi.fn()}
+            tables={[]}
+            selectedTableIds={[]}
+            setSelectedTableIds={vi.fn()}
+            functions={[]}
+            selectedFunctionNames={[]}
+            setSelectedFunctionNames={vi.fn()}
+            saving={false}
+            msg=""
+            onSave={vi.fn()}
+            onCancel={vi.fn()}
+          />
+        </>
+      );
+    }
+    render(<Spy />);
+    // One already named is kept, shown by their principal.
+    expect(screen.getAllByText("okta|9").length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByTestId("data-product-owner-input"), { target: { value: "ana" } });
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Ana Ruiz · ana@acme.example", hidden: true }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("owners-held")).toHaveTextContent("okta|9,okta|7"),
+    );
   });
 
   it("locks the id on edit only", () => {

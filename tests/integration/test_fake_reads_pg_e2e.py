@@ -231,7 +231,9 @@ def test_a_governed_faked_read_runs_on_postgres(pg, key, monkeypatch):
     stage2._bind_fakes(gov)
     governed = apply_governance("SELECT id, email, joined, renewed FROM public.people", gov)
     # The pg engine's physical transpile (PgBackend.transpile_physical).
-    cur.execute(rewrite_json_object_to_build_object(transpile(governed, "postgres")))
+    cur.execute(
+        rewrite_json_object_to_build_object(transpile(governed, "postgres", generated=False))
+    )
     rows = cur.fetchall()
     by_id = {r[0]: r[1] for r in rows}
     assert not set(by_id.values()) & {f"p{i}@real.example" for i in range(40)}

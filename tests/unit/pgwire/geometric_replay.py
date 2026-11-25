@@ -79,7 +79,7 @@ def outcome(sql: str, dialect: str, run: Callable[[str], Any]) -> str:
     want = RECORDED[sql][1]
     raises = (want or "").startswith("ERROR ")
     try:
-        got = run(transpile(sql, dialect))
+        got = run(transpile(sql, dialect, generated=False))
     except Exception as error:  # noqa: BLE001 -- each engine's client raises its own
         if isinstance(error, FunctionRefused) or REFUSED in str(error):
             return "refused"

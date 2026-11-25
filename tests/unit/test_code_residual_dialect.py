@@ -108,7 +108,7 @@ def _rows(answer: pa.RecordBatchReader) -> list[tuple]:
 @pytest.mark.parametrize("sql", _STATEMENTS)
 def test_a_direct_read_answers_as_postgresql(pg, sql):
     # The DIRECT terminal writes the governed statement in the source's dialect, DuckDB's.
-    direct = transpile(sql, "duckdb")
+    direct = transpile(sql, "duckdb", generated=False)
     assert _rows(residual.answer(direct, "duckdb", "t", _ROW_TABLE)) == _postgres(pg, sql), direct
 
 

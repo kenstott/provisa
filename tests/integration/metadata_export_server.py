@@ -47,7 +47,6 @@ PRODUCT_FIELDS = {
     "id": PRODUCT,
     "domain_id": DOMAIN,
     "name": "Customer 360",
-    "owner_role": "data_owner",
     "team_role": "analyst",
     "purpose": "One view of each customer and their orders",
     "limitations": "Orders before 2020 are not loaded",
@@ -58,6 +57,11 @@ PRODUCT_FIELDS = {
     "support_contact": "data-team@example.com",
     "custom_properties": {"cost_center": "CC-42"},
 }
+#: REQ-2219 (amended 2026-11-23): the product's owner and the domain's steward are a person,
+#: holding OWNER_ROLE (which carries data_product_owner and domain_steward) and named in the
+#: product's Owner field and the domain's Steward field once the server is up (:func:`name_owner`).
+OWNER_ROLE = "data_owner"
+PRODUCT_OWNER = "provisa-e2e-owner"
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
@@ -164,7 +168,7 @@ def model_config(
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [
-            {"id": domain, "description": "Sales domain", "steward": "data_owner"},
+            {"id": domain, "description": "Sales domain"},
             # Unstewarded on purpose: a catalog must show the governance gap.
             {"id": "lab", "description": "Lab domain"},
         ],
@@ -187,7 +191,11 @@ def model_config(
             {
                 "id": r,
                 "description": f"{r} role.",
-                "capabilities": ["usage"],
+                "capabilities": (
+                    ["usage", "data_product_owner", "domain_steward"]
+                    if r == OWNER_ROLE
+                    else ["usage"]
+                ),
                 "domain_access": ["*"],
             }
             for r in roles
@@ -329,6 +337,66 @@ async def entitle(client: httpx.AsyncClient, org_id: str) -> None:
     assert response.status_code == 200, response.text
 
 
+_UPDATE_PRODUCT = """
+mutation ($input: DataProductInput!) {
+  updateDataProduct(input: $input) { success message }
+}
+"""
+
+_SET_STEWARDS = """
+mutation ($domainId: String!, $stewards: [String!]!) {
+  setDomainStewards(domainId: $domainId, stewards: $stewards) { success message }
+}
+"""
+
+
+async def name_owner(
+    client: httpx.AsyncClient, *, product: str, domain: str, product_name: str
+) -> None:
+    """PRODUCT_OWNER granted OWNER_ROLE and named the product's owner, as an admin does in the
+    product's form: the save restates every field (REQ-2219: saving writes their owner row); and
+    named the domain's steward (their domain_steward row)."""
+    granted = await client.post(
+        f"/admin/users/{PRODUCT_OWNER}/assignments",
+        json={"role_id": OWNER_ROLE, "domain_id": "*"},
+    )
+    assert granted.status_code == 200, granted.text
+    fields = PRODUCT_FIELDS
+    saved = await client.post(
+        "/admin/graphql",
+        json={
+            "query": _UPDATE_PRODUCT,
+            "variables": {
+                "input": {
+                    "id": product,
+                    "domainId": domain,
+                    "name": product_name,
+                    "owners": [PRODUCT_OWNER],
+                    "teamRole": fields["team_role"],
+                    "purpose": fields["purpose"],
+                    "limitations": fields["limitations"],
+                    "usage": fields["usage"],
+                    "version": fields["version"],
+                    "support": fields["support"],
+                    "supportContact": fields["support_contact"],
+                    "customProperties": fields["custom_properties"],
+                }
+            },
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["data"]["updateDataProduct"]["success"], saved.text
+    stewarded = await client.post(
+        "/admin/graphql",
+        json={
+            "query": _SET_STEWARDS,
+            "variables": {"domainId": domain, "stewards": [PRODUCT_OWNER]},
+        },
+    )
+    assert stewarded.status_code == 200, stewarded.text
+    assert stewarded.json()["data"]["setDomainStewards"]["success"], stewarded.text
+
+
 async def approve_terms(
     client: httpx.AsyncClient, names: tuple[str, ...] = (GLOSSARY_TERM, CLASS_TERM)
 ) -> None:
@@ -382,6 +450,7 @@ async def published_server(
         try:
             async with httpx.AsyncClient(base_url=server.base_url, timeout=300.0) as client:
                 await entitle(client, org_id)
+                await name_owner(client, product=product, domain=domain, product_name=product_name)
                 yield client
         finally:
             server.stop_process()

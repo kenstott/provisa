@@ -68,7 +68,7 @@ def _rows(model, query: str) -> list[tuple]:
     )
     con.execute("INSERT INTO \"drop\".\"drop\".complaints VALUES (7,NULL,'open',NULL,'x','n','a')")
     try:
-        return con.execute(transpile_to_duckdb(physical)).fetchall()
+        return con.execute(transpile_to_duckdb(physical, generated=False)).fetchall()
     finally:
         con.close()
 

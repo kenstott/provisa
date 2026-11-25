@@ -560,7 +560,6 @@
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
       "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
-      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
       "table_withdrawn": "Tabela {{table}} retirada",
       "table_put_back": "Tabela {{table}} reposta",
       "source_withdrawn": "Fonte {{source}} retirada",
@@ -575,6 +574,8 @@
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
+      "domain_stewards_saved": "Stewards do domínio '{{domain}}' salvos",
+      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
       "file_types_differ": "O padrão {{glob}} corresponde a arquivos de mais de um tipo ({{types}}); os arquivos de uma tabela devem ser todos do mesmo tipo."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "O domínio {{domain}} não tem steward.",
         "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
         "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
-      }
+      },
+      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade data_product_owner, por isso não pode ser nomeado proprietário do produto de dados {{data_product}}. Atribua-lhe primeiro uma função assim.",
+      "owner_role_not_eligible": "A função {{role}} não tem a capacidade data_product_owner, por isso não pode ser nomeada proprietária do produto de dados {{data_product}}. Atribua primeiro essa capacidade à função.",
+      "owners_change_refused": "Somente um administrador da organização ou um proprietário atual do produto de dados {{data_product}} pode alterar os proprietários dele."
     },
     "erd": {
       "database_unavailable": "Não é possível ler os layouts do ERD: o banco de dados está indisponível",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
-      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
+      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela.",
+      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade relationship_owner, por isso não pode ser nomeado proprietário do relacionamento {{relationship}}. Atribua-lhe primeiro uma função assim.",
+      "owner_role_not_eligible": "A função {{role}} não tem a capacidade relationship_owner, por isso não pode ser nomeada proprietária do relacionamento {{relationship}}. Atribua primeiro essa capacidade à função.",
+      "owners_change_refused": "Somente um administrador da organização ou um proprietário atual do relacionamento {{relationship}} pode alterar os proprietários dele."
     },
     "syncing": {
       "not_found": "Não existe nenhuma entrada {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "Esta função é atribuída pelo provedor de identidade; o Provisa não mantém nenhuma atribuição para confirmar ou revogar",
       "webhook_invalid": "A URL do webhook não é utilizável: {{url}}",
       "webhook_secret_required": "Um webhook precisa do segredo com o qual as revisões agendadas são assinadas"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} não tem nenhuma função com a capacidade domain_steward, por isso não pode ser nomeado steward do domínio {{domain}}. Atribua-lhe primeiro uma função assim.",
+      "steward_role_not_eligible": "A função {{role}} não tem a capacidade domain_steward, por isso não pode ser nomeada steward do domínio {{domain}}. Atribua primeiro essa capacidade à função.",
+      "stewards_change_refused": "Somente um administrador da organização ou um steward atual do domínio {{domain}} pode alterar os stewards dele."
     }
   }
 }

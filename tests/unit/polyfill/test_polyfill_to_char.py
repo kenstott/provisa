@@ -31,12 +31,12 @@ from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
 
 def _on_clickhouse(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _on_duckdb(sql: str) -> list[tuple]:
     with duckdb.connect() as con:
-        return con.execute(transpile_to_duckdb(sql)).fetchall()
+        return con.execute(transpile_to_duckdb(sql, generated=False)).fetchall()
 
 
 def _quoted(text: str) -> str:
@@ -420,7 +420,7 @@ def test_each_keyword_is_postgresql_s_text_on_duckdb(template, answers):
 @pytest.mark.parametrize(("template", "answers"), _TOKENS)
 def test_each_keyword_is_written_in_trino_s_functions(template, answers):
     sql = f"SELECT to_char({_quoted(_STAMPS[0])}::timestamp, {_quoted(template)}) AS c"
-    written = transpile(sql, "trino")
+    written = transpile(sql, "trino", generated=False)
     sqlglot.parse_one(written, read="trino")
     assert "DATE_FORMAT" not in written.upper() and "FORMAT_DATETIME" not in written.upper()
 
@@ -429,7 +429,9 @@ def test_each_keyword_is_written_in_trino_s_functions(template, answers):
 @pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
 def test_a_name_in_lc_time_s_language_is_refused_naming_its_keyword(template, dialect):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(f"SELECT to_char('2024-06-05'::timestamp, '{template}') AS v", dialect)
+        transpile(
+            f"SELECT to_char('2024-06-05'::timestamp, '{template}') AS v", dialect, generated=False
+        )
     assert str(refused.value) == (
         f"to_char() of the template element {template!r} has no form on {dialect}"
     )
@@ -439,7 +441,9 @@ def test_a_name_in_lc_time_s_language_is_refused_naming_its_keyword(template, di
 @pytest.mark.parametrize("template", _REFUSED)
 def test_a_name_in_lc_time_s_language_is_refused_naming_its_keyword_on_duckdb(template):
     with pytest.raises(NotImplementedError, match=template):
-        transpile_to_duckdb(f"SELECT to_char('2024-06-05'::timestamp, '{template}')")
+        transpile_to_duckdb(
+            f"SELECT to_char('2024-06-05'::timestamp, '{template}')", generated=False
+        )
 
 
 # --- The templates strftime misread (J1309's refusals), and other templates --------------------
@@ -490,14 +494,17 @@ _TRINO = [
 
 @pytest.mark.parametrize(("template", "written"), _TRINO)
 def test_a_template_strftime_misread_is_written_from_its_tokens_on_trino(template, written):
-    assert transpile(f"SELECT to_char({_STAMP}, '{template}') AS v", "trino") == written
+    assert (
+        transpile(f"SELECT to_char({_STAMP}, '{template}') AS v", "trino", generated=False)
+        == written
+    )
 
 
 @pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
 def test_a_template_that_is_no_literal_stays_refused_by_name(dialect):
     sql = f"SELECT to_char({_STAMP}, x) AS v FROM (VALUES ('YYYY')) AS t(x)"
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert str(refused.value) == f"to_char() has no form on {dialect}"
 
 
@@ -556,7 +563,7 @@ def test_an_instant_on_a_session_off_utc_is_refused_by_name():
     try:
         with pytest.raises(FunctionRefused) as refused:
             transpile("SELECT to_char(c, 'YYYY') AS v FROM (VALUES "
-                      "('2024-06-15 12:30:45+00'::timestamptz)) AS t(c)", "clickhouse")  # fmt: skip
+                      "('2024-06-15 12:30:45+00'::timestamptz)) AS t(c)", "clickhouse", generated=False)  # fmt: skip
     finally:
         reset_zone(token)
     assert str(refused.value) == "to_char() has no form on clickhouse"

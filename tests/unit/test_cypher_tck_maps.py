@@ -32,7 +32,9 @@ _EMPTY = CypherLabelMap(nodes={}, relationships={})
 
 def _rows(query: str, params: dict | None = None) -> list[tuple]:
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, params or {})
-    return duckdb.sql(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+    return duckdb.sql(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall()
 
 
 @pytest.mark.parametrize(
@@ -90,7 +92,7 @@ def test_a_map_answers_its_keys_and_its_values(query, rows):
 def _bound(query: str, params: dict) -> tuple[str, list[tuple]]:
     """The SQL and its rows with the client's values bound, as the executor binds them."""
     sql_ast, order, _ = cypher_to_sql(parse_cypher(query), _EMPTY, params)
-    sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
+    sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
     return sql, duckdb.execute(sql, [params[n] for n in order]).fetchall()
 
 
@@ -163,7 +165,7 @@ def test_a_map_read_from_a_list_of_several_types_answers_its_keys():
     )
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, _EMPTY)
-    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     rows = assemble_rows([dict(zip(names, r)) for r in cur.fetchall()], graph_vars)
     assert rows == [{"m": None, "n": None, "e": 42}]

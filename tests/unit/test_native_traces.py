@@ -71,7 +71,9 @@ def _engine(root: str) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     con.execute("ATTACH ':memory:' AS otel")
     con.execute("CREATE SCHEMA otel.signals")
-    for name, select in nt.signal_views(root, transpile_to_duckdb).items():
+    for name, select in nt.signal_views(
+        root, lambda sql: transpile_to_duckdb(sql, generated=False)
+    ).items():
         con.execute(f"CREATE VIEW otel.signals.{name} AS {select}")
     return con
 
@@ -178,7 +180,7 @@ def test_each_org_reads_only_its_own_refreshes(tmp_path):
             )
         column = "mv_id" if table == MV_REFRESH_LINEAGE_VIEW else "span_attributes ->> 'mv.id'"
         sql = f"SELECT {column} FROM otel.signals.{table} WHERE {rule}"
-        return {r[0] for r in con.execute(transpile_to_duckdb(sql)).fetchall()}
+        return {r[0] for r in con.execute(transpile_to_duckdb(sql, generated=False)).fetchall()}
 
     for table in (MV_REFRESH_LINEAGE_VIEW, "traces"):
         assert read("acme", table) == {"view-acme_report"}
@@ -189,9 +191,12 @@ def test_each_org_reads_only_its_own_refreshes(tmp_path):
 @pytest.mark.parametrize(
     ("transpile", "reads"),
     [
-        (transpile_to_duckdb, """span_attributes ->> '$."lineage.definition_version"'"""),
         (
-            transpile_to_trino,
+            lambda sql: transpile_to_duckdb(sql, generated=False),
+            """span_attributes ->> '$."lineage.definition_version"'""",
+        ),
+        (
+            lambda sql: transpile_to_trino(sql, generated=False),
             """JSON_EXTRACT_SCALAR(span_attributes, '$["lineage.definition_version"]')""",
         ),
     ],

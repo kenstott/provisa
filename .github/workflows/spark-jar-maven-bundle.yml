@@ -1,0 +1,43 @@
+name: Spark Jar Maven Bundle
+
+# REQ-2270: the provisa data source for Spark reaches JVM users through Maven Central, as the jar
+# io.simpleishard:provisa-spark_2.13 (the group the reasoner and pgwire bundles publish under).
+# This builds it from provisa-spark-jar/ (its JUnit tests run first), checks the shade left no
+# class at its own package, and lays out its Central bundle as a workflow artifact. It builds and
+# tests only: it signs and uploads nothing. The read against a live server is
+# tests/integration/test_spark_reads_jar_e2e.py, in the integration suite's core lane.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Spark jar bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and test the jar, check its shade and lay out the Central bundle
+        run: python3 scripts/ci/spark_jar_maven_bundle.py bundles
+
+      - name: Report the bundle size
+        run: |
+          cat bundles/sizes.json
+          { echo '### Central bundle size (bytes)'; echo '```json'; cat bundles/sizes.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: spark-jar-maven-bundle
+          path: bundles/
+          retention-days: 7

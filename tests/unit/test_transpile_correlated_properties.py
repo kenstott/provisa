@@ -133,7 +133,7 @@ def test_rewrite_output_transpiles_to_trino(sql: str) -> None:
     """The whole point: the de-correlated SQL is Trino-executable — it transpiles to
     Trino and the result parses in the Trino dialect."""
     out = rewrite_correlated_subqueries_for_trino(sql)
-    trino_sql = transpile(out, "trino")
+    trino_sql = transpile(out, "trino", generated=False)
     assert sqlglot.parse_one(trino_sql, read="trino") is not None
 
 
@@ -155,5 +155,5 @@ def _plain_select(draw) -> str:
 def test_transpile_output_parses_in_target_dialect(sql: str, dialect: str) -> None:
     """transpile(sql, d) always emits SQL that parses in dialect d — a transpilation
     that produces invalid target SQL is a silent break for that source type."""
-    out = transpile(sql, dialect)
+    out = transpile(sql, dialect, generated=False)
     assert sqlglot.parse_one(out, read=dialect) is not None

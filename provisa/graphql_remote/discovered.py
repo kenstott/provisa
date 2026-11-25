@@ -29,7 +29,12 @@ the key column as an input, and a join's keys are fetched a batch at a time in o
 
 Each item is read as the source reads it today: a table or query through
 :func:`provisa.graphql_remote.executor.execute_remote` (a connection page by page), a command as
-the mutation, its answer selected as its table's columns.
+the mutation, its answer selected as its table's columns. A read cut at ``max_rows`` carries the
+warning the source's statement carries (``api.answer_row_cut``), through provisa_services.warn.
+
+The relationships the mapping detects between the tables (REQ-313) are the code's relationships
+(provisa_services.DiscoveredRelationship). The remote's credential is the source's declared secret,
+read at each call (provisa/codesource/credentials.py), never written beside the code.
 
 Names: a table, query, column and input is named as the ``graphql_remote`` registration names it
 (its sql name), so the code source's catalog matches it; each input is mapped back to the remote
@@ -184,14 +189,54 @@ def _checked(config: dict) -> dict:
     return config
 
 
+#: REQ-2267: the field of each auth type (graphql_remote.introspect._build_headers) its
+#: credential is in.
+AUTH_CREDENTIAL = {"bearer": "token", "basic": "password", "header": "token"}
+
+
+def _held_auth(config: dict) -> tuple[dict | None, dict[str, str]]:
+    from provisa.codesource.credentials import held_as_reference
+
+    auth = config["auth"]
+    field = None if not auth else AUTH_CREDENTIAL.get(auth.get("type", "none"))
+    if auth and field is None and auth.get("type", "none") != "none":
+        raise ConfigRefused(f"the GraphQL code source's auth type {auth.get('type')!r} is unknown")
+    return held_as_reference(auth, field, f"the GraphQL source at {config['url']}")
+
+
+def declared_secrets(config: dict) -> dict[str, str]:
+    """REQ-2267: the ``secrets`` the source's mapping declares for its credential, the reference
+    as configured; refused by name when the credential is not a reference."""
+    return _held_auth(config)[1]
+
+
 def write_code(code_dir: Path, config: dict) -> Path:
     """The code source's code in ``code_dir``: its entry module, and ``config`` beside it (the
-    remote's url, auth, namespace, introspected schema and mapping limits)."""
+    remote's url, auth, namespace, introspected schema and mapping limits). Its credential is
+    written as the declared secret it is read from (:func:`declared_secrets`), never as a value or
+    a reference."""
     _checked(config)
+    held, _ = _held_auth(config)
     code_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(_TEMPLATE, code_dir / f"{ENTRY}.py")
-    (code_dir / CONFIG_FILE).write_text(json.dumps(config))
+    (code_dir / CONFIG_FILE).write_text(json.dumps({**config, "auth": held}))
     return code_dir
+
+
+def _auth(config: dict) -> dict | None:
+    """The configuration's auth as a call is made with it: its credential read now (REQ-2267)."""
+    from provisa.codesource.credentials import resolved
+
+    return resolved(config["auth"])
+
+
+def _carried(warnings: list) -> None:
+    """REQ-2267: the warnings a read raised (core.statement_warnings), carried by the call's
+    answer as the built-in source's statement carries them."""
+    import provisa_services  # pyright: ignore[reportMissingImports] -- on the host's path
+
+    for warning in warnings:
+        provisa_services.warn(warning.code, warning.message, **warning.params)
 
 
 def load_config(code_dir: Path) -> dict:
@@ -324,11 +369,22 @@ def _variables(read: Read, given: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _read_rows(config: dict, read: Read, columns: tuple[Column, ...], given: dict) -> list:
+    from provisa.core.statement_warnings import collecting_apart
+
+    with collecting_apart() as raised:
+        answer = await _execute_read(config, read, columns, given)
+    _carried(raised)
+    return [r for r in answer.rows if isinstance(r, dict)]
+
+
+async def _execute_read(
+    config: dict, read: Read, columns: tuple[Column, ...], given: dict
+) -> Any:  # a graphql_remote.executor.RemoteAnswer
     from provisa.graphql_remote.executor import execute_remote
 
-    answer = await execute_remote(
+    return await execute_remote(
         url=config["url"],
-        auth=config["auth"],
+        auth=_auth(config),
         field_name=read.field_name,
         columns=[c.selection for c in columns],
         variables=_variables(read, given) or None,
@@ -338,7 +394,6 @@ async def _read_rows(config: dict, read: Read, columns: tuple[Column, ...], give
         rows_path=read.rows_path,
         max_rows=config["max_rows"],
     )
-    return [r for r in answer.rows if isinstance(r, dict)]
 
 
 async def _rows_by_keys(config: dict, table: Table, values: list) -> list[dict]:
@@ -357,7 +412,7 @@ async def _rows_by_keys(config: dict, table: Table, values: list) -> list[dict]:
             selections = [f"... on {fetch['on']} {{ {' '.join(selections)} }}"]
     answer = await execute_remote(
         url=config["url"],
-        auth=config["auth"],
+        auth=_auth(config),
         field_name=fetch["field"],
         columns=selections,
         variables=variables,
@@ -428,7 +483,7 @@ async def run_command(plan: Plan, name: str, arguments: dict) -> Any:
     remote = {a.name: a.remote for a in command.arguments}
     variables = {remote[k]: v for k, v in arguments.items() if v is not None}
     document = command_document(plan, name, list(variables))
-    headers = {"Content-Type": "application/json", **_build_headers(plan.config["auth"])}
+    headers = {"Content-Type": "application/json", **_build_headers(_auth(plan.config))}
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             plan.config["url"], json={"query": document, "variables": variables}, headers=headers

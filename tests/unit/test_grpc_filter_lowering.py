@@ -181,7 +181,9 @@ class TestTypedFilterValues:
                     ),
                 ],
             )
-            statement = transpile(f"SELECT order_id FROM orders WHERE {where}", "duckdb")
+            statement = transpile(
+                f"SELECT order_id FROM orders WHERE {where}", "duckdb", generated=False
+            )
             assert con.execute(statement, params).fetchall() == [(1,)]
         finally:
             con.close()
@@ -203,7 +205,9 @@ class TestTypedFilterValues:
         )
         where = " AND ".join(_predicates(sql))
         statement, bound = bind_positionally(
-            transpile(f"SELECT order_id FROM orders WHERE {where}", "trino"), params, "?"
+            transpile(f"SELECT order_id FROM orders WHERE {where}", "trino", generated=False),
+            params,
+            "?",
         )
         assert statement == (
             'SELECT order_id FROM orders WHERE "amount" = ? AND "shipped" = ? '

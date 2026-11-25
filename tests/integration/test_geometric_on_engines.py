@@ -113,7 +113,7 @@ def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -
     if statement is None:  # every recorded statement of the function is an error or holds a NULL
         return
     sql, wants = statement
-    got = rows(transpile(sql, dialect))
+    got = rows(transpile(sql, dialect, generated=False))
     assert len(got) == len(wants) and all(map(same, got, wants)), f"{sql}: {got}, {wants}"
 
 

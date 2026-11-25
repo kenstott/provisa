@@ -554,10 +554,10 @@ class _Engine:
     dialect = "duckdb"
     engine = SimpleNamespace(name="duckdb", catalog_qualified=True)
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         from provisa.transpiler.transpile import transpile_to_duckdb
 
-        return transpile_to_duckdb(pg_sql)
+        return transpile_to_duckdb(pg_sql, generated=False)
 
 
 @pytest.fixture
@@ -736,7 +736,7 @@ async def test_the_kept_engine_form_follows_the_optimized_text_and_the_engine(en
     assert "1 = 1" in rewritten.physical_sql and "1 = 1" not in first.physical_sql
 
     class _Other(_Engine):
-        def transpile_physical(self, pg_sql: str) -> str:
+        def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
             return "/* other engine */ " + pg_sql
 
     p.state.federation_engine = _Other()

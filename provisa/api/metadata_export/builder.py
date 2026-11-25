@@ -102,24 +102,29 @@ def _source_assets(
     ]
 
 
-def _domain_assets(config: ProvisaConfig, org_id: str | None) -> list[DomainAsset]:  # REQ-609
-    from provisa.security.domain_tree import effective_steward, parent_map
+def _domain_assets(
+    config: ProvisaConfig,
+    org_id: str | None,
+    domain_stewards: Mapping[str, tuple[str, ...]],
+) -> list[DomainAsset]:  # REQ-609
+    from provisa.core.store_config import seeded_domains
 
-    parents = parent_map(d.model_dump() for d in config.domains)
-    stewards = {d.id: d.steward for d in config.domains}
+    system = seeded_domains()
     assets: list[DomainAsset] = []
     for domain in config.domains:
-        # REQ-1363: a domain with no steward answers to its nearest ancestor's.
-        owner = effective_steward(domain.id, stewards, parents)
-        steward = OwnerRef(id=owner, kind="steward") if owner is not None else None
+        # REQ-1363, REQ-2219: its stewards are people whose domain_steward rows name it or a
+        # domain above it.
+        people = domain_stewards.get(domain.id, ())
+        steward = OwnerRef(id=", ".join(people), kind="steward") if people else None
         # REQ-609: a domain with no steward is published as pending rather than omitted — the
-        # catalog must show the governance gap, not a shorter list of domains.
+        # catalog must show the governance gap, not a shorter list of domains. A system domain
+        # needs none (REQ-2219, amended 2026-11-23).
         assets.append(
             DomainAsset(
                 id=domain.id,
                 description=domain.description,
                 steward=steward,
-                pending=steward is None,
+                pending=steward is None and domain.id not in system,
                 semantic_uri=domain_uri(org_id, domain.id),
             )
         )
@@ -258,6 +263,8 @@ def _data_product_assets(
     page_org_id: str = "",
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
+    product_owners: Mapping[str, tuple[str, ...]] | None = None,
+    person_emails: Mapping[str, str] | None = None,
 ) -> list[DataProductAsset]:
     from provisa.core.mail import admin_graphql_url, data_product_lineage_url, data_product_page_url
 
@@ -275,15 +282,15 @@ def _data_product_assets(
         members = members_by_product.get(product.id, [])
         if not members and product.status != "retired":
             continue
+        # REQ-2219 (amended 2026-11-23): a product's owners are people, by user id.
+        owners = (product_owners or {}).get(product.id, ())
         assets.append(
             DataProductAsset(
                 ref=data_product_ref(product.id),
                 id=product.id,
                 name=product.name,
                 domain_id=product.domain_id,
-                owner=OwnerRef(id=product.owner_role, kind="data_product_owner")
-                if product.owner_role
-                else None,
+                owner=OwnerRef(id=", ".join(owners), kind="data_product_owner") if owners else None,
                 description=product.purpose,
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
@@ -295,7 +302,10 @@ def _data_product_assets(
                 status=product.status,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
-                owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
+                # An owner with no address in the directory is named by no address.
+                owner_emails=tuple(
+                    (person_emails or {})[u] for u in owners if u in (person_emails or {})
+                ),
                 team_emails=(owner_emails or {}).get(product.team_role or "", ()),
                 created_at=_utc_iso((product_created or {}).get(product.id)),
                 documentation_url=(
@@ -319,10 +329,14 @@ def _data_product_assets(
 
 
 def _relationship_edges(
-    config: ProvisaConfig, index: TableIndex, org_id: str | None
+    config: ProvisaConfig,
+    index: TableIndex,
+    org_id: str | None,
+    relationship_owners: Mapping[str, tuple[str, ...]],
 ) -> list[RelationshipEdge]:
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
+        owners = relationship_owners.get(rel.id, ())
         context = f"relationship {rel.id!r}"
         source = index.resolve_published(rel.source_table_id, context)
         # A computed (function-target) relationship has no target table by design (REQ-019).
@@ -346,8 +360,10 @@ def _relationship_edges(
                 target_column=rel.target_column,
                 cardinality=rel.cardinality.value,
                 alias=rel.alias,
-                # REQ-020: the defining steward owns the approved join.
-                owner=OwnerRef(id=rel.owner, kind="relationship_owner") if rel.owner else None,
+                # REQ-2219: its owners are people holding relationship_owner rows naming it.
+                owner=(
+                    OwnerRef(id=", ".join(owners), kind="relationship_owner") if owners else None
+                ),
                 version=rel.version,
                 needs_review=rel.needs_review,
                 semantic_uri=relationship_uri(org_id, source, rel.alias, rel.id),
@@ -855,6 +871,10 @@ def build_snapshot(
     documentation_base_url: str | None = None,
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
+    product_owners: Mapping[str, tuple[str, ...]] | None = None,
+    domain_stewards: Mapping[str, tuple[str, ...]] | None = None,
+    relationship_owners: Mapping[str, tuple[str, ...]] | None = None,
+    person_emails: Mapping[str, str] | None = None,
     endpoints: ServingEndpoints | None = None,
     offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
@@ -872,7 +892,11 @@ def build_snapshot(
     names a contract's dataset addresses (REQ-1443).
 
     ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
-    caller: a data product's owners are its owner role's holders, its team its team role's.
+    caller: a data product's team is its team role's holders. ``product_owners`` (REQ-2219) is
+    each product's owners, people by user id (``entitlements.owners.product_owners``), and
+    ``person_emails`` their addresses, both read by the caller. ``domain_stewards`` is each
+    domain's stewards, people by user id (``entitlements.owners.holders`` of DOMAINS), and
+    ``relationship_owners`` each relationship's owners (of RELATIONSHIPS).
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
     ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
@@ -934,7 +958,7 @@ def build_snapshot(
     )
     relationships = [
         edge
-        for edge in _relationship_edges(config, index, uri_org_id)
+        for edge in _relationship_edges(config, index, uri_org_id, relationship_owners or {})
         if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
     ]
     published_columns = {column.ref.parts for table in tables for column in table.columns}
@@ -951,7 +975,7 @@ def build_snapshot(
     return MetadataSnapshot(
         org_id=org_id,
         sources=_source_assets(config, uri_org_id, published_source_ids),
-        domains=_domain_assets(config, uri_org_id),
+        domains=_domain_assets(config, uri_org_id, domain_stewards or {}),
         tables=tables,
         data_products=_data_product_assets(
             config,
@@ -962,6 +986,8 @@ def build_snapshot(
             page_org_id=org_id,
             owner_emails=owner_emails or {},
             product_created=product_created or {},
+            product_owners=product_owners or {},
+            person_emails=person_emails or {},
         ),
         relationships=relationships,
         lineage=[

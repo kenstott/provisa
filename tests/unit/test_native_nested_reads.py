@@ -29,7 +29,7 @@ _NESTED = {
 
 
 def _on(dialect: str, semantic: str) -> str:
-    return transpile(mark_native_nested_reads(semantic, _NESTED), dialect)
+    return transpile(mark_native_nested_reads(semantic, _NESTED), dialect, generated=False)
 
 
 def test_a_selected_typed_array_is_native_where_held_natively_and_json_elsewhere():

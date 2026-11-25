@@ -560,7 +560,6 @@
       "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden).",
       "table_derived_from_function": "Die Tabelle '{{name}}' ist von einer Funktion abgeleitet: Sie wird entfernt, indem die Tabelle der Funktion ausgeschaltet wird, und ihre Spalten und Parameter werden an der Funktion bearbeitet",
-      "table_has_dependents": "Die Tabelle '{{name}}' wird noch von anderen Objekten gelesen oder referenziert: Ziehen Sie diese zuerst zurück oder ändern Sie sie",
       "table_withdrawn": "Tabelle {{table}} zurückgezogen",
       "table_put_back": "Tabelle {{table}} wieder in Betrieb genommen",
       "source_withdrawn": "Quelle {{source}} zurückgezogen",
@@ -575,6 +574,8 @@
       "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
       "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias.",
+      "domain_stewards_saved": "Stewards der Domäne '{{domain}}' gespeichert",
+      "table_has_dependents": "Die Tabelle '{{name}}' wird noch von anderen Objekten gelesen oder referenziert: Ziehen Sie diese zuerst zurück oder ändern Sie sie",
       "file_types_differ": "Das Muster {{glob}} trifft Dateien mehrerer Typen ({{types}}); die Dateien einer Tabelle müssen alle denselben Typ haben."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "Die Domäne {{domain}} hat keinen Steward.",
         "no_description": "Dieses Datenprodukt nennt weder seinen Zweck noch seine Verwendung.",
         "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls ausgemustert."
-      }
+      },
+      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Capability data_product_owner und kann daher nicht als Eigentümer des Datenprodukts {{data_product}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "owner_role_not_eligible": "Die Rolle {{role}} hat die Capability data_product_owner nicht und kann daher nicht als Eigentümer des Datenprodukts {{data_product}} benannt werden. Geben Sie der Rolle zuerst diese Capability.",
+      "owners_change_refused": "Nur ein Org-Administrator oder ein aktueller Eigentümer des Datenprodukts {{data_product}} kann dessen Eigentümer ändern."
     },
     "erd": {
       "database_unavailable": "Die ERD-Layouts können nicht gelesen werden: Die Datenbank ist nicht verfügbar",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders.",
-      "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft."
+      "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft.",
+      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Capability relationship_owner und kann daher nicht als Eigentümer der Beziehung {{relationship}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "owner_role_not_eligible": "Die Rolle {{role}} hat die Capability relationship_owner nicht und kann daher nicht als Eigentümer der Beziehung {{relationship}} benannt werden. Geben Sie der Rolle zuerst diese Capability.",
+      "owners_change_refused": "Nur ein Org-Administrator oder ein aktueller Eigentümer der Beziehung {{relationship}} kann deren Eigentümer ändern."
     },
     "syncing": {
       "not_found": "Es gibt keinen Eintrag {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "Diese Rolle wird über den Identitätsanbieter vergeben; Provisa hält keine Zuweisung, die bestätigt oder widerrufen werden könnte",
       "webhook_invalid": "Die Webhook-URL ist nicht verwendbar: {{url}}",
       "webhook_secret_required": "Ein Webhook braucht das Geheimnis, mit dem geplante Prüfungen signiert werden"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} hat keine Rolle mit der Capability domain_steward und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "steward_role_not_eligible": "Die Rolle {{role}} hat die Capability domain_steward nicht und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Geben Sie der Rolle zuerst diese Capability.",
+      "stewards_change_refused": "Nur ein Org-Administrator oder ein aktueller Steward der Domäne {{domain}} kann deren Stewards ändern."
     }
   }
 }

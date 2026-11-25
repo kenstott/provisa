@@ -56,7 +56,7 @@ def _webhook() -> dict:
 class _Engine:
     """REQ-1679: the response is governed on the bound engine; DuckDB in process stands in."""
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         import sqlglot
 
         return sqlglot.transpile(pg_sql, read="postgres", write="duckdb")[0]

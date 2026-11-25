@@ -560,7 +560,6 @@
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
       "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction",
-      "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord",
       "table_withdrawn": "Table {{table}} retirée",
       "table_put_back": "Table {{table}} remise en service",
       "source_withdrawn": "Source {{source}} retirée",
@@ -575,6 +574,8 @@
       "table_state_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et en a l'état de publication : elle n'est ni retirée ni remise en service seule",
       "table_region_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et a sa région : elle n'est pas déplacée seule vers une autre région",
       "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias.",
+      "domain_stewards_saved": "Intendants du domaine '{{domain}}' enregistrés",
+      "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord",
       "file_types_differ": "Le motif {{glob}} correspond à des fichiers de plusieurs types ({{types}}) ; les fichiers d'une table doivent tous être d'un même type."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "Le domaine {{domain}} n'a pas d'intendant.",
         "no_description": "Ce produit de données n'indique ni son objectif ni son usage.",
         "successor_retired": "Le produit de données qui a repris les membres de celui-ci, « {{successor}} », a lui aussi été retiré."
-      }
+      },
+      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité data_product_owner et ne peut donc pas être nommé propriétaire du produit de données {{data_product}}. Attribuez-lui d'abord un tel rôle.",
+      "owner_role_not_eligible": "Le rôle {{role}} n'a pas la capacité data_product_owner et ne peut donc pas être nommé propriétaire du produit de données {{data_product}}. Donnez d'abord cette capacité au rôle.",
+      "owners_change_refused": "Seul un administrateur de l'organisation ou un propriétaire actuel du produit de données {{data_product}} peut modifier ses propriétaires."
     },
     "erd": {
       "database_unavailable": "Impossible de lire les dispositions de l'ERD : la base de données est indisponible",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "Le nom « {{name}} » est pris par la relation « {{held_by}} ». Nommez celle-ci autrement.",
-      "join_through_none": "Les relations '{{first}}' et '{{second}}' ne partagent aucune table intermédiaire, ou leurs autres extrémités y sont déjà jointes."
+      "join_through_none": "Les relations '{{first}}' et '{{second}}' ne partagent aucune table intermédiaire, ou leurs autres extrémités y sont déjà jointes.",
+      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité relationship_owner et ne peut donc pas être nommé propriétaire de la relation {{relationship}}. Attribuez-lui d'abord un tel rôle.",
+      "owner_role_not_eligible": "Le rôle {{role}} n'a pas la capacité relationship_owner et ne peut donc pas être nommé propriétaire de la relation {{relationship}}. Donnez d'abord cette capacité au rôle.",
+      "owners_change_refused": "Seul un administrateur de l'organisation ou un propriétaire actuel de la relation {{relationship}} peut modifier ses propriétaires."
     },
     "syncing": {
       "not_found": "Il n'existe aucune entrée {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "Ce rôle est attribué via le fournisseur d'identité ; Provisa ne détient aucune attribution à confirmer ou révoquer",
       "webhook_invalid": "L'URL du webhook n'est pas utilisable : {{url}}",
       "webhook_secret_required": "Un webhook a besoin du secret avec lequel les revues planifiées sont signées"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Attribuez-lui d'abord un tel rôle.",
+      "steward_role_not_eligible": "Le rôle {{role}} n'a pas la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Donnez d'abord cette capacité au rôle.",
+      "stewards_change_refused": "Seul un administrateur de l'organisation ou un intendant actuel du domaine {{domain}} peut modifier ses intendants."
     }
   }
 }

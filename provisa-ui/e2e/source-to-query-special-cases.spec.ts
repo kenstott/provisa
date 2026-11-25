@@ -24,12 +24,14 @@
 //     so the Register Table form's schema picker was always empty. All three are fixed in this
 //     branch's provisa/federation/connector_duckdb.py and provisa/api/admin/introspect.py. Runs
 //     live against the durable fixture sheet (gsheets-e2e-fixture project memory) when
-//     GOOGLE_APPLICATION_CREDENTIALS + GSHEETS_TEST_SHEET_ID are set (they are, in this repo's
-//     .env) — skips only on a machine missing that setup.
+//     GOOGLE_APPLICATION_CREDENTIALS + GSHEETS_TEST_SHEET_ID are set (this repo's .env; in CI the
+//     warehouse UI job's secrets, the key written to a file by scripts/ci/lanes/ui-core-prepare.sh).
+//     Without them it fails, naming what is missing: a skip is a defect (REQ-1742).
 //
 //   govdata — a REAL external API (AskAmerica/US government open data), tested live with
-//     FREE_ASKAMERICA_KEY from .env against the "weather" subject's nws_stations table (small,
-//     fast). Skips only when the key is absent.
+//     FREE_ASKAMERICA_KEY from .env (in CI the core UI lane's provisioning job's secret) against
+//     the "weather" subject's nws_stations table (small, fast). Without the key it fails, naming
+//     it (REQ-1742).
 //
 //   grpc_remote — the shipped demo/grpc_server/server.py is deliberately PROTO-LESS (a raw
 //     bytes-in/bytes-out bridge for the grpc-kind command dispatch), so it cannot exercise the
@@ -84,6 +86,14 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 
+// REQ-1742: a live case without its credentials has not run, and a skip would report a pass it did
+// not earn (tests/skip_is_failure.py). It fails instead, naming each missing setting.
+function requireSettings(caseName: string, missing: string[]): void {
+  if (missing.length > 0) {
+    throw new Error(`${caseName} cannot run; not set: ${missing.join("; ")}`);
+  }
+}
+
 async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -103,15 +113,18 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
 test.describe("google_sheets: source to query through the UI (REQ-1742)", () => {
   const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS ?? "";
   const sheetId = process.env.GSHEETS_TEST_SHEET_ID ?? "";
-  const haveFixture = !!credsPath && fs.existsSync(credsPath) && !!sheetId;
 
   test("add the source, register the sheet, query it on the SQL page", async ({ page }) => {
-    test.skip(
-      !haveFixture,
-      "GOOGLE_APPLICATION_CREDENTIALS / GSHEETS_TEST_SHEET_ID not set to the durable fixture " +
-        "sheet (see gsheets-e2e-fixture project memory) — the service account has zero Drive " +
-        "quota so no throwaway sheet can be created; this test reads the existing shared fixture.",
-    );
+    // The service account has zero Drive quota, so no throwaway sheet can be made: the test reads
+    // the durable shared fixture sheet GSHEETS_TEST_SHEET_ID names.
+    const missing: string[] = [];
+    if (!credsPath) {
+      missing.push("GOOGLE_APPLICATION_CREDENTIALS (secret GOOGLE_APPLICATION_CREDENTIALS_JSON)");
+    } else if (!fs.existsSync(credsPath)) {
+      missing.push(`GOOGLE_APPLICATION_CREDENTIALS file ${credsPath} does not exist`);
+    }
+    if (!sheetId) missing.push("GSHEETS_TEST_SHEET_ID");
+    requireSettings("google_sheets source-to-query", missing);
     // REQ-1742: three real connector bugs were found and fixed while building this test (all
     // blocked EVERY UI-registered google_sheets source, not just this test — see
     // provisa/federation/connector_duckdb.py's DuckDBGsheetsConnector and provisa/api/admin/
@@ -178,11 +191,8 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   });
 
   test("add the source, register a weather table, query it on the SQL page", async ({ page }) => {
-    test.skip(
-      !apiKey,
-      "FREE_ASKAMERICA_KEY not set in .env — govdata is a real external API " +
-        "(AskAmerica/US government open data) and has no offline mock to test against.",
-    );
+    // govdata is a real external API (AskAmerica/US government open data) with no offline mock.
+    requireSettings("govdata source-to-query", apiKey ? [] : ["FREE_ASKAMERICA_KEY"]);
     // REQ-1742: the askamerica connection itself is real and works — verified directly (outside
     // Playwright) against the live API: fetch_tables/fetch_columns(GovDataSource(schemas=
     // ["weather"])) returned real NOAA/NWS tables (nws_stations among them) and typed columns in
