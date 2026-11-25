@@ -13180,7 +13180,7 @@ The subdomain org selector is delivered in two transports: the HTTP `Host` heade
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The subdomain never authorizes; it only names the org. The authenticated credential must authorize that org: an org-scoped credential's `active_org_id` must EQUAL the subdomain org (reject on mismatch); a person-scoped (OIDC) identity must be a MEMBER of the subdomain org (check user_org_memberships) else reject. No default org, no fallback: an unnamed or unauthorized org is a rejection, never a guess.
+The subdomain never authorizes; it only names the org. The authenticated credential must authorize that org: an org-scoped credential's `active_org_id` must EQUAL the subdomain org (reject on mismatch); a person-scoped (OIDC) identity must be a MEMBER of the subdomain org (check user_org_memberships) else reject. No default org, no fallback: an unnamed or unauthorized org is a rejection, never a guess. (Amended 2026-11-24 by the maintainer. In a single-tenant deployment the pgwire server still serves the deployment's one organisation, but it checks the database name a client connects to: it accepts the configured database name and postgres, and refuses any other name with PostgreSQL's 3D000 database "<name>" does not exist, as PostgreSQL does. Before this amendment the name was not read at all, so a connection to any name was accepted.)
 
 **Use case:** Subdomain naming + credential authorization prevents a credential intended for org-acme from accessing org-beta data. A person can hold memberships in multiple orgs but must use org-matched credentials or re-authenticate for each org.
 
