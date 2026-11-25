@@ -53,7 +53,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple[Any, ...]]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
