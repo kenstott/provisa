@@ -580,9 +580,13 @@ def _map_operations(
             response_is_scalar = (
                 isinstance(response_schema, dict) and response_schema.get("type") in _SCALAR_TYPES
             )
+            # REQ-1874, REQ-1924: rows whose schema has no properties (``{type: object}``, an
+            # empty ``allOf``, a reference to a propertyless component) are no more typed than
+            # rows with no schema at all.
+            rows_typed = bool((response_schema or {}).get("properties"))
             reads = method == "get" and explicit_kind != "mutation"
             is_query = not (response_is_scalar or binary) and (
-                explicit_kind == "query" or (reads and response_schema is not None)
+                explicit_kind == "query" or (reads and rows_typed)
             )
 
             if is_query:
@@ -631,7 +635,7 @@ def _map_operations(
                         binary=binary,
                     )
                 )
-                if reads and response_schema is None and not binary:
+                if reads and not (rows_typed or response_is_scalar or binary):
                     # REQ-1924: nothing says what its rows hold, so the steward declares its
                     # columns when registering it as a table.
                     queries.append(
