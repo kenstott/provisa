@@ -210,27 +210,45 @@ def answer(
     """The answer to one request the proxy took for :data:`SERVICES_HOST`: its status, content
     type and body. A secret is its value, as text; every other service answers JSON, a refusal
     included, as an OpenAI-compatible SDK reads one."""
-    from provisa.codesource.llm_service import refusal_body
-
     token, _, rest = path.lstrip("/").partition("/")
     service, _, sub = rest.partition("/")
+    held = headers or {}
+    try:
+        grant = _for_preflight(_grant(token), token, held)
+    except ServiceRefused as refused:
+        return refusal(service, refused)
+    with _call_scope(token, held):
+        return answer_grant(
+            grant, method, service, sub, body, grant.role or _call_role(token, held)
+        )
+
+
+def answer_grant(
+    grant: ServiceGrant, method: str, service: str, sub: str, body: bytes, role: str | None
+) -> tuple[int, str, bytes]:
+    """The answer to one services call ``service``/``sub`` made under ``grant`` as ``role``: the
+    worker's (:func:`answer`) and a developer's through their personal access token's route
+    (REQ-2106, amended 2026-11-22) are answered here alike. Called off the event loop."""
     sub = sub.split("?", 1)[0]
     kind = TEXT if service == "secrets" else JSON
     try:
-        grant = _for_preflight(_grant(token), token, headers or {})
         if service not in SERVICES:
             raise ServiceRefused(404, f"Provisa offers no service {service!r} to code")
-        with (
-            _call_scope(token, headers or {}),
-            stage(_tracer, f"codesource.service.{service}") as span,
-        ):
+        with stage(_tracer, f"codesource.service.{service}") as span:
             span.set_attribute("codesource.source", grant.source_id)
-            role = grant.role or _call_role(token, headers or {})
             return 200, kind, _dispatch(grant, service, method, sub, body, span, role)
     except ServiceRefused as refused:
-        if kind == TEXT:
-            return refused.status, TEXT, refused.reason.encode()
-        return refused.status, JSON, refusal_body(refused.reason, refused.status)
+        return refusal(service, refused)
+
+
+def refusal(service: str, refused: ServiceRefused) -> tuple[int, str, bytes]:
+    """``refused`` as ``service`` answers it: a secret's as text, every other service's as JSON,
+    as an OpenAI-compatible SDK reads one."""
+    from provisa.codesource.llm_service import refusal_body
+
+    if service == "secrets":
+        return refused.status, TEXT, refused.reason.encode()
+    return refused.status, JSON, refusal_body(refused.reason, refused.status)
 
 
 def _call_scope(token: str, headers: Mapping[str, str]) -> Any:

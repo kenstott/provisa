@@ -5968,6 +5968,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
+    from provisa.api.admin.developer_services_router import router as developer_services_router
+
+    app.include_router(developer_services_router)  # REQ-2106, REQ-2112
     from provisa.api.admin.connectors_router import router as connectors_router
 
     app.include_router(connectors_router)  # REQ-2221
