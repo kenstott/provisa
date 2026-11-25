@@ -12,42 +12,34 @@
 // it by pipeline. Mirrors provisa/federation/singlestore_pipeline.py (ICEBERG_CATALOG_HINTS): the
 // four catalog types (maintainer, 2026-10-05) and the federation_hints each one needs.
 
-export const ICEBERG_CATALOG_TYPES = ["GLUE", "REST", "JDBC", "SNOWFLAKE"] as const;
-export type IcebergCatalogType = (typeof ICEBERG_CATALOG_TYPES)[number];
+import { descriptorField, fieldChoices, fieldsWhen, isRequired } from "./descriptor";
 
-/** Every catalog hint the form can show, in the order it shows them. */
-export const ICEBERG_HINT_KEYS = [
-  "iceberg_catalog_type",
-  "iceberg_table_id",
-  "iceberg_catalog_uri",
-  "iceberg_catalog_name",
-  "iceberg_catalog_warehouse",
-  "iceberg_catalog_user",
-  "iceberg_catalog_password",
-  "iceberg_catalog_role",
-] as const;
+// REQ-2114: the catalog types, their fields and which are required are the descriptor's
+// (provisa/api/admin/source_types.py ICEBERG_CATALOG).
+const ICEBERG = "iceberg";
+const HINTS = "federationHintsJson";
+const TYPE_KEY = descriptorField(ICEBERG, HINTS, "iceberg_catalog_type").name;
+const TABLE_ID = descriptorField(ICEBERG, HINTS, "iceberg_table_id");
+
+export const ICEBERG_CATALOG_TYPES: readonly string[] = fieldChoices(ICEBERG, HINTS, TYPE_KEY);
+export type IcebergCatalogType = string;
+
+/** The table id, shown once a catalog type is chosen, and whether it is required. */
+export const ICEBERG_TABLE_ID = { key: TABLE_ID.name, required: isRequired(TABLE_ID) };
 
 /** The catalog fields each type shows (besides the type and the table id), and which are required. */
 export const ICEBERG_CATALOG_FIELDS: Record<
   IcebergCatalogType,
-  readonly { key: (typeof ICEBERG_HINT_KEYS)[number]; required: boolean }[]
-> = {
-  GLUE: [],
-  REST: [{ key: "iceberg_catalog_uri", required: true }],
-  JDBC: [
-    { key: "iceberg_catalog_name", required: true },
-    { key: "iceberg_catalog_warehouse", required: true },
-    { key: "iceberg_catalog_uri", required: true },
-    { key: "iceberg_catalog_user", required: false },
-    { key: "iceberg_catalog_password", required: false },
-  ],
-  SNOWFLAKE: [
-    { key: "iceberg_catalog_uri", required: true },
-    { key: "iceberg_catalog_user", required: true },
-    { key: "iceberg_catalog_password", required: true },
-    { key: "iceberg_catalog_role", required: true },
-  ],
-};
+  readonly { key: string; required: boolean }[]
+> = Object.fromEntries(
+  ICEBERG_CATALOG_TYPES.map((type) => [
+    type,
+    fieldsWhen(ICEBERG, HINTS, TYPE_KEY, type).map((f) => ({
+      key: f.name,
+      required: isRequired(f),
+    })),
+  ]),
+);
 
 /** Catalog types whose password SingleStore keeps in its unredacted pipeline CONFIG. */
 export const CATALOG_PASSWORD_IN_CONFIG = new Set<IcebergCatalogType>(["JDBC", "SNOWFLAKE"]);
@@ -55,12 +47,8 @@ export const CATALOG_PASSWORD_IN_CONFIG = new Set<IcebergCatalogType>(["JDBC", "
 /** The catalog hints to save: every filled catalog field of the chosen type, and nothing of the
  * others (switching type does not carry a REST URI into a JDBC catalog). */
 export function icebergCatalogHints(fields: Record<string, string>): Record<string, string> {
-  const type = fields.iceberg_catalog_type as IcebergCatalogType | undefined;
+  const type = fields[TYPE_KEY];
   if (!type || !ICEBERG_CATALOG_TYPES.includes(type)) return {};
-  const keys = [
-    "iceberg_catalog_type",
-    "iceberg_table_id",
-    ...ICEBERG_CATALOG_FIELDS[type].map((f) => f.key),
-  ];
+  const keys = [TYPE_KEY, TABLE_ID.name, ...ICEBERG_CATALOG_FIELDS[type].map((f) => f.key)];
   return Object.fromEntries(keys.filter((k) => fields[k]).map((k) => [k, fields[k]]));
 }

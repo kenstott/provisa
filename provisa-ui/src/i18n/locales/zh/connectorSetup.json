@@ -2,7 +2,7 @@
   "connectorSetup": {
     "identity": "连接器 {{name}}，跟随 {{ref}}。",
     "missing": "请填写连接器的主机、端口、配对码以及所有必需的值。",
-    "missingNative": "请填写连接器所需的每个值。",
+    "missingNative": "请填写连接器要求的每个值。",
     "image": "镜像",
     "imageHint": "您的部署运行的镜像。Provisa 在连接时据此检查主机。",
     "native": "在此服务器上运行，由 {{path}} 构建。无需主机或配对码。",
@@ -13,6 +13,7 @@
     "pairingHint": "容器首次启动时在 \"pairing code:\" 后打印的那一行。只使用一次，不会保留。",
     "secretHint": "要使用的组织密钥。其值绝不在此处输入。",
     "fixedHint": "由此连接器设置，无法更改。",
-    "sparkClusterDefaultHint": "留空则使用组织的默认 Spark 集群（管理 > Spark 集群）。"
+    "sparkClusterDefaultHint": "留空则使用组织的默认 Spark 集群（管理 > Spark 集群）。",
+    "builtinIdentity": "Spark 主机，跟随 {{ref}}。"
   }
 }

@@ -13,10 +13,11 @@
 Makes a ClickHouse server a first-class NAMED SOURCE reachable on ANY engine: Provisa reads it
 directly (HTTP via clickhouse-connect) then lands a replica. The same client family the ClickHouse
 federation engine uses. Port defaults to the HTTP interface (8123); ``secure`` (TLS) is an optional
-``federation_hints`` flag. A whole result is read as ClickHouse's Arrow output and handed to the
-executor as Arrow, holding the values clickhouse-connect's row read gives (REQ-2194,
-``clickhouse_arrow``); a streamed result is read as row blocks (REQ-1190). That read needs
-ClickHouse 26 or later, so an older server is refused at connect by name (REQ-2194).
+``federation_hints`` flag. Reads use ClickHouse's native columnar output (REQ-986): every result is
+read as Arrow (``query_arrow``, ``query_arrow_stream``), never as clickhouse-connect's Python rows
+(REQ-2194). A whole result holds the values clickhouse-connect's row read gives (``clickhouse_arrow``).
+Arrow output needs ClickHouse 26 or later -- earlier servers refuse UUID in it -- so a client that
+reaches an older server is refused as it opens (:class:`ClickHouseServerTooOld`).
 
 One clickhouse-connect client is one ClickHouse SESSION, and a session runs one query at a time:
 a second query on it is refused ("Attempt to execute concurrent queries within the same
@@ -40,6 +41,7 @@ from typing import Any
 
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
+from provisa.executor.drivers.arrow_result import arrow_table_rows
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.clickhouse_arrow import (
     ARROW_SETTINGS,
@@ -49,30 +51,46 @@ from provisa.executor.drivers.clickhouse_arrow import (
 )
 from provisa.executor.result import QueryResult
 
-
-# DIRECT results are read as Arrow (REQ-2194), and a server before 26 refuses UUID in Arrow output.
-MIN_SERVER_MAJOR = 26
-
-
-class UnsupportedClickHouseVersion(RuntimeError):
-    """The server is older than the ClickHouse release the Arrow read needs (REQ-2194)."""
+#: The oldest ClickHouse major whose Arrow output holds every column type (REQ-2194): earlier
+#: servers refuse UUID in Arrow output.
+MINIMUM_SERVER_MAJOR = 26
 
 
-def require_arrow_capable(server_version: str | None) -> None:
-    """Refuse a ClickHouse server older than 26, by name and with its version (REQ-2194)."""
-    major = (server_version or "").split(".", 1)[0]
-    if not major.isdigit():
-        raise UnsupportedClickHouseVersion(
-            f"ClickHouse server reported no readable version ({server_version!r}); "
-            f"Provisa reads ClickHouse results as Arrow, which needs ClickHouse "
-            f"{MIN_SERVER_MAJOR} or later"
+class ClickHouseServerTooOld(RuntimeError):  # REQ-2194
+    """A ClickHouse source's server is older than :data:`MINIMUM_SERVER_MAJOR`: its results are
+    read as Arrow, which an older server cannot write for every type."""
+
+    def __init__(self, version: str | None) -> None:
+        self.version = version
+        self.minimum = MINIMUM_SERVER_MAJOR
+        needs = (
+            f"a ClickHouse source is read as Arrow, which needs ClickHouse {MINIMUM_SERVER_MAJOR} "
+            "or later (earlier servers refuse UUID in Arrow output)"
         )
-    if int(major) < MIN_SERVER_MAJOR:
-        raise UnsupportedClickHouseVersion(
-            f"ClickHouse {server_version} is not supported: Provisa reads ClickHouse results as "
-            f"Arrow, which needs ClickHouse {MIN_SERVER_MAJOR} or later (earlier servers refuse "
-            f"UUID in Arrow output)"
-        )
+        if _major(version) is None:
+            super().__init__(
+                f"ClickHouse server reported no readable version ({version!r}): {needs}"
+            )
+        else:
+            super().__init__(
+                f"ClickHouse server {version} is older than {MINIMUM_SERVER_MAJOR}: {needs}"
+            )
+
+
+def _major(version: str | None) -> int | None:
+    """The major release of a ClickHouse ``server_version``, or None when it has none."""
+    major = (version or "").split(".", 1)[0]
+    return int(major) if major.isdigit() else None
+
+
+def require_arrow_server(client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
+    """Refuse ``client`` by name when its server is older than :data:`MINIMUM_SERVER_MAJOR`, or
+    reports no readable version. clickhouse-connect reads the server's version as the client
+    opens (``server_version``)."""
+    version: str | None = client.server_version
+    major = _major(version)
+    if major is None or major < MINIMUM_SERVER_MAJOR:
+        raise ClickHouseServerTooOld(version)
 
 
 def _is_broken(exc: BaseException) -> bool:
@@ -123,14 +141,15 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
                 autogenerate_session_id=False,
             )
             try:
-                require_arrow_capable(client.server_version)
-            except Exception:
+                require_arrow_server(client)
+            except ClickHouseServerTooOld:
                 client.close()
                 raise
             return client
 
         self._open = _open
-        # min_pool clients open now, so an unreachable source fails at registration.
+        # min_pool clients open now, so an unreachable source, or a server too old to write
+        # Arrow, fails at registration.
         self._pool = BlockingPool(
             _open,
             lambda c: c.close(),
@@ -210,14 +229,14 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         return True
 
     async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
-        """The result a batch at a time: ClickHouse's row-block stream, read block by block as
-        ``fetchmany`` asks, on a pooled client; ``KILL QUERY`` by the statement's id stops one
-        still sending blocks."""
+        """The result a batch at a time: ClickHouse's Arrow stream (REQ-2194), read batch by batch
+        as a fetch asks, on a pooled client; ``KILL QUERY`` by the statement's id stops one still
+        sending batches."""
         from provisa.compiler.params import (
             extract_params_comment,
             substitute_positional_placeholders,
         )
-        from provisa.executor.drivers.cursor_stream import PooledCursorStream
+        from provisa.executor.drivers.cursor_stream import PooledArrowCursorStream
 
         exec_sql, embedded = extract_params_comment(sql)
         effective_params = params if params is not None else embedded
@@ -228,12 +247,13 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             )
             ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
         query_id = uuid.uuid4().hex
-        return PooledCursorStream(
+        return PooledArrowCursorStream(
             self._require_pool(),
-            open_cursor=lambda client: _BlockStreamCursor(client),
+            open_cursor=_ArrowStreamCursor,
             execute=lambda cur: cur.execute(exec_sql, ch_params, query_id),
-            columns=lambda cur: [d[0] for d in cur.description],
+            columns=lambda cur: list(cur.schema.names),
             cancel=lambda _client, _cur: self._kill_query(query_id),
+            to_rows=arrow_table_rows,
         )
 
     async def execute_arrow(self, sql: str, params: dict[str, Any] | None = None) -> Any:
@@ -289,42 +309,39 @@ def result_names(
     return [row[0] for row in described.result_rows]
 
 
-class _BlockStreamCursor:
-    """A ClickHouse row-block stream read as a DB-API cursor (REQ-1190): ``description`` names the
-    columns, and ``fetchmany`` returns the next rows, taking the next block from the server only
-    when the one in hand is used up."""
+class _ArrowStreamCursor:
+    """A ClickHouse Arrow stream read for :class:`PooledArrowCursorStream` (REQ-2194):
+    ``schema`` is the stream's Arrow schema, and ``fetch_batch`` hands on the server's next record
+    batch, taken from the server only when it is asked for; never clickhouse-connect's rows."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
         self._client = client
         self._context: Any = None
-        self._blocks: Any = None
-        self._pending: list[Any] = []
+        self._batches: Iterator[Any] | None = None
+        self.schema: Any = None
         self.description: list[tuple[str]] | None = None
 
     def execute(self, sql: str, parameters: dict[str, Any] | None, query_id: str) -> None:
-        self._context = self._client.query_row_block_stream(
-            sql, parameters=parameters, settings={"query_id": query_id}
+        self._context = self._client.query_arrow_stream(
+            sql, parameters=parameters, use_strings=True, settings={"query_id": query_id}
         )
         stream = self._context.__enter__()
-        self._blocks = iter(stream)
-        names = result_names(self._client, sql, parameters, stream.source.column_names)
-        self.description = [(name,) for name in names]
+        # clickhouse-connect's Arrow stream is pyarrow's stream reader over the response
+        # (``gen``), which has read the schema message as it opened.
+        self.schema = stream.gen.schema
+        self.description = [(name,) for name in self.schema.names]
+        self._batches = iter(stream)
 
-    def fetchmany(self, size: int) -> list[tuple]:
-        rows: list[tuple] = []
-        while len(rows) < size:
-            if not self._pending:
-                block = next(self._blocks, None) if self._blocks is not None else None
-                if block is None:
-                    break
-                self._pending = list(block)
-            take = size - len(rows)
-            rows.extend(tuple(r) for r in self._pending[:take])
-            self._pending = self._pending[take:]
-        return rows
+    def fetch_batch(self) -> Any:  # noqa: ANN401 — a pyarrow RecordBatch, or None once exhausted
+        if self._batches is None:
+            return None
+        batch = next(self._batches, None)
+        if batch is None:
+            self._batches = None
+        return batch
 
     def close(self) -> None:
         context, self._context = self._context, None
-        self._blocks, self._pending = None, []
+        self._batches = None
         if context is not None:
             context.__exit__(None, None, None)

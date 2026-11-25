@@ -484,7 +484,9 @@ def _fetch_oauth2_token(oauth: ApiAuthOAuth2ClientCredentials) -> str:  # REQ-32
 
     client_id = resolve_secrets(oauth.client_id)
     client_secret = resolve_secrets(oauth.client_secret, credential=True)
-    key = held_key(oauth.type, oauth.token_url, client_id, client_secret, oauth.scope or "")
+    # REQ-1874: a grant with other parameters (another audience) is another token.
+    extra = [part for item in sorted(oauth.token_params.items()) for part in item]
+    key = held_key(oauth.type, oauth.token_url, client_id, client_secret, oauth.scope or "", *extra)
     held = held_token(key)
     if held is not None:
         return held
@@ -496,6 +498,7 @@ def _fetch_oauth2_token(oauth: ApiAuthOAuth2ClientCredentials) -> str:  # REQ-32
     }
     if oauth.scope:
         data["scope"] = oauth.scope
+    data.update(oauth.token_params)
 
     # REQ-2006: the token endpoint is the source's to name; a sandbox org's is checked and pinned.
     with _httpx.Client(timeout=10, event_hooks=sandbox_egress.http_sync_event_hooks()) as client:

@@ -49,7 +49,7 @@ a batch at a time, so memory holds one batch.
 | Databricks | Arrow | Rows |
 | BigQuery | Arrow | Rows |
 | PostgreSQL | Rows. Over pgwire, Provisa forwards the source's own row messages without decoding them | Rows, forwarded the same way over pgwire |
-| ClickHouse | Arrow | Rows |
+| ClickHouse | Arrow | Rows built from Arrow batches |
 | MySQL, MariaDB | Rows | Rows |
 | SQL Server | Rows | Rows |
 | Oracle | Rows | Rows |
@@ -71,12 +71,12 @@ source is refused, and the message names the location.
 
 ClickHouse writes some types to Arrow as something other than their value. An IPv4 address and a
 `DateTime` arrive as 32-bit integers, an IPv6 address and a 128-bit integer as 16 bytes, an enum as
-its code. When a result holds such a column, Provisa asks ClickHouse for the result's types with
+its code. When a whole result holds such a column, Provisa asks ClickHouse for the result's types with
 `DESCRIBE`, which costs one more round trip, and converts each column in place. An address or a
 UUID becomes the text PostgreSQL writes for it. A `DateTime` becomes a timestamp in the column's
 zone, or in the server's zone when the column names none. An enum becomes its label, and a 128- or
-256-bit integer becomes a decimal. ClickHouse writes UUID to Arrow only from version 26. An older
-server refuses any result that holds a UUID column.
+256-bit integer becomes a decimal. ClickHouse writes UUID to Arrow only from version 26, so Provisa
+refuses a ClickHouse source on an older server when it connects, and the message names the version.
 
 ## Choosing for large results
 

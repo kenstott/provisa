@@ -225,6 +225,8 @@ def api_auth(auth_config: dict | None) -> dict | None:
         }
         if auth_config.get("scope"):
             auth["scope"] = auth_config["scope"]
+        if auth_config.get("token_params"):  # REQ-1874
+            auth["token_params"] = auth_config["token_params"]
         return auth
     raise ValueError(f"OpenAPI auth type {kind!r} is not one the caller applies")
 
@@ -258,14 +260,18 @@ def auth_without_secret(auth: Any) -> dict | None:
             return {"type": "basic", "username": username}
         case ApiAuthApiKey(name=name):
             return {"type": "api_key", "header_name": name}
-        case ApiAuthOAuth2ClientCredentials(client_id=client_id, token_url=token_url, scope=scope):
-            stated = {
+        case ApiAuthOAuth2ClientCredentials(
+            client_id=client_id, token_url=token_url, scope=scope, token_params=token_params
+        ):
+            stated: dict[str, Any] = {
                 "type": "oauth2_client_credentials",
                 "client_id": client_id,
                 "token_url": token_url,
             }
             if scope:
                 stated["scope"] = scope
+            if token_params:  # REQ-1874
+                stated["token_params"] = dict(token_params)
             return stated
     raise ValueError(f"OpenAPI auth {type(auth).__name__} is not one a registration states")
 

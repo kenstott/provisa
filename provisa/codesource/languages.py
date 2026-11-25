@@ -19,7 +19,7 @@ Everything that asks whether a source type is code asks :data:`CODE_SOURCE_TYPES
 This module imports nothing of any language's, so any layer may ask it.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227
+# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227, REQ-2225
 from __future__ import annotations
 
 import importlib
@@ -79,11 +79,27 @@ LANGUAGES: dict[str, CodeLanguage] = {
         CodeLanguage(
             "rust", ("rust",), "cargo", True, "provisa.rustlang.prepare", "provisa.rustlang.image"
         ),
+        # REQ-2225: Spark, one annotated PySpark script run by the Spark host (connectors/spark)
+        # on the pinned CPython; a source of it is made by joining that host, never in dev mode.
+        CodeLanguage(
+            "spark", ("python",), "pypi", True, "provisa.python.prepare", "provisa.python.image"
+        ),
     )
 }
 
 #: Every code source type.
 CODE_SOURCE_TYPES: frozenset[str] = frozenset(LANGUAGES)
+
+#: REQ-2267 (amended 2026-11-24): the code kind of a built-in code source, whose code is
+#: Provisa's own, written by its save into a server-owned directory (provisa/codesource/builtin.py).
+BUILTIN_KIND = "builtin"
+
+#: REQ-2267: the source types saved as built-in code sources, each its module: its ``ENTRY``,
+#: ``write_code`` and ``declared_secrets``. Their code runs as Python code does.
+BUILTIN_TYPES: dict[str, str] = {
+    "openapi": "provisa.openapi.code_source",
+    "graphql_remote": "provisa.graphql_remote.discovered",
+}
 
 
 def language_of(source_type: str) -> CodeLanguage | None:

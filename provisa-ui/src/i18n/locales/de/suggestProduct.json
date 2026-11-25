@@ -1,0 +1,22 @@
+{
+  "suggestProduct": {
+    "title": "Datenprodukt für {{domain}} vorschlagen",
+    "tables": "Tabellen",
+    "hint": "Gelistete Tabellen dieser Domäne, die das Produkt enthalten würde.",
+    "reason": "Warum Sie es brauchen",
+    "reasonHint": "Die Datenproduktverantwortlichen und Data Stewards der Domäne lesen dies.",
+    "send": "Vorschlag senden",
+    "sending": "Wird gesendet…",
+    "sent_one": "Ihr Vorschlag ging per E-Mail an {{count}} Verantwortlichen oder Steward von {{domain}}.",
+    "sent_other": "Ihr Vorschlag ging per E-Mail an {{count}} Verantwortliche und Stewards von {{domain}}.",
+    "close": "Schließen",
+    "badgeTitle_one": "{{count}} Vorschlag nennt diese Tabelle: öffnen",
+    "badgeTitle_other": "{{count}} Vorschläge nennen diese Tabelle: öffnen",
+    "listTitle": "Vorschläge zu {{table}}",
+    "colWhen": "Wann",
+    "colBy": "Vorgeschlagen von",
+    "colTables": "Tabellen",
+    "colReason": "Warum",
+    "none": "Kein Vorschlag nennt diese Tabelle."
+  }
+}

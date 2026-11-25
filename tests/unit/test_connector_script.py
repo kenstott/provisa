@@ -287,7 +287,7 @@ def _mapping(host: _Host, script: str = _SCRIPT, **overrides) -> dict:
 
 async def _join(mapping: dict) -> dict:
     await remote_sources.join_connector(
-        SimpleNamespace(admin_db=None), "spark_prod", "python", mapping
+        SimpleNamespace(admin_db=None), "spark_prod", "spark", mapping
     )
     return mapping
 

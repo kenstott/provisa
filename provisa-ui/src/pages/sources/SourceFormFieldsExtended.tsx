@@ -12,6 +12,7 @@ import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
   Button,
   Checkbox,
   Group,
@@ -41,10 +42,14 @@ import { CloudopsFields } from "./CloudopsFields";
 import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
+import { CodeReferenceLink } from "./CodeReferenceLink";
 import { CodeSourceFields } from "./CodeSourceFields";
-import { CODE_SOURCE_TYPES } from "./codeSource";
+import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
+import { sourceFormLanded } from "./loadManagement";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
-import { fixedFormKeys } from "./connector";
+import { connectorScript, fixedFormKeys } from "./connector";
+import { ScriptValidationPanel } from "./ScriptValidationPanel";
+import { useAuth } from "../../context/AuthContext";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -84,6 +89,7 @@ export function SourceFormFieldsExtended({
   setAuthFields,
   connector,
   heldBy,
+  sparkUnavailable,
   editingSourceId,
   essential,
   cdc,
@@ -168,6 +174,9 @@ export function SourceFormFieldsExtended({
   // A kind whose tables land cannot be created without its Cache TTL (sourceKind).
   const landsWithTtl = useCacheTtlRequired(form.type);
   const { t } = useTranslation();
+  const { activeOrgId } = useAuth();
+  // REQ-2225: a saved Spark source's script, which its form validates.
+  const heldScript = heldBy ? connectorScript(heldBy, authFields) : null;
   const namingConventions = useNamingConventions();
   const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
@@ -649,8 +658,25 @@ export function SourceFormFieldsExtended({
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
+      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984: the chosen language's reference
+        <FieldGroup>
+          <CodeReferenceLink type={form.type} />
+        </FieldGroup>
+      )}
       {connector && (
-        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
+        <ConnectorSetupFields
+          connector={connector}
+          fields={authFields}
+          setFields={setAuthFields}
+          builtin={form.type === SPARK}
+        />
+      )}
+      {form.type === SPARK && !connector && !heldBy && sparkUnavailable && (
+        <FormField size="long">
+          <Alert color="orange" variant="light" data-testid="spark-unavailable">
+            {sparkUnavailable}
+          </Alert>
+        </FormField>
       )}
       {!connector &&
         CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
@@ -663,6 +689,13 @@ export function SourceFormFieldsExtended({
         )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
+      )}
+      {heldBy && editingSourceId && activeOrgId && heldScript !== null && (
+        <ScriptValidationPanel // REQ-2225
+          orgId={activeOrgId}
+          sourceId={editingSourceId}
+          script={heldScript}
+        />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
@@ -865,8 +898,9 @@ export function SourceFormFieldsExtended({
       {/* REQ-1907: the load and timeliness controls are offered at create as well as edit — a
           source whose tables land needs its cache TTL before a table is registered. */}
       {/* The short step asks for them only where the source cannot exist without one: a kind
-          whose tables land must state its Cache TTL. */}
-      {(!essential || landsWithTtl) && (
+          whose tables land, or a source that starts replicated (a Spark source, REQ-2225), must
+          state its Cache TTL. */}
+      {(!essential || sourceFormLanded(form, landsWithTtl)) && (
         <FormSection id="load">
           <SourceLoadManagementPanel
             form={form}

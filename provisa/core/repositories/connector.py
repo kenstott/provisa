@@ -22,9 +22,13 @@ it is not the organization's model, so :func:`list_all` leaves it out and it doe
 organization's own connector of the same name keeps that name, so what a release adds never changes
 what a source of theirs runs.
 
-A demo run from a checkout offers the Spark connector beside the package's block, run as a native
-Python code host from ``connectors/spark`` (provisa/codesource/native_connector.py, REQ-2225
-amended 2026-11-24); a released package reads its block alone.
+A demo run from a checkout has the Spark host beside the package's block, run as a native Python
+code host from ``connectors/spark`` (provisa/codesource/native_connector.py, REQ-2225 amended
+2026-11-24); a released package reads its block alone.
+
+BUILT-IN SOURCE TYPES (REQ-2225, amended 2026-11-24). Spark is a built-in source type, not a
+connector an organisation offers: its platform row is what a ``spark`` source joins
+(:func:`builtin`), and Sources never lists it among the connectors (:func:`offered`).
 """
 
 # Requirements: REQ-2221, REQ-2225
@@ -112,6 +116,16 @@ async def get(conn: "Connection", name: str) -> dict[str, Any] | None:
     return next((row for row in _platform() if row["name"] == name), None)
 
 
+def builtin(name: str) -> dict[str, Any] | None:
+    """REQ-2225: the platform row a built-in source type ``name`` joins, or None when this package
+    has none (a checkout run outside its demo, or a release whose block does not carry it)."""
+    from provisa.core.models import BUILTIN_CONNECTORS
+
+    if name not in BUILTIN_CONNECTORS:
+        raise ValueError(f"{name!r} is not a built-in source type")
+    return next((row for row in _platform() if row["name"] == name), None)
+
+
 def public(row: dict[str, Any]) -> dict[str, Any]:
     """A connector as the Sources API returns it: never its build settings."""
     return {k: v for k, v in row.items() if k not in _BUILD_SETTINGS}
@@ -119,8 +133,11 @@ def public(row: dict[str, Any]) -> dict[str, Any]:
 
 async def offered(conn: "Connection") -> list[dict[str, Any]]:
     """What Sources lists: the organization's connectors and the platform's, by name, without
-    their build settings."""
+    their build settings. A built-in source type's row (REQ-2225) is listed with the source
+    types, never here."""
+    from provisa.core.models import BUILTIN_CONNECTORS
+
     own = await list_all(conn)
-    names = {row["name"] for row in own}
+    names = {row["name"] for row in own} | BUILTIN_CONNECTORS
     both = [*own, *(row for row in _platform() if row["name"] not in names)]
     return [public(row) for row in sorted(both, key=lambda row: row["name"])]

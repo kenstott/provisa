@@ -412,6 +412,52 @@ class TestPaginate:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_cursor_three_properties_down_is_read_to_the_end(self):
+        # REQ-1874: HubSpot answers {results, paging: {next: {after, link}}}; the last page has
+        # no paging at all.
+        pagination = PaginationConfig(
+            type=PaginationType.cursor,
+            cursor_param="after",
+            cursor_field="paging.next.after",
+            page_size_param="limit",
+            page_size=2,
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"results": [1, 2], "paging": {"next": {"after": "2", "link": "x"}}}),
+                _resp(200, {"results": [3]}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/crm/v3/objects/contacts", {}, {}, None, 30.0)
+        assert [p["results"] for p in pages] == [[1, 2], [3]]
+        assert [c.kwargs["params"] for c in client.request.await_args_list] == [
+            {"limit": 2},
+            {"limit": 2, "after": "2"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_empty_nested_cursor_ends_the_paging(self):
+        # REQ-1874: Slack's last page answers response_metadata.next_cursor as "".
+        pagination = PaginationConfig(
+            type=PaginationType.cursor,
+            cursor_param="cursor",
+            cursor_field="response_metadata.next_cursor",
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"members": [1], "response_metadata": {"next_cursor": "dXNl"}}),
+                _resp(200, {"members": [2], "response_metadata": {"next_cursor": ""}}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/api/users.list", {}, {}, None, 30.0)
+        assert [p["members"] for p in pages] == [[1], [2]]
+        assert client.request.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_a_nested_cursor_whose_holder_is_absent_ends_the_paging(self):
         pagination = PaginationConfig(
             type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
@@ -748,6 +794,45 @@ class TestFetchOauth2Token:
             token = _fetch_oauth2_token(oauth)
         assert token == "fresh-tok"
         post_mock.assert_called_once()
+
+    def test_token_params_are_sent_with_the_grant_and_key_the_held_token(self):
+        # REQ-1874 (X-AUDIENCE): a brand's extra grant parameters, e.g. Auth0's audience.
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid5",
+            client_secret="secret5",
+            token_url="http://token5",
+            token_params={"audience": "https://t.example/api/v2/"},
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"access_token": "tok-aud", "expires_in": 3600}
+        with patch("httpx.Client.post", return_value=resp) as post_mock:
+            assert _fetch_oauth2_token(oauth) == "tok-aud"
+        assert post_mock.call_args.kwargs["data"] == {
+            "grant_type": "client_credentials",
+            "client_id": "cid5",
+            "client_secret": "secret5",
+            "audience": "https://t.example/api/v2/",
+        }
+        without = oauth_grants.held_key(oauth.type, "http://token5", "cid5", "secret5", "")
+        assert without not in oauth_grants._tokens
+
+    def test_no_token_params_sends_exactly_the_grant(self):
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid6", client_secret="secret6", token_url="http://token6"
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"access_token": "tok-6", "expires_in": 3600}
+        with patch("httpx.Client.post", return_value=resp) as post_mock:
+            _fetch_oauth2_token(oauth)
+        assert post_mock.call_args.kwargs["data"] == {
+            "grant_type": "client_credentials",
+            "client_id": "cid6",
+            "client_secret": "secret6",
+        }
+        key = oauth_grants.held_key(oauth.type, "http://token6", "cid6", "secret6", "")
+        assert key in oauth_grants._tokens
 
     def test_a_token_with_no_stated_life_is_not_held(self):
         oauth = ApiAuthOAuth2ClientCredentials(

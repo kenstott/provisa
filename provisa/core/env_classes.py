@@ -145,6 +145,10 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
         # them, as the entitlements are.
         "data_product_bids",
+        # REQ-2180: a product suggestion is keyed by this environment's principals (who made it,
+        # who it went to), as a bid is.
+        "product_suggestions",
+        "product_suggestion_tables",
     }
 )
 

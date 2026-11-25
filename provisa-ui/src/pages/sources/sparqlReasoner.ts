@@ -15,17 +15,26 @@
 // reference, resolved at each call), and its kind in the mapping's "auth"
 // (provisa/sparql/source.py: sparql_auth).
 
+import { fieldChoices, mappingKey } from "./descriptor";
+
+// REQ-2114: the mapping keys, the reasoners and the credential kinds are the descriptor's
+// (provisa/api/admin/source_types.py, from provisa/sparql/reasoning.py and source.py).
+const SPARQL = "sparql";
+const REASONER = mappingKey(SPARQL, "reasoner");
+const AXIOMS = mappingKey(SPARQL, "axioms");
+const AUTH = mappingKey(SPARQL, "auth");
+
 /** The reasoners a sparql source may name. */
-export const SPARQL_REASONERS = ["hermit"] as const;
+export const SPARQL_REASONERS: readonly string[] = fieldChoices(SPARQL, "mappingJson", REASONER);
 
 /** The credential kinds a sparql source may declare; "none" declares none. */
-const SPARQL_AUTH_KINDS = new Set(["bearer", "basic"]);
+const SPARQL_AUTH_KINDS = new Set(fieldChoices(SPARQL, "mappingJson", AUTH));
 
 export function sparqlMappingJson(fields: Record<string, string>, authType: string): string {
-  const reasoner = fields.reasoner?.trim();
+  const reasoner = fields[REASONER]?.trim();
   return JSON.stringify({
-    ...(reasoner ? { reasoner, axioms: fields.axioms ?? "" } : {}),
-    ...(SPARQL_AUTH_KINDS.has(authType) ? { auth: authType } : {}),
+    ...(reasoner ? { [REASONER]: reasoner, [AXIOMS]: fields[AXIOMS] ?? "" } : {}),
+    ...(SPARQL_AUTH_KINDS.has(authType) ? { [AUTH]: authType } : {}),
   });
 }
 
@@ -42,10 +51,11 @@ export function sparqlCredentials(
 
 export function sparqlFieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, unknown>;
-  if (typeof mapping.reasoner !== "string") return {};
+  const reasoner = mapping[REASONER];
+  if (typeof reasoner !== "string") return {};
   return {
-    reasoner: mapping.reasoner,
-    axioms: typeof mapping.axioms === "string" ? mapping.axioms : "",
+    [REASONER]: reasoner,
+    [AXIOMS]: typeof mapping[AXIOMS] === "string" ? (mapping[AXIOMS] as string) : "",
   };
 }
 
@@ -55,7 +65,7 @@ export function sparqlCredentialFromSource(
   username: string | null | undefined,
   passwordRef: string | null | undefined,
 ): { authType: string; fields: Record<string, string> } {
-  const kind = mappingJson ? (JSON.parse(mappingJson) as Record<string, unknown>).auth : undefined;
+  const kind = mappingJson ? (JSON.parse(mappingJson) as Record<string, unknown>)[AUTH] : undefined;
   if (kind === "bearer") return { authType: "bearer", fields: { token: passwordRef ?? "" } };
   if (kind === "basic")
     return {

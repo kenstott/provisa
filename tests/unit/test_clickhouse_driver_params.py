@@ -25,6 +25,9 @@ import pyarrow as pa
 
 from provisa.executor.drivers.clickhouse import ClickHouseDriver
 
+#: A server new enough to write every type as Arrow (REQ-2194).
+_SERVER_VERSION = "26.8.46.6"
+
 
 def _context(query=None, parameters=None, **_kw):
     """clickhouse-connect's own query context, as the client makes it for a statement."""
@@ -34,11 +37,14 @@ def _context(query=None, parameters=None, **_kw):
 
 
 def _arrow(rows, cols) -> pa.Table:
-    """A result as ClickHouse's Arrow output holds it (REQ-2194)."""
-    return pa.table({c: [r[i] for r in rows] for i, c in enumerate(cols)})
+    """The table the server's Arrow output reads as for ``rows`` under ``cols`` (REQ-2194)."""
+    columns = list(zip(*rows)) if rows else [[] for _ in cols]
+    return pa.table({c: pa.array(list(v)) for c, v in zip(cols, columns)})
 
 
 class _FakeClient:
+    server_version = _SERVER_VERSION
+
     def __init__(self, rows=None, cols=None):
         self._rows = rows or []
         self._cols = cols or []
@@ -47,7 +53,7 @@ class _FakeClient:
 
     create_query_context = staticmethod(_context)
 
-    def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
+    def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
         self.last_sql = sql
         self.last_parameters = parameters
         return _arrow(self._rows, self._cols)
@@ -131,7 +137,7 @@ class TestClickHouseDriverSessions:
         lock = threading.Lock()
 
         class _Session:
-            server_version = "26.10.12.13"
+            server_version = _SERVER_VERSION
 
             def __init__(self) -> None:
                 self.in_flight = 0
@@ -140,7 +146,7 @@ class TestClickHouseDriverSessions:
 
             create_query_context = staticmethod(_context)
 
-            def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
+            def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
                 import time
 
                 with lock:
@@ -208,7 +214,7 @@ def test_a_pooled_client_names_no_server_session(monkeypatch):
     asked: list[dict] = []
 
     class _Client:
-        server_version = "26.10.12.13"
+        server_version = _SERVER_VERSION
 
         def command(self, *_a, **_k):
             return None
@@ -262,12 +268,12 @@ class TestServerVersionAtConnect:
     def test_a_server_older_than_26_is_refused_by_name_with_its_version(self, monkeypatch):
         import pytest
 
-        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
 
-        with pytest.raises(UnsupportedClickHouseVersion) as refused:
+        with pytest.raises(ClickHouseServerTooOld) as refused:
             self._connect(monkeypatch, "24.3.18.7")
         message = str(refused.value)
-        assert "ClickHouse 24.3.18.7 is not supported" in message
+        assert "ClickHouse server 24.3.18.7 is older than 26" in message
         assert "ClickHouse 26 or later" in message
         assert "UUID" in message
 
@@ -275,7 +281,7 @@ class TestServerVersionAtConnect:
         import clickhouse_connect
         import pytest
 
-        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
 
         made: list = []
 
@@ -293,16 +299,16 @@ class TestServerVersionAtConnect:
             return made[-1]
 
         monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
-        with pytest.raises(UnsupportedClickHouseVersion, match="ClickHouse 25.12.1.1"):
+        with pytest.raises(ClickHouseServerTooOld, match="ClickHouse server 25.12.1.1"):
             asyncio.run(ClickHouseDriver().connect("h", 8123, "default", "u", "p"))
         assert made and all(c.closed for c in made)
 
     def test_a_server_without_a_readable_version_is_refused(self, monkeypatch):
         import pytest
 
-        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
 
-        with pytest.raises(UnsupportedClickHouseVersion, match="no readable version"):
+        with pytest.raises(ClickHouseServerTooOld, match="no readable version"):
             self._connect(monkeypatch, None)
 
     def test_a_26_server_connects(self, monkeypatch):

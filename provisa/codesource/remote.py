@@ -41,6 +41,7 @@ from typing import Any
 from provisa.codesource.worker import (
     CONNECTIONS,
     START_TIMEOUT_S,
+    VALIDATE_TIMEOUT_S,
     OnStartFailed,
     Worker,
     WorkerFailed,
@@ -358,6 +359,21 @@ class RemoteWorker(Worker):
         answer = self._exchange({"op": "health"}, HEALTH_TIMEOUT_S)
         if answer is None:
             return {"failed": f"its host {self.where} did not answer within {HEALTH_TIMEOUT_S:g}s"}
+        return {k: v for k, v in answer.items() if k not in ("op", "id")}
+
+    def validate(self, step: str, script: str | None, request: dict | None = None) -> dict:
+        """REQ-2225: a script connector's host validating ``script`` (None: the one it serves) --
+        the ``static`` step's reader document, or the ``run`` step's report on ``request`` -- as
+        its answer, ``{"failed": why}`` when it could not (worker.py, VALIDATE)."""
+        self.ready()
+        message: dict[str, Any] = {"op": "validate", "step": step, "script": script}
+        if request is not None:
+            message["request"] = request
+        answer = self._exchange(message, VALIDATE_TIMEOUT_S)
+        if answer is None:
+            return {
+                "failed": f"its host {self.where} did not answer within {VALIDATE_TIMEOUT_S:g}s"
+            }
         return {k: v for k, v in answer.items() if k not in ("op", "id")}
 
     def _hello_of(self, conn: ssl.SSLSocket, timeout: float) -> dict:

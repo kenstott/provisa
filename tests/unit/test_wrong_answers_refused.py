@@ -192,11 +192,12 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
     # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
-    # answered on ClickHouse since CONF-CH4)
+    # answered on ClickHouse since CONF-CH4); _said_refusal now uses provisa_raise so ClickHouse
+    # gets throwIf(1, 'postgresql-error ...') instead of the old accurateCast form (REQ-2236)
     written = transpile(
         "SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse", generated=False
     )
-    assert "accurateCast(materialize(" in written
+    assert "postgresql-error" in written
 
 
 def test_money_divided_by_an_integer_truncates():

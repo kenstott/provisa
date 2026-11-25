@@ -12,22 +12,33 @@
 // and consumer secret ride in the source's host, username and password; the rest is its mapping.
 // Only the chosen credential set's fields are saved.
 
-export const SALESFORCE_AUTH_TYPES = [
-  "CLIENT_CREDENTIALS",
-  "USERNAME_PASSWORD",
-  "ACCESS_TOKEN",
-] as const;
-export type SalesforceAuthType = (typeof SALESFORCE_AUTH_TYPES)[number];
+import { fieldChoices, fieldDefault, fieldsWhen, mappingKey } from "./descriptor";
 
-export const SALESFORCE_AUTH_FIELDS: Record<SalesforceAuthType, string[]> = {
-  CLIENT_CREDENTIALS: [],
-  USERNAME_PASSWORD: ["sf_username", "sf_password", "security_token"],
-  ACCESS_TOKEN: ["access_token", "instance_url"],
-};
+// REQ-2114: the credential sets, the keys each saves, and the default set are the descriptor's
+// (provisa/api/admin/source_types.py SALESFORCE_AUTH).
+const SALESFORCE = "salesforce";
+const MAPPING = "mappingJson";
+const AUTH_TYPE = mappingKey(SALESFORCE, "auth_type");
+const API_VERSION = mappingKey(SALESFORCE, "api_version");
+
+export type SalesforceAuthType = "CLIENT_CREDENTIALS" | "USERNAME_PASSWORD" | "ACCESS_TOKEN";
+export const SALESFORCE_AUTH_TYPES = fieldChoices(
+  SALESFORCE,
+  MAPPING,
+  AUTH_TYPE,
+) as readonly SalesforceAuthType[];
+const DEFAULT_AUTH_TYPE = fieldDefault(SALESFORCE, MAPPING, AUTH_TYPE) as SalesforceAuthType;
+
+export const SALESFORCE_AUTH_FIELDS: Record<SalesforceAuthType, string[]> = Object.fromEntries(
+  SALESFORCE_AUTH_TYPES.map((type) => [
+    type,
+    fieldsWhen(SALESFORCE, MAPPING, AUTH_TYPE, type).map((f) => f.name),
+  ]),
+) as Record<SalesforceAuthType, string[]>;
 
 export function salesforceAuthType(fields: Record<string, string>): SalesforceAuthType {
-  const type = fields.auth_type as SalesforceAuthType | undefined;
-  return type && SALESFORCE_AUTH_TYPES.includes(type) ? type : "CLIENT_CREDENTIALS";
+  const type = fields[AUTH_TYPE] as SalesforceAuthType | undefined;
+  return type && SALESFORCE_AUTH_TYPES.includes(type) ? type : DEFAULT_AUTH_TYPE;
 }
 
 /** Whether the chosen credential set carries the connected app's consumer key and secret. */
@@ -44,18 +55,18 @@ export function salesforceLoginUrlValid(loginUrl: string): boolean {
 
 export function salesforceMappingJson(fields: Record<string, string>): string {
   const type = salesforceAuthType(fields);
-  const mapping: Record<string, string> = { auth_type: type };
+  const mapping: Record<string, string> = { [AUTH_TYPE]: type };
   for (const key of SALESFORCE_AUTH_FIELDS[type]) {
     if (fields[key]) mapping[key] = fields[key];
   }
-  if (fields.api_version?.trim()) mapping.api_version = fields.api_version.trim();
+  if (fields[API_VERSION]?.trim()) mapping[API_VERSION] = fields[API_VERSION].trim();
   return JSON.stringify(mapping);
 }
 
 export function salesforceFieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, string>;
   const fields: Record<string, string> = {};
-  for (const key of ["auth_type", "api_version", ...Object.values(SALESFORCE_AUTH_FIELDS).flat()]) {
+  for (const key of [AUTH_TYPE, API_VERSION, ...Object.values(SALESFORCE_AUTH_FIELDS).flat()]) {
     if (mapping[key]) fields[key] = mapping[key];
   }
   return fields;

@@ -110,7 +110,12 @@ OWNERS: dict[str, set[str]] = {
         # warehouse (REQ-778), as clickhouse_runtime and snowflake_runtime do for theirs.
         "provisa/federation/databricks_runtime.py",
     },
-    "google.cloud.bigquery": set(),
+    "google.cloud.bigquery": {
+        # The direct BigQuery driver — uses the client's own bq_to_arrow_field (REQ-2194)
+        # to build the Arrow schema from the job's result schema, so the cast matches
+        # exactly what the library's own page-fetching produces.
+        "provisa/executor/drivers/bigquery.py",
+    },
     "asyncpg": {
         "provisa/federation/connector_postgres.py",
         # Raw wire-byte DataRow passthrough (REQ-1863) — deliberately bypasses asyncpg's own

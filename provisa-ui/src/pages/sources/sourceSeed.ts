@@ -34,6 +34,28 @@ import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
 import { WIKIPEDIA, wikipediaFieldsFromHints } from "./wikipedia";
 import { subjectsOfSchemas, type GovdataSubjectCatalog } from "./govdataSubjects";
+import type { AuthSeed } from "./descriptorPick";
+import { SNOWFLAKE, snowflakeSeed } from "./snowflake";
+import { DATABRICKS, databricksSeed } from "./databricks";
+import { BIGQUERY, bigquerySeed } from "./bigquery";
+import { EXASOL, exasolSeed } from "./exasol";
+import { SQLSERVER, sqlserverSeed } from "./sqlserver";
+import { MSSQL_WAREHOUSES, mssqlWarehouseSeed } from "./mssqlWarehouse";
+import { HIVESERVER2, hiveserver2Fields } from "./hiveserver2";
+import { WEBSOCKET, websocketFromHints, type WebsocketSeed } from "./websocket";
+import { RSS, rssFromHints, type RssSeed } from "./rss";
+import { sparqlGraphFields } from "./sparqlGraph";
+import {
+  SHAREPOINT,
+  sharepointFromMapping,
+  EMPTY_SHAREPOINT,
+  type SharepointSeed,
+} from "./sharepoint";
+import { SPLUNK, splunkFromMapping, type SplunkSeed } from "./splunk";
+import { GOOGLE_SHEETS, googleSheetsFields } from "./googleSheets";
+import { HIVE_TYPES, hiveSeed } from "./hiveStorage";
+
+export { EMPTY_SHAREPOINT, type SharepointSeed };
 
 export const EMPTY_CDC: CdcState = {
   bootstrapServers: "",
@@ -77,22 +99,6 @@ export function emptySourceForm(): SourceFormState {
   };
 }
 
-export interface SharepointSeed {
-  authType: string;
-  certPath: string;
-  certPassword: string;
-  username: string;
-  password: string;
-}
-
-export const EMPTY_SHAREPOINT: SharepointSeed = {
-  authType: "CLIENT_CREDENTIALS",
-  certPath: "",
-  certPassword: "",
-  username: "",
-  password: "",
-};
-
 export interface SourceSeed {
   form: SourceFormState;
   filesTransport: string;
@@ -100,14 +106,9 @@ export interface SourceSeed {
   authType: string;
   authFields: Record<string, string>;
   sharepoint: SharepointSeed;
-  splunk: { disableSsl: boolean; authMode: "token" | "userpass" };
-  websocket: {
-    useSsl: boolean;
-    subscribePayload: string;
-    eventPath: string;
-    reconnectInterval: string;
-  };
-  rss: { feedUrl: string; pollInterval: string; useSsl: boolean };
+  splunk: SplunkSeed;
+  websocket: WebsocketSeed;
+  rss: RssSeed;
   /** A govdata source's subjects; null when it has schemas but the subject catalog is not loaded. */
   govdataSubjects: string[] | null;
 }
@@ -121,6 +122,22 @@ function parsed<T>(json: string): T | null {
   }
 }
 
+/** The warehouses whose settings beside host, port, database and credentials are their
+ * federation hints: each one's hints, and its password field as held, into the form. */
+const WAREHOUSE_SEEDS: Record<string, (hints: Record<string, string>, s: Source) => AuthSeed> = {
+  [SNOWFLAKE]: (hints, s) => snowflakeSeed(hints, s.passwordRef),
+  [DATABRICKS]: (hints, s) => databricksSeed(hints, s.passwordRef),
+  [BIGQUERY]: (hints) => bigquerySeed(hints),
+  [EXASOL]: (hints) => exasolSeed(hints),
+  [SQLSERVER]: (hints) => sqlserverSeed(hints),
+  ...Object.fromEntries(
+    [...MSSQL_WAREHOUSES].map((type) => [
+      type,
+      (hints: Record<string, string>) => mssqlWarehouseSeed(type, hints),
+    ]),
+  ),
+};
+
 /** What the form holds for a registered source, read from the source alone. */
 export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | null): SourceSeed {
   const hintsJson = s.federationHintsJson ?? null;
@@ -129,19 +146,8 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
 
   let authType = "none";
   let authFields: Record<string, string> = {};
-  if ((s.type === "hive" || s.type === "hive_s3") && s.mappingJson) {
-    if (mapping) {
-      const { storage, ...creds } = mapping;
-      authType =
-        storage === "s3"
-          ? "aws"
-          : storage === "adls"
-            ? "azure"
-            : storage === "gcs"
-              ? "gcs"
-              : "none";
-      authFields = creds;
-    }
+  if (HIVE_TYPES.has(s.type) && mapping) {
+    ({ authType, authFields } = hiveSeed(s.type, mapping));
   }
   // delta_lake/iceberg S3 creds and snowflake/databricks/bigquery warehouse extras all live in
   // federation_hints (never mapping). A credential field comes back as it was entered (the value,
@@ -153,60 +159,25 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   if (CLOUD_FILE_TYPES.has(s.type) && store && hintsJson) {
     authFields = hints ? objectStoreFields(store, hints) : {};
   }
-  if (
-    [
-      "delta_lake",
-      "iceberg",
-      "snowflake",
-      "databricks",
-      "bigquery",
-      "athena",
-      "exasol",
-      "sqlserver",
-      "fabric",
-      "synapse",
-    ].includes(s.type) &&
-    hintsJson
-  ) {
+  if (s.type in WAREHOUSE_SEEDS && hintsJson) {
+    ({ authType, authFields } = hints
+      ? WAREHOUSE_SEEDS[s.type](hints, s)
+      : { authType: "none", authFields: {} });
+  }
+  if (["delta_lake", "iceberg", "athena"].includes(s.type) && hintsJson) {
     if (!hints) {
       authType = "none";
       authFields = {};
     } else {
-      if (s.type === "delta_lake" || s.type === "iceberg") {
-        authType = hints.access_key_id ? "aws" : "none";
-      } else if (s.type === "bigquery") {
-        authType = hints.credentials_path ? "service_account" : "application_default";
-      } else if (s.type === "athena") {
-        authType = "none"; // REQ-1981: its settings are its hints, shown again as saved
-      } else if (s.type === "databricks") {
-        authType = "token";
-      } else if (s.type === "exasol") {
-        authType = hints.tls_fingerprint ? "tls_fingerprint" : "none";
-      } else if (s.type === "sqlserver") {
-        authType = hints.trust_server_certificate ? "trust_server_certificate" : "none";
-      } else if (s.type === "fabric" || s.type === "synapse") {
-        authType = hints.tenant_id ? "service_principal" : "none";
-      } else {
-        authType = "password";
-      }
-      // The credential these two kinds keep in the source's password field is shown again as
-      // that field holds it, like any other.
-      const held: Record<string, string> = !s.passwordRef
-        ? {}
-        : s.type === "snowflake"
-          ? { password: s.passwordRef }
-          : s.type === "databricks"
-            ? { access_token: s.passwordRef }
-            : {};
-      authFields = hints.credentials_path
-        ? { credentials_json: hints.credentials_path }
-        : { ...hints, ...held };
+      // REQ-1981: an Athena source's settings are its hints, shown again as saved.
+      authType = s.type !== "athena" && hints.access_key_id ? "aws" : "none";
+      authFields = { ...hints };
     }
   }
   // REQ-1731: auth_mechanism round-trips through federation_hints, so a non-default (GSSAPI/LDAP)
   // hiveserver2 source reopens as it was saved, not as PLAIN.
-  if (s.type === "hiveserver2" && hintsJson) {
-    authFields = hints?.auth_mechanism ? { auth_mechanism: hints.auth_mechanism } : {};
+  if (s.type === HIVESERVER2 && hintsJson) {
+    authFields = hiveserver2Fields(hints);
   }
   if (s.type === "data_profiler" && s.mappingJson) {
     // REQ-1934: the profiler's schedule and run default live in its mapping.
@@ -256,14 +227,13 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   if (s.type === "quickbooks" && s.mappingJson) {
     authFields = quickbooksFieldsFromMapping(s.mappingJson); // REQ-2197
   }
-  if (s.type === "google_sheets" && s.mappingJson) {
-    const m = JSON.parse(s.mappingJson) as Record<string, string>;
-    authFields = { credentials_json: m.credentials_json };
+  if (s.type === GOOGLE_SHEETS && s.mappingJson) {
+    authFields = googleSheetsFields(JSON.parse(s.mappingJson) as Record<string, string>);
   }
   // REQ-1740: default_graph_uri round-trips through federation_hints, merged beside the auth
   // fields: it is orthogonal to which auth mode (none/bearer/basic) is selected.
-  if (s.type === "sparql" && hints?.default_graph_uri) {
-    authFields = { ...authFields, default_graph_uri: hints.default_graph_uri };
+  if (s.type === "sparql") {
+    authFields = { ...authFields, ...sparqlGraphFields(hints) };
   }
   if (s.type === "sparql" && s.mappingJson) {
     authFields = { ...authFields, ...sparqlFieldsFromMapping(s.mappingJson) }; // REQ-2138
@@ -275,23 +245,10 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
     authFields = { ...authFields, ...credential.fields };
   }
 
-  const sp =
-    s.type === "sharepoint" && s.mappingJson
-      ? mapping
-        ? {
-            authType: mapping.auth_type ?? "CLIENT_CREDENTIALS",
-            certPath: mapping.certificate_path ?? "",
-            certPassword: mapping.certificate_password ?? "",
-            username: mapping.sp_username ?? "",
-            password: mapping.sp_password ?? "",
-          }
-        : EMPTY_SHAREPOINT
-      : EMPTY_SHAREPOINT;
-
+  const sharepoint =
+    s.type === SHAREPOINT && s.mappingJson ? sharepointFromMapping(mapping) : EMPTY_SHAREPOINT;
   const splunkMapping =
-    s.type === "splunk" && s.mappingJson ? parsed<Record<string, unknown>>(s.mappingJson) : null;
-  const ws = s.type === "websocket" ? hints : null;
-  const rss = s.type === "rss" ? hints : null;
+    s.type === SPLUNK && s.mappingJson ? parsed<Record<string, unknown>>(s.mappingJson) : null;
 
   let govdataSubjects: string[] | null = [];
   if (s.type === "govdata" && s.database) {
@@ -347,22 +304,10 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
       : { ...EMPTY_CDC },
     authType,
     authFields,
-    sharepoint: sp,
-    splunk: {
-      disableSsl: !!splunkMapping?.disable_ssl_validation,
-      authMode: splunkMapping?.use_token === false ? "userpass" : "token",
-    },
-    websocket: {
-      useSsl: (ws?.use_ssl ?? "false").toLowerCase() === "true",
-      subscribePayload: ws?.subscribe_payload ?? "",
-      eventPath: ws?.event_path ?? "",
-      reconnectInterval: ws?.reconnect_interval ?? "",
-    },
-    rss: {
-      feedUrl: rss?.feed_url ?? "",
-      pollInterval: rss?.poll_interval ?? "",
-      useSsl: (rss?.use_ssl ?? "true").toLowerCase() === "true",
-    },
+    sharepoint,
+    splunk: splunkFromMapping(splunkMapping),
+    websocket: websocketFromHints(s.type === WEBSOCKET ? hints : null),
+    rss: rssFromHints(s.type === RSS ? hints : null),
     govdataSubjects,
   };
 }

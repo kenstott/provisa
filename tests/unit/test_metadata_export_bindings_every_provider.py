@@ -152,9 +152,7 @@ async def _openmetadata(monkeypatch: pytest.MonkeyPatch):
 
 
 async def _collibra(monkeypatch: pytest.MonkeyPatch):
-    vendors._mock_collibra(
-        monkeypatch, lookup_results=[{"id": "collibra-uuid-1", "name": vendors.TABLE_FQN}]
-    )
+    vendors._mock_collibra(monkeypatch, lookup_results=vendors.COLLIBRA_ASSETS)
     snapshot = _vendor_snapshot()
     return await metadata_export(vendors._config("collibra")).publish(snapshot), snapshot.tables
 
@@ -292,14 +290,12 @@ async def test_every_provider_binds_each_table_it_published(provider, monkeypatc
         assert vendor_ref and physical_key, (provider, table.semantic_uri)
 
 
-# The providers whose column exports bind each column (REQ-194, REQ-1389).
-_COLUMN_BINDERS = ("atlan", "atlas", "dataplex", "openlineage", "purview", "snowflake_horizon")
-
-
-@pytest.mark.parametrize("provider", _COLUMN_BINDERS)
+@pytest.mark.parametrize("provider", registered_providers())
 async def test_every_provider_binds_each_column_it_published(provider, monkeypatch):
     """A column export reaches the names table only through its binding (``export:<target>`` on
-    the column's row, keyed by the column's Provisa URI), as a table's does."""
+    the column's row, keyed by the column's Provisa URI), as a table's does. Every registered
+    provider exports its tables' columns, so the registry is walked: a new provider binds its
+    columns or fails here."""
     result, tables = await _CASES[provider](monkeypatch)
     assert result.ok, result.errors
     columns = [c for t in tables for c in t.columns]
@@ -309,3 +305,25 @@ async def test_every_provider_binds_each_column_it_published(provider, monkeypat
     for column in columns:
         vendor_ref, physical_key = result.bindings[column.semantic_uri]
         assert vendor_ref and physical_key, (provider, column.semantic_uri)
+
+
+async def test_datazone_binds_each_column_as_an_entry_of_its_asset_form(monkeypatch):
+    """REQ-194: a DataZone column is an entry of its asset's ProvisaTableForm columns."""
+    result, (table,) = await _datazone(monkeypatch)
+    assert table.columns
+    for column in table.columns:
+        assert result.bindings[column.semantic_uri] == (
+            f"asset-1#ProvisaTableForm.columns.{column.name}",
+            f"{table.semantic_uri}#ProvisaTableForm.columns.{column.name}",
+        )
+
+
+async def test_unity_catalog_binds_each_column_under_its_view_full_name(monkeypatch):
+    """REQ-194: a Unity Catalog column is addressed by its view's full name and its own."""
+    result, tables = await _unity_catalog(monkeypatch)
+    columns = [(t, c) for t in tables for c in t.columns]
+    assert columns
+    for table, column in columns:
+        view, _ = result.bindings[table.semantic_uri]
+        address = f"{view}.{column.name}"
+        assert result.bindings[column.semantic_uri] == (address, address)

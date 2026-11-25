@@ -32,12 +32,14 @@ from __future__ import annotations
 
 import gzip
 import json
-from dataclasses import dataclass
+import string
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from provisa.graphql_remote.brands import SetupField, check_setup
+from provisa.graphql_remote.brands import SetupField, SetupInvalid, check_setup
 
 _SPEC_DIR = Path(__file__).parent / "_known_specs"
 
@@ -97,6 +99,10 @@ class Brand:
     # and the scope it asks for, None for none.
     token_url: str = ""
     scope: str | None = None
+    # REQ-1874: further form fields a client credentials brand sends with the grant, name ->
+    # template filled from its setup fields as ``token_url`` is (Auth0's audience,
+    # ``"https://{tenant_domain}/api/v2/"``). Empty: the grant carries none.
+    token_params: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.instance_spec_url and self.version_header is not None:
@@ -106,6 +112,13 @@ class Brand:
             )
         if (self.auth_type == "oauth2_client_credentials") != bool(self.token_url):
             raise ValueError(f"{self.label}: a token_url goes with client credentials auth only")
+        if self.token_params and self.auth_type != "oauth2_client_credentials":
+            raise ValueError(f"{self.label}: token_params go with client credentials auth only")
+        reserved = sorted(set(self.token_params) & _GRANT_FIELDS)
+        if reserved:
+            raise ValueError(
+                f"{self.label}: token_params may not set {reserved[0]}, which the grant states"
+            )
 
     @property
     def ships_spec(self) -> bool:
@@ -124,8 +137,19 @@ class Brand:
         return f"{SPEC_SCHEME}{self.id}"
 
     def setup(self, given: dict[str, str] | None) -> dict[str, str]:
-        """The setup values a source is added with (graphql_remote.brands.check_setup)."""
-        return check_setup(self.label, self.setup_fields, given)
+        """The setup values a source is added with (graphql_remote.brands.check_setup). Raises
+        :class:`SetupInvalid` naming a setup field a token parameter's template uses and the
+        setup lacks (REQ-1874)."""
+        setup = check_setup(self.label, self.setup_fields, given)
+        for param, template in self.token_params.items():
+            for _, name, _, _ in string.Formatter().parse(template):
+                if name is not None and name not in setup:
+                    raise SetupInvalid(
+                        self.label,
+                        name,
+                        f"token parameter {param!r} uses setup field {name!r}, which setup lacks",
+                    )
+        return setup
 
     def base_url(self, setup: dict[str, str], spec: dict | None = None) -> str:
         """Where a source added with ``setup`` (as :meth:`setup` returns it) is called. A brand
@@ -174,7 +198,7 @@ class Brand:
         for name, value in (("client_id", client_id), ("client_secret", client_secret)):
             if not value:
                 raise CredentialMissing(self.label, name)
-        auth = {
+        auth: dict = {
             "type": "oauth2_client_credentials",
             "client_id": client_id,
             "client_secret": client_secret,
@@ -182,6 +206,8 @@ class Brand:
         }
         if self.scope is not None:
             auth["scope"] = self.scope
+        if self.token_params:  # REQ-1874
+            auth["token_params"] = {k: v.format(**setup) for k, v in self.token_params.items()}
         return auth
 
     def spec(self) -> dict:
@@ -192,6 +218,11 @@ class Brand:
         if self.version_header is None:
             return {}
         return {self.version_header: self.spec()["info"]["version"]}
+
+
+#: What the client credentials grant itself states (provisa.api_source.caller), so a brand's
+#: token_params never set them.
+_GRANT_FIELDS = frozenset({"grant_type", "client_id", "client_secret", "scope"})
 
 
 BRANDS: dict[str, Brand] = {
