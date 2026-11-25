@@ -128,6 +128,7 @@ from provisa.api.admin.types import (
     TagParamValueType,
     TagTargetInput,
     TagType,
+    OwnerFieldType,
     UserSummaryType,
 )
 
@@ -973,14 +974,22 @@ class Query:  # REQ-021, REQ-042
             # answered (a table reached through its own grant names its domain).
             scope = catalog_scope(info)
             holding = {d for _id, d in await _listed_tables(conn, scope)}
-            # REQ-1363: a domain with no steward answers to its nearest ancestor's, read off the
-            # whole tree -- an ancestor the caller is not listed may still steward its domain.
-            from provisa.security.domain_tree import effective_steward, parent_map
+            # REQ-1363, REQ-2219: a domain's stewards are people whose domain_steward rows name
+            # it; a row naming a domain above it covers it too -- an ancestor the caller is not
+            # listed may still be stewarded.
+            from provisa.entitlements.owners import DOMAINS, fields_of, holders
 
-            parents = parent_map(rows)
-            stewards = {r["id"]: r["steward"] for r in rows}
+            own = await holders(conn, DOMAINS, exact=True)
+            covering = await holders(conn, DOMAINS)
+            # REQ-2219 (amended 2026-11-24): its Steward field as entered, people and roles.
+            fields = await fields_of(conn, DOMAINS)
             return [
-                _domain_from_row(r, effective_steward(r["id"], stewards, parents))
+                _domain_from_row(
+                    r,
+                    own.get(r["id"], ()),
+                    covering.get(r["id"], ()),
+                    fields[r["id"]],
+                )
                 for r in rows
                 if scope.lists_domain(r["id"], r["id"] in holding)
             ]
@@ -1055,13 +1064,16 @@ class Query:  # REQ-021, REQ-042
             found = await product_findings.findings(
                 conn, await product_findings.context(datetime.date.today())
             )
+            from provisa.entitlements.owners import product_owners
+
+            owners = await product_owners(conn)  # REQ-2219
         names = {r["id"]: r["name"] for r in rows}
         return [
             DataProductType(
                 id=r["id"],
                 domain_id=r["domain_id"],
                 name=r["name"],
-                owner_role=r["owner_role"],
+                owners=list(owners.get(r["id"], ())),
                 team_role=r["team_role"],
                 purpose=r["purpose"],
                 limitations=r["limitations"],
@@ -1113,8 +1125,29 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    async def owner_field(
+        self, info: StrawberryInfo, kind: str, object_id: str
+    ) -> OwnerFieldType:  # REQ-2219
+        """What an object's Owner (or a domain's Steward) field names, for the form that edits
+        it: the people and the roles with Provisa-held rows naming it (amended 2026-11-23). It is
+        read with the right that reads the object's owners elsewhere: a product's on its page
+        (data_product_read), a domain's or relationship's in the meta views (catalog_read).
+        ``kind``: data_product, domain or relationship."""
+        from provisa.entitlements.owners import KINDS_BY_NAME, field_of
+
+        _resolve_admin_context(info)
+        owned = KINDS_BY_NAME.get(kind)
+        if owned is None:
+            raise ValueError(f"no Owner field on {kind!r}: one of {sorted(KINDS_BY_NAME)}")
+        require_capability(info, "data_product_read" if kind == "data_product" else "catalog_read")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            got = await field_of(cast("Connection", conn), owned, object_id)
+        return OwnerFieldType(people=list(got.people), roles=list(got.roles))
+
+    @strawberry.field
     async def resolve_owners(self, info: StrawberryInfo, refs: list[str]) -> list[UserSummaryType]:
-        """Resolve owner-ish refs (DataProduct.owner_role, Domain.steward, Column.visible_to) to
+        """Resolve owner-ish refs (DataProduct.owners, Domain.steward, Column.visible_to) to
         the individuals they grant to. Each ref is a role id (most callers) or, for Domain.steward
         (REQ-609), possibly a raw user id — role lookup is tried first, and a ref matching neither
         is echoed back bare so the UI still shows the raw id rather than nothing."""
@@ -1501,8 +1534,6 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
-        from provisa.core.repositories import data_product as data_product_repo
-
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1517,8 +1548,9 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
-            owned = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
+            # REQ-2188: what it holds includes the RW data_product_owner gives it, which it does
+            # not store.
+            owned = with_owner_grant(rows)
             held = held_by_role(
                 owned, domain_tree.parent_map(await domain_repo.list_all(cast("Connection", conn)))
             )

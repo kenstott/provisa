@@ -960,6 +960,15 @@ class AppState:
         self._active_runtime().held_entitlements = value
 
     @property
+    def role_owner_rows(self) -> dict[str, Any]:
+        """role id -> the rows an Owner or Steward field wrote on the role (REQ-2219)."""
+        return self._active_runtime().role_owner_rows
+
+    @role_owner_rows.setter
+    def role_owner_rows(self, value: dict[str, Any]) -> None:
+        self._active_runtime().role_owner_rows = value
+
+    @property
     def idp_entitlements(self) -> dict[str, Any]:
         """user id -> the lists their identity provider last sent (REQ-2219)."""
         return self._active_runtime().idp_entitlements
@@ -3832,13 +3841,12 @@ async def _rebuild_schemas_impl(
         role_chains_by_id = role_chains(roles)
         # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
         role_parents_by_id = parent_map(roles)
-        # REQ-2188: naming a role in a product's Owner field gives it RW on data products, with the
-        # generated rules (row_filters.with_owner_grant); it folds to the role's children as a
-        # right does, and is gone from the next build once the role owns nothing.
-        from provisa.core.repositories import data_product as _data_product_repo
+        # REQ-2188, REQ-2219: a role holding data_product_owner holds RW on data products, with
+        # the generated rules (row_filters.with_owner_grant): a person acting as it edits the
+        # products their own data_product_owner rows name.
         from provisa.security.row_filters import with_owner_grant
 
-        roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
+        roles = with_owner_grant(roles)
         # REQ-1363: down the domain tree before a role is narrowed -- a role that lists a domain
         # reaches every domain under it, so a parent holds the subtree its child narrows
         # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
@@ -3971,6 +3979,7 @@ async def _rebuild_schemas_impl(
         from provisa.judgments import bases as _bases
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.role_owner_rows = await _entitlement_store.load_role_owner_rows(conn)
         state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
         state.glossary_term_refs = await _glossary_repo.term_refs(conn)

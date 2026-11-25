@@ -190,7 +190,6 @@ async def upsert(
         "via_label_source": rel.via_label_source or None,
         "source_json_key": rel.source_json_key or None,
         "parameters": rel.parameters,
-        "owner": rel.owner or None,
         "version": rel.version,
         "needs_review": rel.needs_review,
     }
@@ -450,6 +449,10 @@ async def delete(  # REQ-019, REQ-1918, REQ-2248
             if t is not None
         }
         await glossary_repo.rehome_keys(conn, joined)
+        # REQ-2219: an object gone has no owners or stewards in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 
@@ -473,6 +476,10 @@ async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
             if t is not None
         }
         await glossary_repo.rehome_keys(conn, joined)
+        # REQ-2219: a restored object's owners and stewards are back in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 

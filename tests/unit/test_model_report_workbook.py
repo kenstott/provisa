@@ -63,7 +63,7 @@ def _table(name: str, **kwargs) -> Table:
 def _config() -> ProvisaConfig:
     config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=[
             _table(
                 "orders",

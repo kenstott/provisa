@@ -19,6 +19,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.entitlements.owners import Changer
 from provisa.api.admin import schema_mutation
 from provisa.api.admin.types import RelationshipInput
 from provisa.core.database import Database
@@ -90,7 +91,8 @@ async def test_the_admin_save_refuses_a_relationship_without_its_columns(
             target_column=target_column,
             cardinality="many-to-one",
         ),
-        owner=None,
+        set_by=None,
+        changer=Changer(None, org_admin=True),
         needs_review=False,
         creating=True,
     )

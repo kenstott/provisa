@@ -52,13 +52,15 @@ MODEL_RW_RIGHTS: dict[str, str] = {
 #: the table the store writes (provisa.api._ontology_views restates it).
 _ONTOLOGY_MODEL_TABLES: dict[str, str] = {"_terms": "glossary_terms"}
 
-#: REQ-2188: what a role named in a product's Owner field is held to. Generated at every build from
-#: the Owner fields and stored nowhere, so it is not a rule Security can edit.
+#: REQ-2188, REQ-2219 (amended 2026-11-23): what a role holding data_product_owner is held to: the
+#: products the person acting owns, those their data_product_owner rows name (the session list the
+#: model store binds, entitlements.runtime.owned_products). Generated at every build and stored
+#: nowhere, so it is not a rule Security can edit.
 OWNER_RULE = exp.In(
-    this=exp.column("owner_role"),
+    this=exp.column("id"),
     expressions=[
         exp.Anonymous(
-            this="current_setting", expressions=[exp.Literal.string("provisa.acting_roles")]
+            this="current_setting", expressions=[exp.Literal.string("provisa.owned_products")]
         )
     ],
 )
@@ -173,30 +175,34 @@ def resolve_rules_by_right(
     return out
 
 
-def owner_held_roles(roles: list[dict], owners: Iterable[str]) -> frozenset[str]:  # REQ-2188
-    """The roles the Owner field holds to :data:`OWNER_RULE`: each role named in one, and each
-    child of it, unless it holds RW on data products by its own grant, or an ancestor's. That grant
-    is an org admin's decision (org_admin's own, or a role of its own with its own rules) and
-    naming the role changes nothing about it. ``roles`` are stored rows, ancestors not folded in."""
+def owner_held_roles(roles: list[dict]) -> frozenset[str]:  # REQ-2188, REQ-2219
+    """The roles held to :data:`OWNER_RULE`: each holding data_product_owner, by its own grant or
+    an ancestor's, unless it holds RW on data products the same way. That grant is an org admin's
+    decision (org_admin's own, or a role of its own with its own rules) and owning changes nothing
+    about it. ``roles`` are stored rows, ancestors not folded in."""
     from provisa.security.inheritance import role_chains
+    from provisa.security.rights import Capability
 
-    named = set(owners)
     by_id = {r["id"]: r for r in roles}
     rw = MODEL_RW_RIGHTS["data_products"]
+    owner = Capability.DATA_PRODUCT_OWNER.value
+
+    def holds(chain: list[str], capability: str) -> bool:
+        return any(capability in (by_id[anc].get("capabilities") or []) for anc in chain)
+
     return frozenset(
         rid
         for rid, chain in role_chains(roles).items()
-        if not named.isdisjoint(chain)
-        and not any(rw in (by_id[anc].get("capabilities") or []) for anc in chain)
+        if holds(chain, owner) and not holds(chain, rw)
     )
 
 
-def with_owner_grant(roles: list[dict], owners: Iterable[str]) -> list[dict]:  # REQ-2188
-    """``roles``, stored rows, with RW on data products on each role the Owner field holds. A build
-    of them holds the same roles to :data:`OWNER_RULE` (the row's ``owner_held``). Worked out from
-    the Owner fields each time, so a role that owns no product any more holds no grant. Input dicts
-    are not modified."""
-    held = owner_held_roles(roles, owners)
+def with_owner_grant(roles: list[dict]) -> list[dict]:  # REQ-2188, REQ-2219
+    """``roles``, stored rows, with RW on data products on each role holding data_product_owner. A
+    build of them holds the same roles to :data:`OWNER_RULE` (the row's ``owner_held``), so a person
+    acting as one edits the products they own, those their own rows name, and no other. Input
+    dicts are not modified."""
+    held = owner_held_roles(roles)
     rw = MODEL_RW_RIGHTS["data_products"]
     return [
         {**r, "capabilities": [*(r.get("capabilities") or []), rw], "owner_held": True}
@@ -244,7 +250,6 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
     own constants inlined: a member with no rule lifts it only if it holds RW on the model, so a
     member with only R neither widens the set nor narrows it."""
     from provisa.core.model_row_rules import ModelRule
-    from provisa.core.request_context import session_vars_for
     from provisa.security.meta_role import _inlined
 
     inputs = state.role_build_inputs
@@ -276,6 +281,19 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
         predicate = any_of(terms)
     if predicate is None:
         return None
-    return ModelRule(
-        predicate=predicate, session_vars=session_vars_for(state.roles.get(role_id)), view=view
-    )
+    return ModelRule(predicate=predicate, session_vars=_rule_vars(state, role_id), view=view)
+
+
+def _rule_vars(state: Any, role_id: str) -> dict[str, str]:  # REQ-2219
+    """The session values a model rule reads: the role's and the request's, and the products the
+    bound person owns (:data:`OWNER_RULE`), read from their rows here and never from a client.
+    Owning none leaves the list unbound, so the rule matches nothing (REQ-1682)."""
+    from provisa.core.request_context import OWNED_PRODUCTS_VAR, session_vars_for
+    from provisa.entitlements.runtime import owned_products
+
+    out = session_vars_for(state.roles.get(role_id))
+    out.pop(OWNED_PRODUCTS_VAR, None)
+    owned = owned_products(state)
+    if owned:
+        out[OWNED_PRODUCTS_VAR] = ",".join(owned)
+    return out

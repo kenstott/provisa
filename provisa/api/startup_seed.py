@@ -67,7 +67,6 @@ from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
 from provisa.core.schema_org import (
-    domains as _domains_t,
     registered_tables as _registered_tables_t,
     relationships as _relationships_t,
     sources as _sources_t,
@@ -80,7 +79,11 @@ from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 # By the time any function here is called, app.py is fully initialised and
 # `state`, `_META_TABLE_ALIAS`, `_META_TABLES` are bound in its namespace.
 from provisa.api.app import state  # noqa: E402
-from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES  # noqa: E402
+from provisa.api.app_loaders import (  # noqa: E402
+    META_COMPUTED_VIEWS,
+    _META_TABLE_ALIAS,
+    _META_TABLES,
+)
 from provisa.core.models import DERIVED_SOURCE_ID
 
 # REQ-1900: arbitrary fixed key for the Postgres session advisory lock that serializes
@@ -466,8 +469,10 @@ async def _seed_meta_domain(
         _registered_tables_t.c.table_name.not_in([*_META_TABLES, _ORG_REGISTRY_VIEW]),
     )
 
+    # A computed view restates no table of its own name (META_COMPUTED_VIEWS).
+    base_of = {tbl: None if tbl in META_COMPUTED_VIEWS else tbl for tbl in _META_TABLES}
     reflected = await _reflect_admin_views(
-        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
+        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): base_of[tbl] for tbl in _META_TABLES}
     )
     for tbl in _META_TABLES:
         await _register_admin_view(
@@ -475,7 +480,7 @@ async def _seed_meta_domain(
             "meta",
             schema_name,
             tbl,
-            base_table=tbl,
+            base_table=base_of[tbl],
             view_name=_META_TABLE_ALIAS.get(tbl, tbl),
             reflected=reflected,
         )
@@ -528,8 +533,8 @@ async def _seed_ops_domain(
 
     REQ-1386: also creates and registers the management report views
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
-    data — and designates ``org_admin`` as the ops-domain steward so the domain
-    never surfaces as a REQ-609 PENDING stewardship gap.
+    data. The ops domain is a system domain, exempt from the REQ-609 steward gate
+    (REQ-2219, amended 2026-11-23), so no steward is seeded for it.
 
     ``views_made``: the views are there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
@@ -642,13 +647,6 @@ async def _seed_ops_domain(
                     ),
                     update_columns=[],
                 )
-
-    # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
-    await conn.execute_core(
-        update(_domains_t)
-        .where(_domains_t.c.id == "ops", _domains_t.c.steward.is_(None))
-        .values(steward="org_admin")
-    )
 
 
 async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, REQ-1608
@@ -1374,11 +1372,22 @@ async def _resolve_pk_from_sources() -> None:
         from provisa.federation.replica_routing import kept_sources
 
         _kept = await kept_sources(state)  # REQ-2031: never contacted, its keys never re-read
+
+        def _keyed_at_seed(row: Any) -> bool:
+            # An ontology table is a view under another name (REQ-2163), and a computed meta view
+            # restates no table of its name (META_COMPUTED_VIEWS, REQ-2219): there is no relation
+            # of its name to reflect, and its key was recorded when it was seeded
+            # (_register_admin_view).
+            return row["source_id"] == "provisa-admin" and (
+                row["domain_id"] == ONTOLOGY_DOMAIN_ID
+                or (row["domain_id"] == "meta" and row["table_name"] in META_COMPUTED_VIEWS)
+            )
+
         # The control plane's own tables, each schema's read in one pass (reflect_columns_many):
         # one reflection a table repeated the catalog-wide lookups every reflection makes.
         _admin_schemas: dict[str, list[str]] = {}
         for _pk_t in _pk_rows:
-            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
+            if _pk_t["source_id"] == "provisa-admin" and not _keyed_at_seed(_pk_t):
                 _registered_as = str(_pk_t["table_name"])
                 _admin_schemas.setdefault(_pk_t["schema_name"], []).append(
                     _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
@@ -1390,10 +1399,7 @@ async def _resolve_pk_from_sources() -> None:
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] in _kept:
                 continue
-            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] == ONTOLOGY_DOMAIN_ID:
-                # REQ-2163: an ontology table is a view under another name (``_terms`` is
-                # ``_terms_ontology``), its key recorded when it is seeded, from the table it
-                # restates (_register_admin_view): there is no relation of its name to reflect.
+            if _keyed_at_seed(_pk_t):
                 continue
             primary: list[str]
             alternate: frozenset[str] = frozenset()

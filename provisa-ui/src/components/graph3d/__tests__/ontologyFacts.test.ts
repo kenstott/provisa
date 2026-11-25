@@ -66,7 +66,7 @@ const TERM: TermRow = {
               name: "customer_360",
               domainId: "sales",
               status: "live",
-              ownerRole: "sales_steward",
+              owners: [{ principal: "sam", principalKind: "person", named: true, holds: true }],
             },
           },
         ],
@@ -80,7 +80,7 @@ const PRODUCT: ProductRow = {
   name: "customer_360",
   domainId: "sales",
   status: "live",
-  ownerRole: "sales_steward",
+  owners: [{ principal: "sam", principalKind: "person", named: true, holds: true }],
   dataProductTables: [
     {
       registeredTable: {
@@ -136,7 +136,7 @@ describe("each node's facts", () => {
   });
 
   it("gives a product its status and owner", () => {
-    expect(byId.get(productNode("c360"))?.info).toEqual({ status: "live", owner: "sales_steward" });
+    expect(byId.get(productNode("c360"))?.info).toEqual({ status: "live", owner: "sam" });
   });
 });
 

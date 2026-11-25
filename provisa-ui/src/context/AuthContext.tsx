@@ -49,8 +49,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "environment_data",
     "org_glossary_rw",
     "data_product_rw",
-    // REQ-2219: the five owner capabilities, with no list.
-    "data_product_owner",
+    // REQ-2219: the owner capabilities, with no list; data_product_owner comes from its parent
+    // data_product_owner (amended 2026-11-23).
     "relationship_owner",
     "domain_steward",
     "term_owner",

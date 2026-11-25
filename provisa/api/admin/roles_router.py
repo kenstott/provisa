@@ -100,7 +100,6 @@ class UpdateRoleBody(BaseModel):
 
 @router.get("/")
 async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
-    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
     from provisa.security import domain_tree
 
@@ -125,15 +124,14 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
         )
         rows = result.fetchall()
         tree = domain_tree.parent_map(await domain_repo.list_all(conn))
-        owners = await data_product_repo.owner_roles(conn)
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
     from provisa.core.db import STANDARD_ROLES
     from provisa.security.inheritance import held_by_role
     from provisa.security.row_filters import with_owner_grant
 
-    # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
-    held = held_by_role(with_owner_grant([dict(r._mapping) for r in rows], owners), tree)
+    # REQ-2188: what it holds includes the RW data_product_owner gives it, which it does not store.
+    held = held_by_role(with_owner_grant([dict(r._mapping) for r in rows]), tree)
     # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one. A shown
     # role carries what it holds, by the one rule (``effective*``).
     return [

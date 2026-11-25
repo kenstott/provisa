@@ -40,7 +40,7 @@ from tests.unit.product_members import with_members
 def _config(**kwargs) -> ProvisaConfig:
     base = {
         "sources": [Source(id="petstore-api", type=SourceType.openapi, description="Pet API")],
-        "domains": [Domain(id="pet-store", description="Pets", steward="steward-1")],
+        "domains": [Domain(id="pet-store", description="Pets")],
         "tables": [
             Table(
                 source_id="petstore-api",
@@ -67,7 +67,14 @@ def _config(**kwargs) -> ProvisaConfig:
 
 
 def _snapshot():
-    return build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    # REQ-2219: a domain's stewards are people holding domain_steward rows, read by the caller.
+    return build_snapshot(
+        _config(),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        domain_stewards={"pet-store": ("steward-1",)},
+    )
 
 
 def test_native_entities_state_what_the_model_holds():
@@ -106,13 +113,18 @@ def test_data_product_entity_aggregates_its_member_table():  # REQ-1634
                 id="prod",
                 domain_id="pet-store",
                 name="Pets 360",
-                owner_role="alice",
                 purpose="Unified pet view",
             )
         ]
     )
     entities = to_native_entities(
-        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+        build_snapshot(
+            config,
+            org_id="acme",
+            dialect="postgres",
+            contexts={},
+            product_owners={"prod": ("alice",)},
+        )
     )
     by_type = {e.type_name: e for e in entities}
     table = by_type[PROVISA_TABLE_TYPE]

@@ -76,7 +76,7 @@ def snapshot():
     config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[
-            Domain(id="sales", description="Sales", steward="data-steward"),
+            Domain(id="sales", description="Sales"),
             Domain(id="lab", description="Lab"),
         ],
         tables=[
@@ -131,7 +131,6 @@ def snapshot():
                 source_column="customer_id",
                 target_column="id",
                 cardinality=Cardinality.many_to_one,
-                owner="join-steward",
                 version=3,
                 needs_review=True,
             )
@@ -149,7 +148,13 @@ def snapshot():
         ],
     )
     return build_snapshot(
-        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+        all_members_of(config, "prod"),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        # REQ-2219: stewards and owners are people holding entitlement rows, read by the caller.
+        domain_stewards={"sales": ("data-steward",)},
+        relationship_owners={"orders-to-customers": ("join-steward",)},
     )
 
 
@@ -216,7 +221,7 @@ def test_openlineage_dataset_facet_names_its_data_products():  # REQ-1634
     # facets — so membership rides the member table's own facets, alongside provisa_domain.
     config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=[_table("orders", [Column(name="id", data_type="integer", visible_to=["analyst"])])],
         roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
         data_products=[
@@ -224,13 +229,16 @@ def test_openlineage_dataset_facet_names_its_data_products():  # REQ-1634
                 id="prod",
                 domain_id="sales",
                 name="Sales 360",
-                owner_role="alice",
                 purpose="Unified",
             )
         ],
     )
     snap = build_snapshot(
-        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+        all_members_of(config, "prod"),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"prod": ("alice",)},
     )
     events = to_events(snap, event_time=EVENT_TIME)
     orders = next(

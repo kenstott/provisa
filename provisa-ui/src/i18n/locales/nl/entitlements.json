@@ -52,7 +52,10 @@
       "placeholder": "Zoeken op naam of e-mail",
       "typedEmail": "{{email}} (wacht op de eerste aanmelding)",
       "typeMore": "Typ minstens twee tekens",
-      "noneFound": "Niemand gevonden. Typ een volledig e-mailadres om toegang te verlenen."
+      "noneFound": "Niemand gevonden. Typ een volledig e-mailadres om toegang te verlenen.",
+      "peopleGroup": "Personen",
+      "rolesGroup": "Rollen",
+      "roleChip": "Rol: {{role}}"
     },
     "form": {
       "personLabel": "Persoon",

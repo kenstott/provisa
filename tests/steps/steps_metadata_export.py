@@ -52,7 +52,7 @@ def _governed_config(shared_data):
     shared_data["config"] = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[
-            Domain(id="sales", description="Sales", steward="data-steward"),
+            Domain(id="sales", description="Sales"),
             Domain(id="lab", description="Unowned lab data"),
         ],
         tables=[
@@ -87,7 +87,6 @@ def _governed_config(shared_data):
                 source_column="customer_id",
                 target_column="id",
                 cardinality=Cardinality.many_to_one,
-                owner="join-steward",
                 version=3,
                 needs_review=True,
             )
@@ -104,6 +103,8 @@ def _build(shared_data):
         org_id="acme",
         dialect="postgres",
         contexts={},
+        # REQ-2219: the relationship's owners are people holding relationship_owner rows.
+        relationship_owners={"orders-to-customers": ("join-steward",)},
     )
 
 

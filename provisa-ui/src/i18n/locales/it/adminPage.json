@@ -224,6 +224,7 @@
     "apolloSubgraphName": "Nome del sottografo",
     "apolloSubgraphNameHint": "Il nome con cui il supergrafo conosce questo sottografo.",
     "apolloSubgraphRole": "Opera come ruolo",
-    "apolloSubgraphRoleHint": "Un supergraph non può trasmettere l'identità del chiamante, quindi il router accede con questo ruolo, e le regole di riga, le maschere e la visibilità di questo ruolo governano ogni entità che recupera."
+    "apolloSubgraphRoleHint": "Un supergraph non può trasmettere l'identità del chiamante, quindi il router accede con questo ruolo, e le regole di riga, le maschere e la visibilità di questo ruolo governano ogni entità che recupera.",
+    "stewardsHint": "Persone che rispondono del dominio; ciascuna deve avere un ruolo con domain_steward."
   }
 }

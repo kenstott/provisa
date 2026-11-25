@@ -163,8 +163,8 @@ class DataProductAsset:  # REQ-1634
     status: str = "draft"
     support: str | None = None
     custom_properties: dict[str, str] = field(default_factory=dict)
-    # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
-    # that names owners by address (Dataplex), never a role-to-principal setting.
+    # REQ-2118, REQ-2219: the owners' email addresses -- the product's owners in a catalog that
+    # names owners by address (Dataplex), never a role-to-principal setting.
     owner_emails: tuple[str, ...] = ()
     # REQ-2118: the team role's holders' email addresses, as owner_emails is the owner role's.
     team_emails: tuple[str, ...] = ()

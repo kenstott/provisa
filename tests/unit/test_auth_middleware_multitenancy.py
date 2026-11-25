@@ -44,6 +44,18 @@ def _stub_org_runtime(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_owner_rewrite(monkeypatch):
+    """REQ-2219: a sign-in that changes a person's entitlement rows rewrites object_owners
+    (effective_store.write_person). That rewrite reads the org's model tables, which this fake
+    pool does not hold; who owns what is tested over a real store in test_owner_roles."""
+
+    async def _unread(_conn) -> None:
+        return None
+
+    monkeypatch.setattr("provisa.entitlements.owners.write_object_owners", _unread)
+
+
+@pytest.fixture(autouse=True)
 def _seeded_roles(monkeypatch):
     """REQ-1337: the middleware decides nothing from a role NAME — it resolves the assigned role ids
     to the RIGHTS those roles carry. That resolution reads the loaded roles registry, which in a real

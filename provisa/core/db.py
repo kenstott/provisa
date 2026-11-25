@@ -54,14 +54,15 @@ def _validate_org_id(org_id: str) -> None:
 
 # Default domain rows seeded by schema.sql; FK targets other tenant rows depend
 # on (domain_id='' must always resolve). Re-seeded on the portable path.
-# REQ-1386: ops ships with org_admin as steward (REQ-609 — never PENDING). A demo's own domains
-# (the pet store's pet-store and shelter) are its config's, never seeded: a seeded one appeared in
+# The system domains every model store is seeded with. They need no steward (REQ-2219, amended
+# 2026-11-23: system domains are exempt from the REQ-609 steward gate). A demo's own domains (the
+# pet store's pet-store and shelter) are its config's, never seeded: a seeded one appeared in
 # every org and every other demo.
-_SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
-    ("", "No domain", None),
-    ("meta", "System metadata", None),
-    ("ops", "Operational telemetry", "org_admin"),
-    ("ontology", "System ontology", None),  # REQ-2163
+_SEED_DOMAINS: tuple[tuple[str, str], ...] = (
+    ("", "No domain"),
+    ("meta", "System metadata"),
+    ("ops", "Operational telemetry"),
+    ("ontology", "System ontology"),  # REQ-2163
 )
 
 # REQ-2155: Provisa's standard roles, as provisa/core/standard_roles.yaml defines them (the one
@@ -184,7 +185,7 @@ def fold_config_grants(tables: list[dict], config_roles: list[dict]) -> None:
 # REQ-1919: what the deployment seeds into every model store. A seeded role is a standard role and
 # is never deleted; none of these counts as the org's own catalog.
 SEEDED_ROLE_IDS: frozenset[str] = frozenset(STANDARD_ROLES)
-SEEDED_DOMAIN_IDS: frozenset[str] = frozenset(domain_id for domain_id, _d, _s in _SEED_DOMAINS)
+SEEDED_DOMAIN_IDS: frozenset[str] = frozenset(domain_id for domain_id, _d in _SEED_DOMAINS)
 #: The built-in sources and the demo's GraphQL source (provisa.api.app_startup).
 SEEDED_SOURCE_IDS: frozenset[str] = BUILT_IN_SOURCE_IDS | {"graphql-demo"}
 

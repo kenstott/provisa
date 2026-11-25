@@ -10,7 +10,6 @@
     "projectProduct": "数据产品 {{id}}（整个项目）",
     "exists": "名为 {{id}} 的数据产品已存在。请重命名或删除它，以注册这些模型。",
     "owner": "所有者：{{owner}}",
-    "ownerRole": "所有者角色 {{role}}",
     "tests": "测试：{{tests}}",
     "version": "版本 {{version}}",
     "columns": "承诺的列：{{columns}}",

@@ -36,10 +36,11 @@ from provisa.api.metadata_export.atlas import ASSIGNMENT_SOURCE, CLUSTER, _gloss
 from tests.integration.metadata_export_server import (
     AUDIENCE,
     CLASS_TERM,
-    GLOSSARY_TERM,
     DOMAIN,
+    GLOSSARY_TERM,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
+    PRODUCT_OWNER,
     RLS_FILTER,
     SCHEMA,
     SOURCE,
@@ -167,10 +168,10 @@ async def test_the_steward_and_the_approved_relationship_are_readable_from_the_c
     orders = await _entity("provisa_table", ORDERS)
     # Atlas's own accountability field, so a catalog reader finds the steward where they already
     # look for an owner (REQ-609).
-    assert orders["attributes"]["owner"] == "data_owner"
+    assert orders["attributes"]["owner"] == PRODUCT_OWNER
     document = json.loads(orders["attributes"][NATIVE_GOVERNANCE_ATTRIBUTE])
     assert document["domain"]["id"] == DOMAIN
-    assert document["domain"]["steward"] == "data_owner"
+    assert document["domain"]["steward"] == PRODUCT_OWNER
     approved = document["approvedRelationships"]
     assert [edge["id"] for edge in approved] == ["orders-to-customers"]
     assert approved[0]["target"] == f"{SOURCE}.{SCHEMA}.customers"

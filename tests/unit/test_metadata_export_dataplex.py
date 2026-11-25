@@ -101,7 +101,6 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
                 id="sales_360",
                 domain_id="sales",
                 name="Sales 360",
-                owner_role="data_owner",
                 purpose="Every sale",
                 limitations="No refunds",
                 version="1.2.0",
@@ -116,7 +115,9 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
         org_id="acme",
         dialect="postgres",
         contexts={},
-        owner_emails={"data_owner": owners},
+        # REQ-2219: the product's owners are people; each named here by their address.
+        product_owners={"sales_360": owners},
+        person_emails={owner: owner for owner in owners},
     )
 
 
