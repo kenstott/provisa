@@ -2755,21 +2755,20 @@ The SDK has no `TableRef` type. Declare your own generic `TableRef` struct; Prov
 
 ### Spark reference {: #spark-reference }
 
-A Spark script is a Python file. Tags go in docstrings, exactly as for any Python resolver. The script imports `provisa_spark` to reach its Spark cluster, and `provisa_services` for governed table arguments and the read context.
+A Spark source has no script. It is a connection to a cluster, and what the cluster holds is served from its catalog. Logic the cluster does not hold is an ordinary Python code source: its functions open a Spark source's session by the source's name and run on that source's cluster.
 
-The script does not carry its own setup: Provisa reads the cluster URL and the script text from the Spark source's setup form.
+The Python code source needs the Spark Connect client among its own dependencies: `pyspark-client`, at the version of the cluster's Spark. PyPI carries it as an sdist only, and a code source installs wheels only, so ship its wheel with the code, named by path and hash in the code's `requirements.txt`, or serve the wheel from the organization's package index. The worker reaches the cluster through its egress proxy, so the cluster's host must be on the egress allow-list ([the sandbox](#the-sandbox)), as for any address the code calls.
 
-#### Tags
+#### Opening a session
 
-All Python docstring tags are available. The ones most relevant to Spark work are:
-
-**`@table`**
+`provisa_services.spark.session(name)` returns a `SparkSession` on the cluster of the Spark source `name`: the source's own cluster, or the organization's default Spark cluster when the source names none, with its stored credential. Provisa records each session opened in the organization's audit trail.
 
 === "Docstring"
 
     ```python
     from dataclasses import dataclass
-    from provisa_spark import session
+
+    import provisa_services as ps
 
 
     @dataclass
@@ -2783,7 +2782,8 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
         @table
         """
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        spark = ps.spark.session("lakehouse")
+        df = spark.sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
@@ -2791,8 +2791,9 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_sdk import table
-    from provisa_spark import session
 
 
     @dataclass
@@ -2804,51 +2805,22 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
     @table
     def sales() -> list[SalesRow]:
         """Daily sales by region."""
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        spark = ps.spark.session("lakehouse")
+        df = spark.sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
-**`@command`**
+#### Governed tables on the cluster
 
-=== "Docstring"
-
-    ```python
-    from provisa_spark import session
-
-
-    def archive_orders(cutoff: str) -> int:
-        """Archive orders older than cutoff.
-
-        @command
-        """
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
-        return df.first()["num_affected_rows"]
-    ```
-
-=== "SDK"
-
-    ```python
-    from provisa_sdk import command
-    from provisa_spark import session
-
-
-    @command
-    def archive_orders(cutoff: str) -> int:
-        """Archive orders older than cutoff."""
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
-        return df.first()["num_affected_rows"]
-    ```
-
-**`@query`**
-
-A `@query` function can take governed Provisa tables as `TableRef` parameters, reading them through Arrow Flight SQL.
+A `@query` can take governed Provisa tables as `TableRef` parameters. `provisa_services.spark.dataframe(session, table)` reads the table over Arrow Flight SQL as the calling role and hands its rows to the session as a `DataFrame`, so the cluster sees only the rows and columns that role may read.
 
 === "Docstring"
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_services import TableRef
-    from provisa_spark import dataframe
 
 
     @dataclass
@@ -2868,7 +2840,8 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
         @query
         """
-        frame = dataframe(orders).groupBy("region").sum("amount")
+        spark = ps.spark.session("lakehouse")
+        frame = ps.spark.dataframe(spark, orders).groupBy("region").sum("amount")
         return [Total(r[0], r[1]) for r in frame.collect()]
     ```
 
@@ -2876,9 +2849,10 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_sdk import query
     from provisa_services import TableRef
-    from provisa_spark import dataframe
 
 
     @dataclass
@@ -2896,106 +2870,17 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
     @query
     def regional_totals(orders: TableRef[Order]) -> list[Total]:
         """Totals of governed orders by region."""
-        frame = dataframe(orders).groupBy("region").sum("amount")
+        spark = ps.spark.session("lakehouse")
+        frame = ps.spark.dataframe(spark, orders).groupBy("region").sum("amount")
         return [Total(r[0], r[1]) for r in frame.collect()]
     ```
 
-**`@on-start`** and **`@on-stop`**
+#### Calls
 
-=== "Docstring"
-
-    ```python
-    from provisa_spark import session
-
-
-    def warmup(values: dict) -> None:
-        """@on-start"""
-        session()  # start the Spark Connect session once
-
-
-    def shutdown() -> None:
-        """@on-stop"""
-        session().stop()
-    ```
-
-=== "SDK"
-
-    ```python
-    from provisa_sdk import on_start, on_stop
-    from provisa_spark import session
-
-
-    @on_start
-    def warmup(values: dict) -> None:
-        session()  # start the Spark Connect session once
-
-
-    @on_stop
-    def shutdown() -> None:
-        session().stop()
-    ```
-
-**`@requires NAME` / `@requires NAME:secret`**
-
-Declares a setup value beyond the built-in `script` and `cluster`.
-
-=== "Docstring"
-
-    ```python
-    from dataclasses import dataclass
-
-
-    @dataclass
-    class Inputs:
-        day: str
-
-
-    @dataclass
-    class Row:
-        day: str
-        amount: float
-
-
-    def fetch(inputs: Inputs) -> list[Row]:
-        """@table
-        @requires DELTA_TABLE_PATH
-        """
-        ...
-    ```
-
-=== "SDK"
-
-    ```python
-    from dataclasses import dataclass
-
-    from provisa_sdk import requires, table
-
-
-    @dataclass
-    class Inputs:
-        day: str
-
-
-    @dataclass
-    class Row:
-        day: str
-        amount: float
-
-
-    @requires("DELTA_TABLE_PATH")
-    @table
-    def fetch(inputs: Inputs) -> list[Row]:
-        ...
-    ```
-
-#### Special imports
-
-| Import | What it gives you |
+| Call | What it gives you |
 |---|---|
-| `from provisa_spark import session` | A `SparkSession` connected to the configured cluster, created once and shared. |
-| `from provisa_spark import dataframe` | A governed `TableRef` argument as a Spark `DataFrame`, read through Arrow Flight SQL as the calling role. |
-| `from provisa_services import ReadContext` | The read context (filters, order, limit, columns, keys). |
-| `from provisa_services import TableRef` | The type annotation for a governed table argument. |
+| `provisa_services.spark.session(name)` | A `SparkSession` on the cluster of the Spark source `name`, with its stored credential. |
+| `provisa_services.spark.dataframe(session, table)` | A governed `TableRef` argument as a `DataFrame` on that session, read through Arrow Flight SQL as the calling role. |
 
 #### Column types
 

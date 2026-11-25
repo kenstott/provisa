@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Se connecter via TLS. Un jeton n'est envoyé que via TLS : indiquer un jeton l'active.",
     "userId": "ID utilisateur",
-    "userIdHelp": "L'utilisateur sous lequel le cluster exécute le script, s'il en demande un. Facultatif.",
+    "userIdHelp": "L'utilisateur sous lequel le cluster exécute le travail d'une session, s'il en demande un. Facultatif.",
     "badHost": "Un nom d'hôte ou une adresse, sans sc://, port ni chemin",
     "badPort": "Un port de 1 à 65535",
     "badToken": "Une référence de secret, par exemple ${secret:spark_token}",

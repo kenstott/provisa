@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Connect over TLS. A token is only sent over TLS, so giving a token turns it on.",
     "userId": "User ID",
-    "userIdHelp": "The user the cluster runs the script as, when it asks for one. Optional.",
+    "userIdHelp": "The user the cluster runs a session's work as, when it asks for one. Optional.",
     "badHost": "A host name or address, without sc://, a port or a path",
     "badPort": "A port from 1 to 65535",
     "badToken": "A secret reference, such as ${secret:spark_token}",

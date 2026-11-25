@@ -137,8 +137,8 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
-    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
-    # (connectors/spark); a built-in code source type, made by joining that host.
+    # REQ-2225: a connection to a Spark cluster, with no script (amended 2026-11-25); a built-in
+    # code source type, made by joining the Spark host (connectors/spark).
     spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"

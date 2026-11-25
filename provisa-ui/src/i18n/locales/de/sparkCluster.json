@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Über TLS verbinden. Ein Token wird nur über TLS gesendet; ein angegebenes Token schaltet TLS daher ein.",
     "userId": "Benutzer-ID",
-    "userIdHelp": "Der Benutzer, unter dem der Cluster das Skript ausführt, falls er einen verlangt. Optional.",
+    "userIdHelp": "Der Benutzer, unter dem der Cluster die Arbeit einer Sitzung ausführt, falls er einen verlangt. Optional.",
     "badHost": "Ein Hostname oder eine Adresse, ohne sc://, Port oder Pfad",
     "badPort": "Ein Port von 1 bis 65535",
     "badToken": "Eine Secret-Referenz, z. B. ${secret:spark_token}",

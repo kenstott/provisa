@@ -8,25 +8,34 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The Spark connector against real Spark (REQ-2225): a Spark Connect server in a container, the
-connector's own project and the Spark Connect client from its lock, joined with an annotated
-script. A table read, a command and a @stream each run on the cluster.
+"""A Python code source reads through a Spark source's session on real Spark (REQ-2225, amended
+2026-11-25; REQ-2270).
 
-REQ-2270: a Provisa server joins the connector as a remote host, and a command given a governed
-table with a row rule reads it over Arrow Flight SQL as the calling role, so only the rows the rule
-allows reach the cluster. The server runs no minted-token pgwire listener: a read that took that
-path would be refused naming server.minted_pgwire_port.
+A Spark source has no script: it is a connection to the cluster, joined to the Spark connector's
+host with its cluster and nothing else. Logic the cluster does not hold is an ordinary Python code
+source, which opens the Spark source's session with ``provisa_services.spark.session(<source>)``
+and reads a governed table on the cluster with ``provisa_services.spark.dataframe``.
 
-The server matches the client the connector's uv.lock pins, so a client/server version difference
-cannot pass or fail this test.
-"""
+- The Python source's @table computes its rows on the cluster through the session.
+- Its @query is given the governed table ``fx.clips`` (another Python source; the analyst's row
+  rule allows clip 1), read over Arrow Flight SQL as the calling role and handed to the cluster:
+  the analyst's call sees one row, org_admin's all three.
+
+The cluster is a one-node Spark Connect server in a container, on this machine's network address:
+the Python source's worker reaches it through its egress proxy, which never connects to loopback,
+and the server's egress allow-list names it. The Spark Connect client is the one the connector's
+uv.lock pins, built as its wheel (connectors/spark/_build_client.py) and shipped in the Python
+source's archive with a hashed requirements.txt, so client and server versions match.
+
+Lands on the TEST instance only: a server of this run with its own control plane, and a Spark
+container of this run on a leased port."""
 
 # Requirements: REQ-2225, REQ-2270
 
 from __future__ import annotations
 
-import datetime
-import ipaddress
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -35,27 +44,17 @@ import subprocess
 import sys
 import textwrap
 import time
+import zipfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import httpx
 import pytest
 import yaml
 
 from provisa.codehost import front
-from provisa.codesource import remote, remote_sources
 from provisa.codesource.bundle import content_hash
-from provisa.codesource.lifecycle import setup_values
-from provisa.codesource.manifest import (
-    Export,
-    Manifest,
-    Requirement,
-    manifest_from_json,
-    manifest_hash,
-    manifest_json,
-)
-from provisa.core.request_context import reset_current_org, set_current_org
-from provisa.python.source import HOST
+from provisa.codesource.manifest import PYTHON_RULES, manifest_hash, manifest_json, read_manifest
+from provisa.python.source import HOST, READER
 
 pytestmark = [pytest.mark.integration]
 
@@ -65,13 +64,38 @@ _SPARK_IMAGE = "apache/spark:4.3.0"
 _CONNECT_PORT = 15002
 _SERVER_START_S = 240
 
-_SCRIPT = textwrap.dedent(
-    '''
-    import time
-    from collections.abc import Iterator
+#: Reads one row through the client, so the wait below ends only when the server answers a query.
+_PROBE = "from pyspark.sql import SparkSession; import sys; " \
+    "s = SparkSession.builder.remote(sys.argv[1]).getOrCreate(); print(s.sql('SELECT 1').collect())"  # fmt: skip
+
+#: A role the row rule narrows; org_admin, which the rule does not name, reads every row.
+_ANALYST = "clip_analyst"
+_ADMIN = "org_admin"
+_SPARK_SOURCE = "spark_jobs"
+
+_LEDGER = {
+    "ledger/ledger.py": '''
+from dataclasses import dataclass
+
+
+@dataclass
+class Clip:
+    id: int
+    region: str
+
+
+def clips() -> list[Clip]:
+    """@table"""
+    return [Clip(1, "emea"), Clip(2, "amer"), Clip(3, "apac")]
+''',
+}
+
+_LAKEHOUSE = textwrap.dedent(
+    f'''
     from dataclasses import dataclass
 
-    from provisa_spark import session
+    import provisa_services as ps
+    from provisa_services import TableRef
 
 
     @dataclass
@@ -81,79 +105,30 @@ _SCRIPT = textwrap.dedent(
 
 
     @dataclass
-    class Stamp:
-        day: str
-
-
-    @dataclass
-    class Tick:
-        value: int
+    class Clip:
+        id: int
+        region: str
 
 
     def numbers() -> list[Number]:
-        """Three numbers, computed by the cluster.
+        """Three numbers, computed by the Spark source's cluster.
 
         @table
         """
-        frame = session().sql("SELECT id, concat('n', id) AS label FROM range(3) ORDER BY id")
+        spark = ps.spark.session("{_SPARK_SOURCE}")
+        frame = spark.sql("SELECT id, concat('n', id) AS label FROM range(3) ORDER BY id")
         return [Number(**row.asDict()) for row in frame.collect()]
 
 
-    def stamp(day: str) -> str:
-        """Leaves a view on the cluster, read back by stamped().
+    def clips_on_the_cluster(clips: TableRef[Clip]) -> list[Clip]:
+        """The clips the caller may read, as a DataFrame on the Spark source's cluster.
 
-        @command
+        @query
         """
-        session().sql(f"CREATE OR REPLACE TEMP VIEW stamped_day AS SELECT '{day}' AS day")
-        return day
-
-
-    def stamped() -> list[Stamp]:
-        """What the last stamp left on the cluster.
-
-        @table
-        """
-        return [Stamp(**row.asDict()) for row in session().sql("SELECT day FROM stamped_day").collect()]
-
-
-    def ticks() -> Iterator[Tick]:
-        """One streaming query on the cluster for this subscription, stopped when it ends.
-
-        @stream
-        """
-        query = (
-            session()
-            .readStream.format("rate")
-            .option("rowsPerSecond", 10)
-            .load()
-            .selectExpr("value")
-            .writeStream.format("memory")
-            .queryName("ticks")
-            .start()
-        )
-        seen = set()
-        try:
-            while True:
-                for row in session().sql("SELECT value FROM ticks ORDER BY value").collect():
-                    if row.value not in seen:
-                        seen.add(row.value)
-                        yield Tick(value=row.value)
-                time.sleep(0.2)
-        finally:
-            query.stop()
+        spark = ps.spark.session("{_SPARK_SOURCE}")
+        frame = ps.spark.dataframe(spark, clips).orderBy("id")
+        return [Clip(id=row.id, region=row.region) for row in frame.collect()]
     '''
-)
-
-#: Reads one row through the client, so the wait below ends only when the server answers a query.
-_PROBE = "from pyspark.sql import SparkSession; import sys; " \
-    "s = SparkSession.builder.remote(sys.argv[1]).getOrCreate(); print(s.sql('SELECT 1').collect())"  # fmt: skip
-
-_PROJECT_MANIFEST = manifest_json(
-    Manifest(
-        exports=(Export("declared", "on-start", "", (), None),),
-        types={},
-        requires=(Requirement("script", False), Requirement("cluster", False)),
-    )
 )
 
 
@@ -164,23 +139,21 @@ def _free_port() -> int:
     return port
 
 
+def _lan_address() -> str:
+    """This machine's address on its network: a code source's egress proxy never connects to
+    loopback, so the cluster is published here."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("192.0.2.1", 9))  # TEST-NET-1: nothing is sent; the route names the address
+        address = probe.getsockname()[0]
+    assert not address.startswith("127."), f"no network address to publish Spark on: {address}"
+    return address
+
+
 def _pyspark_home(python: Path) -> Path | None:
-    """Return the pyspark package directory inside the given venv, or None if absent.
-
-    ``pyspark-client`` is a Connect-only wheel that ships without a full Spark
-    distribution.  ``pyspark/__init__.py`` calls ``find_spark_home()`` at import
-    time, which looks for a ``spark-distribution`` subdirectory inside the package
-    or for a ``SPARK_HOME`` env-var pointing at a real install.  Neither is
-    present by default after an sdist install, so every ``import pyspark.sql``
-    fails with "Could not find valid SPARK_HOME" — even though the Connect server
-    is already running and no JVM is ever needed.
-
-    Callers must:
-    1. Create ``<pyspark_home>/spark-distribution/`` as an empty placeholder so
-       that ``find_spark_home()`` succeeds when SPARK_HOME is not set.
-    2. Pass ``SPARK_HOME=<pyspark_home>`` in subprocess environments so that any
-       pre-existing (and potentially wrong) SPARK_HOME on the runner is overridden.
-    """
+    """The pyspark package directory inside the given venv, or None if absent. pyspark-client
+    installed from its sdist has no ``spark-distribution`` directory, which pyspark's
+    find_spark_home() looks for when SPARK_HOME is unset; the probe below is given SPARK_HOME so a
+    wrong one already in the runner's environment is overridden."""
     dirs = sorted((python.parent.parent / "lib").glob("python*/site-packages/pyspark"))
     return dirs[0] if dirs else None
 
@@ -201,22 +174,10 @@ def client_python(tmp_path_factory) -> Path:
     subprocess.run([uv, "venv", "--python", "3.12", str(venv)], check=True)
     python = venv / "bin" / "python"
     subprocess.run(
-        [
-            uv,
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            "--require-hashes",
-            "-r",
-            str(requirements),
-        ],
+        [uv, "pip", "install", "--python", str(python), "--require-hashes", "-r",
+         str(requirements)],
         check=True,
-    )
-    # pyspark-client installed from sdist does not create spark-distribution/.
-    # Create the empty placeholder so pyspark's find_spark_home() does not raise
-    # even when SPARK_HOME is unset (belt) — callers also pass SPARK_HOME
-    # explicitly to override any wrong value already in the runner env (suspenders).
+    )  # fmt: skip
     home = _pyspark_home(python)
     if home is not None:
         (home / "spark-distribution").mkdir(exist_ok=True)
@@ -225,21 +186,20 @@ def client_python(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def cluster(client_python):
-    """A single-node Spark Connect server on a port of this run; its Spark Connect address."""
+    """A single-node Spark Connect server on this machine's network address; its address."""
+    lan = _lan_address()
     port = _free_port()
     name = f"provisa-itest-spark-{os.getpid()}"
     subprocess.run(
         ["docker", "run", "-d", "--rm", "--memory", "3g", "--name", name,
-         "-e", "SPARK_NO_DAEMONIZE=1", "-p", f"127.0.0.1:{port}:{_CONNECT_PORT}",
+         "-e", "SPARK_NO_DAEMONIZE=1", "-p", f"{lan}:{port}:{_CONNECT_PORT}",
          _SPARK_IMAGE, "/opt/spark/sbin/start-connect-server.sh"],
         check=True,
         capture_output=True,
     )  # fmt: skip
-    address = f"sc://127.0.0.1:{port}"
-    # pyspark-client needs SPARK_HOME even for Connect-only sessions (see _pyspark_home).
-    # Explicitly set it here so any wrong SPARK_HOME already in the runner env is overridden.
-    _phome = _pyspark_home(client_python)
-    _probe_env = {**os.environ, "SPARK_HOME": str(_phome)} if _phome is not None else None
+    address = f"sc://{lan}:{port}"
+    home = _pyspark_home(client_python)
+    probe_env = {**os.environ, "SPARK_HOME": str(home)} if home is not None else None
     try:
         deadline = time.monotonic() + _SERVER_START_S
         while True:
@@ -247,7 +207,7 @@ def cluster(client_python):
                 [str(client_python), "-c", _PROBE, address],
                 capture_output=True,
                 text=True,
-                env=_probe_env,
+                env=probe_env,
             )
             if probe.returncode == 0:
                 break
@@ -258,34 +218,38 @@ def cluster(client_python):
                     f"{logs.stdout[-4000:]}{logs.stderr[-4000:]}"
                 )
             time.sleep(3)
-        yield address
+        yield lan, address
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
-class _Host:
-    """The connector's front end and host, running its own code on the client's Python."""
+def _project_manifest() -> dict:
+    """The manifest the connector's image carries: its own code's, read as a build reads it."""
+    done = subprocess.run(  # noqa: S603 -- Provisa's own reader, on the connector's own project
+        [sys.executable, "-I", str(READER), str(_PROJECT), "provisa_spark"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": ""},
+    )
+    return manifest_json(read_manifest(json.loads(done.stdout), PYTHON_RULES))
 
-    def __init__(self, work: Path, python: Path, extra_env: dict[str, str] | None = None) -> None:
-        self.work = work
+
+class _Host:
+    """The connector's front end and host, running its own code."""
+
+    def __init__(self, work: Path, python: Path, manifest: dict) -> None:
         code = work / "code"
         code.mkdir()
         shutil.copytree(_PROJECT / "provisa_spark", code / "provisa_spark")
         self.hashed = content_hash(code)
         (work / "names.json").write_text("{}")
-        (work / "manifest.json").write_text(json.dumps(_PROJECT_MANIFEST))
-        # pyspark-client needs SPARK_HOME even for Connect-only sessions (see _pyspark_home).
-        # Explicitly set it so any wrong SPARK_HOME in the runner env is overridden and the
-        # user script's `import pyspark.sql` succeeds when the front spawns it via `python`.
-        _phome = _pyspark_home(python)
+        (work / "manifest.json").write_text(json.dumps(manifest))
         env = {
             **os.environ,
             "PROVISA_CODE_HASH": self.hashed,
             "PROVISA_DISCOVERED": "{}",
             "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),
-            "PROVISA_CONNECTOR_SCRIPT": "script",
-            **({"SPARK_HOME": str(_phome)} if _phome is not None else {}),
-            **(extra_env or {}),
         }
         self.process = subprocess.Popen(  # noqa: S603 -- the test's interpreter and Provisa's front
             [
@@ -317,264 +281,103 @@ class _Host:
         self.process.wait(timeout=15)
 
 
-@pytest.fixture
-def host(tmp_path, client_python):
-    started = _Host(tmp_path, client_python)
+@pytest.fixture(scope="module")
+def project_manifest() -> dict:
+    return _project_manifest()
+
+
+@pytest.fixture(scope="module")
+def spark_host(tmp_path_factory, client_python, project_manifest):
+    started = _Host(tmp_path_factory.mktemp("spark-host"), client_python, project_manifest)
     yield started
     started.stop()
 
 
-@pytest.fixture
-def joined(host, cluster, monkeypatch):
-    """The source's mapping and identity, once the host has joined with the script. The connector's
-    block and the image's labels are stood in for: an image in a registry is not this test's point."""
-    identity = remote.new_identity()
-    row = {
-        "name": "spark",
-        "git": "https://git.example/spark.git",
-        "ref": "main",
-        "commit": "a" * 40,
-        "language": "python",
-        "image": "registry.example/connectors/spark",
-        "digest": "sha256:" + "b" * 64,
-        "code_hash": host.hashed,
-        "arch": "amd64",
-        "requires": [
-            {"name": "script", "multiline": True, "script": True},
-            {"name": "cluster"},
-        ],
-    }
-    labels = {
-        "code_hash": host.hashed,
-        "manifest_hash": manifest_hash(_PROJECT_MANIFEST),
+@pytest.fixture(scope="module")
+def client_wheel(tmp_path_factory) -> tuple[str, dict[str, bytes]]:
+    """The Spark Connect client the connector pins, as a Python source ships it: its wheel and a
+    requirements.txt naming it and every dependency by hash (connectors/spark/_build_client.py)."""
+    project = tmp_path_factory.mktemp("spark-client-project") / "spark"
+    shutil.copytree(_PROJECT, project, ignore=shutil.ignore_patterns("wheels", ".venv"))
+    spec = importlib.util.spec_from_file_location("_build_client", _PROJECT / "_build_client.py")
+    assert spec is not None and spec.loader is not None
+    build_client = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build_client)
+    wheel = build_client.build(project, None)
+    return (project / "requirements.txt").read_text(), {f"wheels/{wheel.name}": wheel.read_bytes()}
+
+
+def _archive(files: dict[str, str | bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, content in files.items():
+            z.writestr(name, content)
+    return buf.getvalue()
+
+
+def _admin(srv, mutation: str) -> dict:
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={"query": "mutation { " + mutation + " { success message } }"},
+        headers={"X-Provisa-Role": _ADMIN},
+        # Saving a code source fetches its runtime and installs and reads its code.
+        timeout=srv.request_timeout + 900,
+    )
+    assert response.status_code == 200, response.text
+    assert "errors" not in response.json(), response.text
+    (result,) = response.json()["data"].values()
+    assert result["success"], result["message"]
+    return result
+
+
+def _upload(srv, filename: str, data: bytes) -> str:
+    upload = httpx.post(
+        f"{srv.base_url}/admin/orgs/{srv.org_id}/code-uploads/archive",
+        params={"filename": filename},
+        content=data,
+        headers={"X-Provisa-Role": _ADMIN, "Content-Type": "application/octet-stream"},
+        timeout=srv.request_timeout + 60,
+    )
+    assert upload.status_code == 200, upload.text
+    return upload.json()["content_hash"]
+
+
+def _python_source(srv, source_id: str, data: bytes, filename: str) -> None:
+    mapping = {
         "runtime": "python",
+        "code": {"kind": "upload", "upload": _upload(srv, filename, data)},
     }
-
-    async def connector(_name):
-        return row
-
-    async def image_labels(_state, _org_id, _name, _row):
-        return labels
-
-    async def org_identity(_org_id):
-        return identity
-
-    monkeypatch.setattr(remote_sources, "_connector", connector)
-    monkeypatch.setattr(remote_sources, "_image_labels", image_labels)
-    monkeypatch.setattr(remote_sources, "identity", org_identity)
-    token = set_current_org("acme")
-    yield (
-        {
-            "connector_join": {
-                "connector": "spark",
-                "host": "127.0.0.1",
-                "port": host.port,
-                "pairing_code": host.pairing,
-            },
-            "settings": {"script": _SCRIPT, "cluster": cluster},
-        },
-        identity,
+    _admin(
+        srv,
+        f'createSource(input: {{id: "{source_id}", type: "python", host: "", port: 0, '
+        f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
-    reset_current_org(token)
-
-
-async def _started_worker(state: tuple) -> tuple:
-    mapping, identity = state
-    await remote_sources.join_connector(
-        SimpleNamespace(admin_db=None), "spark_prod", "spark", mapping
-    )
-    manifest = manifest_from_json(mapping["remote"]["manifest"])
-    worker = remote_sources.worker_for(
-        "acme",
-        "spark_prod",
-        mapping["content_hash"],
-        remote_sources.remote_of(mapping),
-        identity,
-        setup=setup_values("acme", "spark_prod", manifest, mapping, None),
-    )
-    worker.start()
-    worker.ready()
-    return worker, mapping["remote"]["names"]
-
-
-async def test_a_table_is_read_from_the_cluster(joined):
-    worker, names = await _started_worker(joined)
-    try:
-        rows = [
-            row
-            for batch in worker.rows("numbers", "table", [], [], schema=names["numbers"]["schema"])
-            for row in batch
-        ]
-    finally:
-        worker.stop()
-    assert rows == [
-        {"id": 0, "label": "n0"},
-        {"id": 1, "label": "n1"},
-        {"id": 2, "label": "n2"},
-    ]
-
-
-async def test_a_command_runs_on_the_cluster(joined):
-    worker, names = await _started_worker(joined)
-    try:
-        assert worker.command("stamp", ["2026-11-09"], ["day"]) == "2026-11-09"
-        rows = [
-            row
-            for batch in worker.rows("stamped", "table", [], [], schema=names["stamped"]["schema"])
-            for row in batch
-        ]
-    finally:
-        worker.stop()
-    assert rows == [{"day": "2026-11-09"}]
-
-
-async def test_a_stream_is_a_streaming_query_on_the_cluster(joined):
-    worker, names = await _started_worker(joined)
-    seen: list[int] = []
-    deadline = time.monotonic() + 120
-    stream = worker.rows("ticks", "stream", [], [], schema=names["ticks"]["schema"])
-    try:
-        for batch in stream:
-            seen.extend(row["value"] for row in batch)
-            if len(seen) >= 5 or time.monotonic() > deadline:
-                break
-    finally:
-        stream.close()
-        worker.stop()
-    assert len(seen) >= 5, seen
-    assert seen == sorted(seen) and len(set(seen)) == len(seen)
-
-
-# -- REQ-2270: a command's governed table argument, read over Arrow Flight SQL --------------------
-
-#: A role the row rule narrows; org_admin, which the rule does not name, reads every row.
-_ANALYST = "clip_analyst"
-_ADMIN = "org_admin"
-
-_LEDGER = {
-    "ledger/ledger.py": '''
-from dataclasses import dataclass
-
-
-@dataclass
-class Clip:
-    id: int
-    region: str
-
-
-def clips() -> list[Clip]:
-    """@table"""
-    return [Clip(1, "emea"), Clip(2, "amer"), Clip(3, "apac")]
-''',
-}
-
-_TABLE_SCRIPT = textwrap.dedent(
-    '''
-    from dataclasses import dataclass
-
-    from provisa_services import TableRef
-    from provisa_spark import dataframe
-
-
-    @dataclass
-    class Clip:
-        id: int
-        region: str
-
-
-    def clips_on_the_cluster(clips: TableRef[Clip]) -> list[Clip]:
-        """The clips the caller may read, as a DataFrame on the cluster.
-
-        @query
-        """
-        frame = dataframe(clips).orderBy("id")
-        return [Clip(id=row.id, region=row.region) for row in frame.collect()]
-    '''
-)
-
-
-def _lan_address() -> str:
-    """This machine's address on its network: a remote host reaches Provisa by it, and a host name
-    on loopback is refused for one (table_reads)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-        probe.connect(("192.0.2.1", 9))  # TEST-NET-1: nothing is sent; the route names the address
-        address = probe.getsockname()[0]
-    assert not address.startswith("127."), f"no network address to serve Flight on: {address}"
-    return address
-
-
-def _certificate(directory: Path, address: str) -> tuple[Path, Path]:
-    """A self-signed certificate for ``address``, and its key: the Flight server's TLS, trusted by
-    the remote host as its root."""
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
-
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, address)])
-    now = datetime.datetime.now(datetime.UTC)
-    certificate = (
-        x509.CertificateBuilder()
-        .subject_name(name)
-        .issuer_name(name)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(minutes=5))
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(
-            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(address))]),
-            critical=False,
-        )
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(key, hashes.SHA256())
-    )
-    cert_path, key_path = directory / "flight.crt", directory / "flight.key"
-    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
-    key_path.write_bytes(
-        key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-    )
-    return cert_path, key_path
 
 
 def _column(name: str, data_type: str) -> str:
     return f'{{name: "{name}", visibleTo: ["{_ADMIN}", "{_ANALYST}"], dataType: "{data_type}"}}'
 
 
-@pytest.fixture(scope="module")
-def flight_tls(tmp_path_factory):
-    address = _lan_address()
-    cert, key = _certificate(tmp_path_factory.mktemp("flight-tls"), address)
-    return address, cert, key
-
-
-@pytest.fixture(scope="module")
-def spark_host(tmp_path_factory, client_python, flight_tls):
-    """The connector's host, trusting the Flight server's certificate as its root."""
-    _, cert, _ = flight_tls
-    started = _Host(
-        tmp_path_factory.mktemp("spark-host"),
-        client_python,
-        {"GRPC_DEFAULT_SSL_ROOTS_FILE_PATH": str(cert)},
+def _register(srv, source_id: str, table: str, columns: list[tuple[str, str]]) -> None:
+    listed = ", ".join(_column(n, t) for n, t in columns)
+    _admin(
+        srv,
+        f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", schemaName: "default", '
+        f'tableName: "{table}", cacheTtl: 300, columns: [{listed}]}})',
     )
-    yield started
-    started.stop()
 
 
 @pytest.fixture(scope="module")
-def provisa_server(tmp_path_factory, spark_host, flight_tls):
-    """A Provisa server serving Arrow Flight over TLS at this machine's address, the connector's
-    block and image labels stood in for (tests/integration/spark_connector_app.py)."""
+def provisa_server(tmp_path_factory, spark_host, project_manifest, cluster):
+    """A Provisa server whose code sources' egress allow-list names the cluster's host, the
+    connector's block and image labels stood in for (tests/integration/spark_connector_app.py)."""
     from tests.integration.isolated_server import IsolatedServer
     from tests.integration.test_code_sources_e2e import _config
 
-    address, cert, key = flight_tls
-    work = tmp_path_factory.mktemp("spark-flight-server")
+    lan, _ = cluster
+    work = tmp_path_factory.mktemp("spark-session-server")
     config = _config()
+    config["server"] = {"udf_egress_allowlist": [lan]}
     config["roles"] = [
         {
             "id": _ANALYST,
@@ -596,19 +399,16 @@ def provisa_server(tmp_path_factory, spark_host, flight_tls):
         "digest": "sha256:" + "b" * 64,
         "code_hash": spark_host.hashed,
         "arch": "amd64",
-        # As connectors/spark/connector.yaml states them: the cluster left unset is the org's default.
-        "requires": [
-            {"name": "script", "multiline": True, "script": True},
-            {"name": "cluster", "org_default": "spark_cluster"},
-        ],
+        # As connectors/spark/connector.yaml states it: left unset, the org's default cluster.
+        "requires": [{"name": "cluster", "org_default": "spark_cluster"}],
     }
     labels = {
         "code_hash": spark_host.hashed,
-        "manifest_hash": manifest_hash(_PROJECT_MANIFEST),
+        "manifest_hash": manifest_hash(project_manifest),
         "runtime": "python",
     }
     srv = IsolatedServer(
-        "spark_flight",
+        "spark_session",
         engine="duckdb",
         config=str(path),
         control_plane="own",
@@ -617,9 +417,6 @@ def provisa_server(tmp_path_factory, spark_host, flight_tls):
         app="tests.integration.spark_connector_app:app",
         env={
             "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
-            "PROVISA_HOSTNAME": address,
-            "PROVISA_FLIGHT_CERT": str(cert),
-            "PROVISA_FLIGHT_KEY": str(key),
             "PROVISA_TEST_SPARK_CONNECTOR": json.dumps(row),
             "PROVISA_TEST_SPARK_LABELS": json.dumps(labels),
         },
@@ -632,40 +429,12 @@ def provisa_server(tmp_path_factory, spark_host, flight_tls):
 
 
 @pytest.fixture(scope="module")
-def clips_command(provisa_server, spark_host, cluster):
-    """The governed table ``fx.clips`` (a Python source; the analyst's row rule allows clip 1) and
-    the Spark command taking it, the connector joined with the server."""
-    from tests.integration.test_code_sources_e2e import _admin, _archive
-
+def lakehouse(provisa_server, spark_host, cluster, client_wheel):
+    """The Spark source ``spark_jobs`` (its cluster, no script), the governed table ``fx.clips``
+    with the analyst's row rule, and the Python source ``lakehouse`` that opens the Spark source's
+    session: its table ``numbers`` registered and its @query saved as a function."""
     srv = provisa_server
-    upload = httpx.post(
-        f"{srv.base_url}/admin/orgs/{srv.org_id}/code-uploads/archive",
-        params={"filename": "ledger.zip"},
-        content=_archive(_LEDGER),
-        headers={"X-Provisa-Role": _ADMIN, "Content-Type": "application/octet-stream"},
-        timeout=srv.request_timeout + 30,
-    )
-    assert upload.status_code == 200, upload.text
-    ledger = {
-        "runtime": "python",
-        "code": {"kind": "upload", "upload": upload.json()["content_hash"]},
-    }
-    _admin(
-        srv,
-        f'createSource(input: {{id: "ledger", type: "python", host: "", port: 0, database: "", '
-        f"cacheTtl: 300, mappingJson: {json.dumps(json.dumps(ledger))}}})",
-    )
-    columns = ", ".join([_column("id", "bigint"), _column("region", "text")])
-    _admin(
-        srv,
-        'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
-        f'tableName: "clips", cacheTtl: 300, columns: [{columns}]}})',
-    )
-    _admin(
-        srv,
-        f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
-        'description: "The analyst reads clip 1 only."})',
-    )
+    _, address = cluster
     joining = {
         "connector_join": {
             "connector": "spark",
@@ -673,18 +442,33 @@ def clips_command(provisa_server, spark_host, cluster):
             "port": spark_host.port,
             "pairing_code": spark_host.pairing,
         },
-        "settings": {"script": _TABLE_SCRIPT, "cluster": cluster},
+        "settings": {"cluster": address},
     }
     _admin(
         srv,
-        f'createSource(input: {{id: "spark_jobs", type: "spark", host: "", port: 0, '
+        f'createSource(input: {{id: "{_SPARK_SOURCE}", type: "spark", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
     )
+    _python_source(srv, "ledger", _archive(dict(_LEDGER)), "ledger.zip")
+    _register(srv, "ledger", "clips", [("id", "bigint"), ("region", "text")])
+    _admin(
+        srv,
+        f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
+        'description: "The analyst reads clip 1 only."})',
+    )
+    requirements, wheels = client_wheel
+    files: dict[str, str | bytes] = {
+        "lakehouse.py": _LAKEHOUSE,
+        "requirements.txt": requirements,
+        **wheels,
+    }
+    _python_source(srv, "lakehouse", _archive(files), "lakehouse.zip")
+    _register(srv, "lakehouse", "numbers", [("id", "bigint"), ("label", "text")])
     response = httpx.post(
         f"{srv.base_url}/admin/actions/functions",
         json={
             "name": "clips_on_the_cluster",
-            "sourceId": "spark_jobs",
+            "sourceId": "lakehouse",
             "functionName": "clips_on_the_cluster",
             "domainId": "fx",
             "visibleTo": [_ADMIN, _ANALYST],
@@ -696,22 +480,40 @@ def clips_command(provisa_server, spark_host, cluster):
     return srv
 
 
-def _clips_as(srv, role: str) -> list[dict]:
+def _sql(srv, role: str, sql: str) -> list[dict]:
     response = httpx.post(
         f"{srv.base_url}/data/sql",
-        json={
-            "sql": "SELECT c.id, c.region FROM clips_on_the_cluster('fx.clips') AS c ORDER BY c.id"
-        },
+        json={"sql": sql},
         headers={"X-Provisa-Role": role},
         timeout=srv.request_timeout + 300,
     )
     assert response.status_code == 200, response.text
-    return [{"id": int(r["id"]), "region": r["region"]} for r in response.json()["data"]["sql"]]
+    body = response.json()
+    assert "errors" not in body, body
+    return body["data"]["sql"]
 
 
-def test_a_spark_command_reads_its_governed_table_over_flight_as_the_calling_role(clips_command):
-    assert _clips_as(clips_command, _ANALYST) == [{"id": 1, "region": "emea"}]
-    assert _clips_as(clips_command, _ADMIN) == [
+def test_a_python_source_reads_through_the_spark_sources_session(lakehouse):
+    rows = _sql(lakehouse, _ADMIN, 'SELECT id, label FROM "fx"."numbers" ORDER BY id')
+    assert [{"id": int(r["id"]), "label": r["label"]} for r in rows] == [
+        {"id": 0, "label": "n0"},
+        {"id": 1, "label": "n1"},
+        {"id": 2, "label": "n2"},
+    ]
+
+
+def _clips_as(srv, role: str) -> list[dict]:
+    rows = _sql(
+        srv,
+        role,
+        "SELECT c.id, c.region FROM clips_on_the_cluster('fx.clips') AS c ORDER BY c.id",
+    )
+    return [{"id": int(r["id"]), "region": r["region"]} for r in rows]
+
+
+def test_a_governed_table_reaches_the_cluster_as_the_calling_role(lakehouse):
+    assert _clips_as(lakehouse, _ANALYST) == [{"id": 1, "region": "emea"}]
+    assert _clips_as(lakehouse, _ADMIN) == [
         {"id": 1, "region": "emea"},
         {"id": 2, "region": "amer"},
         {"id": 3, "region": "apac"},

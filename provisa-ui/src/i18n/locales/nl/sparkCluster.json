@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Verbinden via TLS. Een token wordt alleen via TLS verzonden, dus een token opgeven zet TLS aan.",
     "userId": "Gebruikers-ID",
-    "userIdHelp": "De gebruiker waaronder het cluster het script uitvoert, als het daarom vraagt. Optioneel.",
+    "userIdHelp": "De gebruiker waaronder het cluster het werk van een sessie uitvoert, als het daarom vraagt. Optioneel.",
     "badHost": "Een hostnaam of adres, zonder sc://, poort of pad",
     "badPort": "Een poort van 1 tot 65535",
     "badToken": "Een secret-verwijzing, zoals ${secret:spark_token}",

@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "透過 TLS 連線。權杖只會透過 TLS 傳送，因此提供權杖會開啟 TLS。",
     "userId": "使用者 ID",
-    "userIdHelp": "叢集執行指令碼所用的使用者（如叢集要求）。選填。",
+    "userIdHelp": "叢集執行工作階段工作所用的使用者（如叢集要求）。選填。",
     "badHost": "主機名稱或位址，不含 sc://、連接埠或路徑",
     "badPort": "1 至 65535 之間的連接埠",
     "badToken": "密鑰參照，例如 ${secret:spark_token}",

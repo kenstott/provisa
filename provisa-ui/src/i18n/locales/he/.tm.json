@@ -8609,7 +8609,7 @@
   "he/sparkCluster.json::sparkCluster.tls": "TLS",
   "he/sparkCluster.json::sparkCluster.tlsHelp": "Connect over TLS. A token is only sent over TLS, so giving a token turns it on.",
   "he/sparkCluster.json::sparkCluster.userId": "User ID",
-  "he/sparkCluster.json::sparkCluster.userIdHelp": "The user the cluster runs the script as, when it asks for one. Optional.",
+  "he/sparkCluster.json::sparkCluster.userIdHelp": "The user the cluster runs a session's work as, when it asks for one. Optional.",
   "he/sparqlEndpoint.json::sparqlEndpoint.addHint": "Fill in the last row to add a prefix. Prefixes name terms in results and in pill queries; a query runs as written.",
   "he/sparqlEndpoint.json::sparqlEndpoint.copyEndpoint": "Copy the endpoint URL",
   "he/sparqlEndpoint.json::sparqlEndpoint.endpoint": "Endpoint",
