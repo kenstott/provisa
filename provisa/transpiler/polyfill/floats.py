@@ -38,6 +38,7 @@ import sqlglot.expressions as exp
 from provisa.pgwire import function_types
 from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
+from provisa.transpiler.polyfill.clickhouse import _NUMERIC_MOD
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
@@ -684,6 +685,33 @@ ABS = Feature(
 _INTEGER_TYPES_SAID = frozenset(_LEAST)
 
 
+def _ch_mod(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """mod of two integers the statement says on ClickHouse: PostgreSQL's 22012 of a zero divisor,
+    the remainder over nullIf(b, 0) as ClickHouse folds a constant remainder by 0 whichever branch
+    is chosen. mod of numerics: numeric_mod's form (clickhouse._NUMERIC_MOD), which answers NULL
+    of a NULL and raises 22012 of a zero. Any other keeps ClickHouse's own."""
+    if isinstance(node, exp.Mod):  # sqlglot's node of mod(a, b) and of a % b, which are one
+        args = [node.this, node.expression]
+    else:
+        call = trino.called(node)
+        if call is None or "mod" not in call[0] or len(call[1]) != 2:  # noqa: PLR2004
+            return None
+        args = call[1]
+    said = [function_types.argument_type(a) for a in args]
+    if all(t in _INTEGER_TYPES_SAID for t in said):
+        form = ch_once(
+            ch_checked(
+                [ch_fail("22012", "division by zero").format(condition="$b = 0")],
+                "$a % nullIf($b, 0)",
+            )
+        )
+    elif "numeric" in said and all(t in _INTEGER_TYPES_SAID or t == "numeric" for t in said):
+        form = _NUMERIC_MOD  # its throwIf is constant: a lambda folds it whichever branch is read
+    else:
+        return None
+    return graft(replacement(form, dialect, "mod($a, $b)"), {"a": args[0], "b": args[1]})
+
+
 def _t_mod(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """mod of two integers the statement says on Trino: PostgreSQL's 22012 of a zero divisor,
     where Trino raises its own DIVISION_BY_ZERO. Any other keeps Trino's mod."""
@@ -748,7 +776,17 @@ MOD = Feature(
     "mod of integers on trino",
     FAMILY,
     "The remainder of two integers; of a zero divisor, division by zero.",
-    read=Side(rules=(Rule(None, trino.on_trino(Rewrite(_t_mod, mentions=r"\bmod\b|%"))),)),
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    **ch_only(Rewrite(_ch_mod, mentions=r"\bmod\b|%")),
+                    **trino.on_trino(Rewrite(_t_mod, mentions=r"\bmod\b|%")),
+                },
+            ),
+        )
+    ),
 )
 
 #: lcm of two integers (int.c's int4lcm and int8lcm): 0 where either is 0, else |a / gcd * b|,
@@ -782,6 +820,39 @@ LCM = Feature(
                         ],
                         f"if($a IS NULL OR $b IS NULL, NULL, "
                         f"toInt64(if($a = 0 OR $b = 0, 0, {_LCM})))",
+                    ),
+                ),
+            ),
+        )
+    ),
+)
+
+#: gcd of two integers (int.c's int4gcd and int8gcd): |b| where a is 0 and |a| where b is 0, else
+#: the greatest common divisor, PostgreSQL's 22003 where that is past the type (the least value
+#: of a type beside 0 or itself). Computed in Int128, which holds |least|, where ClickHouse's own
+#: gcd divides by a zero and overflows on Int64's least; a zero is read as 1 in its call.
+_GCD = (
+    f"if($a = 0, abs(toInt128($b)), if($b = 0, abs(toInt128($a)), gcd({_NONZERO_A}, {_NONZERO_B})))"
+)
+
+GCD = Feature(
+    "gcd",
+    FAMILY,
+    "The greatest common divisor of two integers; out of range past the type.",
+    read=Side(
+        rules=(
+            Rule(
+                "gcd($a, $b)",
+                _of_no_numeric(
+                    "gcd($a, $b)",
+                    ch_checked(
+                        [
+                            ch_fail("22003", f"{_LCM_NAMES[held]} out of range").format(
+                                condition=f"{_of_type('$a', held)} AND {_GCD} > {largest}"
+                            )
+                            for held, largest in _LCM_LARGEST.items()
+                        ],
+                        f"if($a IS NULL OR $b IS NULL, NULL, toInt64({_GCD}))",
                     ),
                 ),
             ),
@@ -979,6 +1050,7 @@ FEATURES: tuple[Feature, ...] = (
     SIGN,
     ABS,
     MOD,
+    GCD,
     INTEGERS_OF_FLOATS,
     LCM,
     CHR,
