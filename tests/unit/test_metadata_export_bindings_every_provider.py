@@ -14,7 +14,8 @@ gets its row in the names table (``export:<target>``, read from ``catalog_bindin
 
 The registry is walked: each registered provider must have a publish case here, and each case
 must bind every table it published under the table's Provisa URI with the target's own name for
-it. A new provider that records no bindings fails here before it can ship."""
+it, and every column of those tables the same way when the provider exports columns. A new
+provider that records no bindings fails here before it can ship."""
 
 # Requirements: REQ-194, REQ-1389
 
@@ -222,7 +223,22 @@ async def _snowflake_horizon(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(rt, "close", lambda: None)
     tables = [
-        replace(sf._table_asset("petstore-api", "public", name, name), semantic_uri=f"uri:{name}")
+        replace(
+            sf._table_asset(
+                "petstore-api",
+                "public",
+                name,
+                name,
+                columns=[
+                    replace(
+                        sf._column_asset("petstore-api", "public", name, column),
+                        semantic_uri=f"uri:{name}#field:{column}",
+                    )
+                    for column in ("id", "status")
+                ],
+            ),
+            semantic_uri=f"uri:{name}",
+        )
         for name in ("pets", "orders")
     ]
     snapshot = SimpleNamespace(
@@ -274,3 +290,22 @@ async def test_every_provider_binds_each_table_it_published(provider, monkeypatc
     for table in tables:
         vendor_ref, physical_key = result.bindings[table.semantic_uri]
         assert vendor_ref and physical_key, (provider, table.semantic_uri)
+
+
+# The providers whose column exports bind each column (REQ-194, REQ-1389).
+_COLUMN_BINDERS = ("atlan", "atlas", "dataplex", "openlineage", "purview", "snowflake_horizon")
+
+
+@pytest.mark.parametrize("provider", _COLUMN_BINDERS)
+async def test_every_provider_binds_each_column_it_published(provider, monkeypatch):
+    """A column export reaches the names table only through its binding (``export:<target>`` on
+    the column's row, keyed by the column's Provisa URI), as a table's does."""
+    result, tables = await _CASES[provider](monkeypatch)
+    assert result.ok, result.errors
+    columns = [c for t in tables for c in t.columns]
+    assert columns, f"{provider}'s case publishes no column"
+    unbound = [c.semantic_uri for c in columns if c.semantic_uri not in result.bindings]
+    assert not unbound, f"{provider} published columns it recorded no binding for: {unbound}"
+    for column in columns:
+        vendor_ref, physical_key = result.bindings[column.semantic_uri]
+        assert vendor_ref and physical_key, (provider, column.semantic_uri)

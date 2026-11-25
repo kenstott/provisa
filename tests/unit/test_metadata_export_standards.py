@@ -355,7 +355,8 @@ async def test_openlineage_publish_reports_the_rejected_asset_and_continues(snap
 @pytest.mark.asyncio
 async def test_openlineage_binds_each_dataset_it_registered(snapshot, monkeypatch):  # REQ-194
     """REQ-1389, REQ-194: each dataset the target accepted is recorded in the bindings under its
-    namespace and name, so the names table carries the name it has there; a refused one is not."""
+    namespace and name, and each of its columns as a field of it, so the names table carries the
+    name each has there; a refused one is not."""
 
     async def _post(self, url, json=None, headers=None):
         request = httpx.Request("POST", url)
@@ -365,12 +366,15 @@ async def test_openlineage_binds_each_dataset_it_registered(snapshot, monkeypatc
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
     result = await OpenLineageExport(_export_config("openlineage")).publish(snapshot)
-    expected = {
-        t.semantic_uri: (f"provisa://acme/{'.'.join(t.ref.parts)}", ".".join(t.ref.parts))
-        for t in snapshot.tables
-        if t.name != "customers"
-    }
-    assert len(expected) == 2
+    accepted = [t for t in snapshot.tables if t.name != "customers"]
+    assert len(accepted) == 2
+    expected = {}
+    for t in accepted:
+        name = ".".join(t.ref.parts)
+        expected[t.semantic_uri] = (f"provisa://acme/{name}", name)
+        for c in t.columns:
+            expected[c.semantic_uri] = (f"provisa://acme/{name}.{c.name}", f"{name}.{c.name}")
+    assert len(expected) > len(accepted)
     assert result.bindings == expected
 
 

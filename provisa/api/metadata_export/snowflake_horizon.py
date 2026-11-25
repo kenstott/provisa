@@ -672,6 +672,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         kinds: dict[tuple[str, str, str], str] = {}
         described: list["TableAsset"] = []
         addressed: dict[str, tuple[str, str, str]] = {}  # each described table's address, by URI
+        columns: dict[str, tuple[tuple[str, str, str], str]] = {}  # (table address, name), by URI
         for table in tables:
             # REQ-2122: every table carries its Provisa address, so every table is published.
             try:
@@ -691,6 +692,8 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             kinds[parts] = kind
             described.append(table)
             addressed[table.semantic_uri] = parts
+            for column in table.columns:
+                columns[column.semantic_uri] = (parts, column.name)
         if not described:
             return 0
         statements = comment_statements(
@@ -708,8 +711,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             return 0
         # REQ-1389, REQ-194: each described table is published at its address in the engine's
         # store, which is both its Snowflake identity and the name it carries there.
+        # Each of its columns is published at the table's address and its own name.
         for uri, (database, schema, name) in addressed.items():
             address = f"{database}.{schema}.{name}"
+            result.bindings[uri] = (address, address)
+        for uri, ((database, schema, name), column_name) in columns.items():
+            address = f"{database}.{schema}.{name}.{column_name}"
             result.bindings[uri] = (address, address)
         try:
             for stmt in tag_statements:

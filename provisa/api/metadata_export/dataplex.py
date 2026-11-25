@@ -336,9 +336,14 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 result.published["data_products"] = result.published.get("data_products", 0) + 1
                 result.published["data_assets"] = result.published.get("data_assets", 0) + count
                 # REQ-1389, REQ-194: each member is catalogued under its BigQuery resource name,
-                # which is both Dataplex's id for it and the name it carries there.
+                # which is both Dataplex's id for it and the name it carries there; each of its
+                # columns under that entry's schema path (Schema.<column>), as a definition link
+                # addresses it.
                 for resource, table in assets.items():
                     result.bindings[table.semantic_uri] = (resource, resource)
+                    for column in table.columns:
+                        address = f"{resource}#Schema.{column.name}"
+                        result.bindings[column.semantic_uri] = (address, address)
         return result
 
     async def _publish_product(
