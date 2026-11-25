@@ -26,9 +26,11 @@ alike with 17):
 - width_bucket of an infinite float8 operand (answered), a NaN and an infinite bound (2201G);
 - json_array_length and jsonb_array_length of no array: PostgreSQL's 22023 and message;
 - isfinite of an interval past int32 months: 22008; of a timestamp outside DateTime64's bound (a
-  year BC, past 9999, infinity): timestamp_in's 0A000, now stated; of an instant literal in no ISO
-  form (a year BC, past 9999, infinity), and timestamptz_larger and timestamptz_smaller of one:
-  the row's refusal by name, now stated with its message.
+  year BC, past 9999, infinity): timestamp_in's 0A000, now stated; of an instant literal
+  DateTime64 holds none of (a year BC, past 9999, infinity): PostgreSQL's answer
+  (:func:`test_an_edge_instant_answers_postgresql`), and timestamptz_larger and
+  timestamptz_smaller of one: the other operand where the call picks it, PostgreSQL's answer;
+  0A000, stated, where the answer is the edge itself (REQ-2236, amended 2026-11-24).
 
 The run's 24.3-only errors (cardinality, array_larger's supertype, array_position of a start,
 array_sample and trim_array's arraySlice of a Nullable count, array_agg of a NULL) do not occur on
@@ -38,6 +40,7 @@ ClickHouse 26: :func:`test_answered_on_clickhouse_26` holds them there."""
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 import pytest
@@ -191,14 +194,22 @@ _OUTSIDE_STAMP = (
 )
 
 
-def _by_name(function: str) -> str:
-    """A row's refusal by name of a literal in no ISO form it does not read (instants._refused)."""
-    return f"{function}() has no form on clickhouse"
-
-
 _BC = "'4713-01-01 00:00:00+00 BC'::timestamp with time zone"
 _FAR = "'294276-12-31 23:59:59.999999+00'::timestamp with time zone"
 _INFINITE = "'infinity'::timestamp with time zone"
+_MINUS_INFINITE = "'-infinity'::timestamp with time zone"
+_BEFORE = "'1800-01-01 00:00:00+00'::timestamp with time zone"
+_AFTER = "'2300-01-01 00:00:00+00'::timestamp with time zone"
+_NULL_TSTZ = "NULL::timestamp with time zone"
+
+
+def _outside(function: str) -> str:
+    """The raise of a call whose answer is outside DateTime64's bound (instants.out_of_bound)."""
+    return (
+        f"{function}() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC "
+        "has no exact form on clickhouse"
+    )
+
 
 WITHIN_BOUND = [
     (_call("array_larger", _TWO, _ONE), "0A000",
@@ -217,16 +228,19 @@ WITHIN_BOUND = [
     (_call("isfinite", "'294276-12-31 23:59:59.999999'::timestamp without time zone"), "0A000",
      _OUTSIDE_STAMP),
     (_call("isfinite", "'infinity'::timestamp without time zone"), "0A000", _OUTSIDE_STAMP),
-    (_call("isfinite", _BC), "0A000", _by_name("isfinite")),
-    (_call("isfinite", _FAR), "0A000", _by_name("isfinite")),
-    (_call("isfinite", _INFINITE), "0A000", _by_name("isfinite")),
-    (_call("timestamptz_larger", _BC, _TSTZ), "0A000", _by_name("timestamptz_larger")),
-    (_call("timestamptz_larger", _TSTZ, _BC), "0A000", _by_name("timestamptz_larger")),
-    (_call("timestamptz_larger", _FAR, _TSTZ), "0A000", _by_name("timestamptz_larger")),
-    (_call("timestamptz_larger", _TSTZ, _INFINITE), "0A000", _by_name("timestamptz_larger")),
-    (_call("timestamptz_smaller", _BC, _TSTZ), "0A000", _by_name("timestamptz_smaller")),
-    (_call("timestamptz_smaller", _TSTZ, _FAR), "0A000", _by_name("timestamptz_smaller")),
-    (_call("timestamptz_smaller", _INFINITE, _TSTZ), "0A000", _by_name("timestamptz_smaller")),
+    # The answer is the edge itself, which DateTime64 holds none of.
+    (_call("timestamptz_larger", _FAR, _TSTZ), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_larger", _TSTZ, _FAR), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_larger", _TSTZ, _INFINITE), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_larger", _INFINITE, _TSTZ), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_larger", _BC, _MINUS_INFINITE), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_larger", _BC, _FAR), "0A000", _outside("timestamptz_larger")),
+    (_call("timestamptz_smaller", _BC, _TSTZ), "0A000", _outside("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _TSTZ, _BC), "0A000", _outside("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _MINUS_INFINITE, _TSTZ), "0A000", _outside("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _TSTZ, _MINUS_INFINITE), "0A000", _outside("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _FAR, _INFINITE), "0A000", _outside("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _BC, _FAR), "0A000", _outside("timestamptz_smaller")),
 ]  # fmt: skip
 
 
@@ -237,6 +251,45 @@ def test_raised_within_a_stated_bound(runtime, sql, sqlstate, message):
     error = _raised(runtime, sql)
     assert error.sqlstate == sqlstate and message in str(error), str(error)
     assert _stated_on_clickhouse(sqlstate, message)
+
+
+_AT = datetime.datetime(2024, 6, 15, 12, 30, 45, tzinfo=datetime.timezone.utc)
+
+EDGE_ANSWERS = [
+    # The edge is on the side the call does not pick: the other operand, PostgreSQL's answer.
+    (_call("timestamptz_larger", _BC, _TSTZ), _AT),
+    (_call("timestamptz_larger", _TSTZ, _BC), _AT),
+    (_call("timestamptz_larger", _MINUS_INFINITE, _TSTZ), _AT),
+    (_call("timestamptz_larger", _TSTZ, _MINUS_INFINITE), _AT),
+    (_call("timestamptz_larger", _BEFORE, _TSTZ), _AT),
+    (_call("timestamptz_smaller", _FAR, _TSTZ), _AT),
+    (_call("timestamptz_smaller", _TSTZ, _FAR), _AT),
+    (_call("timestamptz_smaller", _INFINITE, _TSTZ), _AT),
+    (_call("timestamptz_smaller", _TSTZ, _INFINITE), _AT),
+    (_call("timestamptz_smaller", _TSTZ, _AFTER), _AT),
+    # STRICT: a NULL beside an edge answers NULL.
+    (_call("timestamptz_larger", _NULL_TSTZ, _BC), None),
+    (_call("timestamptz_smaller", _INFINITE, _NULL_TSTZ), None),
+    # A value the engine computes beside an edge: that value.
+    (
+        f'SELECT pg_catalog."timestamptz_larger"({_BC}, v) AS v '
+        f"FROM (VALUES ({_TSTZ})) AS t(v)",
+        _AT,
+    ),
+    # isfinite of a value DateTime64 holds none of: PostgreSQL's answer, the value never written.
+    (_call("isfinite", _BC), True),
+    (_call("isfinite", _FAR), True),
+    (_call("isfinite", _INFINITE), False),
+    (_call("isfinite", _MINUS_INFINITE), False),
+    (_call("isfinite", _BEFORE), True),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("sql", "want"), EDGE_ANSWERS)
+def test_an_edge_instant_answers_postgresql(runtime, sql, want):
+    """REQ-2236, amended 2026-11-24: a form that fails only for edge values answers them with
+    CASE forms of PostgreSQL's answer; refused by name before."""
+    assert _one(runtime, sql) == want
 
 
 ON_CLICKHOUSE_26 = [
