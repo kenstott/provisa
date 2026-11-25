@@ -39,7 +39,7 @@ A pattern PostgreSQL itself rejects raises PostgreSQL's error (AreError, 2201B).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 #: PostgreSQL's SQLSTATE of an invalid regular expression.
 INVALID_REGULAR_EXPRESSION = "2201B"
@@ -87,14 +87,33 @@ _EXPANDED_SPACE = frozenset(" \t\n\r\f\v\x85\xa0     　") | frozenset
 
 _OPTION_LETTERS = frozenset("bceimnpqstwx")
 
+#: Why RE2's leftmost-first match may not be PostgreSQL's (Re2.leftmost), each completing
+#: "<function>() of ...". PostgreSQL's match is the longest at its start (the shortest where the
+#: pattern's quantifiers are all non-greedy); RE2's is the first its alternatives and repetitions
+#: reach in their order.
+ALTERNATIVES = "alternatives, of which RE2 matches the first where PostgreSQL matches the longest"
+MIXED_GREEDINESS = (
+    "quantifiers of mixed greediness, which RE2 reads each alone where PostgreSQL reads the "
+    "first for the whole match"
+)
+REPEATED_GROUP = (
+    "a group repeated a varying number of times, which RE2 repeats as far as it first can where "
+    "PostgreSQL matches the longest"
+)
+
 
 class AreError(Exception):
-    """PostgreSQL's own error of a pattern it rejects (2201B, its message)."""
+    """PostgreSQL's own error of a pattern it rejects (2201B, its message), or of a SQL regular
+    expression it rejects (``sqlstate``, ``message`` as it is)."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, sqlstate: str = INVALID_REGULAR_EXPRESSION) -> None:
         super().__init__(message)
-        self.sqlstate = INVALID_REGULAR_EXPRESSION
-        self.message = f"invalid regular expression: {message}"
+        self.sqlstate = sqlstate
+        self.message = (
+            f"invalid regular expression: {message}"
+            if sqlstate == INVALID_REGULAR_EXPRESSION
+            else message
+        )
 
 
 class NoForm(Exception):  # noqa: N818 -- what has no form, as the refusal names it
@@ -125,6 +144,13 @@ class Re2:
     loose: str
     #: Whether ^ and $ match at a newline (the n, m and w options).
     multiline: bool
+    #: Why RE2's leftmost-first match may differ from PostgreSQL's longest (or shortest) at the
+    #: same start (ALTERNATIVES, MIXED_GREEDINESS, REPEATED_GROUP); None where it cannot. Whether
+    #: the text matches at all is the same either way.
+    leftmost: str | None = None
+    #: Whether the first capturing group may take no part in a match (it is optional, or in one
+    #: of several alternatives): PostgreSQL's substring answers NULL there, RE2's extract ''.
+    first_group_optional: bool = False
 
 
 @dataclass
@@ -189,6 +215,24 @@ def _is_word(c: str) -> bool:
 _BOUNDARY, _NOT_BOUNDARY = "\x00y", "\x00Y"
 
 
+@dataclass
+class _Frame:
+    """The whole pattern, or a group: where its alternatives are, and how wide each is."""
+
+    #: Where in the written pattern its body starts and ends (past its opening, at its closing).
+    start: int
+    end: int = -1
+    #: Where its | are written.
+    bars: list[int] = field(default_factory=list)
+    #: The width in characters of each alternative closed so far, and of the one being read.
+    widths: list[int] = field(default_factory=list)
+    width: int = 0
+    #: Whether it is repeated with a minimum of none (?, *, {0,...}).
+    optional: bool = False
+    #: The groups within it, at any depth.
+    groups: int = 0
+
+
 class _Reader:
     """One pattern read left to right, written as RE2's."""
 
@@ -204,6 +248,19 @@ class _Reader:
         self.word_boundary = False
         #: Whether what was written last is one word character, matched at least once (\\M).
         self.word_before = False
+        #: The whole pattern, the groups open around what is read, and every group read.
+        self.frames = [_Frame(0)]
+        self.read_frames: list[_Frame] = [self.frames[0]]
+        #: Each quantifier's greediness, in order (True greedy).
+        self.greedy: list[bool] = []
+        #: The group closed just before what is read, which a quantifier repeats.
+        self.closed_last: _Frame | None = None
+        #: Whether what was read last is a quantifier, which a ? makes non-greedy.
+        self.after_quantifier = False
+        self.repeated_group = False
+        #: The first capturing group, and the groups and the whole pattern around it.
+        self.first_group: _Frame | None = None
+        self.around_first: list[_Frame] = []
 
     # -- the whole pattern --------------------------------------------------------------------
 
@@ -218,6 +275,10 @@ class _Reader:
                 end = text.find("\n", self.at)
                 self.at = len(text) if end < 0 else end + 1
                 continue
+            quantifier = c in "*?+" or (c == "{" and text[self.at + 1 : self.at + 2] in _DIGITS)
+            if not quantifier:
+                self.after_quantifier = False
+                self.closed_last = None
             if c == "\\":
                 self._escape()
             elif c == "[":
@@ -228,26 +289,59 @@ class _Reader:
                 self._close()
             elif c == ".":
                 self._atom("[^\\n]" if self.options.newline in "np" else ".", word=False)
-            elif c in "*?":
-                self.out.append(c)
-                self.at += 1
-                self.word_before = False
-            elif c == "+":
-                self.out.append(c)
-                self.at += 1
+            elif c in "*?+":
+                self._quantifier(c)
             elif c == "{":
                 self._brace()
-            elif c in "|^$":
+            elif c == "|":
+                self._bar()
+            elif c in "^$":
                 self.out.append(c)
                 self.at += 1
                 self.word_before = False
             else:
                 self._atom(_literal(c), word=_is_word(c))
 
-    def _atom(self, written: str, *, word: bool, width: int = 1) -> None:
+    def _atom(self, written: str, *, word: bool, width: int = 1, zero: bool = False) -> None:
+        """``written`` for the ``width`` characters of the pattern read; ``zero`` where it
+        matches no character (a constraint)."""
         self.out.append(written)
         self.at += width
         self.word_before = word
+        if not zero:
+            self.frames[-1].width += 1
+
+    def _quantifier(self, c: str) -> None:
+        self.out.append(c)
+        self.at += 1
+        if c == "?" and self.after_quantifier:  # a non-greedy quantifier
+            self.greedy[-1] = False
+            self.after_quantifier = False
+            return
+        if c in "*?":
+            self.word_before = False
+        self._quantified(least=1 if c == "+" else 0, varying=True)
+
+    def _quantified(self, *, least: int, varying: bool) -> None:
+        """A quantifier of at ``least`` repetitions, ``varying`` where it allows more."""
+        self.greedy.append(True)
+        self.after_quantifier = True
+        self.frames[-1].width = -(10**9)  # no fixed width
+        repeated = self.closed_last
+        if repeated is not None:
+            # A group of one character and no group is repeated as that character is.
+            single = repeated.widths == [1] and repeated.groups == 0
+            self.repeated_group = self.repeated_group or (varying and not single)
+            repeated.optional = repeated.optional or least == 0
+
+    def _bar(self) -> None:
+        frame = self.frames[-1]
+        frame.bars.append(len(self.out))
+        frame.widths.append(frame.width)
+        frame.width = 0
+        self.out.append("|")
+        self.at += 1
+        self.word_before = False
 
     def _brace(self) -> None:
         """{ opens a bound where a digit follows it, and is an ordinary character otherwise."""
@@ -264,6 +358,10 @@ class _Reader:
         self.at = end + 1
         if bound[1:].startswith("0"):
             self.word_before = False
+        counts = bound[1:-1].split(",")
+        least = int(counts[0]) if _all_in(counts[0], "0123456789") and counts[0] else 0
+        varying = len(counts) > 1 and counts[1] != counts[0]
+        self._quantified(least=least, varying=varying)
 
     def _open(self) -> None:
         text = self.text
@@ -272,6 +370,7 @@ class _Reader:
             if kind == ":":
                 self.out.append("(?:")
                 self.open_groups.append(False)
+                self._push()
                 self.at += 3
             elif kind in ("=", "!") or text.startswith(("(?<=", "(?<!"), self.at):
                 raise NoForm("a lookahead or lookbehind constraint")
@@ -287,17 +386,34 @@ class _Reader:
             self.out.append("(")
             self.opened += 1
             self.open_groups.append(True)
+            if self.opened == 1:
+                self.around_first = list(self.frames)
+            self._push()
+            if self.opened == 1:
+                self.first_group = self.frames[-1]
             self.at += 1
         self.word_before = False
+
+    def _push(self) -> None:
+        for frame in self.frames:
+            frame.groups += 1
+        frame = _Frame(len(self.out))
+        self.frames.append(frame)
+        self.read_frames.append(frame)
 
     def _close(self) -> None:
         if not self.open_groups:
             raise AreError("parentheses () not balanced")
         if self.open_groups.pop():
             self.closed += 1
+        frame = self.frames.pop()
+        frame.end = len(self.out)
+        frame.widths.append(frame.width)
+        self.frames[-1].width += frame.width if not frame.bars else -(10**9)
         self.out.append(")")
         self.at += 1
         self.word_before = False
+        self.closed_last = frame
 
     # -- escapes --------------------------------------------------------------------------------
 
@@ -314,13 +430,13 @@ class _Reader:
         if e in "dDsSwW":
             self._atom(self._shorthand(e), word=e in "dw", width=2)
         elif e == "A":
-            self._atom("\\A", word=False, width=2)
+            self._atom("\\A", word=False, width=2, zero=True)
         elif e == "Z":
-            self._atom("\\z", word=False, width=2)
+            self._atom("\\z", word=False, width=2, zero=True)
         elif e in "yY":
             self.bound.add("ascii")
             self.word_boundary = True
-            self._atom(_BOUNDARY if e == "y" else _NOT_BOUNDARY, word=False, width=2)
+            self._atom(_BOUNDARY if e == "y" else _NOT_BOUNDARY, word=False, width=2, zero=True)
         elif e == "m":
             self._start_of_word(2)
         elif e == "M":
@@ -431,7 +547,7 @@ class _Reader:
             raise NoForm("\\m beside what may not be a word character")
         self.bound.add("ascii")
         self.word_boundary = True
-        self._atom(_BOUNDARY, word=False, width=width)
+        self._atom(_BOUNDARY, word=False, width=width, zero=True)
 
     def _end_of_word(self, width: int) -> None:
         """\\M: RE2's \\b where a word character precedes, matched at least once."""
@@ -439,7 +555,7 @@ class _Reader:
             raise NoForm("\\M beside what may not be a word character")
         self.bound.add("ascii")
         self.word_boundary = True
-        self._atom(_BOUNDARY, word=False, width=width)
+        self._atom(_BOUNDARY, word=False, width=width, zero=True)
 
     # -- bracket expressions --------------------------------------------------------------------
 
@@ -455,6 +571,7 @@ class _Reader:
         self.out.append(written)
         self.at = end
         self.word_before = word
+        self.frames[-1].width += 1
 
     def _bracket_at(self, at: int) -> tuple[str, int, bool]:
         """The bracket expression at ``at``: RE2's of it, the position past it, and whether it
@@ -560,6 +677,48 @@ class _Reader:
 
     # -- the result -----------------------------------------------------------------------------
 
+    def leftmost(self) -> str | None:
+        """Why RE2's choice among the matches at a start may not be PostgreSQL's; None where it
+        cannot be, its alternatives written longest first where that order is exact: one set of
+        alternatives, each of a fixed width and no group, in a pattern of no quantifier. Every
+        match then is the same text but for the alternative, and RE2 takes the first that
+        matches, the longest. A pattern of no alternatives whose quantifiers repeat single
+        characters, all greedy or all not, RE2 matches as PostgreSQL does."""
+        top = self.frames[0]
+        top.end = len(self.out)
+        top.widths.append(top.width)
+        alternating = [frame for frame in self.read_frames if frame.bars]
+        if alternating:
+            frame = alternating[0]
+            if len(alternating) > 1 or self.greedy or frame.groups:
+                return ALTERNATIVES
+            self._longest_first(frame)
+            return None
+        if len(set(self.greedy)) > 1:
+            return MIXED_GREEDINESS
+        if self.repeated_group:
+            return REPEATED_GROUP
+        return None
+
+    def _longest_first(self, frame: _Frame) -> None:
+        cuts = [frame.start, *frame.bars, frame.end]
+        alternatives = [
+            self.out[cuts[i] + (1 if i else 0) : cuts[i + 1]] for i in range(len(cuts) - 1)
+        ]
+        ordered = sorted(zip(frame.widths, alternatives), key=lambda pair: -pair[0])
+        written: list[str] = []
+        for i, (_, alternative) in enumerate(ordered):
+            written.extend((["|"] if i else []) + alternative)
+        self.out[frame.start : frame.end] = written
+
+    def first_group_optional(self) -> bool:
+        if self.first_group is None:
+            return False
+        around = self.around_first
+        return any(frame.bars for frame in around) or any(
+            frame.optional for frame in (*around, self.first_group)
+        )
+
     def bound_of(self) -> tuple[str, str] | None:
         if "ascii" in self.bound:
             return _BEYOND_ASCII, LOCALE_CLASS
@@ -632,6 +791,7 @@ def translated(pattern: str, flags: str = "") -> Re2:
     reader.read()
     if reader.open_groups:
         raise AreError("parentheses () not balanced")
+    leftmost = reader.leftmost()
     body = "".join(reader.out)
     return Re2(
         _grouped(body.replace(_BOUNDARY, "\\b").replace(_NOT_BOUNDARY, "\\B"), options),
@@ -640,9 +800,78 @@ def translated(pattern: str, flags: str = "") -> Re2:
         reader.word_boundary,
         _grouped(body.replace(_BOUNDARY, "(?:)").replace(_NOT_BOUNDARY, "(?:)"), options),
         options.newline in "nw",
+        leftmost,
+        reader.first_group_optional(),
     )
 
 
 def _grouped(body: str, options: _Options) -> str:
     flags = "s" + ("m" if options.newline in "nw" else "") + ("i" if options.no_case else "")
     return f"(?{flags}:{body})"
+
+
+#: PostgreSQL's SQLSTATEs of a SQL regular expression's escape it rejects.
+INVALID_ESCAPE_SEQUENCE = "22025"
+INVALID_USE_OF_ESCAPE_CHARACTER = "2200C"
+#: What separates a SQL regular expression's parts, after its escape character.
+SEPARATOR = '"'
+
+
+def similar_to(pattern: str, escape: str = "\\") -> str:
+    """The ARE PostgreSQL matches for SIMILAR TO ``pattern`` with ``escape`` ('' for none), as
+    similar_escape_internal (src/backend/utils/adt/regexp.c) writes it: anchored at both ends in
+    a group that captures nothing, % any text, _ any character, ( a group that captures nothing, .
+    ^ $ and a backslash themselves; a bracket expression as it is; an escaped character escaped,
+    the escape and a double quote one of the two separators of substring's three parts."""
+    if len(escape) > 1:
+        raise AreError("invalid escape string", INVALID_ESCAPE_SEQUENCE)
+    out = ["^(?:"]
+    after_escape = False
+    separators = 0
+    depth = 0  # how deep in bracket expressions
+    start = 0  # 1 at a bracket's start, 2 past its ^: a ] there is a character
+    for c in pattern:
+        if after_escape:
+            if c == SEPARATOR and depth < 1:
+                if separators == 0:
+                    out.append("){1,1}?(")
+                elif separators == 1:
+                    out.append("){1,1}(?:")
+                else:
+                    raise AreError(
+                        "SQL regular expression may not contain more than two "
+                        "escape-double-quote separators",
+                        INVALID_USE_OF_ESCAPE_CHARACTER,
+                    )
+                separators += 1
+            else:
+                out.append("\\" + c)
+                start = 3
+            after_escape = False
+        elif escape and c == escape:
+            after_escape = True
+        elif depth > 0:
+            out.append("\\\\" if c == "\\" else c)
+            if c == "]" and start > 2:  # noqa: PLR2004 -- past a bracket's start
+                depth -= 1
+            elif c == "[":
+                depth += 1
+            start = start + 1 if c == "^" else 3
+        elif c == "[":
+            out.append(c)
+            depth += 1
+            start = 1
+        elif c == "%":
+            out.append(".*")
+        elif c == "_":
+            out.append(".")
+        elif c == "(":
+            out.append("(?:")
+        elif c in "\\.^$":
+            out.append("\\" + c)
+        else:
+            out.append(c)
+    if after_escape:
+        raise NoForm("a SQL regular expression ending in its escape character")
+    out.append(")$")
+    return "".join(out)

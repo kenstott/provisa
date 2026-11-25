@@ -200,9 +200,12 @@ def test_what_re2_cannot_express_is_refused_with_its_reason(sql, why):
     assert why in str(refused.value), str(refused.value)
 
 
-def test_a_two_argument_match_of_a_column_pattern_keeps_clickhouse_s_match():
+def test_a_two_argument_match_of_a_column_pattern_is_checked_when_it_runs():
+    """A column's pattern is ClickHouse's match of it with PostgreSQL's default options, beside
+    the run-time check of what RE2 reads otherwise (test_polyfill_clickhouse_regex_followups)."""
     sql = "SELECT a ~ b AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "match(a, b)" in transpile(sql, "clickhouse", generated=False)
+    written = transpile(sql, "clickhouse", generated=False)
+    assert "match(a, concat('(?s)', " in written and "throwIf" in written
 
 
 # --- the translation itself ---------------------------------------------------------------------

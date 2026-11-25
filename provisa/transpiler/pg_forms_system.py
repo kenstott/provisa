@@ -353,6 +353,11 @@ def _regexp_replace_nth(engine: _Engine) -> str:
 
 
 _REGEXP_PARAMS = ("value", "pattern", "replacement", "start", "n")
+#: regexp_replace's Nth match on ClickHouse, its parameters REGEXP_PARAMS, which the polyfill grid
+#: writes with a literal pattern read as PostgreSQL reads it (provisa.transpiler.polyfill.regex,
+#: REQ-2236): ClickHouse's RE2 reads the pattern it is given at run time.
+REGEXP_PARAMS = _REGEXP_PARAMS
+CLICKHOUSE_REGEXP_REPLACE_NTH = _regexp_replace_nth(_CLICKHOUSE_ENGINE)
 
 #: repeat on Trino, whose own builds an array: strict, and nothing for a count below one. rpad takes
 #: the length in characters and refuses an empty padding.

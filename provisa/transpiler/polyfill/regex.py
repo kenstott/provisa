@@ -25,16 +25,18 @@ group by number in the pattern are refused by name. The start and N forms are ot
 
 from __future__ import annotations
 
+import functools
 import re
 
+import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.transpiler import are_re2
+from provisa.transpiler import are_re2, pg_forms_system
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
-from provisa.transpiler.polyfill.numbers import ch_fail
+from provisa.transpiler.polyfill.numbers import ch_fail, ch_only
 
 FAMILY = "regular expressions"
 
@@ -275,6 +277,95 @@ def ch_translated(function: str, pattern: str, options: str) -> are_re2.Re2:
         raise Refused(_ch_refusal(function, f"of {missing.why}"), ruling=True) from None
 
 
+def ch_leftmost(function: str, re2: are_re2.Re2) -> None:
+    """Refuses by name a pattern whose match RE2 may choose otherwise than PostgreSQL
+    (are_re2.Re2.leftmost), where ``function`` answers the match itself and not only whether there
+    is one."""
+    if re2.leftmost is not None:
+        raise Refused(_ch_refusal(function, f"of {re2.leftmost}"), ruling=True)
+
+
+def _quoted(text: str) -> str:
+    """``text`` as a ClickHouse string literal."""
+    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+#: Where a pattern's character is read as itself: past no backslash, or an even run of them.
+_UNESCAPED = r"(?:^|[^\\])(?:\\\\)*"
+#: A locale's classes as RE2 names them in a bracket expression.
+_CLASS_NAMES = "alnum|alpha|ascii|blank|cntrl|digit|graph|lower|print|punct|space|upper|word|xdigit"
+#: What of a pattern that is no literal RE2 reads otherwise than PostgreSQL, or not at all: an
+#: escape other than a punctuation character's, \a \d \D \f \n \r \t \v \A and the class
+#: escapes \w \W \s \S (\b is a backspace in PostgreSQL's, \y \m \M \Z PostgreSQL's alone, a
+#: digit a back reference ...); a (? other than (?: (lookaround, embedded options); a director; a
+#: collating element, an equivalence class or a word constraint in a bracket expression; a bound
+#: PostgreSQL reads otherwise ({,n}, past 255).
+_OTHERWISE = (
+    f"{_UNESCAPED}\\\\(?:[^!-/:-@\\[-`{{-~adDfnrtvAwWsS]|$)"
+    f"|{_UNESCAPED}\\((?:\\?[^:]|\\*)"
+    "|^\\*\\*\\*"
+    "|\\[[^\\]]*\\[[.=]|\\[:[<>]:\\]"
+    "|\\{,|\\{[0-9]*[0-9]{3}"
+)
+#: A class of a locale, which reads text beyond ASCII (and RE2's \\s the vertical tab) otherwise.
+_LOCALE_CLASSES = f"{_UNESCAPED}\\\\[wWsS]|\\[:(?:{_CLASS_NAMES}):\\]"
+_OTHER_TEXT = "[^\\x{0}-\\x{7F}]|\\x{0B}"
+#: What of a pattern makes RE2's leftmost-first match differ from PostgreSQL's longest: an
+#: alternative, a non-greedy quantifier, a repeated group (are_re2.Re2.leftmost, read the safe way).
+_LEFTMOST = f"{_UNESCAPED}(?:\\||[*+?}}]\\?|\\)[*+?{{])"
+_RUNTIME = "a pattern RE2 reads otherwise than PostgreSQL"
+_RUNTIME_LEFTMOST = "a pattern of alternatives or quantifiers RE2 matches otherwise than PostgreSQL"
+
+
+#: Whether a pattern that is no literal, $p, holds what RE2 reads otherwise (_OTHERWISE), or a
+#: class RE2 names not.
+_READ_OTHERWISE = (
+    f"match($p, {_quoted(_OTHERWISE)}) OR countMatches($p, {_quoted('[[]:')}) != "
+    f"countMatches($p, {_quoted(f'[[]:(?:{_CLASS_NAMES}):[]]')})"
+)
+
+
+def ch_runtime_checks(function: str, *, leftmost: bool) -> list[str]:
+    """The run-time checks of a pattern that is no literal, $p, of the text $s: 0A000 by name where
+    the pattern holds what RE2 reads otherwise than PostgreSQL (_OTHERWISE, a class name RE2 has
+    not), a locale's class on text beyond ASCII, and (``leftmost``, where the function answers the
+    match) what RE2 matches otherwise (_LEFTMOST)."""
+    otherwise = ch_fail("0A000", f"{function}() of {_RUNTIME} has no form on clickhouse")
+    locale = ch_fail("0A000", f"{are_re2.LOCALE_CLASS} has no form on clickhouse")
+    checks = [
+        otherwise.format(condition=_READ_OTHERWISE),
+        locale.format(
+            condition=f"match($p, {_quoted(_LOCALE_CLASSES)}) AND match($s, {_quoted(_OTHER_TEXT)})"
+        ),
+    ]
+    if leftmost:
+        fail = ch_fail("0A000", f"{function}() of {_RUNTIME_LEFTMOST} has no form on clickhouse")
+        checks.append(fail.format(condition=f"match($p, {_quoted(_LEFTMOST)})"))
+    return checks
+
+
+def _ch_checked(value: exp.Expr, pattern: exp.Expr, checks: list[str], answer: exp.Expr):
+    """``answer`` where none of ``checks`` of the text ``value`` and the pattern raises."""
+    return graft(
+        replacement(_with_checks(checks, "$a"), "clickhouse", "f($s, $p, $a)"),
+        {"s": value, "p": pattern, "a": answer},
+    )
+
+
+def _safe(pattern: exp.Expr) -> exp.Expr:
+    """A pattern that is no literal, or the empty pattern where it holds what RE2 reads otherwise:
+    ClickHouse compiles a constant pattern before its check raises (ch_runtime_checks)."""
+    return graft(
+        replacement(f"if({_READ_OTHERWISE}, '', $p)", "clickhouse", "f($p)"), {"p": pattern}
+    )
+
+
+def _dot_all(pattern: exp.Expr, flags: str = "s") -> exp.Expr:
+    """A pattern that is no literal (_safe) with PostgreSQL's default options as RE2 reads them:
+    . and a complemented bracket expression match a newline (RE2's s)."""
+    return exp.Anonymous(this="concat", expressions=[exp.Literal.string(f"(?{flags})"), pattern])
+
+
 def _ch_replacement(said: exp.Expr, re2: are_re2.Re2) -> exp.Expr:
     """PostgreSQL's replacement as ClickHouse's replaceRegexpOne and replaceRegexpAll read it:
     \\1 to \\9 the group (nothing for a group the pattern lacks), \\& the whole match (\\0), \\\\ a
@@ -332,12 +423,15 @@ def _ch_replace(value: exp.Expr, pattern: exp.Expr, said: exp.Expr, flags: exp.E
     if not (isinstance(pattern, exp.Literal) and pattern.is_string):
         if set(options) - {"c", "i", "t"}:
             raise Refused(refusal("clickhouse"))
-        if [flag for flag in options if flag in "ic"][-1:] == ["i"]:
-            pattern = _no_case(pattern)
-        if every:
-            return _ch_every(value, pattern, said, None)
-        raise Refused(refusal("clickhouse"))
+        if not every:
+            raise Refused(refusal("clickhouse"))
+        checks = ch_runtime_checks("regexp_replace", leftmost=True)
+        safe = _safe(pattern)
+        read = _no_case(safe) if [f for f in options if f in "ic"][-1:] == ["i"] else safe
+        answer = _ch_every(value, _dot_all(read), said, None)
+        return _ch_checked(value, pattern, checks, answer)
     re2 = ch_translated("regexp_replace", pattern.this, options)
+    ch_leftmost("regexp_replace", re2)
     if every:
         answer = _ch_every(value, pattern, said, re2)
     elif not (isinstance(said, exp.Literal) and said.is_string):
@@ -515,10 +609,6 @@ def _with_checks(checks: list[str], answer: str) -> str:
     return f"if({' + '.join(checks)} = 0, {answer}, NULL)"
 
 
-def _quoted(text: str) -> str:
-    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
-
-
 def _ch_form(function: str, count: int, re2: are_re2.Re2, empty_pattern: bool) -> str:
     """The ClickHouse form of ``function`` of ``count`` arguments, its holes $s (the text), $b (the
     start), $n (the occurrence), $e (the end option) and $x (the subexpression), of the pattern as
@@ -603,7 +693,7 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if isinstance(node, exp.RegexpILike):
         # ~*: regexp_like case-insensitive, the pattern's embedded options read after it.
         if not _is_literal_text(node.expression):
-            return None
+            return _ch_like_at_run_time(node.this, node.expression, "si")
         call = (frozenset({"regexp_like"}), [node.this, node.expression, exp.Literal.string("i")])
     else:
         call = trino.called(node)
@@ -619,9 +709,9 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
         # WITH ORDINALITY of them, so the call is refused by name, as it was.
         raise Refused(_ch_refusal(function, "of pieces read as a set of rows"), ruling=True)
     if function == "regexp_like" and len(args) == 2 and not _is_literal_text(args[1]):
-        return None  # ClickHouse's own match, sqlglot's form of it
-    if function == "regexp_count" and len(args) == 2 and not _is_literal_text(args[1]):
-        return None  # ClickHouse's own countMatches, sqlglot's form of it
+        if _is_null(args[1]):
+            return exp.cast(exp.null(), exp.DataType.build("Nullable(Bool)", dialect=dialect))
+        return _ch_like_at_run_time(args[0], args[1], "s")
     # regexp_count of a literal pattern takes the form of its start of 1: countMatches skips an
     # empty match (regexp_count('abc', '') is 4 on PostgreSQL, 0 on ClickHouse), so such a
     # pattern raises 0A000, and a newline is an ordinary character, as PostgreSQL reads it.
@@ -640,6 +730,8 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if subexpression is not None and _constant_integer(subexpression) != 0:
         raise Refused(_ch_refusal(function, "of a subexpression"))
     re2 = _re2_pattern(function, args[1], options)
+    if function != "regexp_like":
+        ch_leftmost(function, re2)
     holes = ("s", "b", "n", "e", "x")
     bindings = {"s": args[0]}
     for hole in holes[1:]:
@@ -647,6 +739,17 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     form = _ch_form(function, len(args), re2, said_text(args[1]).this == "")
     pattern = "f(" + ", ".join("$" + h for h in holes) + ")"
     return graft(replacement(form, dialect, pattern), bindings)
+
+
+def _ch_like_at_run_time(value: exp.Expr, pattern: exp.Expr, flags: str) -> exp.Expr:
+    """Whether a pattern that is no literal matches, as RE2 reads it with PostgreSQL's options
+    ``flags``, where its checks pass (ch_runtime_checks): whether there is a match is the same
+    whichever match RE2 chooses."""
+    matched = exp.cast(
+        exp.Anonymous(this="match", expressions=[value, _dot_all(_safe(pattern), flags)]),
+        exp.DataType.build("Nullable(Bool)", dialect="clickhouse"),
+    )
+    return _ch_checked(value, pattern, ch_runtime_checks("regexp_like", leftmost=False), matched)
 
 
 def _is_literal_text(value: exp.Expr) -> bool:
@@ -665,6 +768,243 @@ def _constant_integer(value: exp.Expr) -> int | None:
     if isinstance(node, exp.Literal) and not node.is_string and node.is_int:
         return -int(node.this) if negative else int(node.this)
     return None
+
+
+# --- substring(text FROM pattern), SIMILAR TO, regexp_replace's Nth match on ClickHouse -------------
+
+
+def _literal_text(value: exp.Expr) -> str | None:
+    """The text of a literal (cast to text or not); None for anything else."""
+    written = said_text(value)
+    if isinstance(written, exp.Literal) and written.is_string:
+        return written.this
+    return None
+
+
+def _said_text_type(value: exp.Expr) -> bool:
+    """Whether the statement says ``value`` is a text: a literal, or a cast to a text type."""
+    node = value.unnest()
+    if isinstance(node, exp.Literal):
+        return node.is_string
+    return isinstance(node, exp.Cast) and node.to.is_type("text", "varchar", "char")
+
+
+def _null_of(type_name: str) -> exp.Expr:
+    return exp.cast(exp.null(), exp.DataType.build(type_name, dialect=_CH))
+
+
+def _sql_refusal(subject: str, why: str) -> Refusal:
+    return Refusal("0A000", f"{subject} {why} has no form on clickhouse")
+
+
+def _similar_are(subject: str, pattern: str, escape: str) -> str:
+    """PostgreSQL's ARE of a SQL regular expression (are_re2.similar_to), its errors raised."""
+    try:
+        return are_re2.similar_to(pattern, escape)
+    except are_re2.AreError as error:
+        raise Refused(Refusal(error.sqlstate, error.message), ruling=True) from None
+    except are_re2.NoForm as missing:
+        raise Refused(_sql_refusal(subject, f"of {missing.why}"), ruling=True) from None
+
+
+#: substring of a pattern: the first group where the pattern has one, else the match, as
+#: ClickHouse's extract answers; NULL where nothing matches. $s the text, $p the pattern.
+_SUBSTRING = "if(match($s, $p), extract($s, $p), NULL)"
+#: The same where the first group may take no part in the match: PostgreSQL answers NULL there,
+#: and ClickHouse's extract '' as of an empty group, so an empty answer raises 0A000.
+_SUBSTRING_OPTIONAL = "substring() of a first group that may take no part in the match"
+
+
+def _ch_substring_of(value: exp.Expr, re2: are_re2.Re2) -> exp.Expr:
+    form = _SUBSTRING
+    if re2.first_group_optional:
+        fail = ch_fail("0A000", f"{_SUBSTRING_OPTIONAL} has no form on clickhouse")
+        condition = "match($s, $p) AND extract($s, $p) = ''"
+        form = _with_checks([fail.format(condition=condition)], form)
+    answer = graft(
+        replacement(f"CAST({form} AS Nullable(String))", _CH, "f($s, $p)"),
+        {"s": value, "p": exp.Literal.string(re2.text)},
+    )
+    return _ch_bounded(value, re2, answer)
+
+
+def _ch_substring(node: exp.Expr) -> exp.Expr | None:
+    """substring(text FROM pattern) and substring(text FROM pattern FOR escape) on ClickHouse: a
+    start or a length the statement does not say is a text is the substr row's."""
+    pattern, escape = node.args.get("start"), node.args.get("length")
+    if pattern is None or not _said_text_type(pattern):
+        return None
+    if escape is not None and not _said_text_type(escape):
+        return None
+    if _is_null(node.this) or _is_null(pattern) or (escape is not None and _is_null(escape)):
+        return _null_of("Nullable(String)")
+    written = _literal_text(pattern)
+    if written is None:
+        raise Refused(_ch_refusal("substring", "of a pattern that is no literal"), ruling=True)
+    if escape is None:
+        re2 = ch_translated("substring", written, "")
+        ch_leftmost("substring", re2)
+        return _ch_substring_of(node.this, re2)
+    said = _literal_text(escape)
+    if said is None:
+        raise Refused(_ch_refusal("substring", "of an escape that is no literal"), ruling=True)
+    are = _similar_are("substring()", written, said)
+    if said and f"{said}{are_re2.SEPARATOR}" in written:
+        # Its three parts, the first matched as little as it can: RE2 reads no such preference.
+        raise Refused(_ch_refusal("substring", "of escape-double-quote separators"), ruling=True)
+    # Anchored at both ends, of no group: the text where all of it matches.
+    re2 = ch_translated("substring", are, "")
+    return _ch_substring_of(node.this, re2)
+
+
+def _ch_similar(node: exp.Expr) -> exp.Expr | None:
+    """text SIMILAR TO pattern [ESCAPE escape] on ClickHouse: whether the text matches the ARE
+    PostgreSQL writes of the pattern (are_re2.similar_to)."""
+    escape: exp.Expr | None = None
+    if isinstance(node, exp.Escape) and isinstance(node.this, exp.SimilarTo):
+        escape, node = node.expression, node.this
+    if not isinstance(node, exp.SimilarTo):
+        return None
+    value, pattern = node.this, node.expression
+    if any(_is_null(v) for v in (value, pattern, *([] if escape is None else [escape]))):
+        return _null_of("Nullable(Bool)")
+    written = _literal_text(pattern)
+    if written is None:
+        raise Refused(_sql_refusal("SIMILAR TO", "of a pattern that is no literal"), ruling=True)
+    said = "\\" if escape is None else _literal_text(escape)
+    if said is None:
+        raise Refused(_sql_refusal("SIMILAR TO", "of an escape that is no literal"), ruling=True)
+    are = _similar_are("SIMILAR TO", written, said)
+    try:
+        re2 = are_re2.translated(are)
+    except are_re2.AreError as error:
+        raise Refused(Refusal(error.sqlstate, error.message), ruling=True) from None
+    except are_re2.NoForm as missing:
+        raise Refused(_sql_refusal("SIMILAR TO", f"of {missing.why}"), ruling=True) from None
+    matched = graft(
+        replacement("CAST(match($s, $p) AS Nullable(Bool))", _CH, "f($s, $p)"),
+        {"s": value, "p": exp.Literal.string(re2.text)},
+    )
+    return _ch_bounded(value, re2, matched)
+
+
+def _ch_sql_patterns(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """substring of a pattern, and SIMILAR TO, on ClickHouse: its substring reads a position, and
+    it has no SIMILAR TO."""
+    if isinstance(node, exp.Substring):
+        return _ch_substring(node)
+    if isinstance(node, (exp.SimilarTo, exp.Escape)):
+        return _ch_similar(node)
+    return None
+
+
+@functools.cache
+def _ch_nth_form() -> exp.Expr:
+    """regexp_replace's Nth match on ClickHouse, its parameters columns of their names."""
+    from provisa.transpiler.function_macros import _thrown
+
+    parsed = sqlglot.parse_one(pg_forms_system.CLICKHOUSE_REGEXP_REPLACE_NTH, read=_CH)
+    return parsed.transform(_thrown)
+
+
+def _ch_nth(value, pattern, said, start, n) -> exp.Expr:
+    """The Nth-match form with each parameter its argument."""
+    from provisa.transpiler.function_macros import _argument
+
+    values = dict(zip(pg_forms_system.REGEXP_PARAMS, (value, pattern, said, start, n), strict=True))
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name in values:
+            return _argument(values[node.name]).copy()
+        return node
+
+    return _ch_nth_form().copy().transform(bound)
+
+
+def _ch_replace_nth(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """regexp_replace(text, pattern, replacement, start [, n]) on ClickHouse: the Nth match's
+    form (pg_forms_system), of a literal pattern read as PostgreSQL reads it (are_re2); n 1 where
+    it is not said. A pattern that is no literal is refused by name (pg_forms_enum refuses it
+    first, REQ-2167), and so is the call of six arguments (REQ-2167, amended 2026-11-02)."""
+    if not isinstance(node, exp.RegexpReplace):
+        return None
+    value, pattern = node.this, said_text(node.expression)
+    said, start = said_text(node.args["replacement"]), node.args["position"]
+    n = node.args.get("occurrence") or exp.Literal.number(1)
+    if _is_null(pattern):
+        return _null_of("Nullable(String)")
+    if not (isinstance(pattern, exp.Literal) and pattern.is_string):
+        raise Refused(_ch_refusal("regexp_replace", "of a pattern that is no literal"), ruling=True)
+    re2 = ch_translated("regexp_replace", pattern.this, "")
+    ch_leftmost("regexp_replace", re2)
+    answer = _ch_nth(value, exp.Literal.string(re2.text), said, start, n)
+    return _ch_bounded(value, re2, answer)
+
+
+_NTH_PATTERNS = (
+    "regexp_replace($s, $p, $r, $b::integer)",
+    "regexp_replace($s, $p, $r, $b::integer, $n::integer)",
+)
+
+CH_NTH_REPLACE = Feature(
+    "regexp_replace from a start",
+    FAMILY,
+    "regexp_replace from a start: its first match, or its Nth (0 every match).",
+    read=Side(
+        rules=tuple(Rule(p, ch_only(Rewrite(_ch_replace_nth))) for p in _NTH_PATTERNS),
+        limitations={
+            _CH: (
+                Limitation(
+                    "A literal pattern is read as PostgreSQL reads it; a pattern that is no "
+                    "literal is refused by name. "
+                    + _CH_NO_RE2
+                    + " A constraint (\\A, \\y, \\Y, \\m, \\M), a replacement holding \\& or "
+                    "\\\\, a start below 1 and a negative n raise 0A000 when the call runs: the Nth "
+                    "match is replaced apart from the text around it. Alternatives, quantifiers of "
+                    "mixed greediness and a repeated group RE2 matches otherwise are refused by "
+                    "name (see the regular expressions on ClickHouse).",
+                    Refusal("0A000", "regexp_replace does not read this value"),
+                ),
+                *_CH_LOCALE_BOUNDS,
+            )
+        },
+    ),
+)
+
+SQL_PATTERNS = Feature(
+    "substring of a pattern, SIMILAR TO",
+    FAMILY,
+    "substring(text FROM pattern [FOR escape]) and text SIMILAR TO pattern [ESCAPE escape].",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    _CH: Rewrite(
+                        _ch_sql_patterns,
+                        mentions=r"\bsimilar\b|\bsubstring\b|\bsubstr\b",
+                        first=True,
+                    )
+                },
+            ),
+        ),
+        limitations={
+            _CH: (
+                Limitation(
+                    "substring's pattern is read as PostgreSQL reads it (see the regular "
+                    "expressions on ClickHouse); SIMILAR TO's is the expression PostgreSQL writes "
+                    "of it (% any text, _ any character), anchored at both ends. A pattern or an "
+                    "escape that is no literal is refused by name, and so is substring's of "
+                    "escape-double-quote separators, whose first part PostgreSQL matches as little "
+                    "as it can. Where substring's first group may take no part in the match and "
+                    "the match leaves it empty, the call raises 0A000 when it runs.",
+                    Refusal("0A000", f"{_SUBSTRING_OPTIONAL} has no form on clickhouse"),
+                ),
+                *_CH_LOCALE_BOUNDS,
+            )
+        },
+    ),
+)
 
 
 CH_REGEXPS = Feature(
@@ -705,4 +1045,4 @@ CH_REGEXPS = Feature(
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
 ORDER = 80
-FEATURES: tuple[Feature, ...] = (REGEXP_REPLACE, CH_REGEXPS)
+FEATURES: tuple[Feature, ...] = (REGEXP_REPLACE, CH_REGEXPS, CH_NTH_REPLACE, SQL_PATTERNS)

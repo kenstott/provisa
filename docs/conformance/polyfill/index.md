@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-633 of the grid's 633 features are native on PostgreSQL and left out.
+635 of the grid's 635 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-270 of the grid's 633 features are native on DuckDB and left out.
+271 of the grid's 635 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -157,6 +157,11 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -1035,7 +1040,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-177 of the grid's 633 features are native on Trino and left out.
+178 of the grid's 635 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -1223,6 +1228,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -2176,7 +2186,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-177 of the grid's 633 features are native on Presto and left out.
+178 of the grid's 635 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -2364,6 +2374,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -3317,7 +3332,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Athena](athena.md)
 
-177 of the grid's 633 features are native on Athena and left out.
+178 of the grid's 635 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -3505,6 +3520,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -4458,7 +4478,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-87 of the grid's 633 features are native on ClickHouse and left out.
+87 of the grid's 635 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td><ul><li>Of an array the statement writes with nested braces only: a column&#x27;s array of arrays keeps each call&#x27;s own form. array_larger and array_smaller of arrays of different dimensions are refused by name: either is the answer, and ClickHouse&#x27;s CASE answers one type. <code>0A000</code> array_larger() of arrays of different dimensions has no form on clickhouse</li><li>array_smaller of arrays of different dimensions is refused by name. <code>0A000</code> array_smaller() of arrays of different dimensions has no form on clickhouse</li><li>array_cat of an array of more than one dimension is refused by name where another call reads its answer: that call would read an array of arrays as an array of one dimension. <code>0A000</code> array_cat() of an array of more than one dimension read by another call has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -4625,6 +4645,12 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 =&gt;
 function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag that is no constant, and a first match whose pattern or replacement is no constant, are refused; so is the empty pattern&#x27;s replacement that is no literal or holds a backslash. A literal pattern is read as PostgreSQL reads it (each escape, class, constraint, director and embedded option, and the option letters of the flags). A back reference, lookahead and lookbehind, a basic or extended expression (b, e), a named collating element, \m or \M beside what may not be a word character, and \S in a complemented bracket expression are refused by name: RE2 has no form of them. <code>0A000</code> regexp_replace() has no form on clickhouse</li><li>With the g flag, a pattern that matches the empty text is searched as PostgreSQL searches it (each empty match replaced, then the next character copied) where the pattern is a literal and the replacement a literal holding no backslash. Otherwise such a pattern raises 0A000 when it runs. <code>0A000</code> regexp_replace() of a pattern that matches the empty text has no form on clickhouse</li><li>A locale&#x27;s class (\w, \W, [[:alpha:]] and the like) or a word constraint (\y, \Y, \m, \M) reads the ASCII characters as PostgreSQL does in every locale; on text beyond ASCII the call is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s class or word boundary on text beyond ASCII has no form on clickhouse</li><li>A space class (\s, \S, [[:space:]], [[:blank:]]) on text holding a space beyond ASCII is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s space class on text holding a space beyond ASCII has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>regular expressions on ClickHouse</strong><br>regexp_count, regexp_instr, regexp_substr, regexp_like and regexp_split_to_array of a literal pattern and literal flags.</td><td><pre><code>function provisa.transpiler.polyfill.regex._ch_regexp: A regexp function of a literal pattern and literal flags on ClickHouse (_ch_form).</code></pre></td><td><ul><li>The pattern and the flags are literals (a ~ or regexp_like of a pattern that is no literal is ClickHouse&#x27;s own match). A literal pattern is read as PostgreSQL reads it (each escape, class, constraint, director and embedded option, and the option letters of the flags). A back reference, lookahead and lookbehind, a basic or extended expression (b, e), a named collating element, \m or \M beside what may not be a word character, and \S in a complemented bracket expression are refused by name: RE2 has no form of them. A subexpression other than 0 is refused by name; a pattern that matches the empty text raises 0A000 where it counts, places, splits or extracts (the empty pattern itself extracts the empty text), and a NULL text that is no literal raises 0A000 in regexp_split_to_array (ClickHouse holds no NULL of an array).</li><li>A locale&#x27;s class (\w, \W, [[:alpha:]] and the like) or a word constraint (\y, \Y, \m, \M) reads the ASCII characters as PostgreSQL does in every locale; on text beyond ASCII the call is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s class or word boundary on text beyond ASCII has no form on clickhouse</li><li>A space class (\s, \S, [[:space:]], [[:blank:]]) on text holding a space beyond ASCII is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s space class on text holding a space beyond ASCII has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.regex._ch_replace_nth: regexp_replace(text, pattern, replacement, start [, n]) on ClickHouse: the Nth match&#x27;s</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.regex._ch_replace_nth: regexp_replace(text, pattern, replacement, start [, n]) on ClickHouse: the Nth match&#x27;s</code></pre></td><td><ul><li>A literal pattern is read as PostgreSQL reads it; a pattern that is no literal is refused by name. A literal pattern is read as PostgreSQL reads it (each escape, class, constraint, director and embedded option, and the option letters of the flags). A back reference, lookahead and lookbehind, a basic or extended expression (b, e), a named collating element, \m or \M beside what may not be a word character, and \S in a complemented bracket expression are refused by name: RE2 has no form of them. A constraint (\A, \y, \Y, \m, \M), a replacement holding \&amp; or \\, a start below 1 and a negative n raise 0A000 when the call runs: the Nth match is replaced apart from the text around it. Alternatives, quantifiers of mixed greediness and a repeated group RE2 matches otherwise are refused by name (see the regular expressions on ClickHouse). <code>0A000</code> regexp_replace does not read this value</li><li>A locale&#x27;s class (\w, \W, [[:alpha:]] and the like) or a word constraint (\y, \Y, \m, \M) reads the ASCII characters as PostgreSQL does in every locale; on text beyond ASCII the call is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s class or word boundary on text beyond ASCII has no form on clickhouse</li><li>A space class (\s, \S, [[:space:]], [[:blank:]]) on text holding a space beyond ASCII is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s space class on text holding a space beyond ASCII has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>substring of a pattern, SIMILAR TO</strong><br>substring(text FROM pattern [FOR escape]) and text SIMILAR TO pattern [ESCAPE escape].</td><td><pre><code>function provisa.transpiler.polyfill.regex._ch_sql_patterns: substring of a pattern, and SIMILAR TO, on ClickHouse: its substring reads a position, and</code></pre></td><td><ul><li>substring&#x27;s pattern is read as PostgreSQL reads it (see the regular expressions on ClickHouse); SIMILAR TO&#x27;s is the expression PostgreSQL writes of it (% any text, _ any character), anchored at both ends. A pattern or an escape that is no literal is refused by name, and so is substring&#x27;s of escape-double-quote separators, whose first part PostgreSQL matches as little as it can. Where substring&#x27;s first group may take no part in the match and the match leaves it empty, the call raises 0A000 when it runs. <code>0A000</code> substring() of a first group that may take no part in the match has no form on clickhouse</li><li>A locale&#x27;s class (\w, \W, [[:alpha:]] and the like) or a word constraint (\y, \Y, \m, \M) reads the ASCII characters as PostgreSQL does in every locale; on text beyond ASCII the call is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s class or word boundary on text beyond ASCII has no form on clickhouse</li><li>A space class (\s, \S, [[:space:]], [[:blank:]]) on text holding a space beyond ASCII is refused when it runs (0A000), as PostgreSQL&#x27;s locale decides. <code>0A000</code> a locale&#x27;s space class on text holding a space beyond ASCII has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -5691,7 +5717,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-279 of the grid's 633 features are native on Snowflake and left out.
+280 of the grid's 635 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5844,6 +5870,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -6712,7 +6743,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-279 of the grid's 633 features are native on Databricks and left out.
+280 of the grid's 635 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6865,6 +6896,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -7733,7 +7769,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-279 of the grid's 633 features are native on BigQuery and left out.
+280 of the grid's 635 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7886,6 +7922,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -8754,7 +8795,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-279 of the grid's 633 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+280 of the grid's 635 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8907,6 +8948,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -9775,7 +9821,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-279 of the grid's 633 features are native on Redshift and left out.
+280 of the grid's 635 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9928,6 +9974,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -10796,7 +10847,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-279 of the grid's 633 features are native on MySQL and left out.
+280 of the grid's 635 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10949,6 +11000,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -11817,7 +11873,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-279 of the grid's 633 features are native on SingleStore and left out.
+280 of the grid's 635 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11970,6 +12026,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -12838,7 +12899,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-279 of the grid's 633 features are native on SQLite and left out.
+280 of the grid's 635 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12991,6 +13052,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -13859,7 +13925,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-279 of the grid's 633 features are native on Oracle and left out.
+280 of the grid's 635 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14012,6 +14078,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -14880,7 +14951,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-279 of the grid's 633 features are native on Hive and left out.
+280 of the grid's 635 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15033,6 +15104,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -15901,7 +15977,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-279 of the grid's 633 features are native on Exasol and left out.
+280 of the grid's 635 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16054,6 +16130,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -16922,7 +17003,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-279 of the grid's 633 features are native on Druid and left out.
+280 of the grid's 635 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -17075,6 +17156,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -17943,7 +18029,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Db2](db2.md)
 
-239 of the grid's 633 features are native on Db2 and left out.
+240 of the grid's 635 features are native on Db2 and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -18114,6 +18200,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: regexp_replace($s, $p, $r, $f::text). <code>0A000</code> regexp_replace has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -19024,7 +19115,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SAP HANA](saphana.md)
 
-226 of the grid's 633 features are native on SAP HANA and left out.
+227 of the grid's 635 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -19195,6 +19286,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: regexp_replace($s, $p, $r, $f::text). <code>0A000</code> regexp_replace has no form on SAP HANA that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)

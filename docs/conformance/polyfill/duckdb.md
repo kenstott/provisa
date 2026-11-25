@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 405, of which 321 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 323 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-270 of the grid's 633 features are native on DuckDB and left out.
+271 of the grid's 635 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -154,6 +154,11 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
