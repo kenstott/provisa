@@ -27383,3 +27383,13 @@ Maintainer 2026-11-25. A column rule keyed on a tag or a classification: for eac
 **Code:** —
 
 **Tests:** —
+
+### REQ-2279 · Column-Level Masking {#REQ-2279}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-25. Extends [REQ-1494](#REQ-1494). A JSON column can declare a template fake: the object's shape, each field with its own fake from the existing kinds and methods (for example email for contact.email and phone_number for contact.phone), nested objects and fixed-length arrays of fields allowed, and a literal for a field that should not vary. Every engine that computes fakes builds the object from the field fakes, so the result is the same JSON on every engine and stable fields stay stable. Each field's fake is checked as a column's would be against the field's type. Propose fakes offers a template for a JSON column from the keys and value types its latest profile run found, and Polly declares one when asked for fakes on fields inside a JSON column. Structured Faker methods (pydict, profile and the like) stay refused.
+
+**Code:** —
+
+**Tests:** —
