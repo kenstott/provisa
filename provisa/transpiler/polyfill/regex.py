@@ -194,8 +194,9 @@ _CH_EMPTY_MATCH_EVERY = (
     "range(1, toUInt64(lengthUTF8(ifNull($v, ''))) + 2)), "
     "tuple('', toUInt64(1))), 1)), replaceRegexpAll($v, $p, $r))"
 )
-#: A pattern that matches the empty text where no form above writes PostgreSQL's search: the
-#: pattern is no literal, or the replacement is no literal or holds a backslash. It raises 0A000
+#: A pattern that matches the empty text where no form writes PostgreSQL's search: the pattern is
+#: no literal, or the replacement is no literal or names one of the pattern's groups (a literal
+#: replacement holding a backslash otherwise is _ch_every_walked's). It raises 0A000
 #: where the pattern can match the empty text ($e: the pattern, its word boundaries matching
 #: everywhere), and is replaceRegexpAll otherwise.
 _CH_EMPTY_MATCH_RAISES = (
@@ -221,6 +222,9 @@ def _ch_every(value: exp.Expr, pattern: exp.Expr, said: exp.Expr, re2: are_re2.R
         )
     written = exp.Literal.string(re2.text)
     held = _ch_replacement(said, re2)
+    literal = isinstance(said, exp.Literal) and said.is_string
+    if not plain and literal and not _names_a_group(said.this, re2):
+        return _ch_every_walked(value, written, said.this, held, re2)
     if not plain:
         return graft(
             replacement(_CH_EMPTY_MATCH_RAISES, "clickhouse", "f($v, $p, $r, $e)"),
@@ -237,6 +241,47 @@ def _ch_every(value: exp.Expr, pattern: exp.Expr, said: exp.Expr, re2: are_re2.R
             "b": exp.Literal.string(f"^(?s:.)(?:{re2.text})"),
             "ga": exp.Literal.string(f"^((?:{re2.text}))"),
             "gb": exp.Literal.string(f"^(?s:.)((?:{re2.text}))"),
+        },
+    )
+
+
+def _names_a_group(said: str, re2: are_re2.Re2) -> bool:
+    """Whether the replacement ``said`` names one of the pattern's groups (\\1 to \\9)."""
+    at = 0
+    while at < len(said):
+        if said[at] == "\\":
+            following = said[at + 1 : at + 2]
+            if following and following in "123456789" and int(following) <= re2.groups:
+                return True
+            at += 2
+        else:
+            at += 1
+    return False
+
+
+def _ch_every_walked(
+    value: exp.Expr, written: exp.Expr, said: str, held: exp.Expr, re2: are_re2.Re2
+) -> exp.Expr:
+    """regexp_replace with the g flag of a literal replacement holding a backslash and naming no
+    group of the pattern: where the pattern can match the empty text (_ch_empty_matched), its
+    matches found as PostgreSQL finds them (_ch_replace_walk, on text of LONGEST_BOUND characters at
+    most, 0A000 by name beyond); replaceRegexpAll otherwise. A replacement naming a group keeps its
+    refusal (_CH_EMPTY_MATCH_RAISES): PostgreSQL chooses a group's part of an empty match by the
+    group's own preference, which the match's start and length do not say."""
+    when = _ch_empty_matched(re2)
+    checks, walked = _ch_replace_walk(re2, said, every=True, when=when)
+    form = _with_checks(
+        checks,
+        f"CAST(if({when}, {walked}, replaceRegexpAll($s, $p, $r)) AS Nullable(String))",
+    )
+    return graft(
+        replacement(form, _CH, "f($s, $b, $n, $p, $r)"),
+        {
+            "s": value,
+            "b": exp.Literal.number(1),
+            "n": exp.Literal.number(0),
+            "p": written,
+            "r": held,
         },
     )
 
@@ -361,23 +406,43 @@ def _ch_pg_matches(re2: are_re2.Re2, limit: str) -> str:
         )
         + ")"
     )
-    start = "greatest(toInt64($b), 1) - 1"
-    steps = f"range(toUInt64(greatest(least(_len + 2, {limit}), 0)))"
+    # The fold's accumulator is of a type that holds no NULL: a NULL start or limit answers NULL
+    # before the fold is read (_ch_with_pg_matches), so its value here is never read.
+    start = "greatest(toInt64(assumeNotNull($b)), 1) - 1"
+    steps = f"range(toUInt64(greatest(least(_len + 2, assumeNotNull({limit})), 0)))"
     initial = f"tuple({start}, CAST([], 'Array(Tuple(Int64, Int64))'), toUInt8(0))"
     return f"tupleElement(arrayFold({step}, {steps}, {initial}), 2)"
 
 
-def _ch_with_pg_matches(re2: are_re2.Re2, limit: str, answer: str) -> list[str]:
+def _ch_with_pg_matches(
+    re2: are_re2.Re2, limit: str, answer: str, when: str | None = None
+) -> list[str]:
     """The check and the answer: ``answer`` of the text _t, its length _len and
     PostgreSQL's matches _m (_ch_pg_matches) in the text $s, NULL where $s is; the check raises
-    0A000 by name on text longer than LONGEST_BOUND."""
+    0A000 by name on text longer than LONGEST_BOUND. ``when``, where the matches are found only
+    under a condition (_ch_empty_matched), is that condition: the check raises only where it holds,
+    and the text the matches are found in is empty where it does not, so a branch not taken costs
+    nothing."""
     beyond = ch_fail(LONGEST_BEYOND.sqlstate, LONGEST_BEYOND.message)
+    text = "ifNull($s, '')" if when is None else f"if({when}, ifNull($s, ''), '')"
     body = _let(
-        [("_t", "ifNull($s, '')"), ("_len", "toInt64(lengthUTF8(ifNull($s, '')))")],
+        [("_t", text), ("_len", f"toInt64(lengthUTF8({text}))")],
         _let([("_m", _ch_pg_matches(re2, limit))], answer),
     )
-    check = beyond.format(condition=f"lengthUTF8($s) > {LONGEST_BOUND}")
-    return [check, f"if($s IS NULL, NULL, {body})"]
+    longer = f"lengthUTF8($s) > {LONGEST_BOUND}"
+    check = beyond.format(condition=longer if when is None else f"{when} AND {longer}")
+    # Strict: a NULL argument the matches or the answer read answers NULL.
+    held = ("$s", "$b", *(hole for hole in ("$n", "$e") if hole in limit + answer))
+    read = " OR ".join(f"{hole} IS NULL" for hole in held)
+    return [check, f"if({read}, NULL, {body})"]
+
+
+def _ch_empty_matched(re2: are_re2.Re2) -> str:
+    """Whether the pattern can match the empty text anywhere in a text (are_re2.Re2.loose: its word
+    boundaries matching everywhere). RE2 skips such a match where PostgreSQL finds it (countMatches,
+    extractAll and replaceRegexpAll go past it), so PostgreSQL's matches are found one by one
+    there (_ch_pg_matches)."""
+    return f"match('', {_quoted(re2.loose)})"
 
 
 def _ch_replaced_by(said: str, re2: are_re2.Re2) -> str:
@@ -421,9 +486,24 @@ def _ch_replace_longest(
     no literal is refused by name."""
     if not (isinstance(said, exp.Literal) and said.is_string):
         raise Refused(refusal("clickhouse"))
-    replaced = _ch_replaced_by(said.this, re2)
+    checks, answered = _ch_replace_walk(re2, said.this, every=n is None)
+    form = _with_checks(checks, f"CAST({answered} AS Nullable(String))")
+    answer_node = graft(
+        replacement(form, _CH, "f($s, $b, $n)"),
+        {"s": value, "b": start, "n": n if n is not None else exp.Literal.number(0)},
+    )
+    return _ch_bounded(value, re2, answer_node)
+
+
+def _ch_replace_walk(
+    re2: are_re2.Re2, said: str, *, every: bool, when: str | None = None
+) -> tuple[list[str], str]:
+    """The checks and the answer of regexp_replace by PostgreSQL's matches (_ch_pg_matches) of the
+    text $s from the start $b: every one (``every``), else the Nth ($n; 0 every one), each replaced
+    by the literal replacement ``said``; ``when`` as _ch_with_pg_matches reads it."""
+    replaced = _ch_replaced_by(said, re2)
     none = "CAST([] AS Array(Tuple(Int64, Int64)))"
-    if n is None:
+    if every:
         limit, chosen, checks = "_len + 2", "_m", []
     else:
         limit = "if(toInt64($n) = 0, _len + 2, toInt64($n))"
@@ -445,13 +525,8 @@ def _ch_replace_longest(
         f"concat(arrayStringConcat(arrayMap(_i -> {piece}, arrayEnumerate(_c))), "
         f"substringUTF8(_t, {last} + 1))",
     )
-    beyond, answered = _ch_with_pg_matches(re2, limit, answer)
-    form = _with_checks([*checks, beyond], f"CAST({answered} AS Nullable(String))")
-    answer_node = graft(
-        replacement(form, _CH, "f($s, $b, $n)"),
-        {"s": value, "b": start, "n": n if n is not None else exp.Literal.number(0)},
-    )
-    return _ch_bounded(value, re2, answer_node)
+    beyond, answered = _ch_with_pg_matches(re2, limit, answer, when)
+    return [*checks, beyond], answered
 
 
 #: Where a pattern's character is read as itself: past no backslash, or an even run of them.
@@ -651,8 +726,9 @@ def _ch_longest_bound() -> Limitation:
     """The bound of PostgreSQL's matches found where RE2 chooses another (_ch_pg_matches)."""
     return Limitation(
         "Where RE2 would choose another match than PostgreSQL at the same start (alternatives, "
-        "quantifiers of mixed greediness, a group repeated a varying number of times), each "
-        "match is PostgreSQL's: the longest at the leftmost start, or the shortest where the "
+        "quantifiers of mixed greediness, a group repeated a varying number of times), and where "
+        "the pattern can match the empty text (which RE2's search goes past), each match is "
+        "PostgreSQL's: the longest at the leftmost start, or the shortest where the "
         "pattern's first quantifier is non-greedy, found by testing each length from that start. "
         f"That costs some n^2 regex calls on a text of n characters: on text of more than "
         f"{LONGEST_BOUND} characters the call raises 0A000 when it runs.",
@@ -690,9 +766,13 @@ _LIMITATIONS = {
         ),
         Limitation(
             "With the g flag, a pattern that matches the empty text is searched as PostgreSQL "
-            "searches it (each empty match replaced, then the next character copied) where "
-            "the pattern is a literal and the replacement a literal holding no backslash. "
-            "Otherwise such a pattern raises 0A000 when it runs.",
+            "searches it (each empty match replaced, then the search going on one character "
+            "past it) where the pattern is a literal and the replacement a literal naming none "
+            "of the pattern's groups; one holding a backslash (\\&, \\\\) is answered on text "
+            f"of {LONGEST_BOUND} characters at most, and raises 0A000 beyond. A pattern that is "
+            "no literal, and a replacement that is no literal or names one of the pattern's "
+            "groups (PostgreSQL chooses a group's part of an empty match by the group's own "
+            "preference), raise 0A000 when such a pattern runs.",
             Refusal(
                 "0A000",
                 "regexp_replace() of a pattern that matches the empty text has no form on "
@@ -813,6 +893,13 @@ def _ch_form_longest(function: str, re2: are_re2.Re2) -> str:
     """_ch_form of a pattern RE2 may match otherwise than PostgreSQL (are_re2.Re2.leftmost):
     PostgreSQL's matches found one by one (_ch_pg_matches), on text of LONGEST_BOUND characters at
     most. An empty match is one of them, as PostgreSQL finds it."""
+    return _with_checks(*_ch_longest_parts(function, re2))
+
+
+def _ch_longest_parts(
+    function: str, re2: are_re2.Re2, when: str | None = None
+) -> tuple[list[str], str]:
+    """The checks and the answer of _ch_form_longest; ``when`` as _ch_with_pg_matches reads it."""
     start = _invalid("start").format(condition="toInt64($b) < 1")
     occurrence = _invalid("n").format(condition="toInt64($n) < 1")
     subexpression = _invalid("subexpr").format(condition="toInt64($x) < 0")
@@ -832,8 +919,8 @@ def _ch_form_longest(function: str, re2: are_re2.Re2) -> str:
         position = f"tupleElement({nth}, 1) + 1 + {past}"
         limit = "toInt64($n)"
         answer = f"CAST(if(length(_m) >= toInt64($n), {position}, 0) AS Nullable(Int32))"
-    beyond, answered = _ch_with_pg_matches(re2, limit, answer)
-    return _with_checks([*checks, beyond], answered)
+    beyond, answered = _ch_with_pg_matches(re2, limit, answer, when)
+    return [*checks, beyond], answered
 
 
 def _ch_form_unbounded(function: str, count: int, re2: are_re2.Re2, empty_pattern: bool) -> str:
@@ -848,8 +935,8 @@ def _ch_form_unbounded(function: str, count: int, re2: are_re2.Re2, empty_patter
     if function == "regexp_like":
         return f"CAST(match($s, {pattern}) AS Nullable(Bool))"
     if function == "regexp_count":
-        return _with_checks(
-            [start, empty], f"CAST(countMatches({_FROM}, {pattern}) AS Nullable(Int32))"
+        return _ch_or_walked(
+            function, re2, f"CAST(countMatches({_FROM}, {pattern}) AS Nullable(Int32))"
         )
     if function == "regexp_split_to_array":
         null = ch_fail(
@@ -870,15 +957,9 @@ def _ch_form_unbounded(function: str, count: int, re2: are_re2.Re2, empty_patter
             return _with_checks(
                 [start, occurrence, subexpression], f"CAST({found} AS Nullable(String))"
             )
-        # Any other pattern that matches the empty text: extractAll skips its empty matches, so
-        # it raises 0A000, as where it counts, places or splits.
         found = f"if(length({matches}) >= toInt64($n), {matches}[toInt64($n)], NULL)"
-        return _with_checks(
-            [start, occurrence, subexpression, empty], f"CAST({found} AS Nullable(String))"
-        )
+        return _ch_or_walked(function, re2, f"CAST({found} AS Nullable(String))")
     # regexp_instr: the text before the nth match, in characters, past the start
-    end = _invalid("endoption").format(condition="toInt64($e) NOT IN (0, 1)")
-    subexpression = _invalid("subexpr").format(condition="toInt64($x) < 0")
     pieces = f"splitByRegexp({pattern}, {_FROM})"
     before = (
         f"arraySum(arrayMap(_p -> lengthUTF8(_p), arraySlice({pieces}, 1, toInt64($n)))) + "
@@ -886,9 +967,16 @@ def _ch_form_unbounded(function: str, count: int, re2: are_re2.Re2, empty_patter
     )
     past = f"if(toInt64($e) = 1, lengthUTF8({matches}[toInt64($n)]), 0)"
     position = f"if(length({matches}) >= toInt64($n), toInt64($b) + {before} + {past}, 0)"
-    return _with_checks(
-        [start, occurrence, end, subexpression, empty], f"CAST({position} AS Nullable(Int32))"
-    )
+    return _ch_or_walked(function, re2, f"CAST({position} AS Nullable(Int32))")
+
+
+def _ch_or_walked(function: str, re2: are_re2.Re2, answer: str) -> str:
+    """``answer`` (RE2's matches) where the pattern cannot match the empty text; where it can
+    (_ch_empty_matched), PostgreSQL's matches found one by one (_ch_longest_parts), empty ones too,
+    on text of LONGEST_BOUND characters at most. The checks of the arguments are the walk's."""
+    when = _ch_empty_matched(re2)
+    checks, walked = _ch_longest_parts(function, re2, when)
+    return _with_checks(checks, f"if({when}, {walked}, {answer})")
 
 
 #: Each function's arguments by position past the text and the pattern, and what each is.
@@ -930,7 +1018,8 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return _ch_like_at_run_time(args[0], args[1], "s")
     # regexp_count of a literal pattern takes the form of its start of 1: countMatches skips an
     # empty match (regexp_count('abc', '') is 4 on PostgreSQL, 0 on ClickHouse), so such a
-    # pattern raises 0A000, and a newline is an ordinary character, as PostgreSQL reads it.
+    # pattern's matches are found as PostgreSQL finds them (_ch_or_walked), and a newline is an
+    # ordinary character, as PostgreSQL reads it.
     if any(_is_null(a) for a in args[:2]) or any(_is_null(a) for a in said.values()):
         typed = {
             "regexp_like": "Nullable(Bool)",
@@ -1323,12 +1412,12 @@ CH_REGEXPS = Feature(
                     "that is no literal is ClickHouse's own match). "
                     + _CH_NO_RE2
                     + " A subexpression other than 0 is refused by name; a pattern "
-                    "that matches the empty text raises 0A000 where it counts, places, splits or "
-                    "extracts (the empty pattern itself extracts the empty text), and a NULL text "
+                    "that matches the empty text raises 0A000 where it splits, and a NULL text "
                     "that is no literal raises 0A000 in regexp_split_to_array "
                     "(ClickHouse holds no NULL of an array). Where RE2 would choose another match "
-                    "than PostgreSQL, regexp_split_to_array is refused by name; regexp_count, "
-                    "regexp_instr and regexp_substr find PostgreSQL's matches (below), empty ones "
+                    "than PostgreSQL, regexp_split_to_array is refused by name. regexp_count, "
+                    "regexp_instr and regexp_substr find PostgreSQL's matches (below) where RE2 "
+                    "would choose another or the pattern can match the empty text, empty ones "
                     "too.",
                 ),
                 _ch_longest_bound(),
