@@ -850,6 +850,11 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
         "SELECT pg_catalog.float8('12345678901234567890123456789'::jsonb) AS v",
         "1.2345678901234568e+28",
     ),
+    # A class of a locale on ASCII text, and the expanded syntax (x), read as PostgreSQL reads
+    # them (provisa.transpiler.are_re2).
+    ("SELECT pg_catalog.regexp_substr('ab'::text, '\\w'::text) AS v", "a"),
+    ("SELECT pg_catalog.regexp_substr('a1'::text, '[[:digit:]]'::text) AS v", "1"),
+    ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'x') AS v", "o"),
 ]
 RAISED = [
     (
@@ -970,10 +975,7 @@ RAISED = [
 
 #: Calls a row refuses by name, each within its stated bound.
 REFUSED = [
-    "SELECT pg_catalog.regexp_substr('ab'::text, '\\w'::text) AS v",
-    "SELECT pg_catalog.regexp_substr('a1'::text, '[[:digit:]]'::text) AS v",
     "SELECT pg_catalog.regexp_substr('aa'::text, '(a)\\1'::text) AS v",
-    "SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'x') AS v",
     "SELECT pg_catalog.regexp_substr('foo'::text, '(o)'::text, 1, 1, '', 1) AS v",
     "SELECT pg_catalog.regexp_count(c, c, 1) AS v FROM (VALUES ('a'::text)) AS t(c)",
     # The empty pattern's replacement is read here: an escape PostgreSQL reads in it is refused.

@@ -40,6 +40,7 @@ from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
 from provisa.transpiler.polyfill import ported as polyfill_ported
+from provisa.transpiler.polyfill.regex import ENGINE_PATTERN
 from provisa.transpiler.pg_literals import (
     ROOM,
     TIGHT,
@@ -2471,7 +2472,9 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
             this="REGEXP_INSTR", expressions=[value.copy(), exp.Literal.string(pattern)]
         )
         return exp.GT(this=position, expression=exp.Literal.number(0))
-    return exp.RegexpLike(this=value.copy(), expression=exp.Literal.string(pattern))
+    found = exp.RegexpLike(this=value.copy(), expression=exp.Literal.string(pattern))
+    found.meta[ENGINE_PATTERN] = True  # the engine's flavour: no PostgreSQL pattern to translate
+    return found
 
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere
