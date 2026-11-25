@@ -1066,12 +1066,14 @@ The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module
 
 - Rust code is a library crate. Provisa compiles your crate into its host once per version of the code, with the pinned Rust toolchain. A `rust-version` newer than that toolchain is refused.
 - Tags go in the `///` doc comment, each on a line of its own, and types come from the function's signature. A `pub fn` at the crate's root is offered; a function in a module, or one that is not `pub`, is not.
-- A `@table` or `@stream` function takes nothing, or one struct of its inputs. An `Option` field is an optional input; any other field is required. A command takes its parameters by value, never borrowed.
+- A `@table` or `@stream` function takes nothing, one struct of its inputs, its read context, or its inputs and then its read context. An `Option` field is an optional input; any other field is required. A command takes its parameters by value, never borrowed.
+- The read context is a struct you declare and name `ReadContext`, with the fields of [the read context](#read-context) you read. Provisa knows it by its name and gives it the context serde makes of it.
 - A field is named as serde names it: `rename`, `rename_all`, `skip`, `flatten` and `default` are read.
 - A `@table` returns a `Vec<T>` or an `impl Iterator<Item = T>`. A `@stream` returns an iterator; an item that is a `Result` ends the stream with its error. A trailing `Result<T, E>` is how a function fails.
 - An enum of unit variants is an enum of their names. chrono's `DateTime` is a timestamp, `NaiveDate` a date, rust_decimal's `Decimal` a numeric and serde_json's `Value` json.
 - A function is neither `async` nor generic.
-- `@loader` and the read context are not offered for Rust.
+- A `@loader` returns a map of each key's hash to that key's rows, a `HashMap<String, Vec<T>>` or a `BTreeMap`. A read of the table that is not a join's gives no keys, and Provisa takes the rows of every key the function answers.
+- `@discover` is read from a Python code source only.
 
 The scored account in Rust:
 
@@ -1135,12 +1137,13 @@ The SDK tab registers the function with the `provisa-sdk` crate, an ordinary dep
 | `change!(f, table = "t", key = ["k"], removed = "r", cursor = "c")` | `@change table=t`, `key=k`, `removed=r`, `cursor=c` |
 | option `requires = "NAME"`, `secret = "NAME"` | `@requires NAME`, `@requires NAME:secret` |
 | command option `insert = "t"`, `update = "t"`, `delete = "t"` | `@insert t`, `@update t`, `@delete t` |
+| table option `loader = true`, `loader = N` | `@loader`, `@loader N` |
 
 - Provisa knows a registration by its path: `provisa_sdk::table!`, the name your `Cargo.toml` gives the dependency (`p = { package = "provisa-sdk", ... }` makes it `p::table!`), a `use provisa_sdk as p;` at the root, or a name a root `use provisa_sdk::{table}` or `use provisa_sdk::*` brings in. A module's own `use` is not followed.
-- The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!` function's signature against its tag's rules, and that each option is one its registration takes. A command, query or change function can take any parameters, so Provisa checks those when it reads the code.
+- The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!` function's signature against its tag's rules, and that each option is one its registration takes. Your `ReadContext` is your own type, so Provisa checks that a read function takes it after its inputs when it reads the code. A command, query or change function can take any parameters, so Provisa checks those when it reads the code.
 - Every option's value is a literal. A registration naming anything but a function by its name, an option that isn't a literal, and an SDK macro invoked inside a module or a function are refused, naming each.
 - The aliases `Rows<T>`, `Batch<T>` and `Results<T>` are `Vec<T>`, and `Stream<T>` is `Box<dyn Iterator<Item = T>>`. The column aliases `Text`, `BigInt`, `Double` and `Boolean` are `String`, `i64`, `f64` and `bool`.
-- The SDK has no `TableRef`: the host decodes each argument with serde, and the SDK has no serde dependency. Declare your own generic `TableRef` type, as a doc-comment source does; Provisa knows it by its name.
+- The SDK has no `TableRef` or `ReadContext`: the host decodes each argument and the read context with serde, and the SDK has no serde dependency. Declare your own generic `TableRef` type and your own `ReadContext`, as a doc-comment source does; Provisa knows each by its name.
 
 ## Deployment {: #deployment }
 
@@ -2506,55 +2509,200 @@ These are from `provisa.dev/sdk/go`.
 
 ### Rust reference {: #rust-reference }
 
-A Rust resolver is a library crate. Tags go in `///` doc comments; types come from the function's signature. Only `pub fn` items at the crate's root are offered. The optional `provisa-sdk` crate registers functions with their tags as compile-time constants.
+A Rust resolver is a library crate. Tags go in `///` doc comments; types come from the function's signature. Only `pub fn` items at the crate's root are offered. The optional `provisa-sdk` crate registers functions with their tags as compile-time constants, and the compiler holds each function to its tag's shape.
 
-Rust does not offer `@loader` or the read context. Rust functions are neither `async` nor generic.
+Rust functions are neither `async` nor generic. Rust reads every tag Python does except `@discover`, which is read from a Python code source only.
 
 #### Tags
 
+Write each tag on its own line of the function's doc comment, or register the function with an SDK macro at the crate's root.
+
 **`@table`**
 
-A `@table` function takes nothing or one inputs struct. It returns `Vec<T>`, `impl Iterator<Item = T>`, or either inside `Result<..., E>`.
+The function returns a table's rows: a `Vec<T>`, an `impl Iterator<Item = T>`, or either inside a `Result`. It takes nothing, its inputs struct, its read context, or its inputs struct and then its read context.
 
 === "Doc comment"
 
     ```rust
-    /// The churn risk of one account.
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Region {
+        pub code: String,
+        pub name: String,
+    }
+
+    /// Sales regions.
     ///
     /// @table
-    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
-        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
+    pub fn regions() -> Vec<Region> {
+        vec![Region { code: "emea".into(), name: "Europe, Middle East and Africa".into() }]
     }
     ```
 
 === "SDK"
 
     ```rust
-    provisa_sdk::table!(churn_risk);
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Region {
+        pub code: String,
+        pub name: String,
+    }
+
+    /// Sales regions.
+    pub fn regions() -> Vec<Region> {
+        vec![Region { code: "emea".into(), name: "Europe, Middle East and Africa".into() }]
+    }
+
+    provisa_sdk::table!(regions);
+    ```
+
+**`@loader` / `@loader N`**
+
+Tags a `@table` function as a batch loader. Provisa calls it once per batch of join keys and passes the keys in the read context's `keys`, each key's hash to the key. With `@loader N`, each batch is at most `N` keys.
+
+A Rust loader returns a map of each key's hash to that key's rows, a `HashMap<String, Vec<T>>` or a `BTreeMap`. A read of the table that is not a join's gives no keys; the function answers its own inputs under any one key, and Provisa takes the rows of every key.
+
+=== "Doc comment"
+
+    ```rust
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct ScoreInputs {
+        pub customer_id: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct Score {
+        pub customer_id: String,
+        pub score: f64,
+    }
+
+    /// The read context, as much of it as this code reads.
+    #[derive(Deserialize)]
+    pub struct ReadContext {
+        pub keys: Option<HashMap<String, HashMap<String, String>>>,
+    }
+
+    /// Churn score of each customer in the batch.
+    ///
+    /// @table
+    /// @loader
+    pub fn churn_score(inputs: ScoreInputs, context: ReadContext) -> HashMap<String, Vec<Score>> {
+        let keys = match context.keys {
+            Some(keys) => keys,
+            None => HashMap::from([(String::new(), inputs.customer_id.map(|id| ("customer_id".to_string(), id)).into_iter().collect())]),
+        };
+        keys.into_iter()
+            .filter_map(|(hash, key)| {
+                let id = key.get("customer_id")?.clone();
+                Some((hash, vec![Score { customer_id: id, score: 0.82 }]))
+            })
+            .collect()
+    }
+    ```
+
+=== "SDK"
+
+    ```rust
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct ScoreInputs {
+        pub customer_id: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct Score {
+        pub customer_id: String,
+        pub score: f64,
+    }
+
+    /// The read context, as much of it as this code reads.
+    #[derive(Deserialize)]
+    pub struct ReadContext {
+        pub keys: Option<HashMap<String, HashMap<String, String>>>,
+    }
+
+    /// Churn score of each customer in the batch.
+    pub fn churn_score(inputs: ScoreInputs, context: ReadContext) -> HashMap<String, Vec<Score>> {
+        let keys = match context.keys {
+            Some(keys) => keys,
+            None => HashMap::from([(String::new(), inputs.customer_id.map(|id| ("customer_id".to_string(), id)).into_iter().collect())]),
+        };
+        keys.into_iter()
+            .filter_map(|(hash, key)| {
+                let id = key.get("customer_id")?.clone();
+                Some((hash, vec![Score { customer_id: id, score: 0.82 }]))
+            })
+            .collect()
+    }
+
+    provisa_sdk::table!(churn_score, loader = true); // or loader = 50 for a batch of fifty
     ```
 
 **`@stream`**
 
-A `@stream` function returns an iterator. An item of `Result<T, E>` ends the stream on error.
+The function returns an iterator, and each row is delivered as it is yielded, on surfaces that serve subscriptions. An item of `Result<T, E>` ends the stream with its error. It takes what a `@table` function takes.
 
 === "Doc comment"
 
     ```rust
-    /// Audit events.
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct AuditInputs {
+        pub since: i64,
+    }
+
+    #[derive(Serialize)]
+    pub struct AuditEvent {
+        pub seq: i64,
+        pub action: String,
+    }
+
+    /// Audit events, each as it happens.
     ///
     /// @stream
-    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
-        tail_log()
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = Result<AuditEvent, String>> {
+        (inputs.since..).map(|seq| Ok(AuditEvent { seq, action: "login".into() }))
     }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct AuditInputs {
+        pub since: i64,
+    }
+
+    #[derive(Serialize)]
+    pub struct AuditEvent {
+        pub seq: i64,
+        pub action: String,
+    }
+
+    /// Audit events, each as it happens.
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = Result<AuditEvent, String>> {
+        (inputs.since..).map(|seq| Ok(AuditEvent { seq, action: "login".into() }))
+    }
+
     provisa_sdk::stream!(audit_events);
     ```
 
 **`@command`**
+
+A command takes its parameters by value, each decoded with serde. A trailing `Result` is how it fails.
 
 === "Doc comment"
 
@@ -2563,6 +2711,9 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     ///
     /// @command
     pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        if order_id < 0 {
+            return Err(format!("there is no order {order_id}"));
+        }
         Ok(true)
     }
     ```
@@ -2570,78 +2721,307 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "SDK"
 
     ```rust
+    /// Cancel one order.
+    pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        if order_id < 0 {
+            return Err(format!("there is no order {order_id}"));
+        }
+        Ok(true)
+    }
+
     provisa_sdk::command!(cancel_order);
     ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
+Binds a `@command` to a table of the code's as that table's insert, update or delete.
+
 === "Doc comment"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
+    /// Every order.
+    ///
+    /// @table
+    pub fn orders() -> Vec<Order> {
+        Vec::new()
+    }
+
     /// Insert orders.
     ///
     /// @command
     /// @insert orders
-    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> { ... }
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
+    /// Every order.
+    pub fn orders() -> Vec<Order> {
+        Vec::new()
+    }
+
+    /// Insert orders.
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
+
+    provisa_sdk::table!(orders);
     provisa_sdk::command!(add_orders, insert = "orders");
     ```
 
 **`@query`**
 
+A command whose kind is a query. A parameter typed `TableRef<Row>` takes a governed table, its columns the fields of `Row`. Declare `TableRef` in your crate; Provisa knows it by its name.
+
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+        pub region: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Match {
+        pub store_id: i64,
+        pub region: String,
+    }
+
     /// Match stores to regions.
     ///
     /// @query
-    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> { ... }
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores.name, regions.name);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+        pub region: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Match {
+        pub store_id: i64,
+        pub region: String,
+    }
+
+    /// Match stores to regions.
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores.name, regions.name);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::query!(stores_in_regions);
     ```
 
 **`@columns`**
 
+A batch column transform: each parameter is one input column's values, a `Vec`, and the result holds one row per input row.
+
 === "Doc comment"
 
     ```rust
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
     /// Parse raw addresses.
     ///
     /// @columns
-    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> { ... }
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        raw.iter()
+            .map(|line| match line.split_once(',') {
+                Some((street, city)) => Ok(Address { street: street.trim().into(), city: city.trim().into() }),
+                None => Err(format!("{line} has no city")),
+            })
+            .collect()
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
+    /// Parse raw addresses.
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        raw.iter()
+            .map(|line| match line.split_once(',') {
+                Some((street, city)) => Ok(Address { street: street.trim().into(), city: city.trim().into() }),
+                None => Err(format!("{line} has no city")),
+            })
+            .collect()
+    }
+
     provisa_sdk::columns!(parse_address);
     ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
+The function that keeps the landed table `T` fresh, given the cursor of its last run. Each argument goes on a `@change` line of its own.
+
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: String,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
     /// Matches changed since the cursor.
     ///
     /// @change table=store_regions
     /// @change key=store_id,region_id
     /// @change removed=removed
     /// @change cursor=seq
-    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> { ... }
+    pub fn store_region_changes(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+        since: Option<i64>,
+    ) -> Result<Vec<Changed>, String> {
+        let _ = (stores.name, regions.name, since);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: String,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
+    /// Matches changed since the cursor.
+    pub fn store_region_changes(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+        since: Option<i64>,
+    ) -> Result<Vec<Changed>, String> {
+        let _ = (stores.name, regions.name, since);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::change!(
         store_region_changes,
         table = "store_regions",
@@ -2653,22 +3033,43 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 
 **`@on-start`**
 
+Called once when the code starts, with nothing or the setup values as one map of name to value.
+
 === "Doc comment"
 
     ```rust
+    use std::collections::HashMap;
+
     /// Called once on start.
     ///
     /// @on-start
-    pub fn setup(values: HashMap<String, String>) -> Result<(), String> { ... }
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        match values.get("REGION") {
+            Some(_) => Ok(()),
+            None => Err("no REGION is set up".into()),
+        }
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::collections::HashMap;
+
+    /// Called once on start.
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        match values.get("REGION") {
+            Some(_) => Ok(()),
+            None => Err("no REGION is set up".into()),
+        }
+    }
+
     provisa_sdk::on_start!(setup);
     ```
 
 **`@on-stop`**
+
+Called once when the code stops. It takes nothing.
 
 === "Doc comment"
 
@@ -2676,16 +3077,21 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     /// Called once on stop.
     ///
     /// @on-stop
-    pub fn teardown() { ... }
+    pub fn teardown() {}
     ```
 
 === "SDK"
 
     ```rust
+    /// Called once on stop.
+    pub fn teardown() {}
+
     provisa_sdk::on_stop!(teardown);
     ```
 
 **`@health`**
+
+Returns the code's status as text. `ok` or `healthy` is healthy; any other text says what is wrong.
 
 === "Doc comment"
 
@@ -2701,27 +3107,76 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "SDK"
 
     ```rust
+    /// Returns the code's status.
+    pub fn status() -> &'static str {
+        "ok"
+    }
+
     provisa_sdk::health!(status);
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
+Declares a setup value the code needs, or a secret. In the SDK, `requires` and `secret` are options of any registration but `on_stop!` and `health!`.
+
 === "Doc comment"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct Inputs {
+        pub region: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Row {
+        pub id: i64,
+    }
+
     /// Fetch rows.
     ///
     /// @table
     /// @requires REGION
     /// @requires API_KEY:secret
-    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> { ... }
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs.region;
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct Inputs {
+        pub region: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Row {
+        pub id: i64,
+    }
+
+    /// Fetch rows.
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs.region;
+        Ok(Vec::new())
+    }
+
     provisa_sdk::table!(fetch, requires = "REGION", secret = "API_KEY");
     ```
+
+#### Parameter types
+
+| Parameter | Type | Notes |
+|---|---|---|
+| Inputs | A struct that derives `Deserialize` | For `@table` and `@stream`. Each field is a table parameter; an `Option` field is optional. |
+| Read context | A struct the code declares and names `ReadContext` | For `@table` and `@stream`, after the inputs. Declare the fields you read of `filters`, `order_by`, `limit`, `columns` and `keys`. |
+| Table argument | A generic struct the code declares and names `TableRef<Row>` | For `@command` and `@query` only. The row type's fields declare the input columns. |
+| Command parameter | Any type serde decodes, taken by value | Never borrowed. |
 
 #### Field naming
 
@@ -2749,7 +3204,7 @@ For timestamp, date, numeric and json columns: use `chrono::DateTime`, `chrono::
 | `Batch<T>` | `Vec<T>` | `@columns` parameter type |
 | `Results<T>` | `Vec<T>` | `@columns` return type |
 
-The SDK has no `TableRef` type. Declare your own generic `TableRef` struct; Provisa knows it by name.
+The SDK has no serde dependency, so it declares neither `TableRef` nor `ReadContext`. Declare each in your crate; Provisa knows them by name.
 
 ---
 
