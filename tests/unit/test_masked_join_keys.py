@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 
 import duckdb
-import sqlglot
 
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -124,7 +123,11 @@ def _run(model, sql: str) -> list[tuple]:
     _schema, ctx, gov, con = model
     assert _violations(model, sql) == []
     lowered = lower_to_catalog_physical(apply_governance(sql, gov), ctx)
-    return con.execute(sqlglot.transpile(lowered, read="postgres", write="duckdb")[0]).fetchall()
+    # The DuckDB engine's own transpile (DuckDBBackend.transpile_physical): a list capped beside
+    # its read's grouping (list_cap: FILTER) is no call the json_arrayagg macro takes.
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    return con.execute(transpile_to_duckdb(lowered, generated=False)).fetchall()
 
 
 def _graphql(model, query: str) -> list[tuple]:

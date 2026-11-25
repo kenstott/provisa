@@ -752,7 +752,7 @@ class TestGroupByNodesRelationship:
             n for n, f in nodes_type.fields.items() if hasattr(self._unwrap(f.type), "fields")
         )
 
-    def test_relationship_is_a_correlated_json_subquery_in_each_node(self, schema_and_ctx_rel):
+    def test_relationship_is_a_grouped_read_joined_to_each_node(self, schema_and_ctx_rel):
         schema, ctx = schema_and_ctx_rel
         rel = self._rel_field(schema)
         doc = parse(f"""
@@ -766,8 +766,10 @@ class TestGroupByNodesRelationship:
         """)
         assert not validate(schema, doc)
         sql = compile_query(doc, ctx, variables=None)[0].sql
-        # The table is read under the root alias the relationship's subquery correlates to.
-        assert f"KEY 'id' VALUE \"t0\".\"id\", KEY '{rel}' VALUE (SELECT json_object(" in sql
-        assert 'FROM "public"."customers" "t1" WHERE "t1"."id" = "t0"."customer_id"' in sql
-        assert 'FROM "public"."orders" "t0" GROUP BY "region"' in sql
-        assert "JOIN" not in sql.upper()
+        # The table is read under the root alias the relationship's read is joined back to by key
+        # (#362): one row per customer, so the groups' rows do not repeat.
+        assert f'KEY \'id\' VALUE "t0"."id", KEY \'{rel}\' VALUE "t1_read"."_value"' in sql
+        assert 'SELECT "t1"."id" AS "_key0", json_object(' in sql
+        assert 'FROM "public"."customers" "t1"' in sql
+        assert 'ON "t1_read"."_key0" = "t0"."customer_id" GROUP BY "region"' in sql
+        assert sql.upper().count("JOIN") == 1
