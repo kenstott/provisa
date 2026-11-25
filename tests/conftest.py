@@ -32,6 +32,7 @@ from tests.itest_stack import (
     reap_orphaned_server_processes,
     release_stack_slot,
 )
+from tests.compose_pull_retry import pull_images_with_retry
 from tests.otlp_receiver import start_discarding_receiver
 from tests.port_lease import lease_port, lease_ports
 
@@ -764,6 +765,16 @@ class _DockerServiceManager:
             cwd=_REPO_ROOT,
             env=_itest_compose_env(),
             check=False,
+        )
+
+        # Pull all images before starting, retrying on truncated downloads (unexpected
+        # EOF, short read).  compose up does not re-pull a layer it thinks it already
+        # has, so a corrupt layer from a cut-off pull would fail the start-up silently;
+        # pulling first catches and recovers from registry hiccups before up runs.
+        pull_images_with_retry(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS],
+            cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
         )
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already

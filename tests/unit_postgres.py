@@ -33,6 +33,8 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from tests.compose_pull_retry import pull_images_with_retry
+
 PREFIX = "provisa-unitpg"
 # This run's project: "provisa-unitpg-pid<controller pid>". Stamped by the first process of the run
 # (the controller) and inherited by everything it spawns (setdefault, as tests/itest_stack.py
@@ -120,6 +122,9 @@ def start(reachable: Callable[[], bool]) -> bool:
             return False
         sweep()
         _marker(PROJECT).touch()
+        pull_images_with_retry(
+            ["docker", "compose", "-p", PROJECT, "-f", _COMPOSE_FILE],
+        )
         subprocess.run(
             ["docker", "compose", "-p", PROJECT, "-f", _COMPOSE_FILE, "up", "postgres", "-d"],
             check=True,
