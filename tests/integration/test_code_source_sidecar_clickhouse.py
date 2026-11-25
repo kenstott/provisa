@@ -137,7 +137,7 @@ _GQL_JOIN = """
 """
 
 _CYPHER_JOIN = (
-    "MATCH (o:orders)-[:BELONGS_TO_REGION]->(r:regions) "
+    "MATCH (o:orders)-[:IS_REGION_DETAIL]->(r:regions) "
     "WHERE o.region = 'eu-west' "
     "RETURN o.id AS id, r.label AS label, r.asked AS asked"
 )

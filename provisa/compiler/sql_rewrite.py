@@ -1988,7 +1988,7 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         inner = tree.args.get("expression")
         if isinstance(inner, exp.Select):
             _push_nf_into_select(inner)
-        return tree.sql(dialect="postgres")
+        return tree.sql(dialect="clickhouse")
 
     # CTE-wrapped: outer SELECT has no WHERE but each CTE body may.
     with_ = tree.args.get("with_")
@@ -1996,12 +1996,12 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         for cte in with_.expressions:
             if isinstance(cte.this, exp.Select):
                 _push_nf_into_select(cte.this)
-        return tree.sql(dialect="postgres")
+        return tree.sql(dialect="clickhouse")
 
     # Flat SELECT.
     if isinstance(tree, exp.Select):
         _push_nf_into_select(tree)
-    return tree.sql(dialect="postgres")
+    return tree.sql(dialect="clickhouse")
 
 
 # --- Main compilation ---
