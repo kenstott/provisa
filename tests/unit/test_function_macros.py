@@ -653,6 +653,8 @@ def test_an_unaliased_polyfilled_cast_is_named_for_its_type(sql: str, dialect: s
         ("pg_catalog.cbrt(x)", "cbrt"),
         ("string_agg(a, ',')", "string_agg"),
         ("regexp_count(a, b)", "regexp_count"),
+        ("lag(x) OVER (ORDER BY y)", "lag"),
+        ("count(*) FILTER (WHERE x > 1)", "count"),
     ],
 )
 def test_the_column_name_rule(expression: str, name: str):

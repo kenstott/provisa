@@ -204,8 +204,8 @@ def _figured(node: exp.Expr) -> tuple[str, int]:
         if strength > 1:
             return inner, strength
         return _cast_type_name(node.to), 1
-    if isinstance(node, exp.Paren):
-        return _figured(node.this)
+    if isinstance(node, (exp.Paren, exp.Window, exp.Filter)):
+        return _figured(node.this)  # a window's or a FILTER's call: the function's own name
     if isinstance(node, exp.Subquery):
         return _sublink_name(node.this), 2
     if isinstance(node, exp.Exists):
