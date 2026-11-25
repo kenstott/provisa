@@ -1,4 +1,10 @@
-# Code Resolvers
+=== "Docstring"
+
+    
+
+=== "SDK"
+
+    # Code Resolvers
 
 Business logic in Python, Node or Go.
 
@@ -1695,11 +1701,23 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 
 A single function whose return value—a `provisa_services.Discovered`—generates tables, queries and commands at read time. The generated items share one handler function per kind.
 
-```py
-def discover_feeds() -> Discovered:
-    """@discover"""
-    ...
-```
+=== "Docstring"
+
+    ```python
+    def discover_feeds() -> Discovered:
+        """@discover"""
+        ...
+    ```
+
+=== "SDK"
+
+    ```python
+    from provisa_sdk import SPELLING  # No SDK decorator: use the Docstring spelling.
+
+
+    def discover_feeds() -> Discovered:
+        ...
+    ```
 
 #### Parameter types
 
@@ -1900,19 +1918,28 @@ The function is an async generator.
 
 Write each line in the JSDoc comment. No SDK wrapper.
 
-```ts
-/** Store-region matches changed since `since`.
- * @change table=store_regions
- * @change key=store_id,region_id
- * @change removed=removed
- * @change cursor=seq
- */
-export async function storeRegionChanges(
-  stores: TableRef<Store>,
-  regions: TableRef<Region>,
-  since?: number,
-): Promise<Changed[]> { ... }
-```
+=== "JSDoc"
+
+    ```typescript
+    /** Store-region matches changed since `since`.
+     * @change table=store_regions
+     * @change key=store_id,region_id
+     * @change removed=removed
+     * @change cursor=seq
+     */
+    export async function storeRegionChanges(
+      stores: TableRef<Store>,
+      regions: TableRef<Region>,
+      since?: number,
+    ): Promise<Changed[]> { ... }
+    ```
+
+=== "SDK"
+
+    ```typescript
+    // No SDK form: write as JSDoc lines.
+    import type { SPELLING as _ } from "@provisa/sdk";
+    ```
 
 **`@on-start`**
 
@@ -2537,87 +2564,183 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
 **`@table`**
 
-```py
-from dataclasses import dataclass
-from provisa_spark import session
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
+    from provisa_spark import session
 
 
-@dataclass
-class SalesRow:
-    region: str
-    amount: float
+    @dataclass
+    class SalesRow:
+        region: str
+        amount: float
 
 
-def sales() -> list[SalesRow]:
-    """Daily sales by region.
+    def sales() -> list[SalesRow]:
+        """Daily sales by region.
+
+        @table
+        """
+        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        return [SalesRow(r.region, r.amount) for r in df.collect()]
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+    from provisa_sdk import table
+    from provisa_spark import session
+
+
+    @dataclass
+    class SalesRow:
+        region: str
+        amount: float
+
 
     @table
-    """
-    df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
-    return [SalesRow(r.region, r.amount) for r in df.collect()]
-```
+    def sales() -> list[SalesRow]:
+        """Daily sales by region."""
+        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        return [SalesRow(r.region, r.amount) for r in df.collect()]
+    ```
 
 **`@command`**
 
-```py
-def archive_orders(cutoff: str) -> int:
-    """Archive orders older than cutoff.
+=== "Docstring"
+
+    ```python
+    def archive_orders(cutoff: str) -> int:
+        """Archive orders older than cutoff.
+
+        @command
+        """
+        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
+        return df.first()["num_affected_rows"]
+    ```
+
+=== "SDK"
+
+    ```python
+    from provisa_sdk import command
+    from provisa_spark import session
+
 
     @command
-    """
-    df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
-    return df.first()["num_affected_rows"]
-```
+    def archive_orders(cutoff: str) -> int:
+        """Archive orders older than cutoff."""
+        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
+        return df.first()["num_affected_rows"]
+    ```
 
 **`@query`**
 
 A `@query` function can take governed Provisa tables as `TableRef` parameters, reading them through Arrow Flight SQL.
 
-```py
-from dataclasses import dataclass
-from provisa_services import TableRef
-from provisa_spark import dataframe
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
+    from provisa_services import TableRef
+    from provisa_spark import dataframe
 
 
-@dataclass
-class Total:
-    region: str
-    amount: float
+    @dataclass
+    class Total:
+        region: str
+        amount: float
 
 
-def regional_totals(orders: TableRef[Order]) -> list[Total]:
-    """Totals of governed orders by region.
+    def regional_totals(orders: TableRef[Order]) -> list[Total]:
+        """Totals of governed orders by region.
+
+        @query
+        """
+        frame = dataframe(orders).groupBy("region").sum("amount")
+        return [Total(r[0], r[1]) for r in frame.collect()]
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+    from provisa_sdk import query
+    from provisa_services import TableRef
+    from provisa_spark import dataframe
+
+
+    @dataclass
+    class Total:
+        region: str
+        amount: float
+
 
     @query
-    """
-    frame = dataframe(orders).groupBy("region").sum("amount")
-    return [Total(r[0], r[1]) for r in frame.collect()]
-```
+    def regional_totals(orders: TableRef[Order]) -> list[Total]:
+        """Totals of governed orders by region."""
+        frame = dataframe(orders).groupBy("region").sum("amount")
+        return [Total(r[0], r[1]) for r in frame.collect()]
+    ```
 
 **`@on-start`** and **`@on-stop`**
 
-```py
-def warmup(values: dict) -> None:
-    """@on-start"""
-    session()  # start the Spark Connect session once
+=== "Docstring"
+
+    ```python
+    def warmup(values: dict) -> None:
+        """@on-start"""
+        session()  # start the Spark Connect session once
 
 
-def shutdown() -> None:
-    """@on-stop"""
-    session().stop()
-```
+    def shutdown() -> None:
+        """@on-stop"""
+        session().stop()
+    ```
+
+=== "SDK"
+
+    ```python
+    from provisa_sdk import on_start, on_stop
+    from provisa_spark import session
+
+
+    @on_start
+    def warmup(values: dict) -> None:
+        session()  # start the Spark Connect session once
+
+
+    @on_stop
+    def shutdown() -> None:
+        session().stop()
+    ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
 Declares a setup value beyond the built-in `script` and `cluster`.
 
-```py
-def fetch(inputs: Inputs) -> list[Row]:
-    """@table
-    @requires DELTA_TABLE_PATH
-    """
-    ...
-```
+=== "Docstring"
+
+    ```python
+    def fetch(inputs: Inputs) -> list[Row]:
+        """@table
+        @requires DELTA_TABLE_PATH
+        """
+        ...
+    ```
+
+=== "SDK"
+
+    ```python
+    from provisa_sdk import requires, table
+
+
+    @requires("DELTA_TABLE_PATH")
+    @table
+    def fetch(inputs: Inputs) -> list[Row]:
+        ...
+    ```
 
 #### Special imports
 
