@@ -41,7 +41,7 @@ from provisa.core.models import (
 def _config(**kwargs) -> ProvisaConfig:
     base = {
         "sources": [Source(id="wh", type=SourceType.postgresql, description="warehouse")],
-        "domains": [Domain(id="sales", description="Sales", steward="data-steward")],
+        "domains": [Domain(id="sales", description="Sales")],
         "tables": [
             Table(
                 source_id="wh",
@@ -145,7 +145,7 @@ def test_unaliased_relationship_uri_uses_registry_id():
 
 def test_uri_segments_are_percent_encoded():
     config = _config(
-        domains=[Domain(id="sales ops", description="Sales Ops", steward="s")],
+        domains=[Domain(id="sales ops", description="Sales Ops")],
         tables=[
             Table(
                 source_id="wh",

@@ -597,7 +597,7 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None, product_created=None, endpoints=None, offers=None: (
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None, product_created=None, product_owners=None, domain_stewards=None, relationship_owners=None, person_emails=None, endpoints=None, offers=None: (
             snapshot
         ),
     )

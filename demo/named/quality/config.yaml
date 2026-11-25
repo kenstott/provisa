@@ -40,7 +40,6 @@ data_products:
   tables: [view_dq_results, view_gold, view_silver]
   domain_id: sales
   name: Daily Sales
-  owner_role: org_admin
   purpose: The chain's sales by day and product, from feed batches that passed every check
   usage: Read gold for totals by day and product; read silver for the sales behind a total, and
     dq_results for the checks that admitted each batch

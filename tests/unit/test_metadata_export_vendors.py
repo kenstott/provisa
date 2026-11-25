@@ -222,12 +222,17 @@ def _snapshot_with_data_product():  # REQ-1634
             id="prod",
             domain_id="sales",
             name="Sales 360",
-            owner_role="alice",
             purpose="Unified",
             tables=list(PROD.tables),
         )
     ]
-    return build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    return build_snapshot(
+        config,
+        org_id=ORG_ID,
+        dialect="postgres",
+        contexts={},
+        product_owners={"prod": ("alice",)},
+    )
 
 
 def test_atlas_data_product_aggregates_rdbms_tables_by_fqn():  # REQ-1634

@@ -52,7 +52,10 @@
       "placeholder": "按姓名或电子邮件搜索",
       "typedEmail": "{{email}}（等待首次登录）",
       "typeMore": "请至少输入两个字符",
-      "noneFound": "无匹配结果。输入完整的电子邮件地址即可授予。"
+      "noneFound": "无匹配结果。输入完整的电子邮件地址即可授予。",
+      "peopleGroup": "人员",
+      "rolesGroup": "角色",
+      "roleChip": "角色：{{role}}"
     },
     "form": {
       "personLabel": "人员",

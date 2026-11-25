@@ -141,12 +141,14 @@ _RAW_WRITE = re.compile(
 #: Raw SQL that writes a table whose text is resolved, by file and table: none binds a value a
 #: caller entered (Connection._run refuses one that does, whatever the table).
 _RAW_MODEL_WRITES: dict[tuple[str, str], str] = {
-    ("provisa/core/db.py", "roles"): "a standard role's capabilities, from constants",
     ("provisa/core/repositories/retired_roles.py", "user_role_assignments"): (
         "retired role ids carried to platform_admin, from the rows themselves"
     ),
-    ("provisa/discovery/fk_introspect.py", "relationships"): (
+    ("provisa/core/repositories/relationship.py", "relationships"): (
         "a discovered foreign key: table ids and column names; bound values pass check_raw"
+    ),
+    ("provisa/core/repositories/standard_roles.py", "roles"): (
+        "a standard role's capabilities and the tenancy rights, from constants"
     ),
 }
 
@@ -369,6 +371,7 @@ _DIRECT_ENGINE: dict[str, str] = {
     "provisa/core/platform_state/catalogs.py": "the engine's catalogs: names and hashes",
     "provisa/core/region_purge.py": "deletes",
     "provisa/core/repositories/retired_roles.py": "retired role ids (section 2)",
+    "provisa/core/repositories/standard_roles.py": "the standard roles' search path at schema init",
     "provisa/core/schema_admin.py": "the admin schema's DDL",
     "provisa/core/schema_create.py": "an org schema's DDL",
     "provisa/discovery/catalog_cache.py": "the catalog cache table's DDL",

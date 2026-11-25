@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- REQ-2270: the provisa data source for Spark 4 / Scala 2.13 as a JVM jar,
+     spark.read.format("provisa"), reading governed Provisa tables over Arrow Flight SQL as the
+     principal whose credential it holds. It mirrors provisa-pyspark (options, refusals, type map).
+
+     Spark supplies itself, Scala and Apache Arrow's vector and memory modules (provided): Spark's
+     ArrowColumnVector wraps Spark's own Arrow vectors, so the batches a partition reads are built
+     from those classes. What Spark does not ship (Arrow Flight) and what would collide with its
+     own copies (gRPC, Netty, protobuf, Guava) is bundled and relocated under
+     io.provisa.spark.shaded. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.simpleishard</groupId>
+  <artifactId>provisa-spark_2.13</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>provisa-spark_2.13</name>
+  <description>Spark data source for Provisa: read governed Provisa tables as DataFrames over Arrow
+    Flight SQL, spark.read.format("provisa").</description>
+  <url>https://github.com/kenstott/provisa</url>
+  <licenses>
+    <license>
+      <name>Business Source License 1.1</name>
+      <url>https://github.com/kenstott/provisa/blob/main/LICENSE</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer><name>Kenneth Stott</name></developer>
+  </developers>
+  <scm>
+    <url>https://github.com/kenstott/provisa</url>
+    <connection>scm:git:https://github.com/kenstott/provisa.git</connection>
+  </scm>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <spark.version>4.3.0</spark.version>
+    <!-- Spark 4.3's own Arrow (spark-parent arrow.version): Flight is built against the vector
+         and memory modules Spark puts on the class path. -->
+    <arrow.version>19.0.0</arrow.version>
+    <shaded>io.provisa.spark.shaded</shaded>
+    <netty.version>4.2.13.Final</netty.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-sql_2.13</artifactId>
+      <version>${spark.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Spark's own Arrow, named so they are on the compile and test class paths (spark-sql
+         brings them at runtime scope); provided, so not bundled. -->
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>arrow-vector</artifactId>
+      <version>${arrow.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>arrow-memory-core</artifactId>
+      <version>${arrow.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>arrow-memory-netty</artifactId>
+      <version>${arrow.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>flight-core</artifactId>
+      <version>${arrow.version}</version>
+      <exclusions>
+        <!-- Spark's own (provided above). -->
+        <exclusion>
+          <groupId>org.apache.arrow</groupId>
+          <artifactId>arrow-vector</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.arrow</groupId>
+          <artifactId>arrow-memory-core</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.arrow</groupId>
+          <artifactId>arrow-format</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+        <!-- Spark's own Jackson (Arrow's schema JSON runs on it). -->
+        <exclusion>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+        <!-- Its native OpenSSL cannot load once relocated; TLS is the JDK's. -->
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-tcnative-boringssl-static</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- Bundled and relocated: Spark's own copies are provided-scope above, and Maven would
+         otherwise resolve these to them and leave them out of the jar. Netty is gRPC 1.79's 4.1
+         line (Spark 4.3 runs 4.2), pinned as jdbc-driver/pom.xml pins it. -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-buffer</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-codec</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-codec-http</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-codec-http2</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-codec-socks</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-common</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-handler</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-handler-proxy</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-resolver</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-unix-common</artifactId>
+      <version>${netty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <!-- protobuf-java-util's own version (flight-core 19.0.0's transitive one). -->
+      <version>4.33.4</version>
+    </dependency>
+    <!-- CVE override as in jdbc-driver/pom.xml: flight-core 19.0.0 pulls guava 33.4.8-jre
+         (GHSA-xxph-c9ww-hj94, fixed in 33.7.2). -->
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>33.7.2-jre</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>failureaccess</artifactId>
+      <version>1.0.3</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.12.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <!-- What spark-submit gives its JVM (Spark's JavaModuleOptions), for the local Spark
+               of ProvisaDataSourceTest; Arrow's memory module needs java.nio of them. -->
+          <argLine>-XX:+IgnoreUnrecognizedVMOptions --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED -Djdk.reflect.useDirectMethodHandle=false -Dio.netty.tryReflectionSetAccessible=true</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals><goal>jar-no-fork</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.6.3</version>
+        <configuration>
+          <doclint>none</doclint>
+          <quiet>true</quiet>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.2</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <!-- Annotations only: absent at run time, they are ignored. -->
+              <artifactSet>
+                <excludes>
+                  <exclude>com.google.code.findbugs:jsr305</exclude>
+                  <exclude>javax.annotation:javax.annotation-api</exclude>
+                  <exclude>org.jspecify:jspecify</exclude>
+                  <exclude>com.google.errorprone:error_prone_annotations</exclude>
+                  <exclude>com.google.j2objc:j2objc-annotations</exclude>
+                  <exclude>org.codehaus.mojo:animal-sniffer-annotations</exclude>
+                  <exclude>com.google.android:annotations</exclude>
+                </excludes>
+              </artifactSet>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                    <exclude>module-info.class</exclude>
+                    <!-- Netty's native transports load by their package's name, which relocation
+                         changes; gRPC reads over Netty's NIO transport instead. -->
+                    <exclude>META-INF/native/**</exclude>
+                    <exclude>META-INF/native-image/**</exclude>
+                    <!-- The .proto sources of bundled messages: their descriptors are compiled in. -->
+                    <exclude>**/*.proto</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <relocations>
+                <relocation>
+                  <pattern>org.apache.arrow.flight</pattern>
+                  <shadedPattern>${shaded}.arrow.flight</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>io.grpc</pattern>
+                  <shadedPattern>${shaded}.grpc</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>io.netty</pattern>
+                  <shadedPattern>${shaded}.netty</shadedPattern>
+                </relocation>
+                <!-- protobuf, Guava, gson and the Google common protos gRPC carries. -->
+                <relocation>
+                  <pattern>com.google</pattern>
+                  <shadedPattern>${shaded}.google</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>io.perfmark</pattern>
+                  <shadedPattern>${shaded}.perfmark</shadedPattern>
+                </relocation>
+              </relocations>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

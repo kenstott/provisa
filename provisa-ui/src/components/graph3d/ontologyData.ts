@@ -32,6 +32,7 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, columnFacts, facts, type ColumnFacts } from "./columnFacts";
+import { ownersFact, PRODUCT_NAMED, type OwnerRow } from "./productFacts";
 import { searchWhere } from "./ontologySearch";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
@@ -68,9 +69,6 @@ export const TABLE_FACTS: Selection = {
     checkedBy: { sel: { fields: ["latest_outcome", "latest_run_at"] } },
   },
 };
-
-/** A product's facts: its status and owner (its members are counted from the graph). */
-export const PRODUCT_FACTS = ["status", "owner_role"];
 
 /** A table's columns by their keys alone: how many the role reads, so a term's graph offers to
  * expand a table only when it has columns beyond those its terms reach (a product's graph reads
@@ -136,7 +134,7 @@ const RELATIONSHIP: Selection = {
             sel: {
               fields: [],
               rels: {
-                dataProduct: { sel: { fields: ["id", "name", "domain_id", ...PRODUCT_FACTS] } },
+                dataProduct: { sel: PRODUCT_NAMED },
               },
             },
           },
@@ -182,9 +180,7 @@ function productOf(s: QueryScope): NonNullable<Selection["rels"]> {
         fields: [],
         rels: {
           dataProduct: {
-            sel: {
-              fields: productsNamed(s) ? ["id", "name", "domain_id", ...PRODUCT_FACTS] : ["id"],
-            },
+            sel: productsNamed(s) ? PRODUCT_NAMED : { fields: ["id"] },
           },
         },
       },
@@ -519,8 +515,9 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
     m,
     "data_products",
     {
-      fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
+      fields: PRODUCT_NAMED.fields,
       rels: {
+        ...PRODUCT_NAMED.rels,
         ...productParts(s),
         dataProductTables: {
           sel: {
@@ -620,7 +617,8 @@ type ProductRef = {
   name?: string;
   domainId?: string;
   status?: string | null;
-  ownerRole?: string | null;
+  // REQ-2219: its owners, people, each a row of its owners relationship.
+  owners?: OwnerRow[] | null;
 } | null;
 
 /** A table's rows of the membership junction, each reaching one of its data products. */
@@ -668,8 +666,7 @@ export interface TermRow {
   edgesIn?: (TermEdgeRow & { sourceTerm?: { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
   tables?:
-    | { id: number; tableName: string; domainId: string; dataProductTables?: Memberships }[]
-    | null;
+    { id: number; tableName: string; domainId: string; dataProductTables?: Memberships }[] | null;
   refs?:
     | {
         columnKey: string;
@@ -698,7 +695,8 @@ export interface ProductRow {
   name: string;
   domainId: string;
   status?: string | null;
-  ownerRole?: string | null;
+  // REQ-2219: its owners, people, each a row of its owners relationship.
+  owners?: OwnerRow[] | null;
   // Under Commands.
   dataProductCommands?: { trackedFunction?: { name: string; domainId: string } | null }[] | null;
   // Under Product links: its relationship rows to other products.
@@ -844,14 +842,18 @@ function productNodeOf(
   id: string,
   name: string,
   domain: string,
-  row: { status?: string | null; ownerRole?: string | null },
+  row: { status?: string | null; owners?: OwnerRow[] | null },
 ): GraphNode {
   return {
     id: productNode(id),
     type: "product",
     label: name,
     domains: [domain],
-    ...facts({ status: row.status ?? undefined, owner: row.ownerRole ?? undefined }),
+    ...facts({
+      status: row.status ?? undefined,
+      // REQ-2219: its owners are people; none read, or none named, is no owner fact.
+      owner: ownersFact(row.owners),
+    }),
   };
 }
 
@@ -989,7 +991,7 @@ export function productMapGraph(
     id: string,
     name: string,
     domain: string,
-    row: { status?: string | null; ownerRole?: string | null },
+    row: { status?: string | null; owners?: OwnerRow[] | null },
   ) => {
     node(productNodeOf(id, name, domain, row));
     if (nodes.has(`d:${domain}`)) edge(productNode(id), `d:${domain}`, "in_domain");

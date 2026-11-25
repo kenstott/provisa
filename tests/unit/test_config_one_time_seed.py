@@ -1271,14 +1271,14 @@ def _as_the_store_holds_it(declared: dict) -> dict:
     What is left is what an export must state."""
     from provisa.core.db import SEEDED_SOURCE_IDS
     from provisa.core.numeric_type import stored_type_of
-    from provisa.core.store_config import _seeded_domains
+    from provisa.core.store_config import seeded_domains
     from provisa.dq.contract import CHECKERS
 
     checkers = {s["id"] for s in declared["sources"] if s["type"] in CHECKERS}
     out = dict(declared)
     # In every store before any configuration, and in no export (store_config).
     out["sources"] = [s for s in declared["sources"] if s["id"] not in SEEDED_SOURCE_IDS]
-    out["domains"] = [d for d in declared["domains"] if d["id"] not in _seeded_domains()]
+    out["domains"] = [d for d in declared["domains"] if d["id"] not in seeded_domains()]
     out["tables"] = []
     for table in declared["tables"]:
         if table["source_id"] in SEEDED_SOURCE_IDS:

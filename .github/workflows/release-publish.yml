@@ -126,6 +126,8 @@ jobs:
             provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
+            provisa_pyspark-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
+            provisa_pyspark-${{ needs.metadata.outputs.py_version }}.tar.gz
             provisa-sdk-${{ needs.metadata.outputs.npm_version }}.tgz
             provisa-${{ needs.metadata.outputs.npm_version }}.vsix
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_x86_64.whl

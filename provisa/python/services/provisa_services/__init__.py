@@ -24,11 +24,17 @@ Provisa it is not there, and code that imports it is tested by mocking it.
     ps.llm.chat("provisa:sql_generation", [{"role": "user", "content": "..."}])
     ps.log("scored", level="info", accounts=12); ps.metric("scored", 12)
     ps.audit("spark.run", application_id=app_id, ui=ui_url, rows=12)
+    ps.answer_cut("orders", max_pages=10, rows=1000)  # the read's rows stop at its page limit
 
 Each call is made to ``$PROVISA_SERVICES`` through the worker's egress proxy, naming the call it
 serves, so what it does is recorded against the request that called the code. A refusal is raised
 as :class:`ServiceError`, naming the service; with no ``$PROVISA_SERVICES`` every call raises it.
-The same calls, by the same names, are Node's ``@provisa/services`` (provisa/node/services.mjs).
+The same calls, by the same names, are Node's ``@provisa/services`` (provisa/node/services.mjs),
+but for :func:`warn` and :func:`answer_cut`, Python's alone in v0 as ``@discover`` is (REQ-2267).
+
+WARNINGS (REQ-2267). A call may say its answer is not the whole of what was asked --
+:func:`answer_cut` for a read cut at its page limit, :func:`warn` for any other -- and its rows
+are returned with the warning, as a built-in source's are: the statement that read them carries it.
 
 THE READ CONTEXT (REQ-2100). A ``@table`` or ``@stream`` function takes up to two parameters,
 ``(inputs, context)``: an object whose fields are its inputs, and a :class:`ReadContext`, what the
@@ -68,6 +74,7 @@ __all__ = [
     "Discovered",
     "DiscoveredCommand",
     "DiscoveredQuery",
+    "DiscoveredRelationship",
     "DiscoveredTable",
     "Filter",
     "Order",
@@ -76,6 +83,7 @@ __all__ = [
     "TableFlight",
     "TableRef",
     "ServiceError",
+    "answer_cut",
     "audit",
     "cache",
     "dq",
@@ -86,6 +94,7 @@ __all__ = [
     "secrets",
     "settings",
     "vectors",
+    "warn",
 ]
 
 #: The call this code is serving: its id, and the request's traceparent (set by the host).
@@ -93,6 +102,10 @@ _call: contextvars.ContextVar[tuple[int, str | None] | None] = contextvars.Conte
     "provisa_services_call", default=None
 )
 _MISSING = object()
+#: REQ-2267: the warnings the call this context serves has taken, in order (set by the host).
+_warnings: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "provisa_services_warnings", default=None
+)
 
 #: REQ-1165: where the calls go when this module runs inside Provisa itself (a view's preflight) rather
 #: than in a worker: ``(method, path, body, headers) -> (status, body)``, set by the server for the
@@ -113,8 +126,16 @@ class ServiceError(Exception):
 
 
 def _bind(call_id: int, traceparent: str | None) -> None:
-    """The host's: the call this context serves."""
+    """The host's: the call this context serves, with no warning taken yet."""
     _call.set((call_id, traceparent))
+    _warnings.set([])
+
+
+def _taken() -> list[dict[str, Any]]:
+    """The host's: the warnings the call this context serves took, in order. A call the host
+    bound before this module was first imported took none: :func:`warn` raises in it."""
+    taken = _warnings.get()
+    return [] if taken is None else list(taken)
 
 
 def _base(service: str) -> str:
@@ -126,8 +147,12 @@ def _base(service: str) -> str:
             "Provisa's services are reached only from a Provisa code source's worker "
             "($PROVISA_SERVICES is not set)",
         )
-    if not base.startswith("http://"):
-        raise ServiceError(service, 0, f"$PROVISA_SERVICES is not an http:// address: {base!r}")
+    # REQ-2106 (amended 2026-11-22): a worker's address is http://, through its egress proxy; a
+    # developer's, through their personal access token's route, is the instance's, often https://.
+    if not base.startswith(("http://", "https://")):
+        raise ServiceError(
+            service, 0, f"$PROVISA_SERVICES is not an http:// or https:// address: {base!r}"
+        )
     return base
 
 
@@ -149,7 +174,7 @@ def _send(service: str, method: str, path: str, payload: Any = None) -> tuple[in
         method=method,
     )
     try:
-        # nosec B310 - the URL is $PROVISA_SERVICES's, checked to be http:// in _base
+        # nosec B310 - the URL is $PROVISA_SERVICES's, checked to be http(s):// in _base
         with urllib.request.urlopen(request, timeout=300) as answered:  # nosec B310
             return answered.status, answered.read()
     except urllib.error.HTTPError as refused:
@@ -386,6 +411,35 @@ def audit(event: str, /, **fields: Any) -> None:
     _json("audit", "POST", "audit", {"event": event, "fields": fields})
 
 
+def warn(code: str, message: str, **params: Any) -> None:
+    """REQ-2267: the call's answer carries this warning: ``code`` names it (``serverErrors.<code>``
+    in Provisa's catalog), ``message`` is its English text and ``params`` fill it. The same warning
+    twice is carried once. Outside a call Provisa serves there is no answer to carry it, and it is
+    an error."""
+    if not isinstance(code, str) or not code or not isinstance(message, str) or not message:
+        raise TypeError("a warning has a code and a message, each a non-empty text")
+    taken = _warnings.get()
+    if taken is None:
+        raise RuntimeError(f"warning {code!r}: no call is being served, so no answer carries it")
+    warning = {"code": code, "params": json.loads(json.dumps(params)), "message": message}
+    if warning not in taken:
+        taken.append(warning)
+
+
+def answer_cut(table: str, max_pages: int, rows: int) -> None:
+    """REQ-2267: the read of ``table`` stopped at its page limit, ``max_pages``, with ``rows`` rows
+    and more to read: its rows carry the answer-was-cut warning Provisa's own API sources give
+    (provisa/api_source/caller.py answer_cut_warning, REQ-1350)."""
+    warn(
+        "api.answer_cut",
+        f"the answer for {table} was cut at max_pages={max_pages} ({rows} rows): the API has "
+        "more. Raise the endpoint's max_pages or its page size to read it all.",
+        table=table,
+        max_pages=max_pages,
+        rows=rows,
+    )
+
+
 # -- the read context (REQ-2100) ---------------------------------------------------------------
 
 
@@ -595,13 +649,30 @@ class DiscoveredCommand:
 
 
 @dataclass(frozen=True)
+class DiscoveredRelationship:
+    """A relationship between two of the code's tables (generated or hand-written): each row of
+    ``source_table`` relates to the rows of ``target_table`` whose ``target_column`` equals its
+    ``source_column``; ``cardinality`` is ``many-to-one``, ``one-to-many`` or ``one-to-one``, as
+    seen from the source table. ``name`` names it among the code's relationships."""
+
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    cardinality: str = "many-to-one"
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class Discovered:
-    """What ``@discover`` returns: its generated items, and the handler of each kind it
-    generates."""
+    """What ``@discover`` returns: its generated items, the relationships between its tables, and
+    the handler of each kind it generates."""
 
     tables: Sequence[DiscoveredTable] = ()
     queries: Sequence[DiscoveredQuery] = ()
     commands: Sequence[DiscoveredCommand] = ()
+    relationships: Sequence[DiscoveredRelationship] = ()
     table_handler: Callable[..., Any] | None = None
     query_handler: Callable[..., Any] | None = None
     command_handler: Callable[..., Any] | None = None

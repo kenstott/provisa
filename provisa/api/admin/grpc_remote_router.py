@@ -32,7 +32,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
-from provisa.core.schema_org import domains, sources
+from provisa.core.schema_org import sources
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.schema_common import remote_source_counts
 from provisa.grpc_remote.mapper import query_table_name
@@ -150,12 +150,10 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
             update_columns=["host", "description", "path", "federation_hints"],
         )
         if domain_id:
-            await conn.upsert(
-                domains,
-                {"id": domain_id},  # REQ-1919
-                index_elements=["id"],
-                update_columns=[],
-            )
+            from provisa.core.repositories import domain as domain_repo
+
+            # REQ-1919: written when created; "" is the column's own default.
+            await domain_repo.ensure(conn, domain_id, "")
 
     # REQ-322 (amended 2026-10-02): adding or refreshing the source registers no table. The
     # tables already registered are brought up to date with the proto; every other query method

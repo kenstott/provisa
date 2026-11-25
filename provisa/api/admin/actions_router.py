@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, model_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import select
 
 from provisa.api.errors import ApiError
 from provisa.core.host_code import refuse_host_code
@@ -585,9 +585,9 @@ async def _reclassify(request: Request, table, name: str, kind: str) -> dict:  #
         await _require_reclassification(
             request, conn, table, name, kind, row[0] or "", explicit=True
         )
-        await conn.execute_core(
-            update(table).where(table.c.name == name).values(kind=kind, updated_at=func.now())
-        )
+        from provisa.core.repositories import function as function_repo
+
+        await function_repo.set_kind(conn, table, name, kind)
     from provisa.api.app import _rebuild_schemas
 
     await _rebuild_schemas()
@@ -728,9 +728,9 @@ async def update_function(
         )
         await _refuse_unreachable_mask(conn, body.outputColumns)
         try:
-            # REQ-1634: same gate as function_repo.upsert_function -- the update path writes
-            # tracked_functions directly and must not bypass it: a member keeps to the domain of
-            # every product it is a member of.
+            # REQ-1634: same gate as function_repo.upsert_function -- the update path
+            # (function_repo.update_function) must not bypass it: a member keeps to the domain
+            # of every product it is a member of.
             await data_product_repo.require_domain_of_products(
                 conn,
                 await data_product_repo.products_of_command(conn, name),
@@ -739,10 +739,10 @@ async def update_function(
             )
         except data_product_repo.MembershipRefused as refused:
             raise ApiError(422, "actions.data_product_domain_mismatch", str(refused)) from refused
-        result = await conn.execute_core(
-            update(tracked_functions)
-            .where(tracked_functions.c.name == name)
-            .values(
+        rowcount = await function_repo.update_function(
+            conn,
+            name,
+            dict(
                 source_id=body.sourceId,
                 schema_name=body.schemaName,
                 function_name=body.functionName,
@@ -762,11 +762,10 @@ async def update_function(
                 language_bindings=body.languageBindings,  # REQ-2168
                 source_type=_source_type_of(body),  # REQ-1986
                 exposed_as_table=body.exposedAsTable,  # REQ-1986
-                updated_at=func.now(),
-            )
+            ),
         )
 
-    if (result.rowcount or 0) == 0:
+    if rowcount == 0:
         raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
     if hidden is not None:  # REQ-1986: its table, no longer exposed, goes once nothing returns it
         from provisa.api.admin._function_table import remove_table
@@ -899,8 +898,10 @@ async def create_webhook(
         await _require_reclassification(
             request, conn, tracked_webhooks, body.name, body.kind, body.domainId
         )
-        await conn.upsert(
-            tracked_webhooks,
+        from provisa.core.repositories import function as function_repo
+
+        await function_repo.save_webhook(
+            conn,
             {
                 "name": body.name,
                 "url": body.url,
@@ -914,23 +915,7 @@ async def create_webhook(
                 "description": body.description,
                 "kind": body.kind,
                 "requires_approval": body.requiresApproval,  # REQ-209, REQ-1924
-                "updated_at": func.now(),
             },
-            index_elements=["name"],
-            update_columns=[
-                "url",
-                "method",
-                "timeout_ms",
-                "returns",
-                "inline_return_type",
-                "arguments",
-                "visible_to",
-                "domain_id",
-                "description",
-                "kind",
-                "requires_approval",
-                "updated_at",
-            ],
         )
         # REQ-209: a webhook is exposed only after a steward approves it. Approval is tracked
         # via the creation_requests queue — a webhook is approved when its most recent
@@ -982,10 +967,12 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
             request, conn, tracked_webhooks, name, body.kind, body.domainId
         )
         await _refuse_unreachable_mask(conn, body.inlineReturnType)
-        result = await conn.execute_core(
-            update(tracked_webhooks)
-            .where(tracked_webhooks.c.name == name)
-            .values(
+        from provisa.core.repositories import function as function_repo
+
+        rowcount = await function_repo.update_webhook(
+            conn,
+            name,
+            dict(
                 url=body.url,
                 method=body.method,
                 timeout_ms=body.timeoutMs,
@@ -997,11 +984,10 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
                 description=body.description,
                 kind=body.kind,
                 requires_approval=body.requiresApproval,  # REQ-209, REQ-1924
-                updated_at=func.now(),
-            )
+            ),
         )
 
-    if (result.rowcount or 0) == 0:
+    if rowcount == 0:
         raise ApiError(404, "actions.webhook_not_found", f"Webhook '{name}' not found", name=name)
 
     log.info("Updated tracked webhook %s", name)

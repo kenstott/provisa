@@ -171,7 +171,6 @@ def _snapshot(
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner_role="data_owner",
                 team_role="analyst",
                 purpose="One view of each customer",
                 limitations="No refunds",
@@ -188,6 +187,7 @@ def _snapshot(
         dialect="databricks",
         contexts={},
         glossary=glossary,
+        product_owners={"customer_360": ("data_owner",)},
     )
 
 

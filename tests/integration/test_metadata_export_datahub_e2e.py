@@ -45,6 +45,7 @@ from tests.integration.metadata_export_server import (
     ORDERS_AMOUNT_DESCRIPTION,
     PRODUCT,
     PRODUCT_FIELDS,
+    PRODUCT_OWNER,
     RLS_FILTER,
     SCHEMA,
     SOURCE,
@@ -121,7 +122,7 @@ async def _governance_arrives_as_tags_without_any_rule_body(published: dict) -> 
 
 async def _the_steward_owns_each_member(published: dict) -> None:
     ownership = await _aspect(_dataset("orders"), "ownership")
-    assert [o["owner"] for o in ownership["owners"]] == ["urn:li:corpuser:data_owner"]
+    assert [o["owner"] for o in ownership["owners"]] == [f"urn:li:corpuser:{PRODUCT_OWNER}"]
 
 
 async def _the_data_product_holds_its_members_and_fields(published: dict) -> None:
@@ -133,7 +134,7 @@ async def _the_data_product_holds_its_members_and_fields(published: dict) -> Non
     odps = {k: v for k, v in product["customProperties"].items() if k.startswith("odps.")}
     assert odps == {
         "odps.purpose": PRODUCT_FIELDS["purpose"],
-        "odps.ownerRole": PRODUCT_FIELDS["owner_role"],
+        "odps.ownerRole": PRODUCT_OWNER,
         "odps.teamRole": PRODUCT_FIELDS["team_role"],
         "odps.limitations": PRODUCT_FIELDS["limitations"],
         "odps.usage": PRODUCT_FIELDS["usage"],
@@ -149,7 +150,7 @@ async def _the_data_product_holds_its_members_and_fields(published: dict) -> Non
         _dataset(VIEW, schema="views", source="__derived__"),
     }
     owners = await _aspect(urn, "ownership")
-    assert [o["owner"] for o in owners["owners"]] == ["urn:li:corpuser:data_owner"]
+    assert [o["owner"] for o in owners["owners"]] == [f"urn:li:corpuser:{PRODUCT_OWNER}"]
 
 
 async def _the_view_carries_its_column_lineage(published: dict) -> None:

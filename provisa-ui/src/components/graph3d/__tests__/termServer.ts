@@ -192,7 +192,13 @@ export function world(spec: WorldSpec): World {
   const product = (id: string): Row => {
     const p = spec.products.find((x) => x.id === id);
     if (!p) throw new Error(`no product ${id}`);
-    return { id, name: p.name, domainId: "sales", status: "active", ownerRole: "steward" };
+    return {
+      id,
+      name: p.name,
+      domainId: "sales",
+      status: "active",
+      owners: [{ principal: "sam", principalKind: "person", named: true, holds: true }],
+    };
   };
   const bound = (table: number, column: string) =>
     spec.terms.filter((t) => t.columns.some(([tb, c]) => tb === table && c === column));

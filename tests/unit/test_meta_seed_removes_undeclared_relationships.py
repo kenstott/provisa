@@ -161,7 +161,6 @@ async def test_a_reseed_over_renamed_built_in_relationships_completes(control_pl
                 cardinality="many-to-one",
                 alias="STEWARD",
                 graphql_alias="steward",
-                owner="someone",
             )
         )
         person_before = [r for r in await _all_relationships(conn) if r["id"] == _PERSON_REL]

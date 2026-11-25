@@ -41,6 +41,20 @@ from provisa.python.source import HOST, READER
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture
+def ps(monkeypatch):
+    """Provisa's services module, on the path as the host puts it (provisa/python/host.py)."""
+    import importlib
+
+    from provisa.python.source import HOST
+
+    monkeypatch.syspath_prepend(str(HOST.parent / "services"))
+    module = importlib.import_module("provisa_services")
+    yield module
+    sys.modules.pop("provisa_services", None)
+
+
 SDL = """
 interface Node { id: ID! }
 
@@ -507,3 +521,75 @@ def test_a_generated_command_answering_with_one_value_returns_it(prepared):
     assert worker.command("ping", [], []) == "pong"
     deleted = worker.command("deleteBooks", [{"authorId": {"_eq": "a1"}}], ["where"])
     assert deleted == {"__typename": "DeleteResult", "affectedRows": 1}
+
+
+# -- relationships, warnings and the credential (REQ-2267, amended 2026-11-22) ---------------------
+
+
+def test_discover_declares_the_relationships_the_mapping_detects(prepared):
+    from provisa.codesource.manifest import Relationship
+
+    plan = gd.plan(_config("http://remote.invalid/graphql"))
+    (detected,) = plan.relationships
+    assert prepared.manifest.relationships == (
+        Relationship(detected["id"], "books", "author_id", "authors", "id", "many-to-one"),
+    )
+
+
+async def test_a_read_cut_at_max_rows_carries_the_warning_the_sources_statement_carries(
+    monkeypatch, ps
+):
+    import asyncio
+
+    from provisa.core.statement_warnings import warn
+    from provisa.graphql_remote.executor import RemoteAnswer, answer_row_cut_warning
+
+    async def cut_read(_config, _read, _columns, _given):
+        warn(answer_row_cut_warning("authors", 2))
+        return RemoteAnswer(AUTHORS[:2], cut=True)
+
+    monkeypatch.setattr(gd, "_execute_read", cut_read)
+    plan = gd.plan(_config("http://remote.invalid/graphql"))
+
+    async def served() -> tuple[list, list]:
+        ps._bind(1, None)  # as the host binds the call it serves
+        rows = await gd.read_table(plan, "authors", {}, None)
+        return rows, ps._taken()
+
+    rows, taken = await asyncio.create_task(served())
+    assert [r["id"] for r in rows] == ["a1", "a2"]
+    assert taken == [answer_row_cut_warning("authors", 2).as_dict()]
+
+
+def test_the_credential_is_written_as_its_declared_secret_and_read_at_each_call(
+    tmp_path, monkeypatch, ps
+):
+    config = {
+        **_config("http://remote.invalid/graphql"),
+        "auth": {"type": "header", "header": "X-Shop-Token", "token": "${secret:shop}"},
+    }
+    code = gd.write_code(tmp_path / "code", config)
+    assert gd.declared_secrets(config) == {"credential": "${secret:shop}"}
+    held = gd.load_config(code)["auth"]
+    assert held == {"type": "header", "header": "X-Shop-Token", "token": {"$secret": "credential"}}
+    assert "${secret:shop}" not in (code / gd.CONFIG_FILE).read_text()
+    monkeypatch.setattr(ps.secrets, "get", staticmethod(lambda name: f"value-of-{name}"))
+    assert gd._auth(gd.load_config(code)) == {
+        "type": "header",
+        "header": "X-Shop-Token",
+        "token": "value-of-credential",
+    }
+
+
+def test_a_credential_given_as_a_value_is_refused_by_name(tmp_path):
+    from provisa.codesource.bundle import BundleRefused
+
+    config = {
+        **_config("http://remote.invalid/graphql"),
+        "auth": {"type": "bearer", "token": "tok-literal"},
+    }
+    with pytest.raises(BundleRefused) as refused:
+        gd.write_code(tmp_path / "code", config)
+    assert refused.value.code == "codesource.credential_not_reference"
+    assert "tok-literal" not in str(refused.value)
+    assert not (tmp_path / "code").exists()

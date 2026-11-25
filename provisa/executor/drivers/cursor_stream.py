@@ -28,7 +28,7 @@ from typing import Any
 
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
-from provisa.executor.drivers.base import DirectResultStream
+from provisa.executor.drivers.base import DirectArrowStream, DirectResultStream
 
 log = logging.getLogger(__name__)
 
@@ -151,6 +151,63 @@ class PooledCursorStream(DirectResultStream):
         # have closed it — still frees its pool slot.
         if self._conn is not None:
             self._release(completed=False)
+
+
+class PooledArrowCursorStream(DirectArrowStream, PooledCursorStream):  # REQ-2194
+    """A :class:`PooledCursorStream` whose cursor fetches Arrow: its Arrow face hands on the
+    driver's record batches as it fetched them, and its row face builds rows from them only as a
+    row consumer pulls them (:class:`DirectArrowStream`).
+
+    Beside what :class:`PooledCursorStream` asks of the cursor, it has ``schema`` (the result's
+    Arrow schema, read once it has run) and ``fetch_batch()`` (the next record batch, ``None``
+    once exhausted); ``to_rows(batch)`` builds a batch's rows as the driver's own rows hold them.
+    A statement with no result has no columns: its schema is the empty one."""
+
+    def __init__(
+        self,
+        pool: BlockingPool[Any],
+        *,
+        open_cursor: Callable[[Any], Any],
+        execute: Callable[[Any], None],
+        columns: Callable[[Any], list[str]],
+        cancel: Callable[[Any, Any], None],
+        to_rows: Callable[[Any], list[tuple]],
+        finish: Callable[[Any], None] | None = None,
+    ) -> None:
+        import pyarrow as pa
+
+        DirectArrowStream.__init__(self)
+        self._to_rows = to_rows
+        self.schema = pa.schema([])
+        PooledCursorStream.__init__(
+            self,
+            pool,
+            open_cursor=open_cursor,
+            execute=execute,
+            columns=columns,
+            cancel=cancel,
+            finish=finish,
+        )
+        if self._cursor is not None:
+            self.schema = self._cursor.schema
+
+    def to_rows(self, batch: Any) -> list[tuple]:
+        return self._to_rows(batch)
+
+    # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
+    async def fetch_arrow(self) -> Any:
+        conn, cursor = self._conn, self._cursor
+        if cursor is None:
+            return None
+        try:
+            with request_deadline.cancel_on_deadline(lambda: self._cancel(conn, cursor)):
+                batch = cursor.fetch_batch()
+        except BaseException:
+            self._release(completed=False)
+            raise
+        if batch is None:
+            self._release(completed=True)
+        return batch
 
 
 class CursorStream(DirectResultStream):

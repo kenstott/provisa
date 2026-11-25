@@ -30,12 +30,18 @@ from provisa.codesource.manifest import (
     manifest_json,
     read_manifest,
 )
+from provisa.codesource.native_connector import (
+    _project as spark_project,  # pyright: ignore[reportPrivateUsage]
+)
 from provisa.python.source import READER
 from tests.fixtures.code_sdk_spellings.collector import Case, cases
 
 pytestmark = pytest.mark.unit
 
 SDK = Path(__file__).resolve().parents[2] / "provisa-sdk" / "python"
+#: REQ-2225: a Spark script runs on the Spark connector's host, whose code is the connector's
+#: project, so ``provisa_spark`` is importable beside it -- the native host's own path.
+SPARK = spark_project()
 CASES = {c.name: c for c in cases() if c.language == "python"}
 SPELLED = [(c.name, s) for c in CASES.values() for s in c.spellings]
 TWINNED = [c.name for c in CASES.values() if len(c.spellings) == 2 and c.accepted]
@@ -49,14 +55,15 @@ def read(tmp_path_factory):
 
 
 def _read(root: Path, name: str, spelling: str) -> dict | tuple[str, ...]:
-    """The SDK is on the code's path, as an author's installed dependency is; the reader runs as
-    Provisa runs it: ``python reader.py <code> <entry>``."""
+    """The SDK is on the code's path, as an author's installed dependency is, and provisa_spark
+    as the Spark connector's host has it; the reader runs as Provisa runs it:
+    ``python reader.py <code> <entry>``."""
     code = CASES[name].write(root, spelling)
     done = subprocess.run(
         [sys.executable, "-s", str(READER), str(code), "source"],
         capture_output=True,
         text=True,
-        env={"PATH": os.environ["PATH"], "PYTHONPATH": str(SDK)},
+        env={"PATH": os.environ["PATH"], "PYTHONPATH": os.pathsep.join((str(SDK), str(SPARK)))},
         check=False,
     )
     assert done.returncode == 0, done.stderr
@@ -100,7 +107,7 @@ def pyright_errors(tmp_path_factory) -> dict[str, int]:
     config = root / "pyrightconfig.json"
     # A docs example calls the reader's own client by name (``api``, ``MODEL``), left undefined.
     settings = {
-        "extraPaths": [str(SDK)],
+        "extraPaths": [str(SDK), str(SPARK)],
         "pythonVersion": "3.12",
         "reportUndefinedVariable": "none",
     }

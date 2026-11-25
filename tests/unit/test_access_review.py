@@ -65,7 +65,7 @@ async def org(control_plane, monkeypatch):
         )
     monkeypatch.setattr(
         "provisa.api.app.state",
-        SimpleNamespace(model_db=db, held_entitlements={}),
+        SimpleNamespace(model_db=db, held_entitlements={}, role_owner_rows={}),
         raising=False,
     )
     return db
@@ -224,7 +224,9 @@ def _steward_state(identifiers: tuple[str, ...]) -> SimpleNamespace:
     held = HeldEntitlements(
         lists=(HeldList("steward", "domains", identifiers, capability="domain_steward"),)
     )
-    return SimpleNamespace(roles={"steward": role}, held_entitlements={"ana": held})
+    return SimpleNamespace(
+        roles={"steward": role}, held_entitlements={"ana": held}, role_owner_rows={}
+    )
 
 
 def test_a_domains_owner_is_whom_domain_steward_reaches_it_for():

@@ -27,6 +27,7 @@ from provisa.codesource.manifest import (
     ListOf,
     Manifest,
     Named,
+    Relationship,
     Scalar,
     Shape,
 )
@@ -108,6 +109,18 @@ async def tables(state: Any, source_id: str) -> list[tuple[str, str, list[str]]]
         for e in prepared.manifest.exports
         if e.kind == "table"
     ]
+
+
+async def relationships(state: Any, source_id: str) -> tuple[Relationship, ...] | None:
+    """REQ-2267: the relationships the source's ``@discover`` declares between its tables; None
+    when the source is not there."""
+    from provisa.codesource.source import context_for, prepare
+
+    source = await _source(state, source_id)
+    if source is None:
+        return None
+    prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
+    return prepared.manifest.relationships
 
 
 async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:

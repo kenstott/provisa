@@ -134,7 +134,6 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
-    steward       TEXT,
     graphql_alias TEXT,
     -- REQ-1363: the domain this one sits under; NULL = no parent. No foreign key (see
     -- schema_org.domains): the model store holds the tree.
@@ -142,8 +141,6 @@ CREATE TABLE IF NOT EXISTS domains (
 );
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
--- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
-ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
 -- REQ-2248: deleting a domain that holds no live table retires it, as a table is retired: why
 -- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
 -- and retired_id holds the id it had while live, so that id is free for reuse.
@@ -161,8 +158,9 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
 ON CONFLICT (id) DO NOTHING;
 
--- Seed built-in operational telemetry domain (REQ-1386: org_admin is its steward)
-INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
+-- Seed built-in operational telemetry domain. A system domain needs no steward (REQ-2219,
+-- amended 2026-11-23: system domains are exempt from the REQ-609 steward gate).
+INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-2163: the ontology system schema (the glossary's definitions). Its GraphQL alias is stored:
@@ -173,8 +171,9 @@ ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
 -- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
--- already has the underlying source of truth -- team_role/owner_role resolve to individuals
--- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
+-- already has the underlying source of truth -- team_role resolves to individuals via the
+-- existing role machinery (OwnerResolutionInline); its owners are people, each holding a
+-- data_product_owner entitlement row naming it (REQ-2219); tags/authoritativeDefinitions/
 -- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
 -- and support stays prose. REQ-2180: its contracts are derived from its offers
 -- (data_product_offer_contracts); what they share (freshness, support) is written once here.
@@ -182,7 +181,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
-    owner_role    TEXT,
     team_role     TEXT,
     purpose       TEXT NOT NULL DEFAULT '',
     limitations   TEXT NOT NULL DEFAULT '',
@@ -206,7 +204,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- product: a read trails its source by at most this many seconds; NULL: each dataset's own.
     freshness     INTEGER
 );
-ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness INTEGER;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
@@ -561,8 +558,8 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS disable_cypher BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS source_json_key TEXT;
-    -- REQ-020: ownership, versioning, and re-review flag for join-field schema changes.
-    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS owner TEXT;
+    -- REQ-020: versioning, and re-review flag for join-field schema changes. Its owners are
+    -- people holding relationship_owner entitlement rows naming it (REQ-2219).
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
     -- REQ-1586: the junction declaration reaches a relationships table that predates it.
@@ -1542,6 +1539,22 @@ CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
 CREATE TABLE IF NOT EXISTS checker_targets (
     table_id         INTEGER PRIMARY KEY,
     checked_table_id INTEGER NOT NULL
+);
+
+-- REQ-2219: who owns each data product and relationship, and who stewards each domain. named: a
+-- principal its Owner or Steward field names, a person or a role, as entered
+-- (provisa.entitlements.owners.named); holds: a person whose entitlement rows of the owner
+-- capability name it (a domain's, or a domain above it), a named role's holders among them, as
+-- provisa.entitlements.owners.holders reads them. Rights come from holds alone. Derived state for
+-- the meta views: each build replaces every row, as does a save of an Owner or Steward field.
+CREATE TABLE IF NOT EXISTS object_owners (
+    object_kind    TEXT NOT NULL CHECK (object_kind IN ('data_product', 'domain', 'relationship')),
+    object_id      TEXT NOT NULL,
+    principal_kind TEXT NOT NULL CHECK (principal_kind IN ('person', 'role')),
+    principal      TEXT NOT NULL,
+    named          BOOLEAN NOT NULL,
+    holds          BOOLEAN NOT NULL,
+    PRIMARY KEY (object_kind, object_id, principal_kind, principal)
 );
 
 -- REQ-194: the names table of the last model version built -- every model object's name on every

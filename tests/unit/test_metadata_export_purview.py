@@ -128,7 +128,6 @@ def _snapshot(
                 id="sales_360",
                 domain_id=domain,
                 name="Sales 360",
-                owner_role="data_owner",
                 purpose="Every sale",
                 usage="Join on customer_id",
                 limitations="No refunds",
@@ -144,7 +143,9 @@ def _snapshot(
         org_id="acme",
         dialect="postgres",
         contexts={},
-        owner_emails={"data_owner": owners},
+        # REQ-2219: the product's owners are people; each named here by their address.
+        product_owners={"sales_360": owners},
+        person_emails={owner: owner for owner in owners},
         glossary=glossary,
     )
 

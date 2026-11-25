@@ -46,10 +46,10 @@ def test_db2_engine_lands_a_relational_source(db2: engine_mod.FederationEngine) 
 def test_db2_engine_refuses_a_source_it_cannot_land_by_name(
     db2: engine_mod.FederationEngine,
 ) -> None:
-    stripe = Source(id="billing", type=SourceType.stripe, host="h", port=443, database="d")
-    assert db2.reachable("stripe") is False
-    with pytest.raises(UnreachableSource, match="'db2'.*'stripe'"):
-        db2.resolve(stripe)
+    hubspot = Source(id="crm", type=SourceType.hubspot, host="h", port=443, database="d")
+    assert db2.reachable("hubspot") is False
+    with pytest.raises(UnreachableSource, match="'db2'.*'hubspot'"):
+        db2.resolve(hubspot)
 
 
 def test_db2_engine_reads_no_other_regions_replicas(db2: engine_mod.FederationEngine) -> None:

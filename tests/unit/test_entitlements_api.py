@@ -71,6 +71,7 @@ def _state(model_db):
         roles=roles,
         role_chains=chains,
         held_entitlements={},
+        role_owner_rows={},
         idp_entitlements={},
         names_table=_names(),
         data_product_refs=(),
