@@ -288,9 +288,9 @@ class TestTheSandbox:
         lies about what the caller may do."""
         import inspect
 
-        from provisa.core import db
+        from provisa.core.repositories import standard_roles
 
-        source = inspect.getsource(db.assert_standard_roles)
+        source = inspect.getsource(standard_roles.assert_standard_roles)
         assert 'sandbox_demonstrated() if role_id == "sandbox" else []' in source
 
     def test_it_demonstrates_what_org_admin_holds_and_it_does_not_except_user_management(self):
@@ -326,7 +326,7 @@ class TestTheSeed:
     async def test_an_edited_standard_role_is_written_back(self, control_plane):
         from sqlalchemy import update
 
-        from provisa.core.db import assert_standard_roles
+        from provisa.core.repositories.standard_roles import assert_standard_roles
         from provisa.core.environments import org_schema
         from provisa.core.schema_org import roles
 

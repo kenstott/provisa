@@ -272,38 +272,6 @@ def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     return fk_table
 
 
-async def _insert_rel(
-    conn: "Connection",
-    rel_id: str,
-    src_id: int,
-    tgt_id: int,
-    src_col: str,
-    tgt_col: str,
-    cardinality: str,
-    alias: str | None,
-    graphql_alias: str | None,
-) -> bool:  # REQ-399, REQ-413, REQ-415
-    """Insert a relationship; return True if newly inserted."""
-    result = await conn.execute(
-        """
-        INSERT INTO relationships
-            (id, source_table_id, target_table_id, source_column, target_column, cardinality,
-             alias, graphql_alias)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT DO NOTHING
-        """,
-        rel_id,
-        src_id,
-        tgt_id,
-        src_col,
-        tgt_col,
-        cardinality,
-        alias,
-        graphql_alias,
-    )
-    return result == "INSERT 0 1"
-
-
 async def _registered_table(conn: "Connection", source_id: str, table_name: str):
     return await conn.fetchrow(
         "SELECT id, alias, table_name FROM registered_tables"
@@ -352,7 +320,7 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
         return 0
 
     from provisa.core.relationship_naming import Generated, unique_names
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories import relationship as rel_repo
 
     held = {r["id"] for r in await config_conn.fetch("SELECT id FROM relationships")}
     generated: list[Generated] = []
@@ -408,7 +376,7 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
 
     inserted = 0
     for g, named in zip(generated, await unique_names(config_conn, generated), strict=True):
-        if await _insert_rel(
+        if await rel_repo.insert_discovered(
             config_conn,
             g.rel_id,
             g.source_table_id,
@@ -422,5 +390,5 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
             inserted += 1
             _log.info("Auto-tracked FK %s: %s (alias: %s)", g.cardinality, g.rel_id, named.alias)
     if inserted:
-        await store_effective_names(config_conn, [g.rel_id for g in generated])
+        await rel_repo.store_effective_names(config_conn, [g.rel_id for g in generated])
     return inserted

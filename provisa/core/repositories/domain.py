@@ -50,6 +50,18 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
     )
 
 
+async def ensure(conn: "Connection", domain_id: str, description: str) -> None:  # REQ-1919
+    """Create domain ``domain_id`` with ``description`` when there is none: a source added with
+    a domain, or a boot seed. A stored domain is left as it is."""
+    model_change.name("upsert", model_change.uri(model_uri.domain_uri, domain_id))  # REQ-1524
+    await conn.upsert(
+        domains,
+        {"id": domain_id, "description": description},
+        index_elements=["id"],
+        update_columns=[],
+    )
+
+
 async def _require_label_not_a_table(conn: "Connection", domain_id: str) -> None:  # REQ-572
     from provisa.compiler.naming import refuse_label_clash
     from provisa.core.repositories.table import naming_rules

@@ -3534,7 +3534,7 @@ async def _rebuild_schemas_impl(
     # stamps, so the config watcher rebuilds once more; reading them afterwards would record stamps
     # newer than the model built.
     from provisa.core import config_stamp as _config_stamp
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     # REQ-351: every relationship's effective names, in the naming convention now in force: a build
     # follows each save, configuration load and change of convention. Stored before the stamp is

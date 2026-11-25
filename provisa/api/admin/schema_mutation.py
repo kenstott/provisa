@@ -1376,11 +1376,7 @@ async def save_relationship(
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
             # source steward's to clear — the flag is the other domain's notice that its tables are
             # now reachable through an edge it did not define.
-            await _conn.execute_core(
-                update(relationships)
-                .where(relationships.c.id == input.id)
-                .values(needs_review=True)
-            )
+            await rel_repo.flag_for_review(_conn, [input.id])
         if input.record_candidate and not input.target_function_name:
             _rres = await _conn.execute_core(
                 select(relationships.c.source_table_id, relationships.c.target_table_id).where(
