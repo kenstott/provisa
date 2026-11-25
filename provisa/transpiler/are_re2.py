@@ -49,6 +49,8 @@ _SPACE = "\\t\\n\\x{0B}\\f\\r "
 #: The class of PostgreSQL's [[:word:]] on ASCII, which RE2's \\w is.
 _WORD = "0-9A-Za-z_"
 _DIGIT = "0-9"
+#: The digits PostgreSQL's lexer reads in a bound and an escape.
+_DIGITS = frozenset("0123456789")
 
 #: Text beyond ASCII: a locale's class reads it by the database's locale.
 _BEYOND_ASCII = "[^\\x{0}-\\x{7F}]"
@@ -251,7 +253,7 @@ class _Reader:
         """{ opens a bound where a digit follows it, and is an ordinary character otherwise."""
         text = self.text
         following = text[self.at + 1 : self.at + 2]
-        if not following.isdigit():
+        if not (following and following in _DIGITS):
             self._atom("\\{", word=False)
             return
         end = text.find("}", self.at)
@@ -323,7 +325,7 @@ class _Reader:
             self._start_of_word(2)
         elif e == "M":
             self._end_of_word(2)
-        elif e.isdigit():
+        elif e in _DIGITS:
             self._digits()
         elif e.isalnum():
             raise AreError("invalid escape \\ sequence")
@@ -386,7 +388,7 @@ class _Reader:
         group closed before it), an octal character otherwise."""
         start = self.at + 1
         end = start
-        while end < len(self.text) and self.text[end].isdigit():
+        while end < len(self.text) and self.text[end] in _DIGITS:
             end += 1
         number = int(self.text[start:end])
         if self.text[start] != "0" and (end - start == 1 or 0 < number <= self.closed):
@@ -550,7 +552,7 @@ class _Reader:
                 raise NoForm("\\S in a complemented bracket expression")
             self.bound.add("space")
             return at + 2, "", f"[^{_SPACE}]", False
-        if e.isdigit():
+        if e in _DIGITS:
             raise NoForm("a digit escape in a bracket expression")
         if e.isalnum():
             raise AreError("invalid escape \\ sequence")

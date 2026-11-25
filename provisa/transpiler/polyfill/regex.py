@@ -193,8 +193,9 @@ _CH_EMPTY_MATCH_EVERY = (
     "tuple('', toUInt64(1))), 1)), replaceRegexpAll($v, $p, $r))"
 )
 #: A pattern that matches the empty text where no form above writes PostgreSQL's search: the
-#: pattern is no literal, or the replacement is no literal or holds a backslash. It raises 0A000 where the pattern can match the empty text
-#: ($e: the pattern, its word boundaries matching everywhere), and is replaceRegexpAll otherwise.
+#: pattern is no literal, or the replacement is no literal or holds a backslash. It raises 0A000
+#: where the pattern can match the empty text ($e: the pattern, its word boundaries matching
+#: everywhere), and is replaceRegexpAll otherwise.
 _CH_EMPTY_MATCH_RAISES = (
     "if("
     + ch_fail(
@@ -289,7 +290,7 @@ def _ch_replacement(said: exp.Expr, re2: are_re2.Re2) -> exp.Expr:
             at += 1
             continue
         following = text[at + 1 : at + 2]
-        if following.isdigit() and following != "0":
+        if following and following in "123456789":
             out.append(f"\\{following}" if int(following) <= re2.groups else "")
             at += 2
         elif following == "&":
