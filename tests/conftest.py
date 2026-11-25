@@ -779,7 +779,7 @@ class _DockerServiceManager:
             ["docker", "compose", *_ITEST_COMPOSE_ARGS],
             cwd=_REPO_ROOT,
             env=_itest_compose_env(),
-            services=up_services,
+            services=_pullable_services(up_services),
         )
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
@@ -903,6 +903,25 @@ def _dump_service_diagnostics(services: list[str]) -> None:
             check=False,
         )
         print(f"[conftest] {service} logs:\n{logs.stdout}{logs.stderr}")
+
+
+def _pullable_services(services: list[str]) -> list[str]:
+    """Filter ``services`` to those that can be pulled (no ``build:`` in the compose config).
+
+    Services with a ``build:`` key (e.g. zaychik, airport-shim) are locally built and have no
+    registry image; including them in ``compose pull`` fails with "pull access denied" (REQ-1742).
+    """
+    config = subprocess.run(
+        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "config", "--format", "json"],
+        cwd=_REPO_ROOT,
+        env=_itest_compose_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    model = json.loads(config.stdout)
+    built = {name for name, svc in model["services"].items() if "build" in svc}
+    return [s for s in services if s not in built]
 
 
 def _named_volumes(services: list[str]) -> list[str]:
