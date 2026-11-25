@@ -200,7 +200,9 @@ class SourceType(str, Enum):
     # (bigquery, clickhouse, duckdb, iceberg, mongodb, mysql, redis, sqlserver — snowflake is a
     # Wasm wrapper in their catalog, also already covered) are NOT duplicated here. Their `s3`
     # wrapper (CSV/JSONL/Parquet objects) is likewise not duplicated: csv/parquet take s3:// paths
-    # and `files` takes mapping.storage_type "s3".
+    # and `files` takes mapping.storage_type "s3". Stripe and Shopify are not here: they are brands
+    # (REQ-1874, amended 2026-11-24), an `openapi` and a `graphql_remote` source that record their
+    # brand (REQ-1923).
     airtable = "airtable"
     auth0 = "auth0"
     aws_cognito = "aws_cognito"
@@ -208,7 +210,6 @@ class SourceType(str, Enum):
     firebase = "firebase"
     logflare = "logflare"
     s3_vectors = "s3_vectors"
-    stripe = "stripe"
     calcom = "calcom"
     calendly = "calendly"
     clerk = "clerk"
@@ -219,7 +220,6 @@ class SourceType(str, Enum):
     notion = "notion"
     orb = "orb"
     paddle = "paddle"
-    shopify = "shopify"
     slack = "slack"
 
 

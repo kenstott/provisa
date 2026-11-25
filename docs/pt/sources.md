@@ -877,8 +877,6 @@ Como em qualquer fonte OpenAPI, cada operação `GET` é uma tabela oferecida e 
 
 **Exclusões.** A integração de pagamento descontinuada do Stripe baseada em token e Sources fica de fora da especificação que acompanha o produto. A lista está em [Exclusões em uma fonte construída a partir de uma especificação](#exclusions-on-a-specification-built-source). As `exclusions` do próprio operador são somadas às da marca.
 
-`stripe` também aparece em `SourceType` entre os tipos stub do Supabase `wrappers`. Uma fonte Stripe adicionada pelo formulário é uma fonte `openapi`, não esse stub.
-
 #### Exclusões em uma fonte construída a partir de uma especificação {: #exclusions-on-a-specification-built-source }
 
 Uma especificação OpenAPI publicada descreve tudo o que a API remota aceita, inclusive o que seu fornecedor descontinuou e o que uma implantação nunca deve enviar. Uma fonte OpenAPI pode ter exclusões: coisas da especificação que a fonte não oferece.
