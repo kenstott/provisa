@@ -418,7 +418,7 @@ function demoTourStep(
       ...page,
       openQuery: { stateKey: "jsonapiUrl", text: def.jsonapi },
       readySelector: '[data-testid="jsonapi-summary-tab"]',
-      element: ".jsonapi-panel",
+      element: '[data-testid="jsonapi-response"]',
       waitMs: RESULT_WAIT_MS,
     };
   }
