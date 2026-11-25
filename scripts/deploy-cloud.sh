@@ -1052,10 +1052,17 @@ IMAGE_REGISTRY="ghcr.io/kenstott"
 push_engine_env() {
   echo "== engine image env"
   local ver engine_img zaychik_img changed="" env_dump running_engine running_zaychik
-  ver="$(git -C "$REPO" describe --tags --exact-match HEAD 2>/dev/null)" || {
-    echo "   not a tagged commit; engine image pin skipped"
+  # --abbrev=0 gives the nearest tag without a commit-count suffix, so a worktree that has
+  # a local-only commit on top of a release tag still pins to that release's images.
+  ver="$(git -C "$REPO" describe --tags --abbrev=0 HEAD 2>/dev/null)" || {
+    echo "   no release tag found; engine image pin skipped"
     return 0
   }
+  # Only v0.1.0-alpha.NNN tags are release tags; a dev branch tag could be anything else.
+  case "$ver" in
+    v[0-9]*) ;;
+    *) echo "   HEAD has no release tag ($ver); engine image pin skipped"; return 0 ;;
+  esac
   engine_img="$IMAGE_REGISTRY/provisa-trino-engine:$ver"
   zaychik_img="$IMAGE_REGISTRY/provisa-zaychik:$ver"
   env_dump="$(ssh_node "sudo docker inspect $API_CONTAINER --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PROVISA_(ENGINE_IMAGE|ZAYCHIK_IMAGE)=' || true" | tr -d '\r')"

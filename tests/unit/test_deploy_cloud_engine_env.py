@@ -76,7 +76,7 @@ def _run_push_engine_env(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
 
-    # git stub: returns the fixed tag on `describe --tags --exact-match HEAD`
+    # git stub: returns the fixed tag on `describe --tags --abbrev=0 HEAD`
     if git_tag:
         (bin_dir / "git").write_text(f"#!/bin/bash\necho '{git_tag}'\n")
     else:
@@ -157,12 +157,22 @@ class TestPushEngineEnvSetsImages:
         # set_node_env was not called: env file is empty
         assert _env_contents(tmp_path) == ""
 
-    def test_non_tagged_commit_skips_without_failing(self, tmp_path):
+    def test_no_tag_skips_without_failing(self, tmp_path):
+        """When git cannot find any tag, the function skips without failing."""
         result = _run_push_engine_env(tmp_path, git_tag="")
         assert result.returncode == 0, result.stderr
         assert "skipped" in result.stdout
         # No images written
         assert _env_contents(tmp_path) == ""
+
+    def test_local_commit_on_top_of_tag_still_pins_the_tag_version(self, tmp_path):
+        """--abbrev=0 returns the nearest tag even when HEAD is a commit above it."""
+        # git stub returns the tag (what --abbrev=0 would return for a worktree one commit
+        # ahead of the tag, as the deploy-512 worktree has after a local cherry-pick).
+        result = _run_push_engine_env(tmp_path, git_tag=_VERSION)
+        assert result.returncode == 0, result.stderr
+        assert f"PROVISA_ENGINE_IMAGE={_ENGINE_IMG}" in _env_contents(tmp_path)
+        assert f"PROVISA_ZAYCHIK_IMAGE={_ZAYCHIK_IMG}" in _env_contents(tmp_path)
 
     def test_stale_output_names_old_and_new_image(self, tmp_path):
         old = "ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.391"
