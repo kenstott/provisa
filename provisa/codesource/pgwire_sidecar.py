@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import collections
 import json
+import socket
 import subprocess  # nosec B404 - argv-list invocation of Provisa's own sidecar program
 import sys
 import threading
@@ -63,8 +64,6 @@ from provisa.federation.pgwire_replica import (
 )
 
 if TYPE_CHECKING:
-    import socket
-
     from provisa.codesource.source import Prepared
 
 #: The sidecar's program.
@@ -206,6 +205,15 @@ class _Bridge:
             return  # the sidecar has gone: there is no one left to tell
 
     def close(self) -> None:
+        # On Linux, close() while another thread is blocked on recv() does not
+        # deliver EOF to the peer: the kernel keeps the socket alive for the
+        # blocked syscall.  shutdown(SHUT_RDWR) tears down the connection
+        # immediately regardless of blocking threads, so the sidecar sees EOF
+        # and calls os._exit(3) as designed.
+        try:
+            self._conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # already closed or not connected
         self._conn.close()
 
 
