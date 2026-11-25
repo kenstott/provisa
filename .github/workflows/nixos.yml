@@ -5,6 +5,8 @@ name: NixOS
 # its prebuilt wheels, the embedded PostgreSQL, the native tier run as a systemd service,
 # Playwright's Chromium, the ODBC driver, the JDK, and AskAmerica's bundled pgwire server. The container-backed lanes' images are the
 # same on any distro, so only the core lane is repeated here, for the host processes it starts.
+# The repository's root flake is tested here too: its checks, a host that imports its module, and
+# `nix run` of its release package.
 #
 # A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
 # in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
@@ -302,6 +304,51 @@ jobs:
       - name: The download installs and the services answer
         if: matrix.guest == 'prepared'
         run: packaging/nixos/vm-run 'packaging/nixos/ci/appimage-installs.sh'
+
+      - *console
+
+  # The repository's root flake, as a Nix user meets it. Its outputs evaluate and its checks
+  # pass, and a host flake that imports inputs.provisa.nixosModules.provisa builds, against this
+  # checkout in place of github:kenstott/provisa.
+  flake:
+    name: root flake (check + module import)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/free-runner-disk
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+      - name: A host flake that imports the module builds
+        run: |
+          nix build "path:$GITHUB_WORKSPACE/packaging/nixos/host#nixosConfigurations.host.config.system.build.toplevel" \
+            --override-input provisa "git+file://$GITHUB_WORKSPACE" \
+            --no-write-lock-file --no-link --print-build-logs
+
+  # `nix run` of the root flake on stock NixOS (`bare`: no nix-ld, no Docker): the release
+  # package starts, and its API and UI answer.
+  flake-run:
+    name: nix run (bare host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          system: bare
+
+      - name: nix run starts Provisa and the services answer
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/flake-runs.sh'
 
       - *console
 

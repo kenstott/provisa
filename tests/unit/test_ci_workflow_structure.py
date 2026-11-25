@@ -1947,8 +1947,10 @@ def test_the_images_node_is_the_nvmrc():
     assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
 
 
-def test_the_nixos_guests_node_is_the_nvmrc_major():
-    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+@pytest.mark.parametrize("nix_file", ["configuration.nix", "dev-shell.nix"])
+def test_the_nixos_guests_node_is_the_nvmrc_major(nix_file):
+    # The NixOS guest, and the root flake's development shell.
+    nix = (REPO / "packaging" / "nixos" / nix_file).read_text()
     majors = re.findall(r"\bnodejs_(\d+)\b", nix)
     assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
 
