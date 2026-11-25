@@ -26,7 +26,11 @@ from typing import Any
 import pytest
 from psycopg import pq
 
-from provisa.transpiler.polyfill.duckdb_literals import PAST_TIMESTAMP, PAST_TIMESTAMPTZ
+from provisa.transpiler.polyfill.duckdb_literals import (
+    INFINITE_DIFFERENCE,
+    PAST_TIMESTAMP,
+    PAST_TIMESTAMPTZ,
+)
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 _TZ_BC = "'4713-01-01 00:00:00+00 BC'::timestamp with time zone"
@@ -61,10 +65,14 @@ ANSWERED: dict[str, str] = {
     _call("date_cmp_timestamptz", _FAR_DATE, _ATZ): "1",
     _call("timestamptz_lt_date", _ATZ, _FAR_DATE): "t",
     _call("daterange_subdiff", _FAR_DATE, _DAY): "2145023016",
+    # cot of a zero is infinity of the zero's sign (dcot checks no overflow).
+    _call("cot", "'-0'::double precision"): "-Infinity",
+    _call("cot", "'0'::double precision"): "Infinity",
 }
 
 #: statement -> the SQLSTATE and message it raises: PostgreSQL 17's where it raises, and where
-#: DuckDB holds no such value, the refusal its grid row states.
+#: DuckDB holds no such value (a timestamp past its range, an infinite interval), the refusal its
+#: grid row states.
 RAISED: dict[str, tuple[str, str]] = {
     _call("timestamp_cmp", _FAR_TS, _AT): ("0A000", PAST_TIMESTAMP),
     _call("timestamp_mi", _FAR_TS, _AT): ("0A000", PAST_TIMESTAMP),
@@ -85,6 +93,14 @@ RAISED: dict[str, tuple[str, str]] = {
         'time zone "abc" not recognized',
     ),
     _call("timezone", "'abc'::text", _AT): ("22023", 'time zone "abc" not recognized'),
+    _call("timestamp_mi", "'infinity'::timestamp without time zone", _AT): (
+        "0A000",
+        INFINITE_DIFFERENCE.format(name="timestamp_mi"),
+    ),
+    _call("timestamptz_mi", _ATZ, "'-infinity'::timestamp with time zone"): (
+        "0A000",
+        INFINITE_DIFFERENCE.format(name="timestamptz_mi"),
+    ),
 }
 
 

@@ -216,10 +216,11 @@ def _domain(
     answer: str | None = None,
     trino_outside: str = "",
     trino_answer: str = "",
+    duckdb_answer: str | None = None,
 ) -> Feature:
     """``name`` of a double, PostgreSQL's 22003 where ``outside`` (of ``$x``) holds; on Trino
     where ``trino_outside`` holds, else ``trino_answer``; on DuckDB where ``trino_outside`` holds of
-    a number, else DuckDB's own."""
+    a number, else ``duckdb_answer`` (``answer``, DuckDB's own where neither is given)."""
     return Feature(
         name,
         FAMILY,
@@ -245,7 +246,7 @@ def _domain(
                                         "input is out of range",
                                     )
                                 ],
-                                answer or f"{name}($x)",
+                                duckdb_answer or answer or f"{name}($x)",
                             )
                         ),
                     ),
@@ -318,6 +319,12 @@ DOMAINS: tuple[Feature, ...] = (
         "1.0 / tan($x)",
         trino_outside=_T_INFINITE,
         trino_answer="1.0 / tan($x)",
+        # REQ-2236: cot(0) is infinity of 0's sign on PostgreSQL (dcot checks no overflow), where
+        # DuckDB's division by zero is PostgreSQL's 22012 (transpile._postgres_semantics_for_duckdb).
+        duckdb_answer=(
+            "CASE WHEN tan($x) = 0 THEN CASE WHEN signbit(tan($x)) THEN CAST('-Infinity' AS DOUBLE) "
+            "ELSE CAST('Infinity' AS DOUBLE) END ELSE 1.0 / tan($x) END"
+        ),
     ),
 )
 

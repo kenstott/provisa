@@ -30,7 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
-from provisa.core.pg_error import PostgresError
+from provisa.core.pg_error import PostgresError, raising
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.trino_literals import days_from_civil
@@ -159,6 +159,45 @@ FEATURES: tuple[Feature, ...] = (
         f"past it raises 0A000 ({PAST_TIMESTAMPTZ}), one past PostgreSQL's range raises 22008 as "
         "timestamptz_in does.",
     ),
+)
+
+
+def _infinite_difference(name: str, sql_type: str) -> Feature:
+    """``name``, the interval between two instants, on DuckDB: PostgreSQL 17 answers an infinite
+    interval where either is infinite, which DuckDB holds none of (its subtraction raises its own
+    error), so it is refused by name there, as its limitation states."""
+    refused = INFINITE_DIFFERENCE.format(name=name)
+    a, b = (f"CAST(${hole} AS {sql_type})" for hole in "ab")
+    form = (
+        f"CASE WHEN NOT isfinite({a}) OR NOT isfinite({b}) "
+        f"THEN {raising('0A000', exp.Literal.string(refused).sql(dialect=_DUCKDB))} "
+        f"ELSE {a} - {b} END"
+    )
+    return Feature(
+        f"{name} on duckdb",
+        "dates",
+        "The interval between two instants.",
+        read=Side(
+            rules=(Rule(f"{name}($a, $b)", {_DUCKDB: form}, unlisted_keep=True),),
+            limitations={
+                _DUCKDB: (
+                    Limitation(
+                        "Of two finite values DuckDB's difference. Of an infinite one, whose "
+                        f"difference PostgreSQL 17 answers as an infinite interval, it raises 0A000 "
+                        f"({refused}): DuckDB holds no infinite interval."
+                    ),
+                )
+            },
+        ),
+    )
+
+
+#: The refusal of an instant's difference where either is infinite.
+INFINITE_DIFFERENCE = "{name}() of an infinite value has no form on duckdb"
+
+FEATURES += (
+    _infinite_difference("timestamp_mi", "TIMESTAMP"),
+    _infinite_difference("timestamptz_mi", "TIMESTAMPTZ"),
 )
 
 #: The family's place in the grid (polyfill.GRID): read before any row reads it as a value.
