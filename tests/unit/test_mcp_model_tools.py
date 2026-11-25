@@ -17,7 +17,7 @@ the real routes over a stand-in database; a table change runs the real fake chec
 ``updateTable`` mutation with the whole table as the editor would send it.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1857
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1857, REQ-2253
 
 from __future__ import annotations
 
@@ -282,6 +282,42 @@ async def test_find_table_id_reads_the_registration(monkeypatch, app_state):
             "table": "orders",
             "alias": None,
             "profilerSourceId": "prof",
+        }
+    ]
+
+
+async def test_find_table_id_matches_sql_safe_domain_name(monkeypatch, app_state):
+    """find_table_id called with SQL-safe 'pet_store' finds a table whose domain_id is 'pet-store'.
+
+    list_schemas returns SQL-safe names; the model uses them for find_table_id. The DB stores the
+    raw id. Both must resolve to the same table (REQ-2253)."""
+    _use_db(
+        monkeypatch,
+        app_state,
+        {
+            "registered_tables": [
+                {
+                    "id": 3,
+                    "source_id": "pg",
+                    "domain_id": "pet-store",
+                    "table_name": "pets",
+                    "alias": None,
+                    "profiler_source_id": None,
+                }
+            ]
+        },
+    )
+    found = await model_tools.find_table_id(
+        app_state, "steward", _request("steward"), "pet_store", "pets"
+    )
+    assert found == [
+        {
+            "id": 3,
+            "sourceId": "pg",
+            "domain": "pet-store",
+            "table": "pets",
+            "alias": None,
+            "profilerSourceId": None,
         }
     ]
 

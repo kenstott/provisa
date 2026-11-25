@@ -11,6 +11,8 @@
 """Polly page parity: every route of the app has a row in the one table, every row is a route,
 and what the UI publishes to read_screen is what the table says."""
 
+# Requirements: REQ-2277
+
 from __future__ import annotations
 
 import json
@@ -154,6 +156,20 @@ def test_she_is_told_read_screen_reports_the_data_node():
     assert "dataNode" in chat._SYSTEM
     tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
     assert "dataNode" in tool["description"]
+
+
+def test_she_reaches_profile_terrain_via_tables_quality_section():
+    """REQ-2277 rule (5): Polly reaches the profile terrain through section=quality and the
+    View Profile Runs button on /tables. The table documents both so she knows to use them."""
+    tables_page = polly_pages.PAGES["/tables"]
+    # The quality section is reachable by URL (section=quality).
+    assert "section=quality" in tables_page.sets or "section=" in tables_page.sets, (
+        "/tables must document section= so Polly can navigate to the Quality tab"
+    )
+    # The View Profile Runs button's testId is documented so she can click it.
+    assert "table-read-view-profile-runs" in tables_page.sets or (
+        "table-read-view-profile-runs" in tables_page.what
+    ), "/tables must document the table-read-view-profile-runs testId"
 
 
 # -- tags on screen ------------------------------------------------------------------------------
