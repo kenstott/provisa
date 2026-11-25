@@ -61,7 +61,12 @@ const PAGES: Record<DetailPage, { file: string; call: string; marks?: true }> = 
   rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useRememberedDetail("rls",' },
   commands: { file: "pages/CommandsPage.tsx", call: 'useRememberedDetail(\n    "commands",' },
   domains: { file: "pages/AdminPage.tsx", call: 'useDetailParam("domains").id', marks: true },
-  tags: { file: "components/admin/TagsTab.tsx", call: 'useDetailParam("tags").id', marks: true },
+  tags: { file: "components/admin/TagsTab.tsx", call: 'useRememberedDetail(\n    "tags",' },
+  classification: {
+    file: "components/admin/ClassificationKindsTab.tsx",
+    call: 'useRememberedDetail(\n    "classification",',
+  },
+  sync: { file: "components/admin/syncing/SyncingTab.tsx", call: 'useRememberedDetail("sync",' },
 };
 
 describe("every list page's detail panel is in the URL through useDetailParam (REQ-2241)", () => {

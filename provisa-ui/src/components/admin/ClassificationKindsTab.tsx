@@ -14,7 +14,8 @@
 // a kind is shipped with the product and shown as it is.
 
 import { useEffect, useState } from "react";
-import { Alert, Badge, Loader, Stack, Switch, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Group, Loader, Stack, Switch, Table, Text } from "@mantine/core";
+import { Pencil, ScanSearch } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   fetchClassificationKinds,
@@ -23,6 +24,17 @@ import {
 } from "../../api/profiler";
 import { fetchContextClassification, type ContextPlace } from "../../api/contextViews";
 import { ContextPlaces } from "../ContextPlaces";
+import { PageTitle } from "../PageTitle";
+import { Tip } from "../Tip";
+import { DetailFields } from "../detail/DetailFields";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
+import { PanelActions, SplitPane } from "../list/SplitPane";
+import { useRememberedDetail } from "../list/useDetailParam";
+import { useUrlFilter } from "../list/useUrlFilter";
+import { matchesQuery } from "../../lib/searchItems";
+import { FilterInput } from "./FilterInput";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
@@ -46,13 +58,29 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** REQ-2259: ``readOnly`` is the Context group's Classification page -- the kinds and where each
- * was detected, with no switch; enabling a kind stays in Admin. */
-export function ClassificationKindsTab({ readOnly = false }: { readOnly?: boolean }) {
+/** REQ-2277: the standard page anatomy -- the header (title, filter), the list, and a row opening
+ * the kind's detail panel (?kind=<id>), read, with Edit in the panel's head where the kind may be
+ * switched. REQ-2259: ``readOnly`` is the Context group's Classification page -- the kinds and where
+ * each was detected, with no Edit; enabling a kind stays in Admin. */
+export function ClassificationKindsTab({
+  readOnly = false,
+  title,
+}: {
+  readOnly?: boolean;
+  title: string;
+}) {
   const { t } = useTranslation();
   const [kinds, setKinds] = useState<KindRow[] | null>(null);
-  const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useUrlFilter();
+  const detail = useRememberedDetail(
+    "classification",
+    kinds === null ? null : kinds.map((k) => k.id),
+  );
+  const [editing, setEditing] = useState(false);
+  const [draftEnabled, setDraftEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
     (readOnly ? fetchContextClassification() : fetchClassificationKinds())
@@ -60,24 +88,131 @@ export function ClassificationKindsTab({ readOnly = false }: { readOnly?: boolea
       .catch((e: unknown) => setError(message(e)));
   }, [readOnly]);
 
-  const toggle = async (kind: KindRow, enabled: boolean) => {
-    if (kinds == null) return;
-    const wanted = kinds.filter((k) => (k.id === kind.id ? enabled : k.enabled)).map((k) => k.id);
-    setSaving(kind.id);
+  const kindLabel = (k: KindRow) => t(`classificationKinds.kind.${k.id}`);
+  const maskLabel = (k: KindRow) =>
+    k.maskPreset ? t(`maskList.preset.${k.maskPreset}`) : t("classificationKinds.noMask");
+  const enabledLabel = (k: KindRow) =>
+    t(k.enabled ? "contextViews.enabled" : "contextViews.disabled");
+
+  const open = kinds?.find((k) => k.id === detail.id) ?? null;
+  const shown = (kinds ?? []).filter((k) =>
+    matchesQuery([k.id, kindLabel(k), t(`classificationKinds.test.${k.id}`)], search),
+  );
+
+  const closeForm = () => {
+    setEditing(false);
+    setProblem(null);
+  };
+
+  const save = async (kind: KindRow) => {
+    if (kinds === null) return;
+    const wanted = kinds
+      .filter((k) => (k.id === kind.id ? draftEnabled : k.enabled))
+      .map((k) => k.id);
+    setSaving(true);
+    setProblem(null);
     try {
       const r = await setEnabledClassificationKinds(wanted);
       setKinds(r.kinds);
-      setError(null);
+      setEditing(false);
     } catch (e: unknown) {
-      setError(message(e));
+      setProblem(message(e));
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   };
 
+  const form = (k: KindRow) => (
+    <FormLayout data-testid="classification-kind-form">
+      <FormField size="medium">
+        <Switch
+          label={t("classificationKinds.enabledHeader")}
+          checked={draftEnabled}
+          onChange={(e) => setDraftEnabled(e.currentTarget.checked)}
+          aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
+          data-testid={`classification-kind-enabled-${k.id}`}
+        />
+      </FormField>
+      <FormFooter
+        onSave={() => save(k)}
+        onCancel={closeForm}
+        saving={saving}
+        problem={problem ?? undefined}
+        saveProps={{ "data-testid": "classification-kind-save" }}
+      />
+    </FormLayout>
+  );
+
+  const readView = (k: KindRow) => (
+    <Stack gap="sm" data-testid={`classification-kind-detail-${k.id}`}>
+      {!readOnly && (
+        <PanelActions>
+          <fieldset className="panel-action-set">
+            <Tip text={t("classificationKinds.enabledAria", { kind: kindLabel(k) })} named>
+              <ActionIcon
+                aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
+                data-testid={`classification-kind-edit-${k.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDraftEnabled(k.enabled);
+                  setProblem(null);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} />
+              </ActionIcon>
+            </Tip>
+          </fieldset>
+        </PanelActions>
+      )}
+      <DetailFields
+        testId={`classification-kind-read-${k.id}`}
+        fields={[
+          { label: t("classificationKinds.kindHeader"), value: kindLabel(k) },
+          {
+            label: t("classificationKinds.sensitive"),
+            value: k.sensitive ? t("detailFields.yes") : t("detailFields.no"),
+          },
+          {
+            label: t("classificationKinds.testHeader"),
+            value: t(`classificationKinds.test.${k.id}`),
+          },
+          {
+            label: t("classificationKinds.thresholdHeader"),
+            value: `${Math.round(k.threshold * 100)}%`,
+          },
+          { label: t("classificationKinds.maskHeader"), value: maskLabel(k) },
+          { label: t("classificationKinds.enabledHeader"), value: enabledLabel(k) },
+          ...(readOnly
+            ? [
+                {
+                  label: t("contextViews.detectedHeader"),
+                  value: (
+                    <ContextPlaces
+                      {...detectedOn(k)}
+                      testId={`classification-kind-read-detected-${k.id}`}
+                    />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+    </Stack>
+  );
+
   return (
-    <Stack gap="xs" data-testid="classification-kinds-tab">
-      <Text size="sm" c="dimmed">
+    <>
+      <div className="page-header">
+        <PageTitle icon={ScanSearch}>{title}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("classificationKinds.filterPlaceholder")}
+          testId="classification-kinds-filter"
+        />
+      </div>
+      <Text size="sm" c="dimmed" mb="sm">
         {t("classificationKinds.intro")}
       </Text>
       {error && (
@@ -87,71 +222,115 @@ export function ClassificationKindsTab({ readOnly = false }: { readOnly?: boolea
       )}
       {kinds == null && error == null && <Loader size="sm" />}
       {kinds != null && (
-        <Table withTableBorder striped fz="sm" data-testid="classification-kinds">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("classificationKinds.kindHeader")}</Table.Th>
-              <Table.Th>{t("classificationKinds.testHeader")}</Table.Th>
-              <Table.Th>{t("classificationKinds.thresholdHeader")}</Table.Th>
-              <Table.Th>{t("classificationKinds.maskHeader")}</Table.Th>
-              <Table.Th>{t("classificationKinds.enabledHeader")}</Table.Th>
-              {readOnly && <Table.Th>{t("contextViews.detectedHeader")}</Table.Th>}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {kinds.map((k) => (
-              <Table.Tr key={k.id} data-testid={`classification-kind-${k.id}`}>
-                <Table.Td style={{ maxWidth: 260 }}>
-                  {t(`classificationKinds.kind.${k.id}`)}
-                  {k.sensitive && (
-                    <Badge ml="xs" size="xs" color="red" variant="light">
-                      {t("classificationKinds.sensitive")}
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td style={{ maxWidth: 520 }}>
-                  {t(`classificationKinds.test.${k.id}`)}
-                </Table.Td>
-                <Table.Td>{`${Math.round(k.threshold * 100)}%`}</Table.Td>
-                <Table.Td>
-                  {k.maskPreset
-                    ? t(`maskList.preset.${k.maskPreset}`)
-                    : t("classificationKinds.noMask")}
-                </Table.Td>
-                <Table.Td>
-                  {readOnly ? (
-                    <Text
-                      size="sm"
-                      c={k.enabled ? undefined : "dimmed"}
-                      data-testid={`classification-kind-state-${k.id}`}
-                    >
-                      {t(k.enabled ? "contextViews.enabled" : "contextViews.disabled")}
-                    </Text>
-                  ) : (
-                    <Switch
-                      checked={k.enabled}
-                      disabled={saving != null}
-                      onChange={(e) => void toggle(k, e.currentTarget.checked)}
-                      aria-label={t("classificationKinds.enabledAria", {
-                        kind: t(`classificationKinds.kind.${k.id}`),
-                      })}
-                      data-testid={`classification-kind-enabled-${k.id}`}
-                    />
-                  )}
-                </Table.Td>
-                {readOnly && (
-                  <Table.Td style={{ maxWidth: 420 }}>
-                    <ContextPlaces
-                      {...detectedOn(k)}
-                      testId={`classification-kind-detected-${k.id}`}
-                    />
-                  </Table.Td>
-                )}
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+        <SplitPane
+          testId="classification-kinds-split"
+          storageKey="provisa.classificationKinds.detailWidth"
+          title={open === null ? "" : kindLabel(open)}
+          onClose={() => {
+            closeForm();
+            detail.close();
+          }}
+          closeOnEscape={!editing}
+          labels={{
+            panel: t("classificationKinds.kindHeader"),
+            resize: t("tablesPage.resizeDetail"),
+            expand: t("tablesPage.expandDetail"),
+            restore: t("tablesPage.restoreDetail"),
+            close: t("tablesPage.closeDetail"),
+            backToList: t("tablesPage.backToList"),
+          }}
+          list={
+            <div data-testid="classification-kinds">
+              <SortGroupTable
+                testPrefix="classification-kinds"
+                minWidth={640}
+                rows={shown}
+                columns={[
+                  { key: "kind", label: t("classificationKinds.kindHeader"), sortValue: kindLabel },
+                  {
+                    key: "test",
+                    label: t("classificationKinds.testHeader"),
+                    sortValue: (k) => t(`classificationKinds.test.${k.id}`),
+                  },
+                  {
+                    key: "threshold",
+                    label: t("classificationKinds.thresholdHeader"),
+                    sortValue: (k) => k.threshold,
+                  },
+                  {
+                    key: "mask",
+                    label: t("classificationKinds.maskHeader"),
+                    sortValue: maskLabel,
+                    groupValue: maskLabel,
+                  },
+                  {
+                    key: "enabled",
+                    label: t("classificationKinds.enabledHeader"),
+                    sortValue: enabledLabel,
+                    groupValue: enabledLabel,
+                  },
+                ]}
+                headers={[
+                  { col: "kind" },
+                  { col: "test" },
+                  { col: "threshold" },
+                  { col: "mask" },
+                  { col: "enabled" },
+                  ...(readOnly ? [t("contextViews.detectedHeader")] : []),
+                ]}
+                colSpan={readOnly ? 6 : 5}
+                rowKey={(k) => k.id}
+                empty={t("classificationKinds.empty")}
+                render={(k) => [
+                  <ListRow
+                    key={k.id}
+                    testId={`classification-kind-${k.id}`}
+                    selected={k.id === detail.id}
+                    onClick={() => {
+                      closeForm();
+                      if (detail.id === k.id) detail.close();
+                      else detail.open(k.id);
+                    }}
+                  >
+                    <Table.Td>
+                      <Group gap={4} wrap="nowrap">
+                        {kindLabel(k)}
+                        {k.sensitive && (
+                          <Badge size="xs" color="red" variant="light">
+                            {t("classificationKinds.sensitive")}
+                          </Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>{t(`classificationKinds.test.${k.id}`)}</Table.Td>
+                    <Table.Td>{`${Math.round(k.threshold * 100)}%`}</Table.Td>
+                    <Table.Td>{maskLabel(k)}</Table.Td>
+                    <Table.Td>
+                      <Text
+                        size="sm"
+                        c={k.enabled ? undefined : "dimmed"}
+                        data-testid={`classification-kind-state-${k.id}`}
+                      >
+                        {enabledLabel(k)}
+                      </Text>
+                    </Table.Td>
+                    {readOnly && (
+                      <Table.Td>
+                        <ContextPlaces
+                          {...detectedOn(k)}
+                          testId={`classification-kind-detected-${k.id}`}
+                        />
+                      </Table.Td>
+                    )}
+                  </ListRow>,
+                ]}
+              />
+            </div>
+          }
+        >
+          {open === null ? null : editing ? form(open) : readView(open)}
+        </SplitPane>
       )}
-    </Stack>
+    </>
   );
 }

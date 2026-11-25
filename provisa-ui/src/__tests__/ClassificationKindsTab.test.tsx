@@ -55,7 +55,7 @@ beforeEach(() => {
 describe("ClassificationKindsTab", () => {
   it("lists each kind with its test, threshold and mask", async () => {
     api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
-    render(<ClassificationKindsTab />);
+    render(<ClassificationKindsTab title="Classification" />);
     const ssn = await screen.findByTestId("classification-kind-us_ssn");
     expect(ssn).toHaveTextContent("US social security number");
     expect(ssn).toHaveTextContent("Sensitive");
@@ -70,7 +70,7 @@ describe("ClassificationKindsTab", () => {
     api.setEnabledClassificationKinds.mockResolvedValue({
       kinds: [KINDS[0], { ...KINDS[1], enabled: false }],
     });
-    render(<ClassificationKindsTab />);
+    render(<ClassificationKindsTab title="Classification" />);
     fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
     await waitFor(() => expect(api.setEnabledClassificationKinds).toHaveBeenCalledWith(["us_ssn"]));
     await waitFor(() =>
@@ -83,7 +83,7 @@ describe("ClassificationKindsTab", () => {
     // never shown read-only; it waits only for the change already on its way.
     api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
     api.setEnabledClassificationKinds.mockReturnValue(new Promise(() => {}));
-    render(<ClassificationKindsTab />);
+    render(<ClassificationKindsTab title="Classification" />);
     fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
     await waitFor(() =>
       expect(screen.getByTestId("classification-kind-enabled-us_ssn")).toBeDisabled(),

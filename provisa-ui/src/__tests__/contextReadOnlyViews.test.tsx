@@ -132,7 +132,7 @@ beforeEach(() => {
 
 describe("Context Tags (read-only TagsTab)", () => {
   it("withholds every control that writes", async () => {
-    render(<TagsTab readOnly />);
+    render(<TagsTab readOnly title="Tags" />);
     await screen.findByTestId("tags-where-finance");
     expect(screen.queryByTestId("tags-create-button")).toBeNull();
     expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
@@ -141,7 +141,7 @@ describe("Context Tags (read-only TagsTab)", () => {
   });
 
   it("names the places the viewer reads and only counts the rest", async () => {
-    render(<TagsTab readOnly />);
+    render(<TagsTab readOnly title="Tags" />);
     const pii = await screen.findByTestId("tags-where-pii");
     expect(pii).toHaveTextContent("crm.public.customers.email");
     expect(within(pii).getByTestId("tags-where-pii-hidden")).toHaveTextContent(
@@ -150,7 +150,7 @@ describe("Context Tags (read-only TagsTab)", () => {
   });
 
   it("shows the row filters and the classification that depend on a tag", async () => {
-    render(<TagsTab readOnly />);
+    render(<TagsTab readOnly title="Tags" />);
     expect(await screen.findByTestId("tags-dependents-finance")).toHaveTextContent("2 row filters");
     expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
       "Assigned by classification: US social security number",
@@ -158,7 +158,7 @@ describe("Context Tags (read-only TagsTab)", () => {
   });
 
   it("draws links only when the viewer holds the target page's right", async () => {
-    render(<TagsTab readOnly />);
+    render(<TagsTab readOnly title="Tags" />);
     await screen.findByTestId("tags-where-finance");
     expect(screen.getByTestId("tags-link-finance")).not.toHaveAttribute("href");
     expect(screen.getByTestId("tags-where-finance-place")).not.toHaveAttribute("href");
@@ -171,7 +171,7 @@ describe("Context Tags (read-only TagsTab)", () => {
 
   it("links the tag and its tables to their editors for a viewer who edits them", async () => {
     auth.capabilities = ["glossary_read", "table_registration"];
-    render(<TagsTab readOnly />);
+    render(<TagsTab readOnly title="Tags" />);
     await screen.findByTestId("tags-where-finance");
     expect(screen.getByTestId("tags-link-finance")).toHaveAttribute(
       "href",
@@ -185,7 +185,7 @@ describe("Context Tags (read-only TagsTab)", () => {
 
   it("the Admin page still edits", () => {
     auth.capabilities = ["table_registration"];
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     expect(screen.getByTestId("tags-create-button")).toBeInTheDocument();
     expect(contextApi.fetchContextTags).not.toHaveBeenCalled();
   });
@@ -193,7 +193,7 @@ describe("Context Tags (read-only TagsTab)", () => {
 
 describe("Context Classification (read-only ClassificationKindsTab)", () => {
   it("lists the kinds and where each was detected, without the switch", async () => {
-    render(<ClassificationKindsTab readOnly />);
+    render(<ClassificationKindsTab readOnly title="Classification" />);
     const row = await screen.findByTestId("classification-kind-us_ssn");
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByTestId("classification-kind-enabled-us_ssn")).toBeNull();
@@ -207,7 +207,7 @@ describe("Context Classification (read-only ClassificationKindsTab)", () => {
   });
 
   it("links a detection to its column only with the table page's right", async () => {
-    render(<ClassificationKindsTab readOnly />);
+    render(<ClassificationKindsTab readOnly title="Classification" />);
     const place = await screen.findByTestId("classification-kind-detected-us_ssn-place");
     expect(place).not.toHaveAttribute("href");
   });

@@ -72,9 +72,12 @@ export const DETAIL_VIEWS = {
   derived: { route: "/security/roles", param: "derived", replaces: ["role", "section"] },
   rls: { route: "/security/rls", param: "rule" },
   commands: { route: "/commands", param: "command", tab: { param: "section", first: "command" } },
-  // REQ-2240: a domain's row and a tag's are marked on their lists, where they are changed.
+  // REQ-2240: a domain's row is marked on its list, where it is changed.
   domains: { route: "/admin/domains", param: "domain" },
+  // REQ-2277: a tag's panel, on Admin's Tags (where it is changed) and the Context group's.
   tags: { route: "/admin/tags", param: "tag" },
+  classification: { route: "/context/classification", param: "kind" },
+  sync: { route: "/context/sync", param: "entry" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;
