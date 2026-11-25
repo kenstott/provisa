@@ -749,6 +749,45 @@ class TestFetchOauth2Token:
         assert token == "fresh-tok"
         post_mock.assert_called_once()
 
+    def test_token_params_are_sent_with_the_grant_and_key_the_held_token(self):
+        # REQ-1874 (X-AUDIENCE): a brand's extra grant parameters, e.g. Auth0's audience.
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid5",
+            client_secret="secret5",
+            token_url="http://token5",
+            token_params={"audience": "https://t.example/api/v2/"},
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"access_token": "tok-aud", "expires_in": 3600}
+        with patch("httpx.Client.post", return_value=resp) as post_mock:
+            assert _fetch_oauth2_token(oauth) == "tok-aud"
+        assert post_mock.call_args.kwargs["data"] == {
+            "grant_type": "client_credentials",
+            "client_id": "cid5",
+            "client_secret": "secret5",
+            "audience": "https://t.example/api/v2/",
+        }
+        without = oauth_grants.held_key(oauth.type, "http://token5", "cid5", "secret5", "")
+        assert without not in oauth_grants._tokens
+
+    def test_no_token_params_sends_exactly_the_grant(self):
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid6", client_secret="secret6", token_url="http://token6"
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"access_token": "tok-6", "expires_in": 3600}
+        with patch("httpx.Client.post", return_value=resp) as post_mock:
+            _fetch_oauth2_token(oauth)
+        assert post_mock.call_args.kwargs["data"] == {
+            "grant_type": "client_credentials",
+            "client_id": "cid6",
+            "client_secret": "secret6",
+        }
+        key = oauth_grants.held_key(oauth.type, "http://token6", "cid6", "secret6", "")
+        assert key in oauth_grants._tokens
+
     def test_a_token_with_no_stated_life_is_not_held(self):
         oauth = ApiAuthOAuth2ClientCredentials(
             client_id="cid4", client_secret="secret4", token_url="http://token4"
