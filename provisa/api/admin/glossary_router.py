@@ -393,6 +393,8 @@ async def get_term(request: Request, term_id: int) -> dict:
     reader = reader_for_request(request)
     term["refs"] = [r for r in term["refs"] if reader.column(r["table_id"], r["column_name"])]
     term["ref_count"] = len(term["refs"])
+    # REQ-1159: and the command output columns of the commands it reads.
+    term["command_refs"] = [r for r in term["command_refs"] if reader.command(r["command_name"])]
     term["table_count"] = sum(1 for t in grounds if reader.column(t["table_id"], None))
     return _with_class_refusal(term)
 

@@ -28,6 +28,7 @@ vi.mock("../../TagControl", () => ({ TagControl: () => null }));
 import { TermReadView } from "../TermReadView";
 
 const term: GlossaryTermDetail = {
+  command_refs: [],
   id: 1,
   name: "Customer",
   definition: "A party that buys.",

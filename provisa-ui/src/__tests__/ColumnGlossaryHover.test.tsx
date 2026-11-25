@@ -29,6 +29,7 @@ import { fetchGlossaryTermByRef } from "../api/glossary";
 const mockFetchByRef = vi.mocked(fetchGlossaryTermByRef);
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   id: 1,
   name: "Revenue",
   definition: "Money in.",

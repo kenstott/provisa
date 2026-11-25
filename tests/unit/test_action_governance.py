@@ -220,6 +220,22 @@ class TestGovern:
         assert governed == [{"id": 1, "bonus": 2.0}]
         assert enf.columns_excluded == ["audit"]
 
+    async def test_a_result_column_comes_back_under_its_alias(self):
+        """REQ-1159 (amended 2026-11-25): the SQL alias is the name consumers query the column
+        by, so the governed rows carry it under the alias, masked as before."""
+        fn = {
+            **FN,
+            "output_columns": [
+                {"name": "id", "type": "integer", "alias": "customer_id"},
+                {**CONTRACT[2], "alias": "tax_id"},
+                {"name": "region", "type": "varchar"},
+            ],
+        }
+        rows = [{"id": 1, "ssn": "111", "region": "east"}]
+        governed, enf = await govern_action_rows(rows, fn, "analyst", _state())
+        assert governed == [{"customer_id": 1, "tax_id": "***", "region": "east"}]
+        assert enf.masking_applied == ["ssn -> constant"]
+
     async def test_admin_sees_everything_unmasked(self):
         rows, enf = await govern_action_rows(ROWS, FN, "org_admin", _state())
         assert len(rows) == 3 and rows[0]["ssn"] == "111" and rows[0]["amount"] == 10.0

@@ -1111,6 +1111,18 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     ).fetchall()
     term["refs"] = [dict(r._mapping) for r in refs]
     term["ref_count"] = len(term["refs"])
+    # REQ-1159 (amended 2026-11-25): the commands' output columns the term is the meaning of.
+    command_refs = (
+        await conn.execute_core(
+            select(glossary_term_refs.c.command_name, glossary_term_refs.c.column_name)
+            .where(
+                glossary_term_refs.c.term_id == term_id,
+                glossary_term_refs.c.command_name.is_not(None),
+            )
+            .order_by(glossary_term_refs.c.command_name, glossary_term_refs.c.column_name)
+        )
+    ).fetchall()
+    term["command_refs"] = [dict(r._mapping) for r in command_refs]
     # REQ-2141: the tables this term grounds as a class.
     term["table_count"] = (
         await conn.execute_core(

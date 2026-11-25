@@ -64,6 +64,29 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   })),
 }));
 
+// REQ-1159: a command output column's row links its command, as the viewer's rights allow.
+vi.mock("../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/AuthContext")>()),
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
+
+// REQ-1159: the commands whose output columns the command-column scope tags.
+vi.mock("../api/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/actions")>()),
+  fetchActions: vi.fn(async () => ({
+    functions: [
+      {
+        name: "lookup",
+        outputColumns: [
+          { name: "ssn", type: "varchar" },
+          { name: "region", type: "varchar" },
+        ],
+      },
+    ],
+    webhooks: [],
+  })),
+}));
+
 const SYSTEM_TAG: Tag = {
   id: "pii",
   description: "Personally identifiable",
@@ -239,6 +262,18 @@ describe("TagsTab", () => {
     fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_command")));
     const cmdRows = screen.getAllByTestId(/^tags-row-/);
     expect(cmdRows.map((r) => r.getAttribute("data-testid"))).toEqual(["tags-row-audit"]);
+  });
+
+  it("tags each command output column under the command-column scope (REQ-1159)", async () => {
+    render(<TagsTab />);
+    expect(screen.queryByTestId("command-column-tags")).toBeNull();
+    fireEvent.click(
+      within(screen.getByTestId("tags-scope-bar")).getByLabelText(
+        t("tagsTab.scope_command_column"),
+      ),
+    );
+    expect(await screen.findByTestId("tag-control-command_column-lookup-ssn")).toBeTruthy();
+    expect(screen.getByTestId("tag-control-command_column-lookup-region")).toBeTruthy();
   });
 
   it("shows a lock instead of edit/delete actions for a system tag", () => {

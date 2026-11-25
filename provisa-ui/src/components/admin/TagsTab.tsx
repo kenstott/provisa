@@ -73,6 +73,7 @@ import { assignableDomainIds } from "../../lib/internalDomains";
 import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
 import { ContextPlaces } from "../ContextPlaces";
 import { EntityLink } from "../EntityLink";
+import { CommandColumnTags } from "./CommandColumnTags";
 
 const PAGE_SIZE = 50;
 
@@ -84,6 +85,7 @@ const SCOPES: TagObjectType[] = [
   "column",
   "relationship",
   "command",
+  "command_column", // REQ-1159
   "product",
   "term",
   "rls_rule",
@@ -801,6 +803,8 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
           />
         </Group>
       )}
+      {/* REQ-1159: a command's output columns are tagged here, where the scope names them. */}
+      {!readOnly && scope === "command_column" && <CommandColumnTags />}
     </Stack>
   );
 }

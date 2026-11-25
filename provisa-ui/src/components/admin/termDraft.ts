@@ -16,19 +16,31 @@
 import {
   addGlossaryEdge,
   addGlossaryExpert,
+  groundCommandColumn,
   groundTermTable,
   moveGlossaryRef,
   removeGlossaryEdge,
   removeGlossaryExpert,
   retypeGlossaryEdge,
+  ungroundCommandColumn,
   ungroundTermTable,
   updateGlossaryTerm,
+  type CommandColumnRef,
   type GlossaryEdge,
   type TagLossResolution,
   type GlossaryExpert,
   type GlossaryTermDetail,
 } from "../../api/glossary";
 import { columnKey, type ColumnTerm } from "./claimColumns";
+
+/** REQ-1159: a command's output column as the draft holds it, one string per column. */
+export const commandColumnKey = (ref: CommandColumnRef): string =>
+  JSON.stringify([ref.command_name, ref.column_name]);
+
+export function commandColumnOf(key: string): CommandColumnRef {
+  const [command_name, column_name] = JSON.parse(key) as [string, string];
+  return { command_name, column_name };
+}
 
 /** A column claimed for the term: its ref moves here on Save. */
 export interface Claim {
@@ -53,6 +65,8 @@ export interface TermDraft {
   claims: Claim[];
   /** The tables the term is grounded in. */
   tables: number[];
+  /** REQ-1159: the commands' output columns the term is the meaning of (commandColumnKey). */
+  commandColumns: string[];
   edgesOut: GlossaryEdge[];
   edgesIn: GlossaryEdge[];
   experts: GlossaryExpert[];
@@ -69,6 +83,7 @@ export function draftOf(term: GlossaryTermDetail, tables: number[]): TermDraft {
     moves: {},
     claims: [],
     tables: [...tables],
+    commandColumns: term.command_refs.map(commandColumnKey),
     edgesOut: [...term.edges_out],
     edgesIn: [...term.edges_in],
     experts: [...term.experts],
@@ -157,6 +172,14 @@ export function changes(
   for (const id of tables)
     if (!draft.tables.includes(id))
       out.push({ field: "tables", run: () => ungroundTermTable(term.id, id) });
+
+  const held = term.command_refs.map(commandColumnKey);
+  for (const key of draft.commandColumns)
+    if (!held.includes(key))
+      out.push({ field: "columns", run: () => groundCommandColumn(term.id, commandColumnOf(key)) });
+  for (const key of held)
+    if (!draft.commandColumns.includes(key))
+      out.push({ field: "columns", run: () => ungroundCommandColumn(commandColumnOf(key)) });
 
   const edges = (outgoing: GlossaryEdge[], incoming: GlossaryEdge[]) =>
     new Map([

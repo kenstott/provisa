@@ -106,6 +106,8 @@
     "derivedReason": "Role and Draft follow from the term's columns, tables, definition and relationships, so they are not set here. Its status changes through Deprecate, Retire and Restore.",
     "claimColumns": "Claim columns",
     "claimHint": "Each column belongs to one term; claiming it moves it here.",
+    "commandColumns": "Command output columns",
+    "commandColumnsHint": "The commands' output columns this term is the meaning of. Each means one term.",
     "groundDisabled": "This term names columns (a property); a class term can't also own columns",
     "claimFrom": "from: {{term}}",
     "claimFromDraft": "from: {{term}} (draft)",

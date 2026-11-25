@@ -615,7 +615,7 @@ export function CommandsPage() {
             {fnSection === "bindings" ? (
               <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
             ) : fnSection === "columns" ? (
-              <CommandColumnsRead columns={fn.outputColumns ?? []} />
+              <CommandColumnsRead name={fn.name} columns={fn.outputColumns ?? []} />
             ) : (
               <FunctionRead
                 fn={fn}

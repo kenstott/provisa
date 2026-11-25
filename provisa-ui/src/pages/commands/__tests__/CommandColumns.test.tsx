@@ -14,10 +14,63 @@
 import { useState } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
+import type { TagAssignment } from "../../../types/admin";
 import type { DatasetColumn } from "../../../api/actions";
 import { CommandColumnsFields, CommandColumnsRead } from "../CommandColumns";
 import { CommandSectionTabs } from "../CommandBindings";
 import { COMMAND_SECTIONS } from "../bindingLanguages";
+
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ capabilities: ["table_registration", "glossary_read", "sensitive_data"] }),
+}));
+
+let mockAssignments: TagAssignment[] = [];
+vi.mock("../../../hooks/useTagQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useTagQueries")>()),
+  useTags: () => ({
+    tags: [
+      {
+        id: "pii",
+        description: "Personally identifiable information",
+        appliesTo: ["column", "command_column"],
+        isSystem: true,
+        derived: false,
+        reasonPolicy: "required",
+        expiresPolicy: "hidden",
+        paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
+        paramValues: [],
+      },
+    ],
+    loading: false,
+  }),
+  useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
+}));
+vi.mock("../../../api/glossary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/glossary")>()),
+  fetchCommandColumnTerms: vi.fn(async () => ({ ssn: { id: 7, name: "tax identifier" } })),
+}));
+vi.mock("../../../api/profiler", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/profiler")>()),
+  fetchCommandClassifications: vi.fn(async () => ({
+    decisions: [
+      {
+        command_name: "lookup",
+        physical_column: "ssn",
+        kind: "us_ssn",
+        status: "accepted",
+        evidence: "a person's SSN",
+        decided_by: "u1",
+        decided_at: "2026-11-25T00:00:00Z",
+      },
+    ],
+  })),
+}));
 
 const COLS: DatasetColumn[] = [
   { name: "ssn", type: "varchar", visible_to: ["finance"], alias: "tax_id", description: "Tax id" },
@@ -92,7 +145,7 @@ describe("the Columns tab (REQ-1159)", () => {
   });
 
   it("reads the columns as the table's read view does", () => {
-    render(<CommandColumnsRead columns={COLS} />);
+    render(<CommandColumnsRead name="lookup" columns={COLS} />);
     expect(screen.getByTestId("command-columns-table-col-ssn")).toHaveTextContent("tax_id");
     expect(screen.getByTestId("command-columns-table-col-ssn")).toHaveTextContent("Tax id");
     fireEvent.click(screen.getByTestId("column-tab-access"));
@@ -100,7 +153,22 @@ describe("the Columns tab (REQ-1159)", () => {
   });
 
   it("says so when the command declares no columns", () => {
-    render(<CommandColumnsRead columns={[]} />);
+    render(<CommandColumnsRead name="lookup" columns={[]} />);
     expect(screen.getByTestId("command-columns-table-empty")).toBeInTheDocument();
+  });
+
+  it("shows each column's tags, term and classification read-only, linked to where they are edited", async () => {
+    mockAssignments = [
+      { tagId: "pii", objectType: "command_column", commandName: "lookup", columnName: "ssn" },
+    ];
+    render(<CommandColumnsRead name="lookup" columns={COLS} />);
+    const ssn = screen.getByTestId("command-column-governance-ssn");
+    expect(ssn).toHaveTextContent("pii");
+    expect(screen.getByTestId("command-column-governance-status")).not.toHaveTextContent("pii");
+    expect(await screen.findByText("tax identifier")).toBeInTheDocument();
+    expect(await screen.findByText("us_ssn")).toBeInTheDocument();
+    expect(screen.queryByTestId("tag-picker-toggle")).toBeNull();
+    expect(screen.getByTestId("command-columns-tags-link")).toHaveTextContent("Tags page");
+    expect(screen.getByTestId("command-columns-glossary-link")).toHaveTextContent("Glossary");
   });
 });

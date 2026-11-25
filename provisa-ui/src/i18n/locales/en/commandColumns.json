@@ -1,6 +1,13 @@
 {
   "commandColumns": {
     "none": "This command declares no output columns.",
-    "hint": "A column with no role listed is read by the roles the command is assigned to."
+    "hint": "A column with no role listed is read by the roles the command is assigned to.",
+    "governanceTitle": "Tags, terms and classification",
+    "editTags": "Edit tags on the Tags page",
+    "editTerms": "Edit terms in the Glossary",
+    "colColumn": "Column",
+    "colTags": "Tags",
+    "colTerm": "Glossary term",
+    "colClassification": "Classification"
   }
 }
