@@ -13,9 +13,9 @@
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1955,
+    "served": 1957,
     "wrong_answer": 0,
-    "engine_error": 138,
+    "engine_error": 136,
     "documented_limit": 2
    }
   },
@@ -73,9 +73,9 @@
     "refused_by_name": 81
    },
    "edge": {
-    "served": 2135,
-    "wrong_answer": 26,
-    "engine_error": 155,
+    "served": 2139,
+    "wrong_answer": 24,
+    "engine_error": 153,
     "documented_limit": 2
    }
   },
@@ -464,8 +464,6 @@
   {"case": "clickhouse::point(double precision, double precision)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"point\"('NaN'::double precision, 0.5::double precision) AS v LIMIT 1001", "edge": "double precision special", "said": "ERROR:  point_of does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "clickhouse::point_out(point)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"point_out\"('(NaN,1)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  point_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::point_send(point)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"point_send\"('(NaN,1)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  point_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "clickhouse::poly_contain(polygon, polygon)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"poly_contain\"('((0,0),(NaN,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_contain does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "clickhouse::poly_contained(polygon, polygon)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"poly_contained\"('((0,0),(NaN,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_contained does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::poly_out(polygon)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"poly_out\"('((0,0),(NaN,1),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::poly_send(polygon)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"poly_send\"('((0,0),(NaN,1),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::polygon(integer, circle)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"polygon\"('-2147483648'::integer, '<(0,0),1>'::circle) AS v LIMIT 1001", "edge": "integer least", "said": "ERROR:  circle_poly does not read this value'), arrayMap(_a -> tupleElement((throwIf(ifNull(abs(_a[3]) <= 0.000001, 0), 'postgresql-error 0A000: cannot convert circle with radius zero to polygon'), tupleElement((throwIf(ifNull(CAST(-2147483648, 'Nullable(Int32)') < 2, 0), 'postgresql-error 22023: m…", "sqlstate": "0A000", "postgres": "22023 ERROR:  must request at least 2 points", "job": "J1388b", "since": "2026-11-16"},
@@ -3844,8 +3842,6 @@
   {"case": "duckdb::jsonb_to_tsvector(regconfig, jsonb, jsonb)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"jsonb_to_tsvector\"('english'::regconfig, '\"日本語😀\"'::jsonb, '[\"string\"]'::jsonb) AS v LIMIT 1001", "edge": "jsonb multi-byte", "said": "ERROR:  jsonb_to_tsvector() has no form on duckdb", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::lcm(integer, integer)", "at": "edge", "kind": "wrong_answer", "calls": 4, "statement": "SELECT pg_catalog.\"lcm\"('-2147483648'::integer, 3::integer) AS v LIMIT 1001", "edge": "integer least", "said": "answered [('6442450944',)], PostgreSQL raised 22003 ERROR:  integer out of range", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::lcm(numeric, numeric)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"lcm\"('123456789012345678901234567890.123456789012345678901234567890'::numeric, 2.5::numeric) AS v LIMIT 1001", "edge": "numeric greatest", "said": "ERROR:  Conversion Error: Could not convert string \"123456789012345678901234567890.123456789012345678901234567890\" to DECIMAL(18,3)", "sqlstate": "22P02", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "duckdb::length(lseg)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"length\"('[(0,0),(NaN,1)]'::lseg) AS v LIMIT 1001", "edge": "lseg special", "said": "None, PostgreSQL 'NaN'", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "duckdb::length(path)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"length\"('((0,0),(NaN,1),(1,1))'::path) AS v LIMIT 1001", "edge": "path special", "said": "'2.414213562373095', PostgreSQL 'NaN'", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::line_out(line)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"line_out\"('{NaN,1,0}'::line) AS v LIMIT 1001", "edge": "line special", "said": "ERROR:  line_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::line_send(line)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"line_send\"('{NaN,1,0}'::line) AS v LIMIT 1001", "edge": "line special", "said": "ERROR:  line_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::ln(numeric)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"ln\"('123456789012345678901234567890.123456789012345678901234567890'::numeric) AS v LIMIT 1001", "edge": "numeric greatest", "said": "ERROR:  Conversion Error: Could not convert string \"123456789012345678901234567890.123456789012345678901234567890\" to DECIMAL(18,3)", "sqlstate": "22P02", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
@@ -3897,8 +3893,6 @@
   {"case": "duckdb::point(double precision, double precision)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"point\"('NaN'::double precision, 0.5::double precision) AS v LIMIT 1001", "edge": "double precision special", "said": "ERROR:  point_of does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::point_out(point)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"point_out\"('(NaN,1)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  point_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::point_send(point)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"point_send\"('(NaN,1)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  point_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "duckdb::poly_contain(polygon, polygon)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"poly_contain\"('((0,0),(NaN,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_contain does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "duckdb::poly_contained(polygon, polygon)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"poly_contained\"('((0,0),(NaN,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_contained does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::poly_out(polygon)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"poly_out\"('((0,0),(NaN,1),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::poly_send(polygon)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"poly_send\"('((0,0),(NaN,1),(1,1))'::polygon) AS v LIMIT 1001", "edge": "polygon special", "said": "ERROR:  poly_in does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "duckdb::polygon(integer, circle)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"polygon\"(3::integer, '<(NaN,0),1>'::circle) AS v LIMIT 1001", "edge": "circle special", "said": "ERROR:  circle_poly does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},

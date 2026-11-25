@@ -351,6 +351,14 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
     )
 
 
+def test_the_translators_raise_of_postgresqls_error_is_postgresqls_answer():
+    """The translator raises PostgreSQL's 2202E of thresholds of two dimensions before DuckDB runs
+    anything (polyfill.array_dimensions): the replay reads it as the recorded error, no refusal."""
+    sql = "SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]) AS v"
+    connection = duckdb.connect()
+    assert outcome(sql, "duckdb", lambda s: connection.execute(s).fetchone()[0]) == "ok"
+
+
 @pytest.mark.parametrize(
     "name, sql",
     [

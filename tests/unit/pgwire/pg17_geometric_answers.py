@@ -3406,7 +3406,7 @@ RECORDED: dict[str, tuple[int, str | None]] = {"SELECT bound_box('(3,4),(0,0)'::
  "SELECT polygon('(Infinity,1),(0,-inf)'::box) AS v": (604,
                                                        '((0,-Infinity),(0,1),(Infinity,1),(Infinity,-Infinity))'),
  "SELECT polygon('<(NaN,0),1>'::circle) AS v": (604,
-                                                '((NaN,0),(NaN,0.49999999999999994),(NaN,0.8660254037844386),(NaN,1),(NaN,0.8660254037844387),(NaN,0.5000000000000003),(NaN,1.2246467991473532e-16),(NaN,-0.4999999999999998),(NaN,-0.8660254037844384),(NaN,-1),(NaN,-0.866025403784439),(NaN,-0.5000000000000004))'),
+                                                '((NaN,0),(NaN,0.49999999999999994),(NaN,0.8660254037844386),(NaN,1),(NaN,0.8660254037844387),(NaN,0.5000000000000003),(NaN,1.2246467991473532e-16),(NaN,-0.4999999999999997),(NaN,-0.8660254037844384),(NaN,-1),(NaN,-0.866025403784439),(NaN,-0.5000000000000004))'),
  "SELECT polygon('<(0,0),Infinity>'::circle) AS v": (604,
                                                      '((-Infinity,NaN),(-Infinity,Infinity),(-Infinity,Infinity),(-Infinity,Infinity),(Infinity,Infinity),(Infinity,Infinity),(Infinity,Infinity),(Infinity,-Infinity),(Infinity,-Infinity),(Infinity,-Infinity),(-Infinity,-Infinity),(-Infinity,-Infinity))'),
  "SELECT polygon(2::integer, '<(NaN,0),1>'::circle) AS v": (604,
