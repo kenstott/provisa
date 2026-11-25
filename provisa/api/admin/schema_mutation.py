@@ -3348,7 +3348,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _join_refusal = await join_connector(input.id, input.type, _mapping)  # REQ-2221
         if _join_refusal is not None:
             return _join_refusal
-        _code_refusal = await record_code(input.id, input.type, _mapping)  # REQ-1984, REQ-1993
+        _code_refusal = await record_code(  # REQ-1984, REQ-1993, REQ-2267
+            input.id, input.type, _mapping, input.path
+        )
         if _code_refusal is not None:
             return _code_refusal
         if not _mapping:
@@ -3752,8 +3754,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _fixed_refusal is not None:
                 return _fixed_refusal
-            _code_refusal = await record_code(  # REQ-1984, REQ-1993
-                input.id, input.type, _stored_mapping
+            _code_refusal = await record_code(  # REQ-1984, REQ-1993, REQ-2267
+                input.id, input.type, _stored_mapping, input.path
             )
             if _code_refusal is not None:
                 return _code_refusal
