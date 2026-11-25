@@ -39,15 +39,15 @@ _FORMS = [
 
 @pytest.mark.parametrize(("statement", "function"), _FORMS)
 def test_bytea_like_is_rawlike_on_opengauss(statement: str, function: str) -> None:
-    written = transpile(statement, "postgres", engine_kind="opengauss")
+    written = transpile(statement, "postgres", generated=False, engine_kind="opengauss")
     assert written == f"SELECT {function}({_RAW}, {_RAW}) AS v"
 
 
 @pytest.mark.parametrize("statement", [s for s, _ in _FORMS])
 @pytest.mark.parametrize("kind", [None, "postgres", "greenplum", "yugabytedb", "cockroachdb"])
 def test_bytea_like_unchanged_off_opengauss(statement: str, kind: str | None) -> None:
-    written = transpile(statement, "postgres", engine_kind=kind)
-    assert written == transpile(statement, "postgres")
+    written = transpile(statement, "postgres", generated=False, engine_kind=kind)
+    assert written == transpile(statement, "postgres", generated=False)
     assert "raw" not in written.lower()
     assert "encode" not in written.lower()
 
@@ -56,6 +56,7 @@ def test_bytea_like_in_a_predicate_on_opengauss() -> None:
     written = transpile(
         "SELECT id FROM t WHERE CAST(b AS bytea) LIKE '\\x25'::bytea",
         "postgres",
+        generated=False,
         engine_kind="opengauss",
     )
     assert written == (
@@ -76,8 +77,8 @@ def test_bytea_like_in_a_predicate_on_opengauss() -> None:
     ],
 )
 def test_text_like_unchanged_on_opengauss(statement: str) -> None:
-    assert transpile(statement, "postgres", engine_kind="opengauss") == transpile(
-        statement, "postgres"
+    assert transpile(statement, "postgres", generated=False, engine_kind="opengauss") == transpile(
+        statement, "postgres", generated=False
     )
 
 
@@ -91,5 +92,10 @@ def test_opengauss_engine_passes_its_kind(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("PROVISA_ENGINE_URL", "postgresql+psycopg2://u:p@h:5432/db")
     greenplum = build_engine("greenplum")
     assert opengauss.dialect == greenplum.dialect == "postgres"
-    assert opengauss.backend.transpile_physical(statement) == f"SELECT RAWLIKE({_RAW}, {_RAW}) AS v"
-    assert greenplum.backend.transpile_physical(statement) == transpile(statement, "postgres")
+    assert (
+        opengauss.backend.transpile_physical(statement, generated=False)
+        == f"SELECT RAWLIKE({_RAW}, {_RAW}) AS v"
+    )
+    assert greenplum.backend.transpile_physical(statement, generated=False) == transpile(
+        statement, "postgres", generated=False
+    )

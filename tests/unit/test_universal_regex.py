@@ -173,7 +173,7 @@ def test_an_alternation_whose_branches_begin_alike_is_allowed_with_a_warning() -
 def test_every_universal_pattern_lowers_for_every_engine(
     engine, pattern, replace, value, masked
 ) -> None:
-    sql = transpile(_select(pattern, replace, "x"), engine)
+    sql = transpile(_select(pattern, replace, "x"), engine, generated=False)
     assert "provisa_regex_replace" not in sql.lower()
     assert "REGEXP_REPLACE" in sql.upper()
 
@@ -191,25 +191,29 @@ def test_each_engine_gets_its_own_flavour() -> None:
 
 def test_every_match_is_replaced_in_each_engines_sql() -> None:
     sql = _select(r"\d", "#", "x")
-    assert "'g'" in transpile(sql, "postgres") and "'g'" in transpile(sql, "duckdb")
+    assert "'g'" in transpile(sql, "postgres", generated=False) and "'g'" in transpile(
+        sql, "duckdb", generated=False
+    )
     for engine in ("trino", "snowflake", "bigquery", "databricks", "spark", "clickhouse"):
         # their three-argument REGEXP_REPLACE replaces every match
-        assert transpile(sql, engine).upper().count("REGEXP_REPLACE(") == 1
-        assert "'g'" not in transpile(sql, engine)
+        assert transpile(sql, engine, generated=False).upper().count("REGEXP_REPLACE(") == 1
+        assert "'g'" not in transpile(sql, engine, generated=False)
 
 
 def test_the_sql_strings_carry_the_engine_pattern_escaped_for_each_dialect() -> None:
     sql = _select(r"\d", "#", "x")
-    assert r"'[0-9]'" in transpile(sql, "postgres")
-    assert r"'\\A" not in transpile(sql, "bigquery")  # RE2: ^ $ as written
-    assert r"'\\A[0-9]" not in transpile(_select(r"^\d", "#", "x"), "bigquery")
-    assert r"'\\A[0-9]" in transpile(_select(r"^\d", "#", "x"), "databricks")  # backslash doubled
-    assert r"'\A[0-9]" in transpile(_select(r"^\d", "#", "x"), "trino")
+    assert r"'[0-9]'" in transpile(sql, "postgres", generated=False)
+    assert r"'\\A" not in transpile(sql, "bigquery", generated=False)  # RE2: ^ $ as written
+    assert r"'\\A[0-9]" not in transpile(_select(r"^\d", "#", "x"), "bigquery", generated=False)
+    assert r"'\\A[0-9]" in transpile(
+        _select(r"^\d", "#", "x"), "databricks", generated=False
+    )  # backslash doubled
+    assert r"'\A[0-9]" in transpile(_select(r"^\d", "#", "x"), "trino", generated=False)
 
 
 def test_an_engine_with_no_lowering_is_refused_by_name() -> None:
     with pytest.raises(ValueError, match="no lowering for the tsql engine"):
-        transpile(_select("a", "b", "x"), "tsql")
+        transpile(_select("a", "b", "x"), "tsql", generated=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -232,7 +236,9 @@ def test_python_masks_as_the_corpus_says(pattern, replace, value, masked) -> Non
 
 @pytest.mark.parametrize(("pattern", "replace", "value", "masked"), CORPUS)
 def test_duckdb_masks_as_python_does(pattern, replace, value, masked) -> None:
-    [(got,)] = duckdb.sql(transpile(_select(pattern, replace, value), "duckdb")).fetchall()
+    [(got,)] = duckdb.sql(
+        transpile(_select(pattern, replace, value), "duckdb", generated=False)
+    ).fetchall()
     assert got == masked
 
 
@@ -246,7 +252,9 @@ def pg(embedded_postgres):
 
 @pytest.mark.parametrize(("pattern", "replace", "value", "masked"), CORPUS)
 def test_postgres_masks_as_python_does(pg, pattern, replace, value, masked) -> None:
-    [(got,)] = pg.execute(transpile(_select(pattern, replace, value), "postgres")).fetchall()
+    [(got,)] = pg.execute(
+        transpile(_select(pattern, replace, value), "postgres", generated=False)
+    ).fetchall()
     assert got == masked
 
 
@@ -339,25 +347,29 @@ def test_an_unmatched_value_is_fully_masked_in_python(pattern, replace, value) -
 
 @pytest.mark.parametrize(("pattern", "replace", "value"), _unmatched())
 def test_an_unmatched_value_is_fully_masked_on_duckdb(pattern, replace, value) -> None:
-    assert duckdb.sql(transpile(_select(pattern, replace, value), "duckdb")).fetchall() == [
-        ("****",)
-    ]
+    assert duckdb.sql(
+        transpile(_select(pattern, replace, value), "duckdb", generated=False)
+    ).fetchall() == [("****",)]
 
 
 @pytest.mark.parametrize(("pattern", "replace", "value"), _unmatched())
 def test_an_unmatched_value_is_fully_masked_on_postgres(pg, pattern, replace, value) -> None:
-    sql = transpile(_select(pattern, replace, value), "postgres")
+    sql = transpile(_select(pattern, replace, value), "postgres", generated=False)
     assert pg.execute(sql).fetchall() == [("****",)]
 
 
 def test_null_stays_null() -> None:
     rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="#")
     assert apply_mask_to_value(rule, None, "varchar") is None
-    assert duckdb.sql(transpile(_select(r"\d", "#", None), "duckdb")).fetchall() == [(None,)]
+    assert duckdb.sql(
+        transpile(_select(r"\d", "#", None), "duckdb", generated=False)
+    ).fetchall() == [(None,)]
 
 
 def test_null_stays_null_on_postgres(pg) -> None:
-    assert pg.execute(transpile(_select(r"\d", "#", None), "postgres")).fetchall() == [(None,)]
+    assert pg.execute(
+        transpile(_select(r"\d", "#", None), "postgres", generated=False)
+    ).fetchall() == [(None,)]
 
 
 def test_a_column_that_is_not_text_is_fully_masked_as_null() -> None:
@@ -371,7 +383,7 @@ def test_a_column_that_is_not_text_is_fully_masked_as_null() -> None:
 def test_every_engine_masks_an_unmatched_value_fully(engine) -> None:
     """The compiled SQL of the engines not run here: the replacement only where the pattern is
     found, the full mask otherwise, NULL kept."""
-    sql = transpile(_select(r"^\d{3}", "###", "x"), engine)
+    sql = transpile(_select(r"^\d{3}", "###", "x"), engine, generated=False)
     upper = sql.upper()
     assert "IS NULL THEN NULL WHEN" in upper and "ELSE '****' END" in upper
     found = upper.split(" WHEN ")[2].split(" THEN ")[0]

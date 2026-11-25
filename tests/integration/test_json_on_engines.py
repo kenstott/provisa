@@ -74,7 +74,7 @@ def test_json_on_trino(trino_conn):
         cursor.execute(sql)
         return cursor.fetchall()
 
-    found = _replayed("trino", transpile_to_trino, run)
+    found = _replayed("trino", lambda sql: transpile_to_trino(sql, generated=False), run)
     assert found == _expected("trino"), json.dumps({"trino": found})
 
 
@@ -90,7 +90,7 @@ def test_json_on_clickhouse():
     )
 
     def written(sql: str) -> str:
-        return transpile(sql, "clickhouse")
+        return transpile(sql, "clickhouse", generated=False)
 
     found = _replayed("clickhouse", written, lambda sql: list(client.query(sql).result_rows))
     assert found == _expected("clickhouse"), json.dumps({"clickhouse": found})

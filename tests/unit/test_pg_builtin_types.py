@@ -274,7 +274,7 @@ def test_a_projected_subtyped_column_is_read_through_its_form_under_its_own_name
     )
     assert marked.lower().count(READ_MARKER) == 2
     assert mark_subtype_reads(marked, _TABLES) == marked
-    sql = transpile(marked, "duckdb")
+    sql = transpile(marked, "duckdb", generated=False)
     assert sql == (
         'SELECT CAST("h"."ip" AS TEXT) AS "ip", CAST("h"."lsn" AS TEXT) AS "at", "h"."id" '
         'FROM "public"."hosts" AS "h"'
@@ -286,8 +286,8 @@ def test_a_timetz_orders_as_its_own_type_not_as_its_text():
 
     sql = 'SELECT "h"."id" FROM "public"."hosts" AS "h" ORDER BY "h"."opened"'
     marked = mark_subtype_operations(sql, {("public", "hosts"): {"opened": "timetz"}})
-    assert 'CAST("h"."opened" AS TIMETZ)' in transpile(marked, "duckdb")
-    assert 'CAST("h"."opened" AS TIMETZ)' in transpile(marked, "postgres")
+    assert 'CAST("h"."opened" AS TIMETZ)' in transpile(marked, "duckdb", generated=False)
+    assert 'CAST("h"."opened" AS TIMETZ)' in transpile(marked, "postgres", generated=False)
 
 
 def test_a_clause_of_the_select_is_not_a_read():
@@ -297,7 +297,7 @@ def test_a_clause_of_the_select_is_not_a_read():
 
 def test_a_read_on_postgresql_is_the_column_itself():
     marked = mark_subtype_reads('SELECT "h"."ip" FROM "public"."hosts" AS "h"', _TABLES)
-    assert READ_MARKER not in transpile(marked, "postgres").lower()
+    assert READ_MARKER not in transpile(marked, "postgres", generated=False).lower()
     assert resolve_reads("SELECT 1", "postgres") == "SELECT 1"
 
 

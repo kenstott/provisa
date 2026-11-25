@@ -10,7 +10,6 @@
     "projectProduct": "Data product {{id}} (the whole project)",
     "exists": "A data product named {{id}} already exists. Rename or remove it to register these models.",
     "owner": "Owner: {{owner}}",
-    "ownerRole": "owner role {{role}}",
     "tests": "Tests: {{tests}}",
     "version": "Version {{version}}",
     "columns": "Promised columns: {{columns}}",

@@ -52,7 +52,10 @@
       "placeholder": "Cerca per nome o email",
       "typedEmail": "{{email}} (in attesa del primo accesso)",
       "typeMore": "Digita almeno due caratteri",
-      "noneFound": "Nessuna corrispondenza. Digita un'email completa per concedere l'accesso."
+      "noneFound": "Nessuna corrispondenza. Digita un'email completa per concedere l'accesso.",
+      "peopleGroup": "Persone",
+      "rolesGroup": "Ruoli",
+      "roleChip": "Ruolo: {{role}}"
     },
     "form": {
       "personLabel": "Persona",

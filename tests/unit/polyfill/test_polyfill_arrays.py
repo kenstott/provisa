@@ -68,7 +68,7 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     sql = f"SELECT {_call(rule.pattern)} AS v FROM t"
     if isinstance(form, Refusal):
         with pytest.raises(RowRefused) as refused:
-            transpile(sql, dialect)
+            transpile(sql, dialect, generated=False)
         assert str(refused.value) == form.message
         assert refused.value.sqlstate == form.sqlstate
         assert isinstance(refused.value, FunctionRefused)  # the API's handler of a refusal
@@ -76,7 +76,11 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     if isinstance(form, Rewrite):
         _rewritten_as_the_row_writes(form, sql, dialect)
         return
-    written = sqlglot.parse_one(transpile(sql, dialect), read=dialect).expressions[0].this
+    written = (
+        sqlglot.parse_one(transpile(sql, dialect, generated=False), read=dialect)
+        .expressions[0]
+        .this
+    )
     if form is None:  # sqlglot's own writing of the call, untouched by the grid
         plain = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
         assert type(written) is type(sqlglot.parse_one(plain, read=dialect).expressions[0].this)
@@ -99,12 +103,12 @@ def _rewritten_as_the_row_writes(form: Rewrite, sql: str, dialect: str) -> None:
         rewritten = form.function(call, dialect)
     except Refused as by_the_row:
         with pytest.raises(RowRefused) as refused:
-            transpile(sql, dialect)
+            transpile(sql, dialect, generated=False)
         assert str(refused.value) == by_the_row.refusal.message
         assert refused.value.sqlstate == by_the_row.refusal.sqlstate
         return
     try:
-        written = transpile(sql, dialect)
+        written = transpile(sql, dialect, generated=False)
     except RowRefused:
         pytest.fail("a row that keeps the old table's form refused the call")
     except FunctionRefused:
@@ -132,7 +136,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
         for rule in feature.read.rules:
             call = _call(rule.pattern)
             try:
-                out = transpile(f"SELECT {call} AS v", dialect)
+                out = transpile(f"SELECT {call} AS v", dialect, generated=False)
             except RowRefused:
                 continue
             tree = sqlglot.parse_one(out, read=dialect)
@@ -150,7 +154,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
 def test_a_refusal_names_the_dialect_routed_to(dialect: str):
     """Athena and Presto take Trino's forms, and each refusal names the dialect itself."""
     with pytest.raises(RowRefused) as refused:
-        transpile("SELECT generate_subscripts(ARRAY[1], 1, true) AS v", dialect)
+        transpile("SELECT generate_subscripts(ARRAY[1], 1, true) AS v", dialect, generated=False)
     assert str(refused.value) == f"generate_subscripts() has no form on {dialect}"
     assert refused.value.sqlstate == "0A000"
 
@@ -158,26 +162,28 @@ def test_a_refusal_names_the_dialect_routed_to(dialect: str):
 @pytest.mark.parametrize("dialect", ["snowflake", "tsql", "mysql", "bigquery", "oracle"])
 def test_a_source_a_statement_goes_to_directly_is_refused_by_its_own_row(dialect: str):
     with pytest.raises(RowRefused) as refused:
-        transpile("SELECT array_ndims(a) AS v FROM t", dialect)
+        transpile("SELECT array_ndims(a) AS v FROM t", dialect, generated=False)
     assert str(refused.value) == f"array_ndims() has no form on {dialect}"
     assert refused.value.sqlstate == "0A000"
 
 
 def test_a_dialect_provisa_sends_no_sql_to_is_refused_by_name():
     with pytest.raises(FunctionRefused, match="array_ndims\\(\\) has no form on spark") as refused:
-        transpile("SELECT array_ndims(a) AS v FROM t", "spark")
+        transpile("SELECT array_ndims(a) AS v FROM t", "spark", generated=False)
     assert not isinstance(refused.value, RowRefused)
 
 
 def test_array_length_is_a_sources_own():
-    assert "ARRAY_SIZE" in transpile("SELECT array_length(a, 1) AS v FROM t", "snowflake")
+    assert "ARRAY_SIZE" in transpile(
+        "SELECT array_length(a, 1) AS v FROM t", "snowflake", generated=False
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "presto", "athena", "clickhouse"])
 def test_array_length_reads_the_dimension_it_is_given(dialect: str):
     """The engine's own array length takes no dimension and answers the first one's for any: the
     grid's form reads the dimension, as PostgreSQL's does."""
-    out = transpile("SELECT array_length(a, d) AS v FROM t", dialect)
+    out = transpile("SELECT array_length(a, d) AS v FROM t", dialect, generated=False)
     columns = {c.name for c in sqlglot.parse_one(out, read=dialect).find_all(exp.Column)}
     assert "d" in columns, out
 
@@ -192,7 +198,7 @@ _FIRST_DIMENSION_ONLY = ("snowflake", "bigquery", "databricks", "hive", "druid")
 @pytest.mark.parametrize("call", ["array_length(a, 1)", "array_length(a, d)"])
 def test_array_length_is_refused_by_name_where_there_is_no_array(dialect: str, call: str):
     with pytest.raises(RowRefused) as refused:
-        transpile(f"SELECT {call} AS v FROM t", dialect)
+        transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
     assert str(refused.value) == f"array_length() has no form on {dialect}"
     assert refused.value.sqlstate == "0A000"
 
@@ -203,7 +209,7 @@ def test_array_length_of_another_dimension_than_the_first_is_refused(dialect: st
     """The source's own length answers the first dimension's for any: the dimension is not
     dropped, as sqlglot drops it, but refused."""
     with pytest.raises(RowRefused) as refused:
-        transpile(f"SELECT {call} AS v FROM t", dialect)
+        transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
     assert str(refused.value) == f"array_length() reads only dimension 1 on {dialect}"
     assert refused.value.sqlstate == "0A000"
 
@@ -221,7 +227,7 @@ def test_array_length_of_another_dimension_than_the_first_is_refused(dialect: st
 def test_array_length_of_the_first_dimension_is_null_for_an_empty_array(dialect: str, length: str):
     """PostgreSQL answers NULL for an empty or NULL array, where the source's length answers 0
     (or -1): the form answers the length only where it is above 0."""
-    out = transpile("SELECT array_length(a, 1) AS v FROM t", dialect)
+    out = transpile("SELECT array_length(a, 1) AS v FROM t", dialect, generated=False)
     case = sqlglot.parse_one(out, read=dialect).expressions[0].find(exp.Case)
     assert case is not None, out
     assert f"{length}(" in out.upper() and "> 0" in out, out
@@ -236,11 +242,15 @@ def test_array_length_of_the_first_dimension_is_null_for_an_empty_array(dialect:
     ],
 )
 def test_the_duckdb_form_of_the_first_dimension_answers_as_postgresql_does(sql: str, expected):
-    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchall() == expected
+    assert (
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall() == expected
+    )
 
 
 def _on_clickhouse(sql: str) -> list[str | None]:
-    held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
+    held = (
+        chdb.query(transpile(sql, "clickhouse", generated=False), "TabSeparated").bytes().decode()
+    )
     return [None if line == "\\N" else line for line in held.splitlines()]
 
 
@@ -259,49 +269,58 @@ def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str
 
 
 def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
-    out = transpile('SELECT pg_catalog."array_length"(ARRAY[[1, 2]], 2) AS v', "duckdb")
+    out = transpile(
+        'SELECT pg_catalog."array_length"(ARRAY[[1, 2]], 2) AS v', "duckdb", generated=False
+    )
     assert "JSON_ARRAY_LENGTH" in out.upper(), out
 
 
 def test_postgresql_is_native():
-    assert transpile("SELECT array_ndims(a) AS v FROM t", "postgres") == (
+    assert transpile("SELECT array_ndims(a) AS v FROM t", "postgres", generated=False) == (
         "SELECT ARRAY_NDIMS(a) AS v FROM t"
     )
 
 
 def test_a_call_no_rule_matches_is_left_untouched():
     # An integer is no array: PostgreSQL refuses array_ndims(integer), and so does the engine.
-    assert transpile("SELECT array_ndims(5) AS v", "duckdb") == "SELECT ARRAY_NDIMS(5) AS v"
+    assert (
+        transpile("SELECT array_ndims(5) AS v", "duckdb", generated=False)
+        == "SELECT ARRAY_NDIMS(5) AS v"
+    )
     # No overload of that many arguments.
-    assert transpile("SELECT array_ndims(a, 2) AS v FROM t", "trino") == (
+    assert transpile("SELECT array_ndims(a, 2) AS v FROM t", "trino", generated=False) == (
         "SELECT ARRAY_NDIMS(a, 2) AS v FROM t"
     )
 
 
 def test_a_call_inside_an_argument_is_rewritten_too():
-    out = transpile("SELECT array_ndims(array_fill(1, ARRAY[2])) AS v", "trino")
+    out = transpile("SELECT array_ndims(array_fill(1, ARRAY[2])) AS v", "trino", generated=False)
     tree = sqlglot.parse_one(out, read="trino")
     names = {n.name.lower() for n in tree.find_all(exp.Anonymous)}
     assert not names & {"array_ndims", "array_fill"}, out
 
 
 def test_a_call_by_pg_catalog_is_matched():
-    out = transpile("SELECT pg_catalog.array_ndims(ARRAY[1]) AS v", "trino")
+    out = transpile("SELECT pg_catalog.array_ndims(ARRAY[1]) AS v", "trino", generated=False)
     assert "CARDINALITY" in out and "array_ndims" not in out.lower()
 
 
 def test_a_call_outside_the_select_list_is_not_named():
-    out = transpile("SELECT x FROM t WHERE array_ndims(a) = 1", "duckdb")
+    out = transpile("SELECT x FROM t WHERE array_ndims(a) = 1", "duckdb", generated=False)
     assert " AS array_ndims" not in out and "TYPEOF(a)" in out
 
 
 def test_a_call_in_the_select_list_is_named_for_the_function():
-    tree = sqlglot.parse_one(transpile("SELECT array_shuffle(a) FROM t", "trino"), read="trino")
+    tree = sqlglot.parse_one(
+        transpile("SELECT array_shuffle(a) FROM t", "trino", generated=False), read="trino"
+    )
     assert tree.expressions[0].alias == "array_shuffle"
 
 
 def test_an_argument_that_differs_each_time_is_evaluated_once():
-    out = transpile("SELECT array_sample(a, (random() * 2)::integer) AS v FROM t", "duckdb")
+    out = transpile(
+        "SELECT array_sample(a, (random() * 2)::integer) AS v FROM t", "duckdb", generated=False
+    )
     tree = sqlglot.parse_one(out, read="duckdb")
     assert tree.expressions[0].find(exp.Subquery) is not None
     assert len(list(tree.find_all(exp.Rand))) + out.upper().count("RANDOM()") >= 1
@@ -309,11 +328,17 @@ def test_an_argument_that_differs_each_time_is_evaluated_once():
 
 def test_a_differing_argument_naming_no_column_is_refused_where_rows_are_read():
     with pytest.raises(FunctionRefused):
-        transpile("SELECT trim_array(ARRAY[1], (random() * 2)::integer) AS v FROM t", "duckdb")
+        transpile(
+            "SELECT trim_array(ARRAY[1], (random() * 2)::integer) AS v FROM t",
+            "duckdb",
+            generated=False,
+        )
 
 
 def test_a_lambda_over_a_subquery_argument_reads_it_in_a_row():
-    out = transpile("SELECT array_positions((SELECT ARRAY[1,2]), 1) AS v", "duckdb")
+    out = transpile(
+        "SELECT array_positions((SELECT ARRAY[1,2]), 1) AS v", "duckdb", generated=False
+    )
     assert "_args" in out
 
 
@@ -368,14 +393,18 @@ def test_a_documented_refusal_is_the_text_the_form_raises(feature):
     ],
 )
 def test_the_duckdb_forms_answer_as_postgresql_does(sql: str, expected):
-    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchall() == expected
+    assert (
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall() == expected
+    )
 
 
 def test_a_refusal_raised_on_duckdb_carries_postgresqls_sqlstate():
     from provisa.core.pg_error import from_engine
 
     with pytest.raises(duckdb.Error) as raised:
-        duckdb.connect().execute(transpile("SELECT trim_array(ARRAY[1,2,3], 4)", "duckdb"))
+        duckdb.connect().execute(
+            transpile("SELECT trim_array(ARRAY[1,2,3], 4)", "duckdb", generated=False)
+        )
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == "2202E"
     assert "number of elements to trim must be between 0 and 3" in str(error)
@@ -399,11 +428,15 @@ def test_array_cat_on_trino_is_written_by_its_grid_row(dialect: str, call: str, 
     row = arrays.ARRAY_CAT.read.rules[rule]
     assert row.matched(sqlglot.parse_one(call, read="postgres")) is not None
     assert isinstance(row.forms[dialect], str)
-    assert transpile(f"SELECT {call} AS v FROM t", dialect) == f"SELECT {written} AS v FROM t"
+    assert (
+        transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
+        == f"SELECT {written} AS v FROM t"
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
 def test_array_cat_of_two_null_arrays_on_trino_is_null(dialect: str):
     assert (
-        transpile("SELECT array_cat(NULL, NULL) AS v FROM t", dialect) == "SELECT NULL AS v FROM t"
+        transpile("SELECT array_cat(NULL, NULL) AS v FROM t", dialect, generated=False)
+        == "SELECT NULL AS v FROM t"
     )

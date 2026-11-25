@@ -72,7 +72,7 @@ def _ssn_rule() -> MaskingRules:
 def _govern_and_execute(pg_sql: str) -> list[tuple]:
     """compile → govern → transpile(duckdb) → execute → rows."""
     governed = governed_for_role(pg_sql, _ctx(), "analyst", masking_rules=_ssn_rule())
-    return _con().execute(transpile(governed, "duckdb")).fetchall()
+    return _con().execute(transpile(governed, "duckdb", generated=False)).fetchall()
 
 
 def test_control_plain_projection_masks_ssn_in_executed_rows():

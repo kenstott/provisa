@@ -52,7 +52,10 @@
       "placeholder": "Pesquisar por nome ou e-mail",
       "typedEmail": "{{email}} (aguarda o primeiro login)",
       "typeMore": "Digite pelo menos dois caracteres",
-      "noneFound": "Ninguém corresponde. Digite um e-mail completo para conceder a ele."
+      "noneFound": "Ninguém corresponde. Digite um e-mail completo para conceder a ele.",
+      "peopleGroup": "Pessoas",
+      "rolesGroup": "Funções",
+      "roleChip": "Função: {{role}}"
     },
     "form": {
       "personLabel": "Pessoa",

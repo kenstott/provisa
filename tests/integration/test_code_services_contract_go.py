@@ -179,3 +179,26 @@ def test_with_no_services_a_call_raises_naming_its_service(binary):
     result = _run(binary, "no services", "")
     assert result["raises"]["service"] == "cache" and result["raises"]["status"] == 0
     assert "$PROVISA_SERVICES is not set" in result["raises"]["message"]
+
+
+def _closed_port() -> int:
+    import socket
+
+    with socket.socket() as held:
+        held.bind(("127.0.0.1", 0))
+        return held.getsockname()[1]
+
+
+def test_an_https_address_is_called_not_refused(binary):
+    # REQ-2106 (amended 2026-11-22): a developer's address is the instance's, often https://.
+    # Nothing answers this one, so the call fails connecting: it was made, not refused.
+    result = _run(binary, "no services", f"https://127.0.0.1:{_closed_port()}/tok")
+    assert result["raises"]["service"] == "cache" and result["raises"]["status"] == 0
+    assert "is not an http:// or https:// address" not in result["raises"]["message"]
+    assert "127.0.0.1" in result["raises"]["message"]
+
+
+def test_an_address_that_is_not_an_http_or_https_url_is_refused(binary):
+    result = _run(binary, "no services", "provisa-services/tok")
+    assert result["raises"]["service"] == "cache" and result["raises"]["status"] == 0
+    assert "is not an http:// or https:// address" in result["raises"]["message"]

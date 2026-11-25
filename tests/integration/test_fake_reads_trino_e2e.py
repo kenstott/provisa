@@ -120,7 +120,7 @@ def _gov() -> GovernanceContext:
 def _run(trino_conn, sql: str) -> list[tuple]:
     governed = apply_governance(sql, _gov())
     cur = trino_conn.cursor()
-    cur.execute(transpile_to_trino(governed))
+    cur.execute(transpile_to_trino(governed, generated=False))
     return cur.fetchall()
 
 

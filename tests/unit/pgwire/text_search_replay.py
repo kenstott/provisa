@@ -81,7 +81,7 @@ def outcome(sql: str, dialect: str, run: Callable[[str], Iterable[Sequence[Any]]
     """ "ok", "refused", or what differs from PostgreSQL's recorded answer."""
     kind, oid, second = RECORDED[sql]
     try:
-        rows = run(transpile(sql, dialect))
+        rows = run(transpile(sql, dialect, generated=False))
     except Exception as error:  # noqa: BLE001 -- each engine's client raises its own
         if _refused(error):
             return "refused"

@@ -65,11 +65,13 @@ def test_an_ordered_limited_read_answers_as_postgresql_does(attached, table, ord
     with psycopg.connect(pg.dsn("null_order_294")) as conn:
         # The same statement on PostgreSQL, the table addressed by its schema.
         expected = conn.execute(cast(LiteralString, sql.replace('"p".', ""))).fetchall()
-    assert duck.execute(transpile_to_duckdb(sql)).fetchall() == expected
+    assert duck.execute(transpile_to_duckdb(sql, generated=False)).fetchall() == expected
 
 
 def test_no_statement_order_is_written_with_a_nulls_clause():
-    written = transpile_to_duckdb('SELECT "v" FROM "p"."public"."t" ORDER BY "d" DESC LIMIT 1')
+    written = transpile_to_duckdb(
+        'SELECT "v" FROM "p"."public"."t" ORDER BY "d" DESC LIMIT 1', generated=False
+    )
     assert "NULLS" not in written.upper()
     assert written.endswith('ORDER BY ("d" IS NULL) DESC, "d" DESC LIMIT 1')
 
@@ -77,16 +79,20 @@ def test_no_statement_order_is_written_with_a_nulls_clause():
 def test_a_window_and_a_union_keep_their_own_order():
     # A window's ORDER BY is no scan's (and a RANGE frame orders by one key); a UNION's orders
     # the union's rows, which DuckDB orders by its output columns only.
-    window = transpile_to_duckdb('SELECT ROW_NUMBER() OVER (ORDER BY "d" DESC) FROM "t"')
+    window = transpile_to_duckdb(
+        'SELECT ROW_NUMBER() OVER (ORDER BY "d" DESC) FROM "t"', generated=False
+    )
     assert 'OVER (ORDER BY "d" DESC NULLS FIRST)' in window
     union = transpile_to_duckdb(
-        'SELECT "d" FROM "t" UNION ALL SELECT "d" FROM "u" ORDER BY "d" DESC'
+        'SELECT "d" FROM "t" UNION ALL SELECT "d" FROM "u" ORDER BY "d" DESC', generated=False
     )
     assert union.endswith('ORDER BY "d" DESC NULLS FIRST')
 
 
 def test_an_ordinal_key_tests_the_item_it_names():
-    written = transpile_to_duckdb('SELECT "d" AS "x", "v" FROM "t" ORDER BY 1 DESC LIMIT 2')
+    written = transpile_to_duckdb(
+        'SELECT "d" AS "x", "v" FROM "t" ORDER BY 1 DESC LIMIT 2', generated=False
+    )
     assert 'ORDER BY ("d" IS NULL) DESC, 1 DESC' in written
 
 
@@ -101,7 +107,7 @@ def test_a_key_naming_an_aggregates_alias_answers_as_postgresql_does(attached, k
     )
     with psycopg.connect(pg.dsn("null_order_294")) as conn:
         expected = conn.execute(cast(LiteralString, sql.replace('"p".', ""))).fetchall()
-    assert duck.execute(transpile_to_duckdb(sql)).fetchall() == expected
+    assert duck.execute(transpile_to_duckdb(sql, generated=False)).fetchall() == expected
 
 
 def test_a_view_reading_its_latest_row_answers_on_duckdb_as_on_postgresql(embedded_postgres):
@@ -139,7 +145,7 @@ def test_an_output_name_a_source_column_shares_is_ordered_as_the_output():
         "SELECT o.category, SUM(t.customers) AS customers FROM t JOIN o ON o.id = t.oid "
         "GROUP BY o.category ORDER BY customers DESC"
     )
-    written = transpile_to_duckdb(sql)
+    written = transpile_to_duckdb(sql, generated=False)
     assert written.endswith("ORDER BY (SUM(t.customers) IS NULL) DESC, customers DESC"), written
     duck = duckdb.connect()
     duck.execute("CREATE TABLE t (oid int, customers int)")

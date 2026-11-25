@@ -172,14 +172,19 @@ class GovDataSubjectsType:  # REQ-540, REQ-541
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
-    steward: str | None = None  # REQ-609: None = pending, no designated steward
+    # REQ-2219 (amended 2026-11-24): what its Steward field names, people and roles as entered:
+    # what a page shows of its stewards. Rights come from the people holding the rows (stewards).
+    steward_field: OwnerFieldType
     graphql_alias: str | None = None
     # REQ-1363: the domain this one sits under; None = no parent. A role that lists the parent
     # reaches this domain too.
     parent_domain_id: str | None = None
-    # REQ-1363: the steward the domain answers to -- its own, else its nearest ancestor's; None
-    # when no domain up the tree has one.
-    effective_steward: str | None = None
+    # REQ-609, REQ-2219 (amended 2026-11-23): its stewards, people by user id, each holding a
+    # domain_steward row naming the domain itself. Empty: none of its own.
+    stewards: list[str] = strawberry.field(default_factory=list)
+    # REQ-1363: the people it answers to -- a row naming it or a domain above it covers it.
+    # Empty: the domain is pending (REQ-609), unless it is a system domain.
+    effective_stewards: list[str] = strawberry.field(default_factory=list)
     # domain_policy.system_domain_ids() (meta/ops/"") -- auto-generated, preserved across
     # config replace-mode reloads, never a target an end user picks for their own tables. Was
     # entirely absent from this type, so every domain picker in the UI (KaggleFormSection's
@@ -200,7 +205,9 @@ class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
-    owner_role: str | None = None
+    # REQ-2219 (amended 2026-11-23): the people who own it, by user id: those whose
+    # data_product_owner entitlement row names it (provisa.entitlements.owners).
+    owners: list[str] = strawberry.field(default_factory=list)
     team_role: str | None = None
     purpose: str = ""
     limitations: str = ""
@@ -1104,7 +1111,16 @@ class RoleType:  # REQ-042
 
 
 @strawberry.type
-class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to the individuals it grants to
+class OwnerFieldType:  # REQ-2219 (amended 2026-11-23)
+    """What an object's Owner or Steward field names: people by user id, and roles by id (every
+    holder of a role named is an owner or steward)."""
+
+    people: list[str]
+    roles: list[str]
+
+
+@strawberry.type
+class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner/steward ref to the individuals it names
     user_id: str | None  # user_id and email: user_management only, null otherwise
     display_name: str | None = None
     email: str | None = None
@@ -1216,7 +1232,12 @@ class SourceInput:  # REQ-012
 class DomainInput:  # REQ-533, REQ-609
     id: str
     description: str = ""
-    steward: str | None = None  # REQ-609
+    # REQ-2219 (amended 2026-11-23): the Steward field names people (user ids); saving writes
+    # their domain_steward rows. None leaves them as they are.
+    stewards: list[str] | None = None
+    # REQ-2219 (amended 2026-11-23): the roles the Steward field names; every holder of each is a
+    # steward. None leaves them as they are.
+    steward_roles: list[str] | None = None
     graphql_alias: str | None = None
     parent_domain_id: str | None = None  # REQ-1363
 
@@ -1226,7 +1247,13 @@ class DataProductInput:  # REQ-1634
     id: str
     domain_id: str
     name: str
-    owner_role: str | None = None
+    # REQ-2219 (amended 2026-11-23): the people the Owner field names, by user id; saving writes or
+    # ends their data_product_owner rows. Null leaves the owners as held: a client that does not
+    # show the field (the dbt registration) does not unname anyone.
+    owners: list[str] | None = None
+    # REQ-2219 (amended 2026-11-23): the roles the Owner field names; every holder of each owns it.
+    # Null leaves them as held.
+    owner_roles: list[str] | None = None
     team_role: str | None = None
     purpose: str = ""
     limitations: str = ""
@@ -1576,6 +1603,11 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
+    # REQ-2219 (amended 2026-11-23): the Owner field names people (user ids); saving writes
+    # their relationship_owner rows. None leaves them as they are.
+    owners: list[str] | None = None
+    # REQ-2219 (amended 2026-11-23): the roles the Owner field names. None leaves them as they are.
+    owner_roles: list[str] | None = None
     # REQ-2145: a save that re-homes key refs off a tagged term takes the tags off those columns:
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)

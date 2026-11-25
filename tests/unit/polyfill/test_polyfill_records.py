@@ -92,12 +92,12 @@ def test_every_dialect_but_postgresql_has_a_form(feature):
     ],
 )
 def test_a_null_field_is_equal_to_a_null_field_on_trino(function, written):
-    assert transpile(_probe(function), "trino") == written
+    assert transpile(_probe(function), "trino", generated=False) == written
 
 
 @pytest.mark.parametrize("dialect", _TRINO)
 def test_presto_and_athena_take_trinos_form(dialect):
-    tree = sqlglot.parse_one(transpile(_probe("record_eq"), dialect), read="trino")
+    tree = sqlglot.parse_one(transpile(_probe("record_eq"), dialect, generated=False), read="trino")
     assert tree.find(exp.NullSafeEQ) is not None
 
 
@@ -113,13 +113,14 @@ def test_presto_and_athena_take_trinos_form(dialect):
 def test_duckdb_answers_as_postgresql_and_as_before(function, answer):
     """DuckDB's own ``=`` of two structs takes a NULL field as equal to a NULL field: its form is
     the one it had."""
-    sql = transpile_to_duckdb(_probe(function))
+    sql = transpile_to_duckdb(_probe(function), generated=False)
     assert duckdb.connect().execute(sql).fetchall() == [(answer,)]
 
 
 def test_a_null_record_is_null():
     """record_eq is strict: a NULL argument answers NULL, not FALSE."""
     sql = transpile_to_duckdb(
-        "SELECT pg_catalog.\"record_eq\"(NULL::record, ROW(1, 'c'::text)::record) AS v"
+        "SELECT pg_catalog.\"record_eq\"(NULL::record, ROW(1, 'c'::text)::record) AS v",
+        generated=False,
     )
     assert duckdb.connect().execute(sql).fetchall() == [(None,)]

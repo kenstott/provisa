@@ -125,12 +125,12 @@ def trino_replay(conn: Any) -> dict[str, str]:
         cursor.execute(sql)
         return cursor.fetchall()
 
-    return replayed("trino", transpile_to_trino, run)
+    return replayed("trino", lambda sql: transpile_to_trino(sql, generated=False), run)
 
 
 def clickhouse_replay(client: Any) -> dict[str, str]:
     def written(sql: str) -> str:
-        return transpile(sql, "clickhouse")
+        return transpile(sql, "clickhouse", generated=False)
 
     def run(sql: str) -> list[Any]:
         # As pgwire reads ClickHouse's Arrow (provisa.federation.clickhouse_runtime): a String's

@@ -960,6 +960,15 @@ class AppState:
         self._active_runtime().held_entitlements = value
 
     @property
+    def role_owner_rows(self) -> dict[str, Any]:
+        """role id -> the rows an Owner or Steward field wrote on the role (REQ-2219)."""
+        return self._active_runtime().role_owner_rows
+
+    @role_owner_rows.setter
+    def role_owner_rows(self, value: dict[str, Any]) -> None:
+        self._active_runtime().role_owner_rows = value
+
+    @property
     def idp_entitlements(self) -> dict[str, Any]:
         """user id -> the lists their identity provider last sent (REQ-2219)."""
         return self._active_runtime().idp_entitlements
@@ -3534,7 +3543,7 @@ async def _rebuild_schemas_impl(
     # stamps, so the config watcher rebuilds once more; reading them afterwards would record stamps
     # newer than the model built.
     from provisa.core import config_stamp as _config_stamp
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     # REQ-351: every relationship's effective names, in the naming convention now in force: a build
     # follows each save, configuration load and change of convention. Stored before the stamp is
@@ -3832,13 +3841,12 @@ async def _rebuild_schemas_impl(
         role_chains_by_id = role_chains(roles)
         # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
         role_parents_by_id = parent_map(roles)
-        # REQ-2188: naming a role in a product's Owner field gives it RW on data products, with the
-        # generated rules (row_filters.with_owner_grant); it folds to the role's children as a
-        # right does, and is gone from the next build once the role owns nothing.
-        from provisa.core.repositories import data_product as _data_product_repo
+        # REQ-2188, REQ-2219: a role holding data_product_owner holds RW on data products, with
+        # the generated rules (row_filters.with_owner_grant): a person acting as it edits the
+        # products their own data_product_owner rows name.
         from provisa.security.row_filters import with_owner_grant
 
-        roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
+        roles = with_owner_grant(roles)
         # REQ-1363: down the domain tree before a role is narrowed -- a role that lists a domain
         # reaches every domain under it, so a parent holds the subtree its child narrows
         # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
@@ -3971,6 +3979,7 @@ async def _rebuild_schemas_impl(
         from provisa.judgments import bases as _bases
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.role_owner_rows = await _entitlement_store.load_role_owner_rows(conn)
         state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
         state.glossary_term_refs = await _glossary_repo.term_refs(conn)
@@ -4790,6 +4799,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.federation.pgwire_replica import stop_all_servers
 
         stop_all_servers()
+
+    # REQ-2267: every dev-mode code source's pgwire sidecar, before the workers its calls run on.
+    with tolerate_shutdown_failure("code source pgwire sidecars stop"):
+        from provisa.codesource.pgwire_sidecar import stop_all_sidecars
+
+        stop_all_sidecars()
 
     # REQ-1984, REQ-1993: every code source's worker process (each its own child, not ended by
     # ours unless it is told its socket closed).
@@ -5959,6 +5974,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
+    from provisa.api.admin.developer_services_router import router as developer_services_router
+
+    app.include_router(developer_services_router)  # REQ-2106, REQ-2112
     from provisa.api.admin.connectors_router import router as connectors_router
 
     app.include_router(connectors_router)  # REQ-2221

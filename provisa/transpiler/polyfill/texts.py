@@ -47,6 +47,7 @@ from provisa.transpiler.polyfill.numbers import ch_only as _ch
 FAMILY = "text functions"
 
 _CH = "clickhouse"
+_DUCKDB = "duckdb"
 
 
 #: The characters of a set, each escaped for a bracket expression.
@@ -199,14 +200,34 @@ def _to_array(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(form, dict(zip(holes, args, strict=True)))
 
 
+#: DuckDB's string_split splits at a NULL delimiter nowhere, at an empty one into code points, and
+#: an empty text into one empty piece: PostgreSQL splits them into code points, the whole text, and
+#: none.
+_DUCKDB_PIECES = (
+    "CASE WHEN $s IS NULL THEN NULL WHEN $s = '' THEN CAST([] AS VARCHAR[]) "
+    "WHEN $d IS NULL THEN string_split($s, '') WHEN $d = '' THEN [$s] "
+    "ELSE string_split($s, $d) END"
+)
+
 STRING_TO_ARRAY = Feature(
     "string_to_array",
     FAMILY,
     "Text split at each delimiter into an array; a piece equal to a third argument is NULL.",
     read=Side(
         rules=(
-            Rule("string_to_array($s::text, $d::text)", _ch(Rewrite(_to_array))),
-            Rule("string_to_array($s::text, $d::text, $n::text)", _ch(Rewrite(_to_array))),
+            Rule(
+                "string_to_array($s::text, $d::text)",
+                {**_ch(Rewrite(_to_array)), _DUCKDB: _DUCKDB_PIECES},
+            ),
+            Rule(
+                "string_to_array($s::text, $d::text, $n::text)",
+                {
+                    **_ch(Rewrite(_to_array)),
+                    _DUCKDB: "list_transform("
+                    + _DUCKDB_PIECES
+                    + ", lambda _x: CASE WHEN _x = $n THEN NULL ELSE _x END)",
+                },
+            ),
         ),
         limitations={
             _CH: (
@@ -382,17 +403,22 @@ REVERSE = Feature(
     "reverse",
     FAMILY,
     "A text's characters in reverse order.",
-    # By its characters (ClickHouse's regular expressions read UTF-8): the server's (24.3)
-    # reverseUTF8 reverses a four-byte character's bytes.
+    # By its code points, as PostgreSQL's (ClickHouse's regular expressions read UTF-8): the
+    # server's (24.3) reverseUTF8 reverses a four-byte character's bytes.
     read=Side(
         rules=(
             Rule(
                 "reverse($t::text)",
-                _ch(
-                    "if($t IS NULL, NULL, arrayStringConcat(arrayReverse("
-                    + _CHARACTERS.format("$t")
-                    + ")))"
-                ),
+                {
+                    **_ch(
+                        "if($t IS NULL, NULL, arrayStringConcat(arrayReverse("
+                        + _CHARACTERS.format("$t")
+                        + ")))"
+                    ),
+                    # DuckDB's reverse keeps a grapheme's code points together; its split of ''
+                    # is the code points.
+                    _DUCKDB: "array_to_string(list_reverse(string_split($t, '')), '')",
+                },
             ),
         )
     ),
@@ -601,13 +627,14 @@ OF_CHARACTER = Feature(
             Rule(
                 None,
                 {
-                    _CH: Rewrite(
+                    engine: Rewrite(
                         _of_character_literal,
                         mentions=r"\b(?:char_length|character_length|length|octet_length|text"
                         r"|name)\s*\(",
                         # Before bytea's patterns of the same names, which keep what is no bytea.
                         first=True,
                     )
+                    for engine in (_CH, _DUCKDB)
                 },
             ),
         )

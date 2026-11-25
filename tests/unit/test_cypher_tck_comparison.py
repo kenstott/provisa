@@ -32,7 +32,9 @@ _EMPTY = CypherLabelMap(nodes={}, relationships={})
 
 def _row(query: str) -> tuple:
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
-    (row,) = duckdb.sql(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+    (row,) = duckdb.sql(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall()
     return row
 
 

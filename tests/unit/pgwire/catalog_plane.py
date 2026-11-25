@@ -272,7 +272,7 @@ class Plane:
         if self._runtime is None:
             self._runtime = DuckDBFederationRuntime()
         try:
-            answer = self._runtime.run_sync(transpile_to_duckdb(addressed), None)
+            answer = self._runtime.run_sync(transpile_to_duckdb(addressed, generated=False), None)
         except Exception as exc:
             answered = from_engine(exc)
             if answered is not None:
@@ -288,7 +288,9 @@ class Plane:
         )
 
     def _read_on_postgres(self, sql: str, addressed: str) -> QueryResult:
-        written = transpile(addressed, "postgres")  # as the PostgreSQL engine is given it
+        written = transpile(
+            addressed, "postgres", generated=False
+        )  # as the PostgreSQL engine is given it
         with self.engine.begin() as conn:
             conn.connection.driver_connection.adapters.register_loader("json", TextLoader)
             try:

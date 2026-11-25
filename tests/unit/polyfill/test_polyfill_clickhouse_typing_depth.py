@@ -73,14 +73,14 @@ def counted(monkeypatch):
 
 @pytest.mark.parametrize(("sql", "want"), LISTED)
 def test_a_nested_call_is_typed_once_per_typing(counted, sql, want):
-    transpile(sql, "clickhouse")
+    transpile(sql, "clickhouse", generated=False)
     assert counted[0] <= _MOST_TYPINGS
 
 
 @pytest.mark.parametrize(("sql", "want"), LISTED)
 def test_the_listed_engine_errors_answer_postgresql_s_value(sql, want):
     runtime = ClickHouseFederationRuntime.embedded()
-    ((got,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((got,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     assert got == want
 
 
@@ -99,7 +99,7 @@ def test_a_range_fold_names_its_item_a_few_times(sql):
     variables: range_agg's fold named its item 973 times (each read of a bound re-read the item's
     text) and took ClickHouse's analyzer longer than the measure's 30 s a call. Each item is now
     read as a range before the fold, a tuple whose parts the step names once each."""
-    written = transpile(sql, "clickhouse")
+    written = transpile(sql, "clickhouse", generated=False)
     folds = re.findall(r"arrayFold\(\((_s\d+), (_x\d+)\)", written)
     assert folds
     for _, item in folds:

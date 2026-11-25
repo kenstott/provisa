@@ -153,7 +153,9 @@ def _governed_sql(schema: str, gql: str, rls: RLSContext) -> tuple[str, list]:
     compiled = compile_query(parse_query(generate_schema(si), gql, {}, ctx=ctx), ctx)[0]
     gov = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
     sql = transpile(
-        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "duckdb"
+        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx),
+        "duckdb",
+        generated=True,
     )
     return sql, list(compiled.params)
 

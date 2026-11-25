@@ -57,7 +57,7 @@ MONEY: dict[str, Decimal] = {
 
 def _answer(trino_conn: Any, sql: str) -> Any:
     cursor = trino_conn.cursor()
-    cursor.execute(transpile(sql, "trino"))
+    cursor.execute(transpile(sql, "trino", generated=False))
     return cursor.fetchall()[0][0]
 
 
@@ -75,7 +75,9 @@ def test_money_answers_as_postgresql_does(trino_conn, sql):
 
 def test_two_timestamps_differ_by_an_interval_it_cannot_write():
     with pytest.raises(FunctionRefused):
-        transpile("SELECT timestamp_mi(NULL::timestamp, NULL::timestamp) AS v", "trino")
+        transpile(
+            "SELECT timestamp_mi(NULL::timestamp, NULL::timestamp) AS v", "trino", generated=False
+        )
 
 
 #: The year of a column holding a value before Christ: PostgreSQL has no year 0, so 1 BC is -1.
@@ -93,5 +95,5 @@ _BC_YEARS = [
 def test_year_of_a_column_before_christ(trino_conn, form, value, year):
     sql = f"SELECT {form} AS v FROM (SELECT {value} AS d) t"
     cursor = trino_conn.cursor()
-    cursor.execute(transpile(sql, "trino"))
+    cursor.execute(transpile(sql, "trino", generated=False))
     assert cursor.fetchall()[0][0] == year

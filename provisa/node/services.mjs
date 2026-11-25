@@ -42,6 +42,15 @@ function base(service) {
       "Provisa's services are reached only from a Provisa code source's worker ($PROVISA_SERVICES is not set)",
     );
   }
+  // REQ-2106 (amended 2026-11-22): a worker's address is http://, through its egress proxy; a
+  // developer's, through their personal access token's route, is the instance's, often https://.
+  if (!value.startsWith("http://") && !value.startsWith("https://")) {
+    throw new ServiceError(
+      service,
+      0,
+      `$PROVISA_SERVICES is not an http:// or https:// address: ${JSON.stringify(value)}`,
+    );
+  }
   return value;
 }
 

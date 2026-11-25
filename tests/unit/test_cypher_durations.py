@@ -38,7 +38,7 @@ def _answer(query: str) -> list[dict]:
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, _EMPTY)
     duck = duckdb.connect()
     duck.execute("SET TimeZone = 'UTC'")
-    result = duck.sql(transpile(sql_ast.sql(dialect="postgres"), "duckdb"))
+    result = duck.sql(transpile(sql_ast.sql(dialect="postgres"), "duckdb", generated=True))
     rows = [dict(zip(result.columns, row)) for row in result.fetchall()]
     return to_serializable(assemble_rows(rows, graph_vars))
 

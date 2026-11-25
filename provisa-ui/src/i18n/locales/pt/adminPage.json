@@ -224,6 +224,7 @@
     "apolloSubgraphName": "Nome do subgrafo",
     "apolloSubgraphNameHint": "O nome pelo qual o supergrafo conhece este subgrafo.",
     "apolloSubgraphRole": "Atua como função",
-    "apolloSubgraphRoleHint": "Um supergraph não consegue repassar a identidade de quem o chama, então o roteador entra com esta função, e as regras de linha, máscaras e visibilidade desta função regem cada entidade que ele busca."
+    "apolloSubgraphRoleHint": "Um supergraph não consegue repassar a identidade de quem o chama, então o roteador entra com esta função, e as regras de linha, máscaras e visibilidade desta função regem cada entidade que ele busca.",
+    "stewardsHint": "Pessoas que respondem pelo domínio; cada uma precisa de uma função com domain_steward."
   }
 }

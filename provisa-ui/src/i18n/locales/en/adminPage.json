@@ -224,6 +224,7 @@
     "apolloSubgraphName": "Subgraph name",
     "apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
     "apolloSubgraphRole": "Serves as role",
-    "apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role, and this role's row rules, masks and visibility govern every entity it fetches."
+    "apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role, and this role's row rules, masks and visibility govern every entity it fetches.",
+    "stewardsHint": "People who answer for the domain; each must hold a role with domain_steward."
   }
 }

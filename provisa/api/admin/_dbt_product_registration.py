@@ -22,16 +22,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import select
-
 from provisa.core.repositories import data_product as data_product_repo
-from provisa.core.schema_org import roles
 from provisa.dbt.products import (
     PlannedProduct,
     ProductsRefused,
     check_promise,
     custom_properties,
-    owner_role,
     planned_products,
     preview,
     promise_columns,
@@ -53,10 +49,6 @@ async def _registered(conn: Any, manifest: DbtManifest) -> dict[str, int]:
     return {model.unique_id: row.id for model, row in await model_tables(conn, manifest)}
 
 
-async def _role_ids(conn: Any) -> set[str]:
-    return {r.id for r in (await conn.execute_core(select(roles.c.id))).fetchall()}
-
-
 async def _existing(conn: Any, plan: list[PlannedProduct]) -> set[str]:
     return {p.id for p in plan if await data_product_repo.get(conn, p.id) is not None}
 
@@ -70,7 +62,6 @@ async def products_preview(conn: Any, source_id: str) -> dict:
         manifest,
         await _registered(conn, manifest),
         await _existing(conn, planned_products(manifest)),
-        await _role_ids(conn),
     )
 
 
@@ -123,7 +114,6 @@ async def register_products(info: Any, source_id: str, domain_id: str) -> list[s
                 data_product=taken[0],
             )
         registered = await _registered(conn, manifest)
-        role_ids = await _role_ids(conn)
     models = [m for p in plan for m in p.models]
     await _register_models(
         info, source_id, domain_id, [m for m in models if m.unique_id not in registered]
@@ -138,7 +128,6 @@ async def register_products(info: Any, source_id: str, domain_id: str) -> list[s
             id=product.id,
             domain_id=domain_id,
             name=product.id,
-            owner_role=owner_role(product, role_ids),
             support_contact=None if product.owner is None else product.owner.email,
             custom_properties=cast("Any", custom_properties(manifest, product)),
         )

@@ -188,7 +188,7 @@ REPLACED = [
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -231,7 +231,10 @@ def test_a_column_s_value_is_carried(runtime):
         "SELECT pg_catalog.text(c) AS v "
         "FROM (VALUES ('<a>x</a>'::xml), ('<b>日本</b>'::xml)) AS t(c) ORDER BY 1"
     )
-    rows = [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    rows = [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
     assert rows == ["<a>x</a>", "<b>日本</b>"]
 
 
@@ -252,11 +255,14 @@ def test_a_call_inside_another_is_carried(runtime):
 )
 def test_an_overload_not_carried_stays_refused_by_name(sql):
     with pytest.raises(FunctionRefused, match="has no form on clickhouse"):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino", "postgres"])
 def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = "SELECT pg_catalog.tidlt('(2,1)'::tid, '(10,0)'::tid) AS v"
-    assert ported.held_out(sql, dialect)[0] == sql
-    assert ported.carried(sqlglot.parse_one(sql, read="postgres").selects[0], dialect) is None
+    assert ported.held_out(sql, dialect, generated=False)[0] == sql
+    assert (
+        ported.carried(sqlglot.parse_one(sql, read="postgres").selects[0], dialect, generated=False)
+        is None
+    )

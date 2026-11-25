@@ -224,6 +224,7 @@
     "apolloSubgraphName": "Naam van de subgraaf",
     "apolloSubgraphNameHint": "De naam waaronder de supergraaf deze subgraaf kent.",
     "apolloSubgraphRole": "Treedt op als rol",
-    "apolloSubgraphRoleHint": "Een supergraph kan de identiteit van de aanroeper niet doorgeven, dus de router meldt zich aan met deze rol, en de rijregels, maskers en zichtbaarheid van deze rol bepalen elke entiteit die hij ophaalt."
+    "apolloSubgraphRoleHint": "Een supergraph kan de identiteit van de aanroeper niet doorgeven, dus de router meldt zich aan met deze rol, en de rijregels, maskers en zichtbaarheid van deze rol bepalen elke entiteit die hij ophaalt.",
+    "stewardsHint": "Mensen die verantwoordelijk zijn voor het domein; elk heeft een rol met domain_steward nodig."
   }
 }

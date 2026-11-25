@@ -114,12 +114,12 @@ def db() -> Any:
 
 
 def _one(db: Any, call: str) -> Any:
-    return db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()[0][0]
+    return db.execute(transpile_to_duckdb(f"SELECT {call}", generated=False)).fetchall()[0][0]
 
 
 @pytest.mark.parametrize("call", _PROBED)
 def test_each_probed_function_reaches_an_answer(db: Any, call: str):
-    written = transpile_to_duckdb(f"SELECT pg_catalog.{call} AS v")
+    written = transpile_to_duckdb(f"SELECT pg_catalog.{call} AS v", generated=False)
     db.execute(written).fetchall()
 
 
@@ -144,7 +144,9 @@ def test_a_filter_keeps_out_of_a_json_aggregate_what_it_excludes(
     import json
 
     rows = "(VALUES ('a', 1, 1), ('b', 2, 2), ('c', 3, NULL)) t(k, x, y)"
-    written = transpile_to_duckdb(f"SELECT {aggregate} FILTER (WHERE x <> 2) FROM {rows}")
+    written = transpile_to_duckdb(
+        f"SELECT {aggregate} FILTER (WHERE x <> 2) FROM {rows}", generated=False
+    )
     assert json.loads(db.execute(written).fetchall()[0][0]) == want
 
 
@@ -177,7 +179,9 @@ _SPELLED = "1996-07-01T09:00:00"
 def test_a_timestamp_in_json_is_written_alike_by_each_constructor(db: Any, value: str, reads: Any):
     import json
 
-    written = transpile_to_duckdb(f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s")
+    written = transpile_to_duckdb(
+        f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s", generated=False
+    )
     assert reads(json.loads(db.execute(written).fetchall()[0][0])) == _SPELLED
 
 
@@ -197,7 +201,7 @@ def test_a_timestamp_answers_the_same_at_any_depth(db: Any, literal: str):
     from provisa.executor.serialize import _convert_value
 
     nested = transpile_to_duckdb(
-        f"SELECT json_build_object('k', t), t FROM (SELECT {literal} AS t) s"
+        f"SELECT json_build_object('k', t), t FROM (SELECT {literal} AS t) s", generated=False
     )
     text, top = db.execute(nested).fetchall()[0]
     assert json.loads(text)["k"] == _convert_value(top)
@@ -214,7 +218,9 @@ def test_a_timestamp_answers_the_same_at_any_depth(db: Any, literal: str):
 def test_a_list_of_timestamps_stays_a_json_array(db: Any, value: str, reads: Any):
     import json
 
-    written = transpile_to_duckdb(f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s")
+    written = transpile_to_duckdb(
+        f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s", generated=False
+    )
     answer = reads(json.loads(db.execute(written).fetchall()[0][0]))
     assert isinstance(answer, list) and len(answer) == 1
 
@@ -224,7 +230,8 @@ def test_a_json_value_keeps_its_type_beside_a_timestamp(db: Any):
 
     written = transpile_to_duckdb(
         "SELECT json_build_object('n', 1.50, 's', s, 'j', '{\"a\": 1}'::json, 'x', NULL, 'b', true)"
-        " FROM (SELECT '{\"a\": 1}' AS s) AS v"
+        " FROM (SELECT '{\"a\": 1}' AS s) AS v",
+        generated=False,
     )
     assert json.loads(db.execute(written).fetchall()[0][0]) == {
         "n": 1.5,
@@ -240,7 +247,7 @@ def test_nesting_does_not_multiply_the_statement():
         inner = "json_build_object('k', c)"
         for _ in range(depth):
             inner = f"json_build_object('k', c, 'n', (SELECT json_agg({inner}) FROM t))"
-        return transpile_to_duckdb(f"SELECT {inner} FROM t")
+        return transpile_to_duckdb(f"SELECT {inner} FROM t", generated=False)
 
     one, two, three = len(nested(1)), len(nested(2)), len(nested(3))
     assert three - two == two - one
@@ -248,7 +255,9 @@ def test_nesting_does_not_multiply_the_statement():
 
 @pytest.mark.parametrize("table", ("json_to_recordset", "jsonb_to_recordset"))
 def test_a_definition_list_gives_the_columns_of_no_rows(db: Any, table: str):
-    written = transpile_to_duckdb(f"""SELECT * FROM pg_catalog."{table}"('[]') AS t(v integer)""")
+    written = transpile_to_duckdb(
+        f"""SELECT * FROM pg_catalog."{table}"('[]') AS t(v integer)""", generated=False
+    )
     assert db.execute(written).fetchall() == []
 
 
@@ -310,18 +319,21 @@ def test_what_a_path_cannot_answer_is_refused_by_name(db: Any, call: str, functi
 )
 def test_a_row_the_engine_has_no_columns_of_is_refused_by_name(sql: str):
     with pytest.raises(FunctionRefused):
-        transpile_to_duckdb(sql)
+        transpile_to_duckdb(sql, generated=False)
 
 
 def test_a_record_base_with_a_definition_list_is_answered(db: Any):
     written = transpile_to_duckdb(
-        """SELECT * FROM jsonb_populate_record(NULL::record, '{"a":1}') AS t(a int, b text)"""
+        """SELECT * FROM jsonb_populate_record(NULL::record, '{"a":1}') AS t(a int, b text)""",
+        generated=False,
     )
     assert db.execute(written).fetchall() == [(1, None)]
 
 
 def test_a_fraction_for_an_integer_column_is_postgresqls_error_not_rounded(db: Any):
-    written = transpile_to_duckdb("""SELECT * FROM json_to_record('{"a":1.5}') AS t(a int)""")
+    written = transpile_to_duckdb(
+        """SELECT * FROM json_to_record('{"a":1.5}') AS t(a int)""", generated=False
+    )
     with pytest.raises(duckdb.Error) as refused:
         db.execute(written).fetchall()
     error = from_engine(refused.value)
@@ -330,7 +342,8 @@ def test_a_fraction_for_an_integer_column_is_postgresqls_error_not_rounded(db: A
 
 def test_a_column_is_read_by_the_udfs_row_by_row(db: Any):
     written = transpile_to_duckdb(
-        """SELECT jsonb_set(d, '{a}', '9') FROM (VALUES ('{"a":1}'::jsonb), ('{"b":2}'::jsonb)) t(d)"""
+        """SELECT jsonb_set(d, '{a}', '9') FROM (VALUES ('{"a":1}'::jsonb), ('{"b":2}'::jsonb)) t(d)""",
+        generated=False,
     )
     assert {str(row[0]).replace(" ", "") for row in db.execute(written).fetchall()} == {
         '{"a":9}',
@@ -362,7 +375,7 @@ def test_a_deeply_nested_call_is_rewritten_once():
     nested = "x"
     for _ in range(25):
         nested = f"abs({nested})"
-    written = transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t")
+    written = transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t", generated=False)
     assert written.upper().count("ABS(") == 25
 
 
@@ -378,7 +391,7 @@ def test_a_deeply_nested_call_is_rewritten_once():
 def test_a_null_path_step_into_an_object_is_postgresqls_error(db: Any, call: str):
     """setPathObject: a NULL step is 22004, path element at position N is null."""
     with pytest.raises(duckdb.Error) as refused:
-        db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()
+        db.execute(transpile_to_duckdb(f"SELECT {call}", generated=False)).fetchall()
     error = from_engine(refused.value)
     assert error is not None and error.sqlstate == "22004"
     assert "is null" in str(refused.value)
@@ -402,6 +415,6 @@ def test_a_path_of_more_than_one_dimension_is_postgresqls_error(db: Any, call: s
     """jsonb_delete_path, jsonb_set, jsonb_set_lax, jsonb_insert: a path of more than one
     dimension is 2202E, wrong number of array subscripts."""
     with pytest.raises(PostgresError) as refused:
-        db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()
+        db.execute(transpile_to_duckdb(f"SELECT {call}", generated=False)).fetchall()
     assert refused.value.sqlstate == "2202E", refused.value
     assert "wrong number of array subscripts" in str(refused.value)

@@ -45,7 +45,6 @@ def _product():
             id="prod",
             domain_id="sales",
             name="Customer 360",
-            owner_role="data_owner",
             team_role="analyst",
             purpose=FIELDS["purpose"],
             limitations=FIELDS["limitations"],
@@ -58,7 +57,13 @@ def _product():
             tables=list(PROD.tables),
         )
     ]
-    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    snapshot = build_snapshot(
+        config,
+        org_id=ORG_ID,
+        dialect="postgres",
+        contexts={},
+        product_owners={"prod": ("data_owner",)},
+    )
     (product,) = snapshot.data_products
     return snapshot, product
 

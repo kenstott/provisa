@@ -730,8 +730,12 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     lanes = yaml.safe_load((workflows / _WAREHOUSE_UI[0]).read_text())
     job = lanes["jobs"][_WAREHOUSE_UI[1]]
     assert "--project=warehouse" in job["with"]["run"]
-    assert job["if"] == lanes["jobs"]["warehouse"]["if"].replace(
-        "needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''"
+    # The warehouse lane's condition, with a targeted warehouse UI run (inputs.ui_specs) as a
+    # second way in and a targeted pytest run as the way out.
+    assert job["if"] == (
+        lanes["jobs"]["warehouse"]["if"]
+        .replace("needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''")
+        .replace("inputs.include_warehouse", "(inputs.include_warehouse || inputs.ui_specs != '')")
     )
     assert "ui-core-after.sh" in job["with"]["after"]
     # The lanes workflow is started by the nightly schedule and on request (a dispatch on a
@@ -743,6 +747,123 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     for name in ("playwright", "provisioning"):
         assert "--project=core" in core_ui["jobs"][name]["with"]["run"], name
         assert "--project=warehouse" not in core_ui["jobs"][name]["with"]["run"], name
+
+
+def _plan_outputs(tmp_path: Path, ui_specs: str, tests: str) -> tuple[int, dict[str, str]]:
+    """Runs the lanes workflow's plan step as the runner would, and reads what it wrote."""
+    step = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["plan"]["steps"][1]
+    assert step["id"] == "plan"
+    out = tmp_path / "github_output"
+    out.write_text("")
+    env = {
+        **os.environ,
+        "LANES": "all",
+        "PROVISA_LANE_TESTS": tests,
+        "PROVISA_UI_SPECS": ui_specs,
+        "PROVISA_INCLUDE_LIVE": ",,,,",
+        "GITHUB_OUTPUT": str(out),
+    }
+    done = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
+        ["bash", "-eo", "pipefail", "-c", step["run"]],  # noqa: S607
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    lines = [line for line in out.read_text().splitlines() if line]
+    return done.returncode, dict(line.split("=", 1) for line in lines)
+
+
+def _warehouse_ui_args(tmp_path: Path, ui_specs: str) -> list[str]:
+    """Runs the warehouse-ui job's command with `npx` standing in, and returns its arguments."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse-ui"]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    npx = bin_dir / "npx"
+    npx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
+    npx.chmod(0o755)
+    # A glob in a spec name stays the name: the job splits on spaces only.
+    (tmp_path / "x.spec.ts").write_text("")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "PROVISA_UI_SPECS": ui_specs}
+    done = subprocess.run(  # noqa: S603 — the job's own command
+        ["bash", "-eo", "pipefail", "-c", job["with"]["run"]],  # noqa: S607
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.splitlines()
+
+
+_WAREHOUSE_UI_COMMAND = [
+    "playwright",
+    "test",
+    "--project=warehouse",
+    "--global-timeout=3000000",
+    "--reporter=line,html,json",
+]
+
+
+def test_a_targeted_warehouse_ui_run_runs_only_the_named_specs_in_the_warehouse_project(
+    tmp_path,
+):
+    """REQ-1742, REQ-1989: every test has a CI path that runs it on its own. The google_sheets
+    case of source-to-query-special-cases.spec.ts is collected only by the "warehouse" project,
+    which ran only whole. `ui_specs` names Playwright file filters: the run is the warehouse-ui
+    job alone, on those specs; empty, every job behaves as before."""
+    workflows = REPO / ".github" / "workflows"
+    caller = yaml.safe_load((workflows / "integration-suite.yml").read_text())
+    dispatch = caller[True]["workflow_dispatch"]["inputs"]["ui_specs"]
+    assert dispatch["default"] == "" and dispatch["required"] is False
+    lanes_call = caller["jobs"]["lanes"]
+    assert lanes_call["with"]["ui_specs"] == "${{ inputs.ui_specs || '' }}"
+    # A ui_specs run has no tests named, so it queues in the suite-wide group (same as a full run).
+    assert lanes_call["concurrency"]["group"].startswith(
+        "${{ (inputs.tests || '') == '' && 'integration-suite' ||"
+    )
+    lanes = yaml.safe_load((workflows / "integration-suite-lanes.yml").read_text())
+    declared = lanes[True]["workflow_call"]["inputs"]["ui_specs"]
+    assert declared == {"type": "string", "required": False, "default": ""}
+
+    # The plan: a targeted UI run plans no suite, cluster or live pytest lane, and is refused
+    # beside `tests`; without it the plan is the runner's, as before.
+    code, planned = _plan_outputs(tmp_path, "e2e/source-to-query-special-cases.spec.ts", "")
+    assert code == 0
+    live = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
+    assert planned == {
+        "matrix": '{"include":[]}',
+        "suite": "false",
+        "cluster": "false",
+        **{lane: "false" for lane in live},
+    }
+    code, _ = _plan_outputs(tmp_path, "e2e/x.spec.ts", "tests/integration/test_x.py")
+    assert code == 1
+    code, planned = _plan_outputs(tmp_path, "", "")
+    assert code == 0
+    assert planned["suite"] == "true" and planned["cluster"] == "true"
+    assert json.loads(planned["matrix"])["include"]
+
+    # Every job but the plan, the warehouse UI job and the report is off when the plan is so.
+    jobs = lanes["jobs"]
+    assert jobs["trino-plugins"]["if"] == "inputs.ui_specs == ''"
+    for name, job in jobs.items():
+        if name in ("plan", "trino-plugins", "warehouse-ui", "report"):
+            continue
+        gated = [o for o in planned if f"needs.plan.outputs.{o} == 'true'" in job["if"]]
+        assert gated, name
+    wui = jobs["warehouse-ui"]
+    assert "inputs.ui_specs != ''" in wui["if"] and "inputs.tests == ''" in wui["if"]
+    assert "PROVISA_UI_SPECS=${{ inputs.ui_specs }}" in wui["with"]["env"].splitlines()
+
+    # The command: empty runs the whole project; named specs are passed as they are.
+    assert _warehouse_ui_args(tmp_path / "whole", "") == _WAREHOUSE_UI_COMMAND
+    named = "e2e/source-to-query-special-cases.spec.ts *.spec.ts"
+    assert _warehouse_ui_args(tmp_path / "named", named) == [*_WAREHOUSE_UI_COMMAND, *named.split()]
 
 
 # The calls that stop the live compute every run shares (tests/integration/databricks_warehouse.py,
@@ -847,6 +968,8 @@ _RELEASE_PYPI: tuple[str, ...] = ()
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
 _RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
+#: REQ-2269: legs that run on a dry run alone, so no publishing job waits for them.
+_RELEASE_DRY_RUN_ONLY = {"install-host"}
 #: Every orchestrator job that is not a leg.
 _RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
@@ -882,7 +1005,7 @@ def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itse
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    builds = set(jobs) - {"publish"}
+    builds = set(jobs) - {"publish"} - _RELEASE_DRY_RUN_ONLY
     assert not any("pypi" in job for job in jobs)
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
@@ -2097,6 +2220,42 @@ def test_the_release_builds_both_sdks_and_attaches_them_to_the_draft():
     assert not any("pypi" in job or "npm" in job for job in orchestrator)
 
 
+def test_the_release_builds_provisa_pyspark_and_lists_it_on_the_index_like_duckdb_ext():
+    """REQ-2270 (amended 2026-11-24): provisa-pyspark ships on the release's Pages index as
+    provisa-duckdb-ext does, never on PyPI (REQ-294, REQ-2112). The packages leg builds its wheel
+    and sdist at the release's version and attaches both to the draft (a dry run keeps them in the
+    run), the undraft requires both, and the index lists the project beside provisa-duckdb-ext."""
+    legs = dict(_release_legs().values())
+    job = legs["release-packages.yml"]["jobs"]["build-provisa-pyspark"]
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    assert "needs.metadata.outputs.py_version" in runs and "provisa-pyspark/pyproject.toml" in runs
+    assert "uv build provisa-pyspark/" in runs
+    assert "tests/unit/test_provisa_pyspark.py" in runs
+    assert not _LEAVES_THE_RUN.search(runs)
+    assert "pypi" not in runs.lower() and "twine" not in runs
+    uploads = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert [s["with"]["name"] for s in uploads] == ["provisa-pyspark-dist"]
+    assert uploads[0]["if"] == "${{ !inputs.publish }}"
+    [attach] = [s for s in job["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+    assert attach["if"] == "inputs.publish"
+    for pattern in ("provisa_pyspark-*.whl", "provisa_pyspark-*.tar.gz"):
+        assert pattern in attach["with"]["files"], pattern
+    assert "id-token" not in job["permissions"]
+
+    publish = legs["release-publish.yml"]["jobs"]["publish-release"]
+    [verify] = [s for s in publish["steps"] if s["name"].startswith("Publish release")]
+    required = verify["env"]["REQUIRED"].splitlines()
+    py = "${{ needs.metadata.outputs.py_version }}"
+    assert f"provisa_pyspark-{py}-py3-none-any.whl" in [r.strip() for r in required]
+    assert f"provisa_pyspark-{py}.tar.gz" in [r.strip() for r in required]
+
+    script = (REPO / "scripts" / "release_wheel_index.py").read_text()
+    projects = script.split("PROJECTS = (")[1].split(")")[0]
+    assert '"provisa-duckdb-ext",' in projects and '"provisa-pyspark",' in projects
+    index_job = legs["release-publish.yml"]["jobs"]["publish-wheel-index"]
+    assert "scripts/release_wheel_index.py" in str(index_job["steps"])
+
+
 def test_the_release_builds_the_vscode_extension_and_attaches_the_vsix_to_the_draft():
     """REQ-2112 (amended 2026-11-22): the VS Code extension is packaged in the packages leg,
     stamped with the release's version, and attached to the draft release as a .vsix; a dry run
@@ -2275,6 +2434,130 @@ def test_the_nightly_includes_every_lane_and_each_packaging_leg_with_publish_fal
     for workflow in every:
         triggers = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())[True]
         assert "workflow_dispatch" in triggers, workflow
+
+
+# --- the one-script Linux install, every night (REQ-2269) ----------------------------------------
+
+_INSTALL_LEG = REPO / ".github" / "workflows" / "release-install-host.yml"
+_INSTALL_ARTIFACTS = (
+    "provisa-wheel-linux-x86_64-dist",
+    "provisa-notebook-dist",
+    "provisa-duckdb-ext-wheels",
+    "trino-plugins",
+)
+
+
+def _install_job() -> dict:
+    (job,) = yaml.safe_load(_INSTALL_LEG.read_text())["jobs"].values()
+    return job
+
+
+def test_the_packaging_lane_installs_with_install_host_after_the_legs_that_build_its_assets():
+    """The nightly's packaging lane (build-dmg.yml, which release-ready requires green) carries
+    the install leg, given the run's version, after the legs whose artifacts it installs."""
+    gate = _script("release_gate")
+    assert "build-dmg.yml" in gate.NIGHTLY_LANES["packaging"]
+    jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    leg = jobs["install-host"]
+    assert leg["uses"] == "./.github/workflows/release-install-host.yml"
+    assert set(leg["needs"]) == {"prebuilt", "packages"}
+    assert leg["with"] == {
+        "version": "${{ inputs.version || github.ref_name }}",
+        "publish": _RELEASE_PUBLISH,
+    }
+    # A dry run's leg: no publishing job waits on it, so a release (where it is skipped) still
+    # publishes.
+    for job in (_RELEASE_IMAGE_PUSH, "publish"):
+        assert "install-host" not in jobs[job]["needs"], job
+
+
+def test_the_install_artifacts_are_ones_the_dry_run_uploads():
+    packages = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "release-packages.yml").read_text()
+    )["jobs"]
+    wheel = [s for s in packages["build-provisa-wheel"]["steps"] if s.get("name") == "Upload dist"]
+    assert wheel[0]["with"]["name"] == "provisa-wheel-${{ matrix.label }}-dist"
+    labels = {m["label"] for m in packages["build-provisa-wheel"]["strategy"]["matrix"]["include"]}
+    assert "linux-x86_64" in labels
+    uploaded = {
+        (s.get("with") or {}).get("name")
+        for path in ("release-packages.yml", "build-duckdb-extensions.yml")
+        for body in yaml.safe_load((REPO / ".github" / "workflows" / path).read_text())[
+            "jobs"
+        ].values()
+        for s in body.get("steps") or []
+    }
+    assert {"provisa-notebook-dist", "provisa-duckdb-ext-wheels"} <= uploaded
+    # trino-plugins: the plugins action's prime upload, which the tarball's own job downloads.
+    prebuilt = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "release-prebuilt.yml").read_text()
+    )["jobs"]
+    downloads = [
+        s["with"]["name"]
+        for s in prebuilt["package-plugins"]["steps"]
+        if str(s.get("uses", "")).startswith("actions/download-artifact@")
+    ]
+    assert downloads == ["trino-plugins"]
+    for step in _install_job()["steps"]:
+        if str(step.get("uses", "")).startswith("actions/download-artifact@"):
+            assert step["with"]["pattern"] == "{" + ",".join(_INSTALL_ARTIFACTS) + "}"
+
+
+def test_the_install_leg_runs_install_host_on_a_clean_runner_before_anything_of_provisas():
+    workflow = yaml.safe_load(_INSTALL_LEG.read_text())
+    job = _install_job()
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["if"] == "${{ !inputs.publish }}"
+    assert "container" not in job and "services" not in job
+    steps = job["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    install = next(i for i, r in enumerate(runs) if "scripts/install-host.sh" in r)
+    # As a user runs it: the script itself, under sudo, for the version, from the release's files.
+    assert runs[install] == 'sudo scripts/install-host.sh --version "$VERSION" --assets-dir assets'
+    assert steps[install]["env"]["VERSION"] == "${{ inputs.version }}"
+    assert "continue-on-error" not in steps[install]
+    # Nothing of Provisa's is set up on the host before the script runs.
+    for step in steps[:install]:
+        uses = str(step.get("uses", ""))
+        assert not uses.startswith("./.github/actions/setup-"), step.get("name")
+    assembled = next(
+        i for i, r in enumerate(runs) if "provisa-trino-plugins-${VERSION}.tar.gz" in r
+    )
+    assert assembled < install
+    # Dispatchable on its own, on the assets of a named dry run.
+    dispatch = workflow[True]["workflow_dispatch"]["inputs"]
+    assert set(dispatch) == {"version", "run_id"}
+    assert all(spec["required"] for spec in dispatch.values())
+    assert set(workflow[True]["workflow_call"]["inputs"]) == {"version", "publish"}
+
+
+def test_the_install_leg_runs_the_smoke_checks_against_the_installed_host():
+    steps = _install_job()["steps"]
+    runs = [" ".join(str(s.get("run", "")).split()) for s in steps]
+    install = next(i for i, r in enumerate(runs) if "scripts/install-host.sh" in r)
+    smoke = next(i for i, r in enumerate(runs) if "tests/smoke/test_main_is_startable.py" in r)
+    assert install < smoke
+    assert runs[smoke].startswith(".venv/bin/python -m pytest -m isolated ")
+    env = steps[smoke]["env"]
+    assert env["PROVISA_SMOKE_INSTALLED"] == "1"
+    # What the smoke run is told is what install-host.sh installed by default.
+    defaults = (REPO / "scripts" / "install-host.sh").read_text()
+    for key, default in (
+        ("PROVISA_SMOKE_INSTALL_PREFIX", "INSTALL_HOST_DEFAULT_PREFIX"),
+        ("PROVISA_SMOKE_INSTALL_CONFIG_DIR", "INSTALL_HOST_DEFAULT_CONFIG_DIR"),
+        ("PROVISA_SMOKE_INSTALL_DATA_DIR", "INSTALL_HOST_DEFAULT_DATA_DIR"),
+    ):
+        assert f'{default}="{env[key]}"' in defaults, key
+    assert f"INSTALL_HOST_DEFAULT_API_PORT={env['PROVISA_SMOKE_INSTALL_API_PORT']}" in defaults
+    assert f"INSTALL_HOST_DEFAULT_UI_PORT={env['PROVISA_SMOKE_INSTALL_UI_PORT']}" in defaults
+    # The smoke module reads every one of them in its installed-host mode.
+    module = (REPO / "tests" / "smoke" / "test_main_is_startable.py").read_text()
+    assert 'os.environ.get("PROVISA_SMOKE_INSTALLED") == "1"' in module
+    for name in ("PREFIX", "CONFIG_DIR", "DATA_DIR", "API_PORT", "UI_PORT"):
+        assert f'"{name}"' in module, name
+    assert "continue-on-error" not in steps[smoke]
+    upload = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact"))
+    assert upload["if"] == "always()"
 
 
 def test_the_dry_run_is_numbered_as_the_next_release(tmp_path):
@@ -2668,3 +2951,33 @@ def test_the_lane_image_cache_key_changes_with_every_pin():
         assert _lane_step(name)["with"]["key"] == (
             "images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}"
         ), name
+
+
+def _zaychik_dockerfile() -> str:
+    return (REPO / "zaychik" / "Dockerfile").read_text()
+
+
+def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
+    """Run 45456550808: `mvn ...:go-offline -q` failed the image build on one "Could not find
+    artifact maven-dependency-plugin:jar:3.11.0 in central" for a jar Central serves; `-q` hid the
+    resolver's detail. The fetch logs in full (-B -e, no -q) and transient failures are retried by
+    the resolver's own retry settings, not by a shell loop around mvn."""
+    text = _zaychik_dockerfile()
+    runs = re.findall(r"^RUN (.*?)(?<!\\)$", text, re.M | re.S)
+    go_offline = [r for r in runs if "go-offline" in r]
+    assert len(go_offline) == 1, go_offline
+    cmd = go_offline[0]
+    assert cmd.split() == ["mvn", "-B", "-e", "${DEPENDENCY_PLUGIN}:go-offline"], cmd
+    assert not any(re.search(r"\b(for|while|until)\b", r) for r in runs), runs
+    maven_args = re.search(r'^ENV MAVEN_ARGS="([^"]*)"$', text, re.M)
+    assert maven_args, "the resolver's transport retry settings are gone"
+    props = dict(p.removeprefix("-D").split("=", 1) for p in maven_args.group(1).split())
+    assert int(props["aether.connector.http.retryHandler.count"]) >= 5, props
+    assert int(props["aether.connector.http.retryHandler.interval"]) >= 10000, props
+    assert int(props["aether.connector.http.retryHandler.intervalMax"]) >= 60000, props
+    assert int(props["maven.wagon.http.retryHandler.count"]) >= 5, props
+    assert {"429", "502", "503", "504"} <= set(
+        props["aether.connector.http.retryHandler.serviceUnavailable"].split(",")
+    ), props
+    # No mirror or alternate repository: artifacts come only from Maven Central.
+    assert "mirror" not in text.lower() and "settings.xml" not in text, text

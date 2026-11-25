@@ -25,6 +25,7 @@ import {
 import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
+import { PeopleMultiPicker } from "../../components/entitlements/PeoplePicker";
 import type { DataProductForm } from "./types";
 import { relationName } from "../../naming";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -36,6 +37,10 @@ export interface DataProductFormCardProps {
   setForm: React.Dispatch<React.SetStateAction<DataProductForm>>;
   domainOptions: string[];
   roleOptions: string[];
+  /** REQ-2219 (amended 2026-11-23): the roles the Owner field may name. */
+  ownerRoleOptions: string[];
+  /** A failed search of the Owner field's people picker. */
+  onPeopleError: (e: unknown) => void;
   tables: ListedTable[];
   selectedTableIds: string[];
   setSelectedTableIds: React.Dispatch<React.SetStateAction<string[]>>;
@@ -94,6 +99,8 @@ export function DataProductFormCard({
   setForm,
   domainOptions,
   roleOptions,
+  ownerRoleOptions,
+  onPeopleError,
   tables,
   selectedTableIds,
   setSelectedTableIds,
@@ -182,15 +189,16 @@ export function DataProductFormCard({
         <Panel id="ownership" title={t("dataProductsTab.panelOwnership")} errors={0}>
           <FormLayout>
             <FormField size="medium">
-              <Select
+              {/* REQ-2219 (amended 2026-11-23): the Owner field names people and roles. */}
+              <PeopleMultiPicker
                 label={t("dataProductsTab.ownerLabel")}
-                value={form.ownerRole || null}
-                onChange={(v) => setForm((f) => ({ ...f, ownerRole: v ?? "" }))}
-                data={roleOptions}
-                placeholder={t("dataProductsTab.ownerPlaceholder")}
-                searchable
-                clearable
-                data-testid="data-product-owner-input"
+                value={form.owners}
+                onChange={(owners) => setForm((f) => ({ ...f, owners }))}
+                roleOptions={ownerRoleOptions}
+                roles={form.ownerRoles}
+                onRolesChange={(ownerRoles) => setForm((f) => ({ ...f, ownerRoles }))}
+                onError={onPeopleError}
+                testId="data-product-owner-input"
               />
             </FormField>
             <FormField size="medium">

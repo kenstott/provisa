@@ -41,12 +41,17 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
+    userId: "ada",
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
 vi.mock("../../hooks/useCapability", () => ({ useCapability: () => true }));
+// REQ-2219 (amended 2026-11-23): the Owner field as it names people and roles, read when the form
+// opens on a product.
+const readOwnerField = vi.fn(() => Promise.resolve({ people: ["vera"], roles: ["care_team"] }));
+vi.mock("../../hooks/useOwnerField", () => ({ useOwnerField: () => readOwnerField }));
 vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
@@ -100,7 +105,8 @@ const products = [
     id: "pet_health",
     domainId: "care",
     name: "Pet Health",
-    ownerRole: "vet_lead",
+    owners: ["vera"],
+    namedOwners: [{ principal: "vera", kind: "person" as const }],
     purpose: "Pet health records",
     limitations: "No billing data",
     usage: "Weekly review",
@@ -207,6 +213,9 @@ describe("Duplicate, in a data product's panel head", () => {
     saves.members.mockResolvedValueOnce({ success: true, message: "set" });
     open();
     fireEvent.click(await screen.findByTestId("duplicate-pet_health"));
+    // The copy's Owner field is the product's, once read.
+    expect((await screen.findAllByText("Role: care_team")).length).toBeGreaterThan(0);
+    expect(readOwnerField).toHaveBeenCalledWith("data_product", "pet_health");
     fireEvent.click(await screen.findByTestId("data-product-save-button"));
     await waitFor(() => expect(saves.create).toHaveBeenCalledTimes(1));
     expect(saves.update).not.toHaveBeenCalled();
@@ -217,7 +226,8 @@ describe("Duplicate, in a data product's panel head", () => {
       purpose: "Pet health records",
       limitations: "No billing data",
       usage: "Weekly review",
-      ownerRole: "vet_lead",
+      owners: ["vera"],
+      ownerRoles: ["care_team"],
       customProperties: { tier: "gold" },
     });
     await waitFor(() => expect(saves.members).toHaveBeenCalledWith("pet_health-copy", [1], []));

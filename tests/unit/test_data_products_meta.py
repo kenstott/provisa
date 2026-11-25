@@ -19,7 +19,7 @@ the seeded relationship row names, so what is tested is the edge a GraphQL, Cyph
 follows.
 """
 
-# Requirements: REQ-2125
+# Requirements: REQ-2125, REQ-2219
 
 from __future__ import annotations
 
@@ -37,7 +37,6 @@ PRODUCT_FIELDS = [
     "id",
     "domain_id",
     "name",
-    "owner_role",
     "team_role",
     "purpose",
     "limitations",
@@ -152,7 +151,6 @@ async def _seed(conn) -> None:
             id="customer_360",
             domain_id="sales",
             name="Customer 360",
-            owner_role="sales_lead",
             purpose="One view of each customer",
             status="live",
             custom_properties={"tier": "gold"},
@@ -326,6 +324,147 @@ def test_the_product_view_is_a_meta_table_whose_relationships_are_all_seeded():
     ):
         src, _sc, _tc, tgt, via, _vs, _vt = _junction(rel_id)
         assert {src, tgt, via} <= set(_META_TABLES), rel_id
+
+
+# REQ-2219 (amended 2026-11-24): each kind's owners view, its key column, and the edges from its
+# object to it and back.
+_OWNER_VIEWS = (
+    (
+        "data_product_owners",
+        "product_id",
+        "meta:data_products:owners",
+        "meta:data_product_owners:data_products",
+    ),
+    ("domain_stewards", "domain_id", "meta:domains:stewards", "meta:domain_stewards:domains"),
+    (
+        "relationship_owners",
+        "relationship_id",
+        "meta:relationships:owners",
+        "meta:relationship_owners:relationships",
+    ),
+)
+
+
+@pytest.mark.asyncio
+async def test_owners_are_rows_of_their_own_view_reached_by_relationship(control_plane):
+    """REQ-2219 (amended 2026-11-24, per REQ-2125): no object's view holds its owners or stewards;
+    each kind's owners view holds one row per object and principal, computed from object_owners,
+    and the object reaches its rows, and each row its object, over the seeded meta edges."""
+    from sqlalchemy import insert, text
+
+    from provisa.api.startup_seed import _adapt_view_ddl
+    from provisa.core.schema_org import object_owners, relationships
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await conn.execute_core(
+                insert(relationships).values(
+                    id="customers_regions",
+                    source_table_id=1,
+                    target_table_id=3,
+                    source_column="region_id",
+                    target_column="id",
+                    cardinality="many-to-one",
+                )
+            )
+            # Amended 2026-11-24: each principal with its kind, whether its field names it as
+            # entered (named) and whether it holds the capability (holds).
+            owned = {
+                "data_product": (
+                    "customer_360",
+                    (
+                        ("person", "alice", True, True),
+                        ("person", "bob", False, True),
+                        ("role", "data_steward", True, False),
+                    ),
+                ),
+                "domain": ("sales", (("person", "carol", True, True),)),
+                "relationship": (
+                    "customers_regions",
+                    (("person", "dave", True, True), ("person", "erin", True, True)),
+                ),
+            }
+            await conn.execute_core(
+                insert(object_owners).values(
+                    [
+                        {
+                            "object_kind": kind,
+                            "object_id": oid,
+                            "principal_kind": pk,
+                            "principal": who,
+                            "named": named,
+                            "holds": holds,
+                        }
+                        for kind, (oid, principals) in owned.items()
+                        for pk, who, named, holds in principals
+                    ]
+                )
+            )
+            for name in (*_VIEWS, "relationships", *(v for v, *_ in _OWNER_VIEWS)):
+                await conn.execute(_adapt_view_ddl(_VIEW_DDL[name]))
+
+            # The objects' own views carry no owners or stewards.
+            for view, gone in (
+                ("data_products_meta", "owners"),
+                ("domains_meta", "stewards"),
+                ("relationships_meta", "owners"),
+            ):
+                row = (await conn.execute_core(text(f"SELECT * FROM {view}"))).fetchone()
+                assert row is not None and gone not in row._mapping, view
+
+            for (view, key, to_owners, to_object), (oid, principals) in zip(
+                _OWNER_VIEWS, owned.values(), strict=True
+            ):
+                rows = (
+                    await conn.execute_core(text(f"SELECT * FROM {_relation(view)} ORDER BY id"))
+                ).fetchall()
+                assert [dict(r._mapping) for r in rows] == sorted(
+                    (
+                        {
+                            "id": f"{oid}:{pk}:{who}",
+                            key: oid,
+                            "principal": who,
+                            "principal_kind": pk,
+                            "named": named,
+                            "holds": holds,
+                        }
+                        for pk, who, named, holds in principals
+                    ),
+                    key=lambda r: r["id"],
+                ), view
+                reached = await _follow(conn, to_owners, [oid])
+                assert sorted(r["principal"] for r in reached) == sorted(
+                    who for _pk, who, _n, _h in principals
+                ), to_owners
+                back = await _follow(conn, to_object, [r["id"] for r in reached])
+                assert {r["id"] for r in back} == {oid}, to_object
+    finally:
+        await db.close()
+
+
+def test_the_owners_views_are_meta_tables_reached_both_ways():
+    """Each owners view is a registered meta table read as its view, and its edges are seeded
+    one-to-many from its object and many-to-one back."""
+    from provisa.api._catalog_descriptions import COLUMN_DESCRIPTIONS, TABLE_DESCRIPTIONS
+
+    for view, key, to_owners, to_object in _OWNER_VIEWS:
+        assert view in _META_TABLES
+        assert _META_TABLE_ALIAS[view] == f"{view}_meta"
+        src, src_col, tgt_col, tgt = _edge(to_owners)
+        assert (tgt, src_col, tgt_col) == (view, "id", key)
+        assert _edge(to_object) == (view, key, "id", src)
+        assert set(COLUMN_DESCRIPTIONS[view]) == {
+            "id",
+            key,
+            "principal",
+            "principal_kind",
+            "named",
+            "holds",
+        }
+        assert TABLE_DESCRIPTIONS[view]
+    assert not {"principal", "product_id", "relationship_id"} & GOVERNANCE_META_COLUMNS
 
 
 def test_each_view_keeps_its_own_tiers():
