@@ -242,9 +242,30 @@ async def test_a_tables_suggestions_are_refused_to_anyone_else(db, mailer):
         "product_suggestion.not_a_recipient",
     )
     assert refused.value.params == {"domain": "sales"}
+    # Anonymous: not a recipient of any domain, so 403 (not 401 — reading never requires sign-in).
     with pytest.raises(ApiError) as anonymous:
         await router.table_suggestions("sales", "orders", _request("anonymous"))
-    assert anonymous.value.status_code == 401
+    assert (anonymous.value.status_code, anonymous.value.code) == (
+        403,
+        "product_suggestion.not_a_recipient",
+    )
+
+
+async def test_counts_read_as_anonymous_returns_empty_list(db, mailer):
+    """Reading counts never requires a suggester (REQ-2180): anonymous gets an empty list."""
+    await router.suggest(_body("orders"), _request())
+    result = await router.suggestion_counts(_request("anonymous"))
+    assert result == []
+
+
+async def test_create_as_anonymous_is_refused_with_sign_in_required(db, mailer):
+    """Creating a suggestion requires sign-in (REQ-2180): anonymous gets a named 401."""
+    with pytest.raises(ApiError) as refused:
+        await router.suggest(_body("orders"), _request("anonymous"))
+    assert (refused.value.status_code, refused.value.code) == (
+        401,
+        "product_suggestion.sign_in_required",
+    )
 
 
 @pytest.mark.parametrize("table", ["salaries", "no_such_table"])
