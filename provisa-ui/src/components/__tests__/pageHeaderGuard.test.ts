@@ -8,16 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2277: every page shares one anatomy. This guard reads every component that draws a page's
-// title (PageTitle) and fails on a title outside the page header (div.page-header), a list filter
-// (FilterInput) outside it, and a SegmentedControl switching the page's views -- sub-views are the
-// standard tab strip (Mantine Tabs). A SegmentedControl is a form's choice only, inside a FormField.
-// There is no exemption list: a page that cannot comply is fixed.
+// REQ-2277: every object management page shares one anatomy. This guard reads every component that
+// draws a page's title (PageTitle) and fails on a title outside the page header (div.page-header), a
+// list filter (FilterInput) outside it, and a SegmentedControl switching the page's views -- sub-views
+// are the standard tab strip (Mantine Tabs). A SegmentedControl is a form's choice only, inside a
+// FormField. The work surfaces lay themselves out for their purpose, so the guard skips the files of
+// REQ-2277's list (WORK_SURFACES) and nothing else: a management page that cannot comply is fixed.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
+import { WORK_SURFACE_FILES } from "../../lib/workSurfaces";
 
 const SRC = resolve(__dirname, "../..");
 
@@ -164,11 +166,13 @@ describe("the page header rule fails what it is meant to fail", () => {
   });
 });
 
-describe("every page (REQ-2277)", () => {
+describe("every object management page (REQ-2277)", () => {
   const found = componentFiles(SRC)
-    .map((path) => ({
-      file: relative(SRC, path),
-      hits: checkPageHeader(readFileSync(path, "utf8")),
+    .map((path) => relative(SRC, path))
+    .filter((file) => !WORK_SURFACE_FILES.has(file))
+    .map((file) => ({
+      file,
+      hits: checkPageHeader(readFileSync(join(SRC, file), "utf8")),
     }))
     .filter((f) => f.hits.length > 0)
     .map(({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line} ${v.rule}`).join("; ")}`);

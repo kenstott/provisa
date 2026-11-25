@@ -71,7 +71,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     await shows(page.getByTestId("glossary-search"), refused, 90_000);
     // Nothing of the view is read or drawn before it is opened.
     await expect(page.getByTestId("ontology-view")).toHaveCount(0);
-    await page.getByTestId("glossary-view-graph").click();
+    await page.getByTestId("glossary-ontology-toggle").click();
     await shows(page.locator('[data-testid="ontology-stage"][data-ready]'), refused, 60_000);
     await expect(page.getByTestId("glossary-list")).toHaveCount(0);
 
@@ -104,7 +104,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
       const refused = recordRefusals(page);
       await page.goto("/context/ontology");
       await shows(page.getByTestId("glossary-search"), refused, 90_000);
-      await page.getByTestId("glossary-view-graph").click();
+      await page.getByTestId("glossary-ontology-toggle").click();
       await shows(page.locator('[data-testid="ontology-stage"][data-ready]'), refused, 60_000);
 
       await page.getByTestId("ontology-preset").getByText("Taxonomy", { exact: true }).click();

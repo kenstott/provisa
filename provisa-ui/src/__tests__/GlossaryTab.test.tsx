@@ -729,16 +729,16 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
-  it("orders its toolbar: + Term, then the icons (the AI menu), then help", async () => {
+  it("orders its toolbar: + Term, then the icons (Ontology view, the AI menu), then help", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    // REQ-2277: the Ontology view is a tab of the page, not a toolbar icon.
-    const ontology = screen.getByTestId("glossary-view-graph");
-    expect(ontology).toHaveTextContent("Ontology view");
-    expect(ontology).toHaveAttribute("aria-selected", "false");
+    const ontology = screen.getByTestId("glossary-ontology-toggle");
+    expect(ontology).toHaveAccessibleName("Ontology view");
+    expect(ontology).toHaveAttribute("aria-pressed", "false");
+    expect(ontology).not.toHaveTextContent("Ontology view");
     const order = [
       "glossary-new-btn",
-      "glossary-stewardship-btn",
+      "glossary-ontology-toggle",
       "glossary-generate-menu",
       "glossary-purpose-help",
     ].map((id) => screen.getByTestId(id));
@@ -760,16 +760,11 @@ describe("GlossaryTab", () => {
     ]);
   });
 
-  it("selects the Ontology view tab while the view is on, and the Terms tab back on the list", async () => {
+  it("presses the Ontology view icon while the view is on", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-view-graph"));
-    expect(screen.getByTestId("glossary-view-graph")).toHaveAttribute("aria-selected", "true");
-    // The view takes the term list's place.
-    await waitFor(() => expect(screen.queryByTestId("glossary-list")).toBeNull());
-    fireEvent.click(screen.getByTestId("glossary-view-terms"));
-    expect(screen.getByTestId("glossary-view-terms")).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByTestId("glossary-item-1")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    expect(screen.getByTestId("glossary-ontology-toggle")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("bulk-generates definitions and shows a count notification", async () => {

@@ -32,7 +32,6 @@ import {
   Select,
   Stack,
   Text,
-  Tabs,
   TextInput,
   Textarea,
 } from "@mantine/core";
@@ -40,7 +39,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
 import { BadgeCheck, BookOpen, ClipboardList, Pencil, Plus, Sparkles } from "lucide-react";
 import { useScreenInputs } from "../../mcp/screenState";
-import { OntologyView } from "../graph3d/OntologyGraph";
+import { OntologyToggle, OntologyView } from "../graph3d/OntologyGraph";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
@@ -54,6 +53,7 @@ import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
 import { OntologyImportsView } from "./ontologyImport/OntologyImportsView";
+import { ImportsToggle } from "./ontologyImport/ImportsToggle";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
@@ -98,7 +98,6 @@ import {
   readStoredBool,
   readStoredString,
   useGlossaryPanel,
-  type GlossaryView,
   useReadableTermIds,
   writeStored,
   writeStoredBool,
@@ -118,7 +117,7 @@ export function GlossaryTab() {
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
   const [readableTermIds, readTerms] = useReadableTermIds(); // REQ-2260
-  const { view, setView, selectedId, setSelectedId, editing, setEditing } =
+  const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
     useGlossaryPanel(canEdit, readableTermIds);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
@@ -189,8 +188,7 @@ export function GlossaryTab() {
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
   // REQ-2237: the ontology imports in place of the list, for a curator.
-  const imports = view === "imports" && canEdit;
-  const ontology = view === "graph";
+  const [imports, setImports] = useState(false);
   // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
@@ -527,9 +525,10 @@ export function GlossaryTab() {
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
-      {/* REQ-2277: the standard header -- title, filter, actions -- over the page's tabs. The
-          list/detail split below them is this work surface's own layout. */}
-      <div className="page-header">
+      {/* Same heading row as the other admin tabs: title, filter, actions. The list/detail split
+          below it is this tab's own layout. */}
+      <Group justify="space-between" wrap="wrap">
+        {/* AdminPage suppresses its own page title for this tab, so this is the page heading. */}
         <PageTitle icon={BookOpen}>{t("glossaryTab.title")}</PageTitle>
         <FilterInput
           value={query}
@@ -538,7 +537,7 @@ export function GlossaryTab() {
           testId="glossary-search"
           remember={false}
         />
-        <div className="page-actions">
+        <Group gap="xs" data-toolbar>
           {canEdit && (
             <Button
               leftSection={<Plus size={14} />}
@@ -554,7 +553,8 @@ export function GlossaryTab() {
               variant={!ontology && selectedId === null ? "light" : "subtle"}
               aria-label={t("glossaryTab.noTermHint")}
               onClick={() => {
-                setView("terms");
+                setOntology(false);
+                setImports(false);
                 setSelectedId(null);
                 setDetail(null);
               }}
@@ -563,6 +563,14 @@ export function GlossaryTab() {
               <ClipboardList size={16} aria-hidden />
             </ActionIcon>
           </Tip>
+          <OntologyToggle
+            open={ontology && !imports}
+            onChange={(open) => {
+              setImports(false);
+              setOntology(open);
+            }}
+          />
+          {canEdit && <ImportsToggle open={imports} onChange={setImports} />}
           {canEdit ? (
             // The AI drafts, both behind one sparkle: relationships between the terms, and the
             // definitions the terms lack.
@@ -619,26 +627,11 @@ export function GlossaryTab() {
             ariaLabel={t("glossaryTab.purposeAria")}
             testId="glossary-purpose-help"
           />
-        </div>
-      </div>
-      <Tabs value={imports ? "imports" : view} onChange={(v) => v && setView(v as GlossaryView)}>
-        <Tabs.List aria-label={t("glossaryTab.title")}>
-          <Tabs.Tab value="terms" data-testid="glossary-view-terms">
-            {t("glossaryTab.viewTerms")}
-          </Tabs.Tab>
-          <Tabs.Tab value="graph" data-testid="glossary-view-graph">
-            {t("graph3d.ontologyView")}
-          </Tabs.Tab>
-          {canEdit && (
-            <Tabs.Tab value="imports" data-testid="glossary-view-imports">
-              {t("ontologyImport.importsToggle")}
-            </Tabs.Tab>
-          )}
-        </Tabs.List>
-      </Tabs>
+        </Group>
+      </Group>
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
-      {imports ? (
+      {imports && canEdit ? (
         <OntologyImportsView
           terms={terms}
           domainOptions={addDomainOptions}

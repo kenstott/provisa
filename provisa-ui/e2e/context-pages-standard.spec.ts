@@ -10,7 +10,8 @@
 
 // REQ-2277: every Context page, and the Admin pages that share its Tags and Classification lists,
 // draws the standard header -- the title, the filter centred on it, the actions at its right edge
-// -- at 1280 and at 1900 wide, with nothing pushing the page wider than the window.
+// -- at 1280 and at 1900 wide, with nothing pushing the page wider than the window. The Ontology
+// page is a work surface (WORK_SURFACES) and lays itself out for its purpose, so it is not held here.
 
 import { test, expect } from "./coverage";
 
@@ -19,7 +20,6 @@ test.describe.configure({ timeout: 180_000 });
 const PAGES: { route: string; filter: boolean }[] = [
   { route: "/context/health", filter: false },
   { route: "/context/glossary", filter: true },
-  { route: "/context/ontology", filter: true },
   { route: "/context/metrics", filter: true },
   { route: "/context/tags", filter: true },
   { route: "/context/classification", filter: true },

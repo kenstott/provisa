@@ -119,7 +119,7 @@ describe("the toolbar rules fail what they are meant to fail", () => {
 
   it("reads a group marked data-toolbar as a toolbar", () => {
     expect(
-      rules(`const x = <Group data-toolbar><ErdToggle open /><Button>Term</Button></Group>;`),
+      rules(`const x = <Group data-toolbar><OntologyToggle open /><Button>Term</Button></Group>;`),
     ).toEqual(["toolbar-order"]);
   });
 

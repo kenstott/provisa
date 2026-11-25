@@ -52,7 +52,9 @@ async function forget(request: APIRequestContext, id: string) {
     .filter((c) => c.id !== id)
     .map((c) =>
       Object.fromEntries(
-        Object.entries(c).filter(([k]) => !k.endsWith("_set") && k !== "last_run" && k !== "last_import"),
+        Object.entries(c).filter(
+          ([k]) => !k.endsWith("_set") && k !== "last_run" && k !== "last_import",
+        ),
       ),
     );
   const answer = await request.put(SYNCING, { data: { entries: kept } });
@@ -105,7 +107,10 @@ test("a data catalog is connected once, kept with its domains, and its credentia
     await page.reload();
     const row = page.getByTestId("syncing-section-data_catalog").getByTestId(`syncing-row-${id}`);
     await expect(row).toBeVisible({ timeout: 60000 });
-    await row.click();
+    // REQ-2277: the open entry is the URL's ?entry=, so the reload reopens its panel (a click on
+    // its row now would close it).
+    await expect(page).toHaveURL(new RegExp(`[?&]entry=${id}\\b`));
+    await expect(page.getByTestId(`syncing-entry-read-${id}`)).toBeVisible({ timeout: 60000 });
     await page.getByTestId("syncing-edit").click();
     await expect(page.getByTestId("syncing-api-key")).toHaveValue("");
     await expect(page.getByTestId("syncing-api-key")).toHaveAttribute(

@@ -157,7 +157,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   },
 }));
 
-import { OntologyView } from "../OntologyGraph";
+import { OntologyToggle, OntologyView } from "../OntologyGraph";
 import { GraphExplorer } from "../GraphExplorer";
 import { ONTOLOGY_SCOPE } from "../graphModel";
 
@@ -169,8 +169,7 @@ function Page() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      {/* The page's Ontology View tab (GlossaryTab) opens the view in place of the term list. */}
-      <button data-testid="glossary-view-graph" onClick={() => setOpen(true)} />
+      <OntologyToggle open={open} onChange={setOpen} />
       {open && <OntologyView search="" />}
     </>
   );
@@ -201,7 +200,7 @@ describe("the Glossary page's Ontology View", () => {
     render(<Page />);
     expect(reads.roles).toEqual([]);
     expect(made.scenes).toHaveLength(0);
-    fireEvent.click(screen.getByTestId("glossary-view-graph"));
+    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // As the user's role: what the controls choose from, then what they keep.
     expect(new Set(reads.roles)).toEqual(new Set(["analyst"]));
