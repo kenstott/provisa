@@ -51,7 +51,7 @@
     "firstPage": "עמוד ראשון",
     "lastPage": "עמוד אחרון",
     "listedElsewhere": "רשום בדומיינים אחרים",
-    "listedElsewhereHint": "שמות שדומיינים אחרים מציגים. בקשו גישה מאותו דומיין כדי לקרוא אותם.",
+    "listedElsewhereHint": "שמות שתחומים אחרים מציגים. הציעו מוצר כדי לבקש טבלה מאותו תחום.",
     "pageOf": "עמוד {{page}} / {{totalPages}}",
     "loadFailed": "לא ניתן לטעון את הטבלאות הרשומות: {{message}}",
     "editViewDefinitionTitle": "עריכת הגדרת ה-view",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "נמשכה",
     "withdrawnTitle": "מחוץ לייצור: אף תפקיד לא קורא אותה עד שתוחזר",
-    "sourceWithdrawnTitle": "המקור שלה {{source}} נמשך: אף תפקיד לא קורא אותה עד שהמקור יוחזר"
+    "sourceWithdrawnTitle": "המקור שלה {{source}} נמשך: אף תפקיד לא קורא אותה עד שהמקור יוחזר",
+    "suggestProduct": "הצעת מוצר"
   }
 }

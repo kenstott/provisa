@@ -51,7 +51,7 @@
     "firstPage": "第一页",
     "lastPage": "最后一页",
     "listedElsewhere": "在其他域中列出",
-    "listedElsewhereHint": "其他域列出的名称。如需读取，请向该域申请访问权限。",
+    "listedElsewhereHint": "其他域列出的名称。建议一个产品，向该域请求某张表。",
     "pageOf": "第 {{page}} / {{totalPages}} 页",
     "loadFailed": "无法加载已注册的表：{{message}}",
     "editViewDefinitionTitle": "编辑视图定义",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "已撤回",
     "withdrawnTitle": "已停止生产使用：在恢复之前，任何角色都无法读取",
-    "sourceWithdrawnTitle": "其数据源 {{source}} 已撤回：在数据源恢复之前，任何角色都无法读取"
+    "sourceWithdrawnTitle": "其数据源 {{source}} 已撤回：在数据源恢复之前，任何角色都无法读取",
+    "suggestProduct": "建议产品"
   }
 }

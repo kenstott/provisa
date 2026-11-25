@@ -51,7 +51,7 @@
     "firstPage": "Erste Seite",
     "lastPage": "Letzte Seite",
     "listedElsewhere": "In anderen Domänen gelistet",
-    "listedElsewhereHint": "Namen, die andere Domänen listen. Bitten Sie diese Domäne um Zugriff, um sie zu lesen.",
+    "listedElsewhereHint": "Namen, die andere Domänen listen. Schlagen Sie ein Datenprodukt vor, um diese Domäne um eine Tabelle zu bitten.",
     "pageOf": "Seite {{page}} / {{totalPages}}",
     "loadFailed": "Registrierte Tabellen konnten nicht geladen werden: {{message}}",
     "editViewDefinitionTitle": "Sichtdefinition bearbeiten",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Zurückgezogen",
     "withdrawnTitle": "Außer Betrieb: Keine Rolle liest sie, bis sie zurückgeholt wird",
-    "sourceWithdrawnTitle": "Ihre Quelle {{source}} ist zurückgezogen: Keine Rolle liest sie, bis die Quelle zurückgeholt wird"
+    "sourceWithdrawnTitle": "Ihre Quelle {{source}} ist zurückgezogen: Keine Rolle liest sie, bis die Quelle zurückgeholt wird",
+    "suggestProduct": "Produkt vorschlagen"
   }
 }
