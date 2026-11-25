@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Modal, MultiSelect, Text, Textarea } from "@mantine/core";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { useRequiredFields } from "../../components/form/useRequiredFields";
 import { suggestProduct, type Suggestion } from "../../api/productSuggestions";
 
 export interface SuggestTarget {
@@ -65,8 +66,10 @@ function SuggestForm({ target, onClose }: { target: SuggestTarget; onClose: () =
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<Suggestion | null>(null);
-  const ready = tables.length > 0 && reason.trim() !== "" && !sending;
+  // REQ-1968 (amended 2026-11-22): Send marks these when empty; it is never disabled by them.
+  const required = useRequiredFields({ tables, reason });
   const submit = () => {
+    if (!required.validate()) return;
     setSending(true);
     setError(null);
     suggestProduct({ domain_id: target.domainId, tables, reason: reason.trim() })
@@ -96,7 +99,7 @@ function SuggestForm({ target, onClose }: { target: SuggestTarget; onClose: () =
       <FormField size="long" hint={t("suggestProduct.hint")}>
         <MultiSelect
           label={t("suggestProduct.tables")}
-          required
+          {...required.field("tables")}
           data={target.domainTables}
           value={tables}
           onChange={setTables}
@@ -107,7 +110,7 @@ function SuggestForm({ target, onClose }: { target: SuggestTarget; onClose: () =
       <FormField size="full" hint={t("suggestProduct.reasonHint")}>
         <Textarea
           label={t("suggestProduct.reason")}
-          required
+          {...required.field("reason")}
           autosize
           minRows={2}
           value={reason}
@@ -119,7 +122,7 @@ function SuggestForm({ target, onClose }: { target: SuggestTarget; onClose: () =
         onCancel={onClose}
         problem={error}
         action={
-          <Button onClick={submit} disabled={!ready} data-testid="suggest-product-send">
+          <Button onClick={submit} loading={sending} data-testid="suggest-product-send">
             {sending ? t("suggestProduct.sending") : t("suggestProduct.send")}
           </Button>
         }
