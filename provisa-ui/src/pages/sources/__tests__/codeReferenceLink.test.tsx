@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ activeOrgId: "acme" }) }));
 import { Route, Routes } from "react-router-dom";
-import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
+import { render, screen, waitFor } from "../../../test-utils/render";
 import { FormLayout } from "../../../components/form/FormLayout";
 import { sourceFormProps, sourceOf } from "../../../test-utils/sourceForm";
 import { DocsPage } from "../../DocsPage";
@@ -82,21 +82,21 @@ describe("a code source's reference link", () => {
   });
 
   it("opens the Docs page framed at that section", async () => {
+    // The link opens a new tab (the source dialog stays open), so the page it opens is rendered at
+    // the link's own address, as the new tab loads it.
+    const { unmount } = render(
+      <FormLayout>
+        <CodeReferenceLink type="go" />
+      </FormLayout>,
+    );
+    const href = screen.getByTestId("code-reference-link").getAttribute("href");
+    unmount();
     render(
       <Routes>
-        <Route
-          path="/sources"
-          element={
-            <FormLayout>
-              <CodeReferenceLink type="go" />
-            </FormLayout>
-          }
-        />
         <Route path="/docs" element={<DocsPage />} />
       </Routes>,
-      { initialEntries: ["/sources"] },
+      { initialEntries: [href as string] },
     );
-    fireEvent.click(screen.getByTestId("code-reference-link"));
     const frame = await screen.findByTestId("docs-frame");
     await waitFor(() =>
       expect(frame.getAttribute("src")).toBe("https://provisa.dev/docs/code-sources/#go-reference"),
