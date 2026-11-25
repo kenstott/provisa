@@ -111,7 +111,7 @@ export declare function storeRegionChanges(
 ): Promise<Changed[]>;
 
 /** @on-start */
-export declare function setup(values?: Record<string, string>): Promise<void>;
+export declare function setup(values: Record<string, string>): Promise<void>;
 
 /** @on-stop */
 export declare function teardown(): Promise<void>;

@@ -2148,7 +2148,7 @@ export async function storeRegionChanges(
 
     ```typescript
     /** @on-start */
-    export async function setup(values?: Record<string, string>): Promise<void> { ... }
+    export async function setup(values: Record<string, string>): Promise<void> { ... }
     ```
 
 === "SDK"
@@ -2156,7 +2156,7 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
+    export const setup = onStart(async function setup(values: Record<string, string>) { ... });
     ```
 
 **`@on-stop`**
