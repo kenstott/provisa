@@ -23,7 +23,7 @@ row-at-a-time reader, a root path through an array index) is not read here: the 
 it as a single document in memory, which the build reports as not optimal.
 """
 
-# Requirements: REQ-1915
+# Requirements: REQ-1915, REQ-1874
 
 from __future__ import annotations
 
@@ -219,7 +219,8 @@ def replica_source(
     if endpoint.method == "RPC":
         return None
     params = dict(endpoint.default_params)
-    base_url, auth, source_headers = api_source.base_url, api_source.auth, api_source.headers
+    base_url, auth = api_source.base_url, api_source.auth
+    source_headers = api_source.headers_for(endpoint.method, endpoint.path)
 
     pagination = endpoint.pagination
     if pagination is not None:

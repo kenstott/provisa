@@ -10,7 +10,7 @@
 
 """Pydantic models for API data sources (Phase U)."""
 
-# Requirements: REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
+# Requirements: REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318, REQ-1874
 
 from enum import Enum
 from typing import Literal
@@ -49,6 +49,11 @@ class ApiColumnType(str, Enum):  # REQ-119, REQ-299
     timestamp = "timestamp"
 
 
+def operation_key(method: str, path: str) -> str:  # REQ-1874
+    """How an operation is named among a source's per-operation headers: ``"GET /v1/x"``."""
+    return f"{method.upper()} {path}"
+
+
 class ApiSource(BaseModel):  # REQ-295, REQ-297, REQ-298
     id: str
     type: ApiSourceType
@@ -58,6 +63,14 @@ class ApiSource(BaseModel):  # REQ-295, REQ-297, REQ-298
     # Sent with every call to the source, beside its auth. A branded source's are its brand's
     # (openapi.brands), derived when the source is loaded and never stored.
     headers: dict[str, str] = {}
+    # REQ-1874: sent beside ``headers`` with one operation's calls only, by
+    # ``operation_key`` ("GET /v1/x"): a brand's version as each operation declares
+    # it. Derived when the source is loaded and never stored.
+    operation_headers: dict[str, dict[str, str]] = {}
+
+    def headers_for(self, method: str, path: str) -> dict[str, str]:
+        """What a call of the operation ``method`` ``path`` carries beside its auth."""
+        return {**self.headers, **self.operation_headers.get(operation_key(method, path), {})}
 
 
 class ApiColumn(BaseModel):  # REQ-299, REQ-599

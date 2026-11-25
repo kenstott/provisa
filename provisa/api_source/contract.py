@@ -13,7 +13,7 @@ SPARQL or Neo4j endpoint. v1: it declares no capability, so every read of it lan
 contract's ``Lands``); its call is the one remote call every path makes of an endpoint
 (``caller.call_api``), given the endpoint and its source as the read's registration."""
 
-# Requirements: REQ-1756, REQ-863
+# Requirements: REQ-1756, REQ-863, REQ-1874
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -42,7 +42,9 @@ class ApiEndpointContract(Lands):
             plan.arguments,
             base_url=source.base_url,
             auth=source.auth,
-            source_headers=source.headers,
+            source_headers=source.headers_for(
+                registration.endpoint.method, registration.endpoint.path
+            ),
         )
 
 
