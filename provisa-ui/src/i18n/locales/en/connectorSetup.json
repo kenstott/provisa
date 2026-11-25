@@ -2,8 +2,10 @@
   "connectorSetup": {
     "identity": "Connector {{name}}, following {{ref}}.",
     "missing": "Fill in the connector's host, port, pairing code and every value it requires.",
+    "missingNative": "Fill in every value the connector requires.",
     "image": "Image",
     "imageHint": "The image your deployment runs. Provisa checks the host against it when it connects.",
+    "native": "Runs on this server, built from {{path}}. No host or pairing code is needed.",
     "host": "Host",
     "hostHint": "The host running the image, as Provisa reaches it.",
     "port": "Port",

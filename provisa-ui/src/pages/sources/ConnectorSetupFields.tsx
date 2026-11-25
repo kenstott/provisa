@@ -126,43 +126,53 @@ export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
           {t("connectorSetup.identity", { name: connector.name, ref: connector.ref })}
         </Text>
       </FormField>
-      <FormField size="long" hint={t("connectorSetup.imageHint")}>
-        <TextInput
-          label={t("connectorSetup.image")}
-          value={`${connector.image}@${connector.digest}`}
-          readOnly
-          data-testid="connector-image"
-        />
-      </FormField>
-      <FieldGroup>
-        <FormField size="medium" hint={t("connectorSetup.hostHint")}>
-          <TextInput
-            required
-            label={t("connectorSetup.host")}
-            value={fields.connector_host ?? ""}
-            onChange={(e) => set("connector_host", e.currentTarget.value)}
-            data-testid="connector-host"
-          />
+      {connector.native ? (
+        <FormField size="long">
+          <Text size="sm" data-testid="connector-native">
+            {t("connectorSetup.native", { path: connector.git })}
+          </Text>
         </FormField>
-        <FormField size="short">
-          <TextInput
-            required
-            label={t("connectorSetup.port")}
-            value={fields.connector_port ?? ""}
-            onChange={(e) => set("connector_port", e.currentTarget.value)}
-            data-testid="connector-port"
-          />
-        </FormField>
-      </FieldGroup>
-      <FormField size="long" help={t("connectorSetup.pairingHint")}>
-        <PasswordInput
-          required
-          label={t("connectorSetup.pairing")}
-          value={fields.connector_pairing_code ?? ""}
-          onChange={(e) => set("connector_pairing_code", e.currentTarget.value)}
-          data-testid="connector-pairing"
-        />
-      </FormField>
+      ) : (
+        <>
+          <FormField size="long" hint={t("connectorSetup.imageHint")}>
+            <TextInput
+              label={t("connectorSetup.image")}
+              value={`${connector.image}@${connector.digest}`}
+              readOnly
+              data-testid="connector-image"
+            />
+          </FormField>
+          <FieldGroup>
+            <FormField size="medium" hint={t("connectorSetup.hostHint")}>
+              <TextInput
+                required
+                label={t("connectorSetup.host")}
+                value={fields.connector_host ?? ""}
+                onChange={(e) => set("connector_host", e.currentTarget.value)}
+                data-testid="connector-host"
+              />
+            </FormField>
+            <FormField size="short">
+              <TextInput
+                required
+                label={t("connectorSetup.port")}
+                value={fields.connector_port ?? ""}
+                onChange={(e) => set("connector_port", e.currentTarget.value)}
+                data-testid="connector-port"
+              />
+            </FormField>
+          </FieldGroup>
+          <FormField size="long" help={t("connectorSetup.pairingHint")}>
+            <PasswordInput
+              required
+              label={t("connectorSetup.pairing")}
+              value={fields.connector_pairing_code ?? ""}
+              onChange={(e) => set("connector_pairing_code", e.currentTarget.value)}
+              data-testid="connector-pairing"
+            />
+          </FormField>
+        </>
+      )}
       {connector.requires.map((r) =>
         r.secret ? (
           <FormField key={r.name} size="medium" hint={t("connectorSetup.secretHint")}>

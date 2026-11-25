@@ -79,6 +79,7 @@ GATE_NAMES = frozenset(
         "_require_user_management",
         "_member",
         "_require_join_requester",  # REQ-1250: a Firebase sign-in; the requester is the caller
+        "_suggester",  # REQ-2180: any signed-in user may suggest; raises 401 for anonymous callers
     }
 )
 
