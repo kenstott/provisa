@@ -4800,6 +4800,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         stop_all_servers()
 
+    # REQ-2267: every dev-mode code source's pgwire sidecar, before the workers its calls run on.
+    with tolerate_shutdown_failure("code source pgwire sidecars stop"):
+        from provisa.codesource.pgwire_sidecar import stop_all_sidecars
+
+        stop_all_sidecars()
+
     # REQ-1984, REQ-1993: every code source's worker process (each its own child, not ended by
     # ours unless it is told its socket closed).
     with tolerate_shutdown_failure("code source workers stop"):
