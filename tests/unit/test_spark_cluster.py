@@ -147,6 +147,28 @@ class TestWhichClusterRuns:
         found = await spark_cluster.resolved(plane, "acme", "sc://own.acme.test:15002")
         assert (found.address, found.origin) == ("sc://own.acme.test:15002", "source")
 
+    async def test_a_sources_own_token_is_a_secret_reference_resolved_at_use(self, plane):
+        # REQ-2225 (amended 2026-11-24): the composed address keeps its token as a reference.
+        await secrets_store.put(plane, "acme", "own_token", TOKEN, owner_id=secrets_store.ORG_OWNER)
+        own = "sc://own.acme.test:443/;use_ssl=true;user_id=ada;token=${secret:own_token}"
+        found = await spark_cluster.resolved(plane, "acme", own)
+        assert (found.address, found.origin) == (
+            f"sc://own.acme.test:443/;use_ssl=true;user_id=ada;token={TOKEN}",
+            "source",
+        )
+
+    async def test_a_sources_own_token_that_does_not_resolve_is_refused(self, plane):
+        own = "sc://own.acme.test/;token=${secret:missing_token}"
+        with pytest.raises(SparkClusterRefused) as refused:
+            await spark_cluster.resolved(plane, "acme", own)
+        assert refused.value.code == "spark_cluster.unresolved"
+
+    async def test_a_sources_own_token_kept_as_a_value_is_refused_by_name(self):
+        with pytest.raises(SparkClusterRefused) as refused:
+            spark_cluster.own_cluster(f"sc://own.acme.test/;token={TOKEN}")
+        assert refused.value.code == "spark_cluster.token_not_reference"
+        assert TOKEN not in str(refused.value)
+
     async def test_a_source_naming_none_runs_on_the_default_its_token_resolved(self, plane):
         await secrets_store.put(
             plane, "acme", "spark_token", TOKEN, owner_id=secrets_store.ORG_OWNER

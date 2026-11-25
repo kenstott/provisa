@@ -17,6 +17,7 @@ import {
   CATALOG_PASSWORD_IN_CONFIG,
   ICEBERG_CATALOG_FIELDS,
   ICEBERG_CATALOG_TYPES,
+  ICEBERG_TABLE_ID,
   type IcebergCatalogType,
 } from "./icebergCatalog";
 import { FormField } from "../../components/form/FormLayout";
@@ -73,7 +74,7 @@ export function IcebergCatalogFields({ fields, setFields }: Props) {
       </FormField>
       {type && (
         <>
-          {input("iceberg_table_id", true)}
+          {input(ICEBERG_TABLE_ID.key, ICEBERG_TABLE_ID.required)}
           {ICEBERG_CATALOG_FIELDS[type].map((f) => input(f.key, f.required))}
           {CATALOG_PASSWORD_IN_CONFIG.has(type) && (
             <FormField size="full">

@@ -12,6 +12,35 @@
     "tested": "已連線至 {{target}}：Spark {{version}}",
     "saved": "已儲存",
     "removed": "已刪除",
-    "remove": "移除預設叢集"
+    "remove": "移除預設叢集",
+    "host": "Spark 叢集主機",
+    "hostHelp": "叢集 Spark Connect 伺服器的主機名稱或位址，不含 sc:// 和連接埠。",
+    "port": "連接埠",
+    "tls": "TLS",
+    "tlsHelp": "透過 TLS 連線。權杖只會透過 TLS 傳送，因此提供權杖會開啟 TLS。",
+    "userId": "使用者 ID",
+    "userIdHelp": "叢集執行指令碼所用的使用者（如叢集要求）。選填。",
+    "badHost": "主機名稱或位址，不含 sc://、連接埠或路徑",
+    "badPort": "1 至 65535 之間的連接埠",
+    "badToken": "密鑰參照，例如 ${secret:spark_token}",
+    "extra": "其他參數，按原樣保留：{{params}}",
+    "paste": "貼上位址",
+    "pasteTitle": "貼上 Spark Connect 位址",
+    "pasteHelp": "sc:// 位址，例如 sc://spark.example.com:15002/;use_ssl=true。它會被拆分到各欄位；其中的權杖會儲存為密鑰。",
+    "pasteApply": "填寫欄位",
+    "pasteToken": "此位址包含權杖。權杖會儲存為組織密鑰，叢集參照該密鑰；權杖本身不會儲存在位址中。",
+    "pasteSecretName": "密鑰名稱",
+    "pasteSecretHelp": "儲存權杖的組織密鑰。同名密鑰會被取代。",
+    "pasteKeep": "將權杖儲存為密鑰",
+    "storedUnread": "無法讀取為此數據來源儲存的叢集：{{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} 不是 Spark Connect 位址：它以 sc:// 開頭",
+      "host": "{{part}} 未指定主機",
+      "port": "{{part}} 不是 1 至 65535 之間的連接埠",
+      "param": "{{part}} 不是 name=value 形式的參數"
+    },
+    "blankUsesOrg": "留空時，此數據來源在組織的預設 Spark 叢集（{{target}}）上執行。",
+    "blankUsesLocal": "留空時，此數據來源在本機測試叢集（{{target}}）上執行。",
+    "blankUsesNone": "留空時，此數據來源沒有可執行的叢集：{{detail}}"
   }
 }

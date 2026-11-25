@@ -460,3 +460,29 @@ async def test_a_join_outside_create_is_refused():
 
 def test_refusals_are_bundle_refusals_the_mutation_reports():
     assert issubclass(remote_sources.RemoteRefused, BundleRefused)
+
+
+async def test_a_spark_source_is_made_only_by_joining_its_host():
+    # REQ-2225 (amended 2026-11-24): a built-in source type's code is its host's.
+    from provisa.api.admin._code_source_registration import join_connector
+
+    refused = await join_connector("spark_jobs", "spark", {"code": {"kind": "pypi"}})
+    assert refused is not None and refused.code == "codesource.builtin_join_on_create"
+    assert refused.params == {"source": "spark_jobs", "type": "spark"}
+
+
+async def test_an_edited_spark_cluster_is_held_to_what_a_join_holds_it_to():
+    # REQ-2225 (amended 2026-11-24): a malformed own cluster is refused by name on every save.
+    from provisa.api.admin._code_source_registration import record_code
+
+    refused = await record_code(
+        "spark_jobs",
+        "spark",
+        {
+            "mode": "built",
+            "org_defaults": {"cluster": "spark_cluster"},
+            "settings": {"script": "x = 1\n", "cluster": "spark.acme.test:15002"},
+        },
+    )
+    assert refused is not None and refused.code == "codesource.spark_cluster_address"
+    assert "cluster: 'spark.acme.test:15002' is not a Spark Connect address" in refused.message

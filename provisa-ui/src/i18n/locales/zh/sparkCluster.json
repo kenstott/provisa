@@ -12,6 +12,35 @@
     "tested": "已连接到 {{target}}：Spark {{version}}",
     "saved": "已保存",
     "removed": "已删除",
-    "remove": "移除默认集群"
+    "remove": "移除默认集群",
+    "host": "Spark 集群主机",
+    "hostHelp": "集群 Spark Connect 服务器的主机名或地址，不含 sc:// 和端口。",
+    "port": "端口",
+    "tls": "TLS",
+    "tlsHelp": "通过 TLS 连接。令牌只通过 TLS 发送，因此提供令牌会开启 TLS。",
+    "userId": "用户 ID",
+    "userIdHelp": "集群运行脚本所用的用户（如集群要求）。可选。",
+    "badHost": "主机名或地址，不含 sc://、端口或路径",
+    "badPort": "1 到 65535 之间的端口",
+    "badToken": "密钥引用，例如 ${secret:spark_token}",
+    "extra": "其他参数，按原样保留：{{params}}",
+    "paste": "粘贴地址",
+    "pasteTitle": "粘贴 Spark Connect 地址",
+    "pasteHelp": "sc:// 地址，例如 sc://spark.example.com:15002/;use_ssl=true。它会被拆分到各字段中；其中的令牌会保存为密钥。",
+    "pasteApply": "填写字段",
+    "pasteToken": "该地址包含令牌。令牌会保存为组织密钥，集群引用该密钥；令牌本身不会保存在地址中。",
+    "pasteSecretName": "密钥名称",
+    "pasteSecretHelp": "保存令牌的组织密钥。同名密钥会被替换。",
+    "pasteKeep": "将令牌保存为密钥",
+    "storedUnread": "无法读取为此数据源保存的集群：{{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} 不是 Spark Connect 地址：它以 sc:// 开头",
+      "host": "{{part}} 未指定主机",
+      "port": "{{part}} 不是 1 到 65535 之间的端口",
+      "param": "{{part}} 不是 name=value 形式的参数"
+    },
+    "blankUsesOrg": "留空时，此数据源在组织的默认 Spark 集群（{{target}}）上运行。",
+    "blankUsesLocal": "留空时，此数据源在本地测试集群（{{target}}）上运行。",
+    "blankUsesNone": "留空时，此数据源没有可运行的集群：{{detail}}"
   }
 }

@@ -456,6 +456,7 @@ async def test_two_publishes_in_a_row_reuse_the_bound_ids_without_a_search(stubb
     them by those ids and never searches, so DataZone's late index cannot duplicate them."""
     snapshot = _snapshot()
     (table,) = snapshot.tables
+    (column,) = table.columns
     (product,) = snapshot.data_products
     # The first publish: nothing bound, so the project is searched, and both are created.
     _types_exist(stubbed)
@@ -469,6 +470,10 @@ async def test_two_publishes_in_a_row_reuse_the_bound_ids_without_a_search(stubb
     assert first.ok, first.errors
     assert first.bindings == {
         table.semantic_uri: ("asset-1", table.semantic_uri),
+        column.semantic_uri: (
+            f"asset-1#{TABLE_FORM}.columns.{column.name}",
+            f"{table.semantic_uri}#{TABLE_FORM}.columns.{column.name}",
+        ),
         product.semantic_uri: ("dp-1", "Sales 360"),
     }
     # The second publish, as the publish path loads the bindings in: no search at all.

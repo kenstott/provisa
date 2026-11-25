@@ -1705,6 +1705,35 @@ data_product_bids = Table(
     ),
 )
 
+# REQ-2180 (amended 2026-10-28, SUGGEST A PRODUCT FROM A LISTED TABLE): a reader's suggestion of a
+# data product from listed tables of one domain, and the people it went to (see schema.sql).
+product_suggestions = Table(
+    "product_suggestions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
+    Column("suggested_by", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("recipients", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# The tables a suggestion names; counted per table.
+product_suggestion_tables = Table(
+    "product_suggestion_tables",
+    metadata,
+    Column(
+        "suggestion_id",
+        Integer,
+        ForeignKey("product_suggestions.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    PrimaryKeyConstraint("suggestion_id", "table_id"),
+)
+
 tracked_webhooks = Table(
     "tracked_webhooks",
     metadata,

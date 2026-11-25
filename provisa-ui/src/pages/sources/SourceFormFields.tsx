@@ -77,6 +77,8 @@ export interface SourceFormFieldsProps {
   connector?: Connector | null;
   /** The connector a saved source was made from, whose fixed values it is held to. */
   heldBy?: Connector | null;
+  /** REQ-2225: why a Spark source cannot be made here (no Spark host in this installation). */
+  sparkUnavailable?: string;
   authType: string;
   setAuthType: (v: string) => void;
   authFields: Record<string, string>;

@@ -96,13 +96,34 @@ functions=trino/plugins/provisa-functions/provisa-functions-1.jar
 [ -s "$functions" ] || { echo "$functions is missing: restore it with .github/actions/trino-plugins" >&2; exit 1; }
 
 # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
-# than on a 1 GB image download racing the healthcheck's start_period.
-docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
+# than on a 1 GB image download racing the healthcheck's start_period.  Retry on transient
+# registry errors (unexpected EOF, short read, connection reset) up to 3 times.
+_pull_with_retry() {
+  local max=3 attempt=0 out
+  while true; do
+    attempt=$((attempt + 1))
+    out=$("$@" 2>&1) && return 0
+    echo "[compose pull] attempt ${attempt}/${max} failed:"
+    echo "${out}"
+    if [[ "${out}" != *"unexpected EOF"* && "${out}" != *"short read"* && \
+          "${out}" != *"connection reset"* && "${out}" != *"i/o timeout"* ]]; then
+      echo "[compose pull] non-transient error — not retrying"
+      return 1
+    fi
+    if [[ "${attempt}" -ge "${max}" ]]; then
+      echo "[compose pull] failed after ${max} attempts"
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+_pull_with_retry docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
 if [ "$pull_splunk" = "pull-splunk" ]; then
   # splunk-connector.spec.ts starts this container itself (it needs the core project's
   # network alias), so compose never pulls it. Doing it here keeps the ~2 GB pull off the
   # spec's beforeAll budget, which otherwise has to cover pull + cold boot in one window.
-  docker pull splunk/splunk:latest
+  _pull_with_retry docker pull splunk/splunk:latest
 fi
 
 # zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
@@ -127,6 +148,17 @@ for pair in HIVE_WAREHOUSE:.e2e-hive-warehouse FILE_LAKE:.e2e-file-lake SHAREPOI
   echo "$var=$value" >> "$GITHUB_ENV"
 done
 mkdir -p "$PROVISA_E2E_HIVE_WAREHOUSE_HOST" "$PROVISA_E2E_FILE_LAKE_HOST"
+
+# REQ-294: a running Provisa never fetches a connector bundle. The Trino lane's
+# sharepoint-connector.spec.ts and splunk-connector.spec.ts register sources served by the
+# pgwire-sharepoint and pgwire-splunk bundles, staged here from the pinned GitHub release. Unstaged,
+# registerTable is refused with BundleNotStaged (release 513 run 45676276094).
+if [ "$cert" = sharepoint-cert ]; then
+  uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only sharepoint --github-release
+fi
+if [ "$pull_splunk" = pull-splunk ]; then
+  uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only splunk --github-release
+fi
 
 docker compose -f docker-compose.core.yml -f docker-compose.e2e-mounts.yml up -d --wait \
   postgres trino minio zaychik

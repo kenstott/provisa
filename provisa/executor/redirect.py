@@ -24,7 +24,6 @@ import json
 import threading
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Callable
 
 import logging
@@ -68,11 +67,9 @@ def _org_redirect_overrides() -> dict:
     return _org_overrides_resolver() if _org_overrides_resolver is not None else {}
 
 
-class _Encoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, Decimal):
-            return float(o)
-        return super().default(o)
+# REQ-1961: JSON/NDJSON redirect uses json_response.dumps so Decimal values are written as their
+# exact digit strings, matching the inline JSON response path (never float, which loses digits
+# past ~17 for a sized numeric column).
 
 
 @dataclass
@@ -189,16 +186,18 @@ def _serialize_for_redirect(  # REQ-047, REQ-048, REQ-049, REQ-050, REQ-139
         body = rows_to_csv(result.rows, columns)
         return body.encode("utf-8"), content_type, ext
 
-    # JSON / NDJSON — works with plain column_names, no ColumnRef needed
+    # JSON / NDJSON — works with plain column_names, no ColumnRef needed.
+    # REQ-1961: use json_response.dumps so Decimal values are their exact digit strings.
+    from provisa.api.json_response import dumps as _json_dumps
+
     col_names = result.column_names
     rows_as_dicts = [{col_names[i]: v for i, v in enumerate(row)} for row in result.rows]
 
     if output_format == "json":
-        body = json.dumps(rows_as_dicts, cls=_Encoder)
-        return body.encode("utf-8"), "application/json", ".json"
+        return _json_dumps(rows_as_dicts), "application/json", ".json"
 
     # NDJSON (default)
-    lines = [json.dumps(obj, cls=_Encoder) for obj in rows_as_dicts]
+    lines = [_json_dumps(obj).decode() for obj in rows_as_dicts]
     body = "\n".join(lines)
     return body.encode("utf-8"), "application/x-ndjson", ".ndjson"
 
@@ -235,13 +234,15 @@ def _serialize_arrow_table(
         pcsv.write_csv(table, buf)  # type: ignore[attr-defined]
         return buf.getvalue(), "text/csv", ".csv"
 
-    # JSON/NDJSON — convert through Python dicts
+    # JSON/NDJSON — convert through Python dicts.
+    # REQ-1961: use json_response.dumps so Decimal values are their exact digit strings.
+    from provisa.api.json_response import dumps as _json_dumps
+
     rows_as_dicts = table.to_pylist()
     if output_format == "json":
-        body = json.dumps(rows_as_dicts, cls=_Encoder)
-        return body.encode("utf-8"), "application/json", ".json"
+        return _json_dumps(rows_as_dicts), "application/json", ".json"
 
-    lines = [json.dumps(obj, cls=_Encoder) for obj in rows_as_dicts]
+    lines = [_json_dumps(obj).decode() for obj in rows_as_dicts]
     body = "\n".join(lines)
     return body.encode("utf-8"), "application/x-ndjson", ".ndjson"
 
@@ -461,7 +462,6 @@ def _encrypt_payload(body_bytes: bytes, role: str | None) -> tuple[bytes, dict]:
     to the client and integrity-protected, so it cannot be re-scoped to another role.
     """
     import base64
-    import json
 
     from provisa.encryption import EnvelopeEncryption, encryption_service, split_envelope
 

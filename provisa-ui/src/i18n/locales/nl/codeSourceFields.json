@@ -51,6 +51,8 @@
     "folderAgain": "Deze browser kan de map niet bewaren, dus kies hem opnieuw om een nieuwere kopie te sturen.",
     "editor": "Editor",
     "openInVscode": "Openen in VS Code",
+    "reference": "Referentie",
+    "referenceLink": "{{language}}-referentie",
     "secrets": "Secrets",
     "secretsHint": "De secrets van de organisatie die deze code mag lezen. Hij haalt elk ervan op tijdens het draaien, via $PROVISA_SERVICES/secrets/<name>; niets anders in de kluis is leesbaar, en elke lezing wordt geaudit.",
     "secretsPlaceholder": "Geen secrets",

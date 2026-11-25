@@ -9,12 +9,13 @@
 #
 # Optional demo source: ClickHouse (start-ui-install.sh --demo --source=clickhouse). Reached over
 # clickhouse-connect HTTP (REQ-986) on ANY engine — same image/config as docker-compose.test.yml's
-# `clickhouse` service, ported here for the source-to-query e2e. The stock image restricts
+# `clickhouse-26` service, ported here for the source-to-query e2e. A ClickHouse source is read as
+# Arrow, which needs ClickHouse 26 or later (REQ-2194). The stock image restricts
 # `default` to loopback; CLICKHOUSE_USER/PASSWORD makes the entrypoint rewrite it to allow any
 # network, matching the test harness's fixture exactly.
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server:26.8.46.6
     restart: unless-stopped
     environment:
       CLICKHOUSE_USER: default

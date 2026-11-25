@@ -321,6 +321,10 @@ class ColumnRef:
     # REQ-1867: the column is typed an integer and is written as a JSON number, whatever a reader
     # represented its value as (a DuckDB HUGEINT read through Arrow is a Decimal).
     integer: bool = False
+    # REQ-1961: the registered type of the column, e.g. "numeric(18,2)". None when the column has
+    # no registered type or the type is not known at compile time. Export formats use this to
+    # produce exact decimal columns (decimal128(p,s) in Parquet) instead of float64.
+    data_type: str | None = None
 
 
 class StatementSources(set[str]):

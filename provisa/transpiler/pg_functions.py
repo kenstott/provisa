@@ -908,14 +908,86 @@ def _first_byte(text: str) -> str:
     return f"CASE WHEN {point} < 128 THEN LEFT({text}, 1) ELSE '\\' || {octal} END"
 
 
+#: An array element type a statement says -> the kind provisa.federation.duckdb_pg_format writes
+#: its output of: the types whose DuckDB text that module reads.
+_ELEMENT_KINDS = {
+    exp.DataType.Type.SMALLINT: "integer",
+    exp.DataType.Type.INT: "integer",
+    exp.DataType.Type.BIGINT: "integer",
+    exp.DataType.Type.DECIMAL: "numeric",
+    exp.DataType.Type.TEXT: "text",
+    exp.DataType.Type.VARCHAR: "text",
+    exp.DataType.Type.BOOLEAN: "boolean",
+    exp.DataType.Type.INTERVAL: "interval",
+}
+
+
+def _is_boolean(node: exp.Expr) -> bool:
+    """A value the statement says, or its operator makes, a boolean."""
+    if isinstance(node, (exp.Boolean, exp.Predicate, exp.Connector, exp.Not)):
+        return True
+    return _cast_to(node, exp.DataType.Type.BOOLEAN)
+
+
+def _literal_kind(node: exp.Expr) -> str | None:
+    """The element kind of a literal element of an ARRAY[...] no cast types; None for a NULL."""
+    if isinstance(node, exp.Boolean):
+        return "boolean"
+    if isinstance(node, exp.Literal):
+        return "text" if node.is_string else "integer" if node.is_int else "numeric"
+    if isinstance(node, exp.Cast):
+        return _ELEMENT_KINDS.get(node.to.this, "")
+    return None if isinstance(node, exp.Null) else ""
+
+
+def _array_kind(node: exp.Expr) -> str | None:
+    """The element kind of an array argument, None for a value no statement says is an array. A
+    kind the output of which no form here writes, or an array of arrays, is refused by name:
+    DuckDB's text of it is not array_out's."""
+    if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.ARRAY):
+        kind = _ELEMENT_KINDS.get(node.to.expressions[0].this)
+    elif isinstance(node, exp.Array):
+        kinds = {_literal_kind(e) for e in node.expressions} - {None}
+        kind = kinds.pop() if len(kinds) == 1 else "text" if not kinds else None
+    else:
+        return None
+    if not kind:
+        raise function_macros.FunctionRefused("format", "duckdb")
+    return kind
+
+
+def _value_text(node: exp.Expr) -> str:
+    """A format value as its type's output function writes it, which format reads of each value
+    (a boolean is t, not the true of its cast to text): the output rows' forms of a boolean, a
+    bytea and a character(n), provisa_interval_out of an interval and provisa_array_out of an
+    array. A cast to text of any other is its output function's text."""
+    if _is_boolean(node):
+        return f"pg_catalog.boolout({_sql(node)})"
+    if _is_bytea(node):
+        return f"pg_catalog.byteaout({_sql(node)})"
+    if _cast_to(node, exp.DataType.Type.CHAR):
+        return f"pg_catalog.bpcharout({_sql(node)})"
+    if _cast_to(node, exp.DataType.Type.INTERVAL):
+        return f"PROVISA_INTERVAL_OUT({_as_text(node)})"
+    kind = _array_kind(node)
+    if kind is not None:
+        return f"PROVISA_ARRAY_OUT(CAST({_sql(node)} AS TEXT[]), '{kind}')"
+    return _as_text(node)
+
+
 def _format_call(args: list[exp.Expr]) -> str:
     """format of a template and its values (varlena.c's text_format), which DuckDB's format of
-    the name reads as fmt's {}: each value as its text, a VARIADIC array's elements as theirs."""
+    the name reads as fmt's {}: each value as its output function writes it, a VARIADIC array's
+    elements as theirs."""
     rest = args[1:]
     if len(rest) == 1 and isinstance(rest[0], exp.Variadic):
-        values = f"CAST({_sql(rest[0].this)} AS TEXT[])"
+        array = rest[0].this
+        kind = _array_kind(array)
+        values = f"CAST({_sql(array)} AS TEXT[])"
+        if kind is not None:
+            values = f"PROVISA_ELEMENTS_OUT({values}, '{kind}')"
     else:
-        values = f"CAST([{', '.join(_as_text(a) for a in rest)}] AS TEXT[])"
+        values = f"CAST([{', '.join(_value_text(a) for a in rest)}] AS TEXT[])"
     return f"PROVISA_FORMAT({_as_text(args[0])}, {values})"
 
 

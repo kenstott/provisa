@@ -175,6 +175,7 @@ KINDS: dict[str, Kind] = {
     "data_product_bid": Kind("data_product_bids", "id"),  # REQ-2180
     "access_review": Kind("access_reviews", "id"),  # REQ-2266
     "catalog_publish": Kind("catalog_publishes", "id"),  # REQ-2259
+    "product_suggestion": Kind("product_suggestions", "id"),  # REQ-2180
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -431,6 +432,11 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a catalog publish -------------------------------------------------------------------
     # REQ-2259: what a publish sent to each data product is the publish's record; it goes with it.
     _part("catalog_publish_products", "publish_id", "catalog_publish"),
+    # --- to a product suggestion (REQ-2180) -----------------------------------------------------
+    # A domain's suggestions go with it; the junction rows go with the suggestion and the table.
+    _part("product_suggestions", "domain_id", "domain"),
+    _part("product_suggestion_tables", "suggestion_id", "product_suggestion"),
+    _part("product_suggestion_tables", "table_id", "table"),
 )
 
 
@@ -640,6 +646,19 @@ async def _is_retired(conn: "Connection", ref: ObjectRef) -> bool:
     kind = KINDS.get(ref.kind)
     if kind is None:
         return False
+    if ref.kind == "materialized_view" and str(ref.id).startswith("view-"):
+        # A view's storage row (``view-<table name>``, _attributes) is a part of its table and
+        # keeps no retirement of its own: it is retired with that table.
+        tables = metadata.tables["registered_tables"]
+        retired = (
+            await conn.execute_core(
+                select(tables.c.retired).where(
+                    tables.c.table_name == str(ref.id).removeprefix("view-"),
+                    tables.c.view_sql.is_not(None),
+                )
+            )
+        ).scalar_one_or_none()
+        return bool(retired)
     table = metadata.tables[kind.table]
     if "retired" not in table.c:
         return False

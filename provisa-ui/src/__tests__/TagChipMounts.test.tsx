@@ -83,7 +83,12 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
 const target = (el: HTMLElement) => JSON.parse(el.dataset.target as string);
 
 describe("a data product's tags", () => {
-  const PRODUCT = { id: "sales_kpis", name: "Sales KPIs", customProperties: {} } as DataProduct;
+  const PRODUCT = {
+    id: "sales_kpis",
+    name: "Sales KPIs",
+    customProperties: {},
+    namedOwners: [],
+  } as unknown as DataProduct;
 
   async function panel(canEdit: boolean, tags: string[], onTagsChanged = vi.fn()) {
     const { DataProductDetailPanel } =

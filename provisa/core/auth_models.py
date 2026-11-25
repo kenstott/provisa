@@ -60,6 +60,9 @@ class ApiAuthOAuth2ClientCredentials(BaseModel):  # REQ-320
     client_secret: str
     token_url: str
     scope: str | None = None
+    # REQ-1874: further form fields the issuer takes with the grant (Auth0's ``audience``),
+    # rendered from the brand's templates at registration. Empty: the grant carries none.
+    token_params: dict[str, str] = Field(default_factory=dict)
 
 
 class ApiAuthOAuth2RefreshToken(BaseModel):  # REQ-320
