@@ -171,7 +171,7 @@ async def cast_driver(driver):
     cur.execute(f"CREATE TYPE {_POINT} AS OBJECT (x NUMBER, y NUMBER)")
     cur.execute(
         f"CREATE TABLE {_CAST_TABLE} (id NUMBER(9) PRIMARY KEY, urid UROWID, doc JSON, "
-        f"page XMLTYPE, at {_POINT})"
+        f"page XMLTYPE, at {_POINT}) TABLESPACE USERS"
     )
     cur.execute(
         f"INSERT INTO {_CAST_TABLE} VALUES (1, NULL, JSON('{{\"a\":[1,2]}}'), "
