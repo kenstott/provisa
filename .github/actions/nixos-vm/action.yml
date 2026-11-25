@@ -90,5 +90,6 @@ runs:
     - name: Checkout onto the guest's disk
       shell: bash
       run: |
+        set -eo pipefail
         tar -C "$GITHUB_WORKSPACE" -cf - . \
           | ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'mkdir ~/provisa && tar -C ~/provisa -xf -'
