@@ -99,16 +99,23 @@ def _zoned_select(sql: str, description: Any) -> str | None:
     return f"WITH {_ZONED_FROM} ({', '.join(names)}) AS ({sql}) SELECT {items} FROM {_ZONED_FROM}"
 
 
-def execute_instants(cursor: Any, sql: str, bound: Any, **kw: Any) -> list[str] | None:
-    """Run ``sql`` on ``cursor`` once, so a TIMESTAMP WITH TIME ZONE column is read as its
-    instant: the statement is parsed first (its result's columns described, nothing run), and
-    one with such a column is run with the column cast in the database (:func:`_zoned_select`),
-    any other as given. The result's column names as the statement gives them (lower case), or
-    None for a statement that answers no rows."""
+def instants_statement(cursor: Any, sql: str) -> tuple[str, Any]:
+    """The statement to run for ``sql`` so a TIMESTAMP WITH TIME ZONE column is read as its
+    instant, and ``sql``'s described result (None for one that answers no rows): ``sql`` is parsed
+    on ``cursor`` (its result's columns described, nothing run), and one with such a column is
+    given with the column cast in the database (:func:`_zoned_select`), any other as given."""
     cursor.parse(sql)
     described = cursor.description
     cast = _zoned_select(sql, described) if described else None
-    cursor.execute(sql if cast is None else cast, bound, **kw)
+    return (sql if cast is None else cast), described
+
+
+def execute_instants(cursor: Any, sql: str, bound: Any, **kw: Any) -> list[str] | None:
+    """Run ``sql`` on ``cursor`` once, as :func:`instants_statement` gives it. The result's
+    column names as the statement gives them (lower case), or None for a statement that answers
+    no rows."""
+    statement, described = instants_statement(cursor, sql)
+    cursor.execute(statement, bound, **kw)
     return None if not described else [d.name.lower() for d in described]
 
 
