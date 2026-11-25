@@ -41,7 +41,6 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
     role: null,
     selectedRoles: [],
     capabilities: [],
-    domainAccess: [],
     actingRoles: null,
     domainAccess: [],
   }),
