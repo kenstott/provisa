@@ -498,11 +498,13 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
                 if event.kind == "dataset":
                     # REQ-1389, REQ-194: a dataset is identified by its namespace and name, and
                     # carries the name.
-                    name = _dataset_name(tables[event.asset.fqn()])
-                    result.bindings[tables[event.asset.fqn()].semantic_uri] = (
-                        f"{namespace}/{name}",
-                        name,
-                    )
+                    table = tables[event.asset.fqn()]
+                    name = _dataset_name(table)
+                    result.bindings[table.semantic_uri] = (f"{namespace}/{name}", name)
+                    # Each column is a field of the dataset's schema facet, named within it.
+                    for column in table.columns:
+                        field = f"{name}.{column.name}"
+                        result.bindings[column.semantic_uri] = (f"{namespace}/{field}", field)
         return result
 
     async def health(self) -> None:
