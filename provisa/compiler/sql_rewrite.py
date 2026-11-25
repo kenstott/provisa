@@ -384,22 +384,23 @@ def _table_lookups(ctx: CompilationContext) -> TableLookups:
             # not lowered (_lower_column_aliases).
             sql_row = names.table_row(meta.table_id, "sql")
             domain_sl = sql_row.scope[1].lower()
-            by_schema_name[(domain_sl, sql_row.name.lower())] = (
-                meta.catalog_name,
-                meta.schema_name,
-                meta.table_name,
+            # REQ-641: a physical schema entry (line 373, direct assignment) for the same key
+            # takes precedence — e.g. bank.screening stays bank.screening even when
+            # watch_list__screening (domain bank, alias screening) is processed later and would
+            # otherwise override it.  setdefault leaves an already-set physical entry intact.
+            by_schema_name.setdefault(
+                (domain_sl, sql_row.name.lower()),
+                (meta.catalog_name, meta.schema_name, meta.table_name),
             )
             if domain_sl != sl:
-                by_schema_name[(domain_sl, nl)] = (
-                    meta.catalog_name,
-                    meta.schema_name,
-                    meta.table_name,
+                by_schema_name.setdefault(
+                    (domain_sl, nl),
+                    (meta.catalog_name, meta.schema_name, meta.table_name),
                 )
                 if orig_nl is not None:
-                    by_schema_name[(domain_sl, orig_nl)] = (
-                        meta.catalog_name,
-                        meta.schema_name,
-                        meta.table_name,
+                    by_schema_name.setdefault(
+                        (domain_sl, orig_nl),
+                        (meta.catalog_name, meta.schema_name, meta.table_name),
                     )
 
     return by_name, by_schema_name, by_field, by_catalog_name
