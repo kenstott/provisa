@@ -90,6 +90,17 @@ LANGUAGES: dict[str, CodeLanguage] = {
 #: Every code source type.
 CODE_SOURCE_TYPES: frozenset[str] = frozenset(LANGUAGES)
 
+#: REQ-2267 (amended 2026-11-24): the code kind of a built-in code source, whose code is
+#: Provisa's own, written by its save into a server-owned directory (provisa/codesource/builtin.py).
+BUILTIN_KIND = "builtin"
+
+#: REQ-2267: the source types saved as built-in code sources, each its module: its ``ENTRY``,
+#: ``write_code`` and ``declared_secrets``. Their code runs as Python code does.
+BUILTIN_TYPES: dict[str, str] = {
+    "openapi": "provisa.openapi.code_source",
+    "graphql_remote": "provisa.graphql_remote.discovered",
+}
+
 
 def language_of(source_type: str) -> CodeLanguage | None:
     return LANGUAGES.get(source_type)
