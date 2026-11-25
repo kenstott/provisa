@@ -64,3 +64,11 @@ fi
 if [ -n "${FREE_ASKAMERICA_KEY:-}" ]; then
   ( cd "$GITHUB_WORKSPACE" && uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only govdata --github-release )
 fi
+
+# REQ-294: the files, Splunk and SharePoint sources the core specs register are served by the
+# pgwire-file, pgwire-splunk and pgwire-sharepoint bundles: file-connector*.spec.ts and
+# kaggle-source.spec.ts in the shards, source-to-query.spec.ts's files, splunk and sharepoint cases in
+# the provisioning job. Staged for every job from the pinned GitHub release, as suite-prepare.sh
+# stages file and splunk. Unstaged, each source is refused with BundleNotStaged (release 513 run
+# 45676271172).
+( cd "$GITHUB_WORKSPACE" && uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --only splunk --only sharepoint --github-release )

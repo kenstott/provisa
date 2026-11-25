@@ -32,7 +32,13 @@ from provisa.api.admin import code_resolver, schema_helpers, schema_mutation
 from provisa.core.database import Database
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import integrity
-from provisa.core.schema_org import domains, registered_tables, relationships, sources
+from provisa.core.schema_org import (
+    domains,
+    materialized_views,
+    registered_tables,
+    relationships,
+    sources,
+)
 from tests.unit.gate_identity import serve_every_column
 
 SET_ID = "kept_1"
@@ -189,3 +195,28 @@ async def test_a_code_resolver_set_retires_together_and_then_its_tables_go(plane
     for table_id in (stores, regions):
         result = await _delete_table(table_id)
         assert (result.success, result.code) == (True, "schema.table_deleted")
+
+
+async def test_a_built_view_retired_blocks_none_of_the_tables_it_read(plane):
+    """A materialized view's first build seeds its definition row, ``view-<table>``, its SQL as
+    the view's (mv/coordination.ensure_mv_row). That row is a part of the view's table and keeps
+    no retirement of its own: once the view is retired, the row reads nothing that blocks
+    (REQ-2248), so the tables the view read go (release 513 code-resolver-incremental e2e)."""
+    stores = await _table(plane, "stores_1")
+    await _table(plane, "regions_1")
+    bridge = await _bridge(plane)
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(materialized_views).values(
+                id=f"view-{SET_ID}",
+                source_tables=[],
+                target_catalog="mat_store",
+                target_schema="public",
+                target_table=f"mv_{SET_ID}",
+                custom_sql=BRIDGE_SQL,
+            )
+        )
+    assert (await _delete_table(bridge)).success is True
+    result = await _delete_table(stores)
+    assert (result.success, result.code) == (True, "schema.table_deleted"), result.message
+    assert await _retired(plane, stores) is True
