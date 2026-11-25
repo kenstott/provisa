@@ -51,6 +51,8 @@
     "folderAgain": "Este navegador não consegue manter a pasta, então escolha-a novamente para enviar uma cópia mais recente.",
     "editor": "Editor",
     "openInVscode": "Abrir no VS Code",
+    "reference": "Referência",
+    "referenceLink": "Referência de {{language}}",
     "secrets": "Segredos",
     "secretsHint": "Os segredos da organização que este código pode ler. Ele busca cada um durante a execução, em $PROVISA_SERVICES/secrets/<name>; nada mais no cofre pode ser lido, e cada leitura é auditada.",
     "secretsPlaceholder": "Nenhum segredo",

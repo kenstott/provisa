@@ -51,6 +51,8 @@
     "folderAgain": "Dieser Browser kann den Ordner nicht behalten. Wählen Sie ihn erneut, um eine neuere Kopie zu senden.",
     "editor": "Editor",
     "openInVscode": "In VS Code öffnen",
+    "reference": "Referenz",
+    "referenceLink": "{{language}}-Referenz",
     "secrets": "Secrets",
     "secretsHint": "Die Secrets der Organisation, die dieser Code lesen darf. Er ruft jedes zur Laufzeit von $PROVISA_SERVICES/secrets/<name> ab; nichts anderes im Tresor ist lesbar, und jeder Abruf wird protokolliert.",
     "secretsPlaceholder": "Keine Secrets",

@@ -10,11 +10,13 @@
 
 """A checkout's demo runs the Spark connector natively (REQ-2225, amended 2026-11-24).
 
-A release offers the Spark connector as an image named in its platform block. A demo run from a
-checkout offers it too, but runs it as a native Python code host from ``connectors/spark``, like
-the demo's other native services: no Docker, no image build and no registry.
+Spark is a built-in source type, not a connector an organisation offers (REQ-2225, amended
+2026-11-24): a ``spark`` source joins the Spark host, listed with the code source types. A release
+carries that host as an image named in its platform block. A demo run from a checkout carries it
+too, but runs it as a native Python code host from ``connectors/spark``, like the demo's other
+native services: no Docker, no image build and no registry.
 
-OFFERED. :func:`platform_rows` is the connector as Sources lists it: its name, its standard file's
+THE HOST'S ROW. :func:`platform_rows` is the host a ``spark`` source joins: its name, its standard file's
 description, icon, values and settings (read as ``provisa connector build`` reads them), what its
 code ``@requires`` (read from the checkout's code), and ``native``. Its code hash is the hash of
 ``connectors/spark`` as checked out: the code the host is built from.

@@ -20,7 +20,7 @@ export interface ConnectorRequirement {
   secret?: boolean;
   /** Entered as multi-line text. */
   multiline?: boolean;
-  /** REQ-2225: the annotated script the host serves; edited in the code editor. Always multiline. */
+  /** REQ-2225: the connector's script, whose tags are the source's tables and commands; the host serves it and it is edited in the code editor. Always multiline. */
   script?: boolean;
   /** What the form starts with; a steward can change it. */
   default_value?: string;

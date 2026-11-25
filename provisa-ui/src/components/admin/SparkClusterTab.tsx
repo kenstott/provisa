@@ -9,12 +9,13 @@
 // permission from the copyright holder.
 
 // REQ-2225: the organisation's default Spark cluster, set by its administrator: a Spark Connect
-// address and the token as a secret reference, with a connection test. A Spark source's own
+// address, entered as structured fields (amended 2026-11-24, SparkClusterFields), and the token as
+// a secret reference, with a connection test. A Spark source's own
 // cluster is used when it has one; this default where it names none. A demo or local install
 // runs on its local test cluster until a default is set.
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Card, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   deleteSparkCluster,
@@ -24,7 +25,16 @@ import {
   type SparkClusterInUse,
 } from "../../api/sparkCluster";
 import { useAuth } from "../../context/AuthContext";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FormFooter, FormLayout } from "../form/FormLayout";
+import { SparkClusterFields } from "../spark/SparkClusterFields";
+import {
+  clusterProblems,
+  composeAddress,
+  emptyCluster,
+  NotSparkAddress,
+  storedFields,
+  type ClusterFields,
+} from "../spark/sparkAddress";
 
 function InUse({ inUse }: { inUse: SparkClusterInUse }) {
   const { t } = useTranslation();
@@ -48,8 +58,7 @@ function InUse({ inUse }: { inUse: SparkClusterInUse }) {
 export function SparkClusterTab() {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
-  const [address, setAddress] = useState("");
-  const [credential, setCredential] = useState("");
+  const [fields, setFields] = useState<ClusterFields>(emptyCluster);
   const [kept, setKept] = useState(false);
   const [inUse, setInUse] = useState<SparkClusterInUse | null>(null);
   const [busy, setBusy] = useState("");
@@ -60,13 +69,17 @@ export function SparkClusterTab() {
     if (!activeOrgId) return;
     fetchSparkCluster(activeOrgId)
       .then((state) => {
-        setAddress(state.cluster?.address ?? "");
-        setCredential(state.cluster?.credential ?? "");
+        try {
+          setFields(storedFields(state.cluster?.address, state.cluster?.credential ?? ""));
+        } catch (e) {
+          if (!(e instanceof NotSparkAddress)) throw e;
+          setError(t(`sparkCluster.notAddress.${e.reason}`, { part: e.part }));
+        }
         setKept(state.cluster !== null);
         setInUse(state.in_use);
       })
       .catch((e: unknown) => setError(String(e)));
-  }, [activeOrgId]);
+  }, [activeOrgId, t]);
   useEffect(load, [load]);
 
   if (error) {
@@ -90,7 +103,10 @@ export function SparkClusterTab() {
     }
   };
 
-  const body = () => ({ address: address.trim(), credential: credential.trim() || null });
+  // The fields compose the address; the token is kept beside it, as a secret reference.
+  const address = composeAddress(fields, false);
+  const body = () => ({ address, credential: fields.token.trim() || null });
+  const wrong = Object.keys(clusterProblems(fields)).length > 0;
 
   const save = () =>
     run("save", async () => {
@@ -118,31 +134,11 @@ export function SparkClusterTab() {
       <InUse inUse={inUse} />
       <Card withBorder>
         <FormLayout>
-          <FormField size="long" help={t("sparkCluster.addressHelp")}>
-            <TextInput
-              label={t("sparkCluster.address")}
-              placeholder="sc://spark.example.com:15002"
-              required
-              value={address}
-              onChange={(e) => setAddress(e.currentTarget.value)}
-              autoComplete="off"
-              data-testid="spark-cluster-address"
-            />
-          </FormField>
-          <FormField size="long" help={t("sparkCluster.credentialHelp")}>
-            <TextInput
-              label={t("sparkCluster.credential")}
-              placeholder="${secret:spark_token}"
-              value={credential}
-              onChange={(e) => setCredential(e.currentTarget.value)}
-              autoComplete="off"
-              data-testid="spark-cluster-credential"
-            />
-          </FormField>
+          <SparkClusterFields fields={fields} onChange={setFields} testId="spark-cluster" />
           <FormFooter
             onSave={save}
             saving={busy === "save"}
-            saveProps={{ "data-testid": "spark-cluster-save", disabled: !address.trim() }}
+            saveProps={{ "data-testid": "spark-cluster-save", disabled: !address || wrong }}
           >
             <Button
               variant="default"

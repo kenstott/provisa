@@ -12,6 +12,35 @@
     "tested": "{{target}} に接続しました: Spark {{version}}",
     "saved": "保存しました",
     "removed": "削除しました",
-    "remove": "デフォルトを削除"
+    "remove": "デフォルトを削除",
+    "host": "Spark クラスターのホスト",
+    "hostHelp": "クラスターの Spark Connect サーバーのホスト名またはアドレス（sc:// とポートは含めない）。",
+    "port": "ポート",
+    "tls": "TLS",
+    "tlsHelp": "TLS で接続します。トークンは TLS でのみ送信されるため、トークンを指定すると TLS が有効になります。",
+    "userId": "ユーザー ID",
+    "userIdHelp": "クラスターがスクリプトを実行するユーザー（求められる場合）。省略可。",
+    "badHost": "sc://、ポート、パスを含まないホスト名またはアドレス",
+    "badPort": "1～65535 のポート",
+    "badToken": "シークレット参照（例: ${secret:spark_token}）",
+    "extra": "その他のパラメーター（指定どおり保持）: {{params}}",
+    "paste": "アドレスを貼り付け",
+    "pasteTitle": "Spark Connect アドレスを貼り付け",
+    "pasteHelp": "sc:// アドレス（例: sc://spark.example.com:15002/;use_ssl=true）。各フィールドに分割され、含まれるトークンはシークレットとして保存されます。",
+    "pasteApply": "フィールドに入力",
+    "pasteToken": "このアドレスにはトークンが含まれています。トークンは組織のシークレットとして保存され、クラスターはそのシークレットを参照します。トークン自体はアドレスに保存されません。",
+    "pasteSecretName": "シークレット名",
+    "pasteSecretHelp": "トークンを保存する組織のシークレット。同じ名前のシークレットは置き換えられます。",
+    "pasteKeep": "トークンをシークレットとして保存",
+    "storedUnread": "このソースに保存されたクラスターを読み取れません: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} は Spark Connect アドレスではありません。sc:// で始まります",
+      "host": "{{part}} はホストを指定していません",
+      "port": "{{part}} は 1～65535 のポートではありません",
+      "param": "{{part}} は name=value 形式のパラメーターではありません"
+    },
+    "blankUsesOrg": "空欄の場合、このソースは組織のデフォルトの Spark クラスター（{{target}}）で実行されます。",
+    "blankUsesLocal": "空欄の場合、このソースはローカルのテストクラスター（{{target}}）で実行されます。",
+    "blankUsesNone": "空欄の場合、このソースには実行先のクラスターがありません: {{detail}}"
   }
 }
