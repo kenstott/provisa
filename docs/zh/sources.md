@@ -877,8 +877,6 @@ Stripe 是由 `openapi` 承载的品牌数据源，其构建方式与基于 `gra
 
 **排除项。** Stripe 已弃用的令牌与 Sources 支付集成未包含在随附的规范中。其列表见[规范构建数据源上的排除项](#exclusions-on-a-specification-built-source)。操作员自己的 `exclusions` 会追加到品牌的排除项之后。
 
-`stripe` 也出现在 `SourceType` 中，位于被存根化的 Supabase `wrappers` 类型之列。通过表单添加的 Stripe 数据源是 `openapi` 数据源，而不是那个存根。
-
 #### 规范构建数据源上的排除项 {: #exclusions-on-a-specification-built-source }
 
 已发布的 OpenAPI 规范描述了远程 API 接受的一切，包括其供应商已弃用的内容，以及部署绝不能发送的内容。OpenAPI 数据源可以带有排除项：规范中存在但该数据源不提供的内容。

@@ -877,8 +877,6 @@ Stripe הוא מקור ממותג הנישא על ידי `openapi`, שנבנה �
 
 **החרגות.** שילוב התשלומים הישן של Stripe בשם token ו-Sources מושמט מהמפרט שנשלח. הרשימה נמצאת תחת [החרגות במקור הנבנה ממפרט](#exclusions-on-a-specification-built-source). `exclusions` של המפעיל עצמו מתווספות לאלה של המותג.
 
-`stripe` מופיע גם ב-`SourceType` בין סוגי ה-stub של Supabase `wrappers`. מקור Stripe שנוסף דרך הטופס הוא מקור `openapi`, לא אותו stub.
-
 #### החרגות במקור הנבנה ממפרט {: #exclusions-on-a-specification-built-source }
 
 מפרט OpenAPI שפורסם מתאר כל מה שה-API המרוחק מקבל, כולל מה שהספק שלו הכריז עליו כמיושן ומה שפריסה אסור לה לשלוח לעולם. מקור OpenAPI יכול לשאת החרגות: דברים במפרט שהמקור אינו מציע.
