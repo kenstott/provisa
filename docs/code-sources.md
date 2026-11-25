@@ -1701,23 +1701,13 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 
 A single function whose return value—a `provisa_services.Discovered`—generates tables, queries and commands at read time. The generated items share one handler function per kind.
 
-=== "Docstring"
+The SDK has no `@discover` decorator: write it in the docstring.
 
-    ```python
-    def discover_feeds() -> Discovered:
-        """@discover"""
-        ...
-    ```
-
-=== "SDK"
-
-    ```python
-    from provisa_sdk import SPELLING  # No SDK decorator: use the Docstring spelling.
-
-
-    def discover_feeds() -> Discovered:
-        ...
-    ```
+```python
+def discover_feeds() -> Discovered:
+    """@discover"""
+    ...
+```
 
 #### Parameter types
 
@@ -1918,28 +1908,19 @@ The function is an async generator.
 
 Write each line in the JSDoc comment. No SDK wrapper.
 
-=== "JSDoc"
-
-    ```typescript
-    /** Store-region matches changed since `since`.
-     * @change table=store_regions
-     * @change key=store_id,region_id
-     * @change removed=removed
-     * @change cursor=seq
-     */
-    export async function storeRegionChanges(
-      stores: TableRef<Store>,
-      regions: TableRef<Region>,
-      since?: number,
-    ): Promise<Changed[]> { ... }
-    ```
-
-=== "SDK"
-
-    ```typescript
-    // No SDK form: write as JSDoc lines.
-    import type { SPELLING as _ } from "@provisa/sdk";
-    ```
+```typescript
+/** Store-region matches changed since `since`.
+ * @change table=store_regions
+ * @change key=store_id,region_id
+ * @change removed=removed
+ * @change cursor=seq
+ */
+export async function storeRegionChanges(
+  stores: TableRef<Store>,
+  regions: TableRef<Region>,
+  since?: number,
+): Promise<Changed[]> { ... }
+```
 
 **`@on-start`**
 
