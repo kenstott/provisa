@@ -241,6 +241,29 @@ services:
       retries: 30
       start_period: 30s
 
+  # The ClickHouse DIRECT source (REQ-2194): its results are read as Arrow, which needs
+  # ClickHouse 26 or later, and the driver refuses an older server at connect. The `clickhouse`
+  # service above stays at 24.3 for the ClickHouse engine's tests. Same user setup as that service.
+  clickhouse-26:
+    restart: unless-stopped
+    image: clickhouse/clickhouse-server@sha256:e49863ded96abdc0545bcd0320c1b99c979c18f27915eb6519a5546760d24cb9  # clickhouse/clickhouse-server:26.8.46.6
+    ports:
+      - "${CLICKHOUSE_26_PORT:-8124}:8123"
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: provisa
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
   # Reached via the DuckDB firebird COMMUNITY EXTENSION (REQ-899), not a Trino connector and not a
   # direct driver — DuckDBFirebirdConnector ATTACHes it in place from an in-process DuckDB connection.
   # ${FIREBIRD_PORT} is host-published for both the in-process DuckDB ATTACH and seeding via

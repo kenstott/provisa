@@ -311,13 +311,18 @@ def test_bigquery_reads_its_job_a_page_at_a_time_and_cancels_one_closed_early():
 # -- ClickHouse -----------------------------------------------------------------------------------
 
 
-def test_clickhouse_reads_row_blocks_as_asked_and_kills_one_closed_early(monkeypatch):
+def test_clickhouse_reads_arrow_batches_as_asked_and_kills_one_closed_early(monkeypatch):
+    """REQ-2194: the stream is ClickHouse's Arrow stream, a record batch taken as asked."""
+    import pyarrow as pa
+
     from provisa.executor.drivers.clickhouse import ClickHouseDriver
 
     blocks_read: list[int] = []
+    schema = pa.schema([("id", pa.int64())])
 
     class _Context:
-        source = SimpleNamespace(column_names=("id",))
+        # clickhouse-connect's StreamContext: ``gen`` is pyarrow's stream reader.
+        gen = SimpleNamespace(schema=schema)
 
         def __init__(self) -> None:
             self.exited = False
@@ -329,12 +334,14 @@ def test_clickhouse_reads_row_blocks_as_asked_and_kills_one_closed_early(monkeyp
             self.exited = True
 
         def __iter__(self):
-            for n, block in enumerate([[(1,), (2,)], [(3,), (4,)], [(5,)]], start=1):
+            for n, block in enumerate([[1, 2], [3, 4], [5]], start=1):
                 blocks_read.append(n)
-                yield block
+                yield pa.record_batch([pa.array(block, pa.int64())], schema=schema)
 
     context = _Context()
-    client = SimpleNamespace(query_row_block_stream=lambda sql, parameters, settings: context)
+    client = SimpleNamespace(
+        query_arrow_stream=lambda sql, parameters, use_strings, settings: context
+    )
     driver = ClickHouseDriver()
     pool = _Pool(client)
     driver._pool = pool  # pyright: ignore[reportAttributeAccessIssue]  # a recording stand-in
