@@ -27359,3 +27359,15 @@ Maintainer 2026-11-25, phase 4 of serving a Spark cluster's objects, where the c
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2277 · Admin UI {#REQ-2277}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+Maintainer 2026-11-25. Provisa's UI is dense like a cloud console or an IDE and is held to these rules, checked by the ui-audit skill. (1) Two kinds of page. Object management pages (sources, tables, relationships, roles, security, commands, settings, admin) use standard components only, one shared page anatomy (a header with the object's name, state and actions over the same kinds of tabs) and the standard forms. Work surfaces may lay themselves out for their purpose, and only they may carry a bespoke control, and only for what is the surface's purpose (a canvas, a graph, a terrain plot, a map); filters, pickers, forms, buttons and errors on them are the standard ones. The work surfaces are Explore, the ontology and graph views, data products, dashboard-like pages and the query editors; adding a page to this list is an amendment of this requirement. (2) Forms follow the standards: the shared form layout, required fields marked and checked on submit rather than by disabling the action, and an error shown where the person acts, never as a page banner for something they did not do; something true of a whole list is stated once above it, not on every row. (3) Navigation is at most two levels deep. (4) Every screen has a deep link, and so does every significant dialog, one that shows an object's detail, holds a multi-step task or is worth sharing (a contract, a profile run, a role's effective permissions, a create wizard); confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep link or by clicking through from a screen she reaches.
+
+**Code:** —
+
+**Tests:** —
