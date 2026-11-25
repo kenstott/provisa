@@ -61,12 +61,15 @@ test("fitted whole, the ERD stays whole when the splitter to the detail panel is
 }) => {
   await page.goto("/relationships");
   await page.waitForSelector(".data-table", { timeout: 60_000 });
-  // A relationship's detail open beside the list: the splitter between the two.
+  // The relationship's id, as its row's detail link names it.
   await page.locator(".data-table tbody tr", { hasText: "PETS_OF_BREED" }).first().click();
+  await expect(page).toHaveURL(/[?&]relationship=/);
+  const id = new URL(page.url()).searchParams.get("relationship")!;
+  // The ERD with that relationship's detail open beside it: the splitter between the two.
+  await page.goto(`/relationships?view=erd&relationship=${encodeURIComponent(id)}`);
+  await erdDrawn(page);
   const handle = page.getByTestId("relationships-split-handle");
   await expect(handle).toBeVisible();
-  await page.getByTestId("relationships-erd-toggle").click();
-  await erdDrawn(page);
 
   await page.getByTestId("erd-fit-all").click();
   const fitted = await diagramInCanvas(page);
