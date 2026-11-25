@@ -49,9 +49,15 @@ describe("suggesting a product from a listed table", () => {
     const dialog = await screen.findByTestId("suggest-product-modal");
     expect(screen.getByText(t("suggestProduct.title", { domain: "hr" }))).toBeInTheDocument();
     const send = within(dialog).getByTestId("suggest-product-send");
-    expect(send).toBeDisabled(); // no reason yet
-    await userEvent.type(within(dialog).getByTestId("suggest-product-reason"), "headcount plan");
+    // REQ-1968: Send is never disabled by a missing field; it marks the reason and sends nothing.
     expect(send).toBeEnabled();
+    await userEvent.click(send);
+    const reason = within(dialog).getByTestId("suggest-product-reason");
+    expect(reason).toHaveAttribute("aria-invalid", "true");
+    expect(reason).toHaveFocus();
+    expect(suggestProduct).not.toHaveBeenCalled();
+    await userEvent.type(reason, "headcount plan");
+    expect(reason).not.toHaveAttribute("aria-invalid", "true");
     await userEvent.click(send);
     await waitFor(() =>
       expect(suggestProduct).toHaveBeenCalledWith({
@@ -114,7 +120,12 @@ describe("suggesting a product from a listed table", () => {
     const remove = pill?.querySelector("button");
     expect(remove).not.toBeNull();
     await userEvent.click(remove as HTMLElement);
-    expect(within(dialog).getByTestId("suggest-product-send")).toBeDisabled();
+    await userEvent.click(within(dialog).getByTestId("suggest-product-send"));
+    expect(within(dialog).getByTestId("suggest-product-tables")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(suggestProduct).not.toHaveBeenCalled();
   });
 
   it("is closed with no target", () => {

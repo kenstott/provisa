@@ -23,6 +23,7 @@ import { putSecret } from "../../api/secrets";
 import { fetchSparkSource, type SparkClusterInUse } from "../../api/sparkCluster";
 import { useAuth } from "../../context/AuthContext";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import {
   clusterProblems,
   composeAddress,
@@ -85,6 +86,11 @@ function PasteAddress({
   const [held, setHeld] = useState<{ fields: ClusterFields; value: string } | null>(null);
   const [secretName, setSecretName] = useState("");
   const [saving, setSaving] = useState(false);
+  // REQ-1968 (amended 2026-11-22): the action marks the step's field when empty; it is never
+  // disabled by it.
+  const required = useRequiredFields<"pasted" | "secretName">(
+    held === null ? { pasted } : { secretName },
+  );
 
   const close = () => {
     setPasted("");
@@ -133,6 +139,7 @@ function PasteAddress({
             <TextInput
               label={t("sparkCluster.address")}
               placeholder="sc://spark.example.com:15002/;use_ssl=true"
+              {...required.field("pasted")}
               value={pasted}
               onChange={(e) => setPasted(e.currentTarget.value)}
               autoComplete="off"
@@ -150,7 +157,7 @@ function PasteAddress({
             <FormField size="medium" help={t("sparkCluster.pasteSecretHelp")}>
               <TextInput
                 label={t("sparkCluster.pasteSecretName")}
-                required
+                {...required.field("secretName")}
                 value={secretName}
                 onChange={(e) => setSecretName(e.currentTarget.value)}
                 autoComplete="off"
@@ -161,9 +168,12 @@ function PasteAddress({
         )}
         <FormFooter onCancel={close} problem={problem || undefined}>
           <Button
-            onClick={held === null ? split : keep}
+            onClick={() => {
+              if (!required.validate()) return;
+              if (held === null) split();
+              else void keep();
+            }}
             loading={saving}
-            disabled={held === null ? !pasted.trim() : !secretName.trim()}
             data-testid={`${testId}-paste-apply`}
           >
             {held === null ? t("sparkCluster.pasteApply") : t("sparkCluster.pasteKeep")}
