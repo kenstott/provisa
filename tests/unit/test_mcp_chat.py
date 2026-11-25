@@ -1552,6 +1552,138 @@ class TestABlankAnswerIsNeverShownAsIs:
         ]
         assert [e for e in events if e["type"] == "text"] == [chat_mod._NO_ANSWER]
 
+    async def test_anthropic_after_failed_tools_states_each_error(self, monkeypatch):
+        """A blank final round after tool calls that failed ends naming each failed tool and its
+        error, not only "please ask again": a maintainer's turn asking Polly for six fakes ended
+        "(The model returned no answer ...)" twice while propose_fakes and set_column_fake had
+        failed, and nothing said why."""
+        calls = [
+            _block(type="tool_use", name="list_tables", input={"schema": "ghost"}, id="t1"),
+            _block(type="tool_use", name="list_tables", input={"schema": "ghost"}, id="t2"),
+            _block(type="tool_use", name="search_catalog", input={"query": "x"}, id="t3"),
+        ]
+        _install_fake_anthropic(
+            monkeypatch,
+            [
+                SimpleNamespace(content=calls, stop_reason="tool_use"),
+                SimpleNamespace(content=[_block(type="text", text="")], stop_reason="end_turn"),
+            ],
+        )
+
+        async def fake_list_tables(state, role, schema):
+            raise ValueError(f"Unknown schema {schema!r}")
+
+        async def fake_search(state, role, query, k=5):
+            return []
+
+        monkeypatch.setattr(mcp_tools, "list_tables", fake_list_tables)
+        monkeypatch.setattr(mcp_tools, "search_catalog", fake_search)
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "q"}]
+            )
+        ]
+        [text] = [e["text"] for e in events if e["type"] == "text"]
+        assert text == (
+            "\n\n(The model returned no answer. These tool calls failed:\n"
+            "- list_tables: Error: Unknown schema 'ghost' (2 times))"
+        )
+
+    async def test_aisuite_after_failed_tools_states_each_error(self, monkeypatch, tmp_path):
+        import os
+
+        cfg = tmp_path / "provisa.yaml"
+        cfg.write_text("sources: []\nai_models:\n  mcp_chat: {vendor: openai, model: gpt-5}\n")
+        monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        call = SimpleNamespace(
+            id="c1",
+            function=SimpleNamespace(name="list_tables", arguments='{"schema": "ghost"}'),
+        )
+        _install_fake_aisuite(
+            monkeypatch,
+            [
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content=None, tool_calls=[call]),
+                            finish_reason="tool_calls",
+                        )
+                    ]
+                ),
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content="", tool_calls=None),
+                            finish_reason="stop",
+                        )
+                    ]
+                ),
+            ],
+        )
+
+        async def fake_list_tables(state, role, schema):
+            raise ValueError(f"Unknown schema {schema!r}")
+
+        monkeypatch.setattr(mcp_tools, "list_tables", fake_list_tables)
+        convo = [{"role": "user", "content": "q"}]
+        events = [ev async for ev in chat_mod.run_chat(_state(), "analyst", convo)]
+        [text] = [e["text"] for e in events if e["type"] == "text"]
+        assert text == (
+            "\n\n(The model returned no answer. These tool calls failed:\n"
+            "- list_tables: Error: Unknown schema 'ghost')"
+        )
+
+
+def test_only_this_turns_failures_are_named():
+    """A failure of an earlier turn, answered then, is not this turn's; a resumed turn's
+    failures (the browser sends them back as wire blocks) are."""
+    convo = [
+        {"role": "user", "content": "earlier"},
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "a", "name": "run_sql", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "a",
+                    "content": "Error: old",
+                    "is_error": True,
+                }
+            ],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "Answered."}]},
+        {"role": "user", "content": [{"type": "text", "text": "now"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "b", "name": "navigate", "input": {}},
+                {"type": "tool_use", "id": "c", "name": "set_column_fake", "input": {}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "b", "content": "ok"},
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "c",
+                    "content": [{"type": "text", "text": "Error: refused"}],
+                    "is_error": True,
+                },
+            ],
+        },
+    ]
+    assert chat_mod._no_answer(convo)["text"] == (
+        "\n\n(The model returned no answer. These tool calls failed:\n"
+        "- set_column_fake: Error: refused)"
+    )
+    assert chat_mod._no_answer(convo[:5]) == chat_mod._NO_ANSWER
+
 
 @pytest.mark.asyncio
 class TestTheGatewayCachesTheConversation:
