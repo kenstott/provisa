@@ -13,11 +13,16 @@
 // default (provisa/sparql/wikidata.py, which applies the same preset to any caller).
 
 import type { SourceFormState } from "./SourceFormFields";
+import { fieldValue, hintKey } from "./descriptor";
 
 export const WIKIDATA = "wikidata";
 
+// REQ-2114: the endpoint and the brand hint are the descriptor's (provisa/api/admin/
+// source_types.py, from provisa/sparql/wikidata.py).
+const BRAND = hintKey(WIKIDATA, "brand");
+
 /** The Wikidata query service. */
-export const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
+export const WIKIDATA_ENDPOINT = fieldValue(WIKIDATA, "input", "host") as string;
 
 /** Reads come from the replica (replicate 0: Always), refreshed once a day (the Cache TTL). */
 export const WIKIDATA_REPLICATE = 0;
@@ -35,5 +40,5 @@ export function wikidataPreset(form: SourceFormState): SourceFormState {
 
 /** What a Wikidata source saves in its federation hints: its brand. */
 export function wikidataHints(): Record<string, string> {
-  return { brand: WIKIDATA };
+  return { [BRAND]: fieldValue(WIKIDATA, "federationHintsJson", BRAND) as string };
 }

@@ -13,13 +13,29 @@
 // authority on what is valid, and this one only says what is still missing from the form.
 
 import { SignInRefused, shapesOffered, type SignInStatus } from "../../lib/sourceSignIn";
+import { fieldValue, mappingKeysOf } from "./descriptor";
 import { CALENDAR, MAIL, resourcesField, resourcesOf } from "./mailResources";
 
 export const GOOGLE_WORKSPACE = "google_workspace";
+// REQ-2114: the mapping keys and the sign-in a source of one mailbox records are the descriptor's
+// (provisa/api/admin/source_types.py, from provisa/google_workspace/settings.py).
+const K = mappingKeysOf(GOOGLE_WORKSPACE, [
+  "accounts",
+  "resources",
+  "mailboxes",
+  "sign_in",
+  "refresh_token",
+  "calendar_send_updates",
+  "mail_content",
+  "mail_labels",
+  "mail_include_spam_trash",
+  "mail_search",
+  "mail_since",
+] as const);
 /** Where an administrator enters the organisation's Google client. */
 export const MAIL_PLATFORMS_ROUTE = "/admin/email";
 
-export const GW_GOOGLE_ACCOUNT = "google_account";
+export const GW_GOOGLE_ACCOUNT = fieldValue(GOOGLE_WORKSPACE, "mappingJson", K.sign_in) as string;
 export const GW_ONE = "one";
 export const GW_ORGANISATION = "organisation";
 export const GW_EVERYONE = "everyone";
@@ -111,28 +127,28 @@ export function gwMissing(fields: Record<string, string>): string[] {
 export function gwMapping(fields: Record<string, string>): Record<string, unknown> {
   const resources = gwResources(fields);
   const mapping: Record<string, unknown> = gwOrganisation(fields)
-    ? { resources, mailboxes: gwMailboxes(fields) ?? {} }
+    ? { [K.resources]: resources, [K.mailboxes]: gwMailboxes(fields) ?? {} }
     : {
-        accounts: [stated(fields, "gw_account")],
-        resources,
-        sign_in: GW_GOOGLE_ACCOUNT,
+        [K.accounts]: [stated(fields, "gw_account")],
+        [K.resources]: resources,
+        [K.sign_in]: GW_GOOGLE_ACCOUNT,
       };
   // The owner's approval is kept by the server, not in the source. A source connected before
   // that still names it here; it is carried through unchanged until the server has taken it.
   if (!gwOrganisation(fields) && stated(fields, "gw_earlier_approval")) {
-    mapping.refresh_token = stated(fields, "gw_earlier_approval");
+    mapping[K.refresh_token] = stated(fields, "gw_earlier_approval");
   }
   // REQ-1994: whether a change to an event tells its attendees; off unless ticked.
   if (resources.includes(CALENDAR)) {
-    mapping.calendar_send_updates = fields.gw_send_updates === "true";
+    mapping[K.calendar_send_updates] = fields.gw_send_updates === "true";
   }
   if (!resources.includes(MAIL)) return mapping;
-  mapping.mail_content = stated(fields, "gw_mail_content");
-  if (lines(fields.gw_mail_labels).length) mapping.mail_labels = lines(fields.gw_mail_labels);
-  if (fields.gw_mail_include_spam_trash === "true") mapping.mail_include_spam_trash = true;
+  mapping[K.mail_content] = stated(fields, "gw_mail_content");
+  if (lines(fields.gw_mail_labels).length) mapping[K.mail_labels] = lines(fields.gw_mail_labels);
+  if (fields.gw_mail_include_spam_trash === "true") mapping[K.mail_include_spam_trash] = true;
   if (!gwHeadersOnly(fields)) {
-    if (stated(fields, "gw_mail_search")) mapping.mail_search = stated(fields, "gw_mail_search");
-    if (stated(fields, "gw_mail_since")) mapping.mail_since = stated(fields, "gw_mail_since");
+    if (stated(fields, "gw_mail_search")) mapping[K.mail_search] = stated(fields, "gw_mail_search");
+    if (stated(fields, "gw_mail_since")) mapping[K.mail_since] = stated(fields, "gw_mail_since");
   }
   return mapping;
 }
@@ -141,15 +157,15 @@ export function gwMapping(fields: Record<string, string>): Record<string, unknow
 export function gwFieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, unknown>;
   const fields: Record<string, string> = {
-    gw_mail_labels: ((mapping.mail_labels as string[] | undefined) ?? []).join("\n"),
-    gw_mail_include_spam_trash: mapping.mail_include_spam_trash ? "true" : "",
-    ...resourcesField("gw", (mapping.resources as string[] | undefined) ?? []),
-    gw_send_updates: mapping.calendar_send_updates === true ? "true" : "",
+    gw_mail_labels: ((mapping[K.mail_labels] as string[] | undefined) ?? []).join("\n"),
+    gw_mail_include_spam_trash: mapping[K.mail_include_spam_trash] ? "true" : "",
+    ...resourcesField("gw", (mapping[K.resources] as string[] | undefined) ?? []),
+    gw_send_updates: mapping[K.calendar_send_updates] === true ? "true" : "",
   };
-  for (const key of ["mail_content", "mail_search", "mail_since"]) {
+  for (const key of [K.mail_content, K.mail_search, K.mail_since]) {
     if (mapping[key] !== undefined) fields[`gw_${key}`] = String(mapping[key]);
   }
-  const chosen = mapping.mailboxes as Record<string, unknown> | undefined;
+  const chosen = mapping[K.mailboxes] as Record<string, unknown> | undefined;
   if (chosen !== undefined) {
     fields.gw_whose = GW_ORGANISATION;
     if (chosen.everyone === true) fields.gw_choice = GW_EVERYONE;
@@ -164,9 +180,10 @@ export function gwFieldsFromMapping(mappingJson: string): Record<string, string>
     return fields;
   }
   fields.gw_whose = GW_ONE;
-  fields.gw_account = ((mapping.accounts as string[] | undefined) ?? []).join("");
-  if (typeof mapping.refresh_token === "string" && mapping.refresh_token !== "") {
-    fields.gw_earlier_approval = mapping.refresh_token;
+  fields.gw_account = ((mapping[K.accounts] as string[] | undefined) ?? []).join("");
+  const approval = mapping[K.refresh_token];
+  if (typeof approval === "string" && approval !== "") {
+    fields.gw_earlier_approval = approval;
     fields.gw_connected_as = fields.gw_account; // connected the earlier way
   }
   return fields;

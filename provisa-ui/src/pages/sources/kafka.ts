@@ -12,26 +12,35 @@
 // source's federation hints (provisa/kafka/security.py reads them); the username and password in
 // its standard fields, as entered: the value, or a ${secret:...} reference, resolved at use.
 
+import { fieldChoices, fieldDefault, hintKey } from "./descriptor";
+
 export const KAFKA = "kafka";
 
-export const KAFKA_SECURITY_PROTOCOLS = ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"];
-export const KAFKA_SASL_MECHANISMS = ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"];
+// REQ-2114: the hint keys, the protocols and mechanisms, and the default protocol are the
+// descriptor's (provisa/api/admin/source_types.py, from provisa/kafka/security.py).
+const HINTS = "federationHintsJson";
+const PROTOCOL = hintKey(KAFKA, "kafka_security_protocol");
+const MECHANISM = hintKey(KAFKA, "kafka_sasl_mechanism");
+const SSL_CA = hintKey(KAFKA, "kafka_ssl_ca");
+
+export const KAFKA_SECURITY_PROTOCOLS = fieldChoices(KAFKA, HINTS, PROTOCOL);
+export const KAFKA_SASL_MECHANISMS = fieldChoices(KAFKA, HINTS, MECHANISM);
+/** The protocol of a plain cluster, which saves no settings. */
+const PLAINTEXT = fieldDefault(KAFKA, HINTS, PROTOCOL) as string;
 
 export const kafkaUsesSasl = (fields: Record<string, string>) =>
-  fields.kafka_security_protocol?.startsWith("SASL_") ?? false;
+  fields[PROTOCOL]?.startsWith("SASL_") ?? false;
 
 export const kafkaUsesTls = (fields: Record<string, string>) =>
-  fields.kafka_security_protocol === "SSL" || fields.kafka_security_protocol === "SASL_SSL";
+  fields[PROTOCOL] === "SSL" || fields[PROTOCOL] === "SASL_SSL";
 
 /** The source's federation hints for what the fields say; a plain cluster's are none. */
 export function kafkaHints(fields: Record<string, string>): Record<string, string> {
-  if (!fields.kafka_security_protocol || fields.kafka_security_protocol === "PLAINTEXT") return {};
+  if (!fields[PROTOCOL] || fields[PROTOCOL] === PLAINTEXT) return {};
   return {
-    kafka_security_protocol: fields.kafka_security_protocol,
-    ...(kafkaUsesSasl(fields) && fields.kafka_sasl_mechanism
-      ? { kafka_sasl_mechanism: fields.kafka_sasl_mechanism }
-      : {}),
-    ...(kafkaUsesTls(fields) && fields.kafka_ssl_ca ? { kafka_ssl_ca: fields.kafka_ssl_ca } : {}),
+    [PROTOCOL]: fields[PROTOCOL],
+    ...(kafkaUsesSasl(fields) && fields[MECHANISM] ? { [MECHANISM]: fields[MECHANISM] } : {}),
+    ...(kafkaUsesTls(fields) && fields[SSL_CA] ? { [SSL_CA]: fields[SSL_CA] } : {}),
   };
 }
 
@@ -55,9 +64,9 @@ export function kafkaFieldsFromSource(s: {
     ? (JSON.parse(s.federationHintsJson) as Record<string, string>)
     : {};
   return {
-    kafka_security_protocol: hints.kafka_security_protocol ?? "PLAINTEXT",
-    kafka_sasl_mechanism: hints.kafka_sasl_mechanism ?? "",
-    kafka_ssl_ca: hints.kafka_ssl_ca ?? "",
+    [PROTOCOL]: hints[PROTOCOL] ?? PLAINTEXT,
+    [MECHANISM]: hints[MECHANISM] ?? "",
+    [SSL_CA]: hints[SSL_CA] ?? "",
     username: s.username ?? "",
     password: s.passwordRef ?? "",
   };

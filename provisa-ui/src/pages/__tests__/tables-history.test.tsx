@@ -12,7 +12,7 @@
 // beside DIMENSION and FACT, and its detail says so with the way to query it as of or as recorded.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { RegisteredTable, RoleTtl } from "../../types/admin";
 import i18n from "../../i18n";
@@ -166,7 +166,11 @@ const ROLES = [
   { id: "trader", capabilities: [], domainAccess: ["*"] },
 ];
 // REQ-2153: what another domain lists, names only.
-const LISTED = [{ domainId: "hr", tableName: "staff", columnNames: ["id", "title"] }];
+const LISTED = [
+  { domainId: "hr", tableName: "staff", columnNames: ["id", "title"] },
+  { domainId: "hr", tableName: "payroll", columnNames: ["id"] },
+  { domainId: "ops2", tableName: "jobs", columnNames: ["id"] },
+];
 const ok = { success: true, message: "" };
 const refetchTables = vi.fn();
 const updateTable = vi.fn();
@@ -218,6 +222,16 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateTableLoadProtection: () => ({ updateTableLoadProtection, loading: false }),
 }));
 
+// REQ-2180 (amended 2026-11-24): the suggestion counts the caller receives, and one table's
+// suggestions.
+const suggestionCounts = vi.fn();
+const tableSuggestions = vi.fn();
+vi.mock("../../api/productSuggestions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/productSuggestions")>()),
+  suggestionCounts: () => suggestionCounts(),
+  tableSuggestions: (domainId: string, tableName: string) => tableSuggestions(domainId, tableName),
+}));
+
 // The form that creates or redefines a view, as the page sees it: it reports the view it made.
 vi.mock("../tables/ViewDefinitionForm", () => ({
   ViewDefinitionForm: (props: {
@@ -252,6 +266,8 @@ const HISTORY = {
 
 beforeEach(() => {
   navigateTo.mockReset();
+  suggestionCounts.mockReset().mockResolvedValue([]);
+  tableSuggestions.mockReset().mockResolvedValue([]);
   TABLES = [
     table(7, "trades", [], HISTORY),
     table(8, "orders", [], { enableGroupBy: true }),
@@ -286,12 +302,69 @@ describe("HISTORY badge", () => {
   });
 });
 
+describe("suggestion badge", () => {
+  it("shows a table's suggestion count and opens that table's suggestions", async () => {
+    suggestionCounts.mockResolvedValue([
+      { table_id: 8, domain_id: "sales", table_name: "orders", suggestions: 2 },
+    ]);
+    tableSuggestions.mockResolvedValue([
+      {
+        id: 31,
+        domain_id: "sales",
+        tables: ["customers", "orders"],
+        reason: "segments",
+        suggested_by: "ana",
+        recipients: ["ben"],
+        created_at: "2026-11-24T10:00:00+00:00",
+      },
+    ]);
+    render(<TablesPage />);
+    const list = await screen.findByTestId("tables-list");
+    const badge = await within(list).findByTestId("table-suggestions-sales.orders");
+    expect(badge).toHaveTextContent("2");
+    expect(badge).toHaveAttribute("title", t("suggestProduct.badgeTitle", { count: 2 }));
+    expect(within(list).queryByTestId("table-suggestions-sales.trades")).toBeNull();
+    await userEvent.click(badge);
+    expect(
+      await screen.findByText(t("suggestProduct.listTitle", { table: "sales.orders" })),
+    ).toBeInTheDocument();
+    const row = await screen.findByTestId("table-suggestion-31");
+    expect(row).toHaveTextContent("ana");
+    expect(row).toHaveTextContent("customers, orders");
+    expect(row).toHaveTextContent("segments");
+    expect(tableSuggestions).toHaveBeenCalledWith("sales", "orders");
+  });
+
+  it("is not drawn when the caller receives no suggestion", async () => {
+    render(<TablesPage />);
+    const list = await screen.findByTestId("tables-list");
+    await waitFor(() => expect(suggestionCounts).toHaveBeenCalled());
+    expect(within(list).queryByTestId(/^table-suggestions-/)).toBeNull();
+  });
+});
+
 describe("names listed in other domains", () => {
   it("are shown under the list as domain.table and column names, nothing more", async () => {
     render(<TablesPage />);
     const listed = await screen.findByTestId("tables-listed-names");
     expect(listed).toHaveTextContent(t("tablesPage.listedElsewhere"));
     expect(listed).toHaveTextContent("hr.staff: id, title");
+  });
+
+  it("each offer to suggest a product, of the tables listed in its domain", async () => {
+    render(<TablesPage />);
+    const listed = await screen.findByTestId("tables-listed-names");
+    await userEvent.click(within(listed).getByTestId("suggest-product-hr.staff"));
+    // A closed Mantine Modal keeps its root, so wait for the dialog's title, not the root.
+    expect(
+      await screen.findByText(t("suggestProduct.title", { domain: "hr" })),
+    ).toBeInTheDocument();
+    const dialog = screen.getByTestId("suggest-product-modal");
+    expect(within(dialog).getByText("staff")).toBeInTheDocument(); // the chosen table, picked
+    await userEvent.click(within(dialog).getByTestId("suggest-product-tables"));
+    // The dropdown is mid-transition in jsdom, so its options are queried hidden.
+    expect(await screen.findByRole("option", { name: "payroll", hidden: true })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "jobs", hidden: true })).toBeNull(); // another domain's
   });
 
   it("are not shown in the Views list", async () => {

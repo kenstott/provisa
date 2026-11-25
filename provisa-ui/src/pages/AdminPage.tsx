@@ -114,7 +114,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
-  "/admin/spark-cluster": "Spark Cluster", // REQ-2225: where a Spark script runs by default
+  "/admin/spark-cluster": "Spark Cluster", // REQ-2225: the default cluster of a Spark source
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds

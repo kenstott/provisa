@@ -1,0 +1,4788 @@
+{
+  "types": [
+    {
+      "name": "govdata",
+      "label": "AskAmerica (US Government Data)",
+      "category": "Subscriptions",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "govdata",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the subscribed subjects' schemas, comma-separated (search_govdata_subjects)"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "secret": true,
+          "note": "the AskAmerica API key"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "kaggle",
+      "label": "Kaggle",
+      "category": "Subscriptions",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "files",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "form",
+        "link": "/sources?new=kaggle&kaggle=<owner>/<dataset>",
+        "note": "the Kaggle form stages the dataset and creates a files source holding the user's Kaggle API token; Polly gives the link and never takes the token"
+      },
+      "fields": [],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "postgresql",
+      "label": "PostgreSQL",
+      "category": "RDBMS",
+      "default_port": 5432,
+      "managed": "RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon",
+      "backend_type": "postgresql",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "mysql",
+      "label": "MySQL",
+      "category": "RDBMS",
+      "default_port": 3306,
+      "managed": null,
+      "backend_type": "mysql",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "singlestore",
+      "label": "SingleStore",
+      "category": "RDBMS",
+      "default_port": 3306,
+      "managed": null,
+      "backend_type": "singlestore",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "mariadb",
+      "label": "MariaDB",
+      "category": "RDBMS",
+      "default_port": 3306,
+      "managed": null,
+      "backend_type": "mariadb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "sqlserver",
+      "label": "SQL Server",
+      "category": "RDBMS",
+      "default_port": 1433,
+      "managed": null,
+      "backend_type": "sqlserver",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "trust_server_certificate",
+          "at": "federationHintsJson",
+          "note": "'true' trusts a self-signed or internal-CA certificate"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "trust_server_certificate"
+      ]
+    },
+    {
+      "name": "oracle",
+      "label": "Oracle",
+      "category": "RDBMS",
+      "default_port": 1521,
+      "managed": null,
+      "backend_type": "oracle",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "duckdb",
+      "label": "DuckDB",
+      "category": "RDBMS",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "duckdb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "path",
+          "at": "input",
+          "required": true,
+          "note": "the .duckdb file"
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        },
+        {
+          "name": "gcs_access_id",
+          "at": "federationHintsJson",
+          "when": "path=gs://"
+        },
+        {
+          "name": "gcs_secret_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=gs://"
+        },
+        {
+          "name": "azure_account_name",
+          "at": "federationHintsJson",
+          "when": "path=az://|abfss://"
+        },
+        {
+          "name": "azure_account_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=az://|abfss://"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "gcs_access_id",
+        "gcs_secret_key",
+        "azure_account_name",
+        "azure_account_key"
+      ]
+    },
+    {
+      "name": "exasol",
+      "label": "Exasol",
+      "category": "RDBMS",
+      "default_port": 8563,
+      "managed": null,
+      "backend_type": "exasol",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "tls_fingerprint",
+          "at": "federationHintsJson",
+          "note": "pins a self-signed server certificate"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "tls_fingerprint"
+      ]
+    },
+    {
+      "name": "saphana",
+      "label": "SAP HANA",
+      "category": "RDBMS",
+      "default_port": 39015,
+      "managed": null,
+      "backend_type": "saphana",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "cockroachdb",
+      "label": "CockroachDB",
+      "category": "RDBMS",
+      "default_port": 26257,
+      "managed": null,
+      "backend_type": "cockroachdb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "yugabytedb",
+      "label": "YugabyteDB",
+      "category": "RDBMS",
+      "default_port": 5433,
+      "managed": null,
+      "backend_type": "yugabytedb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "greenplum",
+      "label": "Greenplum",
+      "category": "RDBMS",
+      "default_port": 5432,
+      "managed": null,
+      "backend_type": "greenplum",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "tidb",
+      "label": "TiDB",
+      "category": "RDBMS",
+      "default_port": 4000,
+      "managed": null,
+      "backend_type": "tidb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "firebird",
+      "label": "Firebird",
+      "category": "RDBMS",
+      "default_port": 3050,
+      "managed": null,
+      "backend_type": "firebird",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "path",
+          "at": "input",
+          "required": true,
+          "note": "the .fdb file path on the server"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "hiveserver2",
+      "label": "HiveServer2",
+      "category": "RDBMS",
+      "default_port": 10000,
+      "managed": null,
+      "backend_type": "hiveserver2",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "auth_mechanism",
+          "at": "federationHintsJson",
+          "note": "left out, the driver's default",
+          "default": "PLAIN",
+          "choices": [
+            "PLAIN",
+            "LDAP",
+            "GSSAPI"
+          ]
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "auth_mechanism"
+      ]
+    },
+    {
+      "name": "jdbc",
+      "label": "JDBC",
+      "category": "RDBMS",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "jdbc",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "url",
+          "at": "federationHintsJson",
+          "required": true,
+          "note": "the database's SQLAlchemy or jdbc: URL"
+        },
+        {
+          "name": "sql_dialect",
+          "at": "federationHintsJson",
+          "required": true,
+          "note": "the SQL dialect the database is written in"
+        },
+        {
+          "name": "jdbc_driver_jar",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "url=jdbc:"
+        },
+        {
+          "name": "jdbc_driver_class",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "url=jdbc:"
+        },
+        {
+          "name": "capabilities.<engine>",
+          "at": "federationHintsJson",
+          "note": "what each engine may push down to it"
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "url",
+        "sql_dialect",
+        "jdbc_driver_jar",
+        "jdbc_driver_class",
+        "capabilities.<engine>"
+      ]
+    },
+    {
+      "name": "snowflake",
+      "label": "Snowflake",
+      "category": "Cloud DW",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "snowflake",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the account URL"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "warehouse",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "schema",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "role",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "when": "auth=password"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "when": "auth=password"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "warehouse",
+        "schema",
+        "role"
+      ]
+    },
+    {
+      "name": "bigquery",
+      "label": "BigQuery",
+      "category": "Cloud DW",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "bigquery",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the project id"
+        },
+        {
+          "name": "credentials_path",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "auth=service_account",
+          "note": "the service-account key file's path; leave out for application default"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "credentials_path"
+      ]
+    },
+    {
+      "name": "athena",
+      "label": "Amazon Athena",
+      "category": "Cloud DW",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "athena",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "required": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "workgroup",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "catalog",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "s3_staging_dir",
+          "at": "federationHintsJson",
+          "note": "the query result location, s3://bucket/prefix"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "note": "the access key id; leave out for the ambient AWS credential"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "note": "the secret access key"
+        },
+        {
+          "name": "role_arn",
+          "at": "federationHintsJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "region",
+        "workgroup",
+        "catalog",
+        "s3_staging_dir",
+        "role_arn"
+      ]
+    },
+    {
+      "name": "databricks",
+      "label": "Databricks",
+      "category": "Cloud DW",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "databricks",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the workspace URL"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the catalog"
+        },
+        {
+          "name": "http_path",
+          "at": "federationHintsJson",
+          "required": true,
+          "note": "the SQL warehouse's HTTP path"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "note": "a personal access token"
+        },
+        {
+          "name": "reach",
+          "at": "federationHintsJson",
+          "note": "'scan' reads in place; left out, a replica"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "http_path",
+        "reach"
+      ]
+    },
+    {
+      "name": "redshift",
+      "label": "Redshift",
+      "category": "Cloud DW",
+      "default_port": 5439,
+      "managed": null,
+      "backend_type": "redshift",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "fabric",
+      "label": "Microsoft Fabric Warehouse",
+      "category": "Cloud DW",
+      "default_port": 1433,
+      "managed": null,
+      "backend_type": "fabric",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "tenant_id",
+          "at": "federationHintsJson",
+          "when": "auth=service_principal"
+        },
+        {
+          "name": "client_id",
+          "at": "federationHintsJson",
+          "when": "auth=service_principal"
+        },
+        {
+          "name": "client_secret",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "auth=service_principal"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "tenant_id",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "name": "synapse",
+      "label": "Azure Synapse SQL",
+      "category": "Cloud DW",
+      "default_port": 1433,
+      "managed": null,
+      "backend_type": "synapse",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "tenant_id",
+          "at": "federationHintsJson",
+          "when": "auth=service_principal"
+        },
+        {
+          "name": "client_id",
+          "at": "federationHintsJson",
+          "when": "auth=service_principal"
+        },
+        {
+          "name": "client_secret",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "auth=service_principal"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "tenant_id",
+        "client_id",
+        "client_secret"
+      ]
+    },
+    {
+      "name": "motherduck",
+      "label": "MotherDuck",
+      "category": "Cloud DW",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "motherduck",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "note": "the MotherDuck token"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "clickhouse",
+      "label": "ClickHouse",
+      "category": "Analytics",
+      "default_port": 8123,
+      "managed": null,
+      "backend_type": "clickhouse",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "elasticsearch",
+      "label": "Elasticsearch",
+      "category": "Analytics",
+      "default_port": 9200,
+      "managed": null,
+      "backend_type": "elasticsearch",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "pinot",
+      "label": "Apache Pinot",
+      "category": "Analytics",
+      "default_port": 8099,
+      "managed": null,
+      "backend_type": "pinot",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "druid",
+      "label": "Apache Druid",
+      "category": "Analytics",
+      "default_port": 8082,
+      "managed": null,
+      "backend_type": "druid",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "trino",
+      "label": "Trino / Presto",
+      "category": "Analytics",
+      "default_port": 8080,
+      "managed": null,
+      "backend_type": "trino",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "delta_lake",
+      "label": "Delta Lake",
+      "category": "Data Lake",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "delta_lake",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "note": "the metastore URI"
+        },
+        {
+          "name": "path",
+          "at": "input",
+          "required": true,
+          "note": "the warehouse path"
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint"
+      ]
+    },
+    {
+      "name": "iceberg",
+      "label": "Apache Iceberg",
+      "category": "Data Lake",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "iceberg",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "note": "the metastore URI"
+        },
+        {
+          "name": "path",
+          "at": "input",
+          "required": true,
+          "note": "the warehouse path"
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        },
+        {
+          "name": "iceberg_catalog_type",
+          "at": "federationHintsJson",
+          "choices": [
+            "GLUE",
+            "REST",
+            "JDBC",
+            "SNOWFLAKE"
+          ]
+        },
+        {
+          "name": "iceberg_table_id",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type",
+          "note": "the table's identifier in the catalog"
+        },
+        {
+          "name": "iceberg_catalog_uri",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=REST"
+        },
+        {
+          "name": "iceberg_catalog_name",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_warehouse",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_uri",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_user",
+          "at": "federationHintsJson",
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_password",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_uri",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        },
+        {
+          "name": "iceberg_catalog_user",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        },
+        {
+          "name": "iceberg_catalog_password",
+          "at": "federationHintsJson",
+          "required": true,
+          "secret": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        },
+        {
+          "name": "iceberg_catalog_role",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "iceberg_catalog_type",
+        "iceberg_table_id",
+        "iceberg_catalog_uri",
+        "iceberg_catalog_name",
+        "iceberg_catalog_warehouse",
+        "iceberg_catalog_user",
+        "iceberg_catalog_password",
+        "iceberg_catalog_role"
+      ]
+    },
+    {
+      "name": "hive",
+      "label": "Hive Metastore",
+      "category": "Data Lake",
+      "default_port": 9083,
+      "managed": null,
+      "backend_type": "hive",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the metastore URI"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the warehouse path"
+        },
+        {
+          "name": "storage",
+          "at": "mappingJson",
+          "note": "s3, adls, gcs or hadoop: where the warehouse's files are"
+        },
+        {
+          "name": "access_key_id",
+          "at": "mappingJson",
+          "required": true,
+          "when": "storage=s3"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "storage=s3"
+        },
+        {
+          "name": "region",
+          "at": "mappingJson",
+          "when": "storage=s3"
+        },
+        {
+          "name": "endpoint",
+          "at": "mappingJson",
+          "when": "storage=s3"
+        },
+        {
+          "name": "storage_account",
+          "at": "mappingJson",
+          "required": true,
+          "when": "storage=adls"
+        },
+        {
+          "name": "access_key",
+          "at": "mappingJson",
+          "secret": true,
+          "when": "storage=adls"
+        },
+        {
+          "name": "sas_token",
+          "at": "mappingJson",
+          "secret": true,
+          "when": "storage=adls"
+        },
+        {
+          "name": "credentials_json",
+          "at": "mappingJson",
+          "required": true,
+          "when": "storage=gcs",
+          "note": "a key file's path"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "storage",
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "storage_account",
+        "access_key",
+        "sas_token",
+        "credentials_json"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "hive_s3",
+      "label": "Hive on S3",
+      "category": "Data Lake",
+      "default_port": 9083,
+      "managed": null,
+      "backend_type": "hive_s3",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the metastore URI"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the warehouse path"
+        },
+        {
+          "name": "storage",
+          "at": "mappingJson",
+          "value": "s3"
+        },
+        {
+          "name": "access_key_id",
+          "at": "mappingJson",
+          "required": true
+        },
+        {
+          "name": "secret_access_key",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true
+        },
+        {
+          "name": "region",
+          "at": "mappingJson",
+          "required": true
+        },
+        {
+          "name": "endpoint",
+          "at": "mappingJson",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "storage",
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "mongodb",
+      "label": "MongoDB",
+      "category": "NoSQL",
+      "default_port": 27017,
+      "managed": null,
+      "backend_type": "mongodb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "cosmosdb",
+      "label": "Azure Cosmos DB",
+      "category": "NoSQL",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "cosmosdb",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the account endpoint"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "auth",
+          "at": "federationHintsJson",
+          "required": true,
+          "default": "key",
+          "choices": [
+            "key",
+            "entra"
+          ]
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "when": "auth=key",
+          "note": "the account key"
+        },
+        {
+          "name": "tenant_id",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "auth=entra"
+        },
+        {
+          "name": "client_id",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "auth=entra"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "auth",
+        "tenant_id",
+        "client_id"
+      ]
+    },
+    {
+      "name": "qdrant",
+      "label": "Qdrant",
+      "category": "NoSQL",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "qdrant",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the URL, with its port"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "note": "the API key"
+        },
+        {
+          "name": "prefer_grpc",
+          "at": "federationHintsJson",
+          "note": "'true' or 'false'"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "prefer_grpc"
+      ]
+    },
+    {
+      "name": "cassandra",
+      "label": "Cassandra",
+      "category": "NoSQL",
+      "default_port": 9042,
+      "managed": null,
+      "backend_type": "cassandra",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "redis",
+      "label": "Redis",
+      "category": "NoSQL",
+      "default_port": 6379,
+      "managed": null,
+      "backend_type": "redis",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "node",
+      "label": "Node.js",
+      "category": "Code",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "node",
+      "brand": null,
+      "carrier": null,
+      "code": {
+        "runtimes": [
+          "node",
+          "bun",
+          "deno"
+        ],
+        "package_kind": "npm",
+        "named_entry": false,
+        "builtin_host": false
+      },
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "runtime",
+          "at": "mappingJson",
+          "required": true,
+          "note": "one of node, bun, deno"
+        },
+        {
+          "name": "code",
+          "at": "mappingJson",
+          "required": true,
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+        },
+        {
+          "name": "secrets",
+          "at": "mappingJson",
+          "note": "the organization secrets the code reads: a list of names, or each name with its ${secret:NAME} reference"
+        },
+        {
+          "name": "settings",
+          "at": "mappingJson",
+          "note": "non-secret settings, name to value"
+        },
+        {
+          "name": "workers",
+          "at": "mappingJson",
+          "default": 1
+        },
+        {
+          "name": "lockfile",
+          "at": "mappingJson",
+          "note": "{filename, upload}: an uploaded lockfile"
+        },
+        {
+          "name": "llm",
+          "at": "mappingJson",
+          "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "runtime",
+        "code",
+        "secrets",
+        "settings",
+        "workers",
+        "lockfile",
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "python",
+      "label": "Python",
+      "category": "Code",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "python",
+      "brand": null,
+      "carrier": null,
+      "code": {
+        "runtimes": [
+          "python"
+        ],
+        "package_kind": "pypi",
+        "named_entry": true,
+        "builtin_host": false
+      },
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "runtime",
+          "at": "mappingJson",
+          "required": true,
+          "note": "one of python"
+        },
+        {
+          "name": "code",
+          "at": "mappingJson",
+          "required": true,
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+        },
+        {
+          "name": "entry",
+          "at": "mappingJson",
+          "note": "where the code is entered, when it has more than one"
+        },
+        {
+          "name": "secrets",
+          "at": "mappingJson",
+          "note": "the organization secrets the code reads: a list of names, or each name with its ${secret:NAME} reference"
+        },
+        {
+          "name": "settings",
+          "at": "mappingJson",
+          "note": "non-secret settings, name to value"
+        },
+        {
+          "name": "workers",
+          "at": "mappingJson",
+          "default": 1
+        },
+        {
+          "name": "lockfile",
+          "at": "mappingJson",
+          "note": "{filename, upload}: an uploaded lockfile"
+        },
+        {
+          "name": "llm",
+          "at": "mappingJson",
+          "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "runtime",
+        "code",
+        "entry",
+        "secrets",
+        "settings",
+        "workers",
+        "lockfile",
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "go",
+      "label": "Go",
+      "category": "Code",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "go",
+      "brand": null,
+      "carrier": null,
+      "code": {
+        "runtimes": [
+          "go"
+        ],
+        "package_kind": "gomod",
+        "named_entry": true,
+        "builtin_host": false
+      },
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "runtime",
+          "at": "mappingJson",
+          "required": true,
+          "note": "one of go"
+        },
+        {
+          "name": "code",
+          "at": "mappingJson",
+          "required": true,
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+        },
+        {
+          "name": "entry",
+          "at": "mappingJson",
+          "note": "where the code is entered, when it has more than one"
+        },
+        {
+          "name": "secrets",
+          "at": "mappingJson",
+          "note": "the organization secrets the code reads: a list of names, or each name with its ${secret:NAME} reference"
+        },
+        {
+          "name": "settings",
+          "at": "mappingJson",
+          "note": "non-secret settings, name to value"
+        },
+        {
+          "name": "workers",
+          "at": "mappingJson",
+          "default": 1
+        },
+        {
+          "name": "lockfile",
+          "at": "mappingJson",
+          "note": "{filename, upload}: an uploaded lockfile"
+        },
+        {
+          "name": "llm",
+          "at": "mappingJson",
+          "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "runtime",
+        "code",
+        "entry",
+        "secrets",
+        "settings",
+        "workers",
+        "lockfile",
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "rust",
+      "label": "Rust",
+      "category": "Code",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "rust",
+      "brand": null,
+      "carrier": null,
+      "code": {
+        "runtimes": [
+          "rust"
+        ],
+        "package_kind": "cargo",
+        "named_entry": true,
+        "builtin_host": false
+      },
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "runtime",
+          "at": "mappingJson",
+          "required": true,
+          "note": "one of rust"
+        },
+        {
+          "name": "code",
+          "at": "mappingJson",
+          "required": true,
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+        },
+        {
+          "name": "entry",
+          "at": "mappingJson",
+          "note": "where the code is entered, when it has more than one"
+        },
+        {
+          "name": "secrets",
+          "at": "mappingJson",
+          "note": "the organization secrets the code reads: a list of names, or each name with its ${secret:NAME} reference"
+        },
+        {
+          "name": "settings",
+          "at": "mappingJson",
+          "note": "non-secret settings, name to value"
+        },
+        {
+          "name": "workers",
+          "at": "mappingJson",
+          "default": 1
+        },
+        {
+          "name": "lockfile",
+          "at": "mappingJson",
+          "note": "{filename, upload}: an uploaded lockfile"
+        },
+        {
+          "name": "llm",
+          "at": "mappingJson",
+          "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "runtime",
+        "code",
+        "entry",
+        "secrets",
+        "settings",
+        "workers",
+        "lockfile",
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "spark",
+      "label": "Spark",
+      "category": "Code",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "spark",
+      "brand": null,
+      "carrier": null,
+      "code": {
+        "runtimes": [
+          "python"
+        ],
+        "package_kind": "pypi",
+        "named_entry": true,
+        "builtin_host": true
+      },
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "connector_join",
+          "at": "mappingJson",
+          "required": true,
+          "value": {
+            "connector": "spark"
+          }
+        },
+        {
+          "name": "settings.cluster",
+          "at": "mappingJson",
+          "note": "the Spark cluster; left out, the organization's default"
+        },
+        {
+          "name": "secrets",
+          "at": "mappingJson",
+          "note": "each secret the host requires, as a ${secret:NAME}"
+        }
+      ],
+      "note": "A Spark source joins the Spark host this installation carries (no host, port or pairing code): admin_request GET /admin/orgs/{org}/builtin-sources/spark returns the host and the cluster a source that names none runs on.",
+      "mapping_json": [
+        "connector_join",
+        "settings.cluster",
+        "secrets"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "neo4j",
+      "label": "Neo4j",
+      "category": "Graph",
+      "default_port": 7474,
+      "managed": null,
+      "backend_type": "neo4j",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "database",
+          "at": "input"
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "sparql",
+      "label": "SPARQL",
+      "category": "Graph",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "sparql",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the endpoint URL"
+        },
+        {
+          "name": "default_graph_uri",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "reasoner",
+          "at": "mappingJson",
+          "note": "with its axioms",
+          "choices": [
+            "hermit"
+          ]
+        },
+        {
+          "name": "axioms",
+          "at": "mappingJson",
+          "when": "reasoner"
+        },
+        {
+          "name": "auth",
+          "at": "mappingJson",
+          "note": "left out, none",
+          "choices": [
+            "bearer",
+            "basic"
+          ]
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "when": "auth=bearer|basic",
+          "note": "the token or password"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "when": "auth=basic"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "reasoner",
+        "axioms",
+        "auth"
+      ],
+      "federation_hints": [
+        "default_graph_uri"
+      ]
+    },
+    {
+      "name": "sqlite",
+      "label": "SQLite",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "sqlite",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "path",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        },
+        {
+          "name": "gcs_access_id",
+          "at": "federationHintsJson",
+          "when": "path=gs://"
+        },
+        {
+          "name": "gcs_secret_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=gs://"
+        },
+        {
+          "name": "azure_account_name",
+          "at": "federationHintsJson",
+          "when": "path=az://|abfss://"
+        },
+        {
+          "name": "azure_account_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=az://|abfss://"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "gcs_access_id",
+        "gcs_secret_key",
+        "azure_account_name",
+        "azure_account_key"
+      ]
+    },
+    {
+      "name": "csv",
+      "label": "CSV File",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "csv",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "path",
+          "at": "input"
+        },
+        {
+          "name": "downloadFrom",
+          "at": "input",
+          "note": "an https:// or s3:// file copied into the org's folder"
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        },
+        {
+          "name": "gcs_access_id",
+          "at": "federationHintsJson",
+          "when": "path=gs://"
+        },
+        {
+          "name": "gcs_secret_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=gs://"
+        },
+        {
+          "name": "azure_account_name",
+          "at": "federationHintsJson",
+          "when": "path=az://|abfss://"
+        },
+        {
+          "name": "azure_account_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=az://|abfss://"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "gcs_access_id",
+        "gcs_secret_key",
+        "azure_account_name",
+        "azure_account_key"
+      ]
+    },
+    {
+      "name": "parquet",
+      "label": "Parquet File",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "parquet",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "path",
+          "at": "input"
+        },
+        {
+          "name": "downloadFrom",
+          "at": "input",
+          "note": "an https:// or s3:// file copied into the org's folder"
+        },
+        {
+          "name": "access_key_id",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "secret_access_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=s3://"
+        },
+        {
+          "name": "region",
+          "at": "federationHintsJson",
+          "when": "path=s3://"
+        },
+        {
+          "name": "endpoint",
+          "at": "federationHintsJson",
+          "when": "path=s3://",
+          "note": "an S3-compatible store's endpoint"
+        },
+        {
+          "name": "gcs_access_id",
+          "at": "federationHintsJson",
+          "when": "path=gs://"
+        },
+        {
+          "name": "gcs_secret_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=gs://"
+        },
+        {
+          "name": "azure_account_name",
+          "at": "federationHintsJson",
+          "when": "path=az://|abfss://"
+        },
+        {
+          "name": "azure_account_key",
+          "at": "federationHintsJson",
+          "secret": true,
+          "when": "path=az://|abfss://"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "access_key_id",
+        "secret_access_key",
+        "region",
+        "endpoint",
+        "gcs_access_id",
+        "gcs_secret_key",
+        "azure_account_name",
+        "azure_account_key"
+      ]
+    },
+    {
+      "name": "files",
+      "label": "File Crawler (XLSX/DOCX/MD/CSV/Parquet/JSON, etc.)",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "files",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "path",
+          "at": "input",
+          "required": true,
+          "note": "a directory or glob, or an ftp/sftp/s3/https/sharepoint:// address"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "when": "path=ftp|sftp|http|https|sharepoint"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "when": "path=ftp|sftp|http|https|sharepoint"
+        },
+        {
+          "name": "excel_hints",
+          "at": "mappingJson",
+          "note": "how a workbook's sheets are read as tables"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "excel_hints"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "logs",
+      "label": "Log files",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "logs",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "glob",
+          "at": "mappingJson",
+          "required": true
+        },
+        {
+          "name": "format",
+          "at": "mappingJson",
+          "required": true,
+          "note": "a server log format (GET /admin/logs/formats)"
+        },
+        {
+          "name": "pattern",
+          "at": "mappingJson",
+          "required": true,
+          "when": "format=regex"
+        },
+        {
+          "name": "record_start",
+          "at": "mappingJson",
+          "when": "format=regex"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "glob",
+        "format",
+        "pattern",
+        "record_start"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "google_sheets",
+      "label": "Google Sheets",
+      "category": "Other",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "google_sheets",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "credentials_json",
+          "at": "mappingJson",
+          "required": true,
+          "note": "the service-account key file's path"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "note": "the metadata sheet id"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "credentials_json"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "prometheus",
+      "label": "Prometheus",
+      "category": "Other",
+      "default_port": 9090,
+      "managed": null,
+      "backend_type": "prometheus",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the URL"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "airport",
+      "label": "Airport (Arrow Flight)",
+      "category": "Other",
+      "default_port": 50051,
+      "managed": null,
+      "backend_type": "airport",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "openapi",
+      "label": "REST API (OpenAPI)",
+      "category": "API",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "openapi",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/openapi/register"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "spec_path",
+          "at": "body"
+        },
+        {
+          "name": "spec_content",
+          "at": "body"
+        },
+        {
+          "name": "domain_id",
+          "at": "body"
+        },
+        {
+          "name": "base_url",
+          "at": "body"
+        },
+        {
+          "name": "auth_config",
+          "at": "body",
+          "secret": true,
+          "note": "an object {type, ...}; every credential in it a ${secret:NAME} reference"
+        },
+        {
+          "name": "cache_ttl",
+          "at": "body",
+          "default": 300
+        },
+        {
+          "name": "operation_overrides",
+          "at": "body"
+        },
+        {
+          "name": "relationships",
+          "at": "body"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "dbt",
+      "label": "dbt",
+      "category": "API",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "dbt",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/dbt/register",
+        "note": "a warehouse the manifest names and no source reads is created first with createSource (POST /admin/dbt/preview lists them)"
+      },
+      "fields": [
+        {
+          "name": "spec",
+          "at": "body",
+          "default": "location"
+        },
+        {
+          "name": "location",
+          "at": "body"
+        },
+        {
+          "name": "content",
+          "at": "body"
+        },
+        {
+          "name": "host",
+          "at": "body"
+        },
+        {
+          "name": "account_id",
+          "at": "body"
+        },
+        {
+          "name": "job_id",
+          "at": "body"
+        },
+        {
+          "name": "token",
+          "at": "body",
+          "secret": true
+        },
+        {
+          "name": "run_results",
+          "at": "body"
+        },
+        {
+          "name": "run_results_location",
+          "at": "body"
+        },
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "description",
+          "at": "body"
+        },
+        {
+          "name": "command_line",
+          "at": "body",
+          "default": "dbt"
+        },
+        {
+          "name": "connector_source",
+          "at": "body"
+        },
+        {
+          "name": "connector_command",
+          "at": "body"
+        },
+        {
+          "name": "connector_invocation_argument",
+          "at": "body"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "graphql",
+      "label": "GraphQL",
+      "category": "API",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "graphql_remote",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/sources/graphql-remote"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "url",
+          "at": "body"
+        },
+        {
+          "name": "namespace",
+          "at": "body"
+        },
+        {
+          "name": "domain_id",
+          "at": "body"
+        },
+        {
+          "name": "auth",
+          "at": "body",
+          "secret": true,
+          "note": "an object {type, ...}; every credential in it a ${secret:NAME} reference"
+        },
+        {
+          "name": "cache_ttl",
+          "at": "body",
+          "default": 300
+        },
+        {
+          "name": "description",
+          "at": "body"
+        },
+        {
+          "name": "field_overrides",
+          "at": "body"
+        },
+        {
+          "name": "relationships",
+          "at": "body"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "grpc",
+      "label": "gRPC",
+      "category": "API",
+      "default_port": 50051,
+      "managed": null,
+      "backend_type": "grpc_remote",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/grpc-remote/register"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "proto_path",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "server_address",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "namespace",
+          "at": "body"
+        },
+        {
+          "name": "domain_id",
+          "at": "body"
+        },
+        {
+          "name": "import_paths",
+          "at": "body"
+        },
+        {
+          "name": "tls",
+          "at": "body"
+        },
+        {
+          "name": "auth_config",
+          "at": "body",
+          "secret": true,
+          "note": "an object {type, ...}; every credential in it a ${secret:NAME} reference"
+        },
+        {
+          "name": "cache_ttl",
+          "at": "body",
+          "default": 300
+        },
+        {
+          "name": "method_overrides",
+          "at": "body"
+        },
+        {
+          "name": "relationships",
+          "at": "body"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "kafka",
+      "label": "Kafka",
+      "category": "Streaming",
+      "default_port": 9092,
+      "managed": null,
+      "backend_type": "kafka",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "kafka_security_protocol",
+          "at": "federationHintsJson",
+          "default": "PLAINTEXT",
+          "choices": [
+            "PLAINTEXT",
+            "SSL",
+            "SASL_PLAINTEXT",
+            "SASL_SSL"
+          ]
+        },
+        {
+          "name": "kafka_sasl_mechanism",
+          "at": "federationHintsJson",
+          "when": "SASL",
+          "choices": [
+            "PLAIN",
+            "SCRAM-SHA-256",
+            "SCRAM-SHA-512"
+          ]
+        },
+        {
+          "name": "kafka_ssl_ca",
+          "at": "federationHintsJson",
+          "when": "SSL"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "when": "SASL"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "when": "SASL"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "kafka_security_protocol",
+        "kafka_sasl_mechanism",
+        "kafka_ssl_ca"
+      ]
+    },
+    {
+      "name": "websocket",
+      "label": "WebSocket Feed",
+      "category": "Streaming",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "websocket",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "path",
+          "at": "input"
+        },
+        {
+          "name": "use_ssl",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "subscribe_payload",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "event_path",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "reconnect_interval",
+          "at": "federationHintsJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "use_ssl",
+        "subscribe_payload",
+        "event_path",
+        "reconnect_interval"
+      ]
+    },
+    {
+      "name": "rss",
+      "label": "RSS / Atom Feed",
+      "category": "Streaming",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "rss",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "path",
+          "at": "input"
+        },
+        {
+          "name": "feed_url",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "poll_interval",
+          "at": "federationHintsJson"
+        },
+        {
+          "name": "use_ssl",
+          "at": "federationHintsJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "feed_url",
+        "poll_interval",
+        "use_ssl"
+      ]
+    },
+    {
+      "name": "ingest",
+      "label": "Ingest (HTTP Push Receiver)",
+      "category": "Streaming",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "ingest",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "sharepoint",
+      "label": "SharePoint",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "sharepoint",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the site URL"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the tenant id"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "note": "the client id"
+        },
+        {
+          "name": "auth_type",
+          "at": "mappingJson",
+          "required": true,
+          "default": "CLIENT_CREDENTIALS",
+          "choices": [
+            "CLIENT_CREDENTIALS",
+            "USERNAME_PASSWORD",
+            "CERTIFICATE"
+          ]
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true,
+          "note": "the client secret"
+        },
+        {
+          "name": "sp_username",
+          "at": "mappingJson",
+          "required": true,
+          "when": "auth_type=USERNAME_PASSWORD"
+        },
+        {
+          "name": "sp_password",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "auth_type=USERNAME_PASSWORD"
+        },
+        {
+          "name": "certificate_path",
+          "at": "mappingJson",
+          "required": true,
+          "when": "auth_type=CERTIFICATE"
+        },
+        {
+          "name": "certificate_password",
+          "at": "mappingJson",
+          "secret": true,
+          "when": "auth_type=CERTIFICATE"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "auth_type",
+        "sp_username",
+        "sp_password",
+        "certificate_path",
+        "certificate_password"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "salesforce",
+      "label": "Salesforce",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "salesforce",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the login URL"
+        },
+        {
+          "name": "auth_type",
+          "at": "mappingJson",
+          "required": true,
+          "default": "CLIENT_CREDENTIALS",
+          "choices": [
+            "CLIENT_CREDENTIALS",
+            "USERNAME_PASSWORD",
+            "ACCESS_TOKEN"
+          ]
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "when": "auth_type!=ACCESS_TOKEN",
+          "note": "the consumer key"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "when": "auth_type!=ACCESS_TOKEN",
+          "note": "the consumer secret"
+        },
+        {
+          "name": "sf_username",
+          "at": "mappingJson",
+          "required": true,
+          "when": "auth_type=USERNAME_PASSWORD"
+        },
+        {
+          "name": "sf_password",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "auth_type=USERNAME_PASSWORD"
+        },
+        {
+          "name": "security_token",
+          "at": "mappingJson",
+          "secret": true,
+          "when": "auth_type=USERNAME_PASSWORD"
+        },
+        {
+          "name": "access_token",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "auth_type=ACCESS_TOKEN"
+        },
+        {
+          "name": "instance_url",
+          "at": "mappingJson",
+          "required": true,
+          "when": "auth_type=ACCESS_TOKEN"
+        },
+        {
+          "name": "api_version",
+          "at": "mappingJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "auth_type",
+        "sf_username",
+        "sf_password",
+        "security_token",
+        "access_token",
+        "instance_url",
+        "api_version"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "servicenow",
+      "label": "ServiceNow",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "servicenow",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the instance URL"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "jira",
+      "label": "Jira",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "jira",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true,
+          "note": "the site address"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "note": "the account email"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "note": "the API token"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "quickbooks",
+      "label": "QuickBooks Online",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "quickbooks",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "note": "the realm id"
+        },
+        {
+          "name": "environment",
+          "at": "mappingJson",
+          "required": true,
+          "default": "sandbox",
+          "choices": [
+            "sandbox",
+            "production"
+          ]
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "note": "the client id"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "note": "the client secret"
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "environment",
+        "refresh_token"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "cloudops",
+      "label": "Cloud Inventory (Azure / AWS / GCP)",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "cloudops",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "azure_tenant_id",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=azure"
+        },
+        {
+          "name": "azure_client_id",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=azure"
+        },
+        {
+          "name": "azure_client_secret",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "cloud=azure"
+        },
+        {
+          "name": "azure_subscription_ids",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=azure"
+        },
+        {
+          "name": "aws_access_key_id",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=aws"
+        },
+        {
+          "name": "aws_secret_access_key",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "cloud=aws"
+        },
+        {
+          "name": "aws_region",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=aws"
+        },
+        {
+          "name": "aws_account_ids",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=aws"
+        },
+        {
+          "name": "aws_role_arn",
+          "at": "mappingJson",
+          "when": "cloud=aws"
+        },
+        {
+          "name": "gcp_credentials_path",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=gcp"
+        },
+        {
+          "name": "gcp_project_ids",
+          "at": "mappingJson",
+          "required": true,
+          "when": "cloud=gcp"
+        },
+        {
+          "name": "cache_ttl_minutes",
+          "at": "mappingJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "azure_tenant_id",
+        "azure_client_id",
+        "azure_client_secret",
+        "azure_subscription_ids",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_region",
+        "aws_account_ids",
+        "aws_role_arn",
+        "gcp_credentials_path",
+        "gcp_project_ids",
+        "cache_ttl_minutes"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "google_workspace",
+      "label": "Google Workspace (Gmail)",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "google_workspace",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "resources",
+          "at": "mappingJson",
+          "required": true,
+          "note": "any of mail, calendar, tasks"
+        },
+        {
+          "name": "accounts",
+          "at": "mappingJson",
+          "note": "[the one account read]; or mailboxes for the organisation's"
+        },
+        {
+          "name": "mailboxes",
+          "at": "mappingJson",
+          "note": "{everyone: true}, {group} or {list}: the organisation's"
+        },
+        {
+          "name": "sign_in",
+          "at": "mappingJson",
+          "when": "accounts",
+          "value": "google_account"
+        },
+        {
+          "name": "mail_content",
+          "at": "mappingJson",
+          "required": true,
+          "when": "resources has mail",
+          "note": "full or headers"
+        },
+        {
+          "name": "mail_labels",
+          "at": "mappingJson"
+        },
+        {
+          "name": "mail_search",
+          "at": "mappingJson"
+        },
+        {
+          "name": "mail_since",
+          "at": "mappingJson"
+        },
+        {
+          "name": "mail_include_spam_trash",
+          "at": "mappingJson"
+        },
+        {
+          "name": "calendar_send_updates",
+          "at": "mappingJson"
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "secret": true,
+          "note": "an approval kept from before the server held approvals; carried through, never entered"
+        }
+      ],
+      "note": "the account is connected (signed in) by the user on the Sources form; Polly never takes a refresh token or a password",
+      "mapping_json": [
+        "resources",
+        "accounts",
+        "mailboxes",
+        "sign_in",
+        "mail_content",
+        "mail_labels",
+        "mail_search",
+        "mail_since",
+        "mail_include_spam_trash",
+        "calendar_send_updates",
+        "refresh_token"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "microsoft_365",
+      "label": "Microsoft 365 (Outlook, Exchange)",
+      "category": "Enterprise",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "microsoft_365",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "resources",
+          "at": "mappingJson",
+          "required": true,
+          "note": "any of mail, calendar, tasks"
+        },
+        {
+          "name": "accounts",
+          "at": "mappingJson",
+          "note": "[the one account read]; or mailboxes for the organisation's"
+        },
+        {
+          "name": "mailboxes",
+          "at": "mappingJson",
+          "note": "{everyone: true}, {group} or {list}: the organisation's"
+        },
+        {
+          "name": "mail_since",
+          "at": "mappingJson"
+        },
+        {
+          "name": "calendar_check_days",
+          "at": "mappingJson",
+          "required": true,
+          "when": "resources has calendar"
+        },
+        {
+          "name": "calendar_send_updates",
+          "at": "mappingJson"
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "secret": true,
+          "note": "an approval kept from before the server held approvals; carried through, never entered"
+        }
+      ],
+      "note": "the account is connected (signed in) by the user on the Sources form; Polly never takes a refresh token or a password",
+      "mapping_json": [
+        "resources",
+        "accounts",
+        "mailboxes",
+        "mail_since",
+        "calendar_check_days",
+        "calendar_send_updates",
+        "refresh_token"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "github",
+      "label": "GitHub",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "graphql_remote",
+      "brand": "github",
+      "carrier": "graphql",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/sources/graphql-remote"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "github"
+        },
+        {
+          "name": "namespace",
+          "at": "body",
+          "note": "default gh"
+        },
+        {
+          "name": "description",
+          "at": "body"
+        },
+        {
+          "name": "auth",
+          "at": "body",
+          "required": true,
+          "secret": true,
+          "note": "{type: 'bearer', token: '${secret:NAME}'}"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "gitlab",
+      "label": "GitLab",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "graphql_remote",
+      "brand": "gitlab",
+      "carrier": "graphql",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/sources/graphql-remote"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "gitlab"
+        },
+        {
+          "name": "namespace",
+          "at": "body",
+          "note": "default gl"
+        },
+        {
+          "name": "description",
+          "at": "body"
+        },
+        {
+          "name": "auth",
+          "at": "body",
+          "required": true,
+          "secret": true,
+          "note": "{type: 'bearer', token: '${secret:NAME}'}"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "shopify",
+      "label": "Shopify",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "graphql_remote",
+      "brand": "shopify",
+      "carrier": "graphql",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/sources/graphql-remote"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "shopify"
+        },
+        {
+          "name": "namespace",
+          "at": "body",
+          "note": "default shopify"
+        },
+        {
+          "name": "description",
+          "at": "body"
+        },
+        {
+          "name": "store",
+          "at": "setup",
+          "required": true,
+          "note": "matches [a-z0-9][a-z0-9-]*"
+        },
+        {
+          "name": "api_version",
+          "at": "setup",
+          "note": "matches \\d{4}-\\d{2}",
+          "default": "2026-10"
+        },
+        {
+          "name": "auth",
+          "at": "body",
+          "required": true,
+          "secret": true,
+          "note": "{type: 'bearer', token: '${secret:NAME}'}"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "stripe",
+      "label": "Stripe",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "openapi",
+      "brand": "stripe",
+      "carrier": "openapi",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/openapi/register"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "stripe"
+        },
+        {
+          "name": "token",
+          "at": "body",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "openmetadata",
+      "label": "OpenMetadata",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "openapi",
+      "brand": "openmetadata",
+      "carrier": "openapi",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/openapi/register"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "openmetadata"
+        },
+        {
+          "name": "base_url",
+          "at": "setup",
+          "required": true,
+          "note": "matches https?://[^\\s{}/]+(/[^\\s{}]*[^\\s{}/])?"
+        },
+        {
+          "name": "token",
+          "at": "body",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "datahub",
+      "label": "DataHub",
+      "category": "Enterprise",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "openapi",
+      "brand": "datahub",
+      "carrier": "openapi",
+      "code": null,
+      "create": {
+        "via": "admin_request",
+        "method": "POST",
+        "path": "/admin/openapi/register"
+      },
+      "fields": [
+        {
+          "name": "source_id",
+          "at": "body",
+          "required": true
+        },
+        {
+          "name": "brand",
+          "at": "body",
+          "required": true,
+          "value": "datahub"
+        },
+        {
+          "name": "base_url",
+          "at": "setup",
+          "required": true,
+          "note": "matches https?://[^\\s{}/]+(/[^\\s{}]*[^\\s{}/])?"
+        },
+        {
+          "name": "token",
+          "at": "body",
+          "required": true,
+          "secret": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "wikipedia",
+      "label": "Wikipedia",
+      "category": "File",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "files",
+      "brand": "wikipedia",
+      "carrier": "files",
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "brand",
+          "at": "federationHintsJson",
+          "required": true,
+          "value": "wikipedia"
+        },
+        {
+          "name": "wikipedia",
+          "at": "federationHintsJson",
+          "required": true,
+          "note": "{pages: [titles], follow_see_also, language, see_also_heading, contact, max_depth, max_pages, crawl: {...}}"
+        },
+        {
+          "name": "path",
+          "at": "input",
+          "note": "where the crawl's files land; left out, a directory of its own"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "brand",
+        "wikipedia"
+      ]
+    },
+    {
+      "name": "wikidata",
+      "label": "Wikidata",
+      "category": "Graph",
+      "default_port": 443,
+      "managed": null,
+      "backend_type": "sparql",
+      "brand": "wikidata",
+      "carrier": "sparql",
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "brand",
+          "at": "federationHintsJson",
+          "required": true,
+          "value": "wikidata"
+        },
+        {
+          "name": "host",
+          "at": "input",
+          "value": "https://query.wikidata.org/sparql"
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": [
+        "brand"
+      ]
+    },
+    {
+      "name": "splunk",
+      "label": "Splunk",
+      "category": "Enterprise",
+      "default_port": 8089,
+      "managed": null,
+      "backend_type": "splunk",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input"
+        },
+        {
+          "name": "use_token",
+          "at": "mappingJson",
+          "note": "true signs in with a token in password"
+        },
+        {
+          "name": "username",
+          "at": "input",
+          "required": true,
+          "when": "use_token=false"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "required": true,
+          "secret": true,
+          "note": "the password, or the auth token"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "note": "the app"
+        },
+        {
+          "name": "disable_ssl_validation",
+          "at": "mappingJson"
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "use_token",
+        "disable_ssl_validation"
+      ],
+      "federation_hints": []
+    },
+    {
+      "name": "soda",
+      "label": "Soda (Data Quality)",
+      "category": "Data Quality",
+      "default_port": 5439,
+      "managed": null,
+      "backend_type": "soda",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "great_expectations",
+      "label": "Great Expectations (Data Quality)",
+      "category": "Data Quality",
+      "default_port": 5439,
+      "managed": null,
+      "backend_type": "great_expectations",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "host",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "port",
+          "at": "input",
+          "required": true
+        },
+        {
+          "name": "username",
+          "at": "input"
+        },
+        {
+          "name": "password",
+          "at": "input",
+          "secret": true
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true
+        }
+      ],
+      "note": "",
+      "mapping_json": [],
+      "federation_hints": []
+    },
+    {
+      "name": "data_profiler",
+      "label": "Data Profiler",
+      "category": "Data Quality",
+      "default_port": 0,
+      "managed": null,
+      "backend_type": "data_profiler",
+      "brand": null,
+      "carrier": null,
+      "code": null,
+      "create": {
+        "via": "admin_mutation",
+        "mutation": "createSource"
+      },
+      "fields": [
+        {
+          "name": "cron",
+          "at": "mappingJson",
+          "required": true
+        },
+        {
+          "name": "sample_above_cells",
+          "at": "mappingJson"
+        },
+        {
+          "name": "low_cardinality_max",
+          "at": "mappingJson",
+          "default": 100
+        },
+        {
+          "name": "drift_window",
+          "at": "mappingJson",
+          "default": 7
+        },
+        {
+          "name": "drift_season",
+          "at": "mappingJson",
+          "default": "none",
+          "choices": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ]
+        },
+        {
+          "name": "drift_distance",
+          "at": "mappingJson",
+          "default": 3
+        },
+        {
+          "name": "drift_slope",
+          "at": "mappingJson",
+          "default": 3
+        },
+        {
+          "name": "drift_ks",
+          "at": "mappingJson",
+          "default": 0.2
+        },
+        {
+          "name": "drift_psi",
+          "at": "mappingJson",
+          "default": 0.25
+        },
+        {
+          "name": "correlation_max_columns",
+          "at": "mappingJson",
+          "default": 20
+        },
+        {
+          "name": "joint_max_distinct",
+          "at": "mappingJson",
+          "default": 20
+        },
+        {
+          "name": "category_max_columns",
+          "at": "mappingJson",
+          "default": 10
+        },
+        {
+          "name": "classification_sample",
+          "at": "mappingJson",
+          "default": 500
+        }
+      ],
+      "note": "",
+      "mapping_json": [
+        "cron",
+        "sample_above_cells",
+        "low_cardinality_max",
+        "drift_window",
+        "drift_season",
+        "drift_distance",
+        "drift_slope",
+        "drift_ks",
+        "drift_psi",
+        "correlation_max_columns",
+        "joint_max_distinct",
+        "category_max_columns",
+        "classification_sample"
+      ],
+      "federation_hints": []
+    }
+  ],
+  "typeAlias": {
+    "graphql": "graphql_remote",
+    "grpc": "grpc_remote"
+  },
+  "brandCarrier": {
+    "github": "graphql",
+    "gitlab": "graphql",
+    "shopify": "graphql",
+    "stripe": "openapi",
+    "openmetadata": "openapi",
+    "datahub": "openapi",
+    "wikipedia": "files",
+    "wikidata": "sparql"
+  },
+  "brandAuth": {
+    "github": "token",
+    "gitlab": "token",
+    "shopify": "token",
+    "stripe": "token",
+    "openmetadata": "token",
+    "datahub": "token",
+    "wikipedia": "none",
+    "wikidata": "none"
+  },
+  "families": {
+    "simpleRdbms": [
+      "cassandra",
+      "clickhouse",
+      "cockroachdb",
+      "druid",
+      "exasol",
+      "firebird",
+      "great_expectations",
+      "greenplum",
+      "hiveserver2",
+      "mariadb",
+      "mongodb",
+      "mysql",
+      "oracle",
+      "postgresql",
+      "redis",
+      "saphana",
+      "singlestore",
+      "soda",
+      "sqlserver",
+      "tidb",
+      "trino",
+      "yugabytedb"
+    ],
+    "hostPortOnly": [
+      "airport",
+      "kafka",
+      "pinot",
+      "rss",
+      "websocket"
+    ],
+    "fileSources": [
+      "csv",
+      "parquet",
+      "sqlite"
+    ],
+    "noConnection": [
+      "data_profiler",
+      "dbt",
+      "go",
+      "ingest",
+      "node",
+      "python",
+      "rust",
+      "spark"
+    ],
+    "dataLake": [
+      "delta_lake",
+      "hive",
+      "hive_s3",
+      "iceberg"
+    ],
+    "cloudFileTypes": [
+      "csv",
+      "duckdb",
+      "parquet",
+      "sqlite"
+    ]
+  }
+}

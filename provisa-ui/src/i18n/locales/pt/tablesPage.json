@@ -51,7 +51,7 @@
     "firstPage": "Primeira página",
     "lastPage": "Última página",
     "listedElsewhere": "Listado em outros domínios",
-    "listedElsewhereHint": "Nomes que outros domínios listam. Peça acesso a esse domínio para lê-los.",
+    "listedElsewhereHint": "Nomes que outros domínios listam. Sugira um produto para pedir uma tabela a esse domínio.",
     "pageOf": "Página {{page}} / {{totalPages}}",
     "loadFailed": "Não foi possível carregar as tabelas registradas: {{message}}",
     "editViewDefinitionTitle": "Editar definição da exibição",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Retirada",
     "withdrawnTitle": "Fora de produção: nenhum papel a lê até que seja restabelecida",
-    "sourceWithdrawnTitle": "Sua fonte {{source}} está retirada: nenhum papel a lê até que a fonte seja restabelecida"
+    "sourceWithdrawnTitle": "Sua fonte {{source}} está retirada: nenhum papel a lê até que a fonte seja restabelecida",
+    "suggestProduct": "Sugerir um produto"
   }
 }

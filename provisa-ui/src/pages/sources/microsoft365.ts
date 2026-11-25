@@ -13,9 +13,21 @@
 // authority on what is valid, and this one only says what is still missing from the form.
 
 import { SignInRefused, shapesOffered, type SignInStatus } from "../../lib/sourceSignIn";
+import { mappingKeysOf } from "./descriptor";
 import { CALENDAR, MAIL, resourcesField, resourcesOf } from "./mailResources";
 
 export const MICROSOFT_365 = "microsoft_365";
+// REQ-2114: the mapping keys are the descriptor's (provisa/api/admin/source_types.py, from
+// provisa/microsoft365/settings.py).
+const K = mappingKeysOf(MICROSOFT_365, [
+  "accounts",
+  "resources",
+  "mailboxes",
+  "refresh_token",
+  "mail_since",
+  "calendar_check_days",
+  "calendar_send_updates",
+] as const);
 /** Where an administrator enters the organisation's Microsoft client. */
 export const MAIL_PLATFORMS_ROUTE = "/admin/email";
 
@@ -92,29 +104,34 @@ export function m365Mapping(fields: Record<string, string>): Record<string, unkn
   const resources = m365Resources(fields);
   const since =
     resources.includes(MAIL) && stated(fields, "m365_mail_since")
-      ? { mail_since: stated(fields, "m365_mail_since") }
+      ? { [K.mail_since]: stated(fields, "m365_mail_since") }
       : {};
   // REQ-1994: a source that reads calendars says how many days a check looks at, and whether a
   // change Microsoft would announce to attendees is made.
   const calendar = resources.includes(CALENDAR)
     ? {
-        calendar_check_days: Number(stated(fields, "m365_check_days")),
-        calendar_send_updates: fields.m365_send_updates === "true",
+        [K.calendar_check_days]: Number(stated(fields, "m365_check_days")),
+        [K.calendar_send_updates]: fields.m365_send_updates === "true",
       }
     : {};
   if (m365Organisation(fields)) {
-    return { resources, mailboxes: m365Mailboxes(fields) ?? {}, ...since, ...calendar };
+    return {
+      [K.resources]: resources,
+      [K.mailboxes]: m365Mailboxes(fields) ?? {},
+      ...since,
+      ...calendar,
+    };
   }
   const mapping: Record<string, unknown> = {
-    accounts: [stated(fields, "m365_account")],
-    resources,
+    [K.accounts]: [stated(fields, "m365_account")],
+    [K.resources]: resources,
     ...since,
     ...calendar,
   };
   // The owner's approval is kept by the server, not in the source. A source connected before
   // that still names it here; it is carried through unchanged until the server has taken it.
   if (stated(fields, "m365_earlier_approval")) {
-    mapping.refresh_token = stated(fields, "m365_earlier_approval");
+    mapping[K.refresh_token] = stated(fields, "m365_earlier_approval");
   }
   return mapping;
 }
@@ -122,14 +139,14 @@ export function m365Mapping(fields: Record<string, string>): Record<string, unkn
 /** The fields a stored source's mapping carries, for the form that edits it. */
 export function m365FieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, unknown>;
-  const chosen = mapping.mailboxes as Record<string, unknown> | undefined;
+  const chosen = mapping[K.mailboxes] as Record<string, unknown> | undefined;
+  const mailSince = mapping[K.mail_since];
+  const checkDays = mapping[K.calendar_check_days];
   const since: Record<string, string> = {
-    ...(typeof mapping.mail_since === "string" ? { m365_mail_since: mapping.mail_since } : {}),
-    ...resourcesField("m365", (mapping.resources as string[] | undefined) ?? []),
-    m365_send_updates: mapping.calendar_send_updates === true ? "true" : "",
-    ...(typeof mapping.calendar_check_days === "number"
-      ? { m365_check_days: String(mapping.calendar_check_days) }
-      : {}),
+    ...(typeof mailSince === "string" ? { m365_mail_since: mailSince } : {}),
+    ...resourcesField("m365", (mapping[K.resources] as string[] | undefined) ?? []),
+    m365_send_updates: mapping[K.calendar_send_updates] === true ? "true" : "",
+    ...(typeof checkDays === "number" ? { m365_check_days: String(checkDays) } : {}),
   };
   if (chosen !== undefined) {
     const fields: Record<string, string> = { m365_whose: M365_ORGANISATION, ...since };
@@ -147,10 +164,11 @@ export function m365FieldsFromMapping(mappingJson: string): Record<string, strin
   const fields: Record<string, string> = {
     ...since,
     m365_whose: M365_ONE,
-    m365_account: ((mapping.accounts as string[] | undefined) ?? []).join(""),
+    m365_account: ((mapping[K.accounts] as string[] | undefined) ?? []).join(""),
   };
-  if (typeof mapping.refresh_token === "string" && mapping.refresh_token !== "") {
-    fields.m365_earlier_approval = mapping.refresh_token;
+  const approval = mapping[K.refresh_token];
+  if (typeof approval === "string" && approval !== "") {
+    fields.m365_earlier_approval = approval;
     fields.m365_connected_as = fields.m365_account; // connected the earlier way
   }
   return fields;

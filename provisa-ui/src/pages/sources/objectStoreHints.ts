@@ -13,6 +13,9 @@
 // form shows is a field that is saved and comes back. Mirrors the backend's
 // provisa/federation/singlestore_pipeline.py (object_store, _STORE_HINTS).
 
+import generated from "../../generated/sourceTypes.json";
+import { fieldsWhen } from "./descriptor";
+
 export type ObjectStore = "S3" | "GCS" | "AZURE";
 
 const GCS_SCHEMES = new Set(["gs", "gcs"]);
@@ -20,7 +23,7 @@ const AZURE_SCHEMES = new Set(["az", "azure", "abfs", "abfss", "wasb", "wasbs"])
 
 /** Source types whose file location may be in an object store, read by its own credentials
  * (REQ-1997: the file databases too, attached read-only there). */
-export const CLOUD_FILE_TYPES = new Set(["csv", "parquet", "sqlite", "duckdb"]);
+export const CLOUD_FILE_TYPES = new Set<string>(generated.families.cloudFileTypes);
 
 /** The object store a file location is in, or null for a local path or another transport. */
 export function objectStoreOf(path: string | null | undefined): ObjectStore | null {
@@ -33,12 +36,17 @@ export function objectStoreOf(path: string | null | undefined): ObjectStore | nu
   return null;
 }
 
-/** The federation_hints each store's credentials are saved under (secrets as ${secret:…}). */
-export const OBJECT_STORE_HINT_KEYS: Record<ObjectStore, readonly string[]> = {
-  S3: ["access_key_id", "secret_access_key", "region", "endpoint"],
-  GCS: ["gcs_access_id", "gcs_secret_key"],
-  AZURE: ["azure_account_name", "azure_account_key"],
-};
+/** The location each store's credentials are stated for in the descriptor (`path=<scheme>`). */
+const STORE_SCHEME: Record<ObjectStore, string> = { S3: "s3://", GCS: "gs://", AZURE: "az://" };
+
+/** The federation_hints each store's credentials are saved under (secrets as ${secret:…}): the
+ * descriptor's (REQ-2114, provisa/api/admin/source_types.py OBJECT_STORE_HINTS). */
+export const OBJECT_STORE_HINT_KEYS: Record<ObjectStore, readonly string[]> = Object.fromEntries(
+  (Object.keys(STORE_SCHEME) as ObjectStore[]).map((store) => [
+    store,
+    fieldsWhen("csv", "federationHintsJson", "path", STORE_SCHEME[store]).map((f) => f.name),
+  ]),
+) as unknown as Record<ObjectStore, readonly string[]>;
 
 /** The hints to save for ``store`` from the form's fields: every filled field, nothing else. */
 export function objectStoreHints(

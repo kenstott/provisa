@@ -13,6 +13,13 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { renderInForm, screen } from "../../../test-utils/render";
+
+// SourceFormFieldsExtended calls useAuth() unconditionally; stub it so the form
+// renders without an AuthProvider (the Wikidata form test has no connector/script panel).
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ activeOrgId: null }),
+}));
 import { MARKS } from "../../../components/sourceLogoMarks";
 import { BRAND_AUTH, BRAND_CARRIER, SOURCE_TYPES } from "../constants";
 import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";

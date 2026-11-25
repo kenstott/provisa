@@ -11,7 +11,14 @@
 // REQ-1947: a cloud inventory source's clouds. Everything rides in the source's mapping; a cloud
 // is named by filling its fields, and each cloud is all or nothing.
 
-export type CloudopsCloud = "azure" | "aws" | "gcp";
+import { fieldsWhen, fieldsWithoutChoice, isRequired, isSecret, whenChoices } from "./descriptor";
+
+// REQ-2114: the clouds, each cloud's keys, and which are required or secret are the descriptor's
+// (provisa/api/admin/source_types.py CLOUDOPS_CLOUDS); the labels and placeholders are the form's.
+const CLOUDOPS = "cloudops";
+const MAPPING = "mappingJson";
+
+export type CloudopsCloud = string;
 
 export interface CloudopsField {
   key: string;
@@ -21,68 +28,54 @@ export interface CloudopsField {
   placeholder?: string;
 }
 
-export const CLOUDOPS_CLOUDS: Record<CloudopsCloud, CloudopsField[]> = {
-  azure: [
-    { key: "azure_tenant_id", label: "coAzureTenantId", required: true },
-    { key: "azure_client_id", label: "coAzureClientId", required: true },
-    {
-      key: "azure_client_secret",
-      label: "coAzureClientSecret",
-      required: true,
-      secret: true,
-      placeholder: "${secret:azure_client_secret}",
-    },
-    {
-      key: "azure_subscription_ids",
-      label: "coAzureSubscriptionIds",
-      required: true,
-      placeholder: "sub-1,sub-2",
-    },
-  ],
-  aws: [
-    { key: "aws_access_key_id", label: "coAwsAccessKeyId", required: true },
-    {
-      key: "aws_secret_access_key",
-      label: "coAwsSecretAccessKey",
-      required: true,
-      secret: true,
-      placeholder: "${secret:aws_secret_access_key}",
-    },
-    { key: "aws_region", label: "coAwsRegion", required: true, placeholder: "us-east-1" },
-    {
-      key: "aws_account_ids",
-      label: "coAwsAccountIds",
-      required: true,
-      placeholder: "111111111111,222222222222",
-    },
-    {
-      key: "aws_role_arn",
-      label: "coAwsRoleArn",
-      required: false,
-      placeholder: "arn:aws:iam::111111111111:role/CloudOpsRole",
-    },
-  ],
-  gcp: [
-    {
-      key: "gcp_credentials_path",
-      label: "coGcpCredentialsPath",
-      required: true,
-      placeholder: "/etc/provisa/gcp-key.json",
-    },
-    {
-      key: "gcp_project_ids",
-      label: "coGcpProjectIds",
-      required: true,
-      placeholder: "proj-1,proj-2",
-    },
-  ],
+/** How the form shows each key: its label (an i18n key) and its placeholder. */
+const SHOWN: Record<string, { label: string; placeholder?: string }> = {
+  azure_tenant_id: { label: "coAzureTenantId" },
+  azure_client_id: { label: "coAzureClientId" },
+  azure_client_secret: {
+    label: "coAzureClientSecret",
+    placeholder: "${secret:azure_client_secret}",
+  },
+  azure_subscription_ids: { label: "coAzureSubscriptionIds", placeholder: "sub-1,sub-2" },
+  aws_access_key_id: { label: "coAwsAccessKeyId" },
+  aws_secret_access_key: {
+    label: "coAwsSecretAccessKey",
+    placeholder: "${secret:aws_secret_access_key}",
+  },
+  aws_region: { label: "coAwsRegion", placeholder: "us-east-1" },
+  aws_account_ids: { label: "coAwsAccountIds", placeholder: "111111111111,222222222222" },
+  aws_role_arn: {
+    label: "coAwsRoleArn",
+    placeholder: "arn:aws:iam::111111111111:role/CloudOpsRole",
+  },
+  gcp_credentials_path: { label: "coGcpCredentialsPath", placeholder: "/etc/provisa/gcp-key.json" },
+  gcp_project_ids: { label: "coGcpProjectIds", placeholder: "proj-1,proj-2" },
 };
 
-export const CLOUDOPS_CLOUD_ORDER: CloudopsCloud[] = ["azure", "aws", "gcp"];
-const CACHE_TTL = "cache_ttl_minutes";
+function shown(key: string): { label: string; placeholder?: string } {
+  const found = SHOWN[key];
+  if (!found) throw new Error(`cloudops key ${key} has no label on the form`);
+  return found;
+}
+
+export const CLOUDOPS_CLOUD_ORDER: CloudopsCloud[] = whenChoices(CLOUDOPS, MAPPING, "cloud");
+
+export const CLOUDOPS_CLOUDS: Record<CloudopsCloud, CloudopsField[]> = Object.fromEntries(
+  CLOUDOPS_CLOUD_ORDER.map((cloud) => [
+    cloud,
+    fieldsWhen(CLOUDOPS, MAPPING, "cloud", cloud).map((f) => ({
+      key: f.name,
+      required: isRequired(f),
+      ...(isSecret(f) ? { secret: true } : {}),
+      ...shown(f.name),
+    })),
+  ]),
+);
+
 const ALL_KEYS = [
   ...CLOUDOPS_CLOUD_ORDER.flatMap((c) => CLOUDOPS_CLOUDS[c].map((f) => f.key)),
-  CACHE_TTL,
+  // The settings that belong to no cloud (the cache TTL).
+  ...fieldsWithoutChoice(CLOUDOPS, MAPPING).map((f) => f.name),
 ];
 
 /** The clouds the fields name: a cloud is named when any of its required fields is filled. */

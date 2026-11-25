@@ -14,7 +14,6 @@
 import { Anchor, Input } from "@mantine/core";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { FormField } from "../../components/form/FormLayout";
 import { SOURCE_TYPES } from "./constants";
 import { codeReferenceHref } from "./codeSource";
@@ -29,7 +28,13 @@ function languageOf(type: string): string {
 
 function link(p: Props, t: TFunction) {
   return (
-    <Anchor component={Link} to={codeReferenceHref(p.type)} data-testid="code-reference-link">
+    // A new tab: the link sits inside the source dialog, and following it in place would close it.
+    <Anchor
+      href={codeReferenceHref(p.type)}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid="code-reference-link"
+    >
       {t("codeSourceFields.referenceLink", { language: languageOf(p.type) })}
     </Anchor>
   );

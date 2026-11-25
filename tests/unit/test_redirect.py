@@ -10,8 +10,15 @@
 
 """Unit tests for large result redirect logic."""
 
-from provisa.executor.redirect import RedirectConfig, should_redirect
+import json
+from decimal import Decimal
+
+from provisa.compiler.sql_gen import ColumnRef
+from provisa.executor.redirect import RedirectConfig, _serialize_for_redirect, should_redirect
 from provisa.executor.result import QueryResult
+
+# A value whose 18 digits are corrupted to 17 by float64 (REQ-1961).
+_EXACT = Decimal("1234567890123456.78")
 
 
 def _config(enabled=True, threshold=10):
@@ -71,3 +78,36 @@ class TestRedirectConfig:
         assert not config.enabled  # default false
         assert config.threshold == 100000
         assert config.ttl == 3600
+
+
+class TestRedirectNumericExact:
+    """REQ-1961: a sized numeric leaves redirect JSON/NDJSON exactly, never as float.
+
+    REQ-1961 requires exact decimals on every read path. The redirect JSON and NDJSON serialisers
+    previously used json.JSONEncoder.default → float(Decimal), silently dropping digits past ~17.
+    """
+
+    def _result_with_decimal(self):
+        return QueryResult(
+            rows=[(_EXACT,)],
+            column_names=["amount"],
+        )
+
+    def _cols(self):
+        return [ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None)]
+
+    def test_redirect_json_decimal_exact(self):
+        result = self._result_with_decimal()
+        body, ct, ext = _serialize_for_redirect(result, self._cols(), "json")
+        rows = json.loads(body)
+        assert rows[0]["amount"] == "1234567890123456.78", (
+            f"float conversion lost digits: got {rows[0]['amount']!r}"
+        )
+
+    def test_redirect_ndjson_decimal_exact(self):
+        result = self._result_with_decimal()
+        body, ct, ext = _serialize_for_redirect(result, self._cols(), "ndjson")
+        row = json.loads(body.decode().strip())
+        assert row["amount"] == "1234567890123456.78", (
+            f"float conversion lost digits: got {row['amount']!r}"
+        )

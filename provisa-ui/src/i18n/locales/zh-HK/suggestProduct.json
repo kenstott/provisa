@@ -1,0 +1,22 @@
+{
+  "suggestProduct": {
+    "title": "向 {{domain}} 建議一個數據產品",
+    "tables": "表",
+    "hint": "該產品將包含的此網域已列出的表。",
+    "reason": "你為何需要它",
+    "reasonHint": "該網域的數據產品擁有者和數據管家會閱讀此內容。",
+    "send": "發送建議",
+    "sending": "正在發送…",
+    "sent_one": "你的建議已透過電郵發送給 {{domain}} 的 {{count}} 位擁有者或數據管家。",
+    "sent_other": "你的建議已透過電郵發送給 {{domain}} 的 {{count}} 位擁有者和數據管家。",
+    "close": "關閉",
+    "badgeTitle_one": "{{count}} 項建議提及此表：開啟",
+    "badgeTitle_other": "{{count}} 項建議提及此表：開啟",
+    "listTitle": "提及 {{table}} 的建議",
+    "colWhen": "時間",
+    "colBy": "建議人",
+    "colTables": "表",
+    "colReason": "原因",
+    "none": "沒有建議提及此表。"
+  }
+}
