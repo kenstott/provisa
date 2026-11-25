@@ -161,7 +161,7 @@ services:
     #   rm -rf ./data/clickhouse
     #   docker compose up -d --wait clickhouse
     #   docker compose run --rm --no-deps --entrypoint python seeder generate_clickhouse.py \
-    #     --orders "${PROVISA_BENCH_ORDERS:-20000000}"
+    #     --orders 20000000   # the seeder's PROVISA_BENCH_ORDERS below
     # The image is a seed input (bench/seed_inputs.py), so the seed hash changes and the
     # three-device bench needs a new seed image from bench/seed_lifecycle.sh before its next run.
     image: clickhouse/clickhouse-server@sha256:e49863ded96abdc0545bcd0320c1b99c979c18f27915eb6519a5546760d24cb9  # clickhouse/clickhouse-server:26.8.46.6
