@@ -55,7 +55,9 @@ export function ColumnsTable({
   irTypes: string[];
   sourceType: string;
   /** REQ-2239 (amended 2026-11-11): the same table, read-only -- a column of a data product's
-   *  contract looks as it does here, its mask a badge beside its name. */
+   *  contract looks as it does here, its mask a badge beside its name. REQ-2158 (amended
+   *  2026-11-25): its consumers see each column by the one name they query it by, so this table
+   *  names it once, as Name, with no physical name and no SQL Alias column. */
   readOnly?: boolean;
   /** The registered table the columns are of, for their glossary hover. */
   tableId?: number;
@@ -92,12 +94,17 @@ export function ColumnsTable({
   );
 }
 
-/** A column's every attribute, as the hover lists it. */
-function useDefinitionOf(sourceType: string) {
+/** A column's every attribute, as the hover lists it. A consumer's view (``consumer``) names the
+ *  column once, by the name it is queried by (REQ-2158, amended 2026-11-25). */
+function useDefinitionOf(sourceType: string, consumer = false) {
   const { t } = useTranslation();
   return (col: ColumnForm): ColumnDefinitionLine[] => [
-    { label: t("registerTableForm.colHeaderColumn"), value: col.name },
-    { label: t("registerTableForm.colHeaderAlias"), value: col.alias || "" },
+    ...(consumer
+      ? [{ label: t("dataProductsTab.colName"), value: col.name }]
+      : [
+          { label: t("registerTableForm.colHeaderColumn"), value: col.name },
+          { label: t("registerTableForm.colHeaderAlias"), value: col.alias || "" },
+        ]),
     { label: t("registerTableForm.colHeaderDescription"), value: col.description },
     ...(sourceType === "ingest"
       ? [{ label: t("registerTableForm.colHeaderJsonPath"), value: col.path ?? "" }]
@@ -138,7 +145,7 @@ function ReadOnlyColumns({
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useColumnTab(METADATA_TABS);
-  const definitionOf = useDefinitionOf(sourceType);
+  const definitionOf = useDefinitionOf(sourceType, true);
   return (
     <>
       <ColumnTabs value={tab} onChange={setTab} shown={METADATA_TABS} nested />
@@ -151,12 +158,9 @@ function ReadOnlyColumns({
           <Table striped withTableBorder verticalSpacing="xs" data-testid={testId}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colName")}</Table.Th>
                 {tab === "naming" && (
-                  <>
-                    <Table.Th>{t("registerTableForm.colHeaderAlias")}</Table.Th>
-                    <Table.Th w="60%">{t("registerTableForm.colHeaderDescription")}</Table.Th>
-                  </>
+                  <Table.Th w="60%">{t("registerTableForm.colHeaderDescription")}</Table.Th>
                 )}
                 {tab === "type" && (
                   <>
@@ -197,12 +201,7 @@ function ReadOnlyColumns({
                       <ColumnBadge color="orange">{maskKinds(col, t)}</ColumnBadge>
                     )}
                   </Table.Td>
-                  {tab === "naming" && (
-                    <>
-                      <Table.Td fz="sm">{col.alias}</Table.Td>
-                      <Table.Td fz="sm">{col.description}</Table.Td>
-                    </>
-                  )}
+                  {tab === "naming" && <Table.Td fz="sm">{col.description}</Table.Td>}
                   {tab === "type" && (
                     <>
                       <Table.Td fz="sm" ff="monospace">

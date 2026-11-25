@@ -68,6 +68,8 @@ export interface PanelTable {
   columns: readonly PanelColumn[];
   testId?: string;
   rowTestId?: (row: OdcsRecord) => string;
+  /** REQ-2277 (2): what is true of every row, stated once above the table, not on each row. */
+  lead?: ReactNode;
 }
 
 // A schema's table holds more wrapped columns than a page list does: each may narrow further, so a
@@ -97,6 +99,7 @@ function RecordTable({ table, named }: { table: PanelTable; named: boolean }) {
           {table.name}
         </Text>
       )}
+      {table.lead}
       <ListTable testId={table.testId} style={TABLE_STYLE}>
         <ListHead columns={columns.map((c) => c.label ?? c.name)} />
         <Table.Tbody>
