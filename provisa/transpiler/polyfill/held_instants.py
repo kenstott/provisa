@@ -270,12 +270,13 @@ def _form(text: str) -> exp.Expr:
     return replacement(text, _CLICKHOUSE, "f()").copy()
 
 
-def _stamp(function: str, micros: Instant) -> exp.Expr:
+def _stamp(function: str, micros: Instant, checked: bool = True) -> exp.Expr:
     """A timestamp answer, held as DateTime64(6, 'UTC') of its microseconds; an infinity at the
-    Int64 ends but one."""
+    Int64 ends but one. ``checked``: one outside PostgreSQL's range raises 22008, as the function
+    does (AdjustTimestampForTypmod checks none: its rounding may pass the range's end)."""
     if isinstance(micros, Infinite):
         return _form(f"fromUnixTimestamp64Micro(toInt64({micros.sign * (2**63 - 1)}), 'UTC')")
-    if not PG_FIRST_US <= micros < PG_STAMP_END_US:
+    if checked and not PG_FIRST_US <= micros < PG_STAMP_END_US:
         raise _raise("22008", "timestamp out of range")
     if micros > HELD_LAST_US:
         raise _refused(
@@ -601,6 +602,25 @@ def _same_instant(function: str, value: _Arg, kinds: tuple[str, ...]) -> exp.Exp
     return _stamp(function, _as_stamp(value))
 
 
+def _to_precision(function: str, value: _Arg, digits: _Arg) -> exp.Expr | None:
+    """timestamptz(timestamptz, integer) (AdjustTimestampForTypmod): an infinity, or no typmod
+    (-1) or 6, is the value; 0 to 5 digits rounded half away from 2000-01-01; any other typmod
+    22023."""
+    if value.kind != "timestamptz" or not isinstance(digits.value, int):
+        return None
+    precision = digits.value
+    if isinstance(value.value, Infinite) or precision in (-1, 6):
+        return _stamp(function, value.value)  # type: ignore[arg-type]
+    if not 0 <= precision <= 6:  # noqa: PLR2004 -- MAX_TIMESTAMP_PRECISION
+        raise _raise("22023", f"timestamp({precision}) precision must be between 0 and 6")
+    assert isinstance(value.value, int)
+    scale = 10 ** (6 - precision)
+    since = value.value - _PG_EPOCH_DAYS * DAY_US
+    half = scale // 2
+    rounded = (since + half) // scale * scale if since >= 0 else -((-since + half) // scale * scale)
+    return _stamp(function, rounded + _PG_EPOCH_DAYS * DAY_US, checked=False)
+
+
 def _finite(value: _Arg) -> exp.Expr | None:
     if value.kind not in ("date", "timestamp", "timestamptz"):
         return None
@@ -624,6 +644,8 @@ def _answer(function: str, args: list[_Arg]) -> exp.Expr | None:  # noqa: C901, 
         return _date_trunc(function, args)
     if function in ("timestamp", "timestamptz") and count == 1:
         return _same_instant(function, args[0], ("date", "timestamp", "timestamptz"))
+    if function == "timestamptz" and count == 2 and args[1].kind == "integer":  # noqa: PLR2004
+        return _to_precision(function, args[0], args[1])
     if function in ("timestamp", "timestamptz", "datetime_pl") and count == 2:  # noqa: PLR2004
         return _with_time(function, args[0], args[1])
     if function == "timedate_pl" and count == 2:  # noqa: PLR2004
@@ -716,7 +738,49 @@ def folded(sql: str, tree: exp.Expr | None) -> exp.Expr | None:
         else:
             node.replace(answer)
         wrote = True
+    for node in list(parsed.find_all(exp.Func)):
+        wrote = _extreme_values_held(node) or wrote
     return parsed if wrote else tree
+
+
+def _extreme_values_held(node: exp.Expr) -> bool:
+    """max or min of a column of a VALUES list of timestamp (or timestamptz) literals, one outside
+    1900..2299 or an infinity, where the statement reads that column nowhere else: each row's
+    literal written as DateTime64(6, 'UTC') of its microseconds, whose order ClickHouse compares
+    as it is, so the aggregate answers exactly. Whether any was written."""
+    from provisa.transpiler import zoned_instants
+    from provisa.transpiler.pg_literals import values_cast
+
+    call = trino.called(node)
+    if call is None or not call[0] & {"max", "min"} or len(call[1]) != 1:
+        return False
+    column = call[1][0].unnest()
+    if not isinstance(column, exp.Column) or current_zone.get() is not None:
+        return False
+    cast = values_cast(column)
+    values = None if cast is None else cast.find_ancestor(exp.Values)
+    select = column.find_ancestor(exp.Select)
+    if cast is None or values is None or select is None:
+        return False
+    uses = [c for c in select.find_all(exp.Column) if c.name == column.name]
+    if any(use is not column for use in uses):
+        return False  # read elsewhere too: a calendar function there reads ClickHouse's own
+    index = [c.name for c in values.args["alias"].columns].index(column.name)
+    rows = [row.expressions[index] for row in values.expressions]
+    read = [_argument(row) for row in rows]
+    kinds = {a.kind for a in read if a is not None and not a.null}
+    if None in read or not kinds or not kinds <= {"timestamp", "timestamptz"} or len(kinds) > 1:
+        return False
+    if not any(isinstance(a.value, (int, Infinite)) and _outside(a.value, False) for a in read):  # type: ignore[union-attr]
+        return False
+    for row, arg in zip(rows, read):
+        assert arg is not None
+        if arg.null:
+            continue
+        held_form = _stamp(min(call[0] & {"max", "min"}), arg.value)  # type: ignore[arg-type]
+        held_form.meta[zoned_instants.WRITTEN] = True
+        row.replace(held_form)
+    return True
 
 
 #: What a statement this reads holds: a year outside 1900..2299 (of five digits, or of four before

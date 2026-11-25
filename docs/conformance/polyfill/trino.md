@@ -10,7 +10,7 @@ When Trino is a serving engine reading a source it attaches directly, it may pus
 
 Rules on this page: 500, of which 312 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-177 of the grid's 633 features are native on Trino and left out.
+178 of the grid's 634 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>

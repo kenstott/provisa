@@ -497,8 +497,14 @@ def test_a_numeric_of_up_to_38_digits_each_side_is_held(runtime, sql, want):
     assert _rows(runtime, sql) == [want]
 
 
-def test_a_reversed_range_of_a_wide_numeric_raises_22000(runtime):
+def test_a_reversed_range_of_a_wide_numeric_raises_22000():
+    """A range of literals is read as the statement is transpiled: range_serialize's error."""
+    from provisa.core.pg_error import PostgresError
+
     sql = f"SELECT pg_catalog.numrange('{_BIG}'::numeric, 2.5::numeric, '[)'::text) AS v"
-    got, text = _sqlstate(runtime, sql)
-    assert got == "22000", text
-    assert "range lower bound must be less than or equal to range upper bound" in text
+    with pytest.raises(PostgresError) as raised:
+        transpile(sql, "clickhouse", generated=False)
+    assert (raised.value.sqlstate, str(raised.value)) == (
+        "22000",
+        "range lower bound must be less than or equal to range upper bound",
+    )

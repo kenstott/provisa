@@ -134,6 +134,8 @@ _OFFSET_MINUTES_ADDED = {
 #: infinity its sentinel (DATEVAL_NOEND/NOBEGIN, DT_NOEND/NOBEGIN). ``{v}``: the value.
 #: A date's ISO text of a year past 9999, which the bound reader (datetime) does not read.
 _FAR_DATE = re.compile(r"\s*\d{5,}-\d{2}-\d{2}\s*", re.ASCII)
+#: A date's or a timestamp's text of a year past 9999.
+_FAR_YEAR = re.compile(r"\s*\d{5,}-", re.ASCII)
 _DUCKDB_STORED = {
     "date": (
         "(CASE WHEN {v} = CAST('infinity' AS DATE) THEN 2147483647 "
@@ -650,6 +652,9 @@ class _Writer:
         self.dialect = dialect
         #: Whether the engine holds a date or timestamp BC, so a bound BC is read (REQ-2236).
         self.bc = dialect == "duckdb"
+        #: Whether a literal bound BC is read (REQ-2236): DuckDB holds it; ClickHouse's literal
+        #: range is written from its text, a bound it holds none of refused by name.
+        self.reads_bc = dialect in ("duckdb", "clickhouse")
         #: A fold's item already read (ClickHouse): its text's form, and the range read of it.
         self._preparsed: dict[str, _R] = {}
         self.serial = 0
@@ -706,8 +711,20 @@ class _Writer:
                 # (one past it raised PostgreSQL's 22008 when the statement was read).
                 return self.bound_from_text(_string(written.strip()), rtype.element)
         if written is not None:
-            return self._literal_bound(pg_range.read_element(rtype, written, self.bc), rtype)
+            self.refuse_far(rtype, node)
+            return self._literal_bound(pg_range.read_element(rtype, written, self.reads_bc), rtype)
         return self.typed(node, rtype.element)
+
+    def refuse_far(self, rtype: RangeType, *args: exp.Expr) -> None:
+        """On ClickHouse, PostgreSQL's 0A000 for a constant bound of a year past 9999, which the
+        bound reader holds no value of (REQ-2236: a bound, stated and enforced, not 22007)."""
+        if self.dialect != "clickhouse" or rtype.element not in range_rows.HELD_ON_CLICKHOUSE:
+            return
+        for arg in args:
+            if _null_value(arg) or not _constant(arg):
+                continue
+            if _FAR_YEAR.match(_constant_text(arg)) is not None:
+                raise PostgresError("0A000", range_rows.outside_held(rtype.name))
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
         if self.dialect == "clickhouse" and not _held_by_clickhouse(value, rtype.element):
@@ -975,14 +992,17 @@ class _Writer:
         if _null_value(flags):
             raise PostgresError("22000", "range constructor flags argument must not be null")
         known = _string_literal(flags)
+        if known is None and _constant(flags) and not _null_value(flags):
+            known = _constant_text(flags)  # '[)'::text: its text
         if known is not None and known not in ("[)", "(]", "[]", "()"):
             raise PostgresError("42601", "invalid range bound flags")
         if known is not None and all(_constant(a) for a in (low_arg, high_arg)):
+            self.refuse_far(rtype, low_arg, high_arg)
             return self.literal(
                 pg_range.make_range(
                     rtype,
-                    _constant_element(low_arg, rtype, self.bc),
-                    _constant_element(high_arg, rtype, self.bc),
+                    _constant_element(low_arg, rtype, self.reads_bc),
+                    _constant_element(high_arg, rtype, self.reads_bc),
                     known[0] == "[",
                     known[1] == "]",
                 )
