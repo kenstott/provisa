@@ -134,7 +134,20 @@ def test_a_form_is_postgresql_syntax(form: Any):
 def test_only_a_replay_put_an_engine_tweak_beside_a_form():
     # date_pli and date_mii: the edge measure's 'infinity'::date, which PostgreSQL 17.11 answers as
     # it is and DuckDB's day count read as a finite day past the range.
-    assert set(DUCKDB_TWEAKS) == {"int8div", "date_pli", "date_mii"}
+    # A date against a timestamp or timestamptz: the edge measure's '5874897-12-31'::date, which
+    # PostgreSQL 17.11 compares as its overflow past the timestamps (run 45511817771) and DuckDB's
+    # cast of it to a timestamp raised.
+    crossed = {
+        f"{left}_{name}_{right}"
+        for left, right in (
+            ("date", "timestamp"),
+            ("timestamp", "date"),
+            ("date", "timestamptz"),
+            ("timestamptz", "date"),
+        )
+        for name in ("eq", "ne", "lt", "le", "gt", "ge", "cmp")
+    }
+    assert set(DUCKDB_TWEAKS) == {"int8div", "date_pli", "date_mii"} | crossed
 
 
 @pytest.mark.parametrize(

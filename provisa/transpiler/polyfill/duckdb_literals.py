@@ -28,6 +28,7 @@ import re
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
@@ -120,7 +121,11 @@ def refuse_past_stamps(pg_sql: str) -> None:
     PostgreSQL reads a literal when it parses the statement (a range's bound reader among them)."""
     if _MENTIONED.search(pg_sql) is None:
         return
-    for node in sqlglot.parse_one(pg_sql, read="postgres").find_all(exp.Cast):
+    try:
+        tree = sqlglot.parse_one(pg_sql, read="postgres")
+    except SqlglotError:
+        return  # a text sqlglot cannot read: the transpile that follows reports it
+    for node in tree.find_all(exp.Cast):
         try:
             past_stamp(node, _DUCKDB)
         except Refused as refused:
