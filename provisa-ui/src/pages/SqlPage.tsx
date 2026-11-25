@@ -23,7 +23,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { explainSql, runSqlEach, splitSql } from "../api/admin";
 import type { ExplainResponse } from "../api/admin";
-import type { ResultRedirect } from "../types/resultRedirect";
 import {
   useRoles,
   useDomains,
@@ -54,6 +53,11 @@ import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
 import { withTimeTravel } from "./sql/timeTravelArgs";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+
+// A tab's result fields that are absent until it runs, held as one constant each so the grid sees
+// the same value from render to render.
+const NO_COLUMN_TYPES: Record<string, string | null> = {};
+const NO_STATEMENTS: StatementResult[] = [];
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -185,20 +189,26 @@ export function SqlPage() {
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
-  const [resultColumns, setResultColumns] = useState<string[]>(active0.resultColumns);
-  // REQ-1937: the columns' SQL types from the last run. A tab restored from storage has none, and
-  // its filters are typed from the values.
-  const [resultColumnTypes, setResultColumnTypes] = useState<Record<string, string | null>>({});
-  // REQ-1937: whether the rows held are part of a longer answer, decided when they arrived.
-  const [resultPartial, setResultPartial] = useState<boolean>(active0.resultPartial ?? false);
-  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
-  const [resultError, setResultError] = useState(active0.resultError);
-  // The last run's result landed in the results store (not kept with the tab: a run tells it).
-  const [resultRedirect, setResultRedirect] = useState<ResultRedirect | null>(null);
-  // A batch's results, one per statement; the result* state above is the one shown.
-  const [statements, setStatements] = useState<StatementResult[]>(active0.statements ?? []);
-  const [statementIndex, setStatementIndex] = useState(active0.statementIndex ?? 0);
-  const [execMs, setExecMs] = useState<number | null>(active0.execMs);
+  // Each tab owns its results; what is shown is the active tab's. A run writes into the tab that
+  // started it and the kept results hydrate into each tab's own slot, so a result that arrives
+  // late (a run finishing after a switch, the kept results read after a hand-off) never lands
+  // under another tab's query.
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId)!, [tabs, activeTabId]);
+  const resultColumns = activeTab.resultColumns;
+  const resultRows = activeTab.resultRows;
+  const resultError = activeTab.resultError;
+  const execMs = activeTab.execMs;
+  // A tab that has not run has none of the fields below (SqlTab marks them optional): no redirect,
+  // one answer rather than a batch, rows that are the whole answer. REQ-1937: a tab restored from
+  // storage has no column types, and its filters are typed from the values.
+  const resultRedirect = activeTab.resultRedirect ?? null;
+  const resultColumnTypes = activeTab.resultColumnTypes ?? NO_COLUMN_TYPES;
+  const resultPartial = activeTab.resultPartial ?? false;
+  const statements = activeTab.statements ?? NO_STATEMENTS;
+  const statementIndex = activeTab.statementIndex ?? 0;
+  const updateTab = useCallback((id: string, patch: Partial<SqlTab>) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
   const [statsEnabled, setStatsEnabled] = useState(() => getStored("sql:statsEnabled") === "true");
   const [queryStats, setQueryStats] = useState<unknown>(null);
   // REQ-1519: the plan Analyze last described, and the reason a description was refused.
@@ -219,7 +229,15 @@ export function SqlPage() {
   const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
-  const resultsHydrated = useRef(false);
+  // The tabs that ran since mount: the kept results read at mount are older than their runs.
+  const ranTabs = useRef(new Set<string>());
+  // The active tab and the editor's text, for the kept results that arrive after a change.
+  const activeTabIdRef = useRef(activeTabId);
+  const sqlTextRef = useRef(sqlText);
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+    sqlTextRef.current = sqlText;
+  }, [activeTabId, sqlText]);
   // Each tab's query that produced the results it holds: kept with them, so they are restored
   // only beside it.
   const resultQueries = useRef(new Map<string, string>());
@@ -229,41 +247,35 @@ export function SqlPage() {
     let cancelled = false;
     Promise.all(
       initialTabs.tabs.map((t) =>
-        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => {
-          const r = restored(k, t.sqlText);
-          if (r && k) resultQueries.current.set(t.id, k.query);
-          return { id: t.id, r };
-        }),
+        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => ({ id: t.id, k })),
       ),
     ).then((loaded) => {
       if (cancelled) return;
-      const byId = new Map(loaded.map((x) => [x.id, x.r]));
+      const byId = new Map(loaded.map((x) => [x.id, x.k]));
+      // Each tab's kept result fills only that tab's slot, and only beside the query that is its
+      // text now (the active tab's is the editor's) and while the tab has not run since: a run
+      // since mount is newer than anything kept.
+      const editorText = sqlTextRef.current;
+      const editorTab = activeTabIdRef.current;
       setTabs((prev) =>
         prev.map((t) => {
-          const r = byId.get(t.id);
-          return r
-            ? {
-                ...t,
-                resultColumns: r.columns,
-                resultRows: r.rows,
-                resultError: r.error,
-                resultPartial: r.partial ?? false,
-                statements: r.statements,
-                statementIndex: r.statementIndex,
-              }
-            : t;
+          const k = byId.get(t.id);
+          const r = ranTabs.current.has(t.id)
+            ? null
+            : restored(k, t.id === editorTab ? editorText : t.sqlText);
+          if (!r || !k) return t;
+          resultQueries.current.set(t.id, k.query);
+          return {
+            ...t,
+            resultColumns: r.columns,
+            resultRows: r.rows,
+            resultError: r.error,
+            resultPartial: r.partial ?? false,
+            statements: r.statements,
+            statementIndex: r.statementIndex,
+          };
         }),
       );
-      const ar = byId.get(initialTabs.activeId);
-      if (ar) {
-        setResultColumns(ar.columns);
-        setResultRows(ar.rows);
-        setResultPartial(ar.partial ?? false);
-        setResultError(ar.error);
-        setStatements(ar.statements ?? []);
-        setStatementIndex(ar.statementIndex ?? 0);
-      }
-      resultsHydrated.current = true;
     });
     return () => {
       cancelled = true;
@@ -469,51 +481,15 @@ export function SqlPage() {
 
   // ----- Query tab actions -----
   const mergeActive = useCallback(
-    (): SqlTab[] =>
-      tabs.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              sqlText,
-              nlText,
-              resultColumns,
-              resultRows,
-              resultPartial,
-              resultError,
-              execMs,
-              statements,
-              statementIndex,
-            }
-          : t,
-      ),
-    [
-      tabs,
-      activeTabId,
-      sqlText,
-      nlText,
-      resultColumns,
-      resultRows,
-      resultPartial,
-      resultError,
-      execMs,
-      statements,
-      statementIndex,
-    ],
+    (): SqlTab[] => tabs.map((t) => (t.id === activeTabId ? { ...t, sqlText, nlText } : t)),
+    [tabs, activeTabId, sqlText, nlText],
   );
 
   const loadTabIntoWorkingState = useCallback(
     (t: SqlTab) => {
       setSqlText(t.sqlText);
       setNlText(t.nlText);
-      setResultColumns(t.resultColumns);
-      setResultRows(t.resultRows);
-      setResultPartial(t.resultPartial ?? false);
-      setResultError(t.resultError);
       setStopped(false);
-      setResultRedirect(null);
-      setStatements(t.statements ?? []);
-      setStatementIndex(t.statementIndex ?? 0);
-      setExecMs(t.execMs);
       setQueryStats(null);
       setNlError("");
       resetGrid();
@@ -581,7 +557,7 @@ export function SqlPage() {
   const handleDetach = useCallback(async () => {
     const { text, isError } = await fetchExpansion();
     if (isError) {
-      setResultError(text);
+      updateTab(activeTabId, { resultError: text });
       return;
     }
     let pretty = text;
@@ -598,7 +574,7 @@ export function SqlPage() {
     setTabs([...merged, tab]);
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
-  }, [fetchExpansion, mergeActive, loadTabIntoWorkingState]);
+  }, [fetchExpansion, mergeActive, loadTabIntoWorkingState, updateTab, activeTabId]);
 
   const closeTab = useCallback(
     (id: string) => {
@@ -735,20 +711,24 @@ export function SqlPage() {
   }, [sqlText, role]);
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
+  // Written into the tab whose result it is (a run's own tab, though another may be active by now).
   const showStatement = useCallback(
-    (list: StatementResult[], index: number, query: string) => {
+    (tabId: string, list: StatementResult[], index: number, query: string) => {
       const r = list[index];
-      setStatementIndex(index);
-      setResultColumns(r.columns);
-      setResultColumnTypes(r.columnTypes);
-      setResultRows(r.rows);
-      setResultError(r.error);
-      setResultRedirect(r.redirect);
-      setResultPartial(r.partial);
-      resetGrid();
-      resultQueries.current.set(activeTabId, query);
+      updateTab(tabId, {
+        statements: list,
+        statementIndex: index,
+        resultColumns: r.columns,
+        resultColumnTypes: r.columnTypes,
+        resultRows: r.rows,
+        resultError: r.error,
+        resultRedirect: r.redirect,
+        resultPartial: r.partial,
+      });
+      if (tabId === activeTabIdRef.current) resetGrid();
+      resultQueries.current.set(tabId, query);
       idbSet(
-        tabResultsKey(activeTabId),
+        tabResultsKey(tabId),
         kept<SqlResults>(query, {
           columns: r.columns,
           rows: r.rows,
@@ -759,19 +739,21 @@ export function SqlPage() {
         }),
       );
     },
-    [activeTabId, resetGrid],
+    [updateTab, resetGrid],
   );
 
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
     const aliased = autoAliasConflicts(sqlText);
     if (aliased !== sqlText) setSqlText(aliased);
+    // The run's results go to the tab that started it, whichever is active when they arrive.
+    const tabId = activeTabId;
+    ranTabs.current.add(tabId);
     const controller = new AbortController();
     runRef.current = controller;
     setStopped(false);
     setRunning(true);
-    setResultError("");
-    setResultRedirect(null);
+    updateTab(tabId, { resultError: "", resultRedirect: null });
     const t0 = performance.now();
     let run: Awaited<ReturnType<typeof runSqlEach>>;
     try {
@@ -800,23 +782,25 @@ export function SqlPage() {
     if (runRef.current !== controller) return;
     runRef.current = null;
     const durationMs = Math.round(performance.now() - t0);
-    setExecMs(durationMs);
+    updateTab(tabId, { execMs: durationMs });
     setQueryStats(run.provisa_stats ?? null);
     const results = run.answers.map(toStatementResult);
-    setStatements(results);
-    if (results.length > 0) showStatement(results, 0, aliased);
+    if (results.length > 0) showStatement(tabId, results, 0, aliased);
     else {
       // Refused as a whole, or a batch of no statements (comments alone).
-      setStatementIndex(0);
-      setResultError(run.error ?? "");
-      setResultColumns([]);
-      setResultColumnTypes({});
-      setResultRows([]);
-      setResultPartial(false);
-      resetGrid();
-      resultQueries.current.set(activeTabId, aliased);
+      updateTab(tabId, {
+        statements: [],
+        statementIndex: 0,
+        resultError: run.error ?? "",
+        resultColumns: [],
+        resultColumnTypes: NO_COLUMN_TYPES,
+        resultRows: [],
+        resultPartial: false,
+      });
+      if (tabId === activeTabIdRef.current) resetGrid();
+      resultQueries.current.set(tabId, aliased);
       idbSet(
-        tabResultsKey(activeTabId),
+        tabResultsKey(tabId),
         kept<SqlResults>(aliased, { columns: [], rows: [], error: run.error ?? "" }),
       );
     }
@@ -845,6 +829,7 @@ export function SqlPage() {
     resetGrid,
     boundParams,
     showStatement,
+    updateTab,
   ]);
 
   // Stop the run still out: its request is aborted, and the results say it was stopped.
@@ -1113,7 +1098,7 @@ export function SqlPage() {
               // A batch's statements are held only after a run or a restore, each of which keeps
               // the tab's query.
               onStatement={(i) =>
-                showStatement(statements, i, resultQueries.current.get(activeTabId)!)
+                showStatement(activeTabId, statements, i, resultQueries.current.get(activeTabId)!)
               }
               grid={grid}
               errors={errors}
