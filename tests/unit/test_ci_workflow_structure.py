@@ -1955,6 +1955,55 @@ def test_the_nixos_guests_node_is_the_nvmrc_major(nix_file):
     assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
 
 
+def test_nixos_vm_staging_reads_source_from_host_not_9p_mount():
+    """The nixos-vm action must not use 'cp -r /mnt/src' in the guest.
+
+    /mnt/src is a virtio-9p mount.  GNU cp calls readlink() on each symlink it
+    encounters while traversing the tree; the 9P kernel driver returns ELOOP for
+    relative symlinks that traverse multiple directory levels, so every VM leg
+    fails with "Too many levels of symbolic links".  The staging step must read
+    the source tree on the HOST runner (native FS) and push it into the guest —
+    e.g. via a tar pipe — so that readlink() never runs against the 9P mount.
+
+    # REQ-1900 (NixOS install tested in CI)
+    """
+    action = yaml.safe_load((REPO / ".github" / "actions" / "nixos-vm" / "action.yml").read_text())
+    steps = action.get("runs", {}).get("steps", [])
+    for step in steps:
+        run = step.get("run", "")
+        assert "cp -r /mnt/src" not in run, (
+            f"Step '{step.get('name')}': 'cp -r /mnt/src' in the guest fails with ELOOP "
+            f"on virtio-9p for relative symlinks.  Stage from the host side instead "
+            f"(e.g. tar -C \"$GITHUB_WORKSPACE\" -cf - . | ssh … vm 'mkdir ~/provisa && tar …')."
+        )
+
+
+def test_tracked_symlinks_targets_exist():
+    """Every tracked symlink must point to an existing file or directory."""
+    result = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "-s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    broken: list[str] = []
+    for line in result.stdout.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) == 4 and parts[0] == "120000":
+            _mode, sha, _stage, path = parts
+            target = subprocess.run(
+                ["git", "-C", str(REPO), "cat-file", "blob", sha],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            link_path = REPO / path
+            resolved = (link_path.parent / target).resolve()
+            if not resolved.exists():
+                broken.append(f"{path} -> {target} (resolved: {resolved})")
+    assert not broken, "broken symlink targets:\n" + "\n".join(broken)
+
+
 def test_the_uis_engines_admit_the_nvmrc():
     import json
 
