@@ -33,12 +33,20 @@
 
       # The same host as the NixOS workflow's QEMU guest (.github/actions/nixos-vm with
       # flake: packaging/nixos/host), where it checks the provisa service. The workflow logs in as
-      # `ci` with the key it writes beside this file; the service's own user has no login.
+      # `ci` with the key it writes beside this file; the service's own user has no login. Its
+      # service runs the AppImage the workflow's commit builds, which the workflow puts beside
+      # this file, in place of the pinned release: CI tests what ships.
       nixosConfigurations.ci = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = host ++ [
           "${provisa}/packaging/nixos/vm-guest.nix"
           {
+            # The version is digit-first, so the name parses as "provisa": the unfree name the
+            # root flake allows.
+            services.provisa.package = provisa.packages.x86_64-linux.default.override {
+              releaseVersion = "0-this-commit";
+              releaseAppImage = ./Provisa.AppImage;
+            };
             users.users.ci = {
               isNormalUser = true;
               extraGroups = [ "wheel" ];

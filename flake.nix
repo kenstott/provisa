@@ -40,12 +40,9 @@
       apps = lib.genAttrs releaseSystems (
         system:
         let
-          provisa = self.packages.${system}.default;
-          run = (pkgsFor system).writeShellScriptBin "provisa-run" ''
-            # REQ-1900: `nix run` with no command starts Provisa.
-            if [ "$#" -eq 0 ]; then set -- start; fi
-            exec ${lib.getExe provisa} "$@"
-          '';
+          run = (pkgsFor system).callPackage ./packaging/nixos/app.nix {
+            provisa = self.packages.${system}.default;
+          };
         in
         {
           default = {

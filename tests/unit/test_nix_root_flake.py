@@ -92,17 +92,30 @@ def test_the_root_flake_offers_the_package_the_app_and_the_shell():
     for output in ("packages = ", "apps = ", "devShells = "):
         assert output in _FLAKE, output
     assert 'type = "app";' in _FLAKE
+    # The app is a file of its own that takes the package, so CI runs the same app on its build.
+    assert (
+        "callPackage ./packaging/nixos/app.nix {\n            provisa = self.packages.${system}.default;"
+        in _FLAKE
+    )
     # With no command, the app starts Provisa.
-    assert 'if [ "$#" -eq 0 ]; then set -- start; fi' in _FLAKE
+    app = (_NIXOS / "app.nix").read_text()
+    assert 'if [ "$#" -eq 0 ]; then set -- start; fi' in app
+    assert 'exec ${lib.getExe provisa} "$@"' in app
 
 
 def test_the_package_is_a_pinned_release_asset_run_in_an_fhs_environment():
-    (version,) = re.findall(r'version = "(\d+\.\d+\.\d+-alpha\.\d+)";', _PACKAGE)
+    # The AppImage is an argument whose default is the pinned release asset: a user's flake gets
+    # that release, and CI passes the AppImage its commit builds.
+    (version,) = re.findall(r'releaseVersion \? "(\d+\.\d+\.\d+-alpha\.\d+)",', _PACKAGE)
+    assert version
+    assert "releaseAppImage ? fetchurl {" in _PACKAGE
     assert (
-        "https://github.com/kenstott/provisa/releases/download/v${version}/"
-        "Provisa-v${version}-linux-x86_64.AppImage"
+        "https://github.com/kenstott/provisa/releases/download/v${releaseVersion}/"
+        "Provisa-v${releaseVersion}-linux-x86_64.AppImage"
     ) in _PACKAGE
     assert re.search(r'hash = "sha256-[A-Za-z0-9+/]{43}=";', _PACKAGE)
+    assert "version = releaseVersion;" in _PACKAGE
+    assert "src = releaseAppImage;" in _PACKAGE
     assert "appimageTools.wrapType2" in _PACKAGE
     # The libraries the sandbox provides are the ones the NixOS settings give nix-ld.
     assert "(import ./preinstall.nix { inherit pkgs; }).programs.nix-ld.libraries" in _PACKAGE
@@ -138,7 +151,7 @@ def test_the_nixos_workflow_runs_the_flake_on_stock_nixos_until_provisa_answers(
     assert vm["with"]["system"] == "bare"
     assert "packaging/nixos/vm-run 'packaging/nixos/ci/flake-runs.sh'" in _runs("flake-run")
     script = (_NIXOS / "ci" / "flake-runs.sh").read_text()
-    assert 'nix_ run --print-build-logs "$flake" <' in script
+    assert 'nix_ run --print-build-logs "${flake[@]}" <' in script
     assert "http://127.0.0.1:8000/health" in script
 
 
@@ -150,8 +163,42 @@ def test_nix_run_runs_from_the_home_directory_not_the_checkout():
     named by the checkout's path."""
     script = (_NIXOS / "ci" / "flake-runs.sh").read_text()
     body = script.split("rm -rf ~/.provisa", 1)
-    assert 'flake="$PWD"' in body[0] and "\ncd ~\n" in body[0]
-    assert " . " not in body[1] and 'nix_ run "$flake" -- status' in body[1]
+    assert 'checkout="$PWD"' in body[0] and "\ncd ~\n" in body[0]
+    assert " . " not in body[1] and 'nix_ run "${flake[@]}" -- status' in body[1]
+
+
+_THIS_COMMIT = (_NIXOS / "this-commit" / "flake.nix").read_text()
+_OVERRIDE = (
+    ".default.override {\n"
+    '{indent}releaseVersion = "0-this-commit";\n'
+    "{indent}releaseAppImage = ./Provisa.AppImage;\n"
+)
+
+
+def test_nix_run_runs_the_root_flakes_app_on_the_appimage_this_commit_builds():
+    """The pinned release lacks what this commit fixes, so a leg on it tests the past, not what
+    ships. The leg's flake is the root flake's package with the commit's AppImage (put beside it by
+    the workflow) passed for the release, and the root flake's own app.nix on that package."""
+    assert 'inputs.provisa.url = "github:kenstott/provisa";' in _THIS_COMMIT
+    assert _OVERRIDE.replace("{indent}", " " * 8) in _THIS_COMMIT
+    assert 'callPackage "${provisa}/packaging/nixos/app.nix" { provisa = package; }' in _THIS_COMMIT
+    assert "apps.${system}.default = {" in _THIS_COMMIT
+    script = (_NIXOS / "ci" / "flake-runs.sh").read_text()
+    assert '"path:$checkout/packaging/nixos/this-commit"' in script
+    assert '--override-input provisa "path:$checkout"' in script
+    assert '[ ! -f "$checkout/packaging/nixos/this-commit/Provisa.AppImage" ]' in script
+
+
+def test_the_module_legs_guest_runs_the_appimage_this_commit_builds():
+    """The `ci` host the workflow boots sets the service's package to the root flake's package on
+    the commit's AppImage; `host`, the system a user's host mirrors, keeps the module's default,
+    the pinned release, which the flake job's build of it fetches and checks against its hash."""
+    host, ci = _HOST.split("nixosConfigurations.ci =", 1)
+    assert "services.provisa.package" not in host and "Provisa.AppImage" not in host
+    assert (
+        "services.provisa.package = provisa.packages.x86_64-linux"
+        + _OVERRIDE.replace("{indent}", " " * 14)
+    ) in ci
 
 
 def test_the_service_has_a_runtime_directory_of_its_own():

@@ -2235,6 +2235,41 @@ def test_the_nixos_installer_has_the_plugin_jars_its_trino_mounts():
     assert "if" not in jobs["trino-plugins"]
 
 
+@pytest.mark.parametrize(
+    ("job", "flake_dir"),
+    [("flake-run", "packaging/nixos/this-commit"), ("flake-module", "packaging/nixos/host")],
+)
+def test_the_nixos_flake_legs_run_the_appimage_this_commit_builds(job, flake_dir):
+    """The `nix run` and module legs ran package.nix's pinned release, which lacked this commit's
+    fixes, so they tested the past. Each now waits for appimage-build and puts its artifact in the
+    flake directory its VM or `nix run` reads by path, before the guest boots."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    upload = next(
+        s for s in jobs["appimage-build"]["steps"] if s.get("uses") == "actions/upload-artifact@v4"
+    )
+    assert "appimage-build" in _needed(jobs, job)
+    steps = jobs[job]["steps"]
+    [download] = [i for i, s in enumerate(steps) if s.get("uses") == "actions/download-artifact@v4"]
+    assert steps[download]["with"] == {"name": upload["with"]["name"], "path": flake_dir}
+    assert upload["with"]["path"].endswith("/Provisa.AppImage")
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert download < boot
+    assert f"/{flake_dir}/Provisa.AppImage" in (REPO / ".gitignore").read_text()
+
+
+def test_the_nixos_flake_job_still_fetches_the_pinned_release():
+    """Users' flakes run the pinned release. The flake job builds the importing host, whose
+    service's package is the pinned release asset fetched against its hash; it takes no built
+    AppImage."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    assert "appimage-build" not in _needed(jobs, "flake")
+    assert all(s.get("uses") != "actions/download-artifact@v4" for s in jobs["flake"]["steps"])
+    assert any(
+        "nixosConfigurations.host.config.system.build.toplevel" in (s.get("run") or "")
+        for s in jobs["flake"]["steps"]
+    )
+
+
 def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
     """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
     fetch would be a second, uncached path to Maven Central."""

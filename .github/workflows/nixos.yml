@@ -6,7 +6,7 @@ name: NixOS
 # Playwright's Chromium, the ODBC driver, the JDK, and AskAmerica's bundled pgwire server. The container-backed lanes' images are the
 # same on any distro, so only the core lane is repeated here, for the host processes it starts.
 # The repository's root flake is tested here too: its checks, a host that imports its module and
-# runs its service, and `nix run` of its release package.
+# runs its service, and `nix run` of its package, both of these on the AppImage this commit builds.
 #
 # A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
 # in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
@@ -346,14 +346,23 @@ jobs:
             --override-input provisa "git+file://$GITHUB_WORKSPACE" \
             --no-write-lock-file --no-link --print-build-logs
 
-  # `nix run` of the root flake on stock NixOS (`bare`: no nix-ld, no Docker): the release
-  # package starts, and its API and UI answer.
+  # `nix run` of the root flake on stock NixOS (`bare`: no nix-ld, no Docker): the package
+  # starts, and its API and UI answer. The package runs the AppImage this commit builds, not the
+  # pinned release (packaging/nixos/this-commit): the leg tests what ships. The pinned release
+  # is fetched, and its hash checked, where the flake job builds the importing host.
   flake-run:
     name: nix run (bare host)
+    needs: appimage-build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+
+      # Before the VM boots: the guest copies the checkout, this file included.
+      - uses: actions/download-artifact@v4
+        with:
+          name: provisa-appimage
+          path: packaging/nixos/this-commit
 
       - uses: ./.github/actions/nixos-vm
         with:
@@ -365,13 +374,21 @@ jobs:
       - *console
 
   # A user's host (packaging/nixos/host) that enables the root flake's nixosModules.provisa: its
-  # provisa service runs the release as the unprivileged service user, and the API and UI answer.
+  # provisa service runs the package as the unprivileged service user, and the API and UI answer.
+  # The guest's package runs the AppImage this commit builds, not the pinned release.
   flake-module:
     name: module service (user host)
+    needs: appimage-build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+
+      # Beside the host flake, which the VM build reads by path: its `ci` system's package.
+      - uses: actions/download-artifact@v4
+        with:
+          name: provisa-appimage
+          path: packaging/nixos/host
 
       - uses: ./.github/actions/nixos-vm
         with:
