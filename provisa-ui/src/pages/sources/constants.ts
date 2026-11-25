@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import generated from "../../generated/sourceTypes.json";
+
 // REQ-929: human labels for the source change-signal options.
 export const CHANGE_SIGNAL_LABELS: Record<string, string> = {
   ttl: "ttl (timer)",
@@ -39,198 +41,25 @@ export const MAPPING_TYPES = new Set([
   "prometheus",
 ]);
 
-export const SOURCE_TYPES = [
-  // Subscriptions
-  {
-    value: "govdata",
-    label: "AskAmerica (US Government Data)",
-    category: "Subscriptions",
-    defaultPort: 0,
-  },
-  { value: "kaggle", label: "Kaggle", category: "Subscriptions", defaultPort: 0 },
-  // RDBMS
-  // `managed` names the hosted services that ARE this type, so a picker reader looking for their
-  // provider finds it; shown in the type dropdown only, the source's own type stays "PostgreSQL".
-  {
-    value: "postgresql",
-    label: "PostgreSQL",
-    managed: "RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon",
-    category: "RDBMS",
-    defaultPort: 5432,
-  },
-  { value: "mysql", label: "MySQL", category: "RDBMS", defaultPort: 3306 },
-  { value: "singlestore", label: "SingleStore", category: "RDBMS", defaultPort: 3306 },
-  { value: "mariadb", label: "MariaDB", category: "RDBMS", defaultPort: 3306 },
-  { value: "sqlserver", label: "SQL Server", category: "RDBMS", defaultPort: 1433 },
-  { value: "oracle", label: "Oracle", category: "RDBMS", defaultPort: 1521 },
-  { value: "duckdb", label: "DuckDB", category: "RDBMS", defaultPort: 0 },
-  // Exasol's documented default client-connection port (jdbc:exa / provisa/executor/drivers, added
-  // REQ-1731) is 8563.
-  { value: "exasol", label: "Exasol", category: "RDBMS", defaultPort: 8563 },
-  // SAP HANA's HDB SQL port for the default tenant (instance 00): 3<instance>15 — 39015.
-  { value: "saphana", label: "SAP HANA", category: "RDBMS", defaultPort: 39015 },
-  // REQ-950: Postgres-wire-compatible — reuses the postgres driver/dialect/Trino connector, same
-  // SIMPLE_RDBMS shape as postgresql itself.
-  { value: "cockroachdb", label: "CockroachDB", category: "RDBMS", defaultPort: 26257 },
-  { value: "yugabytedb", label: "YugabyteDB", category: "RDBMS", defaultPort: 5433 },
-  { value: "greenplum", label: "Greenplum", category: "RDBMS", defaultPort: 5432 },
-  // REQ-950: MySQL-wire-compatible — reuses the mysql driver/dialect/Trino connector.
-  { value: "tidb", label: "TiDB", category: "RDBMS", defaultPort: 4000 },
-  // REQ-899: reached via a DuckDB community extension, not a Trino connector or direct driver —
-  // DuckDB-only. Firebird's DSN shape (firebird://user:pass@host:port/path) matches SIMPLE_RDBMS
-  // exactly; `database` carries the .fdb file path in the container, same as the source-of-truth
-  // integration test (tests/integration/test_firebird_source_e2e.py).
-  { value: "firebird", label: "Firebird", category: "RDBMS", defaultPort: 3050 },
-  // REQ-1731: a HiveServer2 endpoint reached directly over Thrift (impyla) — distinct from
-  // `hive`/`hive_s3` (Trino-scanned lake storage). Read-then-land like any other RDB-shaped
-  // source; SIMPLE_RDBMS's host/port/database/username/password shape matches exactly.
-  { value: "hiveserver2", label: "HiveServer2", category: "RDBMS", defaultPort: 10000 },
-  // REQ-2191: a database with no named type, at its own SQLAlchemy URL (JdbcSourceFields).
-  { value: "jdbc", label: "JDBC", category: "RDBMS", defaultPort: 0 },
-  // Cloud DW
-  { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
-  { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
-  { value: "athena", label: "Amazon Athena", category: "Cloud DW", defaultPort: 443 }, // REQ-1981
-  { value: "databricks", label: "Databricks", category: "Cloud DW", defaultPort: 443 },
-  { value: "redshift", label: "Redshift", category: "Cloud DW", defaultPort: 5439 },
-  // Fabric/Synapse: T-SQL over TDS/ODBC (provisa/executor/drivers/mssql_warehouse.py); same wire
-  // protocol/default port as sqlserver.
-  { value: "fabric", label: "Microsoft Fabric Warehouse", category: "Cloud DW", defaultPort: 1433 },
-  { value: "synapse", label: "Azure Synapse SQL", category: "Cloud DW", defaultPort: 1433 },
-  // REQ-1998: a MotherDuck database, attached in place by the DuckDB engine (md:<database>).
-  { value: "motherduck", label: "MotherDuck", category: "Cloud DW", defaultPort: 0 },
-  // Analytics / OLAP
-  { value: "clickhouse", label: "ClickHouse", category: "Analytics", defaultPort: 8123 },
-  { value: "elasticsearch", label: "Elasticsearch", category: "Analytics", defaultPort: 9200 },
-  { value: "pinot", label: "Apache Pinot", category: "Analytics", defaultPort: 8099 },
-  { value: "druid", label: "Apache Druid", category: "Analytics", defaultPort: 8082 },
-  { value: "trino", label: "Trino / Presto", category: "Analytics", defaultPort: 8080 },
-  // Data Lake
-  { value: "delta_lake", label: "Delta Lake", category: "Data Lake", defaultPort: 0 },
-  { value: "iceberg", label: "Apache Iceberg", category: "Data Lake", defaultPort: 0 },
-  { value: "hive", label: "Hive Metastore", category: "Data Lake", defaultPort: 9083 },
-  // REQ-229: a Hive lake whose table data lives on S3 object storage — same Thrift metastore
-  // endpoint shape as `hive` (host/port), but the type itself DECLARES S3 storage
-  // (TrinoHiveS3Connector always wires Trino's native S3 filesystem; there is no hadoop/local
-  // choice like plain `hive` offers).
-  { value: "hive_s3", label: "Hive on S3", category: "Data Lake", defaultPort: 9083 },
-  // NoSQL
-  { value: "mongodb", label: "MongoDB", category: "NoSQL", defaultPort: 27017 },
-  // REQ-1982: reached at its account endpoint, so no port.
-  { value: "cosmosdb", label: "Azure Cosmos DB", category: "NoSQL", defaultPort: 0 },
-  // REQ-1983: reached at its URL, which carries its port.
-  { value: "qdrant", label: "Qdrant", category: "NoSQL", defaultPort: 0 },
-  { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
-  { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  // Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a sandboxed
-  // worker.
-  { value: "node", label: "Node.js", category: "Code", defaultPort: 0 },
-  { value: "python", label: "Python", category: "Code", defaultPort: 0 },
-  { value: "go", label: "Go", category: "Code", defaultPort: 0 },
-  { value: "rust", label: "Rust", category: "Code", defaultPort: 0 },
-  // REQ-2225: one annotated PySpark script run on a Spark cluster; a built-in type, not a connector.
-  { value: "spark", label: "Spark", category: "Code", defaultPort: 0 },
-  // Graph
-  { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
-  { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
-  // File
-  { value: "sqlite", label: "SQLite", category: "File", defaultPort: 0 },
-  { value: "csv", label: "CSV File", category: "File", defaultPort: 0 },
-  { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
-  {
-    value: "files",
-    label: "File Crawler (XLSX/DOCX/MD/CSV/Parquet/JSON, etc.)",
-    category: "File",
-    defaultPort: 0,
-  },
-  // REQ-1996: the lines of log files a path or glob matches, in a format of the server's.
-  { value: "logs", label: "Log files", category: "File", defaultPort: 0 },
-  // Other
-  { value: "google_sheets", label: "Google Sheets", category: "Other", defaultPort: 0 },
-  { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
-  // REQ-899/1097: an Arrow Flight server reached via DuckDB's airport community extension, not a
-  // Trino connector or direct driver — DuckDB-only. Host+port only (no auth/database — the
-  // connector's DDL is `ATTACH '<location>' AS ... (TYPE AIRPORT)`, and the location derives from
-  // host+port when no explicit override is set — connector_duckdb.py's DuckDBAirportConnector).
-  { value: "airport", label: "Airport (Arrow Flight)", category: "Other", defaultPort: 50051 },
-  // API
-  { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
-  { value: "dbt", label: "dbt", category: "API", defaultPort: 0 }, // REQ-2228
-  { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
-  { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
-  // Streaming
-  { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
-  // REQ-1739: derives ws://host:port when no explicit override is set — push_wiring.py's
-  // websocket branch (base_url override, else host+port), same override-else-derive shape
-  // airport/neo4j already use.
-  { value: "websocket", label: "WebSocket Feed", category: "Streaming", defaultPort: 0 },
-  // REQ-1739: derives http(s)://host:port+path (or federation_hints.feed_url override) —
-  // provisa/api/data/subscribe.py's _build_rss_feed_url.
-  { value: "rss", label: "RSS / Atom Feed", category: "Streaming", defaultPort: 0 },
-  // REQ-1739: push receiver — external services POST JSON to /data/ingest/{source_id}/{table}.
-  // Needs no connection fields at the source level (provisa/ingest/router.py).
-  { value: "ingest", label: "Ingest (HTTP Push Receiver)", category: "Streaming", defaultPort: 0 },
-  // Enterprise SaaS
-  { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
-  { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
-  { value: "servicenow", label: "ServiceNow", category: "Enterprise", defaultPort: 0 }, // REQ-1954
-  { value: "jira", label: "Jira", category: "Enterprise", defaultPort: 0 }, // REQ-2069
-  { value: "quickbooks", label: "QuickBooks Online", category: "Enterprise", defaultPort: 0 }, // REQ-2197
-  // REQ-1947
-  {
-    value: "cloudops",
-    label: "Cloud Inventory (Azure / AWS / GCP)",
-    category: "Enterprise",
-    defaultPort: 0,
-  },
-  // REQ-1923, REQ-1994: the mail, calendars and tasks of a Google account, read through Google's
-  // own API; calendar events and tasks are also written back.
-  {
-    value: "google_workspace",
-    label: "Google Workspace (Gmail)",
-    category: "Enterprise",
-    defaultPort: 0,
-  },
-  // REQ-1923, REQ-1994: the mail, calendars and tasks of a Microsoft 365 account, read through
-  // Microsoft Graph; calendar events and tasks are also written back.
-  {
-    value: "microsoft_365",
-    label: "Microsoft 365 (Outlook, Exchange)",
-    category: "Enterprise",
-    defaultPort: 0,
-  },
-  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
-  // and credential handling already supplied. The user sees the brand as an ordinary type.
-  { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },
-  { value: "gitlab", label: "GitLab", category: "Enterprise", defaultPort: 443 },
-  { value: "shopify", label: "Shopify", category: "Enterprise", defaultPort: 443 },
-  // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
-  { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
-  // REQ-2265: a governance catalog read live, carried by the OpenAPI source with its spec read
-  // from the customer's own instance.
-  { value: "openmetadata", label: "OpenMetadata", category: "Enterprise", defaultPort: 443 },
-  { value: "datahub", label: "DataHub", category: "Enterprise", defaultPort: 443 },
-  // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
-  { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
-  // REQ-1923: carried by the SPARQL source, with the Wikidata query service as its endpoint.
-  { value: "wikidata", label: "Wikidata", category: "Graph", defaultPort: 443 },
-  { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
-  // Data Quality (REQ-1443) — a checker scans a governed table through a Provisa pgwire endpoint,
-  // whose host, port, database and account its steward enters like any database's (#276). soda is Elastic
-  // License 2.0 (self-host only, config/capabilities.yaml cloud_eligible: false) — hidden on a
-  // hosted plane at the point this constant is consumed for the dropdown (SourcesPage.tsx
-  // typeSelectData), never omitted here, since self-hosted still needs it.
-  { value: "soda", label: "Soda (Data Quality)", category: "Data Quality", defaultPort: 5439 },
-  {
-    value: "great_expectations",
-    label: "Great Expectations (Data Quality)",
-    category: "Data Quality",
-    defaultPort: 5439,
-  },
-  // REQ-1934: built in — a schedule that profiles its member tables; no connection of its own.
-  { value: "data_profiler", label: "Data Profiler", category: "Data Quality", defaultPort: 0 },
-  // Public Data
-];
+/** One entry of the Sources type picker. */
+export interface SourceTypeOffer {
+  value: string;
+  label: string;
+  category: string;
+  defaultPort: number;
+  /** The hosted services that ARE this type, shown in the type dropdown only. */
+  managed?: string;
+}
+
+// REQ-2114: the picker is the server's source-type descriptor (provisa/api/admin/source_types.py),
+// written for the UI by scripts/gen_source_types.py; Polly's source_types tool reads the same one.
+export const SOURCE_TYPES: SourceTypeOffer[] = generated.types.map((t) => ({
+  value: t.name,
+  label: t.label,
+  category: t.category,
+  defaultPort: t.default_port,
+  ...(t.managed ? { managed: t.managed } : {}),
+}));
 
 export const API_AUTH_TYPES = [
   { value: "none", label: "No Auth" },
@@ -244,54 +73,14 @@ export const API_AUTH_TYPES = [
 export const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
 
 // File-based source types (path only, no host/port/auth)
-export const FILE_SOURCES = new Set(["sqlite", "csv", "parquet"]);
+export const FILE_SOURCES = new Set<string>(generated.families.fileSources);
 export const DB_DESCRIPTION_TYPES = new Set(["postgresql", "mysql", "mariadb", "sqlserver"]);
 
 // Which source types use simple host/port/db/user/pass
-export const SIMPLE_RDBMS = new Set([
-  "postgresql",
-  "mysql",
-  "singlestore",
-  "mariadb",
-  "sqlserver",
-  "oracle",
-  "clickhouse",
-  "druid",
-  "mongodb",
-  "cassandra",
-  "redis",
-  "firebird",
-  "cockroachdb",
-  "yugabytedb",
-  "greenplum",
-  "tidb",
-  // REQ-994: a remote Trino/Presto coordinator read as a SOURCE (distinct from Trino as Provisa's
-  // own federation engine) via the generic SQLAlchemy trino dialect — host/port/database(=catalog)/
-  // username/password, same shape as any other generic RDB. Previously selectable in the type
-  // dropdown but rendered zero connection fields (executor/drivers/registry.py:85-89 has a real
-  // driver; registration always failed on an empty host).
-  "trino",
-  // Exasol: host/port/user/password/database(=schema) via pyexasol
-  // (provisa/executor/drivers/exasol.py's ExasolDriver.connect). Same shape as any other generic
-  // RDB; an optional federation_hints["tls_fingerprint"] pin (models.py's Source.jdbc_url) is
-  // handled separately below, not part of this simple shape.
-  "exasol",
-  // REQ-1731: HiveServer2 over Thrift (impyla) — host/port/database/username/password, same shape
-  // as any other generic RDB.
-  "hiveserver2",
-  // REQ-1753: saphana (hana+hdbcli via sqlalchemy-hana) — host/port/username/password/database,
-  // same shape as any other generic RDB. Its SourceType enum member and dropdown entry were added
-  // earlier this session, but this set was never updated — the Sources form rendered zero
-  // connection fields for it, so a saphana registration could never even be filled in, let alone
-  // submitted. Verified live this session against a real HANA instance once added here.
-  "saphana",
-  // #276: a data-quality checker dials a Provisa pgwire endpoint, entered as any database is.
-  "soda",
-  "great_expectations",
-]);
+export const SIMPLE_RDBMS = new Set<string>(generated.families.simpleRdbms);
 
 // Data lake types
-export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3"]);
+export const DATA_LAKE = new Set<string>(generated.families.dataLake);
 
 // Host+port only, no database/username/password — the connector's location string derives from
 // host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).
@@ -304,33 +93,15 @@ export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3"]);
 // form rendered ZERO connection fields for it (the same class of bug REQ-1753 fixed for saphana),
 // so a kafka registration could never be filled in. push_wiring.py's kafka branch builds
 // bootstrap_servers from host+port (see that file), same shape as websocket's ws://host:port.
-export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "kafka"]);
+export const HOST_PORT_ONLY = new Set<string>(generated.families.hostPortOnly);
 
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
 // pure push receiver.
-export const NO_CONNECTION_TYPES = new Set([
-  "ingest",
-  "dbt", // REQ-2228: its spec is its manifest (DbtFormSection)
-  "data_profiler", // REQ-1934
-  "node", // REQ-1984: its code, not a connection (CodeSourceFields)
-  "python", // REQ-1993: the same
-  "go", // REQ-2200: the same
-  "rust", // REQ-2227: the same
-  "spark", // REQ-2225: its script and cluster (ConnectorSetupFields)
-]);
+export const NO_CONNECTION_TYPES = new Set<string>(generated.families.noConnection);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and
 // classified as its carrier; the source row records the brand in federation_hints.brand.
-export const BRAND_CARRIER: Record<string, string> = {
-  github: "graphql",
-  gitlab: "graphql",
-  shopify: "graphql",
-  stripe: "openapi",
-  openmetadata: "openapi", // REQ-2265
-  datahub: "openapi", // REQ-2265: its OpenAPI v3 spec
-  wikipedia: "files", // REQ-1960
-  wikidata: "sparql",
-};
+export const BRAND_CARRIER: Record<string, string> = generated.brandCarrier;
 
 // REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
 // by default: a brand asks for what its own service takes, and one read without a credential
@@ -338,16 +109,7 @@ export const BRAND_CARRIER: Record<string, string> = {
 // an OAuth client ID and secret exchanged for a token at the brand's token endpoint (REQ-2265,
 // the OpenAPI source's oauth2_client_credentials auth).
 export type BrandAuth = "token" | "client_credentials" | "none";
-export const BRAND_AUTH: Record<string, BrandAuth> = {
-  github: "token",
-  gitlab: "token",
-  shopify: "token",
-  stripe: "token",
-  openmetadata: "token", // REQ-2265: a bot's JWT token
-  datahub: "token", // REQ-2265: a personal access token or a service account's token
-  wikipedia: "none",
-  wikidata: "none",
-};
+export const BRAND_AUTH = generated.brandAuth as Record<string, BrandAuth>;
 
 // REQ-1923: what a brand reached at a per-customer address asks for besides its credential,
 // sent as the registration's `setup` under each field's `name` (the brand's setup fields,
@@ -420,10 +182,7 @@ export function brandSetupDefaults(brand: string): Record<string, string> {
 }
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
-export const TYPE_ALIAS: Record<string, string> = {
-  graphql: "graphql_remote",
-  grpc: "grpc_remote",
-};
+export const TYPE_ALIAS: Record<string, string> = generated.typeAlias;
 
 export const FILE_TRANSPORTS = [
   { value: "file://", label: "file:// (file mount / local disk)", needsAuth: false as const },

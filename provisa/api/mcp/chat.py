@@ -301,6 +301,30 @@ _TOOLS: list[Any] = [
             "properties": {"search": {"type": "string"}},
         },
     },
+    # REQ-2114 (amended 2026-11-24): the product's own source-type registry.
+    {
+        "name": "source_types",
+        "description": (
+            "The source types the product offers, as the Sources page's type picker offers them "
+            "(brands, aliases, code sources and Spark included). With no `type`: every type's "
+            "name, label, category, backend type, brand and how it is created. With `type` (a "
+            "picker name, a backend type or a brand): that type in full -- how it is created "
+            "(admin_mutation createSource, or the admin_request REST route its form posts to), "
+            "and each field it takes: where it goes (a SourceInput argument, a key of "
+            "mappingJson or federationHintsJson, a key of the REST body, or a brand's setup "
+            "value), whether it is required, and whether it is a secret. Read it before "
+            "proposing any source."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "e.g. postgresql, github, graphql_remote, spark",
+                }
+            },
+        },
+    },
     {
         "name": "discover_relationships",
         "description": (
@@ -1145,8 +1169,23 @@ _SYSTEM = (
     "admin_rest_routes and reached with admin_request. 'Create any relationships to <table>': "
     "run discover_relationships for it, show the candidates with present_choice (mode 'multi'), "
     "and accept each the user picks with admin_request POST "
-    "/admin/discover/candidates/{id}/accept. A source's createSource input: at minimum id and "
-    "type; a CSV or Parquet source given its file by download sets download_from and leaves path "
+    "/admin/discover/candidates/{id}/accept. "
+    "SOURCE TYPES: the types a source can be, and the fields each takes, are the product's own "
+    "registry, read with source_types -- never from memory and never from this prompt. Before "
+    "proposing a source, call source_types with its type and build the change from what it "
+    "returns: create through admin_mutation createSource with the descriptor's shape (its "
+    "SourceInput arguments, and its mappingJson and federationHintsJson keys as JSON object "
+    "strings), or, where the descriptor names a REST route (an OpenAPI, GraphQL or gRPC source, "
+    "a brand, dbt), through admin_request to that route with the descriptor's body; a type "
+    "created on its form (Kaggle) gets its form's link. Ask the user for each required field the "
+    "descriptor lists that they have not given. NEVER ask for a secret value in the chat, never "
+    "accept one typed there, and never put one in a change: a field the descriptor marks secret "
+    "is set to a ${secret:NAME} reference (a name for it you agree with the user), and the user "
+    "enters the value itself in the Sources form or in the organization's secrets. If the user "
+    "types a credential into the chat anyway, do not use it: tell them to enter it in the form "
+    "or the secrets instead. "
+    "A source's createSource input: at minimum id and "
+    "type (the descriptor's backend_type); a CSV or Parquet source given its file by download sets download_from and leaves path "
     "out, and register_table_from_file with table_domain_id registers its table with it. A "
     "registerTable input: source_id, domain_id, schema_name, table_name and columns (each at "
     "least name and visible_to); never set alias -- the server derives the right SQL name. When "
@@ -1600,6 +1639,19 @@ async def _execute_tool(
         return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
 
 
+def _source_types(name: str | None) -> dict:
+    """REQ-2114: the product's source-type descriptor (provisa/api/admin/source_types.py): every
+    offered type in brief, or one in full. An unknown name is refused by name."""
+    from provisa.api.admin import source_types as st
+
+    if not name:
+        return {
+            "types": [st.summary(d) for d in st.source_types()],
+            "secret_reference": st.SECRET_REFERENCE,
+        }
+    return {**st.as_json(st.source_type(name)), "secret_reference": st.SECRET_REFERENCE}
+
+
 async def _dispatch_tool(
     state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
 ) -> Any:
@@ -1655,6 +1707,8 @@ async def _dispatch_tool(
         if request is None:
             raise ValueError("admin_rest_routes reads the app, and this chat carries no request")
         return admin_api.rest_routes(request.app, args.get("search"))
+    if name == "source_types":  # REQ-2114
+        return _source_types(args.get("type"))
     if name == "discover_relationships":
         if request is None:
             raise ValueError("discovery runs as the user, and this chat carries no request")
