@@ -2218,6 +2218,23 @@ def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none()
     assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
 
 
+def test_the_nixos_installer_has_the_plugin_jars_its_trino_mounts():
+    """Run 45655242557: install.sh on the `ci` guest starts the compose stack from the checkout the
+    guest copied at boot, and docker-compose.core.yml mounts trino/plugins/<name> into Trino. The
+    jars are not in git, so each mount was an empty directory, Trino refused it and never became
+    healthy. The installer job restores them before the guest boots, and the priming job runs on
+    every dispatch, not only when container lanes are asked for."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    steps = jobs["installer"]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert names.index("Restore Trino plugins") < boot
+    assert "trino-plugins" in _needed(jobs, "installer")
+    assert "if" not in jobs["trino-plugins"]
+
+
 def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
     """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
     fetch would be a second, uncached path to Maven Central."""
