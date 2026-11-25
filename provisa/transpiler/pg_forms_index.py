@@ -21,8 +21,7 @@ written per engine with provisa.transpiler.pg_forms_hash's vocabulary."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from provisa.transpiler import pg_forms_geometric as geometric
 from provisa.transpiler.pg_forms_hash import ENGINES, Engine
 from provisa.transpiler.pg_forms_types import REFUSED, Form, refused
 
@@ -198,68 +197,6 @@ def _oidvector_cmp(e: Engine) -> str:
     )
 
 
-#: A number as float8out writes it, the only text a form may hand back as it read it.
-_SHOWN_AS_POSTGRESQL_DOES = "'^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$'"
-_POINT_NUMBER = "'-?[0-9.]+(?:e[-+]?[0-9]+)?'"
-
-
-@dataclass(frozen=True)
-class _Lists:
-    """An engine's spelling of what reading a polygon's numbers needs."""
-
-    tokens: str
-    number: str
-    highest: str
-    lowest: str
-    keep: str  # list, name, condition
-    matches: str
-
-
-_LISTS = {
-    "duckdb": _Lists(
-        "regexp_extract_all({}, {})",
-        "CAST({} AS DOUBLE)",
-        "list_max",
-        "list_min",
-        "list_filter({0}, LAMBDA {1} : {2})",
-        "regexp_matches({}, {})",
-    ),
-    "trino": _Lists(
-        "regexp_extract_all({}, {})",
-        "CAST({} AS DOUBLE)",
-        "array_max",
-        "array_min",
-        "filter({0}, {1} -> {2})",
-        "regexp_like({}, {})",
-    ),
-}
-
-
-def _polygon_box(e: Engine, lists: _Lists) -> str:
-    """spg_poly_quad_compress: the bounding box, (high x, high y),(low x, low y). A polygon's own
-    number is the answer's, so one PostgreSQL would write otherwise is refused by name."""
-    tokens = lists.tokens.format(e.text.format(e.value), _POINT_NUMBER)
-
-    def of(side: int, chosen: str) -> str:
-        indexes = e.zero_to.format(e.quotient.format(e.size.format("_n"), 2))
-        numbers = e.map.format(indexes, "_j", lists.number.format(f"_n[2 * _j + {side}]"))
-        is_it = f"{lists.number.format('_y')} = {chosen}({numbers})"
-        return lists.keep.format("_n", "_y", is_it) + "[1]"
-
-    box = (
-        f"'(' || {of(1, lists.highest)} || ',' || {of(2, lists.highest)} || '),(' "
-        f"|| {of(1, lists.lowest)} || ',' || {of(2, lists.lowest)} || ')'"
-    )
-    shown = lists.matches.format("_y", _SHOWN_AS_POSTGRESQL_DOES)
-    every = f"{e.size.format(lists.keep.format('_n', '_y', f'NOT {shown}'))} = 0"
-    message = refused("0A000", f"'spg_poly_quad_compress {REFUSED}'", "VARCHAR")
-    return _strict(
-        "value",
-        "VARCHAR",
-        e.let.format("_n", tokens, f"CASE WHEN {every} THEN {box} ELSE {message} END"),
-    )
-
-
 #: The forms written per engine, strict, and what a NULL argument answers as.
 PER_ENGINE_RESULTS = {
     "btoidvectorcmp": "INT",
@@ -275,8 +212,9 @@ def per_engine() -> dict[tuple[str, str], dict[str, str]]:
         ("btoidvectorcmp", "a, b"): {name: _oidvector_cmp(e) for name, e in ENGINES},
         ("bttidcmp", "a, b"): {name: _tid_cmp(e) for name, e in ENGINES},
         ("btcharcmp", "a, b"): {name: _char_cmp(e) for name, e in ENGINES},
-        # ClickHouse's is the polyfill grid's row (provisa.transpiler.polyfill.clickhouse).
+        # make_bound_box's box, as poly_box answers it. ClickHouse's is the polyfill grid's row
+        # (provisa.transpiler.polyfill.clickhouse).
         ("spg_poly_quad_compress", "value"): {
-            name: _polygon_box(e, _LISTS[name]) for name, e in ENGINES if name in _LISTS
+            e.name: geometric.bounding_box(e, "value") for e in (geometric.DUCKDB, geometric.TRINO)
         },
     }

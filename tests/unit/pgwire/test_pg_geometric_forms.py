@@ -160,29 +160,63 @@ def test_postgresql_refuses_as_postgresql_refuses(sql: str, raised: str):
 
 
 @pytest.mark.parametrize(
-    "name, sql",
+    "sql, want",
     [
-        ("circle_add_pt", "circle_add_pt('<(0,0),inf>'::circle, '(1,1)'::point)"),
-        ("circle_same", "circle_same('<(nan,0),1>'::circle, '<(0,0),1>'::circle)"),
-        ("path_add_pt", "path_add_pt('[(0,nan)]'::path, '(1,1)'::point)"),
-        ("lseg_eq", "lseg_eq('[(inf,0),(1,1)]'::lseg, '[(0,0),(1,1)]'::lseg)"),
-        ("poly_npoints", "npoints('((-inf,0),(1,1))'::polygon)"),
-        ("poly_contain", "poly_contain('((inf,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)"),
-        ("poly_contained", "poly_contained('((0,0),(1,1))'::polygon, '((nan,0),(1,1))'::polygon)"),
+        # What PostgreSQL 17 answers: float8in reads nan, inf and their spellings in any case.
+        ("SELECT circle_add_pt('<(0,0),inf>'::circle, '(1,1)'::point)", "<(1,1),Infinity>"),
+        ("SELECT circle_same('<(nan,0),1>'::circle, '<(0,0),1>'::circle)", False),
+        ("SELECT circle_same('<(NaN,0),1>'::circle, '<(nan,0),1>'::circle)", True),
+        ("SELECT path_add_pt('[(0,nan)]'::path, '(1,1)'::point)", "[(1,NaN)]"),
+        ("SELECT lseg_eq('[(inf,0),(1,1)]'::lseg, '[(0,0),(1,1)]'::lseg)", False),
+        ("SELECT lseg_eq('[(0,0),(NaN,1)]'::lseg, '[(0,0),(NaN,1)]'::lseg)", True),
+        ("SELECT npoints('((-inf,0),(1,1))'::polygon)", 2),
+        ("SELECT poly_contain('((inf,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)", False),
+        ("SELECT poly_contained('((0,0),(1,1))'::polygon, '((nan,0),(1,1))'::polygon)", False),
+        ("SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "(Infinity,2)"),
+        ("SELECT point('NaN'::double precision, '-Infinity'::double precision)", "(NaN,-Infinity)"),
+        ("SELECT box_center('(NaN,1),(0,0)'::box)", "(NaN,0.5)"),
+        ("SELECT bound_box('(NaN,1),(0,0)'::box, '(3,4),(0,0)'::box)", "(NaN,4),(0,0)"),
+        ("SELECT point_eq('(NaN,1)'::point, '(NaN,1)'::point)", True),
+        ("SELECT point_vert('(NaN,1)'::point, '(NaN,1)'::point)", False),
+        ("SELECT box_contain_pt('(NaN,1),(0,0)'::box, '(NaN,1)'::point)", False),
+        ("SELECT close_pl('(NaN,1)'::point, '{1,-1,0}'::line)", None),
+        ("SELECT dist_ps('(1,2)'::point, '[(-Infinity,0),(1,1)]'::lseg)", 2.0),
+        ("SELECT point_distance('(Infinity,-inf)'::point, '(1,2)'::point)", float("inf")),
+        ("SELECT spg_poly_quad_compress('((0,0),(NaN,1),(1,1))'::polygon)", "(NaN,1),(0,0)"),
     ],
 )
-def test_a_shape_not_finite_is_refused_by_name(name: str, sql: str):
-    with pytest.raises(duckdb.Error, match=f"{name} does not read this value"):
-        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb", generated=False))
+def test_a_shape_not_finite_answers_as_postgresql_does(sql: str, want: Any):
+    got = duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
+    assert got == want or (isinstance(want, float) and same(got, str(want)))
 
 
-def test_a_shape_with_an_infinity_is_refused_by_name():
-    with pytest.raises(duckdb.Error, match="point_add does not read this value"):
+def test_a_line_of_one_point_of_nan_is_refused_as_postgresql_refuses():
+    with pytest.raises(duckdb.Error, match="22023: invalid line specification"):
         duckdb.connect().execute(
-            transpile(
-                "SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "duckdb", generated=False
-            )
+            transpile("SELECT line('(NaN,1)'::point, '(NaN,1)'::point)", "duckdb", generated=False)
         )
+
+
+@pytest.mark.parametrize(
+    "sql, raised",
+    [
+        ("SELECT polygon('-2147483648'::integer, '<(0,0),1>'::circle)", "22023: must request"),
+        ("SELECT polygon(2147483647::integer, '<(0,0),1>'::circle)", "54000: too many points"),
+    ],
+)
+def test_polygon_of_a_count_past_its_bounds_raises_as_postgresql_does(sql: str, raised: str):
+    with pytest.raises(duckdb.Error, match=raised):
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
+
+
+def test_a_polygon_holding_an_infinity_in_another_is_refused_by_name():
+    """An edge with an infinite end holds every point (lseg_contain_point), which the containment
+    form's splits do not reproduce: it is refused once the boxes pass."""
+    sql = (
+        "SELECT poly_contain('((0,0),(Infinity,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon)"
+    )
+    with pytest.raises(duckdb.Error, match="poly_contain does not read this value"):
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
 
 
 @pytest.mark.parametrize(
