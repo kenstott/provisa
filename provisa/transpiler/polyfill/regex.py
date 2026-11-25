@@ -163,6 +163,81 @@ def _ch_empty_pattern(value: exp.Expr, said: exp.Expr, every: bool) -> exp.Expr:
     )
 
 
+#: A pattern that matches the empty text, every match on ClickHouse (REQ-2236): PostgreSQL's g flag
+#: replaces an empty match and copies the next character before it searches again, where
+#: ClickHouse's replaceRegexpAll stops at the first empty match (regexp_replace('abc', 'x*', '-',
+#: 'g') is -a-b-c- on PostgreSQL, -abc on ClickHouse). Where the pattern is a literal that holds no
+#: word boundary (\\b, \\B) and the replacement a literal that holds no backslash, PostgreSQL's
+#: search is written here: at each character from the first, the pattern's match there ($a, the
+#: pattern anchored; $b, the same with its ^ and \\A matching nowhere, past the first) is replaced,
+#: and an empty match copies the character after it; a character where nothing matches is copied.
+#: $v is the text, $p the pattern, $r the replacement's literal.
+_CH_EMPTY_MATCH_EVERY = (
+    "if(match('', $p), if($v IS NULL, NULL, tupleElement(arrayFold("
+    "(_acc, _i, _l) -> if(_i < tupleElement(_acc, 2), _acc, if(_l < 0, "
+    "tuple(concat(tupleElement(_acc, 1), substringUTF8(ifNull($v, ''), _i, 1)), toUInt64(_i + 1)), "
+    "tuple(concat(tupleElement(_acc, 1), $r, "
+    "if(_l = 0, substringUTF8(ifNull($v, ''), _i, 1), '')), toUInt64(_i + greatest(_l, 1))))), "
+    "range(1, toUInt64(lengthUTF8(ifNull($v, ''))) + 2), "
+    "arrayMap(_i -> if(if(_i = 1, match(substringUTF8(ifNull($v, ''), _i), $a), "
+    "match(substringUTF8(ifNull($v, ''), _i), $b)), toInt64(lengthUTF8(if(_i = 1, "
+    "extract(substringUTF8(ifNull($v, ''), _i), $ga), "
+    "extract(substringUTF8(ifNull($v, ''), _i), $gb)))), -1), "
+    "range(1, toUInt64(lengthUTF8(ifNull($v, ''))) + 2)), "
+    "tuple('', toUInt64(1))), 1)), replaceRegexpAll($v, $p, $r))"
+)
+#: A pattern that matches the empty text where no form above writes PostgreSQL's search: the
+#: pattern is no literal, holds a word boundary, or the replacement is no literal or holds a
+#: backslash. It raises 0A000 when it matches the empty text, and is replaceRegexpAll otherwise.
+_CH_EMPTY_MATCH_RAISES = (
+    "if("
+    + ch_fail(
+        "0A000",
+        "regexp_replace() of a pattern that matches the empty text has no form on clickhouse",
+    ).format(condition="match('', $p)")
+    + " = 0, replaceRegexpAll($v, $p, $r), NULL)"
+)
+#: A word boundary: RE2 reads it in the text before the match, which the search here does not see.
+_WORD_BOUNDARY = re.compile(r"\\[bB]")
+#: An escape, a bracket expression, or a ^ or \\A: what the pattern past the first character is
+#: read in, its anchors at the start matching nowhere.
+_START_ANCHOR = re.compile(r"\\A|\\.|\[\^?\]?(?:\\.|\[:\w+:\]|[^\]])*\]|\^", re.DOTALL)
+#: What RE2 matches nowhere: a class of no character.
+_NOWHERE = "[^\\x00-\\x{10FFFF}]"
+
+
+def _past_the_start(pattern: str) -> str:
+    """``pattern`` read past the text's first character: a ^ or \\A matches nowhere."""
+    return _START_ANCHOR.sub(
+        lambda part: _NOWHERE if part.group() in ("^", "\\A") else part.group(), pattern
+    )
+
+
+def _ch_every(value: exp.Expr, pattern: exp.Expr, said: exp.Expr) -> exp.Expr:
+    """regexp_replace with the g flag on ClickHouse: replaceRegexpAll, or PostgreSQL's search where
+    the pattern matches the empty text (_CH_EMPTY_MATCH_EVERY, else _CH_EMPTY_MATCH_RAISES)."""
+    literal = isinstance(pattern, exp.Literal) and pattern.is_string
+    plain = isinstance(said, exp.Literal) and said.is_string and "\\" not in said.this
+    if not (literal and plain) or _WORD_BOUNDARY.search(pattern.this):
+        return graft(
+            replacement(_CH_EMPTY_MATCH_RAISES, "clickhouse", "f($v, $p, $r)"),
+            {"v": value, "p": pattern, "r": said},
+        )
+    rest = _past_the_start(pattern.this)
+    return graft(
+        replacement(_CH_EMPTY_MATCH_EVERY, "clickhouse", "f($v, $p, $r, $a, $b, $ga, $gb)"),
+        {
+            "v": value,
+            "p": pattern,
+            "r": said,
+            "a": exp.Literal.string(f"^(?:{pattern.this})"),
+            "b": exp.Literal.string(f"^(?:{rest})"),
+            "ga": exp.Literal.string(f"^((?:{pattern.this}))"),
+            "gb": exp.Literal.string(f"^((?:{rest}))"),
+        },
+    )
+
+
 def flagged(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """regexp_replace with PostgreSQL's flags read: the first match or every one, its case."""
     if not isinstance(node, exp.RegexpReplace):
@@ -178,6 +253,8 @@ def flagged(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return _ch_empty_pattern(value, replacement, every)
     if no_case:
         pattern = _no_case(pattern)
+    if every and dialect == "clickhouse":
+        return _ch_every(value, pattern, replacement)
     if every:
         return exp.RegexpReplace(this=value, expression=pattern, replacement=replacement)
     return _first_match(value, pattern, replacement, dialect)
@@ -197,6 +274,23 @@ _LIMITATIONS = {
             ),
             refusal(dialect),
         ),
+    )
+    + (
+        (
+            Limitation(
+                "With the g flag, a pattern that matches the empty text is searched as PostgreSQL "
+                "searches it (each empty match replaced, then the next character copied) where "
+                "the pattern is a literal holding no \\b or \\B and the replacement a literal "
+                "holding no backslash. Otherwise such a pattern raises 0A000 when it runs.",
+                Refusal(
+                    "0A000",
+                    "regexp_replace() of a pattern that matches the empty text has no form on "
+                    "clickhouse",
+                ),
+            ),
+        )
+        if dialect == "clickhouse"
+        else ()
     )
     for dialect in _FLAGS_READ_HERE
 }

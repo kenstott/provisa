@@ -727,6 +727,36 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT pg_catalog.regexp_replace('abc'::text, ''::text, 'x'::text, 'i') AS v", "xabc"),
     ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text, 'g') AS v", None),
     ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text) AS v", None),
+    # A pattern that is not empty but matches the empty text (REQ-2236): PostgreSQL's g flag
+    # replaces each empty match and goes on one character; ClickHouse's replaceRegexpAll stops at
+    # the first. The measure's edges, then anchors and the text's ends.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text, 'g'::text) AS v",
+        "abcaabcbabccabc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text, 'g'::text) AS v",
+        "abcabcbabccabc",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text) AS v", "abcabc"),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text) AS v", "abcbc"),
+    ("SELECT pg_catalog.regexp_replace('axxb'::text, 'x*'::text, '-'::text, 'g') AS v", "-a--b-"),
+    ("SELECT pg_catalog.regexp_replace('axx'::text, 'x*'::text, '-'::text, 'g') AS v", "-a--"),
+    ("SELECT pg_catalog.regexp_replace('aab'::text, 'a|'::text, '-'::text, 'g') AS v", "---b-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^'::text, '-'::text, 'g') AS v", "-abc"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '$'::text, '-'::text, 'g') AS v", "abc-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^|$'::text, '-'::text, 'g') AS v", "-abc-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^a*'::text, '-'::text, 'g') AS v", "-bc"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, 'b*$'::text, '-'::text, 'g') AS v", "abc-"),
+    (
+        "SELECT pg_catalog.regexp_replace('日本x'::text, 'x*'::text, '-'::text, 'g') AS v",
+        "-日-本--",
+    ),
+    ("SELECT pg_catalog.regexp_replace(''::text, 'x*'::text, '-'::text, 'g') AS v", "-"),
+    ("SELECT pg_catalog.regexp_replace(NULL::text, 'x*'::text, '-'::text, 'g') AS v", None),
+    ("SELECT pg_catalog.regexp_replace('aBc'::text, 'b*'::text, '-'::text, 'gi') AS v", "-a--c-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, 'b'::text, '-'::text, 'g') AS v", "a-c"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, lower('b'), '-'::text, 'g') AS v", "a-c"),
     ("SELECT pg_catalog.regexp_like('ABC'::text, 'b'::text, 'ic') AS v", "f"),
     ("SELECT pg_catalog.regexp_split_to_array('a1b22c'::text, '[0-9]+'::text) AS v", "{a,b,c}"),
     ("SELECT pg_catalog.regexp_split_to_array('aXbxc'::text, 'x'::text, 'i') AS v", "{a,b,c}"),
@@ -835,6 +865,17 @@ RAISED = [
     # extractAll skips an empty match too: regexp_substr('abc', 'b*') is '' on PostgreSQL.
     ("SELECT pg_catalog.regexp_substr('abc'::text, 'b*'::text) AS v", "0A000"),
     ("SELECT pg_catalog.regexp_substr('abc'::text, '^'::text) AS v", "0A000"),
+    # A pattern no form here searches as PostgreSQL does (no literal, or a replacement that is no
+    # literal) raises 0A000 where it matches the empty text.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, lower('')::text, 'abc'::text, 'g'::text) AS v",
+        "0A000",
+    ),
+    (
+        "SELECT pg_catalog.regexp_replace('abc'::text, 'x*'::text, c, 'g') AS v "
+        "FROM (VALUES ('a'::text)) AS t(c)",
+        "0A000",
+    ),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 1, 2) AS v", "22023"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 0) AS v", "22023"),
     ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'g') AS v", "22023"),

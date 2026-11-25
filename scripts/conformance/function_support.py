@@ -1805,19 +1805,20 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
     given = _given(fn)
     with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
     # An argument given literals of its own takes only the edges function_edges gives it there,
-    # first, so the round robin reaches them whatever the arity (an empty regexp pattern).
-    per_position = [
+    # all first, whatever the arity (a regexp's empty pattern, regexp_replace's empty matches).
+    own = [
         (i, function_edges.given_edges(fn.name, i))
         for i in sorted(given)
         if function_edges.given_edges(fn.name, i)
-    ] + [
+    ]
+    per_position = [
         (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
         for i, t in enumerate(fn.argtypes)
         if i not in given
     ]
     first = _rows(fn)[0]
     out = []
-    for position, edge in function_edges.chosen(per_position):
+    for position, edge in function_edges.chosen(own, per_position):
         argtype = fn.argtypes[position]
         row = list(first)
         row[position] = _cast(edge.literal, argtype)
