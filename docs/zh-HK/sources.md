@@ -26,7 +26,7 @@
 
 ## 所有數據來源 {: #all-sources }
 
-Provisa 註冊了 **82** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 82 種；索引即為計數。
+Provisa 註冊了 **83** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 83 種；索引即為計數。
 
 | # | 群組 | 數據來源類型 |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa 註冊了 **82** 種數據來源類型，即 Sources 表單所提供的�
 | 26–30 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [程式碼來源](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [推送接收器](#push-receiver) | `ingest` |
-| 48–50 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [API 數據來源](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [數據剖析器](#data-profiler) | `data_profiler` |
-| 81 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
+| 40–44 | [程式碼來源](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [推送接收器](#push-receiver) | `ingest` |
+| 49–51 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [API 數據來源](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [數據剖析器](#data-profiler) | `data_profiler` |
+| 82 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
 
 Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器。
 
