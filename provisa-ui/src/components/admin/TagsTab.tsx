@@ -648,30 +648,35 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
             ))}
           </Group>
           {!readOnly && (
-            <Group gap="xs" align="flex-end">
-              <TextInput
-                size="xs"
-                label={t("tagsTab.newValueLabel")}
-                value={newValue}
-                onChange={(e) => setNewValue(e.currentTarget.value)}
-                data-testid={`tags-new-value-${tag.id}`}
+            <FormLayout data-testid={`tags-new-value-form-${tag.id}`}>
+              <FormField size="medium">
+                <TextInput
+                  label={t("tagsTab.newValueLabel")}
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.currentTarget.value)}
+                  data-testid={`tags-new-value-${tag.id}`}
+                />
+              </FormField>
+              <FormField size="long">
+                <TextInput
+                  label={t("tagsTab.newValueDescriptionLabel")}
+                  value={newValueDescription}
+                  onChange={(e) => setNewValueDescription(e.currentTarget.value)}
+                  data-testid={`tags-new-value-desc-${tag.id}`}
+                />
+              </FormField>
+              <FormFooter
+                action={
+                  <Button
+                    disabled={newValue.trim() === ""}
+                    onClick={() => void handleAddValue(tag.id)}
+                    data-testid={`tags-add-value-${tag.id}`}
+                  >
+                    {t("tagsTab.addValue")}
+                  </Button>
+                }
               />
-              <TextInput
-                size="xs"
-                label={t("tagsTab.newValueDescriptionLabel")}
-                value={newValueDescription}
-                onChange={(e) => setNewValueDescription(e.currentTarget.value)}
-                data-testid={`tags-new-value-desc-${tag.id}`}
-              />
-              <Button
-                size="compact-xs"
-                disabled={newValue.trim() === ""}
-                onClick={() => void handleAddValue(tag.id)}
-                data-testid={`tags-add-value-${tag.id}`}
-              >
-                {t("tagsTab.addValue")}
-              </Button>
-            </Group>
+            </FormLayout>
           )}
         </Stack>
       )}

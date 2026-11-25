@@ -27,7 +27,7 @@ import { ContextPlaces } from "../ContextPlaces";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { DetailFields } from "../detail/DetailFields";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
@@ -124,16 +124,18 @@ export function ClassificationKindsTab({
 
   const form = (k: KindRow) => (
     <FormLayout data-testid="classification-kind-form">
-      <FormField size="medium">
-        <Switch
-          label={t("classificationKinds.enabledHeader")}
-          checked={draftEnabled}
-          disabled={saving}
-          onChange={(e) => setDraftEnabled(e.currentTarget.checked)}
-          aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
-          data-testid={`classification-kind-enabled-${k.id}`}
-        />
-      </FormField>
+      <FormChecks>
+        <FormField size="medium">
+          <Switch
+            label={t("classificationKinds.enabledHeader")}
+            checked={draftEnabled}
+            disabled={saving}
+            onChange={(e) => setDraftEnabled(e.currentTarget.checked)}
+            aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
+            data-testid={`classification-kind-enabled-${k.id}`}
+          />
+        </FormField>
+      </FormChecks>
       <FormFooter
         panel
         onSave={() => save(k)}
