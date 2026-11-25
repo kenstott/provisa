@@ -14,7 +14,7 @@
 // drawn only when the viewer holds that page's right.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "../test-utils/render";
+import { fireEvent, render, screen, within } from "../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { Metric, Tag } from "../types/admin";
 
@@ -138,6 +138,11 @@ describe("Context Tags (read-only TagsTab)", () => {
     expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
     expect(screen.queryByLabelText("Edit tag finance")).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
+    // Its panel reads the tag, with no Edit or Delete.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    expect(screen.getByTestId("tags-detail-finance")).toBeInTheDocument();
+    expect(screen.queryByTestId("tags-edit-finance")).toBeNull();
+    expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
   });
 
   it("names the places the viewer reads and only counts the rest", async () => {
@@ -160,12 +165,14 @@ describe("Context Tags (read-only TagsTab)", () => {
   it("draws links only when the viewer holds the target page's right", async () => {
     render(<TagsTab readOnly title="Tags" />);
     await screen.findByTestId("tags-where-finance");
+    // The tag's name in its panel links to its editor.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).not.toHaveAttribute("href");
     expect(screen.getByTestId("tags-where-finance-place")).not.toHaveAttribute("href");
     // The classification page is glossary_read's: the viewer may follow that link.
     expect(screen.getByTestId("tags-classification-pii-us_ssn")).toHaveAttribute(
       "href",
-      "/context/classification",
+      "/context/classification?kind=us_ssn",
     );
   });
 
@@ -173,6 +180,7 @@ describe("Context Tags (read-only TagsTab)", () => {
     auth.capabilities = ["glossary_read", "table_registration"];
     render(<TagsTab readOnly title="Tags" />);
     await screen.findByTestId("tags-where-finance");
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).toHaveAttribute(
       "href",
       "/admin/tags?tag=finance",

@@ -177,6 +177,20 @@ function pickDomain(id: string) {
   fireEvent.click(option);
 }
 
+// REQ-2277: a row opens the tag's panel; its Edit is in the panel's head.
+function openEdit(id: string) {
+  fireEvent.click(screen.getByTestId(`tags-row-${id}`));
+  fireEvent.click(screen.getByTestId(`tags-edit-${id}`));
+}
+
+// The panel's Delete asks in its confirmation dialog first.
+function deleteFromPanel(id: string) {
+  fireEvent.click(screen.getByTestId(`tags-row-${id}`));
+  fireEvent.click(screen.getByTestId(`tags-delete-${id}`));
+}
+const confirmDelete = async (id: string) =>
+  fireEvent.click(await screen.findByTestId(`tags-delete-${id}-confirm-dialog-confirm`));
+
 describe("TagsTab", () => {
   beforeEach(() => {
     upsertSpy.mockClear();
@@ -201,9 +215,7 @@ describe("TagsTab", () => {
 
   it("finds tags matching every word of the search, or either side of or", () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii or finance" } });
     expect(screen.getAllByTestId(/^tags-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
       "tags-row-pii",
@@ -219,8 +231,7 @@ describe("TagsTab", () => {
     expect(within(screen.getByTestId("tags-row-finance")).getByText("1")).toBeTruthy();
 
     // Switch to "table": both tags apply, system tag sorts first.
-    const bar = screen.getByTestId("tags-scope-bar");
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_table")));
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     const rows = screen.getAllByTestId(/^tags-row-/);
     // Derived tags are code-defined like system ones, so they sort with them, ahead of user tags.
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
@@ -231,38 +242,39 @@ describe("TagsTab", () => {
     expect(within(screen.getByTestId("tags-row-pii")).getByText("2")).toBeTruthy();
 
     // "relationship": neither applies.
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_relationship")));
+    fireEvent.click(screen.getByTestId("tags-scope-relationship"));
     expect(screen.queryAllByTestId(/^tags-row-/)).toHaveLength(0);
     expect(screen.getByText(t("tagsTab.empty"))).toBeTruthy();
 
     // "command" segment exists; only the command-scoped tag applies.
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_command")));
+    fireEvent.click(screen.getByTestId("tags-scope-command"));
     const cmdRows = screen.getAllByTestId(/^tags-row-/);
     expect(cmdRows.map((r) => r.getAttribute("data-testid"))).toEqual(["tags-row-audit"]);
   });
 
   it("shows a lock instead of edit/delete actions for a system tag", () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
-    const systemRow = screen.getByTestId("tags-row-pii");
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    const panel = screen.getByTestId("tags-detail-pii");
     expect(screen.queryByTestId("tags-delete-pii")).toBeNull();
-    expect(within(systemRow).getByLabelText(t("tagsTab.systemTag"))).toBeTruthy();
-    // The user tag keeps its delete action.
+    expect(screen.queryByTestId("tags-edit-pii")).toBeNull();
+    expect(screen.getByLabelText(t("tagsTab.systemTag"))).toBeTruthy();
+    expect(panel).toBeInTheDocument();
+    // The user tag's panel keeps its delete action.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-delete-finance")).toBeTruthy();
   });
 
   it("marks a derived tag rather than counting assignments it can never have", () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     const row = screen.getByTestId("tags-row-data_quality");
     expect(within(row).getByText(t("tagsTab.derivedTag"))).toBeTruthy();
     // A "0" here would read as an unused tag, when the tag may hold on every table in the estate.
     expect(within(row).queryByText("0")).toBeNull();
-    expect(within(row).getByLabelText(t("tagsTab.derivedTagHelp"))).toBeTruthy();
+    fireEvent.click(row);
+    expect(screen.getByLabelText(t("tagsTab.derivedTagHelp"))).toBeTruthy();
   });
 
   it("creates a tag through upsertTag with id, description and appliesTo", async () => {
@@ -295,11 +307,7 @@ describe("TagsTab", () => {
 
   it("saves an edited tag through updateTag, never a create", async () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-row-finance")).getByLabelText(
-        t("tagsTab.editTag", { id: "finance" }),
-      ),
-    );
+    openEdit("finance");
     fireEvent.click(screen.getByTestId("tags-save"));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(updateSpy.mock.calls[0][0]).toBe("finance");
@@ -307,10 +315,7 @@ describe("TagsTab", () => {
   });
 
   describe("required", () => {
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     it("shows the Required switch off for a new tag", () => {
       render(<TagsTab title="Tags" />);
@@ -350,10 +355,7 @@ describe("TagsTab", () => {
   });
 
   describe("allowed domains", () => {
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     it("saves the domains picked with the tag", async () => {
       render(<TagsTab title="Tags" />);
@@ -444,10 +446,7 @@ describe("TagsTab", () => {
       state: "drifted" as const,
       needsReview: true,
     };
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     beforeEach(() => {
       citeSpy.mockClear();
@@ -586,9 +585,7 @@ describe("TagsTab", () => {
       ),
     ).toBeTruthy();
     expect(within(financeRow).queryByText(/Expiry:/)).toBeNull();
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     // data_quality is hidden/hidden: no policy badges.
     const dqRow = screen.getByTestId("tags-row-data_quality");
     expect(within(dqRow).queryByText(/Reason:/)).toBeNull();
@@ -601,11 +598,7 @@ describe("TagsTab", () => {
 
   it("edit pre-fills the tag's policies", () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-row-finance")).getByLabelText(
-        t("tagsTab.editTag", { id: "finance" }),
-      ),
-    );
+    openEdit("finance");
     expect(screen.getByTestId("tags-reason-policy")).toHaveValue(t("tagsTab.policy_required"));
     expect(screen.getByTestId("tags-expires-policy")).toHaveValue(t("tagsTab.policy_hidden"));
   });
@@ -613,13 +606,11 @@ describe("TagsTab", () => {
   // REQ-1467: the value list is the closed set an assignment must name a member of.
   it("edits the value list of a system tag, whose own definition stays locked", async () => {
     render(<TagsTab title="Tags" />);
-    const bar = screen.getByTestId("tags-scope-bar");
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_column")));
-    const row = screen.getByTestId("tags-row-entity");
-    expect(within(row).queryByLabelText(t("tagsTab.editTag", { id: "entity" }))).toBeNull();
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
+    fireEvent.click(screen.getByTestId("tags-row-entity"));
+    expect(screen.queryByTestId("tags-edit-entity")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("tags-values-entity"));
-    const editor = await screen.findByTestId("tags-values-row-entity");
+    const editor = await screen.findByTestId("tags-values-entity");
     expect(within(editor).getByText("customer")).toBeTruthy();
     expect(within(editor).getByText("vendor")).toBeTruthy();
 
@@ -640,6 +631,8 @@ describe("TagsTab", () => {
 
   it("offers no value editor for a tag that takes no parameter", () => {
     render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    expect(screen.getByTestId("tags-detail-finance")).toBeInTheDocument();
     expect(screen.queryByTestId("tags-values-finance")).toBeNull();
   });
 
@@ -649,9 +642,7 @@ describe("TagsTab", () => {
       { tagId: "entity:vendor", objectType: "column", tableId: 2, columnName: "supplier" },
     ];
     render(<TagsTab title="Tags" />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_column")),
-    );
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
     expect(within(screen.getByTestId("tags-row-entity")).getByText("2")).toBeTruthy();
   });
 
@@ -679,19 +670,17 @@ describe("TagsTab", () => {
     );
   });
 
-  it("deletes a tag after window.confirm", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("deletes a tag from its panel once the delete is confirmed", async () => {
     render(<TagsTab title="Tags" />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+    deleteFromPanel("finance");
+    expect(deleteSpy).not.toHaveBeenCalled();
+    await confirmDelete("finance");
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("finance"));
-    expect(confirmSpy).toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it("names the row filter that keeps a tag from being deleted", async () => {
     // REQ-1384: a tag that carries a row filter is refused deletion, and the refusal lists it.
     mockTags = [USER_TAG];
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     deleteSpy.mockResolvedValueOnce({
       success: false,
       message: "Tag 'finance' is still referred to by: row_filter analyst on tag finance",
@@ -710,37 +699,42 @@ describe("TagsTab", () => {
       },
     } as never);
     render(<TagsTab title="Tags" />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+    deleteFromPanel("finance");
+    await confirmDelete("finance");
     const listed = await screen.findByTestId("dependents-row_filter");
     expect(listed).toHaveTextContent("analyst on tag finance");
   });
 
   it("does not delete when the confirm is dismissed", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<TagsTab title="Tags" />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+    deleteFromPanel("finance");
+    await screen.findByTestId("tags-delete-finance-confirm-dialog-confirm");
+    fireEvent.click(screen.getByRole("button", { name: t("common.cancel"), hidden: true }));
     expect(deleteSpy).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it("keeps the scope and the search it was left on, after a reload", () => {
     const first = render(<TagsTab title="Tags" />);
-    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_table") }));
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii" } });
     first.unmount();
     render(<TagsTab title="Tags" />);
-    expect(screen.getByRole("radio", { name: t("tagsTab.scope_table") })).toBeChecked();
+    expect(screen.getByTestId("tags-scope-table")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("filter-input")).toHaveValue("pii");
   });
 
   it("does not save a linked tag's scope over the reader's", () => {
     const first = render(<TagsTab title="Tags" />);
-    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_column") }));
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
     first.unmount();
-    const linked = render(<TagsTab title="Tags" />, { initialEntries: ["/admin/tags?tag=finance"] });
+    const linked = render(<TagsTab title="Tags" />, {
+      initialEntries: ["/admin/tags?tag=finance"],
+    });
     expect(screen.getByTestId("tags-row-finance")).toBeInTheDocument();
+    // Closing the panel forgets the tag (REQ-2260), so the next visit opens on no tag.
+    fireEvent.click(screen.getByRole("button", { name: t("tablesPage.closeDetail") }));
     linked.unmount();
     render(<TagsTab title="Tags" />);
-    expect(screen.getByRole("radio", { name: t("tagsTab.scope_column") })).toBeChecked();
+    expect(screen.getByTestId("tags-scope-column")).toHaveAttribute("aria-selected", "true");
   });
 });

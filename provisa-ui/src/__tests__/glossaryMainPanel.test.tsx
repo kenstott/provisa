@@ -99,7 +99,7 @@ describe("the Glossary's main panel, after a reload", () => {
 
   it("is the graph", async () => {
     const view = open();
-    fireEvent.click(await screen.findByTestId("glossary-ontology-toggle"));
+    fireEvent.click(await screen.findByTestId("glossary-view-graph"));
     view.unmount();
     open();
     expect(await screen.findByTestId("ontology-view")).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe("the Glossary's main panel, after a reload", () => {
     setStored("glossary.view", "ontology");
     open();
     expect(await screen.findByTestId("ontology-view")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    fireEvent.click(screen.getByTestId("glossary-view-terms"));
     expect(await screen.findByTestId("term-read-view")).toBeInTheDocument();
   });
 

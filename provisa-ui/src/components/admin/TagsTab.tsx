@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRememberedChoice } from "../../hooks/useRememberedChoice";
 import { useRememberedDetail } from "../list/useDetailParam";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { useTranslation } from "react-i18next";
@@ -138,12 +139,25 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   // left open is open again on coming back (REQ-2260).
   const detail = useRememberedDetail("tags", tagsLoading ? null : tags.map((g) => g.id));
   const openTag = detail.id === null ? undefined : tags.find((g) => g.id === detail.id);
-  // A link naming a tag and no scope shows the tag under the first scope it applies to.
-  const [scope, setScope] = useUrlTab<TagObjectType>(
+  // The scope tab is the URL's ?scope=. Without one the page opens on the scope the reader last
+  // chose -- or, for an open tag that scope does not hold, the first scope the tag applies to (that
+  // visit's, not saved over the reader's).
+  const [rememberedScope, rememberScope] = useRememberedChoice<TagObjectType>(
+    "filter.tags.scope",
+    SCOPES,
+    "source",
+  );
+  const [scope, setUrlScope] = useUrlTab<TagObjectType>(
     "scope",
     SCOPES,
-    openTag !== undefined && openTag.appliesTo.length > 0 ? openTag.appliesTo[0] : SCOPES[0],
+    openTag !== undefined && !openTag.appliesTo.includes(rememberedScope)
+      ? openTag.appliesTo[0]
+      : rememberedScope,
   );
+  const setScope = (next: TagObjectType) => {
+    rememberScope(next);
+    setUrlScope(next);
+  };
   const [search, setSearch] = useUrlFilter();
   const [page, setPage] = useState(1);
   // The panel holds the create form while it is open; else the open tag, read or in its form.

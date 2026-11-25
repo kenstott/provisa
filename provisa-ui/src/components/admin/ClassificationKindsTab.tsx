@@ -128,6 +128,7 @@ export function ClassificationKindsTab({
         <Switch
           label={t("classificationKinds.enabledHeader")}
           checked={draftEnabled}
+          disabled={saving}
           onChange={(e) => setDraftEnabled(e.currentTarget.checked)}
           aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
           data-testid={`classification-kind-enabled-${k.id}`}

@@ -255,7 +255,7 @@ export function RequestsPage() {
 
   return (
     <Stack gap="md" className="page">
-      <Group justify="space-between" wrap="wrap" align="center">
+      <div className="page-header" style={{ marginBottom: 0 }}>
         <PageTitle icon={ListOrdered}>{t("requestsPage.title")}</PageTitle>
         <FilterInput
           value={search}
@@ -265,23 +265,23 @@ export function RequestsPage() {
           }}
           placeholder={t("requestsPage.filterPlaceholder")}
         />
-        <Tabs
-          value={tab}
-          onChange={(v) => {
-            setTab((v as "pending" | "resolved") ?? "pending");
-            setPage(1);
-          }}
-        >
-          <Tabs.List>
-            <Tabs.Tab value="pending" data-testid="requests-tab-pending">
-              {t("requestsPage.tabPending")}
-            </Tabs.Tab>
-            <Tabs.Tab value="resolved" data-testid="requests-tab-resolved">
-              {t("requestsPage.tabResolved")}
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs>
-      </Group>
+      </div>
+      <Tabs
+        value={tab}
+        onChange={(v) => {
+          setTab((v as "pending" | "resolved") ?? "pending");
+          setPage(1);
+        }}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="pending" data-testid="requests-tab-pending">
+            {t("requestsPage.tabPending")}
+          </Tabs.Tab>
+          <Tabs.Tab value="resolved" data-testid="requests-tab-resolved">
+            {t("requestsPage.tabResolved")}
+          </Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
 
       {canSetDelivery && <RequestDeliverySetting onError={setError} />}
 

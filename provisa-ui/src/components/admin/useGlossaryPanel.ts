@@ -12,7 +12,7 @@
 // graph, a term read or in its form, or with no term the stewardship summary. A link's query
 // decides that visit instead and is not saved over; only the reader's own changes are.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { rememberedDetail, useRememberedDetail } from "../list/useDetailParam";
 import { getStored, setStored } from "../../lib/browserStorage";
@@ -112,7 +112,8 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
   // once the terms are read; under the graph it waits, as the graph holds the page's place.
   const detail = useRememberedDetail("ontology", ontology ? null : listed);
   const { setParam } = detail;
-  useLayoutEffect(() => {
+  // After the router is ready (an effect, as useRememberedDetail reopens a term).
+  useEffect(() => {
     if (restoringGraph) setParam("panel", "graph", { replace: true });
   }, [restoringGraph, setParam]);
   // Once the URL names a view it decides from then on.
@@ -148,6 +149,7 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
   const setView = useCallback(
     (next: GlossaryView) => {
       if (next === view) return;
+      setRestoringGraph(false);
       if (next !== "imports") writeStored("glossary.view", next === "graph" ? "ontology" : "list");
       setParam("panel", next === "terms" ? null : next);
       if (next !== "terms") closeTerm({ replace: true, keep: true });

@@ -112,20 +112,20 @@ describe("the Ontology page remembers how it was left", () => {
   it("reopens in the Ontology View after a reload", async () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    fireEvent.click(screen.getByTestId("glossary-view-graph"));
     expect(screen.getByTestId("ontology-view")).toBeInTheDocument();
     unmount();
 
     render(<GlossaryTab />);
     expect(screen.getByTestId("ontology-view")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-ontology-toggle")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("glossary-view-graph")).toHaveAttribute("aria-selected", "true");
   });
 
   it("reopens in the list once the Ontology View is closed", async () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
-    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    fireEvent.click(screen.getByTestId("glossary-view-graph"));
+    fireEvent.click(screen.getByTestId("glossary-view-terms"));
     unmount();
 
     render(<GlossaryTab />);
@@ -162,7 +162,7 @@ describe("the Ontology page remembers how it was left", () => {
   it("a ?term= link opens the list for that visit, and the saved view is kept", async () => {
     const first = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    fireEvent.click(screen.getByTestId("glossary-view-graph"));
     first.unmount();
 
     const linked = render(<GlossaryTab />, { initialEntries: ["/glossary?term=1"] });

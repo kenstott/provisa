@@ -117,13 +117,16 @@ export function SyncingTab() {
         testId="syncing-filter"
       />
       <div className="page-actions">
-        <Button
-          leftSection={<Plus size={14} />}
-          data-testid="syncing-add"
-          onClick={() => openNew()}
-        >
-          {t("syncingTab.addEntry")}
-        </Button>
+        {/* An entry is added to the list once it is read. */}
+        {s !== null && (
+          <Button
+            leftSection={<Plus size={14} />}
+            data-testid="syncing-add"
+            onClick={() => openNew()}
+          >
+            {t("syncingTab.addEntry")}
+          </Button>
+        )}
       </div>
     </div>
   );
