@@ -24,6 +24,7 @@ import pytest
 
 from provisa.codesource import attach, pgwire_sidecar
 from provisa.federation import codehost_connectors
+from provisa.federation.clickhouse_connectors import ClickHouseCodeHostConnector
 from provisa.federation.codehost_connectors import (
     DevSource,
     DuckDBCodeHostConnector,
@@ -32,6 +33,9 @@ from provisa.federation.codehost_connectors import (
 from provisa.federation.trino_connectors import TrinoCodeHostConnector
 
 pytestmark = pytest.mark.unit
+
+#: The built step itself, before the fixture below stands it in.
+_real_prepare_built = attach._prepare_built
 
 _PREPARED = SimpleNamespace(org_id="acme", source_id="scores-src", content_hash="h1", remote=None)
 
@@ -124,6 +128,34 @@ def test_a_postgres_engine_attaches_a_dev_sources_sidecar_through_postgres_fdw(i
     assert details["attach_ddl"][-1] == (
         f'IMPORT FOREIGN SCHEMA "default" FROM SERVER "{server}" INTO "{details["local_schema"]}"'
     )
+
+
+def test_clickhouse_mounts_a_dev_sources_sidecar_through_its_postgresql_engine(isolated):
+    # Its PostgreSQL engine sends no options, so it names no schema: it mounts the sidecar's
+    # public schema, where the sidecar serves every function of its one source.
+    connector = ClickHouseCodeHostConnector("python")
+    _named(connector)
+    details = connector.details(_source())
+    assert details == {
+        "attach_ddl": [
+            'CREATE DATABASE IF NOT EXISTS "ch_org_acme__scores_src" ENGINE = PostgreSQL('
+            "'host.docker.internal:15433', 'code', 'provisa', '', 'public')"
+        ],
+        "local_schema": "ch_org_acme__scores_src",
+    }
+    assert isolated == [_PREPARED]  # the attach started (or found) the sidecar of its code
+
+
+def test_clickhouse_attaches_no_built_source_and_refuses_one_by_name(isolated):
+    connector = ClickHouseCodeHostConnector("python")
+    built = _source(mapping={"mode": "built", "remote": {"host": "gpu.box", "port": 7443}})
+    assert connector.attaches(_source()) and not connector.attaches(built)
+    with pytest.raises(ValueError, match="ClickHouse cannot present the TLS identity"):
+        connector.details(built)
+    assert isolated == []
+    # Every other engine attaches a built source's host.
+    for other in (DuckDBCodeHostConnector, PgCodeHostConnector, TrinoCodeHostConnector):
+        assert other("python").attaches(built)
 
 
 def test_a_built_source_keeps_its_hosts_tls_attach(isolated, tmp_path):
@@ -250,6 +282,29 @@ async def test_a_sidecar_stopped_for_good_drops_the_engines_catalog_of_it(prepar
     assert registered == [("dropped", "scores-src", "org_acme__scores_src")]
     # A deleted source's catalog was dropped with it: there is nothing left to drop.
     pgwire_sidecar._stopped([("acme", "deleted-src")])
+    assert registered == [("dropped", "scores-src", "org_acme__scores_src")]
+
+
+async def test_the_schema_build_names_dev_sources_to_clickhouse_and_writes_no_built_identity(
+    prepared_code, monkeypatch
+):
+    async def _never(*_a):
+        raise AssertionError("an identity written for an engine that presents none")
+
+    monkeypatch.setattr("provisa.codesource.remote_sources.identity", _never)
+    connector = ClickHouseCodeHostConnector("python")
+    registered: list = []
+    await attach._prepare_dev(_state(connector, registered))
+    assert connector.dev_source("scores-src").schemas == "default,ml"
+    await _real_prepare_built(_state(connector, registered))
+    assert not connector.ready()  # no identity written: its built source is landed
+
+
+async def test_a_sidecar_stopped_for_good_drops_clickhouses_database_of_it(prepared_code):
+    connector = ClickHouseCodeHostConnector("python")
+    registered: list = []
+    await attach.prepare(_state(connector, registered))
+    pgwire_sidecar._stopped([("acme", "scores-src")])
     assert registered == [("dropped", "scores-src", "org_acme__scores_src")]
 
 

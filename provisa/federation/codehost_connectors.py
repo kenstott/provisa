@@ -169,6 +169,15 @@ class CodeHost:
     #: A code source's own reach lands it (its worker's rows); a code source asks for this attach
     #: instead, of a built host or of a dev-mode sidecar (FederationEngine.asks_in_place).
     opt_in_reach = True
+    #: Whether this engine attaches a BUILT source's host, presenting the organisation's TLS
+    #: identity. One that cannot (ClickHouse) attaches dev-mode sidecars alone, and its built
+    #: sources keep their type's reach: they land.
+    attaches_built = True
+
+    def attaches(self, source: Any) -> bool:
+        """Whether this engine attaches ``source`` rather than landing it: a dev-mode source's
+        sidecar always, a built source's host where the engine presents the TLS identity."""
+        return self.attaches_built or is_dev(source)
 
     def _key(self, org_id: str) -> tuple[str, str, str]:
         return (getattr(self, "engine", ""), getattr(self, "source_type", ""), org_id)

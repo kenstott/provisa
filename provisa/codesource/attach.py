@@ -19,7 +19,8 @@ replicated, the table is kept for good, or the table declares a landing TTL abov
 the response cache, a request's own opt-in, plays no part. A table on an engine that cannot attach
 a code source is landed (it has no attach connector for code sources: a warehouse, or a Postgres
 engine sharing no directory with Provisa for the identity it presents,
-provisa/codesource/engine_identity.py).
+provisa/codesource/engine_identity.py); so is a built source's table on an engine that attaches
+dev-mode sidecars alone, presenting no TLS identity (ClickHouse, ``CodeHost.attaches_built``).
 """
 
 # Requirements: REQ-2100, REQ-2267
@@ -42,15 +43,20 @@ def mapping_of(state: Any, source_id: str) -> dict:
     raise KeyError(f"source {source_id!r} is not registered")
 
 
+def _connector(state: Any, source_type: str) -> Any:
+    """The bound engine's attach connector for code sources of ``source_type``, or None."""
+    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
+    # An opt-in reach (codehost_connectors): a code source asks for it by its mode.
+    reaches = getattr(engine, "scan_connectors", {}) if engine is not None else {}
+    return reaches.get(source_type)
+
+
 def engine_attaches(state: Any, source_type: str) -> bool:
-    """Whether the bound engine attaches a built host of ``source_type``: it has an attach
+    """Whether the bound engine attaches a code source of ``source_type``: it has an attach
     connector for the type (its probe found what the attach needs)."""
     from provisa.federation.connector_base import Mechanism
 
-    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
-    # An opt-in reach (codehost_connectors): a built source asks for it by its mode.
-    reaches = getattr(engine, "scan_connectors", {}) if engine is not None else {}
-    connector = reaches.get(source_type)
+    connector = _connector(state, source_type)
     return connector is not None and connector.mechanism in (
         Mechanism.ATTACH_R,
         Mechanism.ATTACH_RW,
@@ -68,6 +74,9 @@ def attached(state: Any, table: dict) -> bool:
     if mode_of(mapping) != BUILT:
         # REQ-2267: its sidecar serves the code as it is now, every table of it.
         return answered_live(state, table)
+    if not _connector(state, source_type).attaches_built:
+        # An engine that cannot present the host's TLS identity (ClickHouse) lands a built source.
+        return False
     from provisa.codesource.manifest import manifest_from_json
     from provisa.codesource.remote_sources import remote_of
     from provisa.codesource.table import export_of
@@ -129,16 +138,15 @@ async def prepare(state: Any) -> None:
     await _prepare_built(state)
 
 
-def _attaching(state: Any, rows: dict) -> list:
-    """The bound engine's attach connectors for the code source types of ``rows``."""
+def _attaching(state: Any, rows: dict, *, built: bool) -> list:
+    """The bound engine's attach connectors for the code source types of ``rows``: of built
+    sources, only those that attach a built host (``CodeHost.attaches_built``)."""
     from provisa.federation.codehost_connectors import CodeHost
 
-    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
-    connectors = getattr(engine, "scan_connectors", {}) if engine is not None else {}
     return [
         c
         for t in sorted({row["type"] for row in rows.values()})
-        if isinstance(c := connectors.get(t), CodeHost)
+        if isinstance(c := _connector(state, t), CodeHost) and (c.attaches_built or not built)
     ]
 
 
@@ -161,7 +169,7 @@ async def _prepare_dev(state: Any) -> None:
         for sid, row in rows.items()
         if row.get("type") in CODE_SOURCE_TYPES and mode_of(row.get("mapping") or {}) != BUILT
     }
-    attaching = _attaching(state, dev)
+    attaching = _attaching(state, dev, built=False)
     if not attaching:
         return
     pgwire_sidecar.on_stop(f"engine-{id(state)}", lambda org, sid: _drop_on_engine(state, sid))
@@ -206,7 +214,7 @@ async def _prepare_built(state: Any) -> None:
         for sid, row in rows.items()
         if row.get("type") in CODE_SOURCE_TYPES and mode_of(row.get("mapping") or {}) == BUILT
     }
-    attaching = _attaching(state, built)
+    attaching = _attaching(state, built, built=True)
     if not attaching:
         return
     org_id = require_current_org()

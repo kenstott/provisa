@@ -16,6 +16,8 @@ ClickHouse attaches external sources via native integration engines:
 - Lakehouse sources (Iceberg/DeltaLake) mount via native lakehouse table engines (zero-copy).
 
 All ATTACH_RW — referenced in place, nothing lands. ClickHouse is its own native store.
+
+A dev-mode code source's pgwire sidecar mounts as a PostgreSQL DATABASE engine too (REQ-2267).
 """
 
 from __future__ import annotations
@@ -27,7 +29,12 @@ if TYPE_CHECKING:
 
 from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.clickhouse_quoting import ch_ident, ch_lit
+from provisa.federation.codehost_connectors import DATABASE, USER, CodeHost, is_dev
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
+
+#: The schema a sidecar serves its functions' tables in to a connection that names none
+#: (provisa/codehost/pgfront.py, ``SCHEMA``).
+SIDECAR_SCHEMA = "public"
 
 
 class ClickHousePostgresConnector(Connector):
@@ -157,6 +164,58 @@ class ClickHouseGovdataConnector(_ClickHousePgwireConnector):  # REQ-540
 
 class ClickHouseSplunkConnector(_ClickHousePgwireConnector):  # REQ-1730
     source_type = "splunk"
+
+
+class ClickHouseCodeHostConnector(CodeHost, Connector):  # REQ-2267
+    """A dev-mode code source's pgwire sidecar, mounted into ClickHouse LIVE through the built-in
+    PostgreSQL database engine (codehost_connectors).
+
+    The engine sends no ``options`` at its connection's start, so it cannot name the schemas the
+    source's tables are registered under (``provisa.schemas``): it mounts ``public``, where a
+    sidecar serves every function of its one source when a connection names none
+    (pgfront.schemas_of). One database per source, whatever schemas its tables are registered
+    under: the live view of each table selects from it by the table's name, its function's.
+
+    A built source's host accepts only the organisation's TLS client identity, which this engine
+    cannot present (``attaches_built``): a built source keeps its type's reach and lands. Its
+    database is dropped when the sidecar stops for good (codesource.attach._drop_on_engine,
+    ClickHouseFederationRuntime.drop_source), so the next attach dials the sidecar as it is then.
+    """
+
+    engine = "clickhouse"
+    mechanism = Mechanism.ATTACH_R
+    materialized_store = False
+    files_for = "process"
+    attaches_built = False
+
+    def __init__(self, source_type: str) -> None:
+        self.source_type = source_type
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    async def probe(self, fetch) -> ProbeResult:
+        del fetch  # ClickHouse's PostgreSQL database engine is built in
+        return ProbeResult(True, "ClickHouse's PostgreSQL database engine, built in")
+
+    def details(self, source: Source) -> dict:
+        if not is_dev(source):
+            raise ValueError(
+                f"code source {source.id!r} is built: ClickHouse cannot present the TLS identity "
+                "its host accepts, so it is landed, not attached"
+            )
+        at = self.target(source)
+        local_schema = engine_attach_name("ch", attach_catalog(source))
+        # The sidecar checks no credentials (it is reached only where the deployment's engines
+        # are): the engine's password argument is required, and empty.
+        return {
+            "attach_ddl": [
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} ENGINE = PostgreSQL("
+                f"{ch_lit(f'{at.host}:{at.port}')}, {ch_lit(DATABASE)}, {ch_lit(USER)}, '', "
+                f"{ch_lit(SIDECAR_SCHEMA)})"
+            ],
+            "local_schema": local_schema,
+        }
 
 
 class ClickHouseMysqlConnector(Connector):

@@ -315,10 +315,18 @@ class FrontHandler(bv.BuenaVistaHandler):
                 self.send_error(exc)
                 break
             if copy is not None:
-                if not re.search(r"\bbinary\b", copy.group("options") or "", re.IGNORECASE):
-                    self.send_error(ValueError("COPY ... TO STDOUT is answered in binary format"))
+                fmt = _copy_format(copy.group("options"))
+                if fmt is None:
+                    self.send_error(
+                        ValueError("COPY ... TO STDOUT is answered in binary or text format")
+                    )
                     break
-                self._copy_out(result)
+                try:
+                    self._copy_out(result, fmt)
+                except Exception as exc:  # noqa: BLE001 -- the code's failure while its rows come
+                    # It ends the COPY as PostgreSQL's does: the error, then ready for the next.
+                    self.send_error(exc)
+                    break
                 continue
             if result.has_results():
                 self.send_row_description(result)
@@ -328,38 +336,86 @@ class FrontHandler(bv.BuenaVistaHandler):
                 self.send_command_complete(f"{result.status()}\x00")
         self.send_ready_for_query(ctx)
 
-    def _copy_out(self, result: QueryResult) -> None:
-        """``result`` as a binary COPY to the client: its columns in PostgreSQL's binary forms. A
-        binary COPY tuple is a binary DataRow's body (its field count and fields), so the encoder
-        writes it (REQ-2194) and the DataRow header is left off each."""
+    def _copy_out(self, result: QueryResult, fmt: int) -> None:
+        """``result`` as a COPY to the client, in binary (``fmt`` 1) or text (0) format: its
+        columns in PostgreSQL's forms of that format, as the encoder writes a DataRow's
+        (REQ-2194). A binary COPY tuple is a binary DataRow's body (its field count and fields),
+        the DataRow header left off; a text COPY line is a text DataRow's fields, each escaped,
+        tab-separated, a NULL ``\\N``, one line to each CopyData message as PostgreSQL sends
+        it (REQ-2267: ClickHouse's PostgreSQL engine reads in text, a row to each message)."""
         from provisa._encoders import pgwire as encoder
 
         count = result.column_count()
         types = [wire_type_name(result.column(i)[1]) for i in range(count)]
-        response = struct.pack("!bh", 1, count) + struct.pack(f"!{count}h", *([1] * count))
+        formats = [fmt] * count
+        response = struct.pack("!bh", fmt, count) + struct.pack(f"!{count}h", *formats)
         self.wfile.write(struct.pack("!ci", b"H", 4 + len(response)) + response)
         rows = 0
-        chunk = bytearray(_PGCOPY)
+        chunk = bytearray(_PGCOPY if fmt == 1 else b"")
         data = result.data()
         for batch in data.take():
             messages = (
-                encoder.encode_rows(batch, types, [1] * count, result.coercers(), result.kinds())
+                encoder.encode_rows(batch, types, formats, result.coercers(), result.kinds())
                 if data.rows
-                else encoder.encode_batch(batch, types, [1] * count, result.coercers())
+                else encoder.encode_batch(batch, types, formats, result.coercers())
             )
             at = 0
             while at < len(messages):
                 (size,) = struct.unpack_from("!i", messages, at + 1)
-                chunk += messages[at + 5 : at + 1 + size]
+                body = messages[at + 5 : at + 1 + size]
                 at += 1 + size
                 rows += 1
+                if fmt == 1:
+                    chunk += body
+                    continue
+                line = _text_line(body)
+                self.wfile.write(struct.pack("!ci", b"d", 4 + len(line)) + line)
             if len(chunk) > 1 << 16:
                 self.wfile.write(struct.pack("!ci", b"d", 4 + len(chunk)) + bytes(chunk))
                 chunk.clear()
-        chunk += struct.pack("!h", -1)
-        self.wfile.write(struct.pack("!ci", b"d", 4 + len(chunk)) + bytes(chunk))
+        if fmt == 1:
+            chunk += struct.pack("!h", -1)
+        if chunk:
+            self.wfile.write(struct.pack("!ci", b"d", 4 + len(chunk)) + bytes(chunk))
         self.wfile.write(struct.pack("!ci", b"c", 4))
         self.send_command_complete(f"COPY {rows}\x00")
+
+
+def _copy_format(options: str | None) -> int | None:
+    """The format a ``COPY ... TO STDOUT``'s options ask for: 1 binary, 0 text (no options, or
+    ``FORMAT text``); None for any other (csv), which is not answered."""
+    given = (options or "").strip()
+    if not given:
+        return 0
+    named = re.fullmatch(r"(?:FORMAT\s+)?(\w+)", given, re.IGNORECASE)
+    if named is None:
+        return None
+    return {"binary": 1, "text": 0}.get(named.group(1).lower())
+
+
+#: PostgreSQL's text COPY escapes, of the bytes a field's text form can hold.
+_COPY_ESCAPES = {ord("\\"): b"\\\\", ord("\t"): b"\\t", ord("\n"): b"\\n", ord("\r"): b"\\r"}
+
+
+def _text_line(body: bytes) -> bytes:
+    """A text DataRow's body (its field count, then each field's length and text, -1 a NULL) as
+    a text COPY line."""
+    (count,) = struct.unpack_from("!h", body, 0)
+    at, fields = 2, []
+    for _ in range(count):
+        (size,) = struct.unpack_from("!i", body, at)
+        at += 4
+        if size < 0:
+            fields.append(b"\\N")
+            continue
+        text = body[at : at + size]
+        at += size
+        fields.append(
+            b"".join(_COPY_ESCAPES.get(b, bytes((b,))) for b in text)
+            if any(b in _COPY_ESCAPES for b in text)
+            else text
+        )
+    return b"\t".join(fields) + b"\n"
 
 
 # -- a read of a function -------------------------------------------------------------------------

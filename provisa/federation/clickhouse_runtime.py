@@ -44,6 +44,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import re
+import threading
 import uuid
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
@@ -505,6 +506,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
         # one-worker pool took it off.
         self._land_guard = LandGuard("ClickHouse store client")
+        # What attach_source made for each source, by source id: its live views, its staged
+        # engine tables and the databases its relational engine mounted (drop_source).
+        self._made_lock = threading.Lock()
+        self._made: dict[str, set[tuple[str, str]]] = {}
 
     # -- backend selection (REQ-912) -------------------------------------------
 
@@ -610,8 +615,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         if "attach_ddl" in details:  # relational DATABASE engine (postgresql/mysql)
             for stmt in details["attach_ddl"]:
                 self._backend.command(stmt)
+            self._made_for(source.id, ("database", ch_ident(details["local_schema"])))
             remote = ch_ident(details["local_schema"], source.table_name)
             self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+            self._made_for(source.id, ("view", phys))
             return
         # per-table TABLE engine (file S3/URL/File, or MongoDB)
         clause = bind_table(details["engine_clause"], source.table_name)
@@ -628,7 +635,25 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             )
         else:  # file engine — ClickHouse infers the columns
             self._backend.command(f"CREATE TABLE IF NOT EXISTS {staged} ENGINE = {clause}")
+        self._made_for(source.id, ("table", staged))
         self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {staged}")
+        self._made_for(source.id, ("view", phys))
+
+    def _made_for(self, source_id: str, made: tuple[str, str]) -> None:
+        with self._made_lock:
+            self._made.setdefault(source_id, set()).add(made)
+
+    def drop_source(self, source_id: str) -> None:
+        """Drop what attach_source made for ``source_id``: a deleted source's, or one whose
+        server is gone for good (REQ-2267: a dev-mode code source's sidecar stopped), so the next
+        attach mounts the source as it is then. Its views first, then its staged tables, then the
+        databases its relational engine mounted."""
+        with self._made_lock:
+            made = self._made.pop(source_id, set())
+        order = {"view": "DROP VIEW", "table": "DROP TABLE", "database": "DROP DATABASE"}
+        for kind, statement in order.items():
+            for name in sorted(n for k, n in made if k == kind):
+                self._backend.command(f"{statement} IF EXISTS {name}")
 
     def detach_source(self, source: Any) -> None:
         """Remove the live view of ``source``'s table. Called when the table's reads move to its

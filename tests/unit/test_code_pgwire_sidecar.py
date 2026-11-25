@@ -205,6 +205,41 @@ def test_duckdb_attaches_the_sidecar_and_reads_a_table(sidecar):
     ).fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]
 
 
+def test_clickhouse_mounts_the_sidecars_public_schema_and_reads_a_table(sidecar):
+    # REQ-2267: ClickHouse's PostgreSQL database engine sends no options, so it names no schema
+    # and mounts public, where the sidecar serves its source's functions.
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    runtime = ClickHouseFederationRuntime.embedded()
+    try:
+        runtime._backend.command(
+            "CREATE DATABASE shop ENGINE = PostgreSQL("
+            f"'127.0.0.1:{sidecar.ports.pgwire_port}', 'code', 'provisa', '', 'public')"
+        )
+        result = runtime.run_sync(
+            'SELECT id, "customerName" FROM shop.orders WHERE _nf_n = 3 ORDER BY id'
+        )
+        assert [tuple(r) for r in result.rows] == [(0, "zeta"), (1, "acme"), (2, "zeta")]
+        # Its conditions reach the function: the parameter as its input, a column as a filter.
+        result = runtime.run_sync(
+            "SELECT id, asked FROM shop.orders WHERE _nf_n = 5 AND \"customerName\" = 'acme' "
+            "ORDER BY id"
+        )
+        assert [tuple(r) for r in result.rows] == [
+            (1, "n=5;filters=customerName eq acme"),
+            (3, "n=5;filters=customerName eq acme"),
+        ]
+        # The code's failure, met while its rows come, is the statement's error; the sidecar
+        # serves the next.
+        with pytest.raises(Exception, match="the warehouse is closed"):
+            list(runtime.run_sync("SELECT id FROM shop.broken").rows)
+        assert [tuple(r) for r in runtime.run_sync("SELECT count(*) FROM shop.orders").rows] == [
+            (3,)
+        ]
+    finally:
+        runtime.close()
+
+
 def test_the_lifecycle_starts_checks_health_and_stops_with_the_port_freed(code):
     port = _free_port()
     running = _sidecar(code, port)

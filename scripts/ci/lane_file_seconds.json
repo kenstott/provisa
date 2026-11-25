@@ -75,6 +75,7 @@
   "tests/integration/test_code_source_attach_trino.py": 327.0,
   "tests/integration/test_code_source_llm.py": 66.1,
   "tests/integration/test_code_source_remote_host.py": 512.6,
+  "tests/integration/test_code_source_sidecar_clickhouse.py": 150.0,
   "tests/integration/test_code_source_sidecar_trino.py": 180.0,
   "tests/integration/test_code_source_secrets.py": 88.1,
   "tests/integration/test_code_source_services_e2e.py": 190.6,
