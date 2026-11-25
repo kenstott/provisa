@@ -721,9 +721,15 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     def _list(inner: exp.Expression, where: exp.Expression | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Recurse: transform is pre-order and skips a replaced node's children, so a nested
         # json_arrayagg would survive unrewritten.
-        collected: exp.Expression = exp.ArrayAgg(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            this=exp.Anonymous(this="JSON_PARSE", expressions=[inner.transform(_transform)])
+        ordered = inner if isinstance(inner, exp.Order) else None
+        value = inner.this if ordered is not None else inner
+        parsed: exp.Expression = exp.Anonymous(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            this="JSON_PARSE", expressions=[value.transform(_transform)]
         )
+        if ordered is not None:
+            # json_agg(x ORDER BY k) (an OData expansion's order): array_agg keeps the order.
+            parsed = exp.Order(this=parsed, expressions=[e.copy() for e in ordered.expressions])
+        collected: exp.Expression = exp.ArrayAgg(this=parsed)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is not None:
             # REQ-005's list cap: the filter is the aggregate's, inside the conversion.
             collected = exp.Filter(this=collected, expression=where.transform(_transform))

@@ -116,7 +116,7 @@ def _object(node: exp.JSONObject, built: set[int]) -> exp.Expr:
 
 def _aggregated(node: exp.Expr) -> exp.Expr | None:
     """The value json_agg collects, or None for any other node."""
-    if isinstance(node, exp.JSONArrayAgg) and not node.args.get("order"):
+    if isinstance(node, exp.JSONArrayAgg):
         return node.this
     if (
         isinstance(node, exp.Anonymous)
@@ -128,12 +128,23 @@ def _aggregated(node: exp.Expr) -> exp.Expr | None:
 
 
 def _list(value: exp.Expr, built: set[int], kept: exp.Expr | None = None) -> exp.Expr:
-    """json_agg(value), or json_agg(value) FILTER (WHERE kept): the list cap's (REQ-005)."""
-    member = _member(value, built)
-    if kept is None:
-        members = exp.Anonymous(this="groupArray", expressions=[member])
+    """json_agg(value), or json_agg(value) FILTER (WHERE kept): the list cap's (REQ-005). A value
+    ``ORDER BY`` one key (an OData expansion's order) is listed in that key's order."""
+    order = value if isinstance(value, exp.Order) else None
+    if order is not None:
+        if len(order.expressions) != 1:
+            raise ValueError(f"a JSON list in the order of several keys: {order.sql()}")
+        (key,) = order.expressions
+        value = exp.Tuple(expressions=[_member(order.this, built), key.this.copy()])
     else:
-        members = exp.Anonymous(this="groupArrayIf", expressions=[member, kept.copy()])
+        value = _member(value, built)
+    if kept is None:
+        members: exp.Expr = exp.Anonymous(this="groupArray", expressions=[value])
+    else:
+        members = exp.Anonymous(this="groupArrayIf", expressions=[value, kept.copy()])
+    if order is not None:
+        sort = "arrayReverseSort" if order.expressions[0].args.get("desc") else "arraySort"
+        members = _form(f"arrayMap(x -> x.1, {sort}(x -> x.2, _m))", m=members)
     return _form(
         "if(empty(_m), NULL, concat('[', arrayStringConcat(_m, ','), ']'))",
         m=members,

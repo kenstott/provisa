@@ -158,3 +158,47 @@ def test_the_order_range_reaches_each_far_table():
     # Each relationship is a grouped read joined by key (#362), its rows bounded by the range.
     assert 'AS "t1" WHERE "t1"."order_id" >= $1' in sql  # the events
     assert 'AS "t2" WHERE "t2"."order_id" >= $1' in sql  # the document
+
+
+def test_a_masked_key_still_groups_and_joins_a_list_read():
+    """REQ-603 (#362): a list field's grouped read is keyed, grouped and joined by the real key
+    even where the role reads the key masked; what it reads of the key is its mask."""
+    from provisa.security.masking import MaskingRule, MaskType
+
+    types = {
+        t["id"]: [
+            ColumnMetadata(
+                column_name=c["column_name"],
+                data_type="integer" if c["column_name"] in _INTEGER else "varchar",
+                is_nullable=True,
+            )
+            for c in t["columns"]
+        ]
+        for t in _TABLES
+    }
+    si = SchemaInput(
+        tables=_TABLES,
+        relationships=_RELATIONSHIPS,
+        column_types=types,
+        naming_rules=[],
+        role=_ROLE,
+        domains=[{"id": "pb", "description": "perf bench"}],
+    )
+    schema, ctx = generate_schema(si), build_context(si)
+    masks = {
+        (2, "analyst"): {"order_id": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")}
+    }
+    gov = build_governance_context(
+        "analyst", RLSContext(rules={}), masks, ctx, _TABLES, _ROLE, _RELATIONSHIPS
+    )
+    (compiled,) = compile_query(
+        parse_query(schema, "{ orders { orderId orderEvents { orderId eventType } } }", ctx=ctx),
+        ctx,
+    )
+    governed = apply_governance(compiled.sql, gov)
+    key = '"t1"."__key_'
+    # The read's key, its grouping and its join are the real order_id, under its internal name.
+    assert f"SELECT {key}" in governed, governed
+    assert f"GROUP BY {key}" in governed, governed
+    # What the role reads of order_id in each event is what its mask leaves it (null here).
+    assert 'NULL AS "order_id"' in governed, governed

@@ -717,8 +717,8 @@ def _below_takes_lateral_args(
     field_node: FieldNode, ctx: CompilationContext, type_name: str
 ) -> bool:
     """Whether a relationship field anywhere below ``field_node`` (whose rows are of
-    ``type_name``) takes an argument only a LATERAL join applies: the aggregate subqueries apply
-    a nested field's limit alone, so its ancestors are joined as the first level is (#285)."""
+    ``type_name``) takes an argument only a LATERAL join applies: the grouped reads (rel_read)
+    apply a nested field's limit alone, so its ancestors are joined as the first level is (#285)."""
     if not field_node.selection_set:
         return False
     for sel in field_node.selection_set.selections:

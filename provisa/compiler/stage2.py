@@ -2142,6 +2142,94 @@ def _table_in_scope(alias: str, select: exp.Select, gov_ctx: GovernanceContext) 
     return None
 
 
+def _read_key_numbered(side: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``side``, or where it partitions a grouped read's numbering (``ROW_NUMBER() OVER
+    (PARTITION BY t1.k)``) or groups its rows (``GROUP BY t1.k``), the key projection of the same
+    value: the rows are numbered and grouped per key, by its real value (#362)."""
+    from provisa.compiler.sql_selection import READ_KEY
+
+    holder = side.parent
+    if isinstance(holder, exp.Window):
+        if side not in (holder.args.get("partition_by") or []):
+            return side
+    elif not isinstance(holder, exp.Group):
+        return side
+    select = holder.find_ancestor(exp.Select)
+    for projection in select.expressions if select is not None else []:
+        if projection.alias.startswith(READ_KEY) and projection.this == side:
+            return projection.this
+    return side
+
+
+def _read_key_partner(
+    side: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+) -> tuple[exp.Column, exp.Select] | None:
+    """For ``side``, the key a relationship's grouped read is joined back by
+    (``sql_selection.rel_read``: ``t1.k AS "_key0"``, LEFT JOIN ... ON r."_key0" = t0.k), the
+    column of the statement around the read it equals and the SELECT that joins the read; None
+    for any other column. The read numbers its rows in a derived table (READ_ROWS) or is that
+    SELECT itself."""
+    from provisa.compiler.sql_selection import READ_KEY, READ_ROWS
+
+    alias = side.parent
+    if not (isinstance(alias, exp.Alias) and alias.alias.startswith(READ_KEY)):
+        return None
+    select = alias.parent
+    if not isinstance(select, exp.Select) or alias not in select.expressions:
+        return None
+    holder = select.parent
+    if isinstance(holder, exp.Subquery) and holder.alias == READ_ROWS:
+        select = holder.find_ancestor(exp.Select)
+        holder = select.parent if select is not None else None
+    if not isinstance(holder, exp.Subquery) or not holder.alias:
+        return None
+    join = holder.parent
+    if not isinstance(join, exp.Join) or join.args.get("on") is None:
+        return None
+    for eq in join.args["on"].find_all(exp.EQ):
+        mine, other = eq.left, _unwrap_cast(eq.right)
+        if (
+            isinstance(mine, exp.Column)
+            and mine.table == holder.alias
+            and mine.name == alias.alias
+            and isinstance(other, exp.Column)
+            and other.table
+        ):
+            outer = join.parent
+            return (other, outer) if isinstance(outer, exp.Select) else None
+    return None
+
+
+def _read_key_column(key: exp.Column, select: exp.Select) -> tuple[exp.Column, exp.Select] | None:
+    """The column of a relationship's grouped read joined in ``select`` that ``key`` (the read's
+    ``"_key0"``) names, with the SELECT that reads it; None for any other column."""
+    from provisa.compiler.sql_selection import READ_KEY
+
+    if not key.name.startswith(READ_KEY):
+        return None
+    join = next(
+        (
+            j
+            for j in select.args.get("joins") or []
+            if isinstance(j.this, exp.Subquery) and j.this.alias == key.table
+        ),
+        None,
+    )
+    if join is None or not isinstance(join.this.this, exp.Select):
+        return None
+    for inner in join.this.this.find_all(exp.Select):
+        for projection in inner.expressions:
+            value = _unwrap_cast(projection.unalias())
+            if (
+                projection.alias == key.name
+                and isinstance(value, exp.Column)
+                and value.table
+                and value.name != key.name
+            ):
+                return value, inner
+    return None
+
+
 def approved_join_key(
     col: exp.Column, gov_ctx: GovernanceContext, alias_to_tid: dict[str, int] | None = None
 ) -> bool:  # REQ-603
@@ -2153,6 +2241,29 @@ def approved_join_key(
     while isinstance(side.parent, exp.Cast):
         side = side.parent
     eq = side.parent
+    keyed = _read_key_partner(_read_key_numbered(side))
+    if keyed is not None:
+        # A relationship's grouped read names the key it is joined back by (#362).
+        other, select = keyed
+        known = alias_to_tid or {}
+        own = col.find_ancestor(exp.Select)
+        tid = None if own is None else _table_in_scope(col.table, own, gov_ctx)
+        other_tid = (
+            known[other.table]
+            if other.table in known
+            else _table_in_scope(other.table, select, gov_ctx)
+        )
+        return (
+            tid is not None
+            and other_tid is not None
+            and (
+                tid,
+                other_tid,
+                registered_name(gov_ctx, tid, col.name),
+                registered_name(gov_ctx, other_tid, other.name),
+            )
+            in gov_ctx.join_keys
+        )
     if not isinstance(eq, exp.EQ):
         return False
     clause = eq.find_ancestor(exp.Where, exp.Join, exp.Select)
@@ -2162,6 +2273,23 @@ def approved_join_key(
     other = _unwrap_cast(eq.right if eq.left is side else eq.left)
     if select is None or not isinstance(other, exp.Column) or not col.table or not other.table:
         return False
+    inner = _read_key_column(other, select)
+    if inner is not None:
+        # The column a relationship's grouped read is keyed by stands for its key (#362).
+        other, other_select = inner
+        tid = _table_in_scope(col.table, select, gov_ctx)
+        other_tid = _table_in_scope(other.table, other_select, gov_ctx)
+        return (
+            tid is not None
+            and other_tid is not None
+            and (
+                tid,
+                other_tid,
+                registered_name(gov_ctx, tid, col.name),
+                registered_name(gov_ctx, other_tid, other.name),
+            )
+            in gov_ctx.join_keys
+        )
     # ``alias_to_tid``: the tables of the SELECT being governed, by alias, as they were before a
     # projection took a table's place (REQ-1620).
     known = alias_to_tid or {}

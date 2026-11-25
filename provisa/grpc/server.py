@@ -165,7 +165,7 @@ def _column_types(result) -> list[str | None] | None:
 def _nodes_field(row_cls, node_cls, nodes: list) -> bytes:
     """A group's ``nodes`` (REQ-1405) as its ``{Type}GroupByRow`` message's repeated ``nodes``
     field, each node a ``{Type}`` message the encoder writes from the node's object: its keys
-    that are fields, a relation (``_build_rel_json_expr``) a nested message from an object
+    that are fields, a relation (``sql_selection.rel_read``) a nested message from an object
     (many-to-one) or one per object of a list (one-to-many), every other value as a column's
     value is written. The nodes come as the JSON a group's nodes column holds."""
     from provisa._encoders import grpc as grpc_encoder
