@@ -32,7 +32,9 @@ from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
+from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 from provisa.transpiler.polyfill.trino_literals import days_from_civil
 
 FAMILY = "literals"
@@ -173,12 +175,22 @@ def _infinite_difference(name: str, sql_type: str) -> Feature:
         f"THEN {raising('0A000', exp.Literal.string(refused).sql(dialect=_DUCKDB))} "
         f"ELSE {a} - {b} END"
     )
+    pattern = f"{name}($a, $b)"
+
+    def difference(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node)
+        if call is None or name not in call[0] or len(call[1]) != 2:  # noqa: PLR2004
+            return None
+        return graft(replacement(form, _DUCKDB, pattern), {"a": call[1][0], "b": call[1][1]})
+
+    difference.__doc__ = f"{name} on DuckDB: an infinite value's difference refused by name."
+    difference.__qualname__ = f"infinite_{name}"
     return Feature(
         f"{name} on duckdb",
         "dates",
         "The interval between two instants.",
         read=Side(
-            rules=(Rule(f"{name}($a, $b)", {_DUCKDB: form}, unlisted_keep=True),),
+            rules=(Rule(None, {_DUCKDB: Rewrite(difference, mentions=rf"\b{name}\b")}),),
             limitations={
                 _DUCKDB: (
                     Limitation(
