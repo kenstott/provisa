@@ -89,6 +89,7 @@ const PET_HEALTH = [
     limitations: "",
     usage: "",
     customProperties: {},
+    namedOwners: [],
   } as unknown as DataProduct,
 ];
 // The pet store's product as the meta domain answers its panel: no members yet.

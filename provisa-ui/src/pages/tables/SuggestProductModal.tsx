@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { Button, Modal, MultiSelect, Text, Textarea } from "@mantine/core";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { suggestProduct, type Suggestion } from "../../api/productSuggestions";
+import { keyOf } from "./suggestionCounts";
 
 export interface SuggestTarget {
   domainId: string;
@@ -48,7 +49,7 @@ export function SuggestProductModal({
     >
       {target && (
         <SuggestForm
-          key={`${target.domainId}.${target.tableName}`}
+          key={keyOf(target.domainId, target.tableName)}
           target={target}
           onClose={onClose}
         />

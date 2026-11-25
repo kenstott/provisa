@@ -83,6 +83,9 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
     "<FormFooter>'s Save disabled by attribute, description; <FormFooter>'s Save disabled by description",
   "pages/tables/CalendarCreateModal.tsx":
     "<FormFooter>'s Save disabled by name, version, retailAnchorMissing; the primary <Button> disabled by name, version, retailAnchorMissing",
+  "components/spark/SparkClusterFields.tsx":
+    "the primary <Button> disabled by pasted, secretName",
+  "pages/tables/SuggestProductModal.tsx": "the primary <Button> disabled by ready",
 };
 
 function componentFiles(dir: string, found: string[] = []): string[] {

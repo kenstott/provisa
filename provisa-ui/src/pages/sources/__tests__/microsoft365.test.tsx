@@ -14,6 +14,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen, waitFor } from "../../../test-utils/render";
+
+// SourceFormFieldsExtended calls useAuth() unconditionally; stub it so the form
+// renders without an AuthProvider (the M365 tests have no connector/script panel).
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ activeOrgId: null }),
+}));
 import en from "../../../i18n/locales/en/microsoft365Fields.json";
 import google from "../../../i18n/locales/en/googleWorkspaceFields.json";
 import shared from "../../../i18n/locales/en/sourceFormFields.json";
