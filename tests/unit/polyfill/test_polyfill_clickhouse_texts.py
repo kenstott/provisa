@@ -757,6 +757,88 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT pg_catalog.regexp_replace('aBc'::text, 'b*'::text, '-'::text, 'gi') AS v", "-a--c-"),
     ("SELECT pg_catalog.regexp_replace('abc'::text, 'b'::text, '-'::text, 'g') AS v", "a-c"),
     ("SELECT pg_catalog.regexp_replace('abc'::text, lower('b'), '-'::text, 'g') AS v", "a-c"),
+    # The Nth match from start of a pattern that matches the empty text (REQ-2236): PostgreSQL's
+    # search copies the character past an empty match and goes on; the measure's edges first.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, lower('')::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, 2) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 2, 0) AS v",
+        "a-b-c-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 2, 1) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '^x*'::text, '-'::text, 2, 0) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '^x*'::text, '-'::text, 1, 0) AS v",
+        "-abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 4, 0) AS v",
+        "abc-",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 5, 0) AS v", "abc"),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 4, 1) AS v",
+        "abc-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, 4) AS v",
+        "abc-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, '-'::text, 1, 2) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('axxb'::text, 'x*'::text, '-'::text, 1, 3) AS v",
+        "axx-b",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('axxb'::text, 'x*'::text, '-'::text, 2, 1) AS v",
+        "a-b",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('日本x'::text, 'x*'::text, '-'::text, 2, 0) AS v",
+        "日-本--",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '(b?)'::text, '[\\1]'::text, 1, 0) AS v",
+        "[]a[b][]c[]",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*$'::text, '-'::text, 1, 0) AS v",
+        "abc-",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"(''::text, 'x*'::text, '-'::text, 1, 0) AS v", "-"),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, '-'::text, 2, 2) AS v", "ab-c"),
+    ("SELECT pg_catalog.\"regexp_replace\"(NULL::text, 'x*'::text, '-'::text, 1, 0) AS v", None),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, NULL::integer) AS v",
+        None,
+    ),
     ("SELECT pg_catalog.regexp_like('ABC'::text, 'b'::text, 'ic') AS v", "f"),
     ("SELECT pg_catalog.regexp_split_to_array('a1b22c'::text, '[0-9]+'::text) AS v", "{a,b,c}"),
     ("SELECT pg_catalog.regexp_split_to_array('aXbxc'::text, 'x'::text, 'i') AS v", "{a,b,c}"),
