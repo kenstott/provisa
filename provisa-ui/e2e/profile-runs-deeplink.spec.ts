@@ -60,7 +60,8 @@ test("a profile runs link opens the table on the run and the result it names", a
     route.fulfill({ json: { drift: [], expectations: [] } }),
   );
 
-  await page.goto("/tables?open=pet-store-sqlite.pets");
+  // Not `?open=`: that already opens the table, and the row click would then close it.
+  await page.goto("/tables");
   const row = page.locator('[data-table-row="pet-store-sqlite.pets"]');
   await expect(row).toBeVisible({ timeout: 60_000 });
   await row.click();
