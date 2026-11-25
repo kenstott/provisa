@@ -45,6 +45,23 @@ import {
 import { sparqlMappingJson } from "../sparqlReasoner";
 import { wikidataHints } from "../wikidata";
 import { wikipediaHints } from "../wikipedia";
+import { snowflakeHints } from "../snowflake";
+import { databricksHints, REACH_SCAN } from "../databricks";
+import { bigqueryHints, BIGQUERY_SERVICE_ACCOUNT } from "../bigquery";
+import { exasolHints, EXASOL_TLS_FINGERPRINT } from "../exasol";
+import { sqlserverHints, SQLSERVER_TRUST_CERTIFICATE } from "../sqlserver";
+import { MSSQL_WAREHOUSES, mssqlWarehouseHints, SERVICE_PRINCIPAL } from "../mssqlWarehouse";
+import { hiveserver2Hints } from "../hiveserver2";
+import { websocketHints } from "../websocket";
+import { rssHints } from "../rss";
+import { sparqlHints } from "../sparqlGraph";
+import { SHAREPOINT_AUTH_TYPES, sharepointMapping } from "../sharepoint";
+import { splunkMapping } from "../splunk";
+import { googleSheetsMapping } from "../googleSheets";
+import { HIVE, HIVE_S3, hiveMapping, hiveSeed } from "../hiveStorage";
+import { fieldsWhen } from "../descriptor";
+import { seedSource } from "../sourceSeed";
+import type { Source } from "../../../types/admin";
 
 /** Whether the descriptor lists `key`: by name, as a part of a dotted name (`settings` of
  * `settings.script`), or under a placeholder (`capabilities.duckdb` of `capabilities.<engine>`). */
@@ -308,9 +325,182 @@ describe("each builder writes only the descriptor's keys", () => {
     mapping("spark", connectorMappingJson(fields, { ...connector, native: true }), "native");
   });
 
+  it("snowflake", () => {
+    hints("snowflake", snowflakeHints(filled(hintKeys("snowflake"))));
+  });
+
+  it("databricks, read in place and from a replica", () => {
+    hints("databricks", databricksHints({ http_path: "/sql/1", reach: REACH_SCAN }), "scan");
+    hints("databricks", databricksHints({ http_path: "/sql/1", reach: "replica" }), "replica");
+  });
+
+  it("bigquery, by a service account's key file", () => {
+    hints(
+      "bigquery",
+      bigqueryHints(BIGQUERY_SERVICE_ACCOUNT, { credentials_json: "/keys/sa.json" }),
+    );
+  });
+
+  it("exasol, sql server, and hiveserver2's security settings", () => {
+    hints("exasol", exasolHints(EXASOL_TLS_FINGERPRINT, { tls_fingerprint: "AB:CD" }));
+    hints("sqlserver", sqlserverHints(SQLSERVER_TRUST_CERTIFICATE));
+    hints("hiveserver2", hiveserver2Hints({ auth_mechanism: "GSSAPI" }));
+  });
+
+  it("fabric and synapse, as a service principal", () => {
+    for (const type of MSSQL_WAREHOUSES)
+      hints(
+        type,
+        mssqlWarehouseHints(type, SERVICE_PRINCIPAL, filled(hintKeys(type), { other: "x" })),
+        type,
+      );
+  });
+
+  it("a websocket feed and an rss feed", () => {
+    hints(
+      "websocket",
+      websocketHints({
+        useSsl: true,
+        subscribePayload: "{}",
+        eventPath: "$.data",
+        reconnectInterval: "5",
+      }),
+    );
+    hints("rss", rssHints({ feedUrl: "https://x/feed", pollInterval: "60", useSsl: false }));
+  });
+
+  it("sparql's named graph", () => {
+    hints("sparql", sparqlHints({ default_graph_uri: " https://g/1 " }));
+  });
+
+  it("sharepoint, every sign-in", () => {
+    for (const authType of SHAREPOINT_AUTH_TYPES)
+      mapping(
+        "sharepoint",
+        sharepointMapping({
+          authType,
+          certPath: "/c.pfx",
+          certPassword: "${secret:c}",
+          username: "u",
+          password: "${secret:p}",
+        }),
+        authType,
+      );
+  });
+
+  it("splunk, by token and by password", () => {
+    mapping("splunk", splunkMapping({ authMode: "token", disableSsl: true }), "token");
+    mapping("splunk", splunkMapping({ authMode: "userpass", disableSsl: false }), "userpass");
+  });
+
+  it("google sheets", () => {
+    mapping("google_sheets", googleSheetsMapping({ credentials_json: "/keys/sa.json" }));
+  });
+
+  it("hive, every storage, writes only that storage's credentials", () => {
+    // Every credential field the form has ever held, and one it never offers: a storage writes
+    // only its own.
+    const fields = filled([...mappingKeys(HIVE), "leftover"]);
+    for (const authType of ["none", "aws", "azure", "gcs"]) {
+      const written = hiveMapping(HIVE, authType, fields);
+      mapping(HIVE, written, `hive ${authType}`);
+      const own = fieldsWhen(HIVE, "mappingJson", "storage", written.storage).map((f) => f.name);
+      expect(Object.keys(written).sort(), authType).toEqual(["storage", ...own].sort());
+    }
+    const s3 = hiveMapping(HIVE_S3, "aws", fields);
+    mapping(HIVE_S3, s3, "hive_s3");
+    expect(s3.storage).toBe("s3");
+    expect(Object.keys(s3)).not.toContain("leftover");
+  });
+
   it("a file crawler's workbook hints", () => {
     const fields = withExcelHints({}, { counts: { header_rows: 2 }, entries: [] });
     mapping("files", filesMappingJson(null, fields));
+  });
+});
+
+/** A saved source of `type` holding `settings`, as the source list gives it. */
+const saved = (type: string, settings: Partial<Source>): Source => ({
+  id: `s-${type}`,
+  type,
+  host: "h",
+  port: 1,
+  database: "d",
+  username: "",
+  dialect: null,
+  isSystem: false,
+  withdrawn: false,
+  cacheEnabled: true,
+  cacheTtl: null,
+  replicate: null,
+  region: null,
+  loadProtected: false,
+  offPeakWindow: null,
+  offPeakTz: "UTC",
+  sentinelPath: null,
+  downloadFrom: null,
+  freshnessGate: false,
+  maxLiveConcurrency: null,
+  gqlNamingConvention: null,
+  path: null,
+  allowedDomains: [],
+  description: "",
+  passwordRef: null,
+  changeSignal: "ttl",
+  rowFetchByKeys: false,
+  ...settings,
+});
+
+describe("a saved source opens with the descriptor's keys", () => {
+  it("hive opens in its storage, holding only that storage's credentials", () => {
+    const mappingJson = { storage: "adls", storage_account: "acct", sas_token: "t", stale: "x" };
+    expect(hiveSeed(HIVE, mappingJson)).toEqual({
+      authType: "azure",
+      authFields: { storage_account: "acct", sas_token: "t" },
+    });
+    expect(hiveSeed(HIVE_S3, { storage: "s3", region: "eu", endpoint: "e" }).authType).toBe("aws");
+  });
+
+  it("a warehouse opens with its listed hints only", () => {
+    const seed = seedSource(
+      saved("snowflake", {
+        federationHintsJson: JSON.stringify({ warehouse: "w", role: "r", stale: "x" }),
+        passwordRef: "${secret:sf}",
+      }),
+      null,
+    );
+    expect(seed.authType).toBe("password");
+    expect(seed.authFields).toEqual({ warehouse: "w", role: "r", password: "${secret:sf}" });
+  });
+
+  it("the feeds, sharepoint and splunk open as they were saved", () => {
+    const ws = { useSsl: true, subscribePayload: "{}", eventPath: "$.d", reconnectInterval: "5" };
+    expect(
+      seedSource(
+        saved("websocket", { federationHintsJson: JSON.stringify(websocketHints(ws)) }),
+        null,
+      ).websocket,
+    ).toEqual(ws);
+    const rss = { feedUrl: "https://x/feed", pollInterval: "60", useSsl: false };
+    expect(
+      seedSource(saved("rss", { federationHintsJson: JSON.stringify(rssHints(rss)) }), null).rss,
+    ).toEqual(rss);
+    const sp = {
+      authType: "CERTIFICATE",
+      certPath: "/c",
+      certPassword: "p",
+      username: "",
+      password: "",
+    };
+    expect(
+      seedSource(saved("sharepoint", { mappingJson: JSON.stringify(sharepointMapping(sp)) }), null)
+        .sharepoint,
+    ).toEqual(sp);
+    const splunk = { authMode: "userpass" as const, disableSsl: true };
+    expect(
+      seedSource(saved("splunk", { mappingJson: JSON.stringify(splunkMapping(splunk)) }), null)
+        .splunk,
+    ).toEqual(splunk);
   });
 });
 

@@ -765,7 +765,13 @@
         {
           "name": "auth_mechanism",
           "at": "federationHintsJson",
-          "note": "PLAIN (the default), LDAP or GSSAPI"
+          "note": "left out, the driver's default",
+          "default": "PLAIN",
+          "choices": [
+            "PLAIN",
+            "LDAP",
+            "GSSAPI"
+          ]
         }
       ],
       "note": "",
@@ -3562,7 +3568,12 @@
           "name": "auth_type",
           "at": "mappingJson",
           "required": true,
-          "note": "CLIENT_CREDENTIALS, USERNAME_PASSWORD or CERTIFICATE"
+          "default": "CLIENT_CREDENTIALS",
+          "choices": [
+            "CLIENT_CREDENTIALS",
+            "USERNAME_PASSWORD",
+            "CERTIFICATE"
+          ]
         },
         {
           "name": "password",

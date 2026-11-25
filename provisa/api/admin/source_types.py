@@ -498,6 +498,17 @@ BUILTIN_HOST_REQUIRES: dict[str, tuple[tuple[str, bool, str], ...]] = {
 }
 
 
+#: The SASL mechanisms a HiveServer2 source signs in with. PLAIN is HiveDriver's own default
+#: (provisa/executor/drivers/hive.py), which the form saves as no hint.
+HIVESERVER2_AUTH_MECHANISMS: tuple[str, ...] = ("PLAIN", "LDAP", "GSSAPI")
+HIVESERVER2_DEFAULT_MECHANISM = "PLAIN"
+
+#: The sign-ins TrinoSharepointConnector passes as the catalog's auth-type
+#: (provisa/federation/trino_connectors.py); CLIENT_CREDENTIALS is the one it takes when none is
+#: saved.
+SHAREPOINT_AUTH_TYPES: tuple[str, ...] = ("CLIENT_CREDENTIALS", "USERNAME_PASSWORD", "CERTIFICATE")
+SHAREPOINT_DEFAULT_AUTH = "CLIENT_CREDENTIALS"
+
 #: Each type's own fields, beyond its family's.
 _OWN: dict[str, tuple[Field, ...]] = {
     "govdata": (
@@ -510,7 +521,14 @@ _OWN: dict[str, tuple[Field, ...]] = {
     ),
     "duckdb": (_in("path", required=True, note="the .duckdb file"),),
     "firebird": (_in("path", required=True, note="the .fdb file path on the server"),),
-    "hiveserver2": (_hint("auth_mechanism", note="PLAIN (the default), LDAP or GSSAPI"),),
+    "hiveserver2": (
+        _hint(
+            "auth_mechanism",
+            choices=HIVESERVER2_AUTH_MECHANISMS,
+            default=HIVESERVER2_DEFAULT_MECHANISM,
+            note="left out, the driver's default",
+        ),
+    ),
     "sqlserver": (
         _hint(
             "trust_server_certificate",
@@ -678,7 +696,10 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _in("database", required=True, note="the tenant id"),
         _in("username", required=True, note="the client id"),
         _map(
-            "auth_type", required=True, note="CLIENT_CREDENTIALS, USERNAME_PASSWORD or CERTIFICATE"
+            "auth_type",
+            required=True,
+            choices=SHAREPOINT_AUTH_TYPES,
+            default=SHAREPOINT_DEFAULT_AUTH,
         ),
         _in("password", secret=True, note="the client secret"),
         _map("sp_username", when="auth_type=USERNAME_PASSWORD", required=True),
