@@ -1411,13 +1411,21 @@ The function returns a table's rows as any iterable: a list, a generator or an a
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import table
+
+
+    @dataclass
+    class Region:
+        code: str
+        name: str
 
 
     @table
     def regions() -> list[Region]:
         """Sales regions."""
-        ...
+        return [Region(code="emea", name="Europe, Middle East and Africa")]
     ```
 
 **`@loader` / `@loader N`**
@@ -1427,7 +1435,20 @@ Tags a `@table` function as a batch loader. Provisa calls it once per batch of j
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_services import ReadContext
+
+
+    @dataclass
+    class ScoreInputs:
+        customer_id: str | None = None
+
+
+    @dataclass
+    class Score:
+        customer_id: str
+        score: float
 
 
     def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score] | dict[str, list[Score]]:
@@ -1440,7 +1461,21 @@ Tags a `@table` function as a batch loader. Provisa calls it once per batch of j
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import table
+    from provisa_services import ReadContext
+
+
+    @dataclass
+    class ScoreInputs:
+        customer_id: str | None = None
+
+
+    @dataclass
+    class Score:
+        customer_id: str
+        score: float
 
 
     @table(loader=True)   # or loader=50 for a batch of fifty
@@ -1456,6 +1491,18 @@ The function is a generator. Each row is delivered as it is yielded, on surfaces
 
     ```python
     from collections.abc import Iterator
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class AuditInputs:
+        actor: str | None = None
+
+
+    @dataclass
+    class AuditEvent:
+        actor: str
+        action: str
 
 
     def audit_events(inputs: AuditInputs) -> Iterator[AuditEvent]:
@@ -1467,12 +1514,26 @@ The function is a generator. Each row is delivered as it is yielded, on surfaces
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import Stream, stream
+
+
+    @dataclass
+    class AuditInputs:
+        actor: str | None = None
+
+
+    @dataclass
+    class AuditEvent:
+        actor: str
+        action: str
 
 
     @stream
     def audit_events(inputs: AuditInputs) -> Stream[AuditEvent]:
-        ...
+        for event in tail_log():
+            yield event
     ```
 
 **`@command`**
@@ -1495,7 +1556,7 @@ The function runs as a mutation.
 
     @command
     def cancel_order(order_id: int) -> bool:
-        ...
+        return api.cancel(order_id)
     ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
@@ -1505,6 +1566,15 @@ Binds a command to one kind of SQL write on `TABLE`. Use when two commands fit t
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class Order:
+        order_id: int
+        amount: float
+
+
     def add_orders(rows: list[Order]) -> int:
         """@command
         @insert orders
@@ -1515,7 +1585,15 @@ Binds a command to one kind of SQL write on `TABLE`. Use when two commands fit t
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import command
+
+
+    @dataclass
+    class Order:
+        order_id: int
+        amount: float
 
 
     @command(insert="orders")
@@ -1530,6 +1608,29 @@ A command whose kind is `query`. Used for code resolvers and for commands that r
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        store_id: str
+        country: str
+
+
+    @dataclass
+    class Region:
+        region_id: str
+        country: str
+
+
+    @dataclass
+    class Match:
+        store_id: str
+        region_id: str
+
+
     def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
         """@query"""
         ...
@@ -1538,7 +1639,28 @@ A command whose kind is `query`. Used for code resolvers and for commands that r
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import query
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        store_id: str
+        country: str
+
+
+    @dataclass
+    class Region:
+        region_id: str
+        country: str
+
+
+    @dataclass
+    class Match:
+        store_id: str
+        region_id: str
 
 
     @query
@@ -1553,6 +1675,15 @@ A batch column transform. Each parameter is one input column—a list of values 
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class Address:
+        street: str
+        city: str
+
+
     def parse_address(raw: list[str]) -> list[Address]:
         """@columns"""
         ...
@@ -1561,7 +1692,15 @@ A batch column transform. Each parameter is one input column—a list of values 
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import Batch, Results, columns
+
+
+    @dataclass
+    class Address:
+        street: str
+        city: str
 
 
     @columns
@@ -1576,6 +1715,31 @@ Tags the function that keeps a code resolver's landed table fresh incrementally.
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        store_id: str
+        country: str
+
+
+    @dataclass
+    class Region:
+        region_id: str
+        country: str
+
+
+    @dataclass
+    class Changed:
+        store_id: str
+        region_id: str
+        removed: bool
+        seq: int
+
+
     def store_region_changes(
         stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
     ) -> list[Changed]:
@@ -1592,11 +1756,37 @@ Tags the function that keeps a code resolver's landed table fresh incrementally.
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import change
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        store_id: str
+        country: str
+
+
+    @dataclass
+    class Region:
+        region_id: str
+        country: str
+
+
+    @dataclass
+    class Changed:
+        store_id: str
+        region_id: str
+        removed: bool
+        seq: int
 
 
     @change(table="store_regions", key=["store_id", "region_id"], removed="removed", cursor="seq")
-    def store_region_changes(stores: TableRef[Store], regions: TableRef[Region], since: int | None = None) -> list[Changed]:
+    def store_region_changes(
+        stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+    ) -> list[Changed]:
+        """Store-region matches changed since ``since``."""
         ...
     ```
 
@@ -1676,6 +1866,20 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class Inputs:
+        account: str
+
+
+    @dataclass
+    class Row:
+        account: str
+        balance: float
+
+
     def fetch(inputs: Inputs) -> list[Row]:
         """@table
         @requires REGION
@@ -1687,7 +1891,20 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import requires, table
+
+
+    @dataclass
+    class Inputs:
+        account: str
+
+
+    @dataclass
+    class Row:
+        account: str
+        balance: float
 
 
     @requires("API_KEY", secret=True)
@@ -1704,6 +1921,9 @@ A single function whose return value—a `provisa_services.Discovered`—generat
 The SDK has no `@discover` decorator: write it in the docstring.
 
 ```python
+from provisa_services import Discovered
+
+
 def discover_feeds() -> Discovered:
     """@discover"""
     ...
@@ -2593,6 +2813,9 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 === "Docstring"
 
     ```python
+    from provisa_spark import session
+
+
     def archive_orders(cutoff: str) -> int:
         """Archive orders older than cutoff.
 
@@ -2629,6 +2852,12 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
 
     @dataclass
+    class Order:
+        region: str
+        amount: float
+
+
+    @dataclass
     class Total:
         region: str
         amount: float
@@ -2653,6 +2882,12 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
 
     @dataclass
+    class Order:
+        region: str
+        amount: float
+
+
+    @dataclass
     class Total:
         region: str
         amount: float
@@ -2670,6 +2905,9 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 === "Docstring"
 
     ```python
+    from provisa_spark import session
+
+
     def warmup(values: dict) -> None:
         """@on-start"""
         session()  # start the Spark Connect session once
@@ -2704,6 +2942,20 @@ Declares a setup value beyond the built-in `script` and `cluster`.
 === "Docstring"
 
     ```python
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class Inputs:
+        day: str
+
+
+    @dataclass
+    class Row:
+        day: str
+        amount: float
+
+
     def fetch(inputs: Inputs) -> list[Row]:
         """@table
         @requires DELTA_TABLE_PATH
@@ -2714,7 +2966,20 @@ Declares a setup value beyond the built-in `script` and `cluster`.
 === "SDK"
 
     ```python
+    from dataclasses import dataclass
+
     from provisa_sdk import requires, table
+
+
+    @dataclass
+    class Inputs:
+        day: str
+
+
+    @dataclass
+    class Row:
+        day: str
+        amount: float
 
 
     @requires("DELTA_TABLE_PATH")
