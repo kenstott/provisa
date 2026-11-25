@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """The geometric forms on DuckDB against what PostgreSQL 17.11 answered (REQ-2171, AN ANSWER THAT
-DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_engines.py,
+DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_*.py,
 one test to a function; DuckDB binds a form in about 125ms, so this file replays a quarter of them,
 each overload still reached."""
 

@@ -190,7 +190,7 @@ def _shard_dir(tmp_path: Path, name: str, cases: list[tuple[str, str, float]], r
     (out / "shard_files.json").write_text(json.dumps(record))
 
 
-_GEO = "tests/integration/test_geometric_on_engines.py"
+_GEO = "tests/integration/test_geometric_on_duckdb.py"
 _HASH = "tests/integration/test_hashes_on_engines.py"
 _TEXT = "tests/integration/test_text_search_on_engines.py"
 _STEPS = "tests/steps/steps_aggregates.py"
@@ -203,8 +203,8 @@ def test_a_folded_run_replaces_what_it_measured(tmp_path):
         tmp_path,
         "core-1of2",
         [
-            ("tests.integration.test_geometric_on_engines", "test_a", 100.0),
-            ("tests.integration.test_geometric_on_engines", "test_b", 20.5),
+            ("tests.integration.test_geometric_on_duckdb", "test_a", 100.0),
+            ("tests.integration.test_geometric_on_duckdb", "test_b", 20.5),
             ("tests.steps.steps_aggregates", "test_scenario", 3.0),
             ("", "tests.integration.test_hashes_on_engines", 2.0),  # a collection error
         ],
@@ -219,7 +219,7 @@ def test_a_complete_shard_records_a_file_with_no_core_test_as_zero_and_a_stopped
     tmp_path,
 ):
     durations = _load("lane_durations")
-    case = [("tests.integration.test_geometric_on_engines", "test_a", 10.0)]
+    case = [("tests.integration.test_geometric_on_duckdb", "test_a", 10.0)]
     _shard_dir(
         tmp_path / "a",
         "core-1of2",
