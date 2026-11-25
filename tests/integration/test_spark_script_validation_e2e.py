@@ -131,7 +131,7 @@ def spark_source(provisa_server, spark_host, cluster):
     }
     _admin(
         srv,
-        f'createSource(input: {{id: "{_SOURCE}", type: "python", host: "", port: 0, '
+        f'createSource(input: {{id: "{_SOURCE}", type: "spark", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
     )
     return srv
