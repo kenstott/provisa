@@ -656,7 +656,14 @@ def ir_of(shape: Shape) -> str:
 def _loader_rows(result: dict) -> dict:
     """REQ-1984: a ``@loader`` alone may return a list of rows or a mapping of names to lists of
     those rows (a loader call answers the hash of each key to its rows). That union is its rows;
-    any other union is left as it is, and refused as a table's return is."""
+    any other union is left as it is, and refused as a table's return is. REQ-2200: Go has no
+    such union, so a Go loader returns the mapping alone (``map[string][]Row``), its value the
+    rows."""
+    if result["kind"] == "record":
+        value = result.get("value")
+        if value is not None and value["kind"] in ("array", "iterable"):
+            return value
+        return result
     if result["kind"] != "union":
         return result
     members = result["members"]

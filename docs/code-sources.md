@@ -290,7 +290,7 @@ A function that declares a `ReadContext` parameter is told what the read asks of
         yield from query
     ```
 
-In TypeScript, `import type { ReadContext } from "@provisa/services"`.
+In TypeScript, `import type { ReadContext } from "@provisa/services"`. In Go, the parameter after the inputs struct is a `provisa_services.ReadContext`, its fields `Filters`, `OrderBy`, `Limit` (nil when every row counts), `Columns` and `Keys`.
 
 Everything in the context is a hint. Provisa applies the whole statement to the rows your function returns, so a function can ignore any part of it, or loosen a filter, and still return the right answer. One rule holds for the limit:
 
@@ -311,7 +311,7 @@ A function tagged `@loader` is called once per batch instead, the pattern GraphQ
 - **Sparse.** A field with no value is left out of the key, so the function's own default applies, as it does on a single call.
 - **What it returns.** A hash from each key it was given to that key's rows: ordinary rows of the table, none or many. Provisa gives each key's rows to every joining row that shared the key.
 - **Matched by hash.** The function fills a sparse key's missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash, and the function only echoes back the keys it was given.
-- **Typed as usual.** The function still declares its row type alone, a list of rows.
+- **Typed as usual.** The function still declares its row type alone, a list of rows. Go has no union of a list and a hash, so a Go loader declares `map[string][]T` (see [Go](#go)).
 - **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `@loader 100` in place of `@loader`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
 - **Refused.** A `@loader` with no `ReadContext` parameter, a size that isn't a positive integer, two sizes on one function, and `@loader` on anything but a `@table`.
 
@@ -985,11 +985,12 @@ The batched `churnScore` in TypeScript:
 
 - Go code runs as one program: Provisa compiles your package into its host once per version of the code, with the pinned Go toolchain (1.27.3). A `go.mod` that asks for a newer Go is refused.
 - Tags go in the doc comment, each on a line of its own, and types come from the function's signature. An exported function is offered; a method or an unexported function is not.
-- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs. A pointer field is an optional input; any other field is required.
+- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs, then the read context, a `provisa_services.ReadContext`. Each of the three may be left out. A pointer field of the inputs is an optional input; any other field is required.
 - A field is named as `encoding/json` names it: its `json` tag, else its Go name.
 - A `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`. A `@stream` returns `iter.Seq2[T, error]`; a row it yields with an error ends the stream with that error.
 - A `string` type with constants of its own is an enum of them; `time.Time` is a timestamp.
-- `@loader` and the read context are not yet offered for Go.
+- A `@loader` takes the read context and returns `map[string][]T`, the hash of each key it was given to that key's rows, with or without an error. Go has no union of a list and a map, so a read that is not a join's gives no keys, and the loader's rows are those of every key it answers.
+- `@discover` is not offered for Go: it is read from a Python code source only.
 
 The scored account in Go:
 
@@ -1054,6 +1055,7 @@ The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module
 | `provisa.OnStart(F)`, `provisa.OnStop(F)`, `provisa.Health(F)` | `@on-start`, `@on-stop`, `@health` |
 | `provisa.Change(F, "t", []string{"k"}, "removed", "seq")` | `@change table=t`, `key=k`, `removed=removed`, `cursor=seq` |
 | option `provisa.Requires("NAME")`, `provisa.Requires("NAME", provisa.Secret)` | `@requires NAME`, `@requires NAME:secret` |
+| table option `provisa.Loader()`, `provisa.Loader(N)` | `@loader`, `@loader N` |
 | command option `provisa.Insert("t")`, `provisa.Update("t")`, `provisa.Delete("t")` | `@insert t`, `@update t`, `@delete t` |
 
 - `I` is the inputs struct, `provisa.NoInputs` when the function takes none, and `R` is the row. Go infers neither through the SDK's constraints, so you write them.
@@ -1061,6 +1063,7 @@ The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module
 - Every option's arguments are constants. A registration naming a closure, a method or a variable, an option that isn't a constant, and an SDK call outside a package-level registration are refused, naming each.
 - `provisa.TableRef[Row]` is a table a command or query takes. A doc-comment source declares its own generic `TableRef` type instead; Provisa knows either by its name.
 - The column aliases `provisa.Text`, `BigInt`, `Double`, `Boolean`, `Timestamp` and `Json` are the Go types they name.
+- `provisa.ReadContext` is the read context an SDK spelling takes, the same as `provisa_services.ReadContext`; Provisa gives a function either.
 
 ### Rust {: #rust }
 
@@ -2250,7 +2253,7 @@ These are from `@provisa/sdk`; each is an alias of its TypeScript equivalent.
 
 A Go resolver is a package. Tags go in the doc comment; types come from the function's signature. Exported top-level functions are offered; methods and unexported functions are not. The optional `provisa.dev/sdk/go` module registers functions with their tags so the compiler can check signatures at build time.
 
-Go does not offer `@loader` or the read context.
+A function that takes a `provisa_services.ReadContext` (or the SDK's `provisa.ReadContext`) after its inputs struct is given the read context. Go does not offer `@discover`.
 
 #### Tags
 
@@ -2275,6 +2278,69 @@ A `@table` function takes an optional `context.Context` first, then its inputs s
     import provisa "provisa.dev/sdk/go"
 
     var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
+    ```
+
+**`@loader` / `@loader N`**
+
+A `@loader` is a `@table` that takes the read context, whose `Keys` are the join's keys, each key's hash to its inputs. It returns `map[string][]T`, each hash to that key's rows. With `@loader N`, each batch is at most `N` keys.
+
+=== "Doc comment"
+
+    ```go
+    package scoring
+
+    import ps "provisa_services"
+
+    type Score struct {
+        CustomerID string  `json:"customer_id"`
+        Score      float64 `json:"score"`
+    }
+
+    type ScoreInputs struct {
+        CustomerID *string `json:"customer_id"`
+    }
+
+    // ChurnScore scores every key of a batch at once.
+    //
+    // @table
+    // @loader
+    func ChurnScore(in ScoreInputs, read ps.ReadContext) (map[string][]Score, error) {
+        out := map[string][]Score{}
+        for hash, key := range read.Keys {
+            id, _ := key["customer_id"].(string)
+            out[hash] = []Score{{CustomerID: id, Score: 0.5}}
+        }
+        return out, nil
+    }
+    ```
+
+=== "SDK"
+
+    ```go
+    package scoring
+
+    import provisa "provisa.dev/sdk/go"
+
+    type Score struct {
+        CustomerID string  `json:"customer_id"`
+        Score      float64 `json:"score"`
+    }
+
+    type ScoreInputs struct {
+        CustomerID *string `json:"customer_id"`
+    }
+
+    // ChurnScore scores every key of a batch at once.
+    func ChurnScore(in ScoreInputs, read provisa.ReadContext) (map[string][]Score, error) {
+        out := map[string][]Score{}
+        for hash, key := range read.Keys {
+            id, _ := key["customer_id"].(string)
+            out[hash] = []Score{{CustomerID: id, Score: 0.5}}
+        }
+        return out, nil
+    }
+
+    var _ = provisa.Table[ScoreInputs, Score](ChurnScore, provisa.Loader()) // or provisa.Loader(50)
     ```
 
 **`@stream`**
@@ -2500,7 +2566,7 @@ These are from `provisa.dev/sdk/go`.
 
 #### Special types
 
-`provisa.NoInputs` stands for `I` when a `Table` or `Stream` function takes no inputs struct. `provisa.TableRef[Row]` is the type for a governed table argument; a doc-comment source declares its own generic `TableRef` type instead, which Provisa also knows by name.
+`provisa.NoInputs` stands for `I` when a `Table` or `Stream` function takes no inputs struct. `provisa_services.ReadContext`, or `provisa.ReadContext` in an SDK spelling, is the read context. `provisa.TableRef[Row]` is the type for a governed table argument; a doc-comment source declares its own generic `TableRef` type instead, which Provisa also knows by name.
 
 ---
 
