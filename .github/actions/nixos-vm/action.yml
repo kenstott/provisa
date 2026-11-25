@@ -81,6 +81,14 @@ runs:
         tail -n 200 "$RUNNER_TEMP/vm-console.log"
         exit 1
 
+    # cp -r inside the guest reads symlinks via the virtio-9p driver, which returns
+    # ELOOP for relative symlinks that traverse multiple directory levels (e.g.
+    # demo/named/starthere/files/inquiries.sqlite -> ../../../files/inquiries.sqlite).
+    # Archiving from the HOST runner's native FS avoids the 9P readlink() path: tar -c
+    # on the host reads symlinks correctly, then pipes the archive over SSH; the guest's
+    # tar -x recreates symlinks with symlinkat() without touching /mnt/src again.
     - name: Checkout onto the guest's disk
       shell: bash
-      run: ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'cp -r /mnt/src ~/provisa'
+      run: |
+        tar -C "$GITHUB_WORKSPACE" -cf - . \
+          | ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'mkdir ~/provisa && tar -C ~/provisa -xf -'
