@@ -34,8 +34,8 @@ from provisa.transpiler.polyfill.notation import Refused
 def _translated(statement: str, dialect: str) -> str:
     """``statement`` as pgwire translates it for an engine of ``dialect``."""
     if dialect == "duckdb":
-        return transpile.transpile_to_duckdb(statement)
-    return transpile.transpile(statement, dialect)
+        return transpile.transpile_to_duckdb(statement, generated=False)
+    return transpile.transpile(statement, dialect, generated=False)
 
 
 def _refusal(statement: str, dialect: str) -> tuple[str, str] | None:
@@ -201,7 +201,9 @@ def test_a_literal_cast_to_text_is_a_literal_on_duckdb(statement: str, answer: s
     """A format or pattern written 'x'::text names its text as plainly as 'x' (G10): PostgreSQL's
     answer, where DuckDB's forms refused it as not a literal."""
     with duckdb.connect() as con:
-        assert con.execute(transpile.transpile_to_duckdb(statement)).fetchall() == [(answer,)]
+        assert con.execute(
+            transpile.transpile_to_duckdb(statement, generated=False)
+        ).fetchall() == [(answer,)]
 
 
 def test_to_char_of_an_interval_is_refused_on_duckdb() -> None:
@@ -209,7 +211,7 @@ def test_to_char_of_an_interval_is_refused_on_duckdb() -> None:
     answered as a timestamp (0001-00-01 where PostgreSQL writes 0000-00-01)."""
     statement = "SELECT to_char('1 day 02:03:04'::interval, 'YYYY-MM-DD') AS v"
     with pytest.raises(NotImplementedError, match=r"to_char\(\) of an interval has no form"):
-        transpile.transpile_to_duckdb(statement)
+        transpile.transpile_to_duckdb(statement, generated=False)
 
 
 def test_a_stated_limitation_carries_its_refusal() -> None:

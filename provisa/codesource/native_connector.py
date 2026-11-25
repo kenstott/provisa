@@ -10,11 +10,13 @@
 
 """A checkout's demo runs the Spark connector natively (REQ-2225, amended 2026-11-24).
 
-A release offers the Spark connector as an image named in its platform block. A demo run from a
-checkout offers it too, but runs it as a native Python code host from ``connectors/spark``, like
-the demo's other native services: no Docker, no image build and no registry.
+Spark is a built-in source type, not a connector an organisation offers (REQ-2225, amended
+2026-11-24): a ``spark`` source joins the Spark host, listed with the code source types. A release
+carries that host as an image named in its platform block. A demo run from a checkout carries it
+too, but runs it as a native Python code host from ``connectors/spark``, like the demo's other
+native services: no Docker, no image build and no registry.
 
-OFFERED. :func:`platform_rows` is the connector as Sources lists it: its name, its standard file's
+THE HOST'S ROW. :func:`platform_rows` is the host a ``spark`` source joins: its name, its standard file's
 description, icon, values and settings (read as ``provisa connector build`` reads them), what its
 code ``@requires`` (read from the checkout's code), and ``native``. Its code hash is the hash of
 ``connectors/spark`` as checked out: the code the host is built from.
@@ -30,8 +32,9 @@ by this Provisa's interpreter, with the Python host program on the project's env
 -- its identity, its pairing and the script it was given -- is under the data directory, and the
 source is paired with it on loopback exactly as with a host its operator runs. After a restart of
 Provisa the host is started again from its state, on the port the source keeps
-(:func:`ensure_running`). A host that fails to start fails the source by name. The hosts stop with
-the demo (:func:`stop_all`, and the interpreter's exit as a backstop).
+(:func:`ensure_running`). A host that fails to start fails the source by name. A deleted source's
+host stops and its state goes (:func:`stop`). The hosts stop with the demo (:func:`stop_all`, and
+the interpreter's exit as a backstop).
 """
 
 # Requirements: REQ-2225
@@ -474,6 +477,18 @@ def _stop_process(process: subprocess.Popen) -> None:
     stop_process(process, STOP_TIMEOUT_S)
 
 
+def stop(org_id: str, source_id: str) -> None:
+    """The source was deleted: its host stopped and its state removed, so nothing starts it again
+    (REQ-2225)."""
+    work = state_dir(org_id, source_id)
+    with _hosts_lock:
+        found = _hosts.pop((org_id, source_id), None)
+        if found is not None:
+            _stop_process(found.process)
+        if work.exists():
+            shutil.rmtree(work)
+
+
 def stop_all() -> None:
     """Stop every host this process started."""
     with _hosts_lock:
@@ -498,5 +513,6 @@ __all__ = [
     "script_value",
     "start_for_join",
     "state_dir",
+    "stop",
     "stop_all",
 ]

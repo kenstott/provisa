@@ -146,7 +146,9 @@ def test_typed_values_reach_trino_as_typed_positional_binds():
         'shipDate: { eq: "2026-01-05" } }'
     )
     statement, bound = bind_positionally(
-        transpile(f"SELECT order_id FROM orders WHERE {_where(compiled.sql)}", "trino"),
+        transpile(
+            f"SELECT order_id FROM orders WHERE {_where(compiled.sql)}", "trino", generated=False
+        ),
         compiled.params,
         "?",
     )

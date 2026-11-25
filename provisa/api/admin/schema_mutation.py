@@ -268,7 +268,6 @@ async def _save_relationship_as_caller(
         if not creating:
             require_capability(info, "create_relationship")
         return await _queue_creation_request(info, "relationship", input)
-    from provisa.api.admin.capabilities import _identity_from_info
 
     _invalid = _cardinality_problem(input)
     if _invalid is not None:
@@ -310,11 +309,12 @@ async def _save_relationship_as_caller(
         # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
         return await _queue_creation_request(info, "relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
-    # REQ-020: record the defining steward as owner.
-    _identity = _identity_from_info(info)
-    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
     return await save_relationship(
-        input, owner=_owner, needs_review=_cross_domain, creating=creating
+        input,
+        set_by=_writer_id(info),
+        changer=_changer(info),
+        needs_review=_cross_domain,
+        creating=creating,
     )
 
 
@@ -554,6 +554,47 @@ async def _change_product_status(
     )
 
 
+def _writer_id(info: StrawberryInfo) -> str | None:
+    """The person making the write, for the rows it records; None in dev mode (no identity, which
+    the gates read the same way)."""
+    from provisa.api.admin.capabilities import _identity_from_info
+
+    user_id = getattr(_identity_from_info(info), "user_id", None)
+    return None if user_id is None or user_id == "anonymous" else str(user_id)
+
+
+def _owner_refusal(refused: Any, kind: str, object_id: str) -> MutationResult:
+    """An Owner or Steward field refused by name, nothing written: a person holding no role with
+    the kind's capability (``OwnerRefused``), a role not holding it (``OwnerRoleRefused``), or a
+    change by someone neither an org admin nor a current holder (``OwnerChangeRefused``)."""
+    from provisa.entitlements.owners import OwnerRefused, OwnerRoleRefused
+
+    params: dict[str, str] = {kind: object_id}
+    if isinstance(refused, OwnerRefused):
+        params[refused.kind.holder] = refused.principal
+    elif isinstance(refused, OwnerRoleRefused):
+        params["role"] = refused.role_id
+    return MutationResult(success=False, message=str(refused), code=refused.code, params=params)
+
+
+def _changer(info: StrawberryInfo) -> Any:
+    """Who saves an Owner or Steward field, as REQ-2219 (amended 2026-11-23) reads them: the
+    person, and whether they are an org admin (org_settings; dev mode holds it, as every gate
+    reads dev mode)."""
+    from provisa.api.admin.capabilities import has_capability
+    from provisa.entitlements.owners import Changer
+
+    return Changer(_writer_id(info), has_capability(info, "org_settings"))
+
+
+async def _reload_owner_rows(conn: "Connection", people: set[str]) -> None:
+    """The runtime's entitlement rows reloaded after an Owner or Steward field wrote them."""
+    from provisa.api.app import state
+    from provisa.entitlements.owners import reload_owner_rows
+
+    await reload_owner_rows(conn, state, people)
+
+
 async def _save_data_product(
     info: StrawberryInfo, input: DataProductInput, *, creating: bool
 ) -> MutationResult:  # REQ-1634
@@ -562,14 +603,13 @@ async def _save_data_product(
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
     # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
     # U rule, not this gate, says which products it edits (core.model_row_rules).
-    from provisa.api.admin.capabilities import _identity_from_info, require_right_in_domains
+    from provisa.api.admin.capabilities import require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
 
     # No identity is dev mode (the gates above read it the same way): no creator to record.
-    _user_id = getattr(_identity_from_info(info), "user_id", None)
-    creator = None if _user_id is None or _user_id == "anonymous" else str(_user_id)
+    creator = _writer_id(info)
     pool = await _get_pool()
     async with pool.acquire() as conn:
         conn = cast("Connection", conn)
@@ -616,7 +656,6 @@ async def _save_data_product(
             id=input.id,
             domain_id=input.domain_id,
             name=input.name,
-            owner_role=input.owner_role or None,
             team_role=input.team_role or None,
             purpose=input.purpose,
             limitations=input.limitations,
@@ -640,17 +679,44 @@ async def _save_data_product(
             freshness=input.freshness,  # REQ-2180
             created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
-        await data_product_repo.upsert(conn, model)
-        if stored is None and creator is not None:
-            # REQ-2219: creating a product grants its creator read-write on it, as an entitlement.
-            from provisa.api.admin.capabilities import acting_role_of
-            from provisa.entitlements.store import record_product_creator
+        from provisa.entitlements.owners import (
+            OwnerChangeRefused,
+            OwnerRefused,
+            OwnerRoleRefused,
+            save_owner_field,
+        )
 
-            await record_product_creator(
-                conn, creator, acting_role_of(info), input.domain_id, input.id
-            )
-    if (None if stored is None else stored["owner_role"]) != model.owner_role:
-        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
+        try:
+            async with conn.transaction():
+                await data_product_repo.upsert(conn, model)
+                if stored is None and creator is not None:
+                    # REQ-2219: creating a product grants its creator read-write on it, as an
+                    # entitlement.
+                    from provisa.api.admin.capabilities import acting_role_of
+                    from provisa.entitlements.store import record_product_creator
+
+                    await record_product_creator(
+                        conn, creator, acting_role_of(info), input.domain_id, input.id
+                    )
+                # REQ-2219 (amended 2026-11-23): the Owner field names people; saving writes or
+                # ends their data_product_owner rows. A product moved to another domain is
+                # named again under it.
+                # Amended 2026-11-23: the field names roles too, and only an org admin or a
+                # current owner changes it.
+                changed = await save_owner_field(
+                    conn,
+                    input.id,
+                    input.domain_id,
+                    input.owners,
+                    roles=input.owner_roles,
+                    stored_domain_id=None if stored is None else stored["domain_id"],
+                    changer=_changer(info),
+                    set_by=creator,
+                )
+        except (OwnerRefused, OwnerRoleRefused, OwnerChangeRefused) as refused:
+            return _owner_refusal(refused, "data_product", input.id)
+        if changed:
+            await _reload_owner_rows(conn, changed)
     if creating:
         return MutationResult(
             success=True,
@@ -1257,15 +1323,28 @@ def _cardinality_problem(input: RelationshipInput) -> "MutationResult | None":
 
 
 async def save_relationship(
-    input: RelationshipInput, *, owner: str | None, needs_review: bool, creating: bool
+    input: RelationshipInput,
+    *,
+    set_by: str | None,
+    changer: Any,
+    needs_review: bool,
+    creating: bool,
 ) -> MutationResult:  # REQ-019, REQ-020, REQ-1948
     """Store a relationship whose author has already been authorized: by holding the right in
     the source table's domain (the mutation above), or by the approvals of the domains the
     relationship touches (REQ-1948). ``needs_review`` flags an edge the target's domain has not
     seen (REQ-1531). ``creating``: a new relationship, whose id must be free; else one that
-    exists, changed."""
+    exists, changed. ``set_by``: who the owner rows its Owner field writes are recorded as set
+    by (REQ-2219); ``changer`` who changes it (``entitlements.owners.Changer``): only an org admin
+    or a current owner changes it (REQ-2219, amended 2026-11-23)."""
     from provisa.core.models import Relationship as RelModel, Cardinality
     from provisa.core.repositories import relationship as rel_repo
+    from provisa.entitlements.owners import (
+        OwnerChangeRefused,
+        OwnerRefused,
+        OwnerRoleRefused,
+        save_relationship_owners,
+    )
     from provisa.core.term_tags import (
         TagLossRefused,
         TermTagRefused,
@@ -1320,7 +1399,6 @@ async def save_relationship(
         via_label_source=input.via_label_source,
         # REQ-2099: the parameters the edge feeds travel with it on save.
         parameters={p.parameter: p.source_column for p in input.parameters},
-        owner=owner,
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -1351,6 +1429,19 @@ async def save_relationship(
                     confirm_tag_loss=input.confirm_tag_loss,
                     carry_tags=input.carry_tags,
                 )
+                # REQ-2219 (amended 2026-11-23): the Owner field names people and roles; saving
+                # writes or ends their relationship_owner rows naming it (its names were just
+                # stored). Only an org admin or a current owner changes it.
+                owners_changed = await save_relationship_owners(
+                    _conn,
+                    input.id,
+                    input.owners,
+                    roles=input.owner_roles,
+                    changer=changer,
+                    set_by=set_by,
+                )
+        except (OwnerRefused, OwnerRoleRefused, OwnerChangeRefused) as refused:
+            return _owner_refusal(refused, "relationship", input.id)
         except _FakeRefusedSave as refused:
             return refused.result
         except RetiredNameTaken as taken:  # REQ-2248
@@ -1371,16 +1462,14 @@ async def save_relationship(
             )
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
+        if owners_changed:
+            await _reload_owner_rows(_conn, owners_changed)
         if needs_review:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
             # source steward's to clear — the flag is the other domain's notice that its tables are
             # now reachable through an edge it did not define.
-            await _conn.execute_core(
-                update(relationships)
-                .where(relationships.c.id == input.id)
-                .values(needs_review=True)
-            )
+            await rel_repo.flag_for_review(_conn, [input.id])
         if input.record_candidate and not input.target_function_name:
             _rres = await _conn.execute_core(
                 select(relationships.c.source_table_id, relationships.c.target_table_id).where(
@@ -1527,14 +1616,13 @@ async def perform_request_creation(info: StrawberryInfo, req: dict) -> MutationR
     request is marked executed (REQ-209). The caller marks the request executed when this
     succeeds.
     """
-    from provisa.api.admin.capabilities import _identity_from_info
 
     kind = req["request_type"]
     if kind == "relationship":
-        caller = _identity_from_info(info)
         return await save_relationship(
             _rebuild_relationship_input(req["payload"]),
-            owner=getattr(caller, "user_id", None),
+            set_by=_writer_id(info),
+            changer=_changer(info),
             needs_review=False,
             creating=True,  # a request is for a new relationship
         )
@@ -2583,6 +2671,16 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
             from provisa.codesource.source import forget
 
             forget(id)
+            from provisa.codesource import remote_sources
+
+            if remote_sources.is_native(_existing["mapping"]):
+                # REQ-2225: a host this server runs for the source stops and its state goes.
+                import asyncio
+
+                from provisa.codesource import native_connector
+                from provisa.core.request_context import require_current_org
+
+                await asyncio.to_thread(native_connector.stop, require_current_org(), id)
         return MutationResult(
             success=True,
             message=f"Source {id!r} deleted",
@@ -4022,7 +4120,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         model = DomainModel(
             id=input.id,
             description=input.description,
-            steward=input.steward or None,  # REQ-609
             graphql_alias=input.graphql_alias or None,
             parent_domain_id=input.parent_domain_id or None,  # REQ-1363
         )
@@ -4047,11 +4144,34 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.domain_parent_invalid",
                     params={"domain": input.id, "parent": model.parent_domain_id},
                 )
+            from provisa.entitlements.owners import (
+                OwnerChangeRefused,
+                OwnerRefused,
+                OwnerRoleRefused,
+                save_domain_stewards,
+            )
+
+            _conn = cast("Connection", conn)
             try:
-                await domain_repo.upsert(cast("Connection", conn), model)
+                async with _conn.transaction():
+                    await domain_repo.upsert(_conn, model)
+                    # REQ-609, REQ-2219 (amended 2026-11-23): the Steward field names people and
+                    # roles; saving writes their domain_steward rows naming the new domain.
+                    changed = await save_domain_stewards(
+                        _conn,
+                        input.id,
+                        input.stewards,
+                        roles=input.steward_roles,
+                        changer=_changer(info),
+                        set_by=_writer_id(info),
+                    )
             except LabelClash as clash:
                 # REQ-572: a label never names both a domain and a table; both are named.
                 return label_clash_result(clash)
+            except (OwnerRefused, OwnerRoleRefused, OwnerChangeRefused) as refused:
+                return _owner_refusal(refused, "domain", input.id)
+            if changed:
+                await _reload_owner_rows(_conn, changed)
         if model.parent_domain_id is not None:
             # REQ-1363: a role that lists the parent reaches the new domain now -- a member scoped
             # to the business unit registers into its new organization without a role edit.
@@ -4061,6 +4181,59 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Domain {input.id!r} created",
             code="schema.domain_created",
             params={"domain": input.id},
+        )
+
+    @strawberry.mutation
+    async def set_domain_stewards(
+        self,
+        info: StrawberryInfo,
+        domain_id: str,
+        stewards: list[str],
+        steward_roles: list[str] | None = None,
+    ) -> MutationResult:  # REQ-609, REQ-2219
+        """A domain's Steward field saved: ``stewards`` (people, by user id) become the people
+        whose domain_steward rows name it, and the rows of anyone else naming it end;
+        ``steward_roles``, when given, the roles (every holder of each a steward). Only an org
+        admin (org_settings) or a current steward of the domain changes it (REQ-2219, amended
+        2026-11-23). A person or role not holding domain_steward is refused by name and nothing is
+        written."""
+        from provisa.core.repositories import domain as domain_repo
+        from provisa.entitlements.owners import (
+            OwnerChangeRefused,
+            OwnerRefused,
+            OwnerRoleRefused,
+            save_domain_stewards,
+        )
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _conn = cast("Connection", conn)
+            if await domain_repo.get(_conn, domain_id) is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Domain {domain_id!r} not found",
+                    code="schema.domain_not_found",
+                    params={"domain": domain_id},
+                )
+            try:
+                async with _conn.transaction():
+                    changed = await save_domain_stewards(
+                        _conn,
+                        domain_id,
+                        stewards,
+                        roles=steward_roles,
+                        changer=_changer(info),
+                        set_by=_writer_id(info),
+                    )
+            except (OwnerRefused, OwnerRoleRefused, OwnerChangeRefused) as refused:
+                return _owner_refusal(refused, "domain", domain_id)
+            if changed:
+                await _reload_owner_rows(_conn, changed)
+        return MutationResult(
+            success=True,
+            message=f"Domain {domain_id!r} stewards saved",
+            code="schema.domain_stewards_saved",
+            params={"domain": domain_id},
         )
 
     @strawberry.mutation
@@ -4150,7 +4323,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if stored is not None:  # REQ-1944: an absent product is the not-found below
                 require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
             try:
-                deleted = await data_product_repo.delete(cast("Connection", conn), id)
+                from provisa.entitlements.owners import end_product_owners
+
+                ended: set[str] = set()
+                async with cast("Connection", conn).transaction():
+                    if stored is not None:
+                        # REQ-2219: no row is left naming a product that is gone.
+                        ended = await end_product_owners(
+                            cast("Connection", conn), id, stored["domain_id"], set_by=None
+                        )
+                    deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
                 from provisa.api.admin.read_rights import reader_for, refusal
 
@@ -4166,9 +4348,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         "dependents": _named,
                     },
                 )
+            if deleted and ended:
+                from provisa.api.app import state
+                from provisa.entitlements.owners import reload_owner_rows
+
+                await reload_owner_rows(cast("Connection", conn), state, ended)
         if deleted:
-            if stored is not None and stored["owner_role"]:
-                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",

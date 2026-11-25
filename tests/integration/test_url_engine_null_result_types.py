@@ -43,7 +43,7 @@ _DATE_CALL = {'SELECT pg_catalog."date"(NULL::timestamp without time zone) AS v'
 
 
 def _described(runtime: SqlAlchemyFederationRuntime, dialect: str, sql: str) -> int | None:
-    stream = runtime.run_sync(transpile(sql, dialect))
+    stream = runtime.run_sync(transpile(sql, dialect, generated=False))
     result = ProvisaQueryResult(stream, sql)
     try:
         return result.column_type_oid(0)

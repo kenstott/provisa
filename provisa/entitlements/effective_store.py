@@ -255,12 +255,19 @@ async def write_person(
     changed. Returns the rows appended. Called after an input changed: their sign-in, or a write
     to their lists or role grants, once the runtime holds it. With no model built yet there is
     no version for the bits to be over and nothing is written: every build's after-answer pass
-    recomputes every holder's rows (:func:`write_every_holder`), the first build's included."""
+    recomputes every holder's rows (:func:`write_every_holder`), the first build's included.
+    Who owns and stewards each object (object_owners) is rewritten from the store either way: a
+    change to a person's rows may change it (REQ-2219)."""
+    from provisa.entitlements.owners import write_object_owners
+
     if state.names_table is None:
+        await write_object_owners(conn)
         return 0
     at = datetime.now(UTC) if now is None else now
     role_ids = await held_role_ids(conn, state, principal)
-    return await write_rows(conn, principal, compute_rows(state, principal, role_ids, at))
+    written = await write_rows(conn, principal, compute_rows(state, principal, role_ids, at))
+    await write_object_owners(conn)
+    return written
 
 
 async def known_principals(conn: "Connection") -> list[str]:
@@ -286,7 +293,11 @@ async def write_every_holder(conn: "Connection", state: Any, now: datetime | Non
     to, from the model built now, batched: the stored rows are read and what changed is appended
     a batch of people at a time. Each who holds a role gets rows over the model's version, and one
     who holds none has any left closed; a build that moved no bit appends nothing. Called from
-    every model build (REQ-2219: recomputed on a model build). Returns the rows appended."""
+    every model build (REQ-2219: recomputed on a model build). Returns the rows appended. Who owns
+    and stewards each object (object_owners) is rewritten from the store too."""
+    from provisa.entitlements.owners import write_object_owners
+
+    await write_object_owners(conn)
     if state.names_table is None:
         return 0
     at = datetime.now(UTC) if now is None else now

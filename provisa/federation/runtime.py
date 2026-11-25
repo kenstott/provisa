@@ -111,9 +111,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         callers, so they never hardcode a specific engine's dialect."""
         return self._backend.dialect
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the bound engine's physical dialect —
         the single seam generic callers use instead of hardcoding a specific engine's dialect.
+        ``generated``: Provisa compiled ``pg_sql`` from a graph IR (Cypher, SPARQL, GraphQL), so a
+        list of lists is a nested list; False is SQL a client wrote (REQ-2236,
+        ``transpiler.transpile``).
 
         REQ-1912: ``pg_sql`` names its tables as the engine addresses them. Each table served
         from its replica is renamed here to its replica's address, before the dialect transpile:
@@ -135,10 +138,12 @@ class EngineRuntime:  # REQ-825, REQ-840
             from provisa.federation.typed_transpile import registered_column_types
 
             physical = self._backend.transpile_typed(
-                addressed, registered_column_types(self._state, self.engine)
+                addressed,
+                registered_column_types(self._state, self.engine),
+                generated=generated,
             )
         else:
-            physical = self._backend.transpile_physical(addressed)
+            physical = self._backend.transpile_physical(addressed, generated=generated)
         return self._backend.exact_reads(self._state, physical)
 
     def _search_replica_indexes(self, pg_sql: str) -> str:
@@ -241,7 +246,8 @@ class EngineRuntime:  # REQ-825, REQ-840
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             pg_sql = fold_catalog_into_schema(pg_sql)
-        return self.transpile_physical(pg_sql)
+        # REQ-2236: a statement built from registered tables, not compiled from a graph IR.
+        return self.transpile_physical(pg_sql, generated=False)
 
     def connector_pushdown(self, source):
         """The bound engine's declared pushdown Capability for ``source`` — the same
@@ -389,9 +395,16 @@ class EngineRuntime:  # REQ-825, REQ-840
         that thread, REQ-1882) — one fetch batch at a time, so a large DIRECT scan never fully
         materializes (streaming-uniformity Defect 1). The connection/transaction is held for the
         stream's life and released when the row iterator drains (``on_close``). Only valid when
-        ``source_pools.supports_stream(source_id)``."""
+        ``source_pools.supports_stream(source_id)``.
+
+        REQ-2194: a source whose driver fetches Arrow (a :class:`DirectArrowStream`) is handed on
+        as an :class:`ArrowStreamResult` of the driver's own record batches, as the ENGINE stream
+        is: an encoder reads them as Arrow, and a row consumer has each batch turned into rows as
+        it pulls it. Any other source is a row stream of its driver's rows, encoded from its rows
+        and never built into Arrow to be encoded (REQ-2195)."""
         from provisa.executor.direct import open_direct_stream
-        from provisa.executor.result import StreamingQueryResult
+        from provisa.executor.drivers.base import DirectArrowStream
+        from provisa.executor.result import ArrowStreamResult, StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
         ds = run(open_direct_stream(source_pools, source_id, sql, params))
@@ -407,6 +420,27 @@ class EngineRuntime:  # REQ-825, REQ-840
                 return
             released[0] = True
             run(ds.close())
+
+        if isinstance(ds, DirectArrowStream):
+            arrow_ds = ds
+
+            def _arrow_batches() -> Any:
+                try:
+                    while True:
+                        batch = run(arrow_ds.fetch_arrow())
+                        if batch is None:
+                            return
+                        yield batch
+                finally:
+                    _release()
+
+            return ArrowStreamResult(
+                arrow_ds.schema,
+                _arrow_batches(),
+                arrow_ds.column_types,
+                to_rows=arrow_ds.to_rows,
+                on_release=_release,
+            )
 
         def _batches() -> Any:
             try:

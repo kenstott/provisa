@@ -149,14 +149,17 @@ def is_ported(node: exp.Expr) -> bool:
     return any(all(_fits(want, got) for want, got in zip(row, told)) for row in rows)
 
 
-def duckdb_form(call: exp.Expr) -> exp.Expr | None:
+def duckdb_form(call: exp.Expr, *, generated: bool) -> exp.Expr | None:
     """DuckDB's form of ``call`` as one expression, or None where DuckDB's is not one expression
-    ClickHouse can be given."""
+    ClickHouse can be given. ``generated``: the origin of the statement ``call`` is of
+    (``transpiler.transpile``)."""
     from provisa.transpiler.function_macros import FunctionRefused
     from provisa.transpiler.transpile import transpile
 
     try:
-        written = transpile(f"SELECT {call.sql(dialect='postgres')} AS v", "duckdb")
+        written = transpile(
+            f"SELECT {call.sql(dialect='postgres')} AS v", "duckdb", generated=generated
+        )
         tree = sqlglot.parse_one(written, read="duckdb")
     except (FunctionRefused, SqlglotError, ValueError):
         return None
@@ -240,10 +243,11 @@ class HeldOut:
         return _PLACED.sub(lambda m: self.forms[int(m.group(1))], written)
 
 
-def held_out(pg_sql: str, dialect: str) -> tuple[str, HeldOut]:
+def held_out(pg_sql: str, dialect: str, *, generated: bool) -> tuple[str, HeldOut]:
     """``pg_sql`` with each outermost call of a carried overload replaced by a placeholder, and
     the forms that replace them once the statement is written. Unchanged on any dialect but
-    ClickHouse, and where no carried overload is called."""
+    ClickHouse, and where no carried overload is called. ``generated``: the statement's origin
+    (``transpiler.transpile``)."""
     held = HeldOut()
     if dialect != _CLICKHOUSE or not _MENTIONED.search(pg_sql):
         return pg_sql, held
@@ -263,7 +267,7 @@ def held_out(pg_sql: str, dialect: str) -> tuple[str, HeldOut]:
             target = node.expression
         if not is_ported(target):
             return node
-        form = duckdb_form(target)
+        form = duckdb_form(target, generated=generated)
         if form is None:
             return node
         number = next(numbers)
@@ -279,11 +283,20 @@ def held_out(pg_sql: str, dialect: str) -> tuple[str, HeldOut]:
     return rewritten.sql(dialect="postgres"), held
 
 
-def carried(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """A call of a listed overload on ClickHouse, in the form DuckDB answers it with."""
+def carried(node: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr | None:
+    """A call of a listed overload on ClickHouse, in the form DuckDB answers it with, read as a
+    statement of origin ``generated`` reads it (``transpiler.transpile``)."""
     if dialect != _CLICKHOUSE or not is_ported(node):
         return None
-    return duckdb_form(node)
+    return duckdb_form(node, generated=generated)
+
+
+def _carried_by_the_grid(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """``carried`` as the grid's ClickHouse form, which reads a call apart from its statement.
+    REQ-2236: transpile's ``held_out`` carries each call it reaches first, with its statement's
+    origin; a call the grid reads after it is one ``held_out`` left (no DuckDB form of one
+    expression). The grid reads a call apart from any statement, so it states SQL as written."""
+    return carried(node, dialect, generated=False)
 
 
 def _listed() -> str:
@@ -297,7 +310,9 @@ CARRIED = Feature(
     "forms carried from DuckDB",
     "Overloads ClickHouse answers in the form DuckDB answers them with, each compared with "
     f"PostgreSQL's answer on its edge values: {_listed()}.",
-    read=Side(rules=(Rule(None, {_CLICKHOUSE: Rewrite(carried, mentions=_MENTIONS)}),)),
+    read=Side(
+        rules=(Rule(None, {_CLICKHOUSE: Rewrite(_carried_by_the_grid, mentions=_MENTIONS)}),)
+    ),
 )
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in

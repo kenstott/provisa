@@ -70,7 +70,7 @@ def _config(*, members: dict[str, list[str]] | None = None, **kwargs) -> Provisa
     product members publish at all (the export filter)."""
     base = {
         "sources": [_source()],
-        "domains": [Domain(id="sales", description="Sales", steward="data-steward")],
+        "domains": [Domain(id="sales", description="Sales")],
         "tables": [_table(table_name="orders")],
         "roles": [],
     }
@@ -150,13 +150,18 @@ def test_tables_sharing_a_product_publish_as_one_data_product():
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner_role="alice",
                 purpose="Unified customer view",
             )
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"customer_360": ("alice",)},  # REQ-2219: owners are people
+    )
 
     assert len(snapshot.data_products) == 1
     product = snapshot.data_products[0]
@@ -177,11 +182,7 @@ def test_data_product_with_no_exported_members_does_not_publish():
     config = _config(
         tables=[_table(table_name="orders")],
         members={},
-        data_products=[
-            DataProduct(
-                id="customer_360", domain_id="sales", name="Customer 360", owner_role="alice"
-            )
-        ],
+        data_products=[DataProduct(id="customer_360", domain_id="sales", name="Customer 360")],
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -193,9 +194,7 @@ def test_data_product_without_owner_publishes_with_no_owner_ref():
     config = _config(
         tables=[_table(table_name="orders")],
         members={"customer_360": ["orders"]},
-        data_products=[
-            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner_role=None)
-        ],
+        data_products=[DataProduct(id="customer_360", domain_id="sales", name="Customer 360")],
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -249,12 +248,19 @@ def test_domain_without_steward_publishes_as_pending_not_dropped():
     # catalog show a clean, incomplete picture.
     config = _config(
         domains=[
-            Domain(id="sales", description="Sales", steward="data-steward"),
+            Domain(id="sales", description="Sales"),
             Domain(id="lab", description="Unowned lab data"),
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    # REQ-2219: its stewards are people whose domain_steward rows name it, read by the caller.
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        domain_stewards={"sales": ("data-steward",)},
+    )
 
     by_id = {d.id: d for d in snapshot.domains}
     assert set(by_id) == {"sales", "lab"}
@@ -278,14 +284,20 @@ def test_relationship_carries_owner_version_and_review_flag():
                 target_column="id",
                 cardinality=Cardinality.many_to_one,
                 alias="PLACED_BY",
-                owner="join-steward",  # REQ-020
                 version=4,
                 needs_review=True,
             )
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    # REQ-2219: its owners are people whose relationship_owner rows name it, read by the caller.
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        relationship_owners={"orders-to-customers": ("join-steward",)},
+    )
 
     edge = snapshot.relationships[0]
     assert edge.source.fqn() == "wh.public.orders"
@@ -498,7 +510,14 @@ def test_junction_relationship_publishes_its_associative_table():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    # REQ-2219: its owners are people whose relationship_owner rows name it, read by the caller.
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        relationship_owners={"orders-to-customers": ("join-steward",)},
+    )
 
     edge = snapshot.relationships[0]
     assert edge.kind == "junction"
@@ -525,7 +544,14 @@ def test_fk_relationship_publishes_as_direct_with_no_junction():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    # REQ-2219: its owners are people whose relationship_owner rows name it, read by the caller.
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        relationship_owners={"orders-to-customers": ("join-steward",)},
+    )
 
     edge = snapshot.relationships[0]
     assert edge.kind == "direct"

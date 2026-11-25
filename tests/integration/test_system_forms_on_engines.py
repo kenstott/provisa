@@ -58,7 +58,7 @@ def _check(run: Callable[[str], Any], dialect: str, written_from_a_value: bool) 
     for sql in remaining("system_forms", dialect, RECORDED):
         want = RECORDED[sql]
         try:
-            got = run(transpile(sql, dialect))
+            got = run(transpile(sql, dialect, generated=False))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
             got = raised
         refused = written_from_a_value and "regexp_replace" in sql and want[0] == "err"

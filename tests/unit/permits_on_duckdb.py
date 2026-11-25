@@ -68,7 +68,7 @@ def answer_rows(sql: str, params: list, model: tuple, rows: list[dict]) -> list[
             f"VALUES ({', '.join('?' for _ in columns)})",
             [i, *row.values()],
         )
-    cursor = con.execute(transpile_to_duckdb(physical), params)
+    cursor = con.execute(transpile_to_duckdb(physical, generated=False), params)
     names = [d[0] for d in cursor.description]
     out = [dict(zip(names, r, strict=True)) for r in cursor.fetchall()]
     con.close()

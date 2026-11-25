@@ -85,6 +85,8 @@ const PRODUCT = {
   status: "published",
   purpose: "One governed view of each pet.",
   customProperties: { tier: "gold" },
+  owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 const table = (id: number, name: string, over: Record<string, unknown> = {}) => ({

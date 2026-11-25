@@ -52,7 +52,10 @@
       "placeholder": "名前またはメールで検索",
       "typedEmail": "{{email}} (初回サインイン待ち)",
       "typeMore": "2 文字以上入力してください",
-      "noneFound": "該当者がいません。完全なメールアドレスを入力すると、そのアドレスに付与できます。"
+      "noneFound": "該当者がいません。完全なメールアドレスを入力すると、そのアドレスに付与できます。",
+      "peopleGroup": "ユーザー",
+      "rolesGroup": "ロール",
+      "roleChip": "ロール: {{role}}"
     },
     "form": {
       "personLabel": "ユーザー",

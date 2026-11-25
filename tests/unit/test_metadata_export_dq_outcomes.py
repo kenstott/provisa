@@ -96,7 +96,7 @@ def _checker_config():
 
     return ProvisaConfig(
         sources=[Source(id="dq", type=SourceType.soda, description="quality")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         data_products=[
             DataProduct(id="orders", domain_id="sales", name="Orders", tables=["orders_scans"]),
             DataProduct(id="billing", domain_id="sales", name="Billing", tables=["billing_scans"]),
@@ -162,7 +162,7 @@ def _checker_config_with_broken_peer():
 
     return ProvisaConfig(
         sources=[Source(id="dq", type=SourceType.soda, description="quality")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         data_products=[
             DataProduct(id="orders", domain_id="sales", name="Orders", tables=["orders_scans"]),
             # broken: "assignments" is not in config.tables (simulates graphql-demo table

@@ -40,7 +40,7 @@ def answer():
 
     def _answer(cypher: str) -> list[dict]:
         sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
-        cur = con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+        cur = con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True))
         cols = [d[0] for d in cur.description]
         named = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
         return [to_serializable(r) for r in assemble_rows(named, graph_vars)]

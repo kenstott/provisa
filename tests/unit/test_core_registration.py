@@ -313,18 +313,20 @@ class TestReq020RelationshipVersioning:
         )
         assert r.needs_review is True
 
-    def test_relationship_has_owner_field(self):
-        # REQ-020
-        r = Relationship(
-            id="rel6",
-            source_table_id="a",
-            target_table_id="b",
-            source_column="fk",
-            target_column="pk",
-            cardinality=Cardinality.many_to_one,
-            owner="steward@example.com",
-        )
-        assert r.owner == "steward@example.com"
+    def test_relationship_owner_is_an_entitlement_not_a_field(self):
+        # REQ-020, REQ-2219 (amended 2026-11-23): its owners are relationship_owner rows.
+        with pytest.raises(ValueError, match="owner is no longer a setting"):
+            Relationship.model_validate(
+                {
+                    "id": "rel6",
+                    "source_table_id": "a",
+                    "target_table_id": "b",
+                    "source_column": "fk",
+                    "target_column": "pk",
+                    "cardinality": "many-to-one",
+                    "owner": "steward@example.com",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------

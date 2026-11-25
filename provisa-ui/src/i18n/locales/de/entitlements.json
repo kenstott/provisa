@@ -52,7 +52,10 @@
       "placeholder": "Nach Name oder E-Mail suchen",
       "typedEmail": "{{email}} (wartet auf die erste Anmeldung)",
       "typeMore": "Mindestens zwei Zeichen eingeben",
-      "noneFound": "Keine Treffer. Vollständige E-Mail-Adresse eingeben, um ihr Zugriff zu gewähren."
+      "noneFound": "Keine Treffer. Vollständige E-Mail-Adresse eingeben, um ihr Zugriff zu gewähren.",
+      "peopleGroup": "Personen",
+      "rolesGroup": "Rollen",
+      "roleChip": "Rolle: {{role}}"
     },
     "form": {
       "personLabel": "Person",

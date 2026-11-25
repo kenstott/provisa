@@ -87,7 +87,7 @@ def _regex_masks(governed: str) -> int:
 
 def _lowered_for_postgres(governed: str) -> str:
     """``governed`` as PostgreSQL runs it: every universal call lowered to REGEXP_REPLACE."""
-    sql = transpile(governed, "postgres")
+    sql = transpile(governed, "postgres", generated=False)
     assert UNIVERSAL_REGEX_REPLACE not in sql.lower()
     assert sql.upper().count("REGEXP_REPLACE(") == _regex_masks(governed)
     return sql
@@ -100,7 +100,7 @@ def _read_on_duckdb(governed: str, *ddl: str) -> list[tuple]:
     conn.execute("CREATE SCHEMA public")
     for statement in ddl:
         conn.execute(statement)
-    return conn.execute(transpile(governed, "duckdb")).fetchall()
+    return conn.execute(transpile(governed, "duckdb", generated=False)).fetchall()
 
 
 _CUSTOMERS = (

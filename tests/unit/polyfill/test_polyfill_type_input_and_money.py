@@ -52,7 +52,7 @@ def test_money_text_is_the_rows_form(dialect):
     (rule,) = money.MONEY_TEXT.read.rules
     form = rule.forms[dialect]
     assert isinstance(form, str) and rule.pattern is not None
-    written = transpile("SELECT money_text(v) AS m FROM t", dialect)
+    written = transpile("SELECT money_text(v) AS m FROM t", dialect, generated=False)
     got = sqlglot.parse_one(written, read=dialect).expressions[0].this
     expected = graft(replacement(form, written_in(dialect), rule.pattern), {"v": exp.column("v")})
     assert got.sql(dialect) == expected.sql(dialect)
@@ -67,7 +67,7 @@ def test_money_text_is_refused_from_its_row_elsewhere(dialect):
     form = rule.forms[dialect]
     assert isinstance(form, Refusal) and form.sqlstate == "XX000"
     with pytest.raises(SubtypeOperationRefused) as refused:
-        transpile("SELECT CAST(NULL::money AS text) AS v", dialect)
+        transpile("SELECT CAST(NULL::money AS text) AS v", dialect, generated=False)
     assert str(refused.value) == form.message
     assert refused.value.params == {
         "subtype": "money",
@@ -86,7 +86,7 @@ def test_money_text_is_refused_from_its_row_elsewhere(dialect):
     ],
 )
 def test_duckdb_answers_money_text_as_before(pg_sql, answer):
-    sql = transpile_to_duckdb(pg_sql)
+    sql = transpile_to_duckdb(pg_sql, generated=False)
     assert duckdb.connect().execute(sql).fetchall() == [(answer,)]
 
 
@@ -103,7 +103,7 @@ def test_each_null_rule_is_refused_from_its_row(feature, dialect):
         call = pattern(rule.pattern).copy()
         call = graft(call, {h: exp.cast(exp.Literal.number(1), "integer") for h in holes(call)})
         with pytest.raises(RowRefused) as refused:
-            transpile(f"SELECT pg_catalog.{call.sql('postgres')} AS v", dialect)
+            transpile(f"SELECT pg_catalog.{call.sql('postgres')} AS v", dialect, generated=False)
         assert str(refused.value) == form.message
         assert refused.value.sqlstate == form.sqlstate
 
@@ -117,19 +117,20 @@ def test_each_null_rule_is_refused_from_its_row(feature, dialect):
 )
 def test_any_null_argument_of_interval_in_is_refused_on_trino(pg_sql):
     with pytest.raises(RowRefused):
-        transpile(pg_sql, "trino")
+        transpile(pg_sql, "trino", generated=False)
 
 
 def test_a_value_reaches_the_type_io_form_not_the_row():
     """A call of no NULL matches no row: its form reads it (and refuses a text it does not)."""
-    written = transpile('SELECT pg_catalog."jsonb_in"(c) AS v FROM t', "trino")
+    written = transpile('SELECT pg_catalog."jsonb_in"(c) AS v FROM t', "trino", generated=False)
     said = {s.this for s in sqlglot.parse_one(written, read="trino").find_all(exp.Literal)}
     assert any("jsonb_in does not read this value" in str(s) for s in said)
 
 
 def test_duckdb_answers_its_null_before_the_grid():
     sql = transpile_to_duckdb(
-        'SELECT pg_catalog."interval_in"(NULL::cstring, NULL::oid, NULL::integer) AS v'
+        'SELECT pg_catalog."interval_in"(NULL::cstring, NULL::oid, NULL::integer) AS v',
+        generated=False,
     )
     assert duckdb.connect().execute(sql).fetchall() == [(None,)]
 

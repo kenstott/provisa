@@ -51,6 +51,8 @@
     "folderAgain": "This browser cannot keep the folder, so choose it again to send a newer copy.",
     "editor": "Editor",
     "openInVscode": "Open in VS Code",
+    "reference": "Reference",
+    "referenceLink": "{{language}} reference",
     "secrets": "Secrets",
     "secretsHint": "The organization secrets this code may read. It fetches each one when it runs, from $PROVISA_SERVICES/secrets/<name>; nothing else in the vault is readable, and every read is audited.",
     "secretsPlaceholder": "No secrets",

@@ -26,7 +26,7 @@
 
 ## 所有數據來源 {: #all-sources }
 
-Provisa 註冊了 **82** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 82 種；索引即為計數。
+Provisa 註冊了 **83** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 83 種；索引即為計數。
 
 | # | 群組 | 數據來源類型 |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa 註冊了 **82** 種數據來源類型，即 Sources 表單所提供的�
 | 26–30 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [程式碼來源](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [推送接收器](#push-receiver) | `ingest` |
-| 48–50 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [API 數據來源](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [數據剖析器](#data-profiler) | `data_profiler` |
-| 81 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
+| 40–44 | [程式碼來源](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [推送接收器](#push-receiver) | `ingest` |
+| 49–51 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [API 數據來源](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [數據剖析器](#data-profiler) | `data_profiler` |
+| 82 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
 
 Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器。
 
@@ -876,8 +876,6 @@ Stripe 是由 `openapi` 承載的品牌數據來源，其建構方式與基於 `
 **重新整理與新鮮度。** Stripe 表和所有 OpenAPI 表一樣是副本。其快取的回應保持時間為數據來源的 `cache_ttl`；除非註冊請求另行指定，否則該值設為 300 秒。適用 OpenAPI 的探測類型。預設可以指定重新整理時用來只取得變更內容的參數。Stripe 品牌沒有指定這樣的參數，因此每次重新整理都整體讀取其表。
 
 **排除項。** Stripe 已棄用的權杖與 Sources 支付整合未包含在隨附的規格中。其清單見[以規格建構的數據來源上的排除項](#exclusions-on-a-specification-built-source)。營運者自己的 `exclusions` 會追加到品牌的排除項之後。
-
-`stripe` 也出現在 `SourceType` 中，位於被存根化的 Supabase `wrappers` 類型之列。透過表單新增的 Stripe 數據來源是 `openapi` 數據來源，而不是那個存根。
 
 #### 以規格建構的數據來源上的排除項 {: #exclusions-on-a-specification-built-source }
 

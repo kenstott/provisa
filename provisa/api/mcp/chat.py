@@ -44,7 +44,14 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage, tag_edit
+from provisa.api.mcp import (
+    admin_api,
+    docs_tools,
+    model_tool_specs,
+    polly_pages,
+    polly_usage,
+    tag_edit,
+)
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
@@ -203,6 +210,53 @@ _TOOLS: list[Any] = [
             "required": ["question"],
         },
     },
+    # REQ-2114: the product documentation, the same built docs the in-app Docs page serves.
+    {
+        "name": "search_docs",
+        "description": (
+            "Search Provisa's own product documentation -- every page the in-app Docs page "
+            "serves -- for how the product works: code sources and code resolvers (their tags, "
+            "annotations and types per language), source types and their setup, table "
+            "registration, relationships, security, query surfaces, configuration. Returns each "
+            "matching section's title, address (<page>#<section>) and a snippet. Read a "
+            "section in full with read_doc before you answer from it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "language": {
+                    "type": "string",
+                    "description": (
+                        "The language the user writes in, as a locale code (en, fr, de, es, "
+                        "pt, it, zh, zh-HK, ru, he). A page not translated into it is read in "
+                        "English."
+                    ),
+                },
+            },
+            "required": ["query", "language"],
+        },
+    },
+    {
+        "name": "read_doc",
+        "description": (
+            "Read one page of the product documentation, or one section of it with its "
+            "subsections, by its address: <page> (e.g. code-sources) or <page>#<section> "
+            "(e.g. code-sources#code-resolvers), as search_docs gives it. An address the docs "
+            "do not have is refused by name, with the page's sections listed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "address": {"type": "string"},
+                "language": {
+                    "type": "string",
+                    "description": "As for search_docs; en reads the English original.",
+                },
+            },
+            "required": ["address", "language"],
+        },
+    },
     {
         "name": "run_sql",
         "description": (
@@ -299,6 +353,32 @@ _TOOLS: list[Any] = [
         "input_schema": {
             "type": "object",
             "properties": {"search": {"type": "string"}},
+        },
+    },
+    # REQ-2114 (amended 2026-11-24): the product's own source-type registry.
+    {
+        "name": "source_types",
+        "description": (
+            "The source types the product offers, as the Sources page's type picker offers them "
+            "(brands, aliases, code sources and Spark included). With no `type`: every type's "
+            "name, label, category, backend type, brand and how it is created. With `type` (a "
+            "picker name, a backend type or a brand): that type in full -- how it is created "
+            "(admin_mutation createSource, or the admin_request REST route its form posts to), "
+            "and each field it takes: where it goes (a SourceInput argument, a key of "
+            "mappingJson or federationHintsJson, a key of the REST body, or a brand's setup "
+            "value), whether it is required, and whether it is a secret -- and under "
+            "`registration` how its tables are registered: each kind of registration it uses, "
+            "the admin queries that find what it offers, and the TableInput fields each kind "
+            "sets. Read it before proposing any source or registering any table."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "e.g. postgresql, github, graphql_remote, spark",
+                }
+            },
         },
     },
     {
@@ -631,7 +711,11 @@ _TOOLS: list[Any] = [
                 "id": {"type": "string"},
                 "domain_id": {"type": "string"},
                 "name": {"type": "string"},
-                "owner_role": {"type": "string"},
+                # REQ-2219: the people who own it, by user id; omitted, its owners are kept.
+                "owners": {"type": "array", "items": {"type": "string"}},
+                # REQ-2219 (amended 2026-11-23): the roles that own it, every holder of each an
+                # owner; omitted, its roles are kept.
+                "owner_roles": {"type": "array", "items": {"type": "string"}},
                 "team_role": {"type": "string"},
                 "purpose": {"type": "string"},
                 "limitations": {"type": "string"},
@@ -1037,6 +1121,186 @@ _WEB_TOOLS: list[Any] = [
 ]
 _SERVER_HOSTED_TOOL_NAMES = frozenset(t["name"] for t in _WEB_TOOLS)
 
+# REQ-2114 (amended 2026-11-24): how Polly registers tables and relates them. Each example is a
+# mutation document and its variables as admin_mutation sends them; the names are the admin
+# schema's own, and tests/unit/test_polly_register_relate.py validates every example against it.
+_REGISTER_TABLES_EXAMPLE = (
+    "mutation Register($inputs: [TableInput!]!) { registerTables(inputs: $inputs) "
+    "{ tableName result { success message code } } }",
+    {
+        "inputs": [
+            {
+                "sourceId": "shop",
+                "domainId": "sales",
+                "schemaName": "public",
+                "tableName": "orders",
+                "columns": [
+                    {"name": "id", "visibleTo": ["analyst"], "isPrimaryKey": True},
+                    {"name": "customer_id", "visibleTo": ["analyst"]},
+                ],
+            },
+            {
+                "sourceId": "landing",
+                "domainId": "sales",
+                "schemaName": "landing",
+                "tableName": "daily_sales",
+                "fileGlob": "sales/*.csv",
+                "sourceFileColumn": "file",
+                "columns": [{"name": "day", "visibleTo": ["analyst"]}],
+            },
+            {
+                "sourceId": "petstore",
+                "domainId": "sales",
+                "schemaName": "openapi",
+                "tableName": "listPets",
+                "pagination": {
+                    "type": "page_number",
+                    "pageParam": "page",
+                    "pageSizeParam": "limit",
+                    "pageSize": 100,
+                    "maxPages": 20,
+                    "rowsField": "data",
+                },
+                "arguments": {"status": "available"},
+                "columns": [{"name": "id", "visibleTo": ["analyst"]}],
+            },
+        ]
+    },
+)
+_RELATE_FOREIGN_KEY_EXAMPLE = (
+    "mutation Relate($input: RelationshipInput!) { createRelationship(input: $input) "
+    "{ success message code } }",
+    {
+        "input": {
+            "id": "orders_customer",
+            "sourceTableId": "orders",
+            "sourceColumn": "customer_id",
+            "targetTableId": "customers",
+            "targetColumn": "id",
+            "cardinality": "many-to-one",
+            "alias": "PLACED_BY",
+            "graphqlAlias": "customer",
+        }
+    },
+)
+_RELATE_JUNCTION_EXAMPLE = (
+    _RELATE_FOREIGN_KEY_EXAMPLE[0],
+    {
+        "input": {
+            "id": "students_courses",
+            "sourceTableId": "students",
+            "sourceColumn": "id",
+            "targetTableId": "courses",
+            "targetColumn": "id",
+            "cardinality": "one-to-many",
+            "viaTable": "enrollments",
+            "viaSourceColumn": "student_id",
+            "viaTargetColumn": "course_id",
+            "viaTypeColumn": "role",
+            "viaTypeValue": "enrolled",
+            "viaLabelSource": "column",
+        }
+    },
+)
+_RELATE_COMPUTED_EXAMPLE = (
+    _RELATE_FOREIGN_KEY_EXAMPLE[0],
+    {
+        "input": {
+            "id": "customer_score",
+            "sourceTableId": "customers",
+            "sourceColumn": "id",
+            "cardinality": "one-to-one",
+            "targetFunctionName": "credit_score",
+            "functionArg": "customer_id",
+        }
+    },
+)
+_RELATE_CODE_RESOLVER_EXAMPLE = (
+    "mutation Resolve($input: CodeResolverInput!) { createCodeResolver(input: $input) "
+    "{ success message code } }",
+    {
+        "input": {
+            "id": "match_company",
+            "resolver": "match_names",
+            "sourceTable": "leads",
+            "sourceColumn": "company",
+            "sourceMatch": "lead_company",
+            "targetTable": "accounts",
+            "targetColumn": "name",
+            "targetMatch": "account_name",
+            "refreshInterval": 3600,
+        }
+    },
+)
+
+
+def _example(example: tuple[str, dict]) -> str:
+    """An example as admin_mutation takes it: the document and its variables."""
+    return f"mutation: {example[0]} variables: {json.dumps(example[1])}"
+
+
+_REGISTER_AND_RELATE = (
+    "REGISTERING TABLES: how a source's tables are registered is the descriptor's "
+    "`registration` (source_types with the source's type) -- each kind it uses, the admin "
+    "queries that find what the source offers, and the TableInput fields the kind sets. Read "
+    "TableInput with admin_schema before writing one. Every registration sets sourceId, "
+    "domainId, schemaName, tableName and columns (each at least name and visibleTo, the roles "
+    "that see it; isPrimaryKey marks a key); never set alias -- the server derives the right SQL "
+    "name. One table is registerTable(input: TableInput!); several in one action are "
+    "registerTables(inputs: [TableInput!]!), whose answer is each table's own outcome -- report "
+    "each, the ones refused with their reasons. The kinds: 'tables' -- availableSchemas, "
+    "availableTables, availableColumnsMetadata (list_native_tables and describe_native_table "
+    "read the same); 'connection' -- a remote GraphQL table, whose pagination may set maxRows "
+    "only; 'file_glob' -- one table over many files of a files source: fileGlobPreview(sourceId, "
+    "glob, tables) shows the files and shared columns, then fileGlob (relative to the source's "
+    "path) and sourceFileColumn (each row's file path) on the TableInput; 'openapi_operation' -- "
+    "schemaName 'openapi', a table per GET operation, its parameters as columns, "
+    "sampleOpenapiColumns for a response with no schema, pagination (PagingInput: type, "
+    "pageParam, pageSizeParam, pageSize, cursorParam, cursorField, maxPages, rowsField) and "
+    "arguments (fixed parameter values, a JSON object); 'code' -- schemaName 'default', the "
+    "code's @table functions and each item its @discover function generates, by the name it is "
+    "served under, and arguments; 'cypher' -- a neo4j table, queryTemplate required. Example "
+    "(a database table, a files glob and a paged OpenAPI operation in one action): "
+    + _example(_REGISTER_TABLES_EXAMPLE)
+    + "\n\nRELATIONSHIPS: createRelationship(input: RelationshipInput!) (updateRelationship to "
+    "change one); read RelationshipInput with admin_schema first. Its fields: id (a new name, "
+    "unique); sourceTableId and targetTableId (registered table names); sourceColumn and "
+    "targetColumn (the join columns; a composite key is a comma-separated ordered list on each "
+    "side); cardinality, one of many-to-one, one-to-many, one-to-one (a many-to-many is a "
+    "junction, below); alias (the Cypher edge type, e.g. PLACED_BY) and graphqlAlias (the "
+    "GraphQL field name); disableCypher (no Cypher edge); materialize and refreshInterval (keep "
+    "a cross-source join landed, refreshed every refreshInterval seconds); sameEntity (the two "
+    "rows are one entity: two tables one class term grounds, one-to-one on a key of each); "
+    "parameters (each {parameter, sourceColumn}: a target parameter fed from a source column); "
+    "recordCandidate (also record it as an accepted discovery candidate); owners and ownerRoles "
+    "(the user ids and role names that own the relationship; omitted, existing owners are kept); "
+    "confirmTagLoss and "
+    "carryTags (answer a refusal that names term tags the change moves). A JUNCTION (many-to-"
+    "many through an associative table): viaTable (the registered junction table), "
+    "viaSourceColumn (its column matching sourceColumn) and viaTargetColumn (its column "
+    "matching targetColumn), each list as long as the side it pairs with; viaTypeColumn and "
+    "viaTypeValue pick one relationship type out of a junction that carries several; "
+    "viaLabelSource names the Cypher type from the discriminator value ('column'), the junction "
+    "table's name ('table') or alias ('fixed'). A COMPUTED relationship reads a function in "
+    "place of a target table: targetFunctionName (the function) and functionArg (its argument "
+    "given sourceColumn's value), targetTableId and targetColumn left out. A CODE RESOLVER (code "
+    "decides which rows match) is createCodeResolver(input: CodeResolverInput!): id, resolver "
+    "(the registered command that decides), sourceTable, sourceColumn, sourceMatch (the "
+    "resolver's column carrying the source key), targetTable, targetColumn, targetMatch, "
+    "refreshInterval, and incremental with rebuildEvery; it saves the bridge view and the "
+    "junction relationship together. Examples: "
+    + _example(_RELATE_FOREIGN_KEY_EXAMPLE)
+    + " ; junction: "
+    + _example(_RELATE_JUNCTION_EXAMPLE)
+    + " ; computed: "
+    + _example(_RELATE_COMPUTED_EXAMPLE)
+    + " ; code resolver: "
+    + _example(_RELATE_CODE_RESOLVER_EXAMPLE)
+    + ". Use the user's real table and column names, read with admin_query or "
+    "describe_table, never the example's."
+)
+
+
 _SYSTEM = (
     'You are Polly, Provisa\'s assistant — the name is a nod to "poly" (many): many sources, many '
     "engines, one governed catalog. You answer questions about a governed data catalog, run SQL on "
@@ -1055,6 +1319,18 @@ _SYSTEM = (
     "says, or what a business term means, is answered from the org's reference library: call "
     "search_reference_library, answer from the passages it returns and cite each one you use by "
     "its document title and section or page, and only those you use. "
+    # REQ-2114: the product docs, read by Polly herself.
+    "THE PRODUCT DOCS: a question about Provisa itself -- code resolver annotations, tags "
+    "and types, a source type's setup, table registration, relationships, a setting, a query "
+    "surface's syntax -- is answered from the product documentation, which you read yourself: "
+    "call search_docs in the user's language, then read_doc for the sections you will use, "
+    "answer from what you read and cite each section by its title and address (e.g. "
+    "code-sources#code-resolvers). The per-language code references are the sections "
+    "code-sources#python-reference, #node-reference, #go-reference, #rust-reference and "
+    "#spark-reference; read the one for the user's language. Never tell the user to read the "
+    "docs and paste them to you, never say you cannot read the docs, and never guess a syntax, "
+    "a tag or a type the docs state: read it. Only when the docs do not cover it, say so and "
+    "say which sections you read. "
     "Never invent table, column, or schema names — discover them with the tools. If a "
     "tool returns an error or empty result, say so plainly. Keep answers concise and lead with the "
     "answer. Never narrate your steps ('Let me look at...', 'I'll check...') before or between "
@@ -1145,13 +1421,26 @@ _SYSTEM = (
     "admin_rest_routes and reached with admin_request. 'Create any relationships to <table>': "
     "run discover_relationships for it, show the candidates with present_choice (mode 'multi'), "
     "and accept each the user picks with admin_request POST "
-    "/admin/discover/candidates/{id}/accept. A source's createSource input: at minimum id and "
-    "type; a CSV or Parquet source given its file by download sets download_from and leaves path "
-    "out, and register_table_from_file with table_domain_id registers its table with it. A "
-    "registerTable input: source_id, domain_id, schema_name, table_name and columns (each at "
-    "least name and visible_to); never set alias -- the server derives the right SQL name. When "
+    "/admin/discover/candidates/{id}/accept. "
+    "SOURCE TYPES: the types a source can be, and the fields each takes, are the product's own "
+    "registry, read with source_types -- never from memory and never from this prompt. Before "
+    "proposing a source, call source_types with its type and build the change from what it "
+    "returns: create through admin_mutation createSource with the descriptor's shape (its "
+    "SourceInput arguments, and its mappingJson and federationHintsJson keys as JSON object "
+    "strings), or, where the descriptor names a REST route (an OpenAPI, GraphQL or gRPC source, "
+    "a brand, dbt), through admin_request to that route with the descriptor's body; a type "
+    "created on its form (Kaggle) gets its form's link. Ask the user for each required field the "
+    "descriptor lists that they have not given. NEVER ask for a secret value in the chat, never "
+    "accept one typed there, and never put one in a change: a field the descriptor marks secret "
+    "is set to a ${secret:NAME} reference (a name for it you agree with the user), and the user "
+    "enters the value itself in the Sources form or in the organization's secrets. If the user "
+    "types a credential into the chat anyway, do not use it: tell them to enter it in the form "
+    "or the secrets instead. "
+    "A source's createSource input: at minimum id and "
+    "type (the descriptor's backend_type); a CSV or Parquet source given its file by download sets download_from and leaves path "
+    "out, and register_table_from_file with table_domain_id registers its table with it. When "
     "the user asks to be shown, demoed or taught how something is done, use the screen instead "
-    "(navigate with actions), never these tools.\n\n"
+    "(navigate with actions), never these tools.\n\n" + _REGISTER_AND_RELATE + "\n\n"
     "After an admin_mutation or admin_request completes (success, refusal or cancel), ALWAYS say "
     "so in a short final message; never end the turn silently right after a tool call. After a "
     "source is created, suggest the natural next step -- e.g. 'Would you like me to register a "
@@ -1600,6 +1889,24 @@ async def _execute_tool(
         return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
 
 
+def _source_types(name: str | None) -> dict:
+    """REQ-2114: the product's source-type descriptor (provisa/api/admin/source_types.py): every
+    offered type in brief, or one in full. An unknown name is refused by name."""
+    from provisa.api.admin import source_types as st
+
+    if not name:
+        return {
+            "types": [st.summary(d) for d in st.source_types()],
+            "secret_reference": st.SECRET_REFERENCE,
+        }
+    d = st.source_type(name)
+    return {
+        **st.as_json(d),
+        "registration": st.registration_json(d),
+        "secret_reference": st.SECRET_REFERENCE,
+    }
+
+
 async def _dispatch_tool(
     state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
 ) -> Any:
@@ -1628,6 +1935,10 @@ async def _dispatch_tool(
         return await mcp_tools.search_reference_library(
             state, role, args["question"], k=int(args.get("k", 5))
         )
+    if name == "search_docs":  # REQ-2114
+        return docs_tools.search_docs(args["query"], args["language"])
+    if name == "read_doc":  # REQ-2114
+        return docs_tools.read_doc(args["address"], args["language"])
     if name == "run_sql":
         # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
         # and the result says why it was not quoted.
@@ -1655,6 +1966,8 @@ async def _dispatch_tool(
         if request is None:
             raise ValueError("admin_rest_routes reads the app, and this chat carries no request")
         return admin_api.rest_routes(request.app, args.get("search"))
+    if name == "source_types":  # REQ-2114
+        return _source_types(args.get("type"))
     if name == "discover_relationships":
         if request is None:
             raise ValueError("discovery runs as the user, and this chat carries no request")
@@ -1794,7 +2107,8 @@ async def _dispatch_tool(
                 args["id"],
                 args["domain_id"],
                 args["name"],
-                owner_role=args.get("owner_role"),
+                owners=args.get("owners"),
+                owner_roles=args.get("owner_roles"),
                 team_role=args.get("team_role"),
                 purpose=args.get("purpose", ""),
                 limitations=args.get("limitations", ""),

@@ -54,7 +54,7 @@ def test_a_two_argument_lambda_is_written_in_the_keyword_form():
 
 def test_the_semantic_filtered_list_runs_on_duckdb():
     # Cypher's [y IN l WHERE p] is kept FILTER(l, y -> p) in the semantic SQL (semantic_dialect).
-    sql = transpile_to_duckdb("SELECT FILTER(ARRAY[1, 2, 3], y -> y > 1) AS v")
+    sql = transpile_to_duckdb("SELECT FILTER(ARRAY[1, 2, 3], y -> y > 1) AS v", generated=False)
     assert "->" not in sql
     con = duckdb.connect()
     try:
@@ -83,7 +83,9 @@ def test_json_extraction_is_written_as_a_function_never_an_arrow():
 
 
 def test_json_array_elements_runs_on_duckdb():
-    sql = transpile_to_duckdb("SELECT x FROM json_array_elements('[1, 2]') AS t(x)")
+    sql = transpile_to_duckdb(
+        "SELECT x FROM json_array_elements('[1, 2]') AS t(x)", generated=False
+    )
     con = duckdb.connect()
     try:
         assert [str(v) for (v,) in con.execute(sql).fetchall()] == ["1", "2"]
@@ -108,7 +110,8 @@ def test_the_set_keys_of_a_json_object_run_on_duckdb():
     # Cypher keys(properties): the keys whose values are set, each read by a lambda over the keys.
     sql = transpile_to_duckdb(
         "SELECT FILTER(JSON_KEYS(p), _k -> JSON_KIND(JSON_EXTRACT(p, '$.\"' || _k || '\"')) "
-        "<> 'null') AS keys FROM (SELECT CAST('{\"a\": 1, \"b\": null}' AS JSON) AS p) AS t"
+        "<> 'null') AS keys FROM (SELECT CAST('{\"a\": 1, \"b\": null}' AS JSON) AS p) AS t",
+        generated=False,
     )
     con = duckdb.connect()
     try:

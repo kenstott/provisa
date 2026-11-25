@@ -93,4 +93,7 @@ jobs:
           TESTS: ${{ inputs.ui }}
         run: |
           read -r -a tests <<< "$TESTS"
-          npx vitest run "${tests[@]}"
+          # Strip provisa-ui/ prefix when caller passes repo-root-relative paths.
+          stripped=()
+          for t in "${tests[@]}"; do stripped+=("${t#provisa-ui/}"); done
+          npx vitest run "${stripped[@]}"

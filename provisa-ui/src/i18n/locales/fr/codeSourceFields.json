@@ -51,6 +51,8 @@
     "folderAgain": "Ce navigateur ne peut pas conserver le dossier : choisissez-le de nouveau pour envoyer une copie plus récente.",
     "editor": "Éditeur",
     "openInVscode": "Ouvrir dans VS Code",
+    "reference": "Référence",
+    "referenceLink": "Référence {{language}}",
     "secrets": "Secrets",
     "secretsHint": "Les secrets de l'organisation que ce code peut lire. Il récupère chacun à l'exécution, depuis $PROVISA_SERVICES/secrets/<name> ; rien d'autre du coffre n'est lisible, et chaque lecture est auditée.",
     "secretsPlaceholder": "Aucun secret",

@@ -26,7 +26,7 @@ Jede Abfrage läuft am Ende über die Federation-Engine, und genau das lässt je
 
 ## Alle Quellen {: #all-sources }
 
-Provisa registriert **82** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 82 ab; der Index ist die Zählung.
+Provisa registriert **83** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 83 ab; der Index ist die Zählung.
 
 | # | Gruppe | Quelltypen |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registriert **82** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [Code-Quellen](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [Push-Empfänger](#push-receiver) | `ingest` |
-| 48–50 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [API-Quellen](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [Data-Profiler](#data-profiler) | `data_profiler` |
-| 81 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
+| 40–44 | [Code-Quellen](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [Push-Empfänger](#push-receiver) | `ingest` |
+| 49–51 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [API-Quellen](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [Data-Profiler](#data-profiler) | `data_profiler` |
+| 82 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
 
 Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an Mehrquellen-JOINs teilnimmt.
 
@@ -876,8 +876,6 @@ Wie bei jeder OpenAPI-Quelle ist jede `GET`-Operation eine angebotene Tabelle un
 **Aktualisierung und Aktualität.** Eine Stripe-Tabelle ist ein Replikat, wie jede OpenAPI-Tabelle. Ihre gecachten Antworten gelten für das `cache_ttl` der Quelle, das eine Registrierungsanfrage auf 300 Sekunden setzt, sofern sie nichts anderes sagt. Es gelten die OpenAPI-Probe-Typen. Ein Preset kann den Parameter benennen, mit dem eine Aktualisierung nur das Geänderte abruft. Die Stripe-Marke benennt keinen, daher liest jede Aktualisierung ihre Tabellen vollständig.
 
 **Ausschlüsse.** Stripes veraltete Token- und Sources-Zahlungsintegration bleibt aus der ausgelieferten Spezifikation draußen. Die Liste steht unter [Ausschlüsse bei einer aus einer Spezifikation gebauten Quelle](#exclusions-on-a-specification-built-source). Die eigenen `exclusions` eines Operators werden denen der Marke hinzugefügt.
-
-`stripe` erscheint auch in `SourceType` unter den gestubbten Supabase-`wrappers`-Typen. Eine über das Formular hinzugefügte Stripe-Quelle ist eine `openapi`-Quelle, nicht dieser Stub.
 
 #### Ausschlüsse bei einer aus einer Spezifikation gebauten Quelle {: #exclusions-on-a-specification-built-source }
 

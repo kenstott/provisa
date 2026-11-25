@@ -478,7 +478,10 @@ OUTSIDE = (
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 def _time(value: object) -> object:
@@ -515,7 +518,7 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 @pytest.mark.parametrize("sql", REFUSED)
 def test_an_input_no_row_reads_is_refused_by_name(sql):
     with pytest.raises((FunctionRefused, RowRefused), match="has no form on clickhouse"):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_shift_outside_the_bound_raises_0a000(runtime):
@@ -576,4 +579,4 @@ def test_overlaps_of_four_timestamps_keeps_its_form():
         "SELECT pg_catalog.\"overlaps\"('2024-01-01'::timestamp, '2024-01-02'::timestamp, "
         "'2024-01-01 12:00'::timestamp, '2024-01-03'::timestamp) AS v"
     )
-    assert "provisa_iv" not in transpile(sql, "clickhouse")
+    assert "provisa_iv" not in transpile(sql, "clickhouse", generated=False)

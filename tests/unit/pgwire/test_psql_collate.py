@@ -62,7 +62,7 @@ def test_psql_collation_names_no_relation_refused(statement: int) -> None:
 
 @pytest.mark.parametrize("statement", _G1)
 def test_psql_statement_writes_back_its_collation_on_postgres(statement: int) -> None:
-    written = transpile(_psql(statement), "postgres")
+    written = transpile(_psql(statement), "postgres", generated=False)
     assert written.count("COLLATE pg_catalog.default") == _psql(statement).count(
         "COLLATE pg_catalog.default"
     )
@@ -72,9 +72,12 @@ def test_psql_statement_writes_back_its_collation_on_postgres(statement: int) ->
 @pytest.mark.parametrize("statement", _G1)
 def test_psql_default_collation_is_no_change_on_an_engine(statement: int, engine: str) -> None:
     sql = _psql(statement)
-    written = transpile(sql, engine)
+    written = transpile(sql, engine, generated=False)
     assert "COLLATE" not in written.upper()
-    assert transpile(sql.replace(" COLLATE pg_catalog.default", ""), engine) == written
+    assert (
+        transpile(sql.replace(" COLLATE pg_catalog.default", ""), engine, generated=False)
+        == written
+    )
 
 
 @pytest.mark.parametrize(
@@ -92,23 +95,23 @@ def test_collation_name_read_and_written(collation: str, postgres: str) -> None:
     sql = f"SELECT a COLLATE {collation} FROM t WHERE b = 'x' COLLATE {collation} ORDER BY 1"
     tree = sqlglot.parse_one(sql, read="postgres")
     assert not [c for c in tree.find_all(exp.Column) if c.name not in ("a", "b")]
-    assert transpile(sql, "postgres") == (
+    assert transpile(sql, "postgres", generated=False) == (
         f"SELECT a COLLATE {postgres} FROM t WHERE b = 'x' COLLATE {postgres} ORDER BY 1"
     )
     for engine in _ENGINES:
-        assert transpile(sql, engine) == transpile(
-            "SELECT a FROM t WHERE b = 'x' ORDER BY 1", engine
+        assert transpile(sql, engine, generated=False) == transpile(
+            "SELECT a FROM t WHERE b = 'x' ORDER BY 1", engine, generated=False
         )
 
 
 def test_other_collation_left_for_the_engine() -> None:
     sql = 'SELECT a COLLATE "de_DE" FROM t'
     for engine in _ENGINES:
-        assert 'COLLATE "de_DE"' in transpile(sql, engine)
+        assert 'COLLATE "de_DE"' in transpile(sql, engine, generated=False)
 
 
 def test_collation_of_another_schema_left_as_written() -> None:
     sql = 'SELECT a COLLATE myschema."C" FROM t'
     assert not list(sqlglot.parse_one(sql, read="postgres").find_all(exp.Column))[1:]
     for engine in _ENGINES:
-        assert 'COLLATE myschema."C"' in transpile(sql, engine)
+        assert 'COLLATE myschema."C"' in transpile(sql, engine, generated=False)

@@ -36,6 +36,14 @@ async def join_connector(
     from provisa.codesource.bundle import BundleRefused
 
     if "connector_join" not in mapping:
+        if source_type in _builtin() and mapping.get("mode") != "built":
+            # REQ-2225: a built-in source type's code is its host's; it is made by joining it.
+            return MutationResult(
+                success=False,
+                message=f"A {source_type} source is created by joining its host, from its form",
+                code="codesource.builtin_join_on_create",
+                params={"source": source_id, "type": source_type},
+            )
         return None
     try:
         await remote_sources.join_connector(state, source_id, source_type, mapping)
@@ -55,6 +63,7 @@ async def record_code(
     source as saved (``path``: its spec or endpoint) before it is prepared."""
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.codesource import remote_sources
     from provisa.codesource.bundle import BundleRefused
     from provisa.codesource.languages import BUILTIN_TYPES
     from provisa.codesource.source import CODE_SOURCE_TYPES, context_for, forget, prepare
@@ -71,6 +80,13 @@ async def record_code(
             code="codesource.connector_join_on_create",
             params={"source": source_id},
         )
+    if mapping.get("org_defaults"):
+        try:  # REQ-2225: a source's own cluster, edited, is held to what a join holds it to
+            remote_sources.check_stood_in(mapping["org_defaults"], mapping.get("settings"))
+        except BundleRefused as refused:
+            return MutationResult(
+                success=False, message=str(refused), code=refused.code, params=refused.params
+            )
     forget(source_id)  # whatever was prepared for an earlier save of it
     if mapping.get("mode") != "built":
         mapping.pop("content_hash", None)  # pinned afresh: the code as it is now
@@ -136,6 +152,12 @@ def unpinned(sources: dict[str, dict]) -> list[tuple[str, str, dict]]:
         and not (row.get("mapping") or {}).get("content_hash")
         and ((row.get("mapping") or {}).get("code") or {}).get("kind") != "directory"
     ]
+
+
+def _builtin() -> frozenset[str]:
+    from provisa.core.models import BUILTIN_CONNECTORS
+
+    return BUILTIN_CONNECTORS
 
 
 def _code_types() -> frozenset[str]:

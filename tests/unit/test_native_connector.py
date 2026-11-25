@@ -8,15 +8,17 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A checkout's demo offers the Spark connector, run natively (REQ-2225, amended 2026-11-24): the
-platform read offers it in a checkout's demo, never outside a demo, and a released package reads
-its own block unchanged. A native connector is joined by its name alone, and a host that fails to
-start fails the source by name."""
+"""A checkout's demo runs the Spark host natively (REQ-2225, amended 2026-11-24): the platform
+read has it in a checkout's demo, never outside a demo, and a released package reads its own block
+unchanged. Spark is a built-in source type, never an offered connector: a spark source joins the
+host by its name alone, the form reads the host and the default cluster from the built-in sources
+API, and a host that fails to start fails the source by name."""
 
 # Requirements: REQ-2225
 
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import sys
@@ -64,13 +66,15 @@ def _released_spark() -> ConnectorConfig:
     )
 
 
-async def test_a_checkout_demo_offers_the_spark_connector_run_natively(demo, control_plane):
+async def test_a_checkout_demo_has_the_spark_host_run_natively(demo, control_plane):
     db = control_plane.org()
     async with db.acquire() as conn:
         offered = await connector_repo.offered(conn)
         found = await connector_repo.get(conn, "spark")
-    assert [row["name"] for row in offered] == ["spark"]
-    (spark,) = offered
+    # REQ-2225 (amended 2026-11-24): Spark is a built-in source type, never an offered connector.
+    assert offered == []
+    spark = connector_repo.builtin("spark")
+    assert spark is not None
     assert spark["native"] is True
     assert spark["language"] == "python"
     assert spark["code_hash"] == native_connector.code_hash(_PROJECT)
@@ -82,15 +86,15 @@ async def test_a_checkout_demo_offers_the_spark_connector_run_natively(demo, con
     assert spark["description"].startswith("Tables and commands from one annotated Spark script")
     assert spark["icon"].startswith("data:image/svg+xml;base64,")
     assert spark["image"] == "" and spark["digest"] == ""
-    assert "path" not in spark and "build_command" not in spark
     assert found is not None and found["native"] is True
 
 
-async def test_a_checkout_outside_a_demo_offers_none(not_demo, control_plane):
+async def test_a_checkout_outside_a_demo_has_no_spark_host(not_demo, control_plane):
     db = control_plane.org()
     async with db.acquire() as conn:
         assert await connector_repo.offered(conn) == []
         assert await connector_repo.get(conn, "spark") is None
+    assert connector_repo.builtin("spark") is None
 
 
 async def test_a_released_packages_block_is_read_unchanged(
@@ -105,7 +109,9 @@ async def test_a_released_packages_block_is_read_unchanged(
     monkeypatch.setattr(native_connector, "_ROOT", tmp_path / "site-packages")
     db = control_plane.org()
     async with db.acquire() as conn:
-        (spark,) = await connector_repo.offered(conn)
+        assert await connector_repo.offered(conn) == []
+    spark = connector_repo.builtin("spark")
+    assert spark is not None
     assert spark["image"] == "ghcr.io/kenstott/provisa-spark-connector"
     assert spark["digest"] == "sha256:" + "b" * 64
     assert "native" not in spark
@@ -121,8 +127,57 @@ async def test_a_checkouts_native_spark_never_shadows_a_filled_block(
     monkeypatch.setattr(connector_repo, "_PLATFORM_FILE", block)
     db = control_plane.org()
     async with db.acquire() as conn:
-        (spark,) = await connector_repo.offered(conn)
+        assert await connector_repo.offered(conn) == []
+    spark = connector_repo.builtin("spark")
+    assert spark is not None
     assert "native" not in spark and spark["digest"] == "sha256:" + "b" * 64
+
+
+# -- the built-in sources API ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def unguarded(monkeypatch):
+    from provisa.api.admin import connectors_router, spark_cluster_router
+
+    async def guard(_request, org_id):
+        return "uid-ada"
+
+    async def in_use(org_id):
+        return {"origin": "local_test", "label": "local test cluster", "target": "127.0.0.1"}
+
+    monkeypatch.setattr(connectors_router, "_guard", guard)
+    monkeypatch.setattr(spark_cluster_router, "in_use", in_use)
+    return connectors_router
+
+
+async def test_the_spark_form_reads_its_host_and_the_default_cluster(demo, unguarded):
+    found = await unguarded.builtin(cast(Any, None), "acme", "spark")
+    assert found["host"]["name"] == "spark" and found["host"]["native"] is True
+    assert "path" not in found["host"] and "build_command" not in found["host"]
+    assert found["default_cluster"] == {
+        "origin": "local_test",
+        "label": "local test cluster",
+        "target": "127.0.0.1",
+    }
+
+
+async def test_an_installation_with_no_spark_host_says_so_by_name(not_demo, unguarded):
+    from provisa.api.errors import ApiError
+
+    with pytest.raises(ApiError) as refused:
+        await unguarded.builtin(cast(Any, None), "acme", "spark")
+    assert refused.value.status_code == 409
+    assert refused.value.code == "codesource.builtin_unavailable"
+
+
+async def test_only_a_builtin_source_type_is_read_there(demo, unguarded):
+    from provisa.api.errors import ApiError
+
+    with pytest.raises(ApiError) as refused:
+        await unguarded.builtin(cast(Any, None), "acme", "python")
+    assert refused.value.status_code == 404
+    assert refused.value.code == "codesource.not_builtin"
 
 
 # -- the join --------------------------------------------------------------------------------------
@@ -162,11 +217,59 @@ async def test_a_native_connector_is_joined_by_its_name_alone(native_row):
         await remote_sources.join_connector(
             SimpleNamespace(admin_db=None),
             "spark_jobs",
-            "python",
+            "spark",
             _joining(host="10.0.0.9", port=7443, pairing_code="fp.secret"),
         )
     assert refused.value.code == "codesource.connector_native"
     assert "host, pairing_code, port" in str(refused.value)
+
+
+async def test_the_spark_host_is_joined_only_by_a_spark_source(native_row):
+    # REQ-2225 (amended 2026-11-24): Spark is a built-in source type, not a Python connector.
+    with pytest.raises(remote_sources.RemoteRefused) as refused:
+        await remote_sources.join_connector(
+            SimpleNamespace(admin_db=None), "spark_jobs", "python", _joining()
+        )
+    assert refused.value.code == "codesource.connector_type"
+    assert "connector spark is a spark source, not a python one" in str(refused.value)
+
+
+async def test_a_spark_source_joins_no_other_connector(native_row):
+    mapping = _joining()
+    mapping["connector_join"]["connector"] = "crm"
+    with pytest.raises(remote_sources.RemoteRefused) as refused:
+        await remote_sources.join_connector(
+            SimpleNamespace(admin_db=None), "spark_jobs", "spark", mapping
+        )
+    assert refused.value.code == "codesource.connector_type"
+    assert "a spark source joins the spark host, not connector crm" in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("cluster", "said"),
+    [
+        ("spark.acme.com:15002", "is not a Spark Connect address"),
+        ("sc://spark.acme.com:15002/;token=abc123", "a token value is never kept in a source"),
+        ("sc://spark.acme.com:15002/;use_ssl", "is not a name=value parameter"),
+    ],
+)
+async def test_a_malformed_cluster_is_refused_by_name_before_the_host_starts(
+    native_row, monkeypatch, cluster, said
+):
+    def start(*_args):
+        raise AssertionError("a refused cluster starts no host")
+
+    monkeypatch.setattr(native_connector, "start_for_join", start)
+    mapping = _joining()
+    mapping["settings"]["cluster"] = cluster
+    with pytest.raises(remote_sources.RemoteRefused) as refused:
+        await remote_sources.join_connector(
+            SimpleNamespace(admin_db=None), "spark_jobs", "spark", mapping
+        )
+    assert refused.value.code == "codesource.spark_cluster_address"
+    assert refused.value.params == {"value": "cluster"}
+    assert str(refused.value).startswith("cluster: ") and said in str(refused.value)
+    assert "abc123" not in str(refused.value)  # a token value is never echoed
 
 
 async def test_a_native_host_that_fails_to_start_fails_the_source_by_name(native_row, monkeypatch):
@@ -176,7 +279,7 @@ async def test_a_native_host_that_fails_to_start_fails_the_source_by_name(native
     monkeypatch.setattr(native_connector, "start_for_join", start)
     with pytest.raises(NativeHostFailed) as failed:
         await remote_sources.join_connector(
-            SimpleNamespace(admin_db=None), "spark_jobs", "python", _joining()
+            SimpleNamespace(admin_db=None), "spark_jobs", "spark", _joining()
         )
     assert failed.value.code == "codesource.connector_native_host"
     assert failed.value.params == {"connector": "spark"}
@@ -352,3 +455,88 @@ def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
     finally:
         process.terminate()
         process.wait(timeout=10)
+
+
+# -- a deleted source's host -----------------------------------------------------------------------
+
+
+#: A stand-in for the code host front end: it listens on a loopback port and says which.
+_LISTENER = (
+    "import socket, sys, time\n"
+    "s = socket.socket()\n"
+    "s.bind(('127.0.0.1', 0))\n"
+    "s.listen()\n"
+    "print(s.getsockname()[1], flush=True)\n"
+    "time.sleep(60)\n"
+)
+
+
+def _hosted(work: Path, monkeypatch) -> tuple[subprocess.Popen, int]:
+    """A host process for ``acme/spark_jobs`` as :func:`native_connector._launch` leaves one: its
+    own session, listening on a loopback port, its state under ``work``."""
+    (work / "state").mkdir(parents=True)
+    monkeypatch.setattr(native_connector, "_hosts", {})
+    process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
+        [sys.executable, "-c", _LISTENER], stdout=subprocess.PIPE, text=True, start_new_session=True
+    )
+    assert process.stdout is not None
+    port = int(process.stdout.readline())
+    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, port)  # pyright: ignore[reportPrivateUsage]
+    return process, port
+
+
+def _listening(port: int) -> bool:
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def test_stopping_a_source_ends_its_host_frees_its_port_and_removes_its_state(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    work = tmp_path / "acme" / "spark_jobs"
+    process, port = _hosted(work, monkeypatch)
+    assert _listening(port)
+    native_connector.stop("acme", "spark_jobs")
+    assert process.poll() is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(process.pid, 0)
+    assert not _listening(port)
+    assert not work.exists()
+    assert native_connector.running("acme", "spark_jobs") is None
+    # A later restart finds nothing to start again.
+    with pytest.raises(NativeHostFailed, match="has no state"):
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", port)
+
+
+def test_stopping_one_source_leaves_another_sources_host_running(tmp_path, monkeypatch):
+    """Each source has a host of its own: deleting one never stops another's."""
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    process, port = _hosted(tmp_path / "acme" / "spark_jobs", monkeypatch)
+    try:
+        other = tmp_path / "acme" / "spark_other"
+        (other / "state").mkdir(parents=True)
+        native_connector.stop("acme", "spark_other")
+        assert process.poll() is None
+        assert _listening(port)
+        assert native_connector.running("acme", "spark_jobs") is process
+        assert (tmp_path / "acme" / "spark_jobs").exists()
+        assert not other.exists()
+    finally:
+        native_connector.stop_all()
+
+
+def test_stopping_a_source_whose_host_is_not_running_removes_its_state(tmp_path, monkeypatch):
+    """After a restart of Provisa and before the source is dialled, its host is not running but
+    its state is kept: the deletion removes it all the same."""
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    work = tmp_path / "acme" / "spark_jobs"
+    (work / "state").mkdir(parents=True)
+    native_connector.stop("acme", "spark_jobs")
+    assert not work.exists()
+
+
+def test_only_a_native_sources_mapping_is_native():
+    assert remote_sources.is_native({"mode": "built", "remote": {"native": "script"}})
+    assert not remote_sources.is_native({"mode": "built", "remote": {"host": "10.0.0.9"}})
+    assert not remote_sources.is_native({"mode": "dev"})

@@ -34,6 +34,7 @@ from provisa.federation.replica_address import replica_schema, replica_table_nam
 from tests.integration.metadata_export_server import (
     DOMAIN,
     PRODUCT_FIELDS,
+    PRODUCT_OWNER,
     SCHEMA,
     SOURCE,
     publish,
@@ -177,7 +178,7 @@ async def test_the_schema_carries_the_products_fields(published):
     comment, tags = published[2], published[3]
     assert PRODUCT_FIELDS["purpose"] in comment
     assert PRODUCT_FIELDS["limitations"] in comment
-    assert tags["provisa_product:owner"] == PRODUCT_FIELDS["owner_role"]
+    assert tags["provisa_product:owner"] == PRODUCT_OWNER
     assert tags["provisa_product:version"] == PRODUCT_FIELDS["version"]
 
 

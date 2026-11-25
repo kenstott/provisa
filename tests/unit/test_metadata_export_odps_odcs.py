@@ -68,7 +68,6 @@ def _snapshot(**product):
             id="prod",
             domain_id="sales",
             name="Customer 360",
-            owner_role="data_owner",
             team_role="analyst",
             purpose="One view of each customer",
             limitations="No orders before 2020",
@@ -80,7 +79,13 @@ def _snapshot(**product):
             tables=list(PROD.tables),
         )
     ]
-    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    snapshot = build_snapshot(
+        config,
+        org_id=ORG_ID,
+        dialect="postgres",
+        contexts={},
+        product_owners={"prod": ("olive",)},  # REQ-2219: owners are people
+    )
     (built,) = snapshot.data_products
     return snapshot, built
 
@@ -453,7 +458,6 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
             id="prod",
             domain_id="sales",
             name="Customer 360",
-            owner_role="data_owner",
             team_role="analyst",
             tables=list(PROD.tables),
         )
@@ -464,7 +468,9 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
         dialect="postgres",
         contexts={},
         documentation_base_url="https://app.example.com",
-        owner_emails={"data_owner": ("owner@example.com",), "analyst": ("ana@example.com",)},
+        owner_emails={"analyst": ("ana@example.com",)},
+        product_owners={"prod": ("olive",)},
+        person_emails={"olive": "owner@example.com"},
         product_created={"prod": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)},
     )
     (product,) = snapshot.data_products
@@ -478,7 +484,7 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
     assert document["tags"] == ["finance"]
     assert document["team"] == {
         "name": "analyst",
-        "description": "Owner role data_owner; team role analyst",
+        "description": "Owners olive; team role analyst",
         "members": [
             {"username": "owner@example.com", "role": "owner"},
             {"username": "ana@example.com", "role": "team"},
@@ -587,7 +593,6 @@ def test_roles_read_or_write_and_are_approved_by_the_owners():
             id="prod",
             domain_id="sales",
             name="Customer 360",
-            owner_role="data_owner",
             tables=list(PROD.tables),
         )
     ]
@@ -596,7 +601,8 @@ def test_roles_read_or_write_and_are_approved_by_the_owners():
         org_id=ORG_ID,
         dialect="postgres",
         contexts={},
-        owner_emails={"data_owner": ("owner@example.com", "lead@example.com")},
+        product_owners={"prod": ("olive", "leo")},
+        person_emails={"olive": "owner@example.com", "leo": "lead@example.com"},
     )
     (product,) = snapshot.data_products
     contract = _contract(snapshot, product, _orders(snapshot))

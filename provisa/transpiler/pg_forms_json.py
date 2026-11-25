@@ -39,8 +39,13 @@ _OF = {_D: frozenset({_D}), _T: frozenset({_T, "athena", "presto"}), _C: frozens
 Forms = dict[frozenset[str], str]
 Row = tuple[str, tuple[str, ...], Forms]
 _NAME = """replace(k, '"', '\\"')"""
-#: A place in a value: a key, and an index ``{i}``.
-_KEY = {_D: f"""('$."' || {_NAME} || '"')""", _T: f"""('$["' || {_NAME} || '"]')""", _C: "k"}
+#: A place in a value: a key, and an index ``{i}``. DuckDB's path refuses the key "" ('$.""', a
+#: binder error): its JSON pointer '/' reads it.
+_KEY = {
+    _D: f"""(CASE WHEN k = '' THEN '/' ELSE '$."' || {_NAME} || '"' END)""",
+    _T: f"""('$["' || {_NAME} || '"]')""",
+    _C: "k",
+}
 _AT = {
     _D: "{i}",
     # an array's alone, as $[n] reads an object's key "n" there; a negative counts from the end
@@ -836,7 +841,14 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
             "JSON",
         )
     if name == "jsonb_delete":
-        keys = args[1] if len(args) == 2 and not isinstance(args[1], exp.Variadic) else None
+        # A VARIADIC text[] is the keys overload even of one element: its NULLs are skipped.
+        given = _arguments(node)
+        spread = bool(given) and isinstance(given[-1], exp.Variadic)
+        keys = (
+            args[1]
+            if len(args) == 2 and not spread and not isinstance(args[1], exp.Variadic)  # noqa: PLR2004
+            else None
+        )
         key = (
             keys
             if keys is not None

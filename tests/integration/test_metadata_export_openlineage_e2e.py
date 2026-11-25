@@ -29,6 +29,7 @@ from provisa.api.metadata_export.openlineage import PRODUCER
 from tests.integration.metadata_export_server import (
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
+    PRODUCT_OWNER,
     RLS_FILTER,
     SCHEMA,
     SOURCE,
@@ -116,7 +117,7 @@ async def test_the_steward_and_the_governance_signals_survive_the_round_trip(pub
     """The facets Marquez stores back are what a downstream consumer actually reads."""
     orders = await _get(_ns_path(f"/datasets/{ORDERS}"))
     facets = orders["facets"]
-    assert facets["ownership"]["owners"] == [{"name": "data_owner", "type": "STEWARD"}]
+    assert facets["ownership"]["owners"] == [{"name": PRODUCT_OWNER, "type": "STEWARD"}]
     signals = {s["signal"]: s for s in facets["provisa_governance"]["signals"]}
     assert set(signals) == {"masked", "rls_restricted", "visibility_restricted"}
     assert signals["masked"]["asset"] == f"{ORDERS}.ssn"

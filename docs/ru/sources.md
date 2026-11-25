@@ -26,7 +26,7 @@
 
 ## Все источники {: #all-sources }
 
-Provisa регистрирует **82** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 82; индекс — это счётчик.
+Provisa регистрирует **83** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 83; индекс — это счётчик.
 
 | # | Группа | Типы источников |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa регистрирует **82** типов источников — те
 | 26–30 | [Аналитика / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / открытые табличные форматы](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [Источники на основе кода](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [Приёмник push-данных](#push-receiver) | `ingest` |
-| 48–50 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [API-источники](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [Профайлер данных](#data-profiler) | `data_profiler` |
-| 81 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
+| 40–44 | [Источники на основе кода](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [Приёмник push-данных](#push-receiver) | `ingest` |
+| 49–51 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [API-источники](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [Профайлер данных](#data-profiler) | `data_profiler` |
+| 82 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
 
 Справочник по каждому типу источника, поддерживаемому Provisa. «Прямой драйвер» означает, что однопоточные запросы выполняются напрямую к источнику (менее 100 мс). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многопоточных (multi-source) JOIN.
 
@@ -876,8 +876,6 @@ Stripe — фирменный источник на основе `openapi`, по
 **Обновление и актуальность.** Таблица Stripe — это реплика, как и любая таблица OpenAPI. Её кешированные ответы живут `cache_ttl` источника, который запрос регистрации устанавливает равным 300 секундам, если не указано иное. Применимы типы проб OpenAPI. Пресет может назвать параметр, с помощью которого обновление получает только изменившееся. Бренд Stripe такого параметра не называет, поэтому каждое обновление читает свои таблицы целиком.
 
 **Исключения.** Устаревшая платёжная интеграция Stripe с токенами и Sources исключена из поставляемой спецификации. Список приведён в разделе [Исключения в источнике, построенном по спецификации](#exclusions-on-a-specification-built-source). Собственные `exclusions` оператора добавляются к исключениям бренда.
-
-`stripe` также присутствует в `SourceType` среди заглушек типов Supabase `wrappers`. Источник Stripe, добавленный через форму, — это источник `openapi`, а не эта заглушка.
 
 #### Исключения в источнике, построенном по спецификации {: #exclusions-on-a-specification-built-source }
 

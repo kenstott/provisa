@@ -12,6 +12,35 @@
     "tested": "Connecté à {{target}} : Spark {{version}}",
     "saved": "Enregistré",
     "removed": "Supprimé",
-    "remove": "Supprimer le cluster par défaut"
+    "remove": "Supprimer le cluster par défaut",
+    "host": "Hôte du cluster Spark",
+    "hostHelp": "Le nom d'hôte ou l'adresse du serveur Spark Connect du cluster, sans sc:// ni port.",
+    "port": "Port",
+    "tls": "TLS",
+    "tlsHelp": "Se connecter via TLS. Un jeton n'est envoyé que via TLS : indiquer un jeton l'active.",
+    "userId": "ID utilisateur",
+    "userIdHelp": "L'utilisateur sous lequel le cluster exécute le script, s'il en demande un. Facultatif.",
+    "badHost": "Un nom d'hôte ou une adresse, sans sc://, port ni chemin",
+    "badPort": "Un port de 1 à 65535",
+    "badToken": "Une référence de secret, par exemple ${secret:spark_token}",
+    "extra": "Autres paramètres, conservés tels quels : {{params}}",
+    "paste": "Coller une adresse",
+    "pasteTitle": "Coller une adresse Spark Connect",
+    "pasteHelp": "Une adresse sc://, par exemple sc://spark.example.com:15002/;use_ssl=true. Elle est répartie dans les champs ; un jeton qu'elle contient est conservé comme secret.",
+    "pasteApply": "Remplir les champs",
+    "pasteToken": "L'adresse contient un jeton. Il est conservé comme secret de l'organisation et le cluster désigne ce secret ; le jeton lui-même n'est pas conservé dans l'adresse.",
+    "pasteSecretName": "Nom du secret",
+    "pasteSecretHelp": "Le secret de l'organisation qui conserve le jeton. Un secret de ce nom est remplacé.",
+    "pasteKeep": "Conserver le jeton comme secret",
+    "storedUnread": "Le cluster conservé pour cette source ne peut pas être lu : {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} n'est pas une adresse Spark Connect : elle commence par sc://",
+      "host": "{{part}} ne désigne aucun hôte",
+      "port": "{{part}} n'est pas un port de 1 à 65535",
+      "param": "{{part}} n'est pas un paramètre nom=valeur"
+    },
+    "blankUsesOrg": "Laissée vide, cette source s'exécute sur le cluster Spark par défaut de l'organisation ({{target}}).",
+    "blankUsesLocal": "Laissée vide, cette source s'exécute sur le cluster de test local ({{target}}).",
+    "blankUsesNone": "Laissée vide, cette source n'a aucun cluster sur lequel s'exécuter : {{detail}}"
   }
 }

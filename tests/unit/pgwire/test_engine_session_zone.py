@@ -87,7 +87,7 @@ def served(engine: DuckDBFederationRuntime) -> Iterator[None]:
     state.admin_db = None
 
     async def pipeline(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
-        return await engine.run(transpile_to_duckdb(sql))
+        return await engine.run(transpile_to_duckdb(sql, generated=False))
 
     with (
         patch("provisa.auth.wiring.build_auth_provider", return_value=_Admits()),
@@ -115,7 +115,10 @@ def test_a_client_reads_what_postgresql_answers(port, served, set_zone, name, wa
 def test_the_engines_stream_runs_in_the_zone_too(engine):
     token = bind_zone(_NEW_YORK)
     try:
-        assert _rows(engine.run_sync(transpile_to_duckdb(_TEXT)))[2] == "2026-06-30 22:30:00-04"
+        assert (
+            _rows(engine.run_sync(transpile_to_duckdb(_TEXT, generated=False)))[2]
+            == "2026-06-30 22:30:00-04"
+        )
     finally:
         reset_zone(token)
 
@@ -156,7 +159,7 @@ def test_a_second_client_on_the_same_connection_gets_its_own_zone(port, served):
 
 
 def test_clients_at_once_on_one_engine_never_read_each_others_zone(engine):
-    sql = transpile_to_duckdb(_TEXT)
+    sql = transpile_to_duckdb(_TEXT, generated=False)
     wrong: list[tuple[str, str]] = []
     start = threading.Barrier(3)
 
@@ -187,7 +190,7 @@ def test_clients_at_once_on_one_engine_never_read_each_others_zone(engine):
 
 
 def test_a_stream_keeps_its_zone_while_another_client_runs(engine):
-    sql = transpile_to_duckdb(_TEXT)
+    sql = transpile_to_duckdb(_TEXT, generated=False)
     token = bind_zone(_NEW_YORK)
     try:
         held = engine.run_sync(sql)
@@ -338,11 +341,11 @@ def test_a_plan_keeps_the_zone_it_was_planned_in_for_the_entry_written_after_its
 def test_the_statement_as_compiled_does_not_depend_on_the_zone(engine):
     """What the plan and engine-form caches keep is the physical text: DuckDB is told the zone
     beside it, so one kept form serves every zone."""
-    physical = transpile_to_duckdb(_TEXT)
+    physical = transpile_to_duckdb(_TEXT, generated=False)
     for zone, want in ((_NEW_YORK, "2026-07-01 08"), (_TOKYO, "2026-07-01 21")):
         token = bind_zone(zone)
         try:
-            assert transpile_to_duckdb(_TEXT) == physical
+            assert transpile_to_duckdb(_TEXT, generated=False) == physical
             assert _rows(engine.run_sync(physical))[0].startswith(want)
         finally:
             reset_zone(token)

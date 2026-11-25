@@ -12,7 +12,13 @@
 // federation hints under the brand; the server makes it the crawl of the files source that
 // carries the brand, so a setting left empty here is the brand's default there.
 
+import { fieldValue, hintKey } from "./descriptor";
+
 export const WIKIPEDIA = "wikipedia";
+// REQ-2114: the brand hint and the settings' key are the descriptor's (provisa/api/admin/
+// source_types.py); the crawl's own settings are the brand's (provisa/file_source/wikipedia.py).
+const BRAND = hintKey(WIKIPEDIA, "brand");
+const SETTINGS = hintKey(WIKIPEDIA, WIKIPEDIA);
 
 /** A crawl setting the operator may state in place of the brand's default. */
 export interface WikipediaCrawlField {
@@ -111,13 +117,16 @@ export function wikipediaHints(fields: Record<string, string>): Record<string, u
     }
   }
   if (Object.keys(crawl).length) settings.crawl = crawl;
-  return { brand: WIKIPEDIA, [WIKIPEDIA]: settings };
+  return {
+    [BRAND]: fieldValue(WIKIPEDIA, "federationHintsJson", BRAND) as string,
+    [SETTINGS]: settings,
+  };
 }
 
 /** The fields a stored Wikipedia source's hints carry, for the form that edits it. */
 export function wikipediaFieldsFromHints(federationHintsJson: string): Record<string, string> {
   const hints = JSON.parse(federationHintsJson) as Record<string, unknown>;
-  const settings = (hints[WIKIPEDIA] ?? {}) as Record<string, unknown>;
+  const settings = (hints[SETTINGS] ?? {}) as Record<string, unknown>;
   const fields: Record<string, string> = {
     wp_pages: ((settings.pages as string[] | undefined) ?? []).join("\n"),
     wp_follow_see_also: settings.follow_see_also ? "true" : "",

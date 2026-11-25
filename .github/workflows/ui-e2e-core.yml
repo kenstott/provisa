@@ -255,7 +255,7 @@ jobs:
       SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
       SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
       # AskAmerica/govdata (askamerica-*, the govdata case of source-to-query-special-cases): this
-      # job's, one worker (playwright.config.ts ASKAMERICA_SPECS); skipped by name without its key.
+      # job's, one worker (playwright.config.ts ASKAMERICA_SPECS); fails by name without its key.
       FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
       # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts singlestore).
       SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}

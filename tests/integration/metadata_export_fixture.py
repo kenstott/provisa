@@ -72,7 +72,7 @@ def governed_config() -> ProvisaConfig:
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[
-            Domain(id="sales", description="Sales domain", steward="data-steward"),
+            Domain(id="sales", description="Sales domain"),
             # Unstewarded on purpose: the catalog must show the governance gap.
             Domain(id="lab", description="Lab domain"),
         ],
@@ -134,7 +134,6 @@ def governed_config() -> ProvisaConfig:
                 source_column="customer_id",
                 target_column="id",
                 cardinality=Cardinality.many_to_one,
-                owner="join-steward",
                 version=3,
                 needs_review=False,
             )
@@ -163,4 +162,13 @@ def governed_config() -> ProvisaConfig:
 
 
 def governed_snapshot() -> MetadataSnapshot:
-    return build_snapshot(governed_config(), org_id=ORG_ID, dialect="postgres", contexts={})
+    return build_snapshot(
+        governed_config(),
+        org_id=ORG_ID,
+        dialect="postgres",
+        contexts={},
+        # REQ-2219: a domain's stewards and a relationship's owners are people holding
+        # entitlement rows, read by the caller.
+        domain_stewards={"sales": ("data-steward",)},
+        relationship_owners={"orders-to-customers": ("join-steward",)},
+    )

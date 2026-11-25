@@ -33,7 +33,7 @@ manifest read, and how its worker starts. It is done once per source and content
 process, at its first use; the worker itself is the shared pool's.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2104, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2104, REQ-2200, REQ-2267
 from __future__ import annotations
 
 import asyncio
@@ -383,10 +383,14 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
 
 
 def forget(source_id: str) -> None:
-    """The source was edited or deleted: what was prepared for it, and its workers, go."""
+    """The source was edited or deleted: what was prepared for it, its pgwire sidecar and its
+    workers go."""
     with _lock:
         for key in [k for k in _prepared if k[1] == source_id]:
             del _prepared[key]
+    from provisa.codesource.pgwire_sidecar import stop_sidecar
+
+    stop_sidecar(source_id)  # REQ-2267: its PostgreSQL face, before the workers it calls
     pool.stop_source(source_id)
 
 

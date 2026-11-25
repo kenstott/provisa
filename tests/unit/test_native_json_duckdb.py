@@ -138,4 +138,8 @@ def test_a_backend_with_no_to_json_form_is_refused_by_name():
         exp.column("v", "t", quoted=True), NestedColumn("array<string>", 1, "text")
     )
     with pytest.raises(NativeJsonUnsupported, match="bigquery has no verified way"):
-        transpile(f'SELECT {marker.sql(dialect="postgres")} AS "v" FROM "src" AS "t"', "bigquery")
+        transpile(
+            f'SELECT {marker.sql(dialect="postgres")} AS "v" FROM "src" AS "t"',
+            "bigquery",
+            generated=False,
+        )

@@ -148,7 +148,7 @@ def _answer(con, query: str, grounding: Grounding = _COLUMNS) -> list[dict]:
     # As the endpoint runs it (sparql_router): a term is its own value through the graph rewrite.
     sql = apply_graph_rewrites(sql, graph_vars, lm)
     # As the pipeline runs it: the semantic SQL in PostgreSQL's dialect, transpiled to the engine's.
-    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
     if compiled.form == "ASK":

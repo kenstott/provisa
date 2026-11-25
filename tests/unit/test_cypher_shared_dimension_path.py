@@ -153,7 +153,7 @@ def _refused(query: str, sides: list[str]) -> list[tuple[int, int, str]]:
 
 def _rows(con, query: str, sides: list[str]) -> list[tuple]:
     sql = expand_view_refs(_compiled(query, sides), {f"public.{TABLES[DIM]}": _view_sql(sides)})
-    cur = con.execute(transpile_to_duckdb(sql))
+    cur = con.execute(transpile_to_duckdb(sql, generated=False))
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r)) for r in cur.fetchall()]
     import json

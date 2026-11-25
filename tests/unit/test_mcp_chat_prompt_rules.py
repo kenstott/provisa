@@ -91,6 +91,56 @@ class TestTheAdminApi:  # REQ-2114
         assert {"admin_mutation", "admin_request"} <= set(chat_mod._CLIENT_TOOL_NAMES)
 
 
+class TestTheProductDocs:  # REQ-2114
+    def test_polly_has_both_docs_tools_as_server_tools(self):
+        tools = {t["name"]: t for t in chat_mod._TOOLS}
+        assert tools["search_docs"]["input_schema"]["required"] == ["query", "language"]
+        assert tools["read_doc"]["input_schema"]["required"] == ["address", "language"]
+        assert not {"search_docs", "read_doc"} & set(chat_mod._CLIENT_TOOL_NAMES)
+
+    def test_product_questions_are_answered_from_the_docs_she_read(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "is answered from the product documentation, which you read yourself" in s
+        assert "call search_docs in the user's language, then read_doc" in s
+        assert "cite each section by its title and address" in s
+
+    def test_she_never_asks_for_the_docs_and_never_guesses_their_syntax(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "Never tell the user to read the docs and paste them to you" in s
+        assert "never say you cannot read the docs" in s
+        assert "never guess a syntax, a tag or a type the docs state" in s
+
+    def test_the_prompt_names_the_per_language_code_references(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "code-sources#python-reference" in s
+        for section in ("#node-reference", "#go-reference", "#rust-reference", "#spark-reference"):
+            assert section in s, section
+
+    async def test_the_dispatch_reads_the_shipped_docs_site(self, monkeypatch):
+        calls = []
+
+        def search(query, language):
+            calls.append(("search", query, language))
+            return {"results": []}
+
+        def read(address, language):
+            calls.append(("read", address, language))
+            return {"text": ""}
+
+        monkeypatch.setattr(chat_mod.docs_tools, "search_docs", search)
+        monkeypatch.setattr(chat_mod.docs_tools, "read_doc", read)
+        await chat_mod._dispatch_tool(
+            None, "r", "search_docs", {"query": "@table", "language": "fr"}, scope=None
+        )
+        await chat_mod._dispatch_tool(
+            None, "r", "read_doc", {"address": "code-sources#writes", "language": "en"}, scope=None
+        )
+        assert calls == [
+            ("search", "@table", "fr"),
+            ("read", "code-sources#writes", "en"),
+        ]
+
+
 class TestReadScreen:  # REQ-2115
     def test_read_screen_is_a_client_tool_taking_no_input(self):
         tool = next(t for t in chat_mod._CLIENT_TOOLS if t["name"] == "read_screen")

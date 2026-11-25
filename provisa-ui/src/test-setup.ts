@@ -39,12 +39,17 @@ afterEach(async () => {
 // org the page saves its state under (lib/browserStorage). A component test renders a page without
 // it, so it runs in this scope; a test of the scoping binds its own and this one is put back.
 export const TEST_STORAGE_SCOPE = { controlPlaneId: "test-cp", orgId: "test-org" } as const;
-bindStorageScope(TEST_STORAGE_SCOPE);
-afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+// A file run in the node environment has no window, so browser storage calls are skipped there.
+if (typeof window !== "undefined") {
+  bindStorageScope(TEST_STORAGE_SCOPE);
+  afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+}
 // REQ-2260: the scope gate binds the viewer with the scope; a component test is shown to this one.
 export const TEST_VIEWER = "test-viewer";
-bindViewer(TEST_VIEWER);
-afterEach(() => bindViewer(TEST_VIEWER));
+if (typeof window !== "undefined") {
+  bindViewer(TEST_VIEWER);
+  afterEach(() => bindViewer(TEST_VIEWER));
+}
 // A 3D graph remembers its view settings in the browser (graphSettings.ts), and a list its filters
 // (FilterInput, useRememberedChoice) and the Glossary its main panel; a test that changes one leaves
 // it saved, and the next test's page would open with it. Each test starts from defaults.
@@ -93,6 +98,15 @@ globalThis.IntersectionObserver =
   globalThis.IntersectionObserver ?? (IntersectionObserverStub as never);
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
+}
+
+// CodeMirror measures text with Range.getClientRects / getBoundingClientRect, which jsdom does
+// not implement. Polyfill once globally so any test that renders a code-editor field (via
+// ConnectorSetupFields, GrpcPage, etc.) does not throw. Matches the per-file stub already in
+// src/__tests__/GrpcPageNavPayload.test.tsx; kept here so new tests need no per-file boilerplate.
+if (typeof Range !== "undefined") {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
 }
 
 // @react-aria/interactions patches HTMLElement.prototype.focus at module-init time.

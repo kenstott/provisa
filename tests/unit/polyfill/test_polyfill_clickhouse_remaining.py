@@ -39,7 +39,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _clickhouse(sql: str) -> str:
-    return transpile(sql, "clickhouse")
+    return transpile(sql, "clickhouse", generated=False)
 
 
 def _features() -> set[str]:
@@ -96,7 +96,7 @@ def test_a_strict_call_of_a_null_array_is_still_its_null(sql, named):
 
 def test_a_null_array_on_another_engine_is_unchanged():
     sql = 'SELECT pg_catalog."cardinality"(NULL::integer[]) AS v'
-    assert "NULL AS v" not in transpile(sql, "duckdb")
+    assert "NULL AS v" not in transpile(sql, "duckdb", generated=False)
 
 
 # --- 2. a text cast to a date -------------------------------------------------------------------
@@ -165,7 +165,7 @@ def test_a_cast_of_a_column_to_a_date_is_unchanged():
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_a_date_cast_on_another_engine_is_unchanged(dialect):
-    assert "toDate32" not in transpile("SELECT '2024-02-30'::date AS v", dialect)
+    assert "toDate32" not in transpile("SELECT '2024-02-30'::date AS v", dialect, generated=False)
 
 
 # --- 3. date_trunc --------------------------------------------------------------------------------
@@ -280,7 +280,7 @@ def test_an_unaliased_lag_is_named_lag():
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_a_window_function_on_another_engine_is_unchanged(dialect):
-    written = transpile("SELECT lag(x) OVER (ORDER BY y) AS v FROM t", dialect)
+    written = transpile("SELECT lag(x) OVER (ORDER BY y) AS v FROM t", dialect, generated=False)
     assert "InFrame" not in written and "toNullable" not in written
 
 

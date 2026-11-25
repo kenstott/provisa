@@ -254,7 +254,7 @@ class TestReq896EngineIndependentGovernance:
             build_snowflake_engine,
         ):
             engine = build()
-            lowered = transpile(governed, engine.dialect)
+            lowered = transpile(governed, engine.dialect, generated=False)
             up = lowered.upper()
             assert "REGION" in up and "'US'" in up, engine.name  # RLS predicate present
             assert "REGEXP_REPLACE" in up, engine.name  # email mask present

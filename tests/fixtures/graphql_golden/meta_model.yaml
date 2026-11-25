@@ -6674,6 +6674,36 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: data_product_owners
+  columns:
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: product_id
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: data_product_tables
   columns:
   - name: product_id
@@ -6713,10 +6743,6 @@ tables:
     visible_to:
     - viewer
   - name: name
-    data_type: text
-    visible_to:
-    - viewer
-  - name: owner_role
     data_type: text
     visible_to:
     - viewer
@@ -6800,6 +6826,36 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: domain_stewards
+  columns:
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: domains
   columns:
   - name: description
@@ -6820,10 +6876,6 @@ tables:
     visible_to:
     - viewer
   - name: parent_domain_id
-    data_type: text
-    visible_to:
-    - viewer
-  - name: steward
     data_type: text
     visible_to:
     - viewer
@@ -10463,6 +10515,36 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: relationship_owners
+  columns:
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: relationship_id
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: relationships
   columns:
   - name: alias
@@ -10508,10 +10590,6 @@ tables:
     - viewer
   - name: needs_review
     data_type: boolean
-    visible_to:
-    - viewer
-  - name: owner
-    data_type: text
     visible_to:
     - viewer
   - name: parameters
@@ -11732,6 +11810,23 @@ relationships:
   retired: false
   source_table_id: data_product_edges
   target_table_id: registered_tables
+- id: meta:data_product_owners:data_products
+  source_column: product_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: PRODUCT
+  graphql_alias: product
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: data_product_owners
+  target_table_id: data_products
 - id: meta:data_product_tables:data_products
   source_column: product_id
   target_column: id
@@ -11866,6 +11961,23 @@ relationships:
   source_table_id: data_products
   target_table_id: registered_tables
   via_table: data_product_tables
+- id: meta:data_products:owners
+  source_column: id
+  target_column: product_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: OWNERS
+  graphql_alias: owners
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: data_products
+  target_table_id: data_product_owners
 - id: meta:data_products:tag_assignments
   source_column: id
   target_column: product_id
@@ -11915,6 +12027,23 @@ relationships:
   retired: false
   source_table_id: derived_tags
   target_table_id: tags
+- id: meta:domain_stewards:domains
+  source_column: domain_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: DOMAIN
+  graphql_alias: domain
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: domain_stewards
+  target_table_id: domains
 - id: meta:domains:data_products
   source_column: id
   target_column: domain_id
@@ -11960,6 +12089,23 @@ relationships:
   retired: false
   source_table_id: domains
   target_table_id: rls_rules
+- id: meta:domains:stewards
+  source_column: id
+  target_column: domain_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: STEWARDS
+  graphql_alias: stewards
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: domains
+  target_table_id: domain_stewards
 - id: meta:domains:tracked_functions
   source_column: id
   target_column: domain_id
@@ -12444,6 +12590,40 @@ relationships:
   retired: false
   source_table_id: registered_tables
   target_table_id: tag_assignments
+- id: meta:relationship_owners:relationships
+  source_column: relationship_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: RELATIONSHIP
+  graphql_alias: relationship
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: relationship_owners
+  target_table_id: relationships
+- id: meta:relationships:owners
+  source_column: id
+  target_column: relationship_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: OWNERS
+  graphql_alias: owners
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  retired: false
+  source_table_id: relationships
+  target_table_id: relationship_owners
 - id: meta:relationships:source_table
   source_column: source_table_id
   target_column: id

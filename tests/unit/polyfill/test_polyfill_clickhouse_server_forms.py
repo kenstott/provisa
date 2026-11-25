@@ -116,7 +116,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -127,7 +127,7 @@ def test_a_null_call_answers_null(runtime, sql):
 
 @pytest.mark.parametrize("sql", NULL_CALLS)
 def test_a_null_call_has_no_column_of_type_nothing(sql):
-    written = sqlglot.parse_one(transpile(sql, "clickhouse"), read="clickhouse")
+    written = sqlglot.parse_one(transpile(sql, "clickhouse", generated=False), read="clickhouse")
     assert isinstance(written, exp.Select)
     for column in written.selects:
         value = column.unalias()
@@ -183,7 +183,9 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 
 def test_a_snapshot_is_split_as_not_null():
     written = transpile(
-        "SELECT pg_catalog.\"pg_snapshot_xip\"('10:20:10,14,15'::pg_snapshot) AS v", "clickhouse"
+        "SELECT pg_catalog.\"pg_snapshot_xip\"('10:20:10,14,15'::pg_snapshot) AS v",
+        "clickhouse",
+        generated=False,
     )
     # sqlglot writes ClickHouse's splitByChar as splitByString
     assert "splitByString(':', assumeNotNull(" in written
@@ -191,7 +193,9 @@ def test_a_snapshot_is_split_as_not_null():
 
 
 def test_a_byte_comparison_s_null_branch_is_typed():
-    written = transpile("SELECT pg_catalog.\"btnamecmp\"('a'::name, 'b'::name) AS v", "clickhouse")
+    written = transpile(
+        "SELECT pg_catalog.\"btnamecmp\"('a'::name, 'b'::name) AS v", "clickhouse", generated=False
+    )
     assert "THEN CAST(NULL AS Nullable(Int32))" in written
     assert "THEN NULL ELSE" not in written
 
@@ -260,7 +264,7 @@ def _described_oids(runtime: ClickHouseFederationRuntime, sql: str) -> list[int 
     """The result type oids pgwire describes ``sql``'s result by, served by embedded ClickHouse."""
     from provisa.pgwire.server import BVTYPE_TO_OID, _describe_casts, _sql_type_to_bvtype, _type_oid
 
-    served = runtime.run_sync(transpile(sql, "clickhouse")).column_types
+    served = runtime.run_sync(transpile(sql, "clickhouse", generated=False)).column_types
     types = [_sql_type_to_bvtype(t) for t in served]
     oids: list[int | None] = [_type_oid(t) for t in served]
     _describe_casts(sql, types, oids, [-1] * len(served), [], served, [False] * len(served))
@@ -278,7 +282,9 @@ def test_a_null_call_s_column_is_one_the_server_s_arrow_output_types(sql, oid):
     # The stand-in reaches Arrow as a binary (FixedString), as a Nothing reaches embedded
     # ClickHouse's: 24.3's Arrow output has no type for Nothing, and pgwire reads a binary NULL
     # column as untyped, described by PostgreSQL's type of the call.
-    (column,) = sqlglot.parse_one(transpile(sql, "clickhouse"), read="clickhouse").selects
+    (column,) = sqlglot.parse_one(
+        transpile(sql, "clickhouse", generated=False), read="clickhouse"
+    ).selects
     value = column.unalias()
     assert isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
     assert value.to.sql(dialect="clickhouse") == "Nullable(FixedString(1))"

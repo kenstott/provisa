@@ -26,7 +26,7 @@ Los orígenes de **materialización** tampoco tienen conector federado. Provisa 
 
 ## Todos los orígenes {: #all-sources }
 
-Provisa registra **82** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 82; el índice es el recuento.
+Provisa registra **83** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 83; el índice es el recuento.
 
 | # | Grupo | Tipos de origen |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registra **82** tipos de origen, los que ofrece el formulario de Orígen
 | 26–30 | [Analítica / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / Formatos de tabla abiertos](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [Fuentes de código](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [Receptor push](#push-receiver) | `ingest` |
-| 48–50 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [Orígenes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [Perfilador de datos](#data-profiler) | `data_profiler` |
-| 81 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
+| 40–44 | [Fuentes de código](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [Receptor push](#push-receiver) | `ingest` |
+| 49–51 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [Orígenes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [Perfilador de datos](#data-profiler) | `data_profiler` |
+| 82 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
 
 Referencia de todos los tipos de origen que soporta Provisa. "Controlador directo" significa que las consultas de un solo origen se ejecutan de forma nativa contra el origen (menos de 100 ms). "Nombre del conector" es el conector federado que se usa cuando el origen participa en JOIN entre varios orígenes.
 
@@ -876,8 +876,6 @@ Como en cualquier origen OpenAPI, cada operación `GET` es una tabla ofrecida y 
 **Actualización y frescura.** Una tabla de Stripe es una réplica, como toda tabla OpenAPI. Sus respuestas en caché duran el `cache_ttl` del origen, que una solicitud de registro fija en 300 segundos salvo que diga otra cosa. Se aplican los tipos de probe de OpenAPI. Un preset puede nombrar el parámetro que una actualización usa para obtener solo lo que cambió. La marca Stripe no nombra ninguno, así que cada actualización lee sus tablas enteras.
 
 **Exclusiones.** La integración de pagos obsoleta de tokens y Sources de Stripe queda fuera de la especificación incluida. La lista está en [Exclusiones en un origen construido desde una especificación](#exclusions-on-a-specification-built-source). Las `exclusions` propias de un operador se suman a las de la marca.
-
-`stripe` aparece también en `SourceType` entre los tipos `wrappers` de Supabase con stub. Un origen Stripe agregado por el formulario es un origen `openapi`, no ese stub.
 
 #### Exclusiones en un origen construido desde una especificación {: #exclusions-on-a-specification-built-source }
 

@@ -48,7 +48,7 @@ def _table(table_name: str, columns: list[Column], view_sql: str | None = None) 
 def _config(tables: list[Table]) -> ProvisaConfig:
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql)],
-        domains=[Domain(id="sales", description="Sales", steward="s")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=tables,
         # Members of a product so the tables publish: only Data Product tables enter the snapshot.
         data_products=with_members([], {"prod": tables}),

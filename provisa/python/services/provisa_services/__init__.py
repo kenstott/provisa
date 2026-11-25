@@ -147,8 +147,12 @@ def _base(service: str) -> str:
             "Provisa's services are reached only from a Provisa code source's worker "
             "($PROVISA_SERVICES is not set)",
         )
-    if not base.startswith("http://"):
-        raise ServiceError(service, 0, f"$PROVISA_SERVICES is not an http:// address: {base!r}")
+    # REQ-2106 (amended 2026-11-22): a worker's address is http://, through its egress proxy; a
+    # developer's, through their personal access token's route, is the instance's, often https://.
+    if not base.startswith(("http://", "https://")):
+        raise ServiceError(
+            service, 0, f"$PROVISA_SERVICES is not an http:// or https:// address: {base!r}"
+        )
     return base
 
 
@@ -170,7 +174,7 @@ def _send(service: str, method: str, path: str, payload: Any = None) -> tuple[in
         method=method,
     )
     try:
-        # nosec B310 - the URL is $PROVISA_SERVICES's, checked to be http:// in _base
+        # nosec B310 - the URL is $PROVISA_SERVICES's, checked to be http(s):// in _base
         with urllib.request.urlopen(request, timeout=300) as answered:  # nosec B310
             return answered.status, answered.read()
     except urllib.error.HTTPError as refused:

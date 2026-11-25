@@ -26,7 +26,7 @@ Les sources à **matérialisation** n'ont pas non plus de connecteur fédéré. 
 
 ## Toutes les sources {: #all-sources }
 
-Provisa enregistre **82** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 82 ; l'index correspond au décompte.
+Provisa enregistre **83** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 83 ; l'index correspond au décompte.
 
 | # | Groupe | Types de sources |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa enregistre **82** types de sources, ceux que propose le formulaire Sourc
 | 26–30 | [Analytique / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Lac de données / formats de tables ouverts](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–43 | [Sources de code](code-sources.md) | `node`, `python`, `go`, `rust` |
-| 44–46 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
-| 47 | [Récepteur push](#push-receiver) | `ingest` |
-| 48–50 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
-| 51–55 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 56–57 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
-| 58–66 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–76 | [Sources API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
-| 77 | [GovData](#govdata) | `govdata` |
-| 78–79 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
-| 80 | [Profileur de données](#data-profiler) | `data_profiler` |
-| 81 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
-| 82 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
+| 40–44 | [Sources de code](code-sources.md) | `node`, `python`, `go`, `rust`, `spark` |
+| 45–47 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
+| 48 | [Récepteur push](#push-receiver) | `ingest` |
+| 49–51 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 52–56 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 57–58 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
+| 59–67 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 68–77 | [Sources API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 78 | [GovData](#govdata) | `govdata` |
+| 79–80 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
+| 81 | [Profileur de données](#data-profiler) | `data_profiler` |
+| 82 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
+| 83 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
 
 Référence de chaque type de source pris en charge par Provisa. « Pilote direct » signifie que les requêtes mono-source s'exécutent nativement contre la source (moins de 100 ms). Le « nom du connecteur » est le connecteur fédéré employé lorsque la source participe à des JOIN multi-sources.
 
@@ -876,8 +876,6 @@ Comme pour toute source OpenAPI, chaque opération `GET` est une table proposée
 **Rafraîchissement et fraîcheur.** Une table Stripe est une réplique, comme toute table OpenAPI. Ses réponses en cache durent le `cache_ttl` de la source, qu'une requête d'enregistrement fixe à 300 secondes sauf indication contraire. Les types de sonde OpenAPI s'appliquent. Un préréglage peut nommer le paramètre qu'un rafraîchissement utilise pour ne récupérer que ce qui a changé. La marque Stripe n'en nomme aucun : chaque rafraîchissement lit donc ses tables en entier.
 
 **Exclusions.** L'intégration de paiement dépréciée de Stripe, les jetons et Sources, est laissée hors de la spécification livrée. La liste se trouve sous [Exclusions sur une source construite à partir d'une spécification](#exclusions-on-a-specification-built-source). Les `exclusions` propres à un opérateur s'ajoutent à celles de la marque.
-
-`stripe` figure aussi dans `SourceType` parmi les types `wrappers` Supabase factices. Une source Stripe ajoutée par le formulaire est une source `openapi`, non ce type factice.
 
 #### Exclusions sur une source construite à partir d'une spécification {: #exclusions-on-a-specification-built-source }
 

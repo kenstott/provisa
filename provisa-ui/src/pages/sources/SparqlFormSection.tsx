@@ -12,11 +12,12 @@
 // Extracted out of SourceFormFieldsExtended.tsx to keep that file under the eslint max-lines gate
 // (same pattern as PushFeedFormSection.tsx).
 
-import { PasswordInput, Select, Textarea, TextInput } from "@mantine/core";
+import { PasswordInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { AuthUserPass } from "./AuthUserPass";
 import type { SourceFormState } from "./SourceFormFields";
 import { FormField } from "../../components/form/FormLayout";
+import { CodeEditorField } from "../../components/CodeEditorField";
 import { SPARQL_REASONERS } from "./sparqlReasoner";
 
 /** The fields that are not the auth mode's own, kept when the mode changes. */
@@ -82,15 +83,12 @@ export function SparqlFormSection({
       </FormField>
       {authFields.reasoner && (
         <FormField size="long" help={t("sourceFormFieldsExtended.axiomsHint")}>
-          <Textarea
+          <CodeEditorField
             required
             label={t("sourceFormFieldsExtended.axioms")}
             value={authFields.axioms ?? ""}
-            onChange={(e) => setAuthFields({ ...authFields, axioms: e.target.value })}
-            autosize
-            minRows={6}
-            maxRows={20}
-            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+            onChange={(axioms) => setAuthFields({ ...authFields, axioms })}
+            language="turtle"
             data-testid="sparql-axioms-input"
           />
         </FormField>

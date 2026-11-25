@@ -137,6 +137,9 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
+    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
+    # (connectors/spark); a built-in code source type, made by joining that host.
+    spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -200,7 +203,9 @@ class SourceType(str, Enum):
     # (bigquery, clickhouse, duckdb, iceberg, mongodb, mysql, redis, sqlserver — snowflake is a
     # Wasm wrapper in their catalog, also already covered) are NOT duplicated here. Their `s3`
     # wrapper (CSV/JSONL/Parquet objects) is likewise not duplicated: csv/parquet take s3:// paths
-    # and `files` takes mapping.storage_type "s3".
+    # and `files` takes mapping.storage_type "s3". Stripe and Shopify are not here: they are brands
+    # (REQ-1874, amended 2026-11-24), an `openapi` and a `graphql_remote` source that record their
+    # brand (REQ-1923).
     airtable = "airtable"
     auth0 = "auth0"
     aws_cognito = "aws_cognito"
@@ -208,7 +213,6 @@ class SourceType(str, Enum):
     firebase = "firebase"
     logflare = "logflare"
     s3_vectors = "s3_vectors"
-    stripe = "stripe"
     calcom = "calcom"
     calendly = "calendly"
     clerk = "clerk"
@@ -219,7 +223,6 @@ class SourceType(str, Enum):
     notion = "notion"
     orb = "orb"
     paddle = "paddle"
-    shopify = "shopify"
     slack = "slack"
 
 
@@ -577,15 +580,25 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 class Domain(BaseModel):  # REQ-471, REQ-609
     id: str
     description: str = ""
-    # REQ-609: the designated steward (role or user id). None means the domain is PENDING —
-    # it exists but may not serve governed data. The distinction is published to external
-    # catalogs (REQ-1070), so an unstewarded domain shows as a gap rather than disappearing.
-    steward: str | None = None
     graphql_alias: str | None = None
     # REQ-1363: the domain this one sits under — a business unit and the organizations within
     # it. Governance structure only: a role that lists the parent reaches every domain under
     # it, and addressing stays flat (a table is still ``domain.table`` of its one domain).
     parent_domain_id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_steward(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a domain's stewards are people, each holding a
+        # domain_steward entitlement row naming it; the configuration carries no steward, and
+        # one that still does is refused rather than read past.
+        if isinstance(data, dict) and "steward" in data:
+            raise ValueError(
+                f"domain {data.get('id')!r}: steward is no longer a setting -- a domain's "
+                "stewards are people, named in its Steward field, each holding a domain_steward "
+                "entitlement row naming it. Remove the key."
+            )
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -613,7 +626,6 @@ class DataProduct(BaseModel):  # REQ-1634
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
-    owner_role: str | None = None  # role accountable for this product; distinct from Domain.steward
     team_role: str | None = (
         None  # role whose holders form the working team; resolves to individuals
     )
@@ -634,7 +646,7 @@ class DataProduct(BaseModel):  # REQ-1634
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
-    # product this can be derived from (owner_role is a role name, not a contact address).
+    # product this can be derived from (its owners are people, held as entitlement rows).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
     # REQ-2180: the freshness every contract of the product promises: a read trails its source
@@ -651,6 +663,20 @@ class DataProduct(BaseModel):  # REQ-1634
     # loads; an offer the file does not declare is kept (an apply removes nothing). A product
     # declaring none keeps the default offer it starts with.
     offers: list["DeclaredOffer"] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_owner_role(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a product's owners are people, each holding a
+        # data_product_owner entitlement row naming it; the configuration carries no owner_role,
+        # and one that still does is refused rather than read past.
+        if isinstance(data, dict) and "owner_role" in data:
+            raise ValueError(
+                f"data product {data.get('id')!r}: owner_role is no longer a setting -- a "
+                "product's owners are people, named in its Owner field, each holding a "
+                "data_product_owner entitlement row naming it. Remove the key."
+            )
+        return data
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -2471,10 +2497,24 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     # statement joining the target over this edge calls it once per distinct set of the source's
     # values, read as the statement's role reads them.
     parameters: dict[str, str] = Field(default_factory=dict)
-    # REQ-020: defining-steward ownership, version, and re-review flag.
-    owner: str | None = None  # role/user id of the defining steward
+    # REQ-020: version, and re-review flag. Its owners are people holding relationship_owner
+    # entitlement rows naming it (REQ-2219); the configuration carries no owner.
     version: int = 1  # bumped on every upsert and on re-review flagging
     needs_review: bool = False  # set when a join-field schema change may have stale-d the join
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_owner(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a relationship's owners are people, each holding a
+        # relationship_owner entitlement row naming it; a config that still names one is refused
+        # rather than read past.
+        if isinstance(data, dict) and "owner" in data:
+            raise ValueError(
+                f"relationship {data.get('id')!r}: owner is no longer a setting -- a "
+                "relationship's owners are people, named in its Owner field, each holding a "
+                "relationship_owner entitlement row naming it. Remove the key."
+            )
+        return data
 
     @property
     def kind(self) -> str:
@@ -4163,6 +4203,11 @@ class ConnectorConfig(BaseModel):  # REQ-2221
         return self
 
 
+#: REQ-2225: the source types built in as a platform connector's host: each is listed with the
+#: source types and never offered as a connector, so an organisation's model cannot name one.
+BUILTIN_CONNECTORS: frozenset[str] = frozenset({"spark"})
+
+
 def repeated_connector_names(connectors: list[ConnectorConfig]) -> list[str]:  # REQ-2221
     """The names used by more than one connector, sorted."""
     names = [c.name for c in connectors]
@@ -4299,6 +4344,13 @@ class ProvisaConfig(BaseModel):
         repeated = repeated_connector_names(self.connectors)
         if repeated:
             raise ValueError(f"connector names used more than once: {repeated}")
+        # REQ-2225: a built-in source type is not a connector an organisation offers.
+        builtin = sorted(c.name for c in self.connectors if c.name in BUILTIN_CONNECTORS)
+        if builtin:
+            raise ValueError(
+                f"{', '.join(builtin)}: a built-in source type, not a connector an organisation "
+                "offers"
+            )
         return self
 
     @model_validator(mode="after")

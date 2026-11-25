@@ -77,6 +77,16 @@ _META: dict[str, str] = {
     "and member; a table may be a member of any number of products of its domain",
     "data_product_commands": "Every data product's member commands — one row per product and "
     "member command",
+    # REQ-2219 (amended 2026-11-24)
+    "data_product_owners": "Every data product's owners — one row per product and principal: "
+    "each person or role its Owner field names, as entered, and each person holding a "
+    "data_product_owner entitlement naming it, a named role's holders among them",
+    "domain_stewards": "Every domain's stewards — one row per domain and principal: each person "
+    "or role its Steward field names, as entered, and each person holding a domain_steward "
+    "entitlement naming it or a domain above it, a named role's holders among them",
+    "relationship_owners": "Every relationship's owners — one row per relationship and principal: "
+    "each person or role its Owner field names, as entered, and each person holding a "
+    "relationship_owner entitlement naming it, a named role's holders among them",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -226,7 +236,8 @@ _TAG_INSTANCE_COLUMNS: dict[str, str] = {
     "object_name": "How the names table of the last model build names the object; empty for a kind "
     "it does not name",
     "domain_id": "Domain the object is governed under",
-    "owner": "The object's owner, for a relationship or a data product",
+    "owner": "The object's owners, for a relationship or a data product: the people holding its "
+    "owner entitlement",
     "table_id": "Table the object is, or belongs to",
     "tag_id": "Tag, with its parameter when it has one",
     "base_tag_id": "Tag, parameter stripped: the registry id",
@@ -439,6 +450,34 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "product_id": "The data product",
         "command_name": "A command that is a member of it",
     },
+    # REQ-2219 (amended 2026-11-24)
+    "data_product_owners": {
+        "id": "The data product, the principal's kind and the principal",
+        "product_id": "The data product",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a data_product_owner entitlement naming it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
+    },
+    "domain_stewards": {
+        "id": "The domain, the principal's kind and the principal",
+        "domain_id": "The domain",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a domain_steward entitlement naming it or a domain above it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
+    },
+    "relationship_owners": {
+        "id": "The relationship, the principal's kind and the principal",
+        "relationship_id": "The relationship",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a relationship_owner entitlement naming it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
+    },
     # REQ-2126
     "data_product_edges": {
         "id": "Edge identifier: product, kind and target",
@@ -475,7 +514,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Data product identifier",
         "domain_id": "Domain the product is published in",
         "name": "Name the product is listed under",
-        "owner_role": "Role that owns the product",
         "team_role": "Role of the team that maintains the product",
         "purpose": "What the product is for",
         "limitations": "What the product should not be used for, and its known gaps",
@@ -540,7 +578,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",
         "description": "What the domain covers",
-        "steward": "Role or principal accountable for the domain's metadata quality",
         "parent_domain_id": "Domain this one sits under; a role granted the parent reaches it too",
         "graphql_alias": "Name the domain is exposed under in GraphQL, when it differs",
         "org_id": "Org the domain was defined in",
@@ -572,7 +609,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "via_type_column": "Junction column that discriminates several relationship types",
         "via_type_value": "Discriminator value this edge is pinned to",
         "via_label_source": "Where the exposed type name comes from: column, table, or fixed",
-        "owner": "Principal accountable for the edge definition",
         "version": "Revision counter, incremented on every edit",
         "needs_review": "Whether the edge was inferred and awaits confirmation",
         "tenant_id": _TENANT,
@@ -1315,8 +1351,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "ontology_quality": {
         "id": "The scope and its domain or steward",
         "scope": "domain, or steward: what the row counts terms by",
-        "scope_id": "The domain id or the steward role; empty for terms with no domain or no "
-        "steward",
+        "scope_id": "The domain id or its stewards; empty for terms with no domain or no steward",
         "in_service_terms": "Draft and approved terms in scope",
         "grounded_terms": "Of them, grounded: a path to data with no draft term strictly between",
         "grounded_pct": "Grounded terms as a percent of the in-service terms",
@@ -1344,7 +1379,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_name": "The term's name",
         "domain_id": "A domain the term is scoped to; empty for an unscoped term, * for the "
         "enterprise",
-        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "steward": "The domain's stewards: the people whose domain_steward entitlement names it "
+        "or a domain above it",
         "status": "draft or approved, set by people",
         "grounding": "grounded, grounded_pending or not_grounded, computed from the model",
         "defined": "True when the term has a definition",
@@ -1370,7 +1406,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "other_term_id": "The edge's other term; opens it in the Ontology page",
         "other_term_name": "The other term's name",
         "domain_id": "A domain of either term",
-        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "steward": "The domain's stewards: the people whose domain_steward entitlement names it "
+        "or a domain above it",
         "related_to_review": "The term to review; opens the Ontology page filtered to RELATED_TO "
         "terms",
     },

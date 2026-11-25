@@ -63,5 +63,7 @@ def test_the_row_filter_and_the_mask_apply_to_the_table_inside_the_cte():
     con.execute("CREATE SCHEMA public")
     con.execute("CREATE TABLE public.customers (id INTEGER, email VARCHAR, region VARCHAR)")
     con.execute("INSERT INTO public.customers VALUES (1, 'a@x.io', 'east'), (2, 'b@x.io', 'west')")
-    rows = con.execute(transpile(governed.replace('"pg".', ""), "duckdb")).fetchall()
+    rows = con.execute(
+        transpile(governed.replace('"pg".', ""), "duckdb", generated=False)
+    ).fetchall()
     assert rows == [(1, "***")]

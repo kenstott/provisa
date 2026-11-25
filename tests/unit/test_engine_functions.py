@@ -113,12 +113,12 @@ def engine(control_plane):
 
 def test_the_engine_answers_a_map_and_a_list_function_over_the_meta_views(engine):
     # Each map value is JSON-encoded (to_json), as the IR writes it.
-    mapped = engine.run_sync(transpile_to_duckdb(_sql(_MAPPED))).rows
+    mapped = engine.run_sync(transpile_to_duckdb(_sql(_MAPPED), generated=False)).rows
     assert sorted((dict(row[0]) for row in mapped), key=repr) == [
         {"name": '"old"', "kept": "false"},
         {"name": '"party"', "kept": "true"},
     ]
-    listed = engine.run_sync(transpile_to_duckdb(_sql(_LISTED))).rows
+    listed = engine.run_sync(transpile_to_duckdb(_sql(_LISTED), generated=False)).rows
     assert sorted(listed) == [(["old"],), (["party"],)]
 
 

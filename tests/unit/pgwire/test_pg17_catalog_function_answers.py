@@ -796,7 +796,7 @@ def test_json_object_is_the_engines_not_the_catalogs(sql):
     from provisa.transpiler.transpile import transpile
 
     assert classify(sql) == "PASS_THROUGH"
-    assert "json_object" in transpile(sql, "postgres").lower()
+    assert "json_object" in transpile(sql, "postgres", generated=False).lower()
 
 
 @pytest.mark.parametrize(
