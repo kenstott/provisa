@@ -253,8 +253,10 @@ EMPTY_JSON_LIST = "CAST('[]' AS JSON)"
 #: (_key0, _key1, ...), and the field's JSON value.
 READ_KEY = "_key"
 READ_VALUE = "_value"
-#: A row's place among its key's rows, in a read that keeps the head of each key's rows.
+#: A row's place among its key's rows, in a read that keeps the head of each key's rows, and the
+#: derived table of those numbered rows.
 READ_ROW = "_row"
+READ_ROWS = "_rows"
 
 
 def _empty_list_if_none(subquery: str) -> str:
@@ -335,7 +337,7 @@ def rel_read(
         f"SELECT {keyed}, {jbo} AS {value}, ROW_NUMBER() OVER (PARTITION BY {partition}) AS {row}"
         f" FROM {rows_from}"
     )
-    rows = _q("_rows")
+    rows = _q(READ_ROWS)
     cardinality = join_meta.cardinality
     if cardinality in ("many-to-one", "one-to-one"):
         read = f"SELECT {', '.join(key_names)}, {value} FROM ({numbered}) {rows} WHERE {row} = 1"
@@ -347,7 +349,7 @@ def rel_read(
             )
         else:
             read = (
-                f"SELECT {', '.join(key_names)}, json_agg({value}) AS {value}"
+                f"SELECT {', '.join(key_names)}, json_agg({rows}.{value}) AS {value}"
                 f" FROM ({numbered}) {rows} WHERE {row} <= {limit}"
                 f" GROUP BY {', '.join(key_names)}"
             )

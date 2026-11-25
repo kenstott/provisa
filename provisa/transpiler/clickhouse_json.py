@@ -1,0 +1,175 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7c3e9a14-2b6d-4f58-9e1a-d4b07c5f3e82
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The JSON a compiled statement builds, on ClickHouse (#362): a relationship field's json_object
+and json_agg (compiler/sql_selection.rel_read) and a list field's empty default, written as the
+JSON text PostgreSQL's would parse to. ClickHouse has neither function: sqlglot writes
+JSON_OBJECT('k': v) in a syntax ClickHouse does not parse, and the polyfill grid refuses a value
+whose type the statement does not say (polyfill.json_built), which no compiled column does.
+
+A value goes into JSON by its type, read where it runs (toTypeName):
+
+- JSON the statement built (an object, a list, a grouped read's value): its own text;
+- an instant: PostgreSQL's text of a timestamp -- a T between date and time, the fraction's
+  trailing zeros dropped (ClickHouse holds a timestamp and a timestamptz alike, DateTime64);
+- any other value: ClickHouse's toJSONString, with a decimal's scale kept
+  (``output_format_decimal_trailing_zeros``, set on the statement), as PostgreSQL's numeric keeps it;
+- NULL: null.
+
+json_agg keeps a NULL value as null and answers NULL of no rows, as PostgreSQL's does. Only a
+statement Provisa compiled is read so (``generated``): a statement a client writes says its types
+or is refused by the grid."""
+
+# Requirements: REQ-2236
+
+from __future__ import annotations
+
+import json
+
+import sqlglot
+import sqlglot.expressions as exp
+
+_CH = "clickhouse"
+#: The setting that keeps a decimal's scale in toJSONString, as PostgreSQL's numeric text does.
+_DECIMAL_SCALE = "output_format_decimal_trailing_zeros"
+
+
+def _form(template: str, **holes: exp.Expr) -> exp.Expr:
+    """``template`` in ClickHouse's SQL with each ``_name`` hole filled by ``holes[name]``."""
+    tree = sqlglot.parse_one(template, read=_CH)
+
+    def fill(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name.startswith("_"):
+            return holes[node.name[1:]].copy()
+        return node
+
+    return tree.transform(fill)
+
+
+#: A value of any type, as its JSON text (not NULL: the caller says null).
+_TYPED = (
+    "multiIf(match(toTypeName(_v), 'DateTime'), "
+    "concat('\"', replaceRegexpOne(replaceOne(toString(_v), ' ', 'T'), "
+    "'(\\\\.[0-9]*[1-9])0+$|\\\\.0+$', '\\\\1'), '\"'), "
+    "toJSONString(_v))"
+)
+
+
+def _is_read_value(node: exp.Expr) -> bool:
+    """The JSON column of a relationship's grouped read (sql_selection.rel_read), or of the
+    numbered rows a capped list's read collects."""
+    from provisa.compiler.sql_selection import READ_ROWS, READ_VALUE
+
+    return (
+        isinstance(node, exp.Column)
+        and node.name == READ_VALUE
+        and (node.table.endswith("_read") or node.table == READ_ROWS)
+    )
+
+
+def _is_built(node: exp.Expr, built: set[int]) -> bool:
+    """Whether ``node`` is JSON text this pass wrote or a grouped read holds."""
+    node = node.unnest()
+    if id(node) in built or _is_read_value(node):
+        return True
+    if isinstance(node, exp.Coalesce):
+        return all(_is_built(e, built) for e in [node.this, *node.expressions])
+    if isinstance(node, exp.Case):
+        values = [i.args["true"] for i in node.args.get("ifs") or []]
+        default = node.args.get("default")
+        return all(_is_built(v, built) for v in values) and (
+            default is None or _is_built(default, built)
+        )
+    return isinstance(node, exp.Literal) and node.is_string and node.this == "[]"
+
+
+def _member(value: exp.Expr, built: set[int]) -> exp.Expr:
+    """``value`` as its JSON text inside an object or a list: never NULL, null for one."""
+    if isinstance(value, exp.Null):
+        return exp.Literal.string("null")
+    if isinstance(value, exp.Literal):
+        return exp.Literal.string(value.this if not value.is_string else json.dumps(value.this))
+    if isinstance(value, exp.Boolean):
+        return exp.Literal.string("true" if value.this else "false")
+    text = value if _is_built(value, built) else _form(_TYPED, v=value)
+    return exp.Coalesce(this=text, expressions=[exp.Literal.string("null")])
+
+
+def _object(node: exp.JSONObject, built: set[int]) -> exp.Expr:
+    parts: list[exp.Expr] = []
+    for i, pair in enumerate(node.expressions):
+        if not isinstance(pair, exp.JSONKeyValue) or not isinstance(pair.this, exp.Literal):
+            raise ValueError(f"a JSON object's member is no key and value: {pair.sql()}")
+        lead = "{" if i == 0 else ","
+        parts.append(exp.Literal.string(f"{lead}{json.dumps(pair.this.this)}:"))
+        parts.append(_member(pair.expression, built))
+    parts.append(exp.Literal.string("}" if parts else "{}"))
+    return exp.Anonymous(this="concat", expressions=parts)
+
+
+def _aggregated(node: exp.Expr) -> exp.Expr | None:
+    """The value json_agg collects, or None for any other node."""
+    if isinstance(node, exp.JSONArrayAgg) and not node.args.get("order"):
+        return node.this
+    if (
+        isinstance(node, exp.Anonymous)
+        and node.name.lower() in ("json_agg", "jsonb_agg")
+        and len(node.expressions) == 1
+    ):
+        return node.expressions[0]
+    return None
+
+
+def _list(value: exp.Expr, built: set[int]) -> exp.Expr:
+    members = exp.Anonymous(this="groupArray", expressions=[_member(value, built)])
+    return _form(
+        "if(empty(_m), NULL, concat('[', arrayStringConcat(_m, ','), ']'))",
+        m=members,
+    )
+
+
+def relationship_json(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each JSON object and json_agg it builds, and each list field's empty default
+    (CAST('[]' AS JSON)), as ClickHouse's JSON text. Inner first, so a value already written is
+    told by ``built`` and embedded as the JSON it is."""
+    built: set[int] = set()
+    nodes = [
+        n
+        for n in tree.find_all(exp.JSONObject, exp.JSONArrayAgg, exp.Anonymous, exp.Cast)
+        if isinstance(n, (exp.JSONObject, exp.Cast)) or _aggregated(n) is not None
+    ]
+    if not nodes:
+        return tree
+    nodes.sort(key=lambda n: -n.depth)
+    for node in nodes:
+        if isinstance(node, exp.Cast):
+            if not (
+                node.to.is_type(exp.DataType.Type.JSON)
+                and isinstance(node.this, exp.Literal)
+                and node.this.this == "[]"
+            ):
+                continue
+            written: exp.Expr = exp.Literal.string("[]")
+        elif isinstance(node, exp.JSONObject):
+            written = _object(node, built)
+        else:
+            collected = _aggregated(node)
+            assert collected is not None
+            written = _list(collected, built)
+        built.add(id(written))
+        if node is tree:
+            tree = written
+        else:
+            node.replace(written)
+    if isinstance(tree, exp.Select):
+        settings = list(tree.args.get("settings") or [])
+        settings.append(exp.EQ(this=exp.column(_DECIMAL_SCALE), expression=exp.Literal.number(1)))
+        tree.set("settings", settings)
+    return tree

@@ -2129,6 +2129,14 @@ def transpile(
     pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
+    if target_dialect == "clickhouse" and generated and _JSON_BUILT.search(pg_sql):
+        # #362: a compiled statement's JSON (a relationship field's object and list) in
+        # ClickHouse's text, before a form reads a function the grid would refuse untyped.
+        from provisa.transpiler.clickhouse_json import relationship_json
+
+        lowered = relationship_json(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
@@ -2279,6 +2287,9 @@ def transpile(
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
+
+#: A statement that builds JSON: a json_object, a json_agg, or a list field's empty default.
+_JSON_BUILT = re.compile(r"\bjson_(?:object|agg)\s*\(|\bjsonb_agg\s*\(|AS JSON\)", re.IGNORECASE)
 
 _REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
 
