@@ -843,7 +843,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["connectors"].append({**body, "name": _name_of(path)[0]})
 
         elif table == COMMANDS_DIR:
-            own, nested = _split(body, "tags", "row_policies")
+            own, nested = _split(body, "tags", "row_policies", "glossary")
             name = _name_of(path)[0]
             registry = "tracked_functions" if _FUNCTION_MARKER in own else "tracked_webhooks"
             rows[registry].append(
@@ -855,6 +855,14 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["tag_assignments"].extend(
                 _tags(nested["tags"], path, problems, command_name=name, rule_ids=command_rules)
             )
+            for ref in nested["glossary"]:  # REQ-1159: its output columns' terms
+                rows["glossary_term_refs"].append(
+                    {
+                        "command_name": name,
+                        "column_name": ref["column_name"],
+                        "term_id": resolve_term(ref["term"], path),
+                    }
+                )
 
         elif table == "naming_rules":
             for order, rule in enumerate(body.get("rules") or [], start=1):
@@ -976,10 +984,21 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
             out.append(body)
             continue
         if command_name is not None and fragment is not None:
-            problems.append(
-                f"{path!r} carries a tag on {fragment!r}, but a command has no parts a fragment "
-                f"can name; a command tag is on the command itself"
-            )
+            if not fragment.startswith("#field:"):
+                problems.append(
+                    f"{path!r} carries a tag on {fragment!r}, but the only parts of a command a "
+                    f"fragment can name are its output columns (#field:)"
+                )
+                continue
+            column = fragment[len("#field:") :]  # REQ-1159: a command's output column
+            body |= {
+                "object_type": "command_column",
+                "command_name": command_name,
+                "column_name": column,
+                "object_key": f"command_column:{command_name}:{column}",
+            }
+            body.setdefault("base_tag_id", body["tag_id"])
+            out.append(body)
             continue
         if product_id is not None and fragment is not None:
             problems.append(

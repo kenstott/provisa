@@ -971,6 +971,9 @@ TAG_OBJECT_TYPES = (
     "column",
     "relationship",
     "command",
+    # REQ-1159 (amended 2026-11-25): an output column of a command's dataset, named by the command
+    # and the column, carries a table column's tags.
+    "command_column",
     "product",
     "term",
     "rls_rule",  # REQ-2208
@@ -1117,8 +1120,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
         # REQ-2208: and on reference library documents and their sections, so the policy sections
-        # about personal data carry the same tag as the columns.
-        applies_to=["column", "term", "document", "section"],
+        # about personal data carry the same tag as the columns. REQ-1159 (amended 2026-11-25): and
+        # on a command's output column, which carries a table column's governance.
+        applies_to=["column", "command_column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1127,7 +1131,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="deprecated",
         description="Scheduled for removal — consumers should migrate off",
-        applies_to=["source", "table", "column", "relationship", "command"],
+        applies_to=["source", "table", "column", "relationship", "command", "command_column"],
         is_system=True,
         reason_policy="required",  # a deprecation must say why
         expires_policy="optional",  # planned removal date, when known
@@ -1303,6 +1307,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "command_column":  # REQ-1159
+            return f"command_column:{self.command_name}:{self.column_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
         if self.object_type == "product":  # REQ-1634
@@ -2739,6 +2745,13 @@ class DatasetColumn(BaseModel):  # REQ-1159
     # alias consumers query it by and its description.
     alias: str | None = None
     description: str | None = None
+
+
+def queried_name(column: dict) -> str:
+    """The name consumers see and query a command's result column by (REQ-1159, amended
+    2026-11-25): its SQL alias, as a table column's alias is the name it is read by, else the name
+    its service returns it under. Every surface that names a command's result columns asks this."""
+    return column.get("alias") or column["name"]
 
 
 class FunctionArgument(BaseModel):

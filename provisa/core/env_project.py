@@ -156,7 +156,7 @@ def _fragment(
     wonder what the empty string addressed.
     """
     kind = assignment["object_type"]
-    if kind == "column":
+    if kind in ("column", "command_column"):  # REQ-1159: a command's output column is its field
         return f"#field:{assignment['column_name']}"
     if kind == "relationship":
         return f"#rel:{rel_names[assignment['relationship_id']]}"
@@ -589,6 +589,18 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                     OWNER_KEYS,
                     [a for a in tagged if a["owner_command_name"] == row["name"]],
                     table="tag_assignments",
+                ),
+                # REQ-1159 (amended 2026-11-25): the term each output column means, as a table's
+                # columns' terms are written in its file: by the term's path.
+                glossary=Child(
+                    "column_name",
+                    "command_name",
+                    [
+                        {"column_name": r["column_name"], "term": term_paths[r["term_id"]]}
+                        for r in term_refs
+                        if r["command_name"] == row["name"]
+                    ],
+                    table="glossary_term_refs",
                 ),
             )
 

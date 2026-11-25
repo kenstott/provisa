@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.compiler.rls import rule_text
+from provisa.core.models import queried_name
 
 from provisa.api.errors import ApiError
 
@@ -227,12 +228,19 @@ async def govern_action_rows(
     gov, enforcement = _governance_context(action, cols, role_id, state)
     rel = relation_name(action["name"])
     # REQ-039: the read names only the columns the role is served -- a column it is not served
-    # does not exist in its governed relation. The governed relation exposes each served column
-    # under its own name, masked or not. REQ-913: the statement is built as an expression.
+    # does not exist in its governed relation. The governed relation exposes each served column,
+    # masked or not, under the name consumers query it by (REQ-1159: its alias, else its name).
+    # REQ-913: the statement is built as an expression.
     served = gov.visible_columns[synthetic_table_id(action["name"])]
-    read = exp.select(*(exp.column(n, quoted=True) for n in names if n in served)).from_(
-        exp.table_(rel, quoted=True)
-    )
+    read = exp.select(
+        *(
+            exp.alias_(exp.column(c["name"], quoted=True), queried_name(c), quoted=True)
+            if c.get("alias")
+            else exp.column(c["name"], quoted=True)
+            for c in cols
+            if c["name"] in served
+        )
+    ).from_(exp.table_(rel, quoted=True))
     governed = with_values_ctes(govern(read, gov), {rel: InlineRows(rows=rows, column_names=names)})
     from provisa.core.request_context import session_vars_for
 

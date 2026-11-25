@@ -128,6 +128,18 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
             .distinct()
         )
     ).fetchall()
+    # REQ-1159 (amended 2026-11-25): a command's output column it holds is in the command's domain.
+    from provisa.core.schema_org import tracked_functions, tracked_webhooks
+
+    for registry in (tracked_functions, tracked_webhooks):
+        rows += (
+            await conn.execute_core(
+                select(glossary_term_refs.c.term_id, registry.c.domain_id)
+                .join(registry, glossary_term_refs.c.command_name == registry.c.name)
+                .where(registry.c.domain_id.is_not(None), registry.c.domain_id != "")
+                .distinct()
+            )
+        ).fetchall()
     for r in rows:
         derived.setdefault(r.term_id, set()).add(r.domain_id)
     declared: dict[int, set[str]] = {}
@@ -1874,6 +1886,67 @@ async def move_ref(
     )
     removed = await _settle_terms(conn, {row.term_id}, domains_before=domains_before)
     return {"source_term_removed": row.term_id in removed}
+
+
+async def ground_command_column(
+    conn: "Connection", term_id: int, command_name: str, column_name: str
+) -> None:
+    """Make ``term_id`` the meaning of a command's output column (REQ-1159, amended 2026-11-25):
+    the column's ref, held as a table column's is, named by the command and the column. A Class
+    takes no ref by hand (REQ-2141). No term is derived from a command's column (sync derives
+    terms from tables alone), so the term a column leaves is a steward's and stays as it is."""
+    if not await term_exists(conn, term_id):
+        raise ValueError(f"term {term_id} does not exist")
+    await refuse_property_on_class(conn, term_id)
+    refs = glossary_term_refs
+    held = (
+        await conn.execute_core(
+            select(refs.c.id, refs.c.term_id).where(
+                (refs.c.command_name == command_name) & (refs.c.column_name == column_name)
+            )
+        )
+    ).fetchone()
+    if held is not None and held.term_id == term_id:
+        return
+    if held is None:
+        await conn.execute_core(
+            insert(refs).values(term_id=term_id, command_name=command_name, column_name=column_name)
+        )
+        await _touch(conn, term_id)
+        return
+    await conn.execute_core(update(refs).where(refs.c.id == held.id).values(term_id=term_id))
+    await _touch(conn, term_id, held.term_id)
+
+
+async def unground_command_column(conn: "Connection", command_name: str, column_name: str) -> bool:
+    """Take the term off a command's output column (REQ-1159); the term, a steward's, stays as it
+    is. False when the column holds none."""
+    refs = glossary_term_refs
+    held = (
+        await conn.execute_core(
+            select(refs.c.id, refs.c.term_id).where(
+                (refs.c.command_name == command_name) & (refs.c.column_name == column_name)
+            )
+        )
+    ).fetchone()
+    if held is None:
+        return False
+    await conn.execute_core(_delete(refs).where(refs.c.id == held.id))
+    await _touch(conn, held.term_id)
+    return True
+
+
+async def command_column_terms(conn: "Connection", command_name: str) -> dict[str, dict]:
+    """The term each of a command's output columns means (REQ-1159), by column: its id and name."""
+    refs = glossary_term_refs
+    rows = (
+        await conn.execute_core(
+            select(refs.c.column_name, glossary_terms.c.id, glossary_terms.c.name)
+            .join(glossary_terms, glossary_terms.c.id == refs.c.term_id)
+            .where(refs.c.command_name == command_name)
+        )
+    ).fetchall()
+    return {r.column_name: {"id": r.id, "name": r.name} for r in rows}
 
 
 async def term_edges(conn: "Connection") -> list[tuple[int, int, str]]:  # REQ-2135
