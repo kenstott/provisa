@@ -217,7 +217,7 @@ def test_a_dialect_reads_a_bound_with_its_own_functions(dialect, fragment):
         ("tsql", "NUMERIC(38, 10)", "DATETIME2(6)"),
         ("snowflake", "DECIMAL(38, 10)", "TIMESTAMP_NTZ(6)"),
         ("bigquery", "BIGNUMERIC", "DATETIME"),
-        ("clickhouse", "Decimal(38, 10)", "DateTime64(6)"),
+        ("clickhouse", "Decimal(76, 38)", "DateTime64(6)"),
         ("databricks", "DECIMAL(38, 10)", "TIMESTAMP_NTZ"),
     ],
 )

@@ -76,7 +76,9 @@ _BOUND_TYPES: dict[str, dict[str, str]] = {
     "snowflake": {"timestamp": "TIMESTAMP_NTZ(6)", "timestamptz": "TIMESTAMP_TZ(6)"},
     "bigquery": {"numeric": "BIGNUMERIC", "timestamp": "DATETIME", "timestamptz": "TIMESTAMP"},
     "clickhouse": {
-        "numeric": "Decimal(38, 10)",
+        # A numeric literal of up to 76 digits is a Decimal256 (polyfill.clickhouse.numeric_read):
+        # bounds compare at 38 places, as numeric_mod's remainder is computed (REQ-2236).
+        "numeric": "Decimal(76, 38)",
         "timestamp": "DateTime64(6)",
         "timestamptz": "DateTime64(6, 'UTC')",
         "date": "Date32",
@@ -608,6 +610,21 @@ _ROW_ISO_TEXT = {
     "timestamp": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}( BC)?)$",
     "timestamptz": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}( BC)?)$",
 }
+#: The scale of a ClickHouse Decimal type's name, as regexpExtract reads it.
+_DECIMAL_SCALE = r"Decimal\(\d+, (\d+)\)"
+
+
+def _clickhouse_numeric_text(value: exp.Expr) -> exp.Expr:
+    """A numeric's text on ClickHouse at the scale of its Decimal type, as numeric_out writes it:
+    ClickHouse's own text drops trailing zeros (toDecimalString writes a scale of 0 with its point,
+    trimmed). Built as nodes, so a form read later of ``value`` (a literal's) is read in it."""
+    scale = _call(
+        "toUInt8OrZero",
+        _call("regexpExtract", _call("toTypeName", value), _string(_DECIMAL_SCALE), _int(1)),
+    )
+    return _call("trimRight", _call("toDecimalString", value, scale), _string("."))
+
+
 #: An instant on DateTime64's first or last day whose offset may take it past: a negative offset
 #: on the last, a positive one on the first.
 _ROW_EDGES = (r"^2299-12-31 .*-[0-9:]+$", r"^1900-01-01 .*[+][0-9:]*[1-9][0-9:]*$")
@@ -777,6 +794,10 @@ class _Writer:
     def element_text(self, value: exp.Expr, rtype: RangeType) -> exp.Expr:
         if rtype.element in ("timestamp", "timestamptz"):
             written = self.clock_text(value, rtype.element == "timestamptz")
+        elif self.dialect == "clickhouse" and rtype.element == "numeric":
+            # ClickHouse's text of a Decimal drops its trailing zeros, which numeric_out writes
+            # to the value's scale: written at the scale of its type (REQ-2236).
+            written = _clickhouse_numeric_text(value)
         else:
             written = _text_cast(value)
         if not self.bc or rtype.element not in ("date", "timestamp", "timestamptz"):
@@ -1543,6 +1564,8 @@ def _numeric_or_element_text(
     writer: _Writer, argument: exp.Expr, typed: exp.Expr, rtype: RangeType
 ) -> exp.Expr:
     """A continuous bound's text: a numeric as its argument prints, which keeps its scale."""
+    if rtype.element == "numeric" and writer.dialect == "clickhouse":
+        return _clickhouse_numeric_text(argument)
     if rtype.element == "numeric":
         return _text_cast(argument)
     return writer.element_text(typed, rtype)

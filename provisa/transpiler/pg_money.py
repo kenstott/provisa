@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -536,6 +536,27 @@ def _money_input(value: exp.Expr, dialect: str) -> exp.Expr:
     return _base_of_text(value)
 
 
+#: The int8 range numeric_cash reads a numeric's cents into (numeric_int8).
+_INT8 = (-(2**63), 2**63 - 1)
+
+
+def _refuse_past_cents(value: exp.Expr) -> None:
+    """numeric_cash's 22003 of a numeric literal whose cents are past int8 (REQ-2236): the value
+    times 100, rounded half away from zero as numeric_int8 rounds, raises bigint out of range."""
+    literal = value.this if isinstance(value, exp.Cast) else None
+    if not (isinstance(literal, exp.Literal) and literal.is_string):
+        return
+    try:
+        number = Decimal(literal.this.strip())
+    except ArithmeticError:
+        return  # a text numeric's input refuses: its own error is read where it is cast
+    if not number.is_finite():
+        return  # NaN: pg_input_refusals' error
+    cents = (number * 100).to_integral_value(rounding=ROUND_HALF_UP)
+    if not _INT8[0] <= cents <= _INT8[1]:
+        raise PostgresError("22003", "bigint out of range")
+
+
 def _base_of_text(value: exp.Expr) -> exp.Expr:
     """A value in a source's text form (``-$1,234.56``), or its number, as the base."""
     stripped: exp.Expr = _as(value, "VARCHAR")
@@ -668,6 +689,8 @@ class _Lowering:
         said = self.said.get(id(inner))
         if said not in (None, "integer", "bigint", "numeric", "text"):
             raise PostgresError("42846", f"cannot cast type {said} to money")
+        if said == "numeric":
+            _refuse_past_cents(inner)
         return _money_input(value, self.dialect)
 
     def _arithmetic(self, node: exp.Expr, symbol: str) -> exp.Expr:

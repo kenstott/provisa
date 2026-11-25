@@ -46,8 +46,8 @@ text read by the integer input (0x, 0o and 0b prefixes, underscores), and past t
 22003, a text the input does not read 22P02. A numeric: ClickHouse reads a number with a fraction as
 a Float64 (1.005 as 1.00499..., 0.1 at scale 30 as 0.1000000000000000090...) and truncates a text
 past the scale; the literal is cast from its text, rounded half away from zero to the scale,
-22003 past the precision, a value of no precision said held up to 76 digits as a Decimal256
-(0A000 past them).
+22003 past the precision, a value of no precision said held up to 38 digits on either side of
+its point as a Decimal256 (0A000 past them).
 
 A date and a number of days by their operator (date + integer, integer + date, date - integer):
 date_pli's, integer_pl_date's or date_mii's ClickHouse form (polyfill.dates.ch_moved), of operands
@@ -973,11 +973,14 @@ TID_EXTREMES = Feature(
 )
 
 
-#: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision):
-#: its Decimal256's 76, the type _NUMERIC_MOD computes in (REQ-2236).
-_MOST_DIGITS = 76
+#: The digits a literal of no precision said holds on either side of its point on ClickHouse: a
+#: Decimal256 (76 digits) at 38 places, which _NUMERIC_MOD and a range's bounds compute in exactly
+#: (REQ-2236).
+_MOST_DIGITS = 38
+_DECIMAL256 = 76
 _NUMERIC_OUT_OF_BOUND = (
-    f"numeric_in() of a value of more than {_MOST_DIGITS} digits has no exact form on clickhouse"
+    f"numeric_in() of a value of more than {_MOST_DIGITS} digits before or after its point has no "
+    "exact form on clickhouse"
 )
 
 
@@ -1036,10 +1039,11 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if said is None:
         _, digits, exponent = value.as_tuple()
         scale = max(0, -int(exponent))
-        if max(len(digits), scale) > _MOST_DIGITS:
+        whole = max(0, len(digits) - scale)
+        if whole > _MOST_DIGITS or scale > _MOST_DIGITS:
             raise Refused(Refusal("0A000", _NUMERIC_OUT_OF_BOUND))
         to = exp.DataType.build(
-            f"DECIMAL({min(_MOST_DIGITS, max(len(digits), scale) + 18)}, {scale})"
+            f"DECIMAL({min(_DECIMAL256, max(len(digits), scale) + 18)}, {scale})"
         )
     else:
         precision, scale = said
@@ -1083,7 +1087,8 @@ NUMERIC = Feature(
                     "A number or a text the statement writes is cast from its text, rounded half "
                     "away from zero to the scale, as PostgreSQL rounds it; past the precision it "
                     "raises 22003, a text the input does not read 22P02. A value of no precision "
-                    f"said holds up to {_MOST_DIGITS} digits; one of more raises 0A000 "
+                    f"said holds up to {_MOST_DIGITS} digits before its point and "
+                    f"{_MOST_DIGITS} after it, as a Decimal256; one of more raises 0A000 "
                     f"({_NUMERIC_OUT_OF_BOUND}). NaN and infinity raise 0A000 ({_NUMERIC_NOT_FINITE}): "
                     "ClickHouse's Decimal holds neither. A column's cast keeps ClickHouse's own."
                 ),

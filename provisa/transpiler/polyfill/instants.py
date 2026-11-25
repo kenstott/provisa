@@ -1035,6 +1035,18 @@ def _rounded(instant: datetime.datetime, scale: int) -> datetime.datetime:
     return _PG_EPOCH + step * _MICRO
 
 
+def _integer_literal(written: exp.Expr) -> int | None:
+    """The integer a literal writes, as a number or as a text int4's input reads; None for any
+    other value."""
+    if isinstance(written, exp.Neg):
+        negated = _integer_literal(written.this.unnest())
+        return None if negated is None else -negated
+    if not isinstance(written, exp.Literal):
+        return None
+    text = written.this.strip() if written.is_string else written.this
+    return int(text) if re.fullmatch(r"[+-]?\d+", text, re.ASCII) else None
+
+
 def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away
     from 2000-01-01 as PostgreSQL rounds. Each instant is a literal (or a NULL), rounded here
@@ -1059,9 +1071,17 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return replacement(_NULL_INSTANT, dialect, pattern)
     written = digits.unnest()
     written = written.this.unnest() if isinstance(written, exp.Cast) else written
-    if not (isinstance(written, exp.Literal) and written.is_int and 0 <= int(written.this) <= 6):
-        return None  # a negative precision is PostgreSQL's error; past 6 its warning
-    scale = 10 ** (6 - int(written.this))
+    precision = _integer_literal(written)
+    if precision is None:
+        return None
+    if precision == -1:
+        precision = 6  # no typmod: the value as it is (AdjustTimestampForTypmod)
+    if not 0 <= precision <= 6:  # noqa: PLR2004 -- MAX_TIMESTAMP_PRECISION
+        if all(instant is None for instant in instants):
+            return replacement(_NULL_INSTANT, dialect, pattern)
+        message = f"timestamp({precision}) precision must be between 0 and 6"
+        raise Refused(Refusal("22023", message), ruling=True)
+    scale = 10 ** (6 - precision)
     for instant in instants:
         if instant is not None and not (_inside(instant) and _inside(_rounded(instant, scale))):
             return raised("timestamptz", dialect, pattern, INSTANT)
