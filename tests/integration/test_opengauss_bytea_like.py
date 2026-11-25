@@ -12,7 +12,8 @@
 
 openGauss matches bytea LIKE as multibyte text on a UTF-8 database and reads past a value ending
 in an incomplete UTF-8 lead byte ('\\xdeadbeef' ends in 0xEF), so its answer varies from run to
-run. The openGauss engine's transpile writes those calls as rawlike / rawnlike over raw casts.
+run. The openGauss engine's transpile writes those calls as rawlike / rawnlike over
+hextoraw(encode(x, 'hex')).
 Each statement is transpiled as the openGauss engine does and run many times on the pinned
 openGauss image; every run must give PostgreSQL's answer. One test, so the container starts once.
 """
@@ -42,6 +43,15 @@ _CASES = [
     # A pattern: 0x25 is '%', matched byte-wise.
     (r"""SELECT pg_catalog."bytealike"('\xdeadbeef'::bytea, '\xde25'::bytea) AS v""", True),
     (r"""SELECT pg_catalog."bytealike"('\xdeadbeef'::bytea, '\xad25'::bytea) AS v""", False),
+    # 0x5f is '_', one byte.
+    (r"""SELECT pg_catalog."bytealike"('\xdeadbeef'::bytea, '\x5fadbeef'::bytea) AS v""", True),
+    (r"""SELECT pg_catalog."bytealike"('\xdeadbeef'::bytea, '\x5fad'::bytea) AS v""", False),
+    # An empty bytea is not NULL, though openGauss's A compatibility reads an empty string as NULL.
+    (r"""SELECT pg_catalog."bytealike"('\x'::bytea, '\x'::bytea) AS v""", True),
+    (r"""SELECT pg_catalog."byteanlike"('\x'::bytea, '\x25'::bytea) AS v""", False),
+    # A NULL argument answers NULL.
+    (r"""SELECT pg_catalog."bytealike"(NULL::bytea, '\x25'::bytea) AS v""", None),
+    (r"""SELECT pg_catalog."notlike"('\xdeadbeef'::bytea, NULL::bytea) AS v""", None),
 ]
 # How many times each statement runs: the engine's own form flipped within a handful of runs.
 _RUNS = 50
@@ -71,9 +81,9 @@ def test_bytea_like_answers_as_postgres_on_opengauss() -> None:
     try:
         conn.autocommit = True
         with conn.cursor() as cur:
-            # The rewrite's premise: openGauss casts a bytea to raw.
-            cur.execute(r"SELECT CAST('\xdeadbeef'::bytea AS raw)::text")
-            assert cur.fetchone() is not None
+            # The rewrite's premise: hextoraw(encode(x, 'hex')) is a raw with the bytes of bytea x.
+            cur.execute(r"SELECT lower(rawtohex(hextoraw(encode('\xdeadbeef'::bytea, 'hex'))))")
+            assert cur.fetchone() == ("deadbeef",)
             wrong: list[str] = []
             for statement, expected in _CASES:
                 written = transpile(statement, "postgres", generated=False, engine_kind="opengauss")

@@ -19,6 +19,7 @@ message classes are built in a descriptor pool of the source's own (load_stubs).
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import types
@@ -250,6 +251,50 @@ def call_unary_raw(  # REQ-2225
         channel = grpc.secure_channel(pinned, grpc.ssl_channel_credentials(), options=options)
     else:
         channel = grpc.insecure_channel(pinned)
+    return _call_once(channel, method, request, timeout, metadata)
+
+
+class NotLoopback(ValueError):
+    """A loopback-only call given an address that is not a loopback IP literal."""
+
+    def __init__(self, host: str) -> None:
+        super().__init__(
+            f"{host!r} is not a loopback address: a server Provisa starts itself is called on "
+            "127.0.0.1 or ::1 only"
+        )
+        self.host = host
+
+
+def call_unary_loopback(  # REQ-2225
+    host: str,
+    port: int,
+    *,
+    method: str,
+    request: bytes,
+    timeout: float,
+) -> bytes:
+    """:func:`call_unary_raw` for a server Provisa started itself on this machine, such as the
+    demo's Spark Connect server: no organisation typed its address, so the sandbox egress rule
+    (REQ-2006) has nothing to check. ``host`` must be a loopback IP literal; anything else, a name
+    included (it would need a lookup), is refused as :class:`NotLoopback` before any dial."""
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        raise NotLoopback(host)
+    target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    return _call_once(grpc.insecure_channel(target), method, request, timeout, ())
+
+
+def _call_once(
+    channel: grpc.Channel,
+    method: str,
+    request: bytes,
+    timeout: float,
+    metadata: tuple[tuple[str, str], ...],
+) -> bytes:
+    """One unary call on ``channel``, which it closes; a refusal is :class:`UnaryCallFailed`."""
     try:
         call = channel.unary_unary(method, request_serializer=_as_is, response_deserializer=_as_is)
         return call(request, timeout=timeout, metadata=metadata)

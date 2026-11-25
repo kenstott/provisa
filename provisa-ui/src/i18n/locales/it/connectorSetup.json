@@ -2,8 +2,10 @@
   "connectorSetup": {
     "identity": "Connettore {{name}}, segue {{ref}}.",
     "missing": "Compila host, porta, codice di abbinamento del connettore e tutti i valori richiesti.",
+    "missingNative": "Compila ogni valore richiesto dal connettore.",
     "image": "Immagine",
     "imageHint": "L'immagine eseguita dal tuo deployment. Provisa verifica l'host in base a essa durante la connessione.",
+    "native": "Viene eseguito su questo server, compilato da {{path}}. Non servono host né codice di abbinamento.",
     "host": "Host",
     "hostHint": "L'host che esegue l'immagine, così come Provisa lo raggiunge.",
     "port": "Porta",
