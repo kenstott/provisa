@@ -131,3 +131,81 @@ def test_the_runtime_drops_what_it_mounted_for_a_source_and_mounts_it_again():
     # Attached again, its database is mounted again: the sidecar as it is now.
     rt.attach_source(_table("scores-src", "scores"))
     assert any(c.startswith('CREATE DATABASE IF NOT EXISTS "ch_org') for c in backend.commands)
+
+
+# -- what the sidecar answers ClickHouse's PostgreSQL engine with (pgfront, pgcatalog) ----------
+
+
+@pytest.fixture
+def pgfront(monkeypatch):
+    """pgfront as a host or a sidecar loads it: its directory first on the path."""
+    import importlib
+    from pathlib import Path
+
+    from provisa.codehost import front
+
+    monkeypatch.syspath_prepend(str(Path(front.__file__).parent))
+    return importlib.import_module("pgfront")
+
+
+@pytest.mark.parametrize(
+    "options, fmt",
+    [
+        (None, 0),  # ClickHouse's: no options, text
+        ("FORMAT text", 0),
+        ('FORMAT "binary"', 1),  # DuckDB's postgres scanner
+        ("FORMAT binary", 1),
+        ("binary", 1),
+        ("FORMAT csv", None),  # not answered
+    ],
+)
+def test_a_copy_is_answered_in_the_format_its_options_ask_for(pgfront, options, fmt):
+    assert pgfront._copy_format(options) == fmt
+
+
+def test_a_text_copy_line_escapes_its_fields_and_writes_a_null_as_backslash_n(pgfront):
+    import struct
+
+    fields = [b"plain", None, b"a\tb\nc\\d\re"]
+    body = struct.pack("!h", len(fields)) + b"".join(
+        struct.pack("!i", -1) if f is None else struct.pack("!i", len(f)) + f for f in fields
+    )
+    assert pgfront._text_line(body) == b"plain\t\\N\ta\\tb\\nc\\\\d\\re\n"
+
+
+def test_the_catalog_answers_current_setting_and_format_type_as_postgresql_does():
+    import duckdb
+
+    from provisa.codehost import pgcatalog
+
+    db = duckdb.connect()
+    names = {
+        "orders": {
+            "columns": [
+                {"name": "id", "type": "bigint"},
+                {"name": "score", "type": "double"},
+                {"name": "ok", "type": "boolean"},
+                {"name": "at", "type": "timestamp"},
+                {"name": "tags", "type": "list"},
+            ],
+            "parameters": [],
+        }
+    }
+    pgcatalog.build(db, names, ("public",))
+
+    def answer(sql: str) -> list[tuple]:
+        return db.execute(
+            pgcatalog.rewrite(pgcatalog.parse(sql), ("public",)).sql("duckdb")
+        ).fetchall()
+
+    assert answer("SELECT current_setting('server_version_num')::int") == [(160000,)]
+    assert answer(
+        "SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = "
+        "(SELECT oid FROM pg_class WHERE relname = 'orders') ORDER BY attnum"
+    ) == [
+        ("id", "bigint"),
+        ("score", "double precision"),
+        ("ok", "boolean"),
+        ("at", "timestamp with time zone"),
+        ("tags", "text[]"),
+    ]

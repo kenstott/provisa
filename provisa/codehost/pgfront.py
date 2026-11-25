@@ -383,14 +383,15 @@ class FrontHandler(bv.BuenaVistaHandler):
 
 def _copy_format(options: str | None) -> int | None:
     """The format a ``COPY ... TO STDOUT``'s options ask for: 1 binary, 0 text (no options, or
-    ``FORMAT text``); None for any other (csv), which is not answered."""
+    ``FORMAT text``, the name bare or quoted); None for any other (csv), which is not
+    answered."""
     given = (options or "").strip()
     if not given:
         return 0
-    named = re.fullmatch(r"(?:FORMAT\s+)?(\w+)", given, re.IGNORECASE)
+    named = re.fullmatch(r"(?:FORMAT\s+)?([\"']?)(\w+)\1", given, re.IGNORECASE)
     if named is None:
         return None
-    return {"binary": 1, "text": 0}.get(named.group(1).lower())
+    return {"binary": 1, "text": 0}.get(named.group(2).lower())
 
 
 #: PostgreSQL's text COPY escapes, of the bytes a field's text form can hold.
