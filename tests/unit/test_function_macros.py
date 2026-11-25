@@ -420,7 +420,8 @@ def test_a_numeric_of_a_column_stays_as_said():
     ("dialect", "want"),
     [
         ("trino", "REGEXP_LIKE(a, '(?i)' || b)"),
-        ("clickhouse", "match(a, CONCAT('(?i)', b))"),
+        # The pattern as RE2 reads it as PostgreSQL does, its run-time checks beside (REQ-2236).
+        ("clickhouse", "match(a, concat('(?si)', "),
         ("duckdb", "REGEXP_MATCHES(a, b, 'i')"),
     ],
 )

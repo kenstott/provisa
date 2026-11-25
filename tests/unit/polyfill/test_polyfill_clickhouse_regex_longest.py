@@ -62,6 +62,9 @@ ANSWERED = [
     ("SELECT regexp_replace('abcb', 'b', 'X', 1, 2, 'g') AS v", "abcX"),
     ("SELECT regexp_replace('aBAb', 'a|ab*', '-', 1, 2, 'gi') AS v", "aB-"),
     ("SELECT regexp_replace(E'a\\nb', 'a.b', 'X', 1, 1, 'n') AS v", "a\nb"),
+    # A constant pattern that is no literal: RE2's reading, where its run-time checks pass.
+    ("SELECT regexp_replace('abcb', lower('B'), 'X', 1, 2, 'i') AS v", "abcX"),
+    ("SELECT regexp_replace('abc', lower(''), 'abc', 3, 3) AS v", "abc"),
 ]
 
 NULLS = [
@@ -79,6 +82,8 @@ RAISED = [
     ("SELECT regexp_replace('abc', 'b', 'X', 0, 1, 'i') AS v", "0A000"),
     ("SELECT regexp_replace('abc', 'a|b*', 'X', 0, 1) AS v", "22023"),
     ("SELECT regexp_replace('abc', 'b', 'X', 1, 1, 'z') AS v", "22023"),
+    ("SELECT regexp_replace('abcb', lower('\\y'), 'X', 1, 2) AS v", "0A000"),
+    ("SELECT regexp_replace('abab', lower('A|AB'), 'X', 1, 1) AS v", "0A000"),
 ]
 
 #: (statement, the reason the refusal names): a group's part of the match, which PostgreSQL

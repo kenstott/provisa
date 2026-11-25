@@ -1045,14 +1045,18 @@ def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
         transpile(sql, "clickhouse", generated=False)
 
 
-def test_a_native_two_argument_regexp_like_keeps_clickhouse_s_match():
+def test_a_two_argument_regexp_like_of_a_column_pattern_is_clickhouse_s_match_as_pg_reads_it():
+    # REQ-2236: the pattern with PostgreSQL's default options as RE2 reads them, where its
+    # run-time checks pass (test_polyfill_clickhouse_regex_followups answers and raises it).
     sql = "SELECT regexp_like(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "match(a, b)" in transpile(sql, "clickhouse", generated=False)
+    assert "match(a, concat('(?s)', " in transpile(sql, "clickhouse", generated=False)
 
 
-def test_a_two_argument_regexp_count_of_a_column_pattern_keeps_clickhouse_s_count():
+def test_a_two_argument_regexp_count_of_a_column_pattern_is_refused_by_name():
+    # ClickHouse's countMatches takes a constant pattern alone: no form counts a column's.
     sql = "SELECT regexp_count(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "countMatches(a, b)" in transpile(sql, "clickhouse", generated=False)
+    with pytest.raises(FunctionRefused, match="regexp_count.*of a pattern that is no literal"):
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(

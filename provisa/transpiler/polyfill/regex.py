@@ -1192,10 +1192,11 @@ def _ch_nth(value, pattern, said, start, n) -> exp.Expr:
 
 
 def _ch_replace_nth(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """regexp_replace(text, pattern, replacement, start [, n]) on ClickHouse: the Nth match's
-    form (pg_forms_system), of a literal pattern read as PostgreSQL reads it (are_re2); n 1 where
-    it is not said. A pattern that is no literal is refused by name (pg_forms_enum refuses it
-    first, REQ-2167), and so is the call of six arguments (REQ-2167, amended 2026-11-02)."""
+    """regexp_replace(text, pattern, replacement, start [, n [, flags]]) on ClickHouse: the Nth
+    match's form (pg_forms_system), of a literal pattern read as PostgreSQL reads it (are_re2) with
+    the flags' option letters; n 1 where it is not said. A constant pattern that is no literal
+    (lower('')) is read as RE2 reads it where its run-time checks pass (ch_runtime_checks); one
+    that varies is refused by name before (pg_forms_enum, REQ-2167)."""
     if not isinstance(node, exp.RegexpReplace):
         return None
     value, pattern = node.this, said_text(node.expression)
@@ -1204,9 +1205,16 @@ def _ch_replace_nth(node: exp.Expr, dialect: str) -> exp.Expr | None:
     flags = node.args.get("modifiers")
     if _is_null(pattern) or (flags is not None and _is_null(flags)):
         return _null_of("Nullable(String)")
-    if not (isinstance(pattern, exp.Literal) and pattern.is_string):
-        raise Refused(_ch_refusal("regexp_replace", "of a pattern that is no literal"), ruling=True)
     _, options = _ch_replace_flags(flags)  # g beside N changes nothing, as in PostgreSQL
+    if not (isinstance(pattern, exp.Literal) and pattern.is_string):
+        if set(options) - {"c", "i", "t"}:
+            raise Refused(
+                _ch_refusal("regexp_replace", "of a pattern that is no literal"), ruling=True
+            )
+        safe = _safe(pattern)
+        read = _no_case(safe) if [f for f in options if f in "ic"][-1:] == ["i"] else safe
+        checks = ch_runtime_checks("regexp_replace", leftmost=True)
+        return _ch_checked(value, pattern, checks, _ch_nth(value, _dot_all(read), said, start, n))
     re2 = ch_translated("regexp_replace", pattern.this, options)
     if re2.leftmost is not None:
         return _ch_replace_longest(value, re2, said, start, n)
@@ -1231,8 +1239,10 @@ CH_NTH_REPLACE = Feature(
             _CH: (
                 Limitation(
                     "A literal pattern is read as PostgreSQL reads it, with the flags' option "
-                    "letters (g beside n changes nothing, as in PostgreSQL); a pattern or flags "
-                    "that are no literal are refused by name. "
+                    "letters (g beside n changes nothing, as in PostgreSQL). A constant pattern "
+                    "that is no literal (lower('...')) is read as RE2 reads it, and raises 0A000 "
+                    "when it runs where it holds what RE2 reads otherwise or matches otherwise; a "
+                    "pattern that varies and flags that are no literal are refused by name. "
                     + _CH_NO_RE2
                     + " A constraint (\\A, \\y, \\Y, \\m, \\M), a replacement holding \\& or "
                     "\\\\, a start below 1 and a negative n raise 0A000 when the call runs: the Nth "
