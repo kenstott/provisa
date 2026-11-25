@@ -42,6 +42,7 @@ import { CloudopsFields } from "./CloudopsFields";
 import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
+import { CodeReferenceLink } from "./CodeReferenceLink";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
 import { sourceFormLanded } from "./loadManagement";
@@ -651,6 +652,11 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
+      )}
+      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984: the chosen language's reference
+        <FieldGroup>
+          <CodeReferenceLink type={form.type} />
+        </FieldGroup>
       )}
       {connector && (
         <ConnectorSetupFields

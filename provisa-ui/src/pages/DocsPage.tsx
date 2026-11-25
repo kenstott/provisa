@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { Anchor, Badge, Button, Group, Loader } from "@mantine/core";
 import { ExternalLink, Wifi, WifiOff } from "lucide-react";
 import "./DocsPage.css";
@@ -29,8 +30,15 @@ const DOCS_LOCALES = ["es", "fr", "de", "pt", "it", "zh", "zh-HK", "ru", "he"];
 
 type Source = "probing" | "online" | "offline";
 
+// REQ-1984 (amended 2026-11-24): /docs?page=<page path>#<section> opens the frame at a page of the
+// site and a section of it, so a link elsewhere in the app (a code source's language reference)
+// lands on that section. The page and section stay in the app's URL. Without them, the site's home.
+
 export function DocsPage() {
   const { t, i18n } = useTranslation();
+  const [params] = useSearchParams();
+  const { hash } = useLocation();
+  const page = params.get("page") ?? "";
   // "zh-HK" must be checked before stripping the region suffix (line below) —
   // it's a distinct docs tree from plain "zh", unlike other regional variants.
   const docsLng = DOCS_LOCALES.includes(i18n.language)
@@ -69,7 +77,7 @@ export function DocsPage() {
   }, []);
 
   const source: Source = override ?? probed;
-  const src = (source === "online" ? ONLINE_URL : OFFLINE_URL) + localePrefix;
+  const src = (source === "online" ? ONLINE_URL : OFFLINE_URL) + localePrefix + page + hash;
   const online = source === "online";
 
   const toolbar = useMemo(

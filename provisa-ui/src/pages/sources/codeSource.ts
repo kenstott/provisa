@@ -38,6 +38,24 @@ export const RUST = "rust";
 export const SPARK = "spark";
 export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO, RUST, SPARK]);
 
+/** REQ-1984 (amended 2026-11-24): each code language's reference section in the docs (the page and
+ * the anchor docs/code-sources.md gives it), opened in the in-app Docs page at that section. */
+export const CODE_REFERENCE_PAGE = "code-sources/";
+const CODE_REFERENCE_SECTION: Record<string, string> = {
+  [NODE]: "node-reference",
+  [PYTHON]: "python-reference",
+  [GO]: "go-reference",
+  [RUST]: "rust-reference",
+  [SPARK]: "spark-reference",
+};
+
+/** The in-app Docs route for a code language's reference section. */
+export function codeReferenceHref(type: string): string {
+  const section = CODE_REFERENCE_SECTION[type];
+  if (!section) throw new Error(`${type} is not a code source type`);
+  return `/docs?page=${CODE_REFERENCE_PAGE}#${section}`;
+}
+
 /** The languages whose source names where its code is entered: Python's module, Go's package,
  * Rust's crate. */
 export const NAMED_ENTRY = new Set([PYTHON, GO, RUST]);
