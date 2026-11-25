@@ -670,6 +670,19 @@ describe("TagsTab", () => {
     );
   });
 
+  it("duplicates a tag into the create form under a new id", async () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    fireEvent.click(screen.getByTestId("tags-duplicate-finance"));
+    expect(screen.getByLabelText(t("tagsTab.idLabel"))).toHaveValue("finance-copy");
+    expect(screen.getByLabelText(t("tagsTab.idLabel"))).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("tags-save"));
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
+    expect(upsertSpy.mock.calls[0][0]).toBe("finance-copy");
+    expect(upsertSpy.mock.calls[0][2]).toEqual(["source", "table"]);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
   it("deletes a tag from its panel once the delete is confirmed", async () => {
     render(<TagsTab title="Tags" />);
     deleteFromPanel("finance");

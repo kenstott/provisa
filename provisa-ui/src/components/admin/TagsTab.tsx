@@ -64,6 +64,7 @@ import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { DetailFields } from "../detail/DetailFields";
 import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
@@ -252,6 +253,25 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setNewValueDescription("");
     if (detail.id === id) detail.close();
     else detail.open(id);
+  };
+
+  // Duplicate: the create form filled from the tag under "<id>-copy"; its assignments and its
+  // value list are the tag's own and are not copied.
+  const openDuplicate = (tag: Tag) => {
+    detail.close();
+    setEditing(false);
+    setFormId(`${tag.id}-copy`);
+    setFormDescription(tag.description);
+    setFormScopes([...tag.appliesTo]);
+    setFormReasonPolicy(tag.reasonPolicy);
+    setFormExpiresPolicy(tag.expiresPolicy);
+    setFormParamPolicy(tag.paramPolicy);
+    setFormRequiresCitation(tag.requiresCitation);
+    setFormRequired(tag.required);
+    setFormDomains([...tag.allowedDomains]);
+    setOutside([]);
+    setFormCited(tag.citations);
+    setCreating(true);
   };
 
   const openEdit = (tag: Tag) => {
@@ -543,6 +563,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                       <Pencil size={14} />
                     </ActionIcon>
                   </Tip>
+                  <PanelDuplicate
+                    name={tag.id}
+                    onDuplicate={() => openDuplicate(tag)}
+                    testId={`tags-duplicate-${tag.id}`}
+                  />
                   <PanelDelete
                     itemKey={tag.id}
                     title={t("tagsTab.deleteTag", { id: tag.id })}
