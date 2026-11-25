@@ -1318,6 +1318,13 @@ class Connection:
                         copy.write(buf.getvalue())
             finally:
                 cur.close()
+            if self._tx_depth == 0:
+                # COPY ran via a direct DBAPI cursor, bypassing SA's autobegin tracking.
+                # SA's commit() is a no-op here (no active autobegin), leaving psycopg3 in
+                # INTRANS. Commit via the driver so the connection is IDLE before pool return.
+                driver_conn = self._sc.connection.driver_connection
+                assert driver_conn is not None
+                driver_conn.commit()
             self._commit_if_autocommit()
             return len(rows)
         if self.capabilities.dialect == "singlestoredb":
