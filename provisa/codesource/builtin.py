@@ -76,7 +76,9 @@ def read_code(directory: Path, entry: str) -> Manifest:
     from provisa.codesource.worker import private_environment
     from provisa.python.source import READER, run_reader
 
-    argv = [sys.executable, "-I", str(READER), str(directory), entry]
+    # -B: -I ignores PYTHONDONTWRITEBYTECODE, and bytecode written beside the code would change
+    # its content hash.
+    argv = [sys.executable, "-I", "-B", str(READER), str(directory), entry]
     return read_manifest(run_reader(argv, private_environment(**_PYTHON_ENV)), PYTHON_RULES)
 
 
@@ -87,7 +89,15 @@ def host_command(directory: Path, entry: str, manifest: Manifest) -> HostCommand
     from provisa.python.source import HOST
 
     return HostCommand(
-        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(directory), entry],
+        argv=lambda address: [
+            sys.executable,
+            "-I",
+            "-B",
+            str(HOST),
+            address,
+            str(directory),
+            entry,
+        ],
         env=private_environment(**_PYTHON_ENV),
         cwd=directory,
         discovered=discovered_handlers(manifest),
