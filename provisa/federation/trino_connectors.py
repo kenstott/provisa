@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import Capability, Connector, Mechanism
-from provisa.federation.codehost_connectors import CodeHost, trino_details
+from provisa.federation.codehost_connectors import CodeHost, is_dev, trino_details
 
 # --- Trino: a broad federator (many source types, all ATTACH via catalogs) ---
 
@@ -1186,8 +1186,9 @@ class TrinoKafkaConnector(_TrinoConnector):
         }
 
 
-class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
-    """A built code host, through Trino's postgresql connector (codehost_connectors)."""
+class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100, REQ-2267
+    """A built code host, or a dev-mode source's pgwire sidecar, through Trino's postgresql
+    connector (codehost_connectors)."""
 
     trino_connector = "postgresql"
     mechanism = Mechanism.ATTACH_R
@@ -1201,11 +1202,12 @@ class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        mapping = getattr(source, "mapping", None) or {}
-        # A dev-mode source is landed, never attached: it has no catalog. A built one's catalog
-        # is created by the schema build once its identity is written where Trino reads it
-        # (codesource.attach.prepare), which registers the source on the engine again.
-        if mapping.get("mode") != "built" or not self.ready():
+        # The catalog is created by the schema build once it has named the source for Trino
+        # (codesource.attach.prepare), which registers the source on the engine again: a built
+        # one once its identity is written where Trino reads it, a dev-mode one (REQ-2267) once
+        # its code is prepared, its sidecar started by this attach.
+        ready = self.dev_ready(source.id) if is_dev(source) else self.ready()
+        if not ready:
             return {}
         return trino_details(self, source)
 

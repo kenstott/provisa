@@ -395,7 +395,8 @@ class FederationEngine:  # REQ-840
         type, or names a reach that does not exist, is refused by name."""
         source_type = source.type.value
         if self.asks_in_place(source) and source_type in self.code_host_types:
-            # REQ-2100: a built code source, its host attached as a Postgres catalog.
+            # REQ-2100: a built code source, its host attached as a Postgres catalog; REQ-2267: a
+            # dev-mode one, its pgwire sidecar attached the same way.
             return self.scan_connectors[source_type]
         hints = getattr(source, "federation_hints", None) or {}
         reach = hints.get("reach")
@@ -426,13 +427,13 @@ class FederationEngine:  # REQ-840
     @staticmethod
     def asks_in_place(source: Any) -> bool:
         """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
-        (REQ-1867), or a code source in built mode, its image on a remote host (REQ-2100)."""
+        (REQ-1867), or a code source: in built mode its image on a remote host (REQ-2100), in dev
+        mode its pgwire sidecar (REQ-2267)."""
         from provisa.codesource.source import CODE_SOURCE_TYPES
 
         if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
             return True
-        mapping = getattr(source, "mapping", None) or {}
-        return source.type.value in CODE_SOURCE_TYPES and mapping.get("mode") == "built"
+        return source.type.value in CODE_SOURCE_TYPES
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)

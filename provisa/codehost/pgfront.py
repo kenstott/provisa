@@ -560,6 +560,7 @@ class FrontSession(Session):
                 ]
             ),
         )
+        self.worker.settle_bounds()  # REQ-2267: a sidecar's DuckDB under the bounds as they are now
         reader = residual.answer(
             sql, "postgres", function, residual.with_arguments(rows, arguments)
         )

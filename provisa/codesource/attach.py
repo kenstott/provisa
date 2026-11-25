@@ -8,19 +8,21 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Which code tables the federation engine attaches live (REQ-2100).
+"""Which code tables the federation engine attaches live (REQ-2100, REQ-2267).
 
 A read across sources is the engine's. A code table of a BUILT source (its image on a remote
 host, REQ-2098) is read by the engine attaching the host over pgwire as a Postgres catalog, its
-parameters reaching the host as ``_nf_`` equalities -- unless it is landed: the source is floored
-or replicated, the table is kept for good, or the table declares a landing TTL above 0 for its
-rows; the response cache, a request's own opt-in, plays no part. A table of a dev-mode source (its code in the
-server's worker) is always landed, and so is one on an engine that cannot attach a host (it has no
-attach connector for code sources: a warehouse, or a Postgres engine sharing no directory with
-Provisa for the identity it presents, provisa/codesource/engine_identity.py).
+parameters reaching the host as ``_nf_`` equalities; a table of a DEV-mode source (its code in the
+server's worker) the same way, through the source's pgwire sidecar (REQ-2267 part 3,
+provisa/codesource/pgwire_sidecar.py) -- unless it is landed: the source is floored or
+replicated, the table is kept for good, or the table declares a landing TTL above 0 for its rows;
+the response cache, a request's own opt-in, plays no part. A table on an engine that cannot attach
+a code source is landed (it has no attach connector for code sources: a warehouse, or a Postgres
+engine sharing no directory with Provisa for the identity it presents,
+provisa/codesource/engine_identity.py).
 """
 
-# Requirements: REQ-2100
+# Requirements: REQ-2100, REQ-2267
 from __future__ import annotations
 
 from typing import Any
@@ -64,7 +66,8 @@ def attached(state: Any, table: dict) -> bool:
         return False
     mapping = mapping_of(state, table["source_id"])
     if mode_of(mapping) != BUILT:
-        return False
+        # REQ-2267: its sidecar serves the code as it is now, every table of it.
+        return answered_live(state, table)
     from provisa.codesource.manifest import manifest_from_json
     from provisa.codesource.remote_sources import remote_of
     from provisa.codesource.table import export_of
@@ -106,31 +109,104 @@ def parameters(state: Any, table_ids: Any) -> set[str]:
     }
 
 
+def _schemas(tables: list, source_ids: Any) -> dict[str, str]:
+    """The schemas each of ``source_ids``' tables are registered under, as a comma list, by
+    source: what its host or sidecar serves each function in (``provisa.schemas``)."""
+    return {
+        sid: ",".join(found)
+        for sid in source_ids
+        if (found := sorted({t["schema_name"] for t in tables if t["source_id"] == sid}))
+    }
+
+
 async def prepare(state: Any) -> None:
     """Write the organisation's remote-host identity, and each built source's host certificate,
     where the bound engine reads them, and tell its attach connectors where they are and which
-    schemas each built source's tables are registered under (schema build, once ``state.tables``
-    is published)."""
+    schemas each built source's tables are registered under; and name each dev-mode source to
+    them with its prepared code and schemas (REQ-2267) (schema build, once ``state.tables`` is
+    published)."""
+    await _prepare_dev(state)
+    await _prepare_built(state)
+
+
+def _attaching(state: Any, rows: dict) -> list:
+    """The bound engine's attach connectors for the code source types of ``rows``."""
+    from provisa.federation.codehost_connectors import CodeHost
+
+    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
+    connectors = getattr(engine, "scan_connectors", {}) if engine is not None else {}
+    return [
+        c
+        for t in sorted({row["type"] for row in rows.values()})
+        if isinstance(c := connectors.get(t), CodeHost)
+    ]
+
+
+async def _prepare_dev(state: Any) -> None:
+    """REQ-2267: name each dev-mode source to the bound engine's attach connectors: its code as
+    prepared now, whose sidecar the attach starts, and the schemas its tables are registered
+    under. A sidecar serving other code than the source's now is stopped first, and the engine's
+    catalog of it dropped (pgwire_sidecar.retire_changed); the engine drops its catalog of a
+    forgotten source's too (:func:`_drop_on_engine`)."""
+    from provisa.codesource import pgwire_sidecar
+    from provisa.codesource.remote_sources import BUILT, mode_of
+    from provisa.codesource.source import context_for
+    from provisa.codesource.source import prepare as prepare_code
+    from provisa.core.request_context import require_current_org
+    from provisa.federation.codehost_connectors import DevSource
+
+    rows = getattr(state, "runtime_sources", None) or {}
+    dev = {
+        sid: row
+        for sid, row in rows.items()
+        if row.get("type") in CODE_SOURCE_TYPES and mode_of(row.get("mapping") or {}) != BUILT
+    }
+    attaching = _attaching(state, dev)
+    if not attaching:
+        return
+    pgwire_sidecar.on_stop(f"engine-{id(state)}", lambda org, sid: _drop_on_engine(state, sid))
+    org_id = require_current_org()
+    ctx = await context_for(state)
+    tables = getattr(state, "tables", None) or []
+    for connector in attaching:
+        source_type = getattr(connector, "source_type")
+        mine = {sid: row for sid, row in dev.items() if row["type"] == source_type}
+        schemas = _schemas(tables, mine)
+        named: dict[str, DevSource] = {}
+        for sid in schemas:  # a source with no registered table has nothing to attach
+            prepared = await prepare_code(sid, source_type, mine[sid]["mapping"], ctx)
+            pgwire_sidecar.retire_changed(prepared)
+            named[sid] = DevSource(prepared, schemas[sid])
+        connector.remember_dev(org_id, named)
+        if connector.files_for == "trino":
+            # Trino's catalog of each dev-mode source is created now that it is named.
+            _register_on_engine(state, list(named))
+
+
+def _drop_on_engine(state: Any, source_id: str) -> None:
+    """REQ-2267: the engine's catalog of a source whose sidecar stopped for good goes, so its
+    next attach reads the catalog of the code as it is then. A source this state has no catalog
+    for (deleted, its catalog dropped already) has nothing to drop."""
+    catalogs = getattr(state, "source_catalogs", None) or {}
+    if source_id not in catalogs:
+        return
+    state.federation_engine.drop_source(source_id, catalog_name=catalogs[source_id])
+
+
+async def _prepare_built(state: Any) -> None:
     import dataclasses
 
     from provisa.codesource import engine_identity
     from provisa.codesource.remote_sources import BUILT, identity, mode_of
     from provisa.core.request_context import require_current_org
-    from provisa.federation.codehost_connectors import CodeHost
 
-    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
-    connectors = getattr(engine, "scan_connectors", {}) if engine is not None else {}
     rows = getattr(state, "runtime_sources", None) or {}
     built = {
         sid: row
         for sid, row in rows.items()
         if row.get("type") in CODE_SOURCE_TYPES and mode_of(row.get("mapping") or {}) == BUILT
     }
-    attaching = [
-        c
-        for t in sorted({row["type"] for row in built.values()})
-        if isinstance(c := connectors.get(t), CodeHost)
-    ]
+    attaching = _attaching(state, built)
     if not attaching:
         return
     org_id = require_current_org()
@@ -146,11 +222,7 @@ async def prepare(state: Any) -> None:
             for sid, row in mine.items()
             if (certificate := ((row.get("mapping") or {}).get("remote") or {}).get("certificate"))
         }
-        schemas = {
-            sid: ",".join(found)
-            for sid in mine
-            if (found := sorted({t["schema_name"] for t in tables if t["source_id"] == sid}))
-        }
+        schemas = _schemas(tables, mine)
         if connector.files_for == "trino":
             written = await engine_identity.for_trino(state, org_id, me, roots)
         elif connector.files_for == "postgres":
