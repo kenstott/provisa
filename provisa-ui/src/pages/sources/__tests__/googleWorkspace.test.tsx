@@ -14,6 +14,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen, waitFor } from "../../../test-utils/render";
+
+// SourceFormFieldsExtended calls useAuth() unconditionally; stub it so the form
+// renders without an AuthProvider (the Google Workspace tests have no connector/script panel).
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ activeOrgId: null }),
+}));
 import en from "../../../i18n/locales/en/googleWorkspaceFields.json";
 import { BRAND_CARRIER, SOURCE_TYPES } from "../constants";
 import { SourceFormFieldsExtended } from "../SourceFormFieldsExtended";

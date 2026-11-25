@@ -213,3 +213,110 @@ async def test_stripe_takes_no_setup():
         "openapi.setup_invalid",
         "base_url",
     )
+
+
+# --- parameters sent with the client credentials grant (REQ-1874, X-AUDIENCE) ---
+
+TENANT = "acme.auth0.test"
+
+AUDIENCED = Brand(
+    id="acme_tenant",
+    label="Acme Tenant",
+    spec_url="",
+    verify_path="/api/v2/stats/active-users",
+    url="https://{tenant_domain}",
+    setup_fields=(SetupField("tenant_domain", r"[A-Za-z0-9.-]+"),),
+    instance_spec_url="https://{tenant_domain}/swagger.json",
+    auth_type="oauth2_client_credentials",
+    token_url="https://{tenant_domain}/oauth/token",
+    token_params={"audience": "https://{tenant_domain}/api/v2/"},
+)
+
+
+@pytest.fixture
+def _audienced_brand(monkeypatch):
+    monkeypatch.setitem(brands.BRANDS, AUDIENCED.id, AUDIENCED)
+
+
+@respx.mock
+@pytest.mark.usefixtures("_audienced_brand")
+async def test_the_token_request_carries_the_rendered_token_params():
+    token = respx.post(f"https://{TENANT}/oauth/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "tok-a", "expires_in": 60})
+    )
+    respx.get(f"https://{TENANT}/swagger.json").mock(return_value=httpx.Response(200, json=SPEC))
+    check = respx.get(f"https://{TENANT}/api/v2/stats/active-users").mock(
+        return_value=httpx.Response(200, json=0)
+    )
+    body = await openapi_router._branded(_body(brand=AUDIENCED.id, setup={"tenant_domain": TENANT}))
+    assert token.calls.last.request.content.decode().split("&") == [
+        "grant_type=client_credentials",
+        "client_id=provisa-app",
+        "client_secret=s3cret",
+        "audience=https%3A%2F%2Facme.auth0.test%2Fapi%2Fv2%2F",
+    ]
+    assert check.calls.last.request.headers["authorization"] == "Bearer tok-a"
+    assert body.auth_config is not None
+    assert body.auth_config["token_params"] == {"audience": f"https://{TENANT}/api/v2/"}
+
+
+def test_token_params_travel_with_the_stored_auth():
+    auth = AUDIENCED.credential_auth(
+        {"tenant_domain": TENANT}, client_id="app", client_secret="${secret:T}"
+    )
+    stated = api_auth(auth)
+    assert stated is not None
+    typed = ApiAuthOAuth2ClientCredentials(**stated)
+    assert typed.token_params == {"audience": f"https://{TENANT}/api/v2/"}
+    assert auth_without_secret(typed) == {
+        "type": "oauth2_client_credentials",
+        "client_id": "app",
+        "token_url": f"https://{TENANT}/oauth/token",
+        "token_params": {"audience": f"https://{TENANT}/api/v2/"},
+    }
+
+
+async def test_a_token_param_naming_a_setup_field_the_source_lacks_is_refused_by_name(
+    monkeypatch,
+):
+    lacking = Brand(
+        id="acme_lacking",
+        label="Acme Lacking",
+        spec_url="",
+        verify_path="/",
+        url="https://{tenant_domain}",
+        setup_fields=(SetupField("tenant_domain", r"[A-Za-z0-9.-]+"),),
+        instance_spec_url="https://{tenant_domain}/swagger.json",
+        auth_type="oauth2_client_credentials",
+        token_url="https://{tenant_domain}/oauth/token",
+        token_params={"audience": "https://{api_host}/api/v2/"},
+    )
+    monkeypatch.setitem(brands.BRANDS, lacking.id, lacking)
+    with pytest.raises(ApiError) as refused:
+        await openapi_router._branded(_body(brand=lacking.id, setup={"tenant_domain": TENANT}))
+    assert (refused.value.code, refused.value.params["field"]) == (
+        "openapi.setup_invalid",
+        "api_host",
+    )
+    assert "api_host" in str(refused.value)
+
+
+def test_token_params_that_cannot_hold_are_refused():
+    with pytest.raises(ValueError, match="token_params"):
+        Brand(
+            id="x",
+            label="X",
+            spec_url="",
+            verify_path="/",
+            token_params={"audience": "https://a/"},
+        )
+    with pytest.raises(ValueError, match="grant_type"):
+        Brand(
+            id="x",
+            label="X",
+            spec_url="",
+            verify_path="/",
+            auth_type="oauth2_client_credentials",
+            token_url="https://t/token",
+            token_params={"grant_type": "password"},
+        )

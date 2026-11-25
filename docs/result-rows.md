@@ -46,13 +46,13 @@ a batch at a time, so memory holds one batch.
 | --- | --- | --- |
 | DuckDB | Arrow | Rows built from Arrow batches |
 | Snowflake | Arrow | Rows |
-| Databricks | Arrow | Rows |
-| BigQuery | Arrow | Rows |
+| Databricks | Arrow | Arrow |
+| BigQuery | Arrow | Rows built from Arrow batches |
 | PostgreSQL | Rows. Over pgwire, Provisa forwards the source's own row messages without decoding them | Rows, forwarded the same way over pgwire |
-| ClickHouse | Rows | Rows |
+| ClickHouse | Arrow | Rows built from Arrow batches |
 | MySQL, MariaDB | Rows | Rows |
 | SQL Server | Rows | Rows |
-| Oracle | Rows | Rows |
+| Oracle | Arrow | Rows built from Arrow batches |
 | Microsoft Fabric, Azure Synapse | Rows | Rows |
 | Amazon Athena | Arrow, read from the result file in the query output location | Arrow, read whole: Athena has no streamed read |
 | Exasol | Rows | Rows |
@@ -60,18 +60,34 @@ a batch at a time, so memory holds one batch.
 | JDBC sources | Rows | Rows |
 | SQLAlchemy sources (Redshift, SAP HANA, Trino as a source and the rest) | Rows | Rows |
 
-Snowflake sends some results as JSON instead of Arrow. Those are the status line of a DDL
-statement and the listing from `SHOW` and `DESCRIBE`. Its client has no Arrow reader for those, so
-they arrive as rows. They are a few rows each.
+For DDL statements and `SHOW` or `DESCRIBE` listings, Snowflake sends the result as JSON. Its
+client has no Arrow interface for those responses, so they arrive as rows. They are a few rows
+each.
 
-Athena writes each result to a file in the query output location, and Provisa reads that file as
-Arrow. The source's credentials must be able to read that location. When you add an Athena source,
-Provisa runs one statement and reads its result. If the credentials cannot read the location, the
-source is refused, and the message names the location.
+Databricks has no server-side cursor for direct reads. A large scan materializes as one Arrow
+table.
+
+ClickHouse direct reads require ClickHouse 26 or later. Earlier servers cannot write UUID columns
+in Arrow output. At connect time, Provisa refuses a source running an older version and names the
+minimum version in the message.
+
+Oracle reads go through python-oracledb's data-frame fetch, which requires python-oracledb 26.1 or
+later. A column type with no Arrow form is cast in the database before the fetch: `ROWID` and
+`UROWID` become text, `JSON` becomes json, and `XMLTYPE` becomes text. Object-type columns have no
+equivalent; Provisa refuses them by name before the read runs.
+
+Athena writes each result to a file in the query output location. Provisa reads that file as Arrow,
+so the source's credentials must include read access to that location. When you add an Athena
+source, Provisa runs one statement and reads its result. Without that access, Provisa refuses the
+source and names the location in the message.
 
 ## Choosing for large results
 
-If you move large results out of a warehouse, read them over Flight SQL. On Snowflake, Databricks,
-BigQuery and ClickHouse that route carries the engine's Arrow to your client with no Python row in
-between. Over pgwire and SQL over HTTP, the same engines convert each batch to rows before it is
-encoded.
+For engine-routed queries, read large results over Flight SQL. On Snowflake, Databricks, BigQuery
+and ClickHouse, that route carries the engine's Arrow to your client with no Python row in between.
+Over pgwire and SQL over HTTP, those same engines convert each batch to rows before encoding.
+
+When you query a source directly, the Arrow path still applies for some sources. ClickHouse and
+BigQuery direct reads hand the encoder Arrow batches; Oracle reads the result as Arrow through
+python-oracledb's data-frame fetch. Snowflake direct streams are rows, so for large Snowflake
+scans, route through the Snowflake engine and read over Flight SQL.

@@ -2627,6 +2627,10 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     	return out, nil
     }
 
+    type Address struct{}
+
+    func ParseAddress(raw []string) ([]Address, error) { return nil, nil }
+
     var _ = provisa.Columns(ParseAddress)
     ```
 

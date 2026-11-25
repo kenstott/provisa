@@ -144,6 +144,34 @@ describe("a Spark source's cluster", () => {
     expect(seen.mock.calls.flat().join(" ")).not.toContain("abc123");
   });
 
+  it("marks an empty pasted address on Apply instead of disabling it (REQ-1968)", async () => {
+    const seen = vi.fn();
+    renderInForm(<Held seen={seen} />);
+    fireEvent.click(field("paste"));
+    const input = await screen.findByTestId("spark-source-cluster-paste-input");
+    const apply = screen.getByTestId("spark-source-cluster-paste-apply");
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
+    expect(input).toHaveFocus();
+    expect(field("host").value).toBe("");
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it("marks an emptied secret name on Keep instead of disabling it (REQ-1968)", async () => {
+    renderInForm(<Held seen={() => undefined} />);
+    fireEvent.click(field("paste"));
+    fireEvent.change(await screen.findByTestId("spark-source-cluster-paste-input"), {
+      target: { value: "sc://pasted.acme.test/;token=abc123" },
+    });
+    fireEvent.click(screen.getByTestId("spark-source-cluster-paste-apply"));
+    const name = await screen.findByTestId("spark-source-cluster-paste-secret");
+    fireEvent.change(name, { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("spark-source-cluster-paste-apply"));
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it("refuses a pasted address that is not one, by name", async () => {
     renderInForm(<Held seen={() => undefined} />);
     fireEvent.click(field("paste"));
