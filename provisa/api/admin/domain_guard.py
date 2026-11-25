@@ -423,7 +423,7 @@ async def review_moved_relationships(conn: "Connection", table_id: int) -> None:
     """After a table moves domain its relationships are checked again: an edge whose other end now
     sits in another domain is a cross-domain edge and lands needs_review, as one created that way
     does (_save_relationship)."""
-    from sqlalchemy import or_, select, update
+    from sqlalchemy import or_, select
     from sqlalchemy.orm import aliased
 
     from provisa.core.schema_org import registered_tables, relationships
@@ -444,6 +444,6 @@ async def review_moved_relationships(conn: "Connection", table_id: int) -> None:
     )
     ids = [r.id for r in (await conn.execute_core(crossing)).fetchall()]
     if ids:
-        await conn.execute_core(
-            update(relationships).where(relationships.c.id.in_(ids)).values(needs_review=True)
-        )
+        from provisa.core.repositories import relationship as rel_repo
+
+        await rel_repo.flag_for_review(conn, ids)

@@ -194,6 +194,10 @@ ORG_VAR = "org"
 #: hold, so a rule naming an owner role admits a child of it. A rule reads it with IN
 #: (core.session_terms).
 ACTING_ROLES_VAR = "acting_roles"
+#: The session variable that holds the ids of the data products the bound person owns, comma-joined
+#: (REQ-2219, amended 2026-11-23): what a product's generated U and D rule reads with IN. Bound by
+#: the model store from the person's data_product_owner rows, never by a client.
+OWNED_PRODUCTS_VAR = "owned_products"
 
 
 # The role the request acts as (request.state.role), bound by the surfaces that authenticate a

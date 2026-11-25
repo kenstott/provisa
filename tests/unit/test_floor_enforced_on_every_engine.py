@@ -312,7 +312,7 @@ async def test_duckdb_reads_the_replica_once_a_live_attached_table_is_floored(
 
     async def _count(pg_sql: str, state: SimpleNamespace) -> int:
         lowered = address_replicas(pg_sql, await replica_routes(state))
-        return (await runtime.run(backend.transpile_physical(lowered))).rows[0][0]
+        return (await runtime.run(backend.transpile_physical(lowered, generated=False))).rows[0][0]
 
     statement = f'SELECT COUNT(*) FROM {live_name} AS "o"'
     state = _walk(_source())

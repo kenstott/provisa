@@ -47,7 +47,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple[Any, ...]]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
@@ -67,7 +67,7 @@ def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
 
 def _refused(sql: str) -> str:
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     message = str(refused.value)
     assert "has no form on clickhouse" in message or "does not read this value" in message
     return message
@@ -100,7 +100,9 @@ def test_a_bit_operation_is_clickhouses_bit_function(runtime, sql, answer):
 
 def test_no_bit_operator_reaches_clickhouse():
     written = transpile(
-        "SELECT 5 & 3 AS a, 5 | 3 AS b, ~5 AS c, 5 # 3 AS d, 1 << 2 AS e", "clickhouse"
+        "SELECT 5 & 3 AS a, 5 | 3 AS b, ~5 AS c, 5 # 3 AS d, 1 << 2 AS e",
+        "clickhouse",
+        generated=False,
     )
     assert "bitAnd(5, 3)" in written and "bitOr(5, 3)" in written and "bitNot(5)" in written
     assert "bitXor(5, 3)" in written and "bitShiftLeft(1, 2)" in written
@@ -155,7 +157,9 @@ def test_a_mac_address_function_answers_postgresqls(runtime, sql, answer):
 
 def test_a_forms_every_match_is_replace_regexp_all():
     written = transpile(
-        'SELECT pg_catalog."macaddr_eq"(NULL::macaddr, NULL::macaddr) AS v', "clickhouse"
+        'SELECT pg_catalog."macaddr_eq"(NULL::macaddr, NULL::macaddr) AS v',
+        "clickhouse",
+        generated=False,
     )
     assert "replaceRegexpAll(" in written
     assert ", 'g')" not in written
@@ -281,7 +285,9 @@ def test_a_network_functions_error_is_raised_only_where_chosen(runtime, sql, sql
 
 def test_only_a_nested_binding_is_a_lambda():
     written = transpile(
-        "SELECT pg_catalog.macaddr_not('08:00:2b:01:02:03'::macaddr) AS v", "clickhouse"
+        "SELECT pg_catalog.macaddr_not('08:00:2b:01:02:03'::macaddr) AS v",
+        "clickhouse",
+        generated=False,
     )
     assert "arrayMap(" not in written
 
@@ -378,7 +384,7 @@ def test_ntile_is_clickhouses_over_the_whole_partition(runtime):
 
 def test_ntile_of_no_bucket_is_postgresqls_error():
     with pytest.raises(FunctionRefused) as refused:
-        transpile("SELECT ntile(0) OVER () AS v", "clickhouse")
+        transpile("SELECT ntile(0) OVER () AS v", "clickhouse", generated=False)
     assert getattr(refused.value, "sqlstate", None) == "22014"
 
 
@@ -388,7 +394,7 @@ def test_ntile_of_a_column_is_refused_by_name():
 
 def test_ntile_is_the_grids_row_on_every_engine():
     assert "ntile" in {f.name for f in GRID.features}
-    assert "AS INT" in transpile("SELECT ntile(3) OVER () AS v", "duckdb")
+    assert "AS INT" in transpile("SELECT ntile(3) OVER () AS v", "duckdb", generated=False)
 
 
 # --- 8. forms -----------------------------------------------------------------------------------
@@ -513,9 +519,13 @@ def test_what_clickhouse_has_is_not_refused(runtime, sql):
 
 
 def test_the_other_engines_keep_their_forms():
-    assert "BOOL_AND" in transpile('SELECT pg_catalog."bool_and"(NULL::boolean) AS v', "trino")
-    assert "&" in transpile("SELECT pg_catalog.int4and(5, 3) AS v", "duckdb")
-    assert "COLLATE" in transpile("SELECT pg_catalog.text_lt('a'::text, 'b'::text) AS v", "duckdb")
+    assert "BOOL_AND" in transpile(
+        'SELECT pg_catalog."bool_and"(NULL::boolean) AS v', "trino", generated=False
+    )
+    assert "&" in transpile("SELECT pg_catalog.int4and(5, 3) AS v", "duckdb", generated=False)
+    assert "COLLATE" in transpile(
+        "SELECT pg_catalog.text_lt('a'::text, 'b'::text) AS v", "duckdb", generated=False
+    )
 
 
 # --- run 43424649612: the wrong answers and errors of the first form ------------------------------
@@ -647,7 +657,9 @@ def test_a_window_offset_below_its_least_is_raised(runtime, sql, sqlstate):
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_numeric_mod_keeps_the_old_tables_form_elsewhere(dialect):
     written = transpile(
-        'SELECT pg_catalog."numeric_mod"(NULL::numeric, NULL::numeric) AS v', dialect
+        'SELECT pg_catalog."numeric_mod"(NULL::numeric, NULL::numeric) AS v',
+        dialect,
+        generated=False,
     )
     assert "numeric_mod" not in written.lower()
 
@@ -663,9 +675,9 @@ def test_numeric_mod_keeps_the_old_tables_form_elsewhere(dialect):
 def test_a_row_of_clickhouse_alone_refuses_nothing_on_a_dialect_with_no_column(sql, kept):
     """A dialect Provisa sends SQL to that is no column of the grid (spark) keeps its own call
     where a row polyfills ClickHouse only (unlisted_keep), as before the row."""
-    assert kept in transpile(sql, "spark")
+    assert kept in transpile(sql, "spark", generated=False)
 
 
 def test_a_row_of_every_column_still_refuses_a_dialect_with_no_column():
     with pytest.raises(FunctionRefused, match="array_ndims\\(\\) has no form on spark"):
-        transpile("SELECT array_ndims(a) AS v FROM t", "spark")
+        transpile("SELECT array_ndims(a) AS v FROM t", "spark", generated=False)

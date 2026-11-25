@@ -98,8 +98,10 @@ func base(service string) (string, error) {
 	if value == "" {
 		return "", &ServiceError{service, 0, "Provisa's services are reached only from a Provisa code source's worker ($PROVISA_SERVICES is not set)"}
 	}
-	if !strings.HasPrefix(value, "http://") {
-		return "", &ServiceError{service, 0, fmt.Sprintf("$PROVISA_SERVICES is not an http:// address: %q", value)}
+	// REQ-2106 (amended 2026-11-22): a worker's address is http://, through its egress proxy; a
+	// developer's, through their personal access token's route, is the instance's, often https://.
+	if !strings.HasPrefix(value, "http://") && !strings.HasPrefix(value, "https://") {
+		return "", &ServiceError{service, 0, fmt.Sprintf("$PROVISA_SERVICES is not an http:// or https:// address: %q", value)}
 	}
 	return value, nil
 }

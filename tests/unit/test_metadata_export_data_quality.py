@@ -121,7 +121,7 @@ def _config(
             Source(id="wh", type=SourceType.postgresql, description="warehouse"),
             Source(id="dq", type=checker, description="quality"),
         ],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         data_products=with_members(
             [DataProduct(id="orders-product", domain_id="sales", name="Orders")],
             assigned_members(tables),

@@ -222,15 +222,19 @@ def test_oracle_execute_registers_deadline_cancel() -> None:
         def parse(self, _sql: str) -> None:  # a statement is described before it runs
             self.description = [_Desc()]
 
-        # fetch_lobs: the driver reads a LOB as its value, as python-oracledb's cursor takes it.
-        def execute(self, sql: str, params: Any = None, *, fetch_lobs: bool = True) -> None:
-            assert fetch_lobs is False
-            super().execute(sql, params)
-            self.description = [_Desc()]
-
     class _OraConn(_FakeConn):
         def cursor(self) -> _FakeCursor:
             return _OraCursor(self)
+
+        # REQ-2194: a result is read as Arrow through python-oracledb's data-frame fetch, the
+        # blocking call the deadline's cancel covers.
+        def fetch_df_all(self, statement: str, parameters: Any, **_: Any) -> Any:
+            import pyarrow as pa
+
+            self.executed.append(statement)
+            dl = request_deadline.current()
+            self.cancel_registered.append(dl is not None and bool(dl._cancels))
+            return pa.table({"ID": pa.array([1], pa.int64())})
 
     drv = OracleDriver()
     conn = _OraConn()

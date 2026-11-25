@@ -63,7 +63,9 @@ def _written(options: str, catalog: int, dialect: str) -> str:
         f"SELECT pg_catalog.\"postgresql_fdw_validator\"('{options}'::text[], {catalog}::oid) AS v"
     )
     tree = sqlglot.parse_one(sql, read="postgres")
-    return transpile(expand(tree, CatalogFacts("analyst")).sql("postgres"), dialect)
+    return transpile(
+        expand(tree, CatalogFacts("analyst")).sql("postgres"), dialect, generated=False
+    )
 
 
 def _check(run: Callable[[str], Any], dialect: str) -> None:

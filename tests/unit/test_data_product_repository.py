@@ -35,7 +35,7 @@ async def test_upsert_then_get_round_trips_all_fields(control_plane):
         await data_product_repo.upsert(
             conn,
             DataProduct(
-                id="checkout", domain_id="sales", name="Checkout", owner_role="alice", purpose="d"
+                id="checkout", domain_id="sales", name="Checkout", team_role="alice", purpose="d"
             ),
         )
 
@@ -44,7 +44,8 @@ async def test_upsert_then_get_round_trips_all_fields(control_plane):
         assert row is not None
         assert row["domain_id"] == "sales"
         assert row["name"] == "Checkout"
-        assert row["owner_role"] == "alice"
+        assert row["team_role"] == "alice"
+        assert "owner_role" not in row  # REQ-2219: owners are entitlement rows
         assert row["purpose"] == "d"
 
 

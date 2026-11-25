@@ -155,7 +155,7 @@ def money_table(request: Any, pgwire: int):
     state.engine_conn = None
 
     async def _govern(text, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
-        plan = _engine_plan(transpile_to_duckdb(_physical(text)))
+        plan = _engine_plan(transpile_to_duckdb(_physical(text), generated=False))
         plan.result_shape = _kept_result_shape(
             {}, re.sub(r"\bFROM m\b", "FROM conformance.m", text), _MAP, ctx, state
         )
@@ -428,7 +428,7 @@ def test_the_catalog_lists_money_as_its_own_type(conn: Any):
 
 def test_postgresql_answers_money_with_its_own_operators():
     physical = mark_subtype_operations("SELECT price / 3 AS v FROM conformance.m", _SUBTYPE_COLUMNS)
-    written = transpile(physical, "postgres")
+    written = transpile(physical, "postgres", generated=False)
     assert "CAST(price AS MONEY) / 3" in written
     assert "provisa_subtype" not in written
 
@@ -441,7 +441,7 @@ def test_money_is_computed_over_the_base_on_trino():
     physical = mark_subtype_operations(
         "SELECT price + price AS v FROM conformance.m", _SUBTYPE_COLUMNS
     )
-    written = transpile(physical, "trino")
+    written = transpile(physical, "trino", generated=False)
     assert "DECIMAL(21, 4)" in written and "fail(" in written.lower()
     assert "provisa_subtype" not in written
 
@@ -451,7 +451,7 @@ def test_a_divisor_of_unknown_kind_is_refused_by_name_with_no_typeof():
         "SELECT price / qty AS v FROM conformance.m", _SUBTYPE_COLUMNS
     )
     with pytest.raises(SubtypeOperationRefused, match="money"):
-        transpile(physical, "mysql")
+        transpile(physical, "mysql", generated=False)
 
 
 _DIALECTS = (
@@ -512,7 +512,7 @@ def test_every_money_function_compiles_or_is_refused_by_name_on_every_dialect(di
     """REQ-2171, HOW THE LIMITS ARE TESTED: never a raw engine error, here or at the engine."""
     for call in _CALLS:
         try:
-            written = transpile(f"SELECT {call} AS v", dialect)
+            written = transpile(f"SELECT {call} AS v", dialect, generated=False)
         except SubtypeOperationRefused as refused:
             assert refused.params["subtype"] == "money"
             continue

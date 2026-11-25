@@ -28,7 +28,8 @@ pytestmark = pytest.mark.unit
 
 
 def _relationship(members: int) -> str:
-    """The statement a Cypher ``RETURN r`` compiles to, ``members`` properties in its object."""
+    """The statement a Cypher ``RETURN r`` compiles to, ``members`` properties in its object:
+    Provisa's own, from the graph IR (``generated``, REQ-2236)."""
     properties = ", ".join(f"'c{i}', a.\"c{i}\"" for i in range(members))
     return (
         f"SELECT JSON_OBJECT('type', 'X', 'properties', JSON_OBJECT({properties})) AS r "
@@ -50,22 +51,22 @@ def read_texts(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
 
 
 def test_the_written_form_is_never_read_again(read_texts: list[str]) -> None:
-    written = _duckdb_form.__wrapped__(_relationship(40))
+    written = _duckdb_form.__wrapped__(_relationship(40), True)
     assert max(len(text) for text in read_texts) < len(written) / 2
 
 
 def test_a_member_adds_no_reading(read_texts: list[str]) -> None:
-    _duckdb_form.__wrapped__(_relationship(1))  # the form each member takes is read here
+    _duckdb_form.__wrapped__(_relationship(1), True)  # the form each member takes is read here
     read_texts.clear()
-    _duckdb_form.__wrapped__(_relationship(10))
+    _duckdb_form.__wrapped__(_relationship(10), True)
     ten = len(read_texts)
     read_texts.clear()
-    _duckdb_form.__wrapped__(_relationship(40))
+    _duckdb_form.__wrapped__(_relationship(40), True)
     assert len(read_texts) == ten
 
 
 def test_the_form_keeps_each_members_own_value() -> None:
-    written = _duckdb_form.__wrapped__(_relationship(3))
+    written = _duckdb_form.__wrapped__(_relationship(3), True)
     for column in ("c0", "c1", "c2"):
         assert f'TO_JSON(a."{column}")' in written, written
 
@@ -73,4 +74,4 @@ def test_the_form_keeps_each_members_own_value() -> None:
 def test_a_length_the_list_step_writes_is_told_apart_like_any_other() -> None:
     # cardinality is written as len, by name; the step after it tells a list from a text and a
     # blob only on the typed node DuckDB's parser reads that name as.
-    assert "TYPEOF" in _duckdb_form.__wrapped__("SELECT cardinality(x) AS n FROM t")
+    assert "TYPEOF" in _duckdb_form.__wrapped__("SELECT cardinality(x) AS n FROM t", False)

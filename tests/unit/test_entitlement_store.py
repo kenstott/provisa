@@ -176,7 +176,10 @@ async def test_a_created_product_records_its_creator(monkeypatch, control_plane)
     info = SimpleNamespace(
         context={
             "request": SimpleNamespace(
-                state=SimpleNamespace(identity=SimpleNamespace(user_id="alice"), role="steward")
+                state=SimpleNamespace(
+                    identity=SimpleNamespace(user_id="alice", acting_roles=["steward"]),
+                    role="steward",
+                )
             )
         }
     )

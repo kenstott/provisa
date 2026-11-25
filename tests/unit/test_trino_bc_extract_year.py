@@ -27,12 +27,12 @@ _CORRECTED = f"CASE WHEN {_YEAR} <= 0 THEN {_YEAR} - 1 ELSE {_YEAR} END"
     ],
 )
 def test_year_of_a_column_counts_bc_as_postgres(sql: str) -> None:
-    assert transpile(sql, "trino") == f"SELECT {_CORRECTED} AS v FROM t"
+    assert transpile(sql, "trino", generated=False) == f"SELECT {_CORRECTED} AS v FROM t"
 
 
 def test_other_parts_unchanged() -> None:
     assert (
-        transpile("SELECT EXTRACT(MONTH FROM d) AS v FROM t", "trino")
+        transpile("SELECT EXTRACT(MONTH FROM d) AS v FROM t", "trino", generated=False)
         == "SELECT EXTRACT(MONTH FROM d) AS v FROM t"
     )
 
@@ -40,13 +40,15 @@ def test_other_parts_unchanged() -> None:
 def test_duckdb_corrects_with_its_own_form() -> None:
     """DuckDB counts year 0 as 1 BC too, and corrects with a form that leaves an interval's years
     alone (pg_literals.duckdb_year_of_era, REQ-2236), never with Trino's."""
-    out = transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "duckdb")
+    out = transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "duckdb", generated=False)
     assert _CORRECTED not in out
     assert "TYPEOF(d) <> 'INTERVAL'" in out
 
 
 def test_engines_counting_as_postgres_unchanged() -> None:
-    assert "CASE" not in transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "postgres")
+    assert "CASE" not in transpile(
+        "SELECT EXTRACT(YEAR FROM d) AS v FROM t", "postgres", generated=False
+    )
 
 
 @pytest.mark.parametrize(
@@ -59,7 +61,7 @@ def test_engines_counting_as_postgres_unchanged() -> None:
     ],
 )
 def test_year_is_corrected_exactly_once(sql: str) -> None:
-    assert transpile(sql, "trino").count("<= 0") == 1
+    assert transpile(sql, "trino", generated=False).count("<= 0") == 1
 
 
 @pytest.mark.parametrize(
@@ -75,7 +77,7 @@ def test_year_is_corrected_exactly_once(sql: str) -> None:
 def test_regenerated_sql_is_not_corrected_again(sql: str) -> None:
     """The pipeline parses and generates Trino SQL more than once; run 44952615830 read -4716 for
     4713 BC after four corrections. Generating the corrected SQL again leaves it as it is."""
-    once = transpile(sql, "trino")
+    once = transpile(sql, "trino", generated=False)
     again = once
     for _ in range(4):
         again = sqlglot.transpile(again, read="trino", write="trino")[0]
@@ -94,12 +96,12 @@ def test_regenerated_sql_is_not_corrected_again(sql: str) -> None:
     ],
 )
 def test_year_of_a_literal_is_corrected_once(value: str) -> None:
-    out = transpile(f"SELECT date_part('year', {value}) AS v", "trino")
+    out = transpile(f"SELECT date_part('year', {value}) AS v", "trino", generated=False)
     assert out.count("<= 0") == 1
     assert "EXTRACT(YEAR" not in out
 
 
 @pytest.mark.parametrize("part", ["month", "day", "quarter", "hour", "minute", "dow", "doy"])
 def test_parts_other_than_year_are_not_corrected(part: str) -> None:
-    out = transpile(f"SELECT EXTRACT({part.upper()} FROM d) AS v FROM t", "trino")
+    out = transpile(f"SELECT EXTRACT({part.upper()} FROM d) AS v FROM t", "trino", generated=False)
     assert "<= 0" not in out

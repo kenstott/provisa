@@ -211,7 +211,7 @@ class Session:
         ast = apply_graph_rewrites(ast, graph_vars, lm)
         ast = seam.expand(ast, lm, self.model, self.session)
         result = self.duck.execute(
-            transpile_to_duckdb(ast.sql(dialect="postgres")),
+            transpile_to_duckdb(ast.sql(dialect="postgres"), generated=True),
             [bindable(params[n]) for n in ordered],
         )
         columns = [d[0] for d in result.description]

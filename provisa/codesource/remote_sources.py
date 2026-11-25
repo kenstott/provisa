@@ -149,6 +149,12 @@ def remote_of(mapping: dict) -> dict:
     return remote if not script_hash else {**remote, "script_hash": script_hash}
 
 
+def is_native(mapping: dict) -> bool:
+    """Whether the source's host is one this server runs (REQ-2225): a built source whose remote
+    says so. A dev source has no remote."""
+    return bool(mapping.get("remote", {}).get("native"))
+
+
 async def _save_mapping(source_id: str, mapping: dict) -> None:
     """Keep ``mapping`` as the source's, and rebuild what serves it."""
     from sqlalchemy import update
@@ -833,6 +839,7 @@ __all__ = [
     "RemoteRefused",
     "connect",
     "identity",
+    "is_native",
     "join_connector",
     "mode_of",
     "remote_of",

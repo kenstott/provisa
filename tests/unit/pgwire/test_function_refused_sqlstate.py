@@ -54,7 +54,7 @@ def _fields(exc: BaseException) -> dict[str, str]:
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_a_refused_function_reaches_the_client_as_0a000(dialect: str) -> None:
     with pytest.raises(FunctionRefused) as caught:
-        transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect)
+        transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect, generated=False)
     fields = _fields(caught.value)
     assert fields["C"] == "0A000"
     assert fields["M"] == f"convert() has no form on {dialect}"
@@ -82,7 +82,7 @@ def test_the_row_stated_sqlstate_wins() -> None:
 @pytest.mark.parametrize("dialect", ["trino", "mysql"])
 def test_a_refused_xml_function_reaches_the_client_as_0a000(dialect: str) -> None:
     with pytest.raises(XmlFunctionRefused) as caught:
-        transpile("SELECT xpath('/a', x) FROM t", dialect)
+        transpile("SELECT xpath('/a', x) FROM t", dialect, generated=False)
     fields = _fields(caught.value)
     assert (fields["C"], fields["M"]) == (
         "0A000",

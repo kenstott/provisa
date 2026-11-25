@@ -112,8 +112,9 @@ PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}
 # The columns of a ``model`` table that nothing a schema build makes depends on: an update of these
 # alone advances ``model`` and not ``build``. A column is named here only once every reader of it
 # reads the store when asked, so one not named always rebuilds. A data product's lifecycle: the
-# build reads a product's id and domain (the entitlement refs) and its owner role (REQ-2188); its
-# status is read from the store by the admin surfaces, the catalog exports and the meta view.
+# build reads a product's id and domain (the entitlement refs; its owners are entitlement rows,
+# REQ-2219); its status is read from the store by the admin surfaces, the catalog exports and the
+# meta view.
 NOT_READ_BY_THE_BUILD: dict[str, tuple[str, ...]] = {
     "data_products": (
         "status",

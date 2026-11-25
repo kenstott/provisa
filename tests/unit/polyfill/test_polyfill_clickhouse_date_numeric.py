@@ -199,7 +199,10 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answers(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 def _same(want: str | None, got: object) -> bool:
@@ -288,7 +291,7 @@ def test_to_timestamp_of_a_double_is_postgresqls_instant(runtime, sql, want):
 )
 def test_to_timestamp_of_a_double_raises_postgresqls_class(sql, sqlstate):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate[:2] == sqlstate[:2]
 
 
@@ -352,7 +355,9 @@ def test_random_of_two_numerics_edges(runtime, sql, want):
 
 def test_random_of_numerics_out_of_order_raises_22023():
     with pytest.raises(FunctionRefused) as refused:
-        transpile('SELECT pg_catalog."random"(2::numeric, 1::numeric) AS v', "clickhouse")
+        transpile(
+            'SELECT pg_catalog."random"(2::numeric, 1::numeric) AS v', "clickhouse", generated=False
+        )
     assert refused.value.sqlstate == "22023"
 
 

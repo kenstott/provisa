@@ -80,7 +80,7 @@ def _rows(chain, cypher: str) -> list[tuple]:
     lm, con = chain
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
-    return con.execute(transpile_to_duckdb(sql)).fetchall()
+    return con.execute(transpile_to_duckdb(sql, generated=False)).fetchall()
 
 
 def test_find_paths_walks_one_type_across_two_mappings(chain):

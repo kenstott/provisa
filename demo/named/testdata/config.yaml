@@ -33,7 +33,6 @@ cache:
 domains:
 - id: shop
   description: The shop's production database -- customers, products, orders and their lines
-  steward: org_admin
 federation_engine: duckdb
 naming:
   domain_prefix: true

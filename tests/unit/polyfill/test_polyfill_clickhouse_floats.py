@@ -2062,7 +2062,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -2086,7 +2086,7 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 @pytest.mark.parametrize("sql", NOT_FINITE_NUMERICS)
 def test_a_numeric_nan_or_infinity_is_refused_not_read_as_null(sql):
     with pytest.raises(RowRefused) as raised:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert raised.value.sqlstate == "0A000"
     assert "has no form on clickhouse" in str(raised.value)
 
@@ -2126,7 +2126,11 @@ def test_a_literal_past_its_type_raises_in_a_rule_of_no_pattern(name, literal, t
     """to_hex and its kin are rules of no pattern, which bind the argument as written: the
     literal is read there as PostgreSQL reads it, where ClickHouse's cast answered NULL."""
     with pytest.raises(RowRefused) as raised:
-        transpile(f'SELECT pg_catalog."{name}"({literal}::{type_name}) AS v', "clickhouse")
+        transpile(
+            f'SELECT pg_catalog."{name}"({literal}::{type_name}) AS v',
+            "clickhouse",
+            generated=False,
+        )
     assert raised.value.sqlstate == "22003"
 
 
@@ -2144,19 +2148,21 @@ NUMERIC_CALLS = [
 @pytest.mark.parametrize("sql", NUMERIC_CALLS)
 def test_a_numeric_call_stays_refused_by_name(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_row_reads_its_argument_once():
     """lcm inside lcm, inside another: each row's argument is bound once, so the statement grows
     with the nesting, not as its product (ClickHouse's AST bound)."""
-    written = transpile("SELECT lcm(lcm(lcm(x, 2), 3), 4) AS v FROM t", "clickhouse")
+    written = transpile(
+        "SELECT lcm(lcm(lcm(x, 2), 3), 4) AS v FROM t", "clickhouse", generated=False
+    )
     assert written.count("[x]") == 1
 
 
 def test_abs_of_a_call_of_no_said_type_keeps_clickhouse_s_own():
     """A form's own call (a zone's offset) holds no integer's least value: ClickHouse's abs."""
-    written = transpile("SELECT abs(timeZoneOffset(x)) AS v FROM t", "clickhouse")
+    written = transpile("SELECT abs(timeZoneOffset(x)) AS v FROM t", "clickhouse", generated=False)
     assert "throwIf" not in written
 
 
@@ -2170,7 +2176,7 @@ def test_abs_of_a_call_of_no_said_type_keeps_clickhouse_s_own():
 def test_char_is_no_call_of_chr(sql):
     """sqlglot reads "char" (the one-byte type's cast) as chr: it stays refused by name."""
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -2184,5 +2190,5 @@ def test_char_is_no_call_of_chr(sql):
     ],
 )
 def test_every_other_dialect_keeps_its_form(sql, dialect):
-    assert "isNaN" not in transpile(sql, dialect)
-    assert "throwIf" not in transpile(sql, dialect)
+    assert "isNaN" not in transpile(sql, dialect, generated=False)
+    assert "throwIf" not in transpile(sql, dialect, generated=False)

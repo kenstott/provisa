@@ -54,7 +54,10 @@ def _semantic(lm, cypher: str) -> str:
 
 def _rows(terms, cypher: str) -> list[tuple]:
     lm, con = terms
-    return sorted(con.execute(transpile_to_duckdb(_semantic(lm, cypher))).fetchall(), key=repr)
+    return sorted(
+        con.execute(transpile_to_duckdb(_semantic(lm, cypher), generated=True)).fetchall(),
+        key=repr,
+    )
 
 
 @pytest.mark.parametrize(
@@ -88,7 +91,7 @@ def test_the_semantic_sql_keeps_its_try_cast_through_governance(terms):
     ],
 )
 def test_each_target_writes_its_own_null_on_failure_cast(target, written):
-    assert written in transpile("SELECT TRY_CAST(t.name AS BIGINT) FROM t", target)
+    assert written in transpile("SELECT TRY_CAST(t.name AS BIGINT) FROM t", target, generated=False)
 
 
 _CASTS = (
@@ -137,7 +140,7 @@ _CASTS = (
     ],
 )
 def test_a_target_without_a_null_on_failure_cast_of_its_own_still_answers_null(target, written):
-    assert transpile(_CASTS, target) == written
+    assert transpile(_CASTS, target, generated=False) == written
 
 
 def test_mysql_s_null_on_failure_casts_answer_null_where_the_value_does_not_convert():
@@ -346,7 +349,9 @@ def test_the_pg_engine_runs_its_statement_with_postgresql_s_null_on_failure_cast
     from provisa.federation.pg_backend import PgBackend
 
     engine = SimpleNamespace(native_store="postgres", name="postgres")
-    physical = PgBackend(engine).transpile_physical("SELECT TRY_CAST(t.name AS BIGINT) FROM t")
+    physical = PgBackend(engine).transpile_physical(
+        "SELECT TRY_CAST(t.name AS BIGINT) FROM t", generated=False
+    )
     assert "PG_INPUT_IS_VALID(" in physical and "TRY_CAST" not in physical
 
 

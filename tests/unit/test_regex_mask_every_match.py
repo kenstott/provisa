@@ -45,7 +45,9 @@ def test_the_in_process_mask_masks_every_match():
 
 
 def test_duckdb_masks_every_match():
-    sql = transpile(_governed(), "duckdb").replace('"s"."t"', f"(SELECT '{_PHONE}' AS phone) AS t")
+    sql = transpile(_governed(), "duckdb", generated=False).replace(
+        '"s"."t"', f"(SELECT '{_PHONE}' AS phone) AS t"
+    )
     assert duckdb.sql(sql).fetchall() == [(_MASKED,)]
 
 
@@ -54,11 +56,11 @@ def test_duckdb_masks_every_match():
     ["trino", "snowflake", "bigquery", "mysql", "clickhouse", "databricks", "oracle", "exasol"],
 )
 def test_an_engine_replacing_every_match_already_gets_no_flag(dialect):
-    written = transpile(_governed(), dialect)
+    written = transpile(_governed(), dialect, generated=False)
     assert "REGEXP_REPLACE(" in written.upper()
     assert "'g'" not in written, written
 
 
 @pytest.mark.parametrize("dialect", ["postgres", "duckdb"])
 def test_an_engine_replacing_the_first_match_unflagged_gets_the_flag(dialect):
-    assert "'X', 'g')" in transpile(_governed(), dialect)
+    assert "'X', 'g')" in transpile(_governed(), dialect, generated=False)

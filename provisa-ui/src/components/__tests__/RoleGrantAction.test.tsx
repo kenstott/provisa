@@ -65,7 +65,7 @@ const DEPENDENTS: Dependent[] = [
     id: "sales-core",
     name: "Sales",
     label: "Sales",
-    via: ["data_products.owner_role"],
+    via: ["data_products.team_role"],
   },
 ];
 

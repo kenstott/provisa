@@ -1600,9 +1600,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     # -- execution -------------------------------------------------------------
 
-    async def execute(self, physical_or_governed_sql: str) -> QueryResult:
+    async def execute(self, physical_or_governed_sql: str, *, generated: bool) -> QueryResult:
         """Execute physical SQL (post-governance) on the engine (transpiled to DuckDB)."""
-        return await self.run(transpile(physical_or_governed_sql, "duckdb"))
+        return await self.run(transpile(physical_or_governed_sql, "duckdb", generated=generated))
 
     async def run(self, duck_sql: str, params: list | None = None) -> QueryResult:
         """Execute SQL ALREADY in the DuckDB dialect (the backend transpiled it via the seam) against

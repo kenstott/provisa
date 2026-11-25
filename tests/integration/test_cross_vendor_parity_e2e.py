@@ -194,7 +194,7 @@ class Lane:
             if self.catalog_rewrite
             else rewrite_semantic_to_physical
         )
-        return transpile(rewrite(gov, ctx), self.dialect)
+        return transpile(rewrite(gov, ctx), self.dialect, generated=False)
 
     def skip_reason(self) -> str | None:
         for v in self.cred_env:

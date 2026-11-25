@@ -178,10 +178,10 @@ class _Source:
         self.engine_statements.append(sql)
         raise AssertionError("a single-source buffered read reached the engine")
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         from provisa.transpiler.transpile import transpile_to_duckdb
 
-        return transpile_to_duckdb(pg_sql)
+        return transpile_to_duckdb(pg_sql, generated=False)
 
 
 def _decision(route_name: str):

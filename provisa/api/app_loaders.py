@@ -85,7 +85,17 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "model_names": "model_names_meta",  # REQ-194
     "relationships": "relationships_meta",  # REQ-2248: a retired relationship is not listed
     "domains": "domains_meta",  # REQ-2248: a retired domain is not listed
+    # REQ-2219 (amended 2026-11-24): each kind's owners, one row per object and principal
+    "data_product_owners": "data_product_owners_meta",
+    "domain_stewards": "domain_stewards_meta",
+    "relationship_owners": "relationship_owners_meta",
 }
+
+#: The meta tables whose view restates no control-plane table of their own name: each is computed
+#: (here from object_owners), so it is keyed by its own id column (startup_seed._register_admin_view).
+META_COMPUTED_VIEWS: frozenset[str] = frozenset(
+    {"data_product_owners", "domain_stewards", "relationship_owners"}
+)
 
 
 def physical_table_map(
@@ -2443,6 +2453,11 @@ _META_TABLES = [
     # REQ-1634: data-product membership, one row per product and member; view-only
     "data_product_tables",
     "data_product_commands",
+    # REQ-2219 (amended 2026-11-24): a product's owners, a domain's stewards, a relationship's
+    # owners, each reached from its object by relationship; views over object_owners
+    "data_product_owners",
+    "domain_stewards",
+    "relationship_owners",
     "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only

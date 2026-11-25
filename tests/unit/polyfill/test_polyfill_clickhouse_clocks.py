@@ -95,7 +95,7 @@ EDGES = [
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    (row,) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    (row,) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return row[0]
 
 
@@ -144,14 +144,14 @@ def test_a_time_minus_a_time_no_row_reads_is_refused_by_name():
         "SELECT CAST(c AS time) - CAST(d AS time) AS v FROM (VALUES ('12:30', '10:00')) AS t(c, d)"
     )
     with pytest.raises(RowRefused, match="time_mi_time"):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("sql", sorted(RECORDED))
 def test_no_time_statement_names_what_the_server_lacks(sql):
     """The server (24.3) has no Time64 and no toTime64: no statement may be written with either."""
     try:
-        written = transpile(sql, "clickhouse")
+        written = transpile(sql, "clickhouse", generated=False)
     except (FunctionRefused, RowRefused):
         return  # refused by name, or a stated edge: nothing reaches the server
     assert "toTime64" not in written
@@ -178,7 +178,7 @@ def test_a_time_column_is_text_pgwire_reads_back_as_the_time(runtime, sql):
 
 
 def test_a_held_time_compares_as_its_microseconds():
-    written = transpile("SELECT '12:30'::time < '13:00'::time AS v", "clickhouse")
+    written = transpile("SELECT '12:30'::time < '13:00'::time AS v", "clickhouse", generated=False)
     assert written == "SELECT toInt64(45000000000) < toInt64(46800000000) AS v"
 
 
@@ -194,7 +194,7 @@ def test_a_held_time_compares_as_its_microseconds():
 )
 def test_another_engine_is_unchanged(dialect, sql):
     try:
-        written = transpile(sql, dialect)
+        written = transpile(sql, dialect, generated=False)
     except FunctionRefused:
         return
     assert "provisa_clock" not in written and "toInt64" not in written

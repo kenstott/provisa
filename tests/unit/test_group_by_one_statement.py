@@ -89,7 +89,7 @@ def test_the_statement_joins_nothing_and_passes_the_join_guard(model):
 
 def test_it_answers_each_group_with_its_own_rows(model, con):
     [compiled] = compile_query(parse(READ), model)
-    sql = transpile_to_duckdb(compiled.sql)
+    sql = transpile_to_duckdb(compiled.sql, generated=True)
     rows = con.execute(sql).fetchall()
     groups = serialize_rows(rows, compiled.columns, compiled.root_field)["data"]["orders_group_by"]
     assert _groups(groups) == [
@@ -113,7 +113,9 @@ def test_its_cypher_collects_each_group_s_rows_and_reads_back_to_the_same_groups
     assert "collect({id: n0.id, amount: n0.amount}) AS nodes" in cypher
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, lm)
-    sql = transpile_to_duckdb(make_semantic_sql(sql_ast.sql(dialect="postgres"), model))
+    sql = transpile_to_duckdb(
+        make_semantic_sql(sql_ast.sql(dialect="postgres"), model), generated=True
+    )
     cur = con.execute(sql)
     names = [d[0] for d in cur.description]
     rows = assemble_rows([dict(zip(names, r, strict=True)) for r in cur.fetchall()], graph_vars)

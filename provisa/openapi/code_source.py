@@ -11,7 +11,8 @@
 """An OpenAPI source as a built-in Python code source (REQ-2267 part 2, v0).
 
 The code is Provisa's own: :func:`write_code` writes a directory holding the source's spec, its
-address, credential and headers, and an entry module whose ``@discover`` function wraps the
+address, auth and headers -- its credential as the declared secret it is read from at each call,
+never its value (provisa/codesource/credentials.py) -- and an entry module whose ``@discover`` function wraps the
 existing mapping (:func:`provisa.openapi.mapper.parse_spec`) and its row-type grouping (REQ-1986):
 
 - every GET that answers rows and requires no parameter (a plain list) is a generated table, its
@@ -30,7 +31,8 @@ existing mapping (:func:`provisa.openapi.mapper.parse_spec`) and its row-type gr
 Each read is today's: the table's endpoint is built as ``register_openapi_endpoint`` builds it for
 a table registered with the paging the spec suggests (``openapi_operation``, ``endpoint_columns``,
 ``default_params_from_spec``), its inputs are sent as the parameters a statement binds are, and its
-rows are those ``call_api`` and ``answer_rows`` give.
+rows are those ``call_api`` and ``answer_rows`` give; an answer cut at its ``max_pages`` carries
+the warning ``handle_api_query`` gives it (provisa_services.warn).
 
 The code runs under Provisa's own Python (:func:`host_command`, :func:`read_code`): it imports
 Provisa, which no organisation's code environment holds.
@@ -287,8 +289,9 @@ def _parameter_type(
 
 @dataclass
 class OpenAPICode:
-    """One OpenAPI source's code: its spec, and the address, credential (as registered, secret
-    references kept) and headers it is called with."""
+    """One OpenAPI source's code: its spec, and the address, auth and headers it is called with.
+    The auth's credential names the source's declared secret (provisa/codesource/credentials.py),
+    read from Provisa's secrets service at each call."""
 
     source_id: str
     spec: dict
@@ -312,16 +315,18 @@ class OpenAPICode:
     def plan(self) -> Plan:
         return plan_spec(self.spec)
 
-    @cached_property
     def source(self) -> ApiSource:
+        """The source a call is made through, its credential read now (REQ-2267): a rotated
+        secret is the next call's."""
         from provisa.api_source.models import ApiSource, ApiSourceType
         from provisa.api_source.openapi_endpoint import api_auth
+        from provisa.codesource.credentials import resolved
 
         return ApiSource(
             id=self.source_id,
             type=ApiSourceType.openapi,
             base_url=self.base_url,
-            auth=api_auth(self.auth),  # pyright: ignore[reportArgumentType]
+            auth=api_auth(resolved(self.auth)),  # pyright: ignore[reportArgumentType]
             headers=self.headers,
         )
 
@@ -412,20 +417,27 @@ class OpenAPICode:
         )
 
     async def _rows(self, endpoint: ApiEndpoint, given: dict) -> list[dict]:
-        from provisa.api_source.caller import answer_rows, call_api
+        import provisa_services  # pyright: ignore[reportMissingImports] -- on the host's path
+
+        from provisa.api_source.caller import answer_cut_warning, answer_rows, call_api
 
         # As handle_api_query: the endpoint's defaults under what the read binds.
         params = {**endpoint.default_params, **given}
+        source = self.source()
         answer = await call_api(
             endpoint,
             params,
-            base_url=self.source.base_url,
-            auth=self.source.auth,
-            source_headers=self.source.headers,
+            base_url=source.base_url,
+            auth=source.auth,
+            source_headers=source.headers,
         )
-        # A cut answer (max_pages reached) is the rows read, as handle_api_query returns them; the
-        # warning it carries there has no channel from a code source in v0 (reported).
-        return answer_rows(endpoint, answer)[0]
+        rows, cut = answer_rows(endpoint, answer)
+        if cut is not None:
+            # A cut answer (max_pages reached) is the rows read, with the warning
+            # handle_api_query gives it (REQ-1350), carried by the call's answer (REQ-2267).
+            warning = answer_cut_warning(endpoint.table_name, cut)
+            provisa_services.warn(warning.code, warning.message, **warning.params)
+        return rows
 
     async def serve_table(self, name: str, inputs: dict, context: Any) -> Any:
         table = self.plan.tables[name]
@@ -481,7 +493,7 @@ class OpenAPICode:
         state = SimpleNamespace(
             source_types={self.source_id: "openapi"},
             openapi_specs={self.source_id: {"spec": self.spec}},
-            api_sources={self.source_id: self.source},
+            api_sources={self.source_id: self.source()},
         )
         return await call_operation(state, self.source_id, name, arguments)
 
@@ -493,6 +505,24 @@ def _path_parameters(path: str) -> list[str]:
 # -- the code's directory, and how Provisa runs it --------------------------------------------------
 
 
+def _credential_field(auth: dict | None) -> str | None:
+    """The field of ``auth`` (as registered, api_auth's form) its credential is in; None when it
+    has none."""
+    from provisa.api_source.openapi_endpoint import AUTH_SECRET
+
+    if not auth or auth.get("type", "none") == "none":
+        return None
+    return AUTH_SECRET[auth["type"]]
+
+
+def declared_secrets(source_id: str, auth: dict | None) -> dict[str, str]:
+    """REQ-2267: the ``secrets`` the source's mapping declares for its credential, the reference
+    as registered; refused by name when the credential is not a reference."""
+    from provisa.codesource.credentials import held_as_reference
+
+    return held_as_reference(auth, _credential_field(auth), f"source {source_id}")[1]
+
+
 def write_code(
     directory: Path,
     *,
@@ -502,12 +532,17 @@ def write_code(
     auth: dict | None = None,
     headers: dict[str, str] | None = None,
 ) -> str:
-    """Write the source's code into ``directory``; its content hash."""
+    """Write the source's code into ``directory``; its content hash. Its credential is written as
+    the declared secret it is read from (:func:`declared_secrets`), never as a value or a
+    reference."""
+    from provisa.codesource.credentials import held_as_reference
+
+    held, _ = held_as_reference(auth, _credential_field(auth), f"source {source_id}")
     directory.mkdir(parents=True, exist_ok=True)
     source = {
         "source_id": source_id,
         "base_url": base_url,
-        "auth": auth,
+        "auth": held,
         "headers": dict(headers or {}),
     }
     files = {

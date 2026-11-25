@@ -229,13 +229,13 @@ def test_the_block_sample_is_a_percentage_capped_at_the_whole_table():
     ],
 )
 def test_the_block_sample_survives_transpile(dialect, clause):
-    physical = transpile(_block_sql(), dialect)
+    physical = transpile(_block_sql(), dialect, generated=False)
     assert clause in physical
     require_sample_clause("block", physical, dialect, f"direct {dialect}", 0)
 
 
 def test_a_transpile_that_drops_the_block_sample_fails_by_name():
-    physical = transpile(_block_sql(), "mysql")
+    physical = transpile(_block_sql(), "mysql", generated=False)
     assert "TABLESAMPLE" not in physical.upper()
     with pytest.raises(SampleClauseLost, match="block sample lost in the 'mysql' statement"):
         require_sample_clause("block", physical, "mysql", "direct mysql", 0)
@@ -255,7 +255,9 @@ def test_the_block_sample_runs_on_duckdb_after_transpile():
     clause = "TABLESAMPLE SYSTEM (2.5)"
     governed = _block_sql()
     assert governed.count(clause) == 1
-    physical = transpile(governed.replace(clause, f"{clause} REPEATABLE (42)"), "duckdb")
+    physical = transpile(
+        governed.replace(clause, f"{clause} REPEATABLE (42)"), "duckdb", generated=False
+    )
     assert "TABLESAMPLE SYSTEM (2.5 PERCENT) REPEATABLE (42)" in physical
     con.execute("SET threads = 1")
     res = con.execute(physical)
@@ -366,7 +368,9 @@ class _FakePipeline:
         async def _route(sql):
             self.statements.append(sql)
             r = self.block_route if "TABLESAMPLE" in sql else self.route
-            return SimpleNamespace(route=r, sql=transpile(sql, "postgres"), dialect="postgres")
+            return SimpleNamespace(
+                route=r, sql=transpile(sql, "postgres", generated=False), dialect="postgres"
+            )
 
         async def _execute(plan):
             if plan.sql.startswith("SELECT MIN("):
@@ -473,7 +477,7 @@ def _orders(con, rows: int) -> None:
 
 
 def _duck(con, sql: str) -> tuple[list[str], list[tuple]]:
-    res = con.execute(transpile(sql, "duckdb"))
+    res = con.execute(transpile(sql, "duckdb", generated=False))
     return [d[0] for d in res.description], res.fetchall()
 
 

@@ -54,6 +54,8 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
                      {op: "pull", id, input}  -- a preflight asks for the next batch of an input
                      rows (an Arrow frame)   {op: "value", id, value}
                      {op: "end", id, cpu_ms}  {op: "error", id, message, stack}  {op: "pong", id}
+                     {op: "warning", id, code, params, message}  -- REQ-2267: before the end,
+                                       a warning the call's answer carries (statement_warnings)
     Provisa -> host  {op: "refused", message}, in place of any call, before the socket closes
 
 REQ-2106: every call is a stage of its request (otel_compat.stage, REQ-1910) -- its function,
@@ -91,7 +93,7 @@ told to stop the call, and the waiting thread is released at once. A crash fails
 flight, naming the source and the export; the next call starts a new process.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-1882, REQ-2104
+# Requirements: REQ-1984, REQ-1993, REQ-1882, REQ-2104, REQ-2267
 from __future__ import annotations
 
 import collections
@@ -770,6 +772,10 @@ class Worker:
                     continue
                 if isinstance(message, dict) and message.get("id") != call_id:
                     continue
+                if isinstance(message, dict) and message["op"] == "warning":
+                    # REQ-2267: the call's answer carries it, as a built-in source's does.
+                    _carry_warning(self.source_id, export, message)
+                    continue
                 break
         if isinstance(message, _Cancelled):
             # The deadline's own error is raised on the way out of cancel_on_deadline; this is
@@ -1140,6 +1146,19 @@ class Worker:
 
 
 _PULLED_DONE = object()
+
+
+def _carry_warning(source_id: str, export: str, message: dict) -> None:
+    """REQ-2267: a warning a call's code took, carried by the statement it answers
+    (core.statement_warnings.warn): its code, params and English text, as the host sent them."""
+    from provisa.core.statement_warnings import ServerWarning, warn
+
+    code, text, params = message["code"], message["message"], message["params"]
+    if not (isinstance(code, str) and isinstance(text, str) and isinstance(params, dict)):
+        raise CodeFailed(
+            source_id, export, "a warning is a code and a message, each a text, and params", ""
+        )
+    warn(ServerWarning(code=code, message=text, params=params))
 
 
 def pulled(items: Iterator[Any], depth: int = _QUEUED) -> Iterator[Any]:

@@ -77,6 +77,7 @@ export function ProductHeader({
 }) {
   const { t } = useTranslation();
   const product = core.product;
+  const named = product.namedOwners.map((o) => o.principal);
   const outputTables = core.tables?.filter((tb) => tb.dqContract == null) ?? [];
   const freshness = useFreshness(outputTables);
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
@@ -89,9 +90,10 @@ export function ProductHeader({
             {t("dataProductsTab.ownerLabel")}
           </Text>
           <Text size="sm" ff="monospace" data-testid={`data-product-header-owner-${product.id}`}>
-            {product.ownerRole ?? "—"}
+            {/* REQ-2219 (amended 2026-11-24): its owners as its Owner field names them. */}
+            {named.length > 0 ? named.join(", ") : "—"}
           </Text>
-          {product.ownerRole && <OwnerResolutionInline refs={[product.ownerRole]} />}
+          {named.length > 0 && <OwnerResolutionInline refs={named} />}
         </Group>
         <Group gap={6} wrap="nowrap">
           <Text size="xs" c="dimmed">

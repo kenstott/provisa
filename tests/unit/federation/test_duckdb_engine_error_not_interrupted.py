@@ -30,7 +30,7 @@ from provisa.transpiler.transpile import transpile_to_duckdb
 # A zero divisor on row 300,000: the transpiler's division guard (PostgreSQL's 22012), met as a
 # later batch is read.
 _LATE_ZERO_DIVISOR = transpile_to_duckdb(
-    "SELECT 1/(g.i - 300000) AS v FROM generate_series(1, 400000) AS g(i)"
+    "SELECT 1/(g.i - 300000) AS v FROM generate_series(1, 400000) AS g(i)", generated=False
 )
 _RUNS = 5000
 

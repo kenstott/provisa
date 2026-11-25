@@ -104,7 +104,7 @@ def _compile(rls=None):
         sql = apply_governance(
             sql, build_governance_context("admin", rls, {}, ctx, s.tables, role=_ADMIN)
         )
-    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "bigquery")
+    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "bigquery", generated=True)
 
 
 @pytest.fixture(scope="module")

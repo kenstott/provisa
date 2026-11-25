@@ -82,6 +82,7 @@ from provisa.transpiler.rows.base import (
 from provisa.transpiler.rows.hashes import _BYTEA_INPUT, _TEXT_TYPES
 from provisa.transpiler.rows.numbers import _EXACT_OVERLOADS, _EXACT_ROWS, _REGRESSIONS
 from provisa.transpiler.rows.system import VALUE_FUNCTIONS_OF_THE_SERVER
+from provisa.transpiler.polyfill import array_dimensions as polyfill_array_dimensions
 from provisa.transpiler.polyfill import notation as polyfill_notation
 from provisa.transpiler.polyfill import texts as polyfill_texts
 from provisa.transpiler.polyfill import trino as polyfill_trino
@@ -218,11 +219,8 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("round", 2, "decimal"): "round_numeric",
     ("trunc", 2, "decimal"): "trunc_numeric",
     ("text", 1, "inet"): "inet_text",
-    **{
-        (name, 1, of): f"{name}_collated"
-        for name in ("max", "min")
-        for of in ("text", "char", "bpchar", "varchar")
-    },
+    **{(name, 1, of): f"{name}_collated" for name in ("max", "min") for of in ("text", "varchar")},
+    **{(name, 1, of): f"{name}_character" for name in ("max", "min") for of in ("char", "bpchar")},
     **{
         (name, arity, of): f"{of}_{suffix}"
         for of in ("lseg", "line")
@@ -318,7 +316,32 @@ def said_type(node: exp.Expr) -> str | None:
 
 #: The rows of a type whose NULL answers NULL, whatever digits the function would give a value.
 _ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
-_COLLATED = frozenset({"max_collated", "min_collated"})
+_COLLATED = frozenset({"max_collated", "min_collated", "max_character", "min_character"})
+
+
+#: The rows answering one of a column's character(n) values.
+_OF_CHARACTERS = frozenset({"max_character", "min_character"})
+
+
+def _character_length(called: str, column: exp.Expr, dialect: str) -> int:
+    """The length every row of a VALUES column casts its character to, which bpchar's output pads
+    the answer to; a column of rows of more than one length, whose values keep each their own
+    padding, is refused."""
+    first = values_cast(column) if isinstance(column, exp.Column) else None
+    if first is None:
+        raise FunctionRefused(called, dialect)
+    rows = first.find_ancestor(exp.Values)
+    place = first.parent.expressions.index(first) if first.parent is not None else -1
+    lengths = set()
+    for row in rows.expressions if rows is not None else []:
+        cell = row.expressions[place]
+        if not (isinstance(cell, exp.Cast) and cell.to.is_type(exp.DataType.Type.CHAR)):
+            raise FunctionRefused(called, dialect)
+        params = cell.to.expressions
+        lengths.add(int(params[0].this.this) if params else 1)
+    if len(lengths) != 1:
+        raise FunctionRefused(called, dialect)
+    return lengths.pop()
 
 
 def _bucket_said(value: exp.Expr) -> str | None:
@@ -1338,12 +1361,13 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
         return False
 
 
-def _answered_first(node: exp.Expr, dialect: str) -> bool:
+def _answered_first(node: exp.Expr, dialect: str, skipped: tuple[polyfill.Feature, ...]) -> bool:
     """Whether a grid rule over every call (Rewrite.first, read before any pattern by the walk)
     answers ``node``, a call the old table refuses: a bit string's row, whose name bytea's
-    patterns share. Read only for such a call: the rules are many, and the walk reads them again."""
+    patterns share. Read only for such a call: the rules are many, and the walk reads them again.
+    A rule of a feature in ``skipped`` is not read (:func:`inline`'s ``generated``)."""
     try:
-        first = polyfill.GRID.read_first(node, dialect)
+        first = polyfill.GRID.read_first(node, dialect, skipped)
     except polyfill_notation.Refused as refused:
         if refused.ruling:
             called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
@@ -1352,20 +1376,39 @@ def _answered_first(node: exp.Expr, dialect: str) -> bool:
     return first is not None and first.rewritten is not None
 
 
-def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
+def _of_dimensions_on_duckdb(tree: exp.Expr, dialect: str) -> exp.Expr:
+    """``tree`` with each call of an array of more than one dimension in its DuckDB form
+    (polyfill.array_dimensions.on_duckdb); its row's refusal raises with PostgreSQL's SQLSTATE."""
+    try:
+        return polyfill_array_dimensions.on_duckdb(tree)
+    except polyfill_array_dimensions.CallRefused as refused:
+        raise RowRefused(refused.called, dialect, refused.refusal) from refused
+
+
+def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
-    of its argument count is left, for the engine to say so."""
+    of its argument count is left, for the engine to say so.
+
+    ``generated``: Provisa wrote ``tree`` from a graph IR (Cypher, SPARQL, GraphQL), where a list
+    of lists is a nested list; PostgreSQL's reading of an array of more than one dimension is
+    for SQL a client wrote alone (REQ-2236)."""
     if dialect in NATIVE:
         return tree
+    # REQ-2236: SQL Provisa generated reads a list of lists as nested lists, never by dimensions.
+    skipped = (polyfill_array_dimensions.FEATURE,) if generated else ()
     if dialect not in _DUCKDB:
         tree = _unqualified(tree)
         for node in tree.walk():
             if _answered_by_a_row(node, dialect):
                 continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
-            if refused_call is not None and not _answered_first(node, dialect):
+            if refused_call is not None and not _answered_first(node, dialect, skipped):
                 raise FunctionRefused(refused_call, dialect)
+    elif not generated:
+        # REQ-2236: an array of more than one dimension as PostgreSQL reads it, before any form
+        # (a text search's or JSON's among them) reads the arrays.
+        tree = _of_dimensions_on_duckdb(tree, dialect)
     try:
         tree = pg_forms_textsearch.lowered(tree, dialect)
         tree = pg_forms_json.lowered(tree, dialect, lambda n: _answered_by_a_row(n, dialect))
@@ -1409,7 +1452,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         # A grid rule over every call, before the forms of a substring past its edge: a substring
         # of a bit string is its row's.
         try:
-            first = polyfill.GRID.read_first(target, dialect)
+            first = polyfill.GRID.read_first(target, dialect, skipped)
         except polyfill_notation.Refused as refused:
             if not refused.ruling:
                 raise
@@ -1486,6 +1529,15 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             written = exp.Mul(this=args[0].transform(rewrite), expression=exp.Literal.number(0))
         else:
             written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
+        if name in _OF_CHARACTERS:  # bpchar's output pads the value DuckDB holds without it
+            written = exp.Anonymous(
+                this="rpad",
+                expressions=[
+                    written,
+                    exp.Literal.number(_character_length(called, args[0], dialect)),
+                    exp.Literal.string(" "),
+                ],
+            )
         if digits is not None:  # the scale PostgreSQL's numeric answers with, 0 for one below it
             scaled = f"DECIMAL(38, {max(digits, 0)})"
             written = exp.Cast(this=written, to=exp.DataType.build(scaled, dialect="postgres"))

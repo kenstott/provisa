@@ -106,7 +106,7 @@ def _physical(statement: Any, session: dict[str, str] | None, params: list | Non
         assert params is not None and 0 <= index < len(params), f"${index + 1} is not bound"
         node.replace(exp.convert(params[index]))
     resolved = _resolve_session_settings(tree.sql(dialect="postgres"), session or {}, "postgres")
-    return transpile(resolved, "postgres")
+    return transpile(resolved, "postgres", generated=False)
 
 
 class GovernedPG:
@@ -126,7 +126,7 @@ class GovernedPG:
         from provisa.transpiler.transpile import transpile
 
         # As the engine is handed it: a mask's portable function lowered to PostgreSQL's.
-        physical = transpile(governed, "postgres")
+        physical = transpile(governed, "postgres", generated=False)
         with psycopg.connect(self.dsn) as conn:
             try:
                 _create(conn, tables)

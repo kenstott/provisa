@@ -33,7 +33,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple[Any, ...]]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
@@ -170,7 +170,7 @@ def test_the_answer_is_described_as_numeric(runtime):
 
     sql = _of("avg", [1, 2])
     ((served,),) = runtime.run_sync(
-        f"SELECT toTypeName(v) FROM ({transpile(sql, 'clickhouse')})"
+        f"SELECT toTypeName(v) FROM ({transpile(sql, 'clickhouse', generated=False)})"
     ).iter_rows()
     assert served == "Nullable(String)"
     types: list[Any] = [_sql_type_to_bvtype("string")]
@@ -212,16 +212,16 @@ def test_the_stated_bound_is_the_one_enforced():
 )
 def test_a_window_or_a_filter_stays_refused_on_clickhouse(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_duckdb_keeps_its_own_exact_form():
     sql = _of("avg", [3])
-    assert "PROVISA_NUMERIC_QUOTIENT" in transpile(sql, "duckdb").upper()
+    assert "PROVISA_NUMERIC_QUOTIENT" in transpile(sql, "duckdb", generated=False).upper()
 
 
 def test_a_column_no_statement_types_keeps_the_engines_avg():
-    assert "toInt256" not in transpile("SELECT avg(x) FROM t", "clickhouse")
+    assert "toInt256" not in transpile("SELECT avg(x) FROM t", "clickhouse", generated=False)
 
 
 # --- xid8, snapshots and an integer's digits -----------------------------------------------------
@@ -345,4 +345,4 @@ def test_an_integers_digits_are_convert_to_bases_on_clickhouse(runtime, call, di
     ],
 )
 def test_duckdb_keeps_its_own_forms(sql, duckdb_form):
-    assert duckdb_form in transpile(sql, "duckdb").upper()
+    assert duckdb_form in transpile(sql, "duckdb", generated=False).upper()

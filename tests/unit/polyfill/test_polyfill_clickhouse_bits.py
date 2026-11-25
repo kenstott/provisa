@@ -386,7 +386,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -410,12 +410,12 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 @pytest.mark.parametrize("sql", REFUSED)
 def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_call_whose_argument_is_said_to_be_no_bit_string_is_not_the_row_s():
     sql = "SELECT pg_catalog.bitnot(c) AS v FROM (VALUES ('101'::text)) AS t(c)"
-    assert "translate(" not in transpile(sql, "clickhouse")
+    assert "translate(" not in transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_cast_that_pads_past_the_bound_raises_0a000(runtime):
@@ -430,6 +430,6 @@ def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = "SELECT pg_catalog.\"bit\"('1'::bit, 3, true) AS v"
     if dialect == "trino":
         with pytest.raises(FunctionRefused):
-            transpile(sql, dialect)
+            transpile(sql, dialect, generated=False)
     else:
-        assert "BIT" in transpile(sql, dialect).upper()
+        assert "BIT" in transpile(sql, dialect, generated=False).upper()

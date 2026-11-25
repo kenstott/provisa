@@ -74,7 +74,7 @@ def test_step_three_inline_operators_answer_where_no_function_does():
 def test_step_four_what_it_can_express_neither_way_is_refused_by_name():
     assert Macro("f", ("a",)).resolved("somewhere") == (Step.REFUSED, None)
     with pytest.raises(FunctionRefused, match=r"area\(\) has no form on mysql"):
-        transpile("SELECT area('(1,1),(0,0)'::box) AS v", "mysql")
+        transpile("SELECT area('(1,1),(0,0)'::box) AS v", "mysql", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino", "snowflake", "mysql"])
@@ -119,7 +119,7 @@ def test_an_overload_is_chosen_by_the_type_the_statement_says(sql, row):
     ],
 )
 def test_a_shape_on_trino_is_trinos_geometry_not_inline_arithmetic(sql):
-    written = transpile(f"SELECT {sql} AS v", "trino")
+    written = transpile(f"SELECT {sql} AS v", "trino", generated=False)
     assert "ST_" in written.upper()
     assert "SQRT" not in written.upper()
     sqlglot.parse_one(written, read="trino")
@@ -128,7 +128,7 @@ def test_a_shape_on_trino_is_trinos_geometry_not_inline_arithmetic(sql):
 def test_a_box_center_on_trino_writes_postgresqls_float_text():
     """REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: ST_Centroid's point written with format('%.6f')
     keeps six places where PostgreSQL writes the shortest exact float, so the replayed form answers."""
-    written = transpile("SELECT center('(1,1),(0,0)'::box) AS v", "trino")
+    written = transpile("SELECT center('(1,1),(0,0)'::box) AS v", "trino", generated=False)
     assert "ST_" not in written.upper() and "%.6f" not in written
     assert "pg_geo_float_text" in written
     sqlglot.parse_one(written, read="trino")
@@ -146,18 +146,25 @@ def test_a_box_center_on_trino_writes_postgresqls_float_text():
     ],
 )
 def test_a_type_trino_holds_as_text_reaches_it_with_no_cast_to_the_type(sql):
-    tree = sqlglot.parse_one(transpile(f"SELECT {sql} AS v", "trino"), read="trino")
+    tree = sqlglot.parse_one(
+        transpile(f"SELECT {sql} AS v", "trino", generated=False), read="trino"
+    )
     held = {"box", "path", "circle", "cidr", "inet", "tsvector", "lseg"}
     assert not {c.to.sql(dialect="trino").lower() for c in tree.find_all(exp.Cast)} & held
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_the_cast_a_statement_says_chooses_the_overload_before_the_type_is_held(dialect):
-    assert "PI()" in transpile("SELECT area('<(0,0),1>'::circle) AS v", dialect).upper()
+    assert (
+        "PI()"
+        in transpile("SELECT area('<(0,0),1>'::circle) AS v", dialect, generated=False).upper()
+    )
 
 
 def test_an_unaliased_overload_keeps_the_column_postgresql_names():
-    assert transpile("SELECT area('(1,1),(0,0)'::box)", "trino").endswith(" AS area")
+    assert transpile("SELECT area('(1,1),(0,0)'::box)", "trino", generated=False).endswith(
+        " AS area"
+    )
 
 
 # --- XML: each dialect what it can do, the rest by name -----------------------------------------
@@ -165,22 +172,24 @@ def test_an_unaliased_overload_keeps_the_column_postgresql_names():
 
 @pytest.mark.parametrize("dialect", ["trino", "mysql", "snowflake", "bigquery", "spark"])
 def test_xmltext_is_any_dialects_replace(dialect):
-    written = transpile("SELECT xmltext(x) AS v FROM t", dialect)
+    written = transpile("SELECT xmltext(x) AS v FROM t", dialect, generated=False)
     assert "&amp;" in written and "provisa" not in written.lower()
 
 
 def test_a_comment_on_trino_refuses_what_postgresql_refuses():
-    written = transpile("SELECT xmlcomment(x) AS v FROM t", "trino")
+    written = transpile("SELECT xmlcomment(x) AS v FROM t", "trino", generated=False)
     assert "invalid XML comment" in written
 
 
 def test_well_formed_documents_are_snowflakes_own_check():
-    assert "CHECK_XML" in transpile("SELECT xml_is_well_formed_document(x) FROM t", "snowflake")
+    assert "CHECK_XML" in transpile(
+        "SELECT xml_is_well_formed_document(x) FROM t", "snowflake", generated=False
+    )
 
 
 def test_xpath_stays_refused_where_no_dialect_answers_as_postgresql():
     with pytest.raises(XmlFunctionRefused, match="xpath .*trino"):
-        transpile("SELECT xpath('/a', x) FROM t", "trino")
+        transpile("SELECT xpath('/a', x) FROM t", "trino", generated=False)
 
 
 # --- the answers the UDFs gave, with no UDF ---------------------------------------------------
@@ -201,14 +210,18 @@ def _value(con, row: str, *args: object):
     """A row's form for literal arguments. A form names a parameter as often as it needs it, so a
     prepared statement's placeholder would not bind."""
     called = f"SELECT {row}({', '.join(map(_literal, args))}) AS v"
-    tree = function_macros.inline(sqlglot.parse_one(called, read="postgres"), "duckdb")
+    tree = function_macros.inline(
+        sqlglot.parse_one(called, read="postgres"), "duckdb", generated=False
+    )
     return con.execute(tree.sql(dialect="duckdb")).fetchone()[0]
 
 
 def _money(con, row: str, cents: int):
     value = f"{'-' if cents < 0 else ''}{abs(cents) // 100}.{abs(cents) % 100:02d}"
     called = f"SELECT {row}(CAST({value} AS DECIMAL(21,4))) AS v"
-    tree = function_macros.inline(sqlglot.parse_one(called, read="postgres"), "duckdb")
+    tree = function_macros.inline(
+        sqlglot.parse_one(called, read="postgres"), "duckdb", generated=False
+    )
     return con.execute(tree.sql(dialect="duckdb")).fetchone()[0]
 
 
@@ -259,23 +272,26 @@ def test_a_polygons_level_edge_divides_by_nothing(con):
     """The pipeline's division raises on zero, and an AND in a lambda guards nothing: a horizontal
     edge, where the crossing's divisor is zero, is held off by a CASE."""
     written = transpile_to_duckdb(
-        "SELECT pt_contained_poly('(-5,0)'::point, '((0,0),(0,8.376),(8,0))'::polygon) AS v"
+        "SELECT pt_contained_poly('(-5,0)'::point, '((0,0),(0,8.376),(8,0))'::polygon) AS v",
+        generated=False,
     )
     assert con.execute(written).fetchone()[0] is False
 
 
 def test_a_null_box_keeps_the_type_its_diagonal_is_described_by(con):
-    written = transpile_to_duckdb("SELECT diagonal(NULL) AS v")
+    written = transpile_to_duckdb("SELECT diagonal(NULL) AS v", generated=False)
     assert con.execute(f"SELECT typeof(v) FROM ({written})").fetchone()[0] == "VARCHAR"
 
 
 def test_a_bound_money_input_runs_as_a_form_of_its_parameter(con):
-    written = transpile_to_duckdb("SELECT $1::money AS v")
+    written = transpile_to_duckdb("SELECT $1::money AS v", generated=False)
     assert con.execute(written, ["$1,234.50"]).fetchone()[0] == Decimal("1234.5000")
 
 
 def test_unnest_of_a_tsvector_is_its_lexemes_in_order(con):
-    written = transpile_to_duckdb("SELECT unnest('cat:3 fat:2,4 rat:5A'::tsvector) AS v")
+    written = transpile_to_duckdb(
+        "SELECT unnest('cat:3 fat:2,4 rat:5A'::tsvector) AS v", generated=False
+    )
     assert [r[0] for r in con.execute(written).fetchall()] == [
         {"lexeme": "cat", "positions": [3], "weights": ["D"]},
         {"lexeme": "fat", "positions": [2, 4], "weights": ["D", "D"]},

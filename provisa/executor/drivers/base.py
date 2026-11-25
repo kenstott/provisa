@@ -13,9 +13,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from provisa.executor.result import QueryResult
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 # Requirements: REQ-027, REQ-052
 
@@ -39,6 +42,42 @@ class DirectResultStream(ABC):  # REQ-1190
     @abstractmethod
     async def close(self) -> None:
         """Release the cursor, transaction, and pooled connection. Idempotent."""
+
+
+class DirectArrowStream(DirectResultStream):  # REQ-2194
+    """A DIRECT read whose driver fetches its result as Arrow: the Arrow face of
+    :class:`DirectResultStream`, as :class:`~provisa.executor.result.ArrowStreamResult` is of the
+    ENGINE stream.
+
+    ``schema`` (the result's Arrow schema) is known at open, beside ``column_names``;
+    ``fetch_arrow`` pulls the driver's next record batch (``None`` = exhausted), bounded by the
+    driver's own fetch; ``to_rows`` builds a batch's Python rows, the values the driver's own rows
+    hold. ``fetch`` is the row face for a consumer that reads rows: each batch is turned into rows
+    as that consumer pulls it, never at the driver's fetch. Either face drains the one cursor."""
+
+    schema: pa.Schema
+
+    @abstractmethod
+    async def fetch_arrow(self) -> pa.RecordBatch | None:
+        """The driver's next record batch; ``None`` when the result is exhausted."""
+
+    @abstractmethod
+    def to_rows(self, batch: pa.RecordBatch) -> list[tuple]:
+        """``batch`` as the Python rows the driver's own rows hold."""
+
+    def __init__(self) -> None:
+        # The rows of a batch the row face built past the size its last ``fetch`` asked for.
+        self._pending_rows: list[tuple] = []
+
+    async def fetch(self, size: int) -> list[tuple]:
+        pending = self._pending_rows
+        while len(pending) < size:
+            batch = await self.fetch_arrow()
+            if batch is None:
+                break
+            pending.extend(self.to_rows(batch))
+        rows, self._pending_rows = pending[:size], pending[size:]
+        return rows
 
 
 class GeneratedColumn(NamedTuple):  # REQ-2167

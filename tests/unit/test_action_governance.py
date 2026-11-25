@@ -36,7 +36,7 @@ class _Engine:
     def __init__(self) -> None:
         self.sql: list[str] = []
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         return sqlglot.transpile(pg_sql, read="postgres", write="duckdb")[0]
 
     def address_replicas(self, sql):

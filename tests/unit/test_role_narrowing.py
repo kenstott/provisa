@@ -241,14 +241,16 @@ class TestSaveRefusal:
         )
 
 
-class TestAnOwnerFieldStands:
-    def test_rw_from_an_owner_field_is_held_though_no_parent_holds_it(self):
-        rows = with_owner_grant(_rows(_role("team", ["usage"], ["a"], ["analyst"])), {"team"})
+class TestTheOwnerCapabilityStands:
+    def test_rw_from_data_product_owner_is_held_though_no_parent_holds_it(self):
+        rows = with_owner_grant(
+            _rows(_role("team", ["usage", "data_product_owner"], ["a"], ["analyst"]))
+        )
         assert "data_product_rw" in _flat(rows)["team"]["capabilities"]
         assert "data_product_rw" in effective_capabilities("team", rows)
 
-    def test_a_role_it_does_not_name_gains_nothing(self):
-        rows = with_owner_grant(_rows(_role("other", ["usage"], ["a"], ["analyst"])), {"team"})
+    def test_a_role_without_the_capability_gains_nothing(self):
+        rows = with_owner_grant(_rows(_role("other", ["usage"], ["a"], ["analyst"])))
         assert _flat(rows)["other"]["capabilities"] == ["usage"]
 
 

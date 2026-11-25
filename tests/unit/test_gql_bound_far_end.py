@@ -82,7 +82,10 @@ def _label_map() -> CypherLabelMap:
 
 def _rows(con, cypher: str) -> list[tuple]:
     sql, _, _ = cypher_to_sql(parse_cypher(cypher), _label_map(), {})
-    return sorted(con.execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall(), key=str)
+    return sorted(
+        con.execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True)).fetchall(),
+        key=str,
+    )
 
 
 def _sql(con, sql: str) -> list[tuple]:

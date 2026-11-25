@@ -162,12 +162,12 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
     )
 
     engine_sql = (
-        state.federation_engine.transpile_physical(compiled.sql)
+        state.federation_engine.transpile_physical(compiled.sql, generated=True)
         if decision.route == Route.ENGINE
         else None
     )
     direct_sql = (
-        transpile(compiled.sql, decision.dialect)
+        transpile(compiled.sql, decision.dialect, generated=True)
         if decision.route == Route.DIRECT and decision.dialect
         else None
     )

@@ -9,7 +9,9 @@
 # permission from the copyright holder.
 
 """The binding corpus is whole (REQ-1984): every tagged example in docs/code-sources.md is a
-docstring/SDK tab pair, docstring first (JSDoc in TypeScript, the doc comment in Go and Rust); every case has every language the SDK is built for, or
+docstring/SDK tab pair, docstring first (JSDoc in TypeScript, the doc comment in Go and Rust),
+unless every tag in it has no SDK spelling in its language, when it is a single docstring or JSDoc
+block; every case has every language the SDK is built for, or
 says why not; every tag form has an accepted case in each built language; and a docstring spelling
 never imports the SDK while an SDK spelling always does."""
 
@@ -66,6 +68,50 @@ def test_a_tagged_example_outside_a_pair_is_found(tmp_path):
     assert problems == [
         "page.md:3: a tagged typescript example is not the 'JSDoc' tab of a 'JSDoc'/'SDK' pair"
     ]
+
+
+def test_a_tag_with_no_sdk_spelling_is_a_single_block(tmp_path):
+    """``@discover`` has no Python SDK spelling and ``@change`` no TypeScript one (their cases'
+    ``unspelled``), so each is shown as one docstring or JSDoc block."""
+    assert ("discover", "python/sdk") in unspelled()
+    assert ("change", "typescript") in unspelled()
+    markdown = tmp_path / "page.md"
+    markdown.write_text(
+        '## A {: #a }\n\n```python\ndef f() -> Discovered:\n    """@discover"""\n```\n\n'
+        "```typescript\n/** @change table=t\n * @change key=k\n */\n"
+        "export async function f(): Promise<Changed[]> {}\n```\n"
+    )
+    assert doc_cases(markdown) == ([], [])
+
+
+def test_a_tag_with_an_sdk_spelling_is_refused_as_a_single_block(tmp_path):
+    """``@table`` has an SDK spelling in Python, and ``@change`` has one in Python too, so neither
+    alone, nor beside ``@discover``, excuses a single block. A lone block that imports the SDK is
+    refused as well."""
+    markdown = tmp_path / "page.md"
+    markdown.write_text(
+        '## A {: #a }\n\n```python\ndef f():\n    """@table"""\n```\n\n'
+        '```python\ndef f():\n    """@change table=t"""\n```\n\n'
+        '```python\ndef f():\n    """@discover\n    @table"""\n```\n\n'
+        '```python\nfrom provisa_sdk import table\n\ndef f():\n    """@discover"""\n```\n'
+    )
+    message = "a tagged python example is not the 'Docstring' tab of a 'Docstring'/'SDK' pair"
+    assert doc_cases(markdown) == (
+        [],
+        [f"page.md:{line}: {message}" for line in (3, 8, 13, 19)],
+    )
+
+
+def test_an_unspelled_tag_in_a_lone_tab_is_still_refused(tmp_path):
+    markdown = tmp_path / "page.md"
+    markdown.write_text(
+        '## A {: #a }\n\n=== "Docstring"\n\n    ```python\n    def f():\n'
+        '        """@discover"""\n    ```\n'
+    )
+    assert doc_cases(markdown) == (
+        [],
+        ["page.md:5: the 'Docstring' tab has no 'SDK' tab next"],
+    )
 
 
 def test_a_pair_becomes_a_case_named_by_its_section(tmp_path):

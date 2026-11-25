@@ -64,31 +64,37 @@ def test_the_calls_the_conformance_run_makes_are_answered_or_are_postgresqls_err
 def test_a_form_reads_a_column_row_by_row():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT * FROM (VALUES ('''a'':1 ''b'':2'), (NULL)) v(s)")
-    written = transpile("SELECT ts_delete(CAST(s AS tsvector), 'a') AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT ts_delete(CAST(s AS tsvector), 'a') AS v FROM t", "duckdb", generated=False
+    )
     assert connection.execute(written).fetchall() == [("'b':2",), (None,)]
 
 
 def test_a_text_of_no_form_of_postgresql_is_refused_by_name():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT 'not a vector' AS s")
-    written = transpile("SELECT ts_delete(CAST(s AS tsvector), 'a') AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT ts_delete(CAST(s AS tsvector), 'a') AS v FROM t", "duckdb", generated=False
+    )
     with pytest.raises(duckdb.Error, match="ts_delete does not read this value"):
         connection.execute(written).fetchall()
 
 
 def test_weights_that_are_not_constants_are_refused_by_name():
     with pytest.raises(FunctionRefused, match="ts_filter"):
-        transpile("SELECT ts_filter(CAST(s AS tsvector), w) AS v FROM t", "duckdb")
+        transpile("SELECT ts_filter(CAST(s AS tsvector), w) AS v FROM t", "duckdb", generated=False)
 
 
 def test_a_query_that_is_not_a_constant_is_refused_by_name():
     with pytest.raises(FunctionRefused, match="ts_match_vq"):
-        transpile("SELECT ts_match_vq(CAST(s AS tsvector), q) AS v FROM t", "duckdb")
+        transpile(
+            "SELECT ts_match_vq(CAST(s AS tsvector), q) AS v FROM t", "duckdb", generated=False
+        )
 
 
 def test_a_document_that_is_not_a_constant_is_refused_by_name():
     with pytest.raises(FunctionRefused, match="to_tsvector"):
-        transpile("SELECT to_tsvector(s) AS v FROM t", "duckdb")
+        transpile("SELECT to_tsvector(s) AS v FROM t", "duckdb", generated=False)
 
 
 def test_a_syntax_error_is_postgresqls_own():
@@ -136,7 +142,9 @@ def test_a_text_column_is_read_as_the_parser_reads_a_constant(config: str):
     read = {t: v for t in _texts() if (v := _reading(config, t)) is not None}
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT unnest(?) AS s", [list(read)])
-    written = transpile(f"SELECT s, to_tsvector('{config}', s::text) AS v FROM t", "duckdb")
+    written = transpile(
+        f"SELECT s, to_tsvector('{config}', s::text) AS v FROM t", "duckdb", generated=False
+    )
     got = dict(connection.execute(written).fetchall())
     assert {t: v for t, v in got.items() if v != read[t]} == {}
 
@@ -145,7 +153,9 @@ def test_a_text_the_parser_does_not_read_is_refused_row_by_row():
     unread = [t for t in _texts() if _reading("english", t) is None]
     assert len(unread) > 50
     connection = duckdb.connect()
-    written = transpile("SELECT to_tsvector(c1) AS v FROM (VALUES ('x'::text)) AS t(c1)", "duckdb")
+    written = transpile(
+        "SELECT to_tsvector(c1) AS v FROM (VALUES ('x'::text)) AS t(c1)", "duckdb", generated=False
+    )
     for text in unread[:20]:
         with pytest.raises(duckdb.Error, match="to_tsvector does not read this value"):
             connection.execute(written.replace("'x'", "?"), [text]).fetchall()
@@ -155,21 +165,25 @@ def test_a_word_column_is_stemmed_as_ts_lexize_stems_a_constant():
     words = [w for t in TEXTS for w in t.split()] + list(WORDS)
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT unnest(?) AS s", [words])
-    written = transpile("SELECT s, ts_lexize('english_stem', s::text) AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT s, ts_lexize('english_stem', s::text) AS v FROM t", "duckdb", generated=False
+    )
     got = {s: v for s, v in connection.execute(written).fetchall()}
     assert {w: got[w] for w in words if got[w] != parse.lexize("english_stem", w)} == {}
 
 
 def test_a_column_the_statement_does_not_say_is_text_is_refused_by_name():
     with pytest.raises(FunctionRefused, match="to_tsvector"):
-        transpile("SELECT to_tsvector('english', body) AS v FROM t", "duckdb")
+        transpile("SELECT to_tsvector('english', body) AS v FROM t", "duckdb", generated=False)
     with pytest.raises(FunctionRefused, match="@@"):
-        transpile("SELECT body @@ to_tsquery('english', 'a') AS v FROM t", "duckdb")
+        transpile(
+            "SELECT body @@ to_tsquery('english', 'a') AS v FROM t", "duckdb", generated=False
+        )
 
 
 def test_a_configuration_that_is_not_a_constant_is_refused_by_name():
     with pytest.raises(FunctionRefused, match="to_tsvector"):
-        transpile("SELECT to_tsvector(c, body::text) AS v FROM t", "duckdb")
+        transpile("SELECT to_tsvector(c, body::text) AS v FROM t", "duckdb", generated=False)
 
 
 def test_at_at_of_a_column_vector_and_a_constant_query_call():
@@ -179,7 +193,11 @@ def test_at_at_of_a_column_vector_and_a_constant_query_call():
         "SELECT to_tsvector('english', c1) @@ to_tsquery('english', 'rats & fat') AS v "
         f"FROM (VALUES {rows}) AS t(c1)"
     )
-    assert connection.execute(transpile(sql, "duckdb")).fetchall() == [(True,), (None,), (False,)]
+    assert connection.execute(transpile(sql, "duckdb", generated=False)).fetchall() == [
+        (True,),
+        (None,),
+        (False,),
+    ]
 
 
 def test_the_stemmer_keeps_a_word_whose_stem_is_empty_or_that_is_too_long():
@@ -193,7 +211,7 @@ def test_a_search_of_a_column_reads_its_vector_once_within_clickhouses_max_query
         "SELECT to_tsvector(c1) @@ 'fat <-> rat'::tsquery AS v "
         "FROM (VALUES ('The Fat Rats'::text)) AS t(c1)"
     )
-    assert len(transpile(sql, "clickhouse")) < 262144
+    assert len(transpile(sql, "clickhouse", generated=False)) < 262144
 
 
 @pytest.mark.parametrize(
@@ -211,7 +229,9 @@ def test_array_to_tsvector_of_a_column_raises_postgresqls_error_for_a_null_or_em
 ):
     connection = duckdb.connect()
     connection.execute(f"CREATE TABLE t AS SELECT CAST({row} AS VARCHAR[]) AS a")
-    written = transpile("SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb", generated=False
+    )
     with pytest.raises(duckdb.Error) as raised:
         connection.execute(written).fetchall()
     said = from_engine(raised.value)
@@ -222,7 +242,9 @@ def test_array_to_tsvector_of_a_column_raises_postgresqls_error_for_a_null_or_em
 def test_array_to_tsvector_of_a_column_answers_its_lexemes():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT CAST(ARRAY['z', 'x', 'z'] AS VARCHAR[]) AS a")
-    written = transpile("SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb", generated=False
+    )
     assert connection.execute(written).fetchall() == [("'x' 'z'",)]
 
 
@@ -239,5 +261,7 @@ def test_array_to_tsvector_of_a_literal_written_as_its_items_keeps_postgresqls_e
 ):
     """Trino and ClickHouse read an array's text as its items cast to the array (the array text
     pass): the call that reads them raises what PostgreSQL raises, on the engine."""
-    written = transpile(f"SELECT pg_catalog.array_to_tsvector({literal}::text[]) AS v", dialect)
+    written = transpile(
+        f"SELECT pg_catalog.array_to_tsvector({literal}::text[]) AS v", dialect, generated=False
+    )
     assert said in written

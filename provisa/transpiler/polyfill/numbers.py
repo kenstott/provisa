@@ -48,6 +48,25 @@ def fail(sqlstate: str, message: str) -> str:
     return f"fail('{text}')"
 
 
+#: Trino's names of the functions its float forms call, and DuckDB's of the same.
+_DUCKDB_NAMES = {
+    "fail": "error",
+    "is_nan": "isnan",
+    "is_infinite": "isinf",
+    "is_finite": "isfinite",
+}
+_TRINO_NAMES = re.compile(rf"\b({'|'.join(_DUCKDB_NAMES)})\(")
+
+
+def duckdb_of_trino(form: str) -> str:
+    """A float form written in Trino's SQL (fail, is_nan, nan()) in DuckDB's (error, isnan, a NaN
+    cast), each raise the same marked text. DuckDB orders NaN above every value where Trino's
+    comparisons are IEEE's, so a form ported here compares no value that may be NaN unless an
+    earlier branch has answered NaN."""
+    ported = form.replace("nan()", "CAST('NaN' AS DOUBLE)")
+    return _TRINO_NAMES.sub(lambda m: f"{_DUCKDB_NAMES[m[1]]}(", ported)
+
+
 def refused(function: str) -> str:
     """Trino's raise of the refusal of a value ``function`` does not read as PostgreSQL does."""
     return fail("0A000", f"{function} does not read this value")

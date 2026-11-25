@@ -48,6 +48,7 @@ from tests.integration.metadata_export_server import (
     CLASS_TERM,
     DOMAIN,
     PRODUCT_FIELDS,
+    PRODUCT_OWNER,
     SCHEMA,
     SOURCE,
     approve_terms,
@@ -65,7 +66,7 @@ pytestmark = [
 # The run's own org (REQ-254): its glossary and datasets are named for it, so teardown removes
 # exactly this run's, never another's.
 ORG = run_name("mdx_dataplex_e2e")
-OWNER = "provisa-e2e-owner"
+OWNER = PRODUCT_OWNER
 _CREDENTIALS = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "BIGQUERY_LOCATION")
 
 
@@ -88,15 +89,10 @@ def _token(key: str) -> str:
 
 
 async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
-    """A member holding the product's owner role, with ``email`` in the directory: the grant
-    through the admin API, the address as a member's sign-in records it."""
+    """The product's owner (named by the server, REQ-2219) with ``email`` in the directory, the
+    address as a member's sign-in records it."""
     import asyncpg
 
-    granted = await client.post(
-        f"/admin/users/{OWNER}/assignments",
-        json={"role_id": PRODUCT_FIELDS["owner_role"], "domain_id": "*"},
-    )
-    assert granted.status_code == 200, granted.text
     conn = await asyncpg.connect(
         host=os.environ["PG_HOST"],
         port=int(os.environ["PG_PORT"]),

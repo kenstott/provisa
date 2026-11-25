@@ -168,3 +168,20 @@ async def test_an_iceberg_table_is_inserted_updated_and_deleted(driver):
     assert updated.rowcount == 1
     await driver.execute(f"DELETE FROM {_DB}.notes WHERE id = 1")
     assert (await driver.execute(f"SELECT id, body FROM {_DB}.notes")).rows == [(2, "z")]
+
+
+async def test_a_result_is_read_as_arrow_with_the_values_its_rows_had(driver):
+    """REQ-2194: the result file is read as Arrow, a decimal, date and timestamp as themselves."""
+    from datetime import date, datetime
+    from decimal import Decimal
+
+    from provisa.executor.result import is_arrow
+
+    result = await driver.execute(
+        "SELECT CAST(1.50 AS decimal(10, 2)) AS price, DATE '2024-01-02' AS day, "
+        "TIMESTAMP '2024-01-02 03:04:05.123' AS at, CAST(NULL AS decimal(10, 2)) AS missing"
+    )
+    assert is_arrow(result)
+    assert result.rows == [
+        (Decimal("1.50"), date(2024, 1, 2), datetime(2024, 1, 2, 3, 4, 5, 123000), None)
+    ]

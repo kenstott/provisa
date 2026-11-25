@@ -981,8 +981,6 @@ As with any OpenAPI source, each `GET` operation is a table on offer and each ot
 
 **Exclusions.** Stripe's deprecated token and Sources payment integration is left out of the shipped specification. The list is under [Exclusions on a specification-built source](#exclusions-on-a-specification-built-source). An operator's own `exclusions` are added to the brand's.
 
-`stripe` also appears in `SourceType` among the stubbed Supabase `wrappers` types. A Stripe source added through the form is an `openapi` source, not that stub.
-
 #### Governance catalogs: OpenMetadata and DataHub {: #governance-catalogs }
 
 OpenMetadata and DataHub are branded sources carried by `openapi`. Each appears in the Sources form under its own name, under Enterprise. You read the catalog live, so its tables, tags, owners, domains and glossary terms can be joined with any other data in Provisa. Nothing syncs in either direction. When the catalog and your Provisa model disagree, you find out with a query.

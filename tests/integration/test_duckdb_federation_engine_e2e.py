@@ -62,7 +62,7 @@ def _compile_to_duckdb(si: SchemaInput, gql: str, rls: RLSContext | None = None)
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
         sql = apply_governance(sql, gov_ctx)
-    return transpile(rewrite_semantic_to_physical(sql, ctx), "duckdb")
+    return transpile(rewrite_semantic_to_physical(sql, ctx), "duckdb", generated=True)
 
 
 def test_duckdb_query_applies_rls():

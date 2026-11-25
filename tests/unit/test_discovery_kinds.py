@@ -80,7 +80,7 @@ class _Discovery:
             answer = answer(prompt) if callable(answer) else from_ids(prompt, answer, _TABLE_NAMES)
             return Completion(answer, vendor, model, None, self.cut_off)
 
-        async def fk(source_pools, source_types, conn, table_ids):
+        async def fk(source_pools, source_types, conn, table_ids, *, code_relationships):
             self.fk_calls += 1
             return [c for c in world.fk_found if c.source_table_id in table_ids]
 

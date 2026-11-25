@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-609/REQ-1634: resolveOwners resolves an owner_role/steward/visible_to ref list to the
+"""REQ-609/REQ-1634: resolveOwners resolves an owner/steward/visible_to ref list to the
 individuals it grants to, against a live tenant schema (roles, user_role_assignments,
 user_directory)."""
 
