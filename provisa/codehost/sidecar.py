@@ -63,7 +63,13 @@ class _Handler(socketserver.BaseRequestHandler):
 def _connections(given: str) -> list[socket.socket]:
     if not given.startswith("fd:"):
         raise ValueError(f"the sidecar's connections are given as fd:N,..., not {given!r}")
-    return [socket.socket(fileno=int(fd)) for fd in given.removeprefix("fd:").split(",")]
+    sockets = [socket.socket(fileno=int(fd)) for fd in given.removeprefix("fd:").split(",")]
+    for sock in sockets:
+        # subprocess.Popen clears FD_CLOEXEC on pass_fds so the child can receive them, but
+        # socket.socket(fileno=N) does not restore it.  Mark them non-inheritable now so any
+        # subprocess the sidecar or its imports start does not hold them open and block EOF.
+        sock.set_inheritable(False)
+    return sockets
 
 
 def main(argv: list[str]) -> int:

@@ -443,7 +443,12 @@ class Worker:
 
     def _read(self, lane: _Lane) -> None:
         while True:
-            body = read_body(lane.conn)
+            try:
+                body = read_body(lane.conn)
+            except OSError:
+                # On Linux, closing the peer socket can raise OSError rather than returning
+                # empty bytes; treat it the same as EOF (the worker or its bridge has gone).
+                body = None
             if body is None:
                 sys.stderr.write("the code's worker ended\n")
                 os._exit(3)  # the container's restart policy starts it again
