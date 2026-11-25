@@ -2987,7 +2987,7 @@
   - architecture.md
   - configuration.md
 - id: REQ-194
-  status: in-progress
+  status: complete
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -34674,7 +34674,8 @@
   superseded_by: REQ-1240
 - id: REQ-1058
   value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 1. Access Governance & Security
   category: Public Data Publishing
   feature: public-data-publishing-anonymous-access
@@ -64092,7 +64093,7 @@
 
     '
 - id: REQ-1742
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 3. Source Registration & Data Modeling
   category: Correctness
@@ -88624,7 +88625,8 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   - tests/unit/test_named_demo_tour.py
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
 - id: REQ-2112
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 4. Source Connectors
   category: Source Connectors
   feature: connector-catalog-streams-logs-and-public-data
@@ -98246,7 +98248,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is recorded with who made it, when and why. The scheduled review is exported to the operator''s chosen
     destination. (Amended 2026-11-21 by the maintainer. The operator chooses a signed webhook as the destination of a scheduled review, a URL and a secret, posted after each scheduled review and signed as the offer hook signs its requests. Roles a member holds only through the identity provider claims or a role mapping are listed read-only with their source, since Provisa holds no grant of them to revoke.)'
 - id: REQ-2267
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: OpenAPI Auto-Registration Connector
@@ -98267,6 +98269,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     OpenAPI and graphql_remote code rather than rewriting it. (3) Code sources are then read live by every
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
     launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory) (Amended 2026-11-24 by the maintainer. Creating an OpenAPI or remote GraphQL source makes it a built-in code source: the save path writes the built-in''s code into a server-owned code directory for that source, records the code as a built-in kind, and declares the built-in''s secrets as the source''s secret references, and the code-source runtime serves it. The in-process OpenAPI and remote GraphQL serving paths are retired for these sources; there is one serving path per type.)'
+  scenario: 'Given an OpenAPI or remote GraphQL source saved in the Sources form
+
+    When it is saved
+
+    Then Provisa writes it as a built-in code source and serves it through that code source''s worker
+
+    And no in-process path serves it'
   tests:
   - tests/unit/test_code_discover.py
   - tests/unit/test_openapi_code_source.py
@@ -98299,7 +98308,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'
 
 - id: REQ-2269
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Installer & Packaging
@@ -98331,7 +98341,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_cli_engine_config_wins.py
 
 - id: REQ-2270
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
