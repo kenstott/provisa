@@ -14,8 +14,8 @@ name: Integration suite (containers)
 #     rest), first in, first out.
 #   * A targeted run (`tests` named) plans only the lanes its tests select, a few jobs, so it
 #     takes a group of its own ref instead and runs beside other runs (maintainer 2026-10-23).
-#     So does a targeted warehouse UI run (`ui_specs` named), which runs only the warehouse UI
-#     job, on the named specs (REQ-1742: every test has a CI path that runs it on its own).
+#     A targeted warehouse UI run (`ui_specs` named, not with `tests`) runs only the warehouse
+#     UI job on the named specs; it queues as a full run (REQ-1742).
 
 on:
   # Runs on dispatch for a release (gh workflow run integration-suite.yml --ref <release branch>):
@@ -193,5 +193,5 @@ jobs:
       include_servicenow: ${{ inputs.include_servicenow || false }}
       include_microsoft_365: ${{ inputs.include_microsoft_365 || false }}
     concurrency:
-      group: ${{ (inputs.tests || '') == '' && (inputs.ui_specs || '') == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
+      group: ${{ (inputs.tests || '') == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
       queue: max

@@ -822,9 +822,9 @@ def test_a_targeted_warehouse_ui_run_runs_only_the_named_specs_in_the_warehouse_
     assert dispatch["default"] == "" and dispatch["required"] is False
     lanes_call = caller["jobs"]["lanes"]
     assert lanes_call["with"]["ui_specs"] == "${{ inputs.ui_specs || '' }}"
-    # A targeted UI run queues beside other runs, as a targeted pytest run does.
+    # A ui_specs run has no tests named, so it queues in the suite-wide group (same as a full run).
     assert lanes_call["concurrency"]["group"].startswith(
-        "${{ (inputs.tests || '') == '' && (inputs.ui_specs || '') == '' && 'integration-suite' ||"
+        "${{ (inputs.tests || '') == '' && 'integration-suite' ||"
     )
     lanes = yaml.safe_load((workflows / "integration-suite-lanes.yml").read_text())
     declared = lanes[True]["workflow_call"]["inputs"]["ui_specs"]
