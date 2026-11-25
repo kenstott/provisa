@@ -23,6 +23,7 @@ from provisa.api_source.models import (
     ApiSourceType,
     ParamType,
     PromotionConfig,
+    operation_key,
 )
 from provisa.core.paging import PaginationConfig
 
@@ -187,6 +188,10 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             query_template=r.get("query_template"),
             response_normalizer=r.get("response_normalizer"),
         )
+        source = api_sources.get(ep.source_id)
+        if source is not None:  # an endpoint whose source is not loaded is never called
+            # REQ-1874: the version its operation declares, where its source's brand reads one.
+            ep.headers = source.operation_headers.get(operation_key(ep.method, ep.path), {})
         api_endpoints[(ep.source_id, ep.table_name)] = ep
 
     return api_endpoints, api_sources

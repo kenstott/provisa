@@ -117,6 +117,9 @@ class ApiEndpoint(BaseModel):  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, RE
     body_encoding: Literal["json", "form", "neo4j_tx"] | None = None
     query_template: str | None = None  # Cypher or SPARQL query
     response_normalizer: str | None = None  # e.g. "neo4j_tabular" or "sparql_bindings"
+    # REQ-1874: sent with this endpoint's calls beside its source's headers: a brand's version as
+    # its operation declares it (ApiSource.operation_headers). Derived at load, never stored.
+    headers: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _endpoint_paging(self) -> "ApiEndpoint":

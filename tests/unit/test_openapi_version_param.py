@@ -24,7 +24,7 @@ from provisa.api.admin import openapi_router
 from provisa.api.admin.openapi_router import OpenAPIRegisterRequest
 from provisa.api.errors import ApiError
 from provisa.api_source.caller import prepare_call
-from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
+from provisa.api_source.models import ApiSource, ApiSourceType
 from provisa.openapi import brands
 from provisa.openapi.brands import BRANDS, Brand, VersionUnset, declared_versions
 
@@ -267,34 +267,7 @@ def test_a_parameter_version_needs_its_header():
 # --- the call ---
 
 
-def test_each_call_carries_its_operations_version(monkeypatch):
-    brand = _brand(CALCOM_LIKE, monkeypatch, version_header="cal-api-version")
-    source = ApiSource(
-        id="cal",
-        type=ApiSourceType.openapi,
-        base_url=API,
-        headers={"X-Every": "1"},
-        operation_headers=brand.operation_headers(),
-    )
-
-    def sent(path: str) -> dict:
-        endpoint = ApiEndpoint(source_id="cal", path=path, table_name="t", columns=[])
-        call = prepare_call(
-            endpoint, {}, API, None, source.headers_for(endpoint.method, endpoint.path)
-        )
-        return call.headers
-
-    assert sent("/v2/bookings") == {"X-Every": "1", "cal-api-version": "2024-08-13"}
-    assert sent("/v2/schedules") == {"X-Every": "1", "cal-api-version": "2024-06-11"}
-    assert sent("/v2/me") == {"X-Every": "1"}
-
-
-async def test_a_loaded_branded_source_carries_each_operations_version(monkeypatch):
-    from provisa.api_source.loader import load_api_sources
-
-    brand = _brand(CALCOM_LIKE, monkeypatch, id="vendor", version_header="cal-api-version")
-    monkeypatch.setitem(BRANDS, "vendor", brand)
-
+def _load_conn(endpoints: list[str]):
     class _LoadConn:
         async def fetch(self, sql: str, *args) -> list[dict]:
             if "FROM api_sources" in sql:
@@ -311,8 +284,64 @@ async def test_a_loaded_branded_source_carries_each_operations_version(monkeypat
                         "source_password": None,
                     }
                 ]
+            if "FROM api_endpoints" in sql:
+                return [
+                    {
+                        "id": n,
+                        "source_id": "cal",
+                        "path": path,
+                        "method": "GET",
+                        "table_name": path.rsplit("/", 1)[-1],
+                        "columns": "[]",
+                        "ttl": 300,
+                        "response_root": None,
+                        "error_path": None,
+                        "pk_column": None,
+                        "pagination": None,
+                        "max_concurrency": None,
+                        "default_params": None,
+                        "promotions": None,
+                        "body_encoding": None,
+                        "query_template": None,
+                        "response_normalizer": None,
+                    }
+                    for n, path in enumerate(endpoints)
+                ]
             return []
 
-    _endpoints, sources = await load_api_sources(_LoadConn(), {})  # type: ignore[arg-type]
-    assert sources["cal"].headers == {}
-    assert sources["cal"].headers_for("GET", "/v2/schedules") == {"cal-api-version": "2024-06-11"}
+    return _LoadConn()
+
+
+async def test_each_loaded_endpoints_call_carries_its_operations_version(monkeypatch):
+    from provisa.api_source.loader import load_api_sources
+
+    brand = _brand(CALCOM_LIKE, monkeypatch, version_header="cal-api-version")
+    monkeypatch.setitem(BRANDS, "vendor", brand)
+    conn = _load_conn(["/v2/bookings", "/v2/schedules", "/v2/me"])
+    endpoints, sources = await load_api_sources(conn, {})  # type: ignore[arg-type]
+    source = sources["cal"]
+    assert source.headers == {}  # nothing on every call: never info.version
+
+    def sent(table: str) -> dict:
+        call = prepare_call(endpoints[("cal", table)], {}, API, None, source.headers)
+        return call.headers
+
+    assert sent("bookings") == {"cal-api-version": "2024-08-13"}
+    assert sent("schedules") == {"cal-api-version": "2024-06-11"}
+    assert sent("me") == {}
+
+
+def test_a_commands_call_carries_its_operations_version(monkeypatch):
+    brand = _brand(CALCOM_LIKE, monkeypatch, version_header="cal-api-version")
+    source = ApiSource(
+        id="cal",
+        type=ApiSourceType.openapi,
+        base_url=API,
+        headers={"X-Every": "1"},
+        operation_headers=brand.operation_headers(),
+    )
+    assert source.headers_for("post", "/v2/bookings") == {
+        "X-Every": "1",
+        "cal-api-version": "2024-08-13",
+    }
+    assert source.headers_for("DELETE", "/v2/bookings") == {"X-Every": "1"}
