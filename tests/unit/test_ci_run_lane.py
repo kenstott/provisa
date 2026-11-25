@@ -1438,3 +1438,20 @@ def test_the_warehouse_lane_stages_the_govdata_bundle_and_has_the_key():
     stage_at = steps.index(prepare)
     (run_lane,) = [s for s in steps if s.get("name") == "Run lane"]
     assert stage_at < steps.index(run_lane)
+
+
+def test_every_suite_lane_stages_the_file_and_splunk_bundles_before_it_runs():
+    """REQ-294: a running Provisa never fetches a bundle. The suite lanes' tests attach a files
+    source (the pgwire-file bundle: test_files_*, test_duckdb_attach_calcite_pgwire.py, the
+    insider demo's control room) and a Splunk source (the pgwire-splunk bundle:
+    test_splunk_duckdb_attach.py); unstaged, each is refused with BundleNotStaged. A test lands in
+    whichever shard the planner gives it, so every suite lane's prepare stages both, from the
+    pinned release, whatever the lane's name."""
+    suite = _lanes_workflow()["jobs"]["suite"]
+    assert suite["with"]["prepare"].split()[0] == "scripts/ci/lanes/suite-prepare.sh"
+    script = (REPO / "scripts" / "ci" / "lanes" / "suite-prepare.sh").read_text()
+    unconditional = script.split("\ncase ", 1)[0]
+    assert (
+        "uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles "
+        "--only file --only splunk --github-release" in unconditional
+    )
