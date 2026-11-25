@@ -189,7 +189,7 @@ async def test_a_zoned_column_is_cast_in_the_database_and_read_as_its_utc_instan
     driver, _ = _driver(conn)
     result = await driver.execute("SELECT at FROM t")
     (_, statement, _, _) = conn.df_calls[0]
-    assert statement.startswith("WITH provisa_zoned (c0) AS (SELECT at FROM t)")
+    assert statement.startswith("WITH provisa_read (c0) AS (SELECT at FROM t)")
     assert "CAST(c0 AS TIMESTAMP WITH LOCAL TIME ZONE)" in statement
     assert isinstance(result, ArrowResult)
     assert result.column_names == ["at"]
@@ -208,7 +208,72 @@ async def test_an_interval_is_read_as_its_ir_interval():
 
 
 @pytest.mark.parametrize(
-    "unreadable", [oracledb.DB_TYPE_ROWID, oracledb.DB_TYPE_JSON, oracledb.DB_TYPE_XMLTYPE]
+    ("described", "cast"),
+    [
+        (oracledb.DB_TYPE_ROWID, "CAST(c1 AS VARCHAR2(4000)) AS c1"),
+        (oracledb.DB_TYPE_UROWID, "CAST(c1 AS VARCHAR2(4000)) AS c1"),
+        (oracledb.DB_TYPE_XMLTYPE, "XMLSERIALIZE(CONTENT c1 AS CLOB) AS c1"),
+    ],
+)
+async def test_a_type_without_an_arrow_form_is_cast_to_its_text_in_the_database(described, cast):
+    conn = _Conn(
+        [_Col("ID", oracledb.DB_TYPE_NUMBER), _Col("R", described)],
+        [
+            pa.table(
+                {
+                    "C0": pa.array([1.0], pa.float64()),
+                    "C1": pa.array(["AAAR3sAAEAAAACXAAA"], pa.large_string()),
+                }
+            )
+        ],
+    )
+    driver, _ = _driver(conn)
+    result = await driver.execute("SELECT id, r FROM t")
+    (_, statement, _, _) = conn.df_calls[0]
+    assert statement == (
+        f"WITH provisa_read (c0, c1) AS (SELECT id, r FROM t) SELECT c0, {cast} FROM provisa_read"
+    )
+    assert isinstance(result, ArrowResult)
+    assert result.column_names == ["id", "r"]
+    assert result.table.schema.field("r").type == pa.large_string()
+    assert result.rows == [(1.0, "AAAR3sAAEAAAACXAAA")]
+
+
+async def test_a_json_column_is_read_as_its_text_typed_as_json():
+    conn = _Conn(
+        [_Col("DOC", oracledb.DB_TYPE_JSON)],
+        [pa.table({"C0": pa.array(['{"a":[1,2]}', None], pa.large_string())})],
+    )
+    driver, _ = _driver(conn)
+    result = await driver.execute("SELECT doc FROM t")
+    (_, statement, _, _) = conn.df_calls[0]
+    assert statement == (
+        "WITH provisa_read (c0) AS (SELECT doc FROM t) "
+        "SELECT JSON_SERIALIZE(c0 RETURNING CLOB) AS c0 FROM provisa_read"
+    )
+    assert isinstance(result, ArrowResult)
+    assert result.table.schema.field("doc").type == pa.json_(pa.large_string())
+    assert result.rows == [('{"a":[1,2]}',), (None,)]
+
+
+async def test_a_streamed_json_column_is_typed_as_json():
+    from provisa.executor.drivers.oracle import _ArrowCursor
+
+    conn = _Conn(
+        [_Col("DOC", oracledb.DB_TYPE_JSON)],
+        [pa.table({"C0": pa.array(['{"a":1}'], pa.large_string())})],
+    )
+    cursor = _ArrowCursor(conn)
+    cursor.execute("SELECT doc FROM t", [])
+    (_, statement, _, _) = conn.df_calls[0]
+    assert "JSON_SERIALIZE(c0 RETURNING CLOB) AS c0" in statement
+    batch = cursor.fetch_batch()
+    assert batch.schema.field("doc").type == pa.json_(pa.large_string())
+    assert batch.column(0).to_pylist() == ['{"a":1}']
+
+
+@pytest.mark.parametrize(
+    "unreadable", [oracledb.DB_TYPE_OBJECT, oracledb.DB_TYPE_BFILE, oracledb.DB_TYPE_CURSOR]
 )
 async def test_a_type_without_an_arrow_form_is_refused_by_name_before_it_runs(unreadable):
     conn = _Conn([_Col("ID", oracledb.DB_TYPE_NUMBER), _Col("R", unreadable)], [])

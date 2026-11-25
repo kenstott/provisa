@@ -10,8 +10,9 @@
 
 """Integration: the Oracle driver reads a result as Arrow through python-oracledb's data-frame
 fetch against a live Oracle Free (REQ-2194), with the types the statement declares, LOBs included,
-materialized (``execute``) and streamed (``open_stream``); a type with no Arrow form is refused by
-name.
+materialized (``execute``) and streamed (``open_stream``); a type python-oracledb has no Arrow
+form for is cast in the database (ROWID and UROWID to their text, JSON to its text typed as JSON,
+XMLTYPE to its text), and an object type, a BFILE and a nested cursor are refused by name.
 
 The harness provisions the oracle container (requires_oracle marker, docker-compose.test.yml,
 gvenzl/oracle-free:slim)."""
@@ -149,9 +150,90 @@ async def test_a_column_null_by_describe_is_read(driver):
     assert result.rows == [(None, 1.0)]
 
 
-async def test_a_type_without_an_arrow_form_is_refused_by_name(driver):
+_CAST_TABLE = "provisa_arrow_casts"
+_POINT = "provisa_arrow_point"
+
+
+def _drop(kind: str, name: str, missing: int) -> str:
+    return (
+        f"BEGIN EXECUTE IMMEDIATE 'DROP {kind} {name}'; EXCEPTION WHEN OTHERS THEN "
+        f"IF SQLCODE != {missing} THEN RAISE; END IF; END;"
+    )
+
+
+@pytest.fixture
+async def cast_driver(driver):
+    seed = oracledb.connect(user="system", password="provisa", dsn=_dsn())
+    seed.autocommit = True
+    cur = seed.cursor()
+    cur.execute(_drop("TABLE", _CAST_TABLE, -942))
+    cur.execute(_drop("TYPE", _POINT, -4043))
+    cur.execute(f"CREATE TYPE {_POINT} AS OBJECT (x NUMBER, y NUMBER)")
+    cur.execute(
+        f"CREATE TABLE {_CAST_TABLE} (id NUMBER(9) PRIMARY KEY, urid UROWID, doc JSON, "
+        f"page XMLTYPE, at {_POINT})"
+    )
+    cur.execute(
+        f"INSERT INTO {_CAST_TABLE} VALUES (1, NULL, JSON('{{\"a\":[1,2]}}'), "
+        f"XMLTYPE('<p>x</p>'), {_POINT}(1, 2))"
+    )
+    cur.execute(f"UPDATE {_CAST_TABLE} SET urid = ROWID")
+    cur.execute(f"INSERT INTO {_CAST_TABLE} VALUES (2, NULL, NULL, NULL, NULL)")
+    cur.execute(f"SELECT ROWIDTOCHAR(ROWID) FROM {_CAST_TABLE} WHERE id = 1")
+    (rowid,) = cur.fetchone()
+    try:
+        yield driver, rowid
+    finally:
+        cur.execute(_drop("TABLE", _CAST_TABLE, -942))
+        cur.execute(_drop("TYPE", _POINT, -4043))
+        seed.close()
+
+
+_CAST_SELECT = f"SELECT ROWID AS rid, urid, doc, page FROM {_CAST_TABLE} ORDER BY id"
+
+
+async def test_rowid_urowid_json_and_xmltype_are_cast_in_the_database_and_read(cast_driver):
+    drv, rowid = cast_driver
+    result = await drv.execute(_CAST_SELECT)
+    assert isinstance(result, ArrowResult)
+    assert result.column_names == ["rid", "urid", "doc", "page"]
+    schema = result.table.schema
+    assert pa.types.is_string(schema.field("rid").type) or pa.types.is_large_string(
+        schema.field("rid").type
+    )
+    assert isinstance(schema.field("doc").type, pa.JsonType)  # typed as JSON
+    assert result.rows[0][0] == rowid
+    assert result.rows[0][1] == rowid
+    assert result.rows[0][2] == '{"a":[1,2]}'
+    assert result.rows[0][3].strip() == "<p>x</p>"
+    assert result.rows[1][1:] == (None, None, None)
+
+
+async def test_a_streamed_cast_column_reads_the_same_rows(cast_driver):
+    drv, _ = cast_driver
+    expected = (await drv.execute(_CAST_SELECT)).rows
+    stream = await drv.open_stream(_CAST_SELECT)
+    rows: list[tuple] = []
+    try:
+        while batch := await stream.fetch(1):
+            rows.extend(batch)
+    finally:
+        await stream.close()
+    assert rows == expected
+
+
+async def test_an_object_type_column_is_refused_by_name(cast_driver):
+    drv, _ = cast_driver
     with pytest.raises(OracleArrowUnsupported) as refused:
-        await driver.execute(f"SELECT id, ROWID AS rid FROM {_TABLE}")
-    assert refused.value.column == "rid"
+        await drv.execute(f"SELECT id, at FROM {_CAST_TABLE}")
+    assert refused.value.column == "at"
+    assert refused.value.type_name == "DB_TYPE_OBJECT"
     # The pool still serves the next statement.
-    assert (await driver.execute(f"SELECT COUNT(*) AS n FROM {_TABLE}")).rows == [(2.0,)]
+    assert (await drv.execute(f"SELECT COUNT(*) AS n FROM {_CAST_TABLE}")).rows == [(2.0,)]
+
+
+async def test_a_bfile_is_refused_by_name(driver):
+    with pytest.raises(OracleArrowUnsupported) as refused:
+        await driver.execute("SELECT BFILENAME('DATA_PUMP_DIR', 'none') AS f FROM dual")
+    assert refused.value.column == "f"
+    assert refused.value.type_name == "DB_TYPE_BFILE"

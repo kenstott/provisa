@@ -28,8 +28,8 @@ from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS, PooledCursorStream
-from provisa.executor.drivers.oracle_arrow import arrow_table, oracle_rows, require_arrow_readable
-from provisa.executor.drivers.zoned import instants_statement, oracle_connection
+from provisa.executor.drivers.oracle_arrow import arrow_statement, arrow_table, oracle_rows
+from provisa.executor.drivers.zoned import oracle_connection
 from provisa.executor.result import ArrowResult, QueryResult
 
 
@@ -39,15 +39,14 @@ def _is_broken(exc: BaseException) -> bool:
 
 def _read_arrow(conn: Any, sql: str, bound: Any) -> QueryResult:  # noqa: ANN401 — oracledb
     """``sql`` run on ``conn``. A statement that answers rows is read whole as Arrow
-    (``fetch_df_all``, its NUMBER(p,s) columns as decimals) and refused by name first when a
-    column has no Arrow form (oracle_arrow.require_arrow_readable); one that answers none is run
-    on a cursor. REQ-2050: a zoned timestamp is read as its instant (zoned.instants_statement)."""
+    (``fetch_df_all``, its NUMBER(p,s) columns as decimals), a column with no Arrow form cast in
+    the database first or refused by name (oracle_arrow.arrow_statement; REQ-2050: a zoned
+    timestamp is read as its instant); one that answers none is run on a cursor."""
     with conn.cursor() as cur:
-        statement, described = instants_statement(cur, sql)
+        statement, described = arrow_statement(cur, sql)
         if not described:
             cur.execute(statement, bound)
             return QueryResult(rows=[], column_names=[])
-    require_arrow_readable(described)
     names = [d.name.lower() for d in described]
     frame = conn.fetch_df_all(statement, bound, arraysize=FETCH_CHUNK_ROWS, fetch_decimals=True)
     return ArrowResult(arrow_table(frame, names, described), to_rows=oracle_rows).with_rows()
@@ -58,8 +57,8 @@ class _ArrowCursor:
     ``fetch_df_batches`` hands on one batch of ``FETCH_CHUNK_ROWS`` rows at a time;
     ``fetch_batch`` gives each as a pyarrow record batch, and ``fetchmany`` builds only the rows it
     is asked for from the batch in hand, never python-oracledb's own rows. The statement is parsed
-    on a cursor of the connection first: one that answers no rows is run on it, and one with a
-    column that has no Arrow form is refused by name (oracle_arrow.require_arrow_readable)."""
+    on a cursor of the connection first: one that answers no rows is run on it, and a column
+    with no Arrow form is cast in the database or refused by name (oracle_arrow.arrow_statement)."""
 
     def __init__(self, conn: Any) -> None:  # noqa: ANN401 — an oracledb connection
         self._conn = conn
@@ -73,11 +72,10 @@ class _ArrowCursor:
         self.column_names: list[str] = []
 
     def execute(self, sql: str, bound: Any) -> None:  # noqa: ANN401 — oracledb binds
-        statement, described = instants_statement(self._cursor, sql)
+        statement, described = arrow_statement(self._cursor, sql)
         if not described:
             self._cursor.execute(statement, bound)
             return
-        require_arrow_readable(described)
         self._described = described
         self.column_names = [d.name.lower() for d in described]
         frames = self._conn.fetch_df_batches(
