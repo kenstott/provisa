@@ -138,8 +138,29 @@ def test_the_nixos_workflow_runs_the_flake_on_stock_nixos_until_provisa_answers(
     assert vm["with"]["system"] == "bare"
     assert "packaging/nixos/vm-run 'packaging/nixos/ci/flake-runs.sh'" in _runs("flake-run")
     script = (_NIXOS / "ci" / "flake-runs.sh").read_text()
-    assert "nix_ run --print-build-logs . <" in script
+    assert 'nix_ run --print-build-logs "$flake" <' in script
     assert "http://127.0.0.1:8000/health" in script
+
+
+def test_nix_run_runs_from_the_home_directory_not_the_checkout():
+    """vm-run starts in the checkout. The release's first launch checks its install with
+    `python3 -c "import provisa._encoders.pgwire"`, which from there imported the checkout's
+    provisa/ source tree, with no compiled encoders, and failed (run 45680556710). A user runs
+    `nix run github:kenstott/provisa` from wherever they are; the leg runs it from home, the flake
+    named by the checkout's path."""
+    script = (_NIXOS / "ci" / "flake-runs.sh").read_text()
+    body = script.split("rm -rf ~/.provisa", 1)
+    assert 'flake="$PWD"' in body[0] and "\ncd ~\n" in body[0]
+    assert " . " not in body[1] and 'nix_ run "$flake" -- status' in body[1]
+
+
+def test_the_service_has_a_runtime_directory_of_its_own():
+    """A system service gets no login session, so no XDG_RUNTIME_DIR: platformdirs picked
+    /tmp/runtime-<uid>, refused it as owned by another uid, and the embedded control plane did not
+    start (run 45680556710). The unit makes /run/provisa for the service user and names it."""
+    assert 'XDG_RUNTIME_DIR = "/run/provisa";' in _MODULE
+    assert 'RuntimeDirectory = "provisa";' in _MODULE
+    assert 'RuntimeDirectoryMode = "0700";' in _MODULE
 
 
 def test_the_nixos_workflow_boots_the_host_and_checks_the_modules_service():

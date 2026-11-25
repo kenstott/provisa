@@ -408,6 +408,10 @@ ui_url() {
     echo "$url"
 }
 
+# Every module or -c run of the runtime passes -P: without it Python puts the working directory
+# first on sys.path, and started from a directory holding a provisa/ source tree (a checkout) it
+# imports that tree, which has no compiled provisa._encoders, instead of the installed package
+# (NixOS download leg, run 45680556710).
 native_python() {
     if [ ! -x "${RUNTIME_DIR}/bin/python3" ]; then
         err "Native runtime missing at ${RUNTIME_DIR}. Re-run Provisa.app to complete setup."
@@ -446,7 +450,7 @@ native_control_plane() {
         exit 1
     fi
     local out host port password
-    if ! out="$("$(native_python)" -m provisa.core.control_plane_pg start "${PROVISA_HOME}/native/control-pg" 2>>"${LOG_DIR}/control-plane-pg.log")"; then
+    if ! out="$("$(native_python)" -P -m provisa.core.control_plane_pg start "${PROVISA_HOME}/native/control-pg" 2>>"${LOG_DIR}/control-plane-pg.log")"; then
         err "The embedded control plane did not start; see ${LOG_DIR}/control-plane-pg.log."
         exit 1
     fi
@@ -505,8 +509,8 @@ native_env_pairs() {
         # SetupPage instead of the demo — REQ-414/REQ-972.
         local py demo_cfg demo_dir
         py="$(native_python)"
-        demo_cfg="$("$py" -c 'from provisa.cli import _resolve_demo as r; print(r()[0])')"
-        demo_dir="$("$py" -c 'from provisa.cli import _resolve_demo as r; print(r()[1])')"
+        demo_cfg="$("$py" -P -c 'from provisa.cli import _resolve_demo as r; print(r()[0])')"
+        demo_dir="$("$py" -P -c 'from provisa.cli import _resolve_demo as r; print(r()[1])')"
         e+=("PROVISA_CONFIG=${demo_cfg}")
         e+=("PROVISA_DEMO_DIR=${demo_dir}")
         e+=("PROVISA_DEMO=1")
@@ -535,11 +539,11 @@ cmd_start_native() {
     # Two processes: the API app (packaged factory) and the UI server, which
     # proxies API calls to PROVISA_API_URL and serves the built static UI.
     nohup env "${env_pairs[@]}" \
-        "$py" -m uvicorn provisa.api.app:create_app --factory --host 0.0.0.0 --port "$API_PORT" \
+        "$py" -P -m uvicorn provisa.api.app:create_app --factory --host 0.0.0.0 --port "$API_PORT" \
         >> "${LOG_DIR}/native-api.log" 2>&1 &
     local api_pid=$!
     nohup env "${env_pairs[@]}" PROVISA_API_URL="http://localhost:${API_PORT}" \
-        "$py" -m uvicorn provisa.ui_server:app --host 0.0.0.0 --port "$UI_PORT" \
+        "$py" -P -m uvicorn provisa.ui_server:app --host 0.0.0.0 --port "$UI_PORT" \
         >> "${LOG_DIR}/native-ui.log" 2>&1 &
     local ui_pid=$!
     printf '%s %s\n' "$api_pid" "$ui_pid" > "$NATIVE_PID_FILE"

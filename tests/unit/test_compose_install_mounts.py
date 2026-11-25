@@ -67,6 +67,17 @@ def test_the_hive_warehouse_of_an_install_is_a_plain_named_volume():
     assert core["volumes"]["hive_warehouse"] is None
 
 
+def test_the_app_an_install_starts_names_a_config_the_image_bakes():
+    """REQ-528: the app has no default config path. `provisa start` from a checkout (install.sh)
+    runs the core and app files alone, so the app file names the config: without it the app died
+    at create_app (NixOS installer leg, run 45680556710)."""
+    app = yaml.safe_load((REPO / "docker-compose.app.yml").read_text())
+    config = app["services"]["provisa"]["environment"]["PROVISA_CONFIG"]
+    assert config == "/app/config/provisa-install-base.yaml"
+    # The image bakes it (Dockerfile COPY config/... ./config/, WORKDIR /app).
+    assert "config/provisa-install-base.yaml" in (REPO / "Dockerfile").read_text()
+
+
 def test_the_test_mounts_have_no_default():
     code = _code(OVERLAY)
     for var in _VARS:

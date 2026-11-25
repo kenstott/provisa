@@ -18,6 +18,7 @@ start, where the setup wizard writes it from the shipped skeleton (REQ-164)."""
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -59,3 +60,18 @@ def test_a_native_demo_start_names_the_bundled_demo_config(tmp_path):
     env = _env_pairs(tmp_path, demo=True)
     assert env["PROVISA_CONFIG"] == "/bundled/demo-path"
     assert env["PROVISA_DEMO"] == "1"
+
+
+def test_every_run_of_the_runtime_python_keeps_the_working_directory_off_its_path():
+    """Each `-m` or `-c` run of the native runtime passes -P. Without it Python puts the working
+    directory first on sys.path, and `provisa start` from a directory holding a provisa/ source tree
+    (a checkout) imported that tree, which has no compiled provisa._encoders: the API died at
+    startup (NixOS download leg, run 45680556710)."""
+    runs = [
+        line.strip()
+        for line in _WRAPPER.read_text().splitlines()
+        if re.search(r'"\$(py|\(native_python\))" +-', line)
+    ]
+    assert len(runs) == 5, runs
+    for run in runs:
+        assert re.search(r'"\$(py|\(native_python\))" -P -[mc] ', run), run

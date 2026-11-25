@@ -41,12 +41,14 @@ jobs:
 
       - uses: ./.github/actions/nixos-vm
 
+      # REQ-294: the service and the unit tests load DuckDB extensions, which a checkout stages.
       - name: Install dependencies
         id: deps
         run: |
           packaging/nixos/vm-run '
             uv sync --frozen --extra dev --extra embedded --extra docs
             uv pip install -e "provisa-client/[dev]" -q
+            uv run --no-sync python scripts/stage_duckdb_extensions.py
             cd provisa-ui && npm ci
           '
 
@@ -450,6 +452,17 @@ jobs:
           packaging/nixos/vm-run '
             uv sync --frozen --extra dev
             uv pip install -e "provisa-client/[dev]" -q
+          '
+
+      # What the Ubuntu lanes stage before they run (.github/actions/setup-python,
+      # scripts/ci/lanes/suite-prepare.sh). REQ-294: a running Provisa never installs a DuckDB
+      # extension or fetches a connector bundle, so unstaged, a test's source is refused with
+      # ExtensionNotStaged or BundleNotStaged (run 45680556710, every core shard).
+      - name: Stage DuckDB extensions and connector bundles
+        run: |
+          packaging/nixos/vm-run '
+            uv run --no-sync python scripts/stage_duckdb_extensions.py
+            uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --only splunk --github-release
           '
 
       - name: Stack slots in the guest

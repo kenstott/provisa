@@ -64,6 +64,11 @@ services:
       # (docker-compose.core.yml) mounts the same directory to read it.
       - ${PROVISA_FAKE_KEY_DIR:-./.provisa/fake-key}:/etc/provisa/fake-key
     environment:
+      # REQ-528: the config the app loads. It has no default in code and the image bakes no
+      # config/provisa.yaml, so without it the app dies at create_app (NixOS installer leg, run
+      # 45680556710). The wizard skeleton is the non-demo answer, as in the compose files
+      # first-launch.sh writes; a demo overlay overrides it with the baked demo config.
+      PROVISA_CONFIG: "/app/config/provisa-install-base.yaml"
       PROVISA_DATA_DIR: /var/lib/provisa
       PROVISA_FAKE_KEY_DIR: /etc/provisa/fake-key  # REQ-1494
       # REQ-2100: the directory the app shares with the Postgres engine's server, and where the

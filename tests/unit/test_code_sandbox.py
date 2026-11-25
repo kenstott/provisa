@@ -143,6 +143,19 @@ def test_the_launcher_confines_then_runs_the_host():
     ]
 
 
+def test_a_confined_worker_may_read_and_run_the_nix_store(monkeypatch):
+    """On NixOS every binary's loader and libraries are under /nix/store (nix-ld's /lib64 loader is
+    a symlink into it, and Landlock judges the file a symlink resolves to). Without it, execv of the
+    worker's runtime was refused with EACCES: every Python code source failed to read on the NixOS
+    CI host (run 45680556710)."""
+    granted: list = []
+    monkeypatch.setattr(lx, "apply_landlock", lambda read, ports: granted.extend(read) or 4)
+    monkeypatch.setattr(lx, "apply_socket_filter", lambda: None)
+    lx.confine(["/cache/code/python"], 40123)
+    assert "/nix/store" in granted
+    assert "/cache/code/python" in granted
+
+
 def test_the_launcher_refuses_to_run_what_it_could_not_confine(monkeypatch, capsys):
     def _no_landlock(read, proxy_port, connect_ports=()):
         raise SandboxUnavailable("the kernel has no Landlock")

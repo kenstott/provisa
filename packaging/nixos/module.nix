@@ -120,11 +120,18 @@ in
       environment = {
         HOME = cfg.dataDir;
         SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
+        # A system service gets no login session, so no XDG_RUNTIME_DIR: platformdirs then
+        # picked /tmp/runtime-<uid>, which it refuses when another uid owns it, and the embedded
+        # control plane did not start (run 45680556710). RuntimeDirectory below makes this one,
+        # owned by the service user.
+        XDG_RUNTIME_DIR = "/run/provisa";
       };
       serviceConfig = {
         Type = "simple";
         User = "provisa";
         Group = "provisa";
+        RuntimeDirectory = "provisa";
+        RuntimeDirectoryMode = "0700";
         WorkingDirectory = cfg.dataDir;
         ExecStart = start;
         ExecStop = "${lib.getExe cfg.package} stop";

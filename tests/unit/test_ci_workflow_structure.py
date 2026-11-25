@@ -3072,3 +3072,48 @@ def test_zaychik_compose_service_has_pull_policy_build():
         "Docker Compose 5.4.0 attempts to pull it from Docker Hub and fails "
         "with 'access denied' before falling back to build"
     )
+
+
+def test_the_nixos_guest_stages_what_the_ubuntu_lanes_stage_before_its_tests():
+    """REQ-294: a running Provisa never installs a DuckDB extension or fetches a connector bundle.
+    The Ubuntu lanes stage both before they run (.github/actions/setup-python, suite-prepare.sh);
+    the NixOS guest staged neither, and every core shard's sources were refused with
+    ExtensionNotStaged or BundleNotStaged, the deploy job's service and unit tests too (run
+    45680556710). The guest runs the same staging, the bundles by the very line the Ubuntu lanes
+    run."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    stage_extensions = "uv run --no-sync python scripts/stage_duckdb_extensions.py"
+    prepare = (REPO / "scripts" / "ci" / "lanes" / "suite-prepare.sh").read_text()
+    (bundles,) = [
+        line
+        for line in prepare.splitlines()
+        if "provisa.runtime_deps.stage_pgwire_bundles" in line and "--only file" in line
+    ]
+
+    def guest_run(job: str, name: str) -> tuple[int, str]:
+        steps = jobs[job]["steps"]
+        names = [s.get("name") for s in steps]
+        run = steps[names.index(name)]["run"]
+        assert run.lstrip().startswith(_IN_THE_GUEST), (job, name)
+        return names.index(name), run
+
+    _, deps = guest_run("host", "Install dependencies")
+    assert stage_extensions in deps
+    at, stage = guest_run("lane", "Stage DuckDB extensions and connector bundles")
+    assert stage_extensions in stage
+    assert bundles.strip() in stage
+    names = [s.get("name") for s in jobs["lane"]["steps"]]
+    assert names.index("Install dependencies") < at < names.index("Run lane")
+
+
+def test_the_nixos_ci_host_has_what_the_ubuntu_lanes_install_for_the_suites():
+    """The Ubuntu lanes apt-get gocryptfs and fuse3 (test_org_folder_crypt.py, REQ-1992); the
+    NixOS CI host had no gocryptfs (run 45680556710). The suites also start tools by FHS paths
+    (/bin/bash, PATH=/usr/bin:/bin): the CI host serves those through envfs."""
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    packages = nix.split("environment.systemPackages", 1)[1].split("];", 1)[0]
+    assert re.search(r"^\s*gocryptfs$", packages, flags=re.M)
+    assert re.search(r"^\s*fuse3$", packages, flags=re.M)
+    assert "services.envfs" in nix and "enable = true;" in nix.split("services.envfs", 1)[1]
+    # A user's host is given preinstall.nix, never the CI host's FHS emulation.
+    assert "envfs" not in (REPO / "packaging" / "nixos" / "preinstall.nix").read_text()

@@ -109,6 +109,9 @@ SYSTEM_READ = (
     "/usr",
     "/lib",
     "/lib64",
+    # NixOS: every loader and library is here; nix-ld's /lib64 loader is a symlink into it, and
+    # Landlock judges the file a symlink resolves to. Absent elsewhere, so skipped there.
+    "/nix/store",
     "/etc/ssl",
     "/etc/ca-certificates",
     "/etc/pki",
@@ -134,7 +137,18 @@ _libc = ctypes.CDLL(None, use_errno=True)
 _libc.syscall.restype = ctypes.c_long
 
 
-def _syscall(name: str, *args: object) -> int:
+#: What a raw syscall takes: the C integer and pointer types its arguments are passed as.
+_CArg = (
+    ctypes.c_int
+    | ctypes.c_long
+    | ctypes.c_size_t
+    | ctypes.c_uint
+    | ctypes.c_uint32
+    | ctypes.c_void_p
+)
+
+
+def _syscall(name: str, *args: _CArg) -> int:
     nr = _SYSCALLS[_machine()][name]
     result = _libc.syscall(ctypes.c_long(nr), *args)
     if result < 0:
@@ -151,7 +165,7 @@ def landlock_abi() -> int:
     try:
         return _syscall(
             "landlock_create_ruleset",
-            None,
+            ctypes.c_void_p(None),  # NULL attr: the call asks for the ABI version
             ctypes.c_size_t(0),
             ctypes.c_uint32(_LANDLOCK_CREATE_RULESET_VERSION),
         )
