@@ -13,9 +13,9 @@
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1793,
+    "served": 1794,
     "wrong_answer": 0,
-    "engine_error": 300,
+    "engine_error": 299,
     "documented_limit": 2
    }
   },
@@ -28,9 +28,9 @@
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1820,
+    "served": 1821,
     "wrong_answer": 0,
-    "engine_error": 269,
+    "engine_error": 268,
     "documented_limit": 2
    }
   },
@@ -492,7 +492,6 @@
   {"case": "clickhouse-server::polygon(integer, circle)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"polygon\"('-2147483648'::integer, '<(0,0),1>'::circle) AS v LIMIT 1001", "edge": "integer least", "said": "ERROR:  Received ClickHouse exception, code: 69, server response: Code: 69. DB::Exception: A call to function range would produce 18446744071562067968 array elements, which is greater than the allowed maximum of 500000000: In scope _a -> tupleElement((throwIf(ifNull(abs(_a[3]) <= 0.000001, 0), 'pos…", "sqlstate": "XX000", "postgres": "22023 ERROR:  must request at least 2 points", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::polygon(path)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"polygon\"('((0,0),(NaN,1),(1,1))'::path) AS v LIMIT 1001", "edge": "path special", "said": "ERROR:  path_poly does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse-server::popen(path)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"popen\"('((0,0),(NaN,1),(1,1))'::path) AS v LIMIT 1001", "edge": "path special", "said": "ERROR:  popen does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "clickhouse-server::regexp_replace(text, text, text, integer, integer)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text, 3::integer, 3::integer) AS v LIMIT 1001", "edge": "text empty", "said": "ERROR:  regexp_replace does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::setweight(tsvector, \"char\", text[])", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"setweight\"('cat:1 fat:2'::tsvector, 'a'::\"char\", '{{a,b},{c,d}}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "ERROR:  Received ClickHouse exception, code: 386, server response: Code: 386. DB::Exception: There is no supertype for types Array(Nullable(String)), String because some of them are Array and some of them are not: In scope _t -> multiIf((extract(_t, ':([0-9A-C,]+)\\\\z') != '') AND has(CAST([['a', 'b…", "sqlstate": "XX000", "postgres": "answers", "job": "J1388b", "since": "2026-11-22"},
   {"case": "clickhouse-server::slope(point, point)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"slope\"('(NaN,1)'::point, '(1,2)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  slope does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse-server::sum(interval)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('178956971 years'::interval), ('178956971 years'::interval)) AS t(c1) LIMIT 1001", "edge": "interval past the type", "said": "ERROR:  sum() has no form on clickhouse", "sqlstate": "0A000", "postgres": "22008 ERROR:  interval out of range", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
@@ -792,7 +791,6 @@
   {"case": "clickhouse::polygon(integer, circle)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"polygon\"('-2147483648'::integer, '<(0,0),1>'::circle) AS v LIMIT 1001", "edge": "integer least", "said": "ERROR:  circle_poly does not read this value'), arrayMap(_a -> tupleElement((throwIf(ifNull(abs(_a[3]) <= 0.000001, 0), 'postgresql-error 0A000: cannot convert circle with radius zero to polygon'), tupleElement((throwIf(ifNull(CAST(-2147483648, 'Nullable(Int32)') < 2, 0), 'postgresql-error 22023: m…", "sqlstate": "0A000", "postgres": "22023 ERROR:  must request at least 2 points", "job": "J1388b", "since": "2026-11-16"},
   {"case": "clickhouse::polygon(path)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"polygon\"('((0,0),(NaN,1),(1,1))'::path) AS v LIMIT 1001", "edge": "path special", "said": "ERROR:  path_poly does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::popen(path)", "at": "edge", "kind": "engine_error", "calls": 2, "statement": "SELECT pg_catalog.\"popen\"('((0,0),(NaN,1),(1,1))'::path) AS v LIMIT 1001", "edge": "path special", "said": "ERROR:  popen does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
-  {"case": "clickhouse::regexp_replace(text, text, text, integer, integer)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text, 3::integer, 3::integer) AS v LIMIT 1001", "edge": "text empty", "said": "ERROR:  regexp_replace does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "clickhouse::setweight(tsvector, \"char\", text[])", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"setweight\"('cat:1 fat:2'::tsvector, 'a'::\"char\", '{{a,b},{c,d}}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "ERROR:  Code: 386. DB::Exception: There is no supertype for types Array(Nullable(String)), String because some of them are Array and some of them are not: In scope _t -> multiIf((extract(_t, ':([0-9A-C,]+)\\\\z') != '') AND has(CAST([['a', 'b'], ['c', 'd']], 'Array(Array(Nullable(String)))'), replace…", "sqlstate": "XX000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "clickhouse::slope(point, point)", "at": "edge", "kind": "engine_error", "calls": 4, "statement": "SELECT pg_catalog.\"slope\"('(NaN,1)'::point, '(1,2)'::point) AS v LIMIT 1001", "edge": "point special", "said": "ERROR:  slope does not read this value", "sqlstate": "0A000", "postgres": "answers", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
   {"case": "clickhouse::sum(interval)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('178956971 years'::interval), ('178956971 years'::interval)) AS t(c1) LIMIT 1001", "edge": "interval past the type", "said": "ERROR:  sum() has no form on clickhouse", "sqlstate": "0A000", "postgres": "22008 ERROR:  interval out of range", "job": "FUNCTIONS-MAIN-REBASE2", "since": "2026-11-23"},
