@@ -360,6 +360,28 @@ async def test_openlineage_publish_reports_the_rejected_asset_and_continues(snap
     assert result.published == {"dataset": 2, "lineage": 1}
 
 
+@pytest.mark.asyncio
+async def test_openlineage_binds_each_dataset_it_registered(snapshot, monkeypatch):  # REQ-194
+    """REQ-1389, REQ-194: each dataset the target accepted is recorded in the bindings under its
+    namespace and name, so the names table carries the name it has there; a refused one is not."""
+
+    async def _post(self, url, json=None, headers=None):
+        request = httpx.Request("POST", url)
+        if json.get("dataset", {}).get("name") == "wh.public.customers":
+            return httpx.Response(422, text="bad dataset", request=request)
+        return httpx.Response(200, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    result = await OpenLineageExport(_export_config("openlineage")).publish(snapshot)
+    expected = {
+        t.semantic_uri: (f"provisa://acme/{'.'.join(t.ref.parts)}", ".".join(t.ref.parts))
+        for t in snapshot.tables
+        if t.name != "customers"
+    }
+    assert len(expected) == 2
+    assert result.bindings == expected
+
+
 # --- OpenMetadata ---------------------------------------------------------------------
 
 

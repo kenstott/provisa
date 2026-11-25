@@ -477,6 +477,8 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
         events = to_events(snapshot, event_time=datetime.now(UTC))
         result = PublishResult(provider_name=self.provider_name)
         url = self._lineage_url()
+        namespace = _namespace(snapshot.org_id)
+        tables = {table.ref.fqn(): table for table in snapshot.tables}
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
@@ -493,6 +495,14 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
                     )
                     continue
                 result.published[event.kind] = result.published.get(event.kind, 0) + 1
+                if event.kind == "dataset":
+                    # REQ-1389, REQ-194: a dataset is identified by its namespace and name, and
+                    # carries the name.
+                    name = _dataset_name(tables[event.asset.fqn()])
+                    result.bindings[tables[event.asset.fqn()].semantic_uri] = (
+                        f"{namespace}/{name}",
+                        name,
+                    )
         return result
 
     async def health(self) -> None:

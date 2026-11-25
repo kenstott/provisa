@@ -652,3 +652,21 @@ async def test_the_product_and_each_asset_carry_the_environment_and_its_stage(ap
     assert api.assets
     for asset in api.assets.values():
         assert asset["labels"].items() >= staged.items()
+
+
+async def test_each_published_member_is_bound_under_its_bigquery_resource(api):  # REQ-194
+    """REQ-1389, REQ-194: every member a publish catalogued is recorded in the bindings, by its
+    BigQuery resource name, so the names table carries the name Dataplex gives it."""
+    snapshot = _snapshot()
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    by_name = {t.name: t.semantic_uri for t in snapshot.tables}
+    sales = "//bigquery.googleapis.com/projects/proj-src/datasets/warehouse/tables/sales"
+    orders = (
+        "//bigquery.googleapis.com/projects/proj-x/datasets/org_acme__export/tables/"
+        "pg__public__orders"
+    )
+    assert result.bindings == {
+        by_name["sales"]: (sales, sales),
+        by_name["orders"]: (orders, orders),
+    }
