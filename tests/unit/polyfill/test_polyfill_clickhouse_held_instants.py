@@ -170,6 +170,17 @@ def test_a_time_of_a_timestamp_bc_is_its_time_of_day(runtime, pg):
         (f"SELECT pg_catalog.timestamptz('4713-01-01 00:00:00+00 BC'::{_TZ}, '-2147483648'::integer) AS v", "22023", "timestamp(-2147483648) precision must be between 0 and 6"),
         ("SELECT pg_catalog.daterange('infinity'::date, '2024-06-15'::date, '[)'::text) AS v", "22000", "range lower bound must be less than or equal to range upper bound"),
         (f"SELECT pg_catalog.tsrange('infinity'::{_TS}, '2024-06-15 12:30:45'::{_TS}, '[)'::text) AS v", "22000", "range lower bound must be less than or equal to range upper bound"),
+        (
+            "SELECT pg_catalog.daterange('5874897-12-31'::date, '2024-06-15'::date) AS v",
+            "22000",
+            "range lower bound must be less than or equal to range upper bound",
+        ),
+        (
+            f"SELECT pg_catalog.tsrange('294276-12-31 23:59:59.999999'::{_TS}, "
+            f"'2024-06-15 12:30:45'::{_TS}) AS v",
+            "22000",
+            "range lower bound must be less than or equal to range upper bound",
+        ),
     ],
 )  # fmt: skip
 def test_postgresql_s_error_is_raised_at_transpile(pg, sql, state, message):

@@ -30,6 +30,7 @@ statement writes as literals are answered here, on every dialect, by provisa.cor
 from __future__ import annotations
 
 import datetime
+import math
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -717,14 +718,27 @@ class _Writer:
 
     def refuse_far(self, rtype: RangeType, *args: exp.Expr) -> None:
         """On ClickHouse, PostgreSQL's 0A000 for a constant bound of a year past 9999, which the
-        bound reader holds no value of (REQ-2236: a bound, stated and enforced, not 22007)."""
+        bound reader holds no value of (REQ-2236: a bound, stated and enforced, not 22007). Of a
+        constructor's two bounds (``args`` its lower and upper), PostgreSQL's 22000 first where the
+        lower is past the upper, as range_serialize raises it."""
         if self.dialect != "clickhouse" or rtype.element not in range_rows.HELD_ON_CLICKHOUSE:
             return
-        for arg in args:
-            if _null_value(arg) or not _constant(arg):
-                continue
-            if _FAR_YEAR.match(_constant_text(arg)) is not None:
-                raise PostgresError("0A000", range_rows.outside_held(rtype.name))
+        far = [
+            arg
+            for arg in args
+            if not _null_value(arg)
+            and _constant(arg)
+            and _FAR_YEAR.match(_constant_text(arg)) is not None
+        ]
+        if not far:
+            return
+        if len(args) == 2 and all(_constant(a) and not _null_value(a) for a in args):  # noqa: PLR2004
+            low, high = (_held_order(_constant_text(a), rtype.element) for a in args)
+            if low is not None and high is not None and low > high:
+                raise PostgresError(
+                    "22000", "range lower bound must be less than or equal to range upper bound"
+                )
+        raise PostgresError("0A000", range_rows.outside_held(rtype.name))
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
         if self.dialect == "clickhouse" and not _held_by_clickhouse(value, rtype.element):
@@ -1589,6 +1603,20 @@ def _numeric_or_element_text(
     if rtype.element == "numeric":
         return _text_cast(argument)
     return writer.element_text(typed, rtype)
+
+
+def _held_order(text: str, element: str) -> float | None:
+    """A date's or a timestamp's place in its type's order, read as PostgreSQL holds it
+    (polyfill.held_instants): its count, or an infinity; None for a text not read there."""
+    from provisa.transpiler.polyfill import held_instants
+
+    if element == "date":
+        value = held_instants.date_value(text)
+    else:
+        value = held_instants.stamp_value(text, element == "timestamptz")
+    if isinstance(value, held_instants.Infinite):
+        return math.inf * value.sign
+    return None if value is None else float(value)
 
 
 def _constant(node: exp.Expr) -> bool:
