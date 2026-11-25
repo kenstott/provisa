@@ -169,3 +169,11 @@
   display: flex;
   flex-direction: column;
 }
+
+/* The SQL editor's type: the query editors' one (App.css). */
+.sql-editor-input .cm-editor {
+  font-size: var(--editor-font-size);
+}
+.sql-editor-input .cm-scroller {
+  font-family: var(--editor-font-mono);
+}

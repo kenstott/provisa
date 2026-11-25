@@ -36,8 +36,16 @@ const SURFACES: Readonly<Record<string, Surface>> = {
     css: "pages/QueryPage.css",
     noResultPanel: "GraphiQL draws its own response pane (kept as is, REQ-2277)",
   },
-  Cypher: { page: "pages/GraphPage.tsx", results: "pages/GraphPage.tsx", css: "pages/GraphPage.css" },
-  SPARQL: { page: "pages/GraphPage.tsx", results: "pages/GraphPage.tsx", css: "pages/GraphPage.css" },
+  Cypher: {
+    page: "pages/GraphPage.tsx",
+    results: "pages/GraphPage.tsx",
+    css: "pages/GraphPage.css",
+  },
+  SPARQL: {
+    page: "pages/GraphPage.tsx",
+    results: "pages/GraphPage.tsx",
+    css: "pages/GraphPage.css",
+  },
   SQL: { page: "pages/SqlPage.tsx", results: "pages/sql/ResultsPanel.tsx" },
   gRPC: { page: "pages/GrpcPage.tsx", results: "pages/GrpcPage.tsx", css: "pages/GrpcPage.css" },
   "JSON:API": {
@@ -86,7 +94,7 @@ describe("every Explore surface uses the shared shell and result panel", () => {
 
   it.each(Object.entries(SURFACES))("%s keeps no frame of its own", (_name, surface) => {
     // The shell's gutter is the only one: no `.page` padding on the surface's root.
-    expect(read(surface.page)).not.toMatch(/className="[^"]*\bpage\b[^"]*"\s*(?:style|>|data-)/);
+    expect(read(surface.page)).not.toMatch(/className="(?:[^"]*\s)?page(?:\s[^"]*)?"/);
     if (surface.css) expect(read(surface.css)).not.toMatch(/height:\s*calc\(100vh/);
   });
 

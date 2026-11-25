@@ -335,7 +335,8 @@ export function SqlEditorPanel({
           onCreateEditor={(view) => {
             editorViewRef.current = view;
           }}
-          style={{ fontSize: "0.8rem", height: "100%" }}
+          className="sql-editor-input"
+          style={{ height: "100%" }}
         />
         <CanvasControls testId="sql-editor">
           <CanvasButton

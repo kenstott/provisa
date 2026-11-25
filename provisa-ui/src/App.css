@@ -519,6 +519,11 @@ main {
 /* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
 :root {
   --page-gutter: 1.5rem;
+  /* REQ-2277: the query editors' type -- SQL, Cypher, SPARQL and GraphiQL's editors alike. */
+  --editor-font-mono: "SF Mono", "Fira Code", ui-monospace, monospace;
+  --editor-font-size: 0.8rem;
+  /* The Explore toolbars' icon size (CanvasControls' CONTROL_ICON). */
+  --explore-icon-size: 15px;
 }
 .page {
   padding: var(--page-gutter);

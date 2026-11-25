@@ -57,8 +57,14 @@ import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserS
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { operationNameOf } from "./graphqlOperationName";
 import { savedActiveTab } from "./graphiqlSavedTab";
+import { editorTypeOptions } from "./graphiqlEditorType";
 import { useScreenEditor } from "../mcp/screenState";
 import { StopButton } from "../components/StopButton";
+
+// REQ-2277: every GraphiQL editor is given the query editors' type as it is created.
+monaco.editor.onDidCreateEditor((created) =>
+  created.updateOptions(editorTypeOptions(document.documentElement)),
+);
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -955,7 +961,12 @@ export function QueryPage() {
     [],
   );
 
-  if (!role || !fetcher || !plugins) return <div className="page">{t("queryPage.selectRole")}</div>;
+  if (!role || !fetcher || !plugins)
+    return (
+      <ExploreShell testId="query-page" className="query-page">
+        {t("queryPage.selectRole")}
+      </ExploreShell>
+    );
 
   return (
     <div className="query-page-root" ref={pageRef}>

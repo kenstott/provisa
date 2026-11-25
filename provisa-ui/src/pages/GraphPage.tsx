@@ -11,7 +11,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
-import { Text } from "@mantine/core";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { GraphFrame } from "../components/graph/GraphFrame";
 import {
@@ -66,6 +65,7 @@ import type {
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
+import { GraphStreamEmpty } from "../components/graph/GraphStreamEmpty";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
 import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
@@ -1020,15 +1020,18 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       />
 
       <ExploreMain className="graph-content">
-        {sparql && vocabulary && (
-          <SparqlEndpointBar
-            base={vocabulary.base}
-            prefixes={prefixes}
-            edits={prefixEdits}
-            onEdit={setPrefixEdits}
-          />
-        )}
         <QueryBar
+          head={
+            sparql &&
+            vocabulary && (
+              <SparqlEndpointBar
+                base={vocabulary.base}
+                prefixes={prefixes}
+                edits={prefixEdits}
+                onEdit={setPrefixEdits}
+              />
+            )
+          }
           onRun={runQuery}
           running={frames.some((f) => f.status === "loading")}
           onStop={stopAll}
@@ -1051,23 +1054,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
             className="graph-stream"
             data-handoff-status={frames.find((f) => f.id === handoffFrameId)?.status}
           >
-            {frames.length === 0 && (
-              <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
-                <div className="graph-stream-empty-icon" aria-hidden="true">
-                  ⬡
-                </div>
-                <Text component="div">
-                  {t(
-                    language === "sparql"
-                      ? "graphPage.emptyStateHintSparql"
-                      : "graphPage.emptyStateHint",
-                  )}
-                </Text>
-                <Text component="div" className="graph-stream-hint">
-                  {t("graphPage.emptyStateShortcut")}
-                </Text>
-              </div>
-            )}
+            {frames.length === 0 && <GraphStreamEmpty sparql={sparql} />}
             {[...frames]
               .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
               .map((frame) => (
