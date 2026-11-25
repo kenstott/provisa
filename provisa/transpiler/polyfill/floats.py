@@ -36,11 +36,11 @@ from provisa.core.pg_error import raising
 import sqlglot.expressions as exp
 
 from provisa.pgwire import function_types
-from provisa.transpiler import pg_forms
+from provisa.transpiler import clickhouse_libm, pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
 from provisa.transpiler.polyfill.numbers import (
     FAMILY,
     ch_checked,
@@ -386,22 +386,30 @@ LOGS: tuple[Feature, ...] = (
 
 _UNDERFLOW = ch_fail("22003", "value out of range: underflow")
 
-#: dexp: exp of a finite value overflowing or underflowing to zero raises 22003; of NaN NaN, of an
-#: infinity infinity or zero.
-_EXP = ch_checked(
-    [
-        _OVERFLOW.format(condition=f"isInfinite(exp($x)) AND {_FINITE.format('$x')}"),
-        _UNDERFLOW.format(condition=f"exp($x) = 0 AND {_FINITE.format('$x')}"),
-    ],
-    "exp($x)",
+#: dexp: glibc's exp (clickhouse_libm), not ClickHouse's: exp of a finite value overflowing or
+#: underflowing to zero raises 22003; of NaN NaN, of an infinity infinity or zero.
+_EXP = clickhouse_libm.exp(
+    "$x",
+    lambda x, y: ch_checked(
+        [
+            _OVERFLOW.format(condition=f"isInfinite({y}) AND {_FINITE.format(x)}"),
+            _UNDERFLOW.format(condition=f"{y} = 0 AND {_FINITE.format(x)}"),
+        ],
+        y,
+    ),
 )
-#: dlog1: ln of a negative or zero raises 2201E.
-_LN = ch_checked(
-    [
-        ch_fail("2201E", "cannot take logarithm of a negative number").format(condition="$x < 0"),
-        ch_fail("2201E", "cannot take logarithm of zero").format(condition="$x = 0"),
-    ],
-    "log($x)",
+#: dlog1: glibc's log (clickhouse_libm), not ClickHouse's; ln of a negative or zero raises 2201E.
+_LN = clickhouse_libm.log(
+    "$x",
+    lambda x, y: ch_checked(
+        [
+            ch_fail("2201E", "cannot take logarithm of a negative number").format(
+                condition=f"{x} < 0"
+            ),
+            ch_fail("2201E", "cannot take logarithm of zero").format(condition=f"{x} = 0"),
+        ],
+        y,
+    ),
 )
 
 _T_FINITE = "is_finite($x)"
@@ -414,54 +422,29 @@ _T_EXP = _t_checked(
 )
 _T_LN = _t_checked(_T_LOG_RAISES, "ln($x)")
 
-#: ClickHouse server 24.3's exp and log are its own vectorized approximations, not libm's: exp(0.5)
-#: answers 1.6487212707014907 where PostgreSQL's (glibc's) is 1.6487212707001282. chDB's build
-#: answers libm's digits.
-_APPROXIMATED = (
-    "On a ClickHouse server of 24.3, its {} is its own approximation, not libm's, and can differ "
-    "from PostgreSQL's answer from the 12th significant digit; chDB answers PostgreSQL's digits."
-)
+#: tanh: glibc's (clickhouse_libm), not ClickHouse's.
+_TANH = clickhouse_libm.tanh("$x", lambda x, y: y)
 
-#: tanh as sinh / cosh, each of which ClickHouse answers as libm does; past 22 both overflow toward
-#: infinity where tanh is 1 to a double's precision.
-_TANH = "if(abs($x) > 22, if($x > 0, 1.0, -1.0), sinh($x) / cosh($x))"
+#: exp, ln and tanh of ClickHouse are written by name in the order the grid tries them: dexp and
+#: dlog1 are pg_proc's names of exp and ln.
+_EXPONENTIALS = (
+    ("exp", "e raised to a power; 22003 where a finite power overflows or underflows.", _EXP,
+     _T_EXP),
+    ("dexp", "exp: e raised to a power; 22003 where a finite power overflows or underflows.",
+     _EXP, None),
+    ("ln", "The natural logarithm of a value above zero.", _LN, _T_LN),
+    ("dlog1", "ln: the natural logarithm of a value above zero.", _LN, None),
+    ("tanh", "The hyperbolic tangent.", _TANH, None),
+)  # fmt: skip
 
-EXPONENTIALS: tuple[Feature, ...] = (
+EXPONENTIALS: tuple[Feature, ...] = tuple(
     Feature(
-        "exp",
+        name,
         FAMILY,
-        "e raised to a power; 22003 where a finite power overflows or underflows.",
-        read=Side(
-            rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP, _T_EXP)),),
-            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("exp")),)},
-        ),
-    ),
-    Feature(
-        "ln",
-        FAMILY,
-        "The natural logarithm of a value above zero.",
-        read=Side(
-            rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN, _T_LN)),),
-            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("log")),)},
-        ),
-    ),
-    Feature(
-        "tanh",
-        FAMILY,
-        "The hyperbolic tangent.",
-        read=Side(
-            rules=(Rule("tanh($x)", _of_no_numeric("tanh($x)", _TANH)),),
-            limitations={
-                "clickhouse": (
-                    Limitation(
-                        "The ratio of ClickHouse's sinh and cosh, within 2 units in the last place "
-                        "of libm's tanh (ClickHouse's own tanh answers 0 for a value below 1e-90); "
-                        "1 in magnitude past 22, where tanh rounds to 1."
-                    ),
-                )
-            },
-        ),
-    ),
+        summary,
+        read=Side(rules=(Rule(f"{name}($x)", _of_no_numeric(f"{name}($x)", form, trino_form)),)),
+    )
+    for name, summary, form, trino_form in _EXPONENTIALS
 )
 
 #: power of two doubles (float.c's dpow): a NaN operand answers before any check, NaN to the

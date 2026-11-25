@@ -46,8 +46,6 @@ _CLICKHOUSE = "clickhouse"
 #: Each overload carried over: PostgreSQL's name of the function and the types of its arguments,
 #: as pg_proc lists them. The comment is its family on the function support report.
 PORTED: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("dexp", ("double precision",)),  # Numeric
-    ("dlog1", ("double precision",)),  # Numeric
     ("text", ("xml",)),  # Other
     ("int8inc_any", ("bigint", '"any"')),  # Aggregate and window
     ("int8dec_any", ("bigint", '"any"')),  # Aggregate and window

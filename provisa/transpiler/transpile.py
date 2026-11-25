@@ -24,6 +24,7 @@ from sqlglot.dialects.postgres import Postgres
 
 from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
+    clickhouse_libm,
     function_macros,
     opengauss_bytea_like,
     pg_forms_enum,
@@ -2287,6 +2288,7 @@ def transpile(
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
     # REQ-2171: last, for what a later step parses has no routine definitions at its head.
     result = pg_forms_geometric.planned(result, target_dialect)
+    result = clickhouse_libm.planned(result, target_dialect)
     if target_dialect == "postgres" and pg_syntax.OVERLAPS in result.lower():
         result = pg_syntax.overlaps_restored(sqlglot.parse_one(result, read="postgres")).sql(
             dialect="postgres"
