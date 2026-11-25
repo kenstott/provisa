@@ -15,6 +15,7 @@ one. What is here is the mapping: which operation is a table or a command, and i
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
@@ -23,7 +24,9 @@ from referencing.exceptions import Unresolvable
 
 from provisa.core.paging import PaginationConfig, PaginationType
 
-# Requirements: REQ-314, REQ-316, REQ-317, REQ-408, REQ-2265
+# Requirements: REQ-314, REQ-316, REQ-317, REQ-408, REQ-2265, REQ-1874
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -445,22 +448,73 @@ def _declares_link_header(operation: SchemaPath) -> bool:
 _BACKWARD_NAMES = frozenset({"before", "ending_before", "prev", "previous"})
 
 
-def _answered_cursor(
+# How deep the answer is searched for the next value of a cursor: HubSpot's
+# ``paging.next.after`` is three properties down (REQ-1874).
+_CURSOR_DEPTH = 4
+
+
+def _words(name: str) -> tuple[str, ...]:
+    """A name's words, lower case, whether it is written snake_case or camelCase."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    return tuple(w for w in spaced.lower().split("_") if w)
+
+
+def _cursor_words(param: str) -> tuple[str, ...]:
+    """The words of what a cursor parameter carries: its own, less a leading ``start``, which
+    says where a page starts rather than what (Notion's ``start_cursor`` carries a cursor)."""
+    words = _words(param)
+    return words[1:] if len(words) > 1 and words[0] == "start" else words
+
+
+def _is_value(prop: dict) -> bool:
+    """Whether a property holds a value a parameter can carry, not an object or a list."""
+    kinds = prop.get("type")
+    kinds = set(kinds) if isinstance(kinds, list) else {kinds}
+    return not (kinds & {"object", "array"} or "properties" in prop)
+
+
+def _named_next(
+    properties: dict, names: list[str], skip: str | None, path: tuple[str, ...] = ()
+) -> list[tuple[str, str]]:
+    """Every (parameter, dotted path) where the answer names the next value of a parameter
+    ``x``: a value property ``next_x`` or ``nextX`` at any depth (``pagination.next_page_token``,
+    ``pagination.nextCursor``), or ``x`` itself inside an object named ``next``
+    (``paging.next.after``). ``skip`` is the rows, which are not searched."""
+    found: list[tuple[str, str]] = []
+    for name, prop in properties.items():
+        if name == skip or not isinstance(prop, dict):
+            continue
+        here = (*path, name)
+        if _is_value(prop):
+            words = _words(name)
+            in_next = bool(path) and _words(path[-1]) == ("next",)
+            for param in names:
+                base = _cursor_words(param)
+                if words == ("next", *base) or (in_next and words == base):
+                    found.append((param, ".".join(here)))
+        elif "properties" in prop:
+            found += _named_next(prop["properties"], names, None, here)
+    return found
+
+
+def _answered_cursors(
     operation: SchemaPath, query_params: list[dict], rows_field: str | None
-) -> tuple[str, str] | None:
-    """(the query parameter the answer carries the next value of, where in the answer it is):
-    ``x`` where the success response declares a ``next_x`` property; else (REQ-2265) a text
-    parameter ``x`` the answer holds as text, beside its rows (``scrollId``) or in an object
-    property of its own (``paging.after``), the dotted path to it naming where. A parameter
-    that pages backwards, sizes or numbers a page, or starts it at an offset is not one."""
+) -> list[tuple[str, str]]:
+    """Each (query parameter the answer carries the next value of, where in the answer it is):
+    ``x`` where the success response names its next value (:func:`_named_next`), at any depth
+    and in snake_case or camelCase, the dotted path naming where (REQ-1874); else (REQ-2265) a
+    text parameter ``x`` the answer holds as text, beside its rows (``scrollId``) or in an
+    object property of its own (``paging.after``). A parameter that pages backwards, sizes or
+    numbers a page, or starts it at an offset is not one of the latter. More than one where the
+    answer names the next value in more than one place; none where it holds no cursor."""
     response = _success_response(operation)
     answer = None if response is None else _json_schema(response)
     if answer is None:
-        return None
+        return []
     names = [p["name"] for p in query_params]
-    named = next((n for n in names if _property(answer, f"next_{n}") is not None), None)
-    if named is not None:
-        return named, f"next_{named}"
+    named = _named_next(_schema(answer, _CURSOR_DEPTH).get("properties") or {}, names, rows_field)
+    if named:
+        return named
     excluded = _BACKWARD_NAMES.union(_SIZE_NAMES, _PAGE_NAMES, _OFFSET_NAMES)
     tokens = [
         p["name"] for p in query_params if p["type"] == "string" and p["name"] not in excluded
@@ -468,14 +522,14 @@ def _answered_cursor(
     properties = _schema(answer, 2).get("properties") or {}
     for name in tokens:
         if properties.get(name, {}).get("type") == "string":
-            return name, name
+            return [(name, name)]
     for name in tokens:
         for holder, prop in properties.items():
             if holder == rows_field or prop.get("type") not in ("object", None):
                 continue
             if (prop.get("properties") or {}).get(name, {}).get("type") == "string":
-                return name, f"{holder}.{name}"
-    return None
+                return [(name, f"{holder}.{name}")]
+    return []
 
 
 def propose_paging(
@@ -491,10 +545,23 @@ def propose_paging(
     parameter, an offset with a size parameter, or a ``Link`` response header. Only a list is
     paged. A cursor the answer carries is proposed where the spec names it: a parameter ``x``
     beside a ``next_x`` property of the answer, or one the answer holds itself or in an object
-    property (:func:`_answered_cursor`), with the size parameter where it declares one."""
+    property (:func:`_answered_cursors`), with the size parameter where it declares one. Where
+    the answer names the next page's cursor in more than one place, no paging is suggested and
+    the places are logged: which one the remote fills is not in the spec (REQ-1874)."""
     if not is_list:
         return None
     declared: dict = {} if rows_field is None else {"rows_field": rows_field}
+    cursors = _answered_cursors(operation, query_params, rows_field)
+    if len(cursors) > 1:
+        log.warning(
+            "%s %s: no paging suggested: the answer names the next page's cursor in %d places "
+            "(%s), and the spec does not say which one the remote fills",
+            str(operation.parts[-1]).upper(),
+            operation.parts[-2],
+            len(cursors),
+            ", ".join(f"{param} <- {path}" for param, path in cursors),
+        )
+        return PaginationConfig.model_validate(declared) if declared else None
     names = [p["name"] for p in query_params]
     size = next((n for n in _SIZE_NAMES if n in names), None)
     page = next((n for n in _PAGE_NAMES if n in names), None)
@@ -507,11 +574,12 @@ def propose_paging(
             "cursor_field": _ROW_ID,
             "page_size_param": size,
         }
-    elif (cursor := _answered_cursor(operation, query_params, rows_field)) is not None:
+    elif cursors:
+        ((cursor_param, cursor_field),) = cursors
         declared |= {
             "type": PaginationType.cursor,
-            "cursor_param": cursor[0],
-            "cursor_field": cursor[1],
+            "cursor_param": cursor_param,
+            "cursor_field": cursor_field,
         }
         if size is not None:
             declared["page_size_param"] = size

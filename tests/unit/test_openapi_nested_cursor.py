@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 82a345f6-921a-4768-820f-15d9b7e2c2ae
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -162,7 +163,7 @@ def test_two_places_naming_the_next_cursor_are_not_guessed_between(caplog):
     with caplog.at_level(logging.WARNING, logger="provisa.openapi.mapper"):
         assert _offered(answer, {"cursor": "string", "limit": "integer"}) == {"rows_field": "data"}
     (record,) = caplog.records
-    assert "listThings" in record.getMessage()
+    assert "GET /things" in record.getMessage()
     assert "next_cursor" in record.getMessage()
     assert "response_metadata.next_cursor" in record.getMessage()
 
