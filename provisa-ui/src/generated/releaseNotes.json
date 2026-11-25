@@ -1,505 +1,935 @@
 {
-  "version": "v0.1.0-alpha.510",
-  "previous": "v0.1.0-alpha.509",
-  "date": "2026-11-19",
-  "features": [],
+  "version": "v0.1.0-alpha.511",
+  "previous": "v0.1.0-alpha.510",
+  "date": "2026-11-22",
+  "features": [
+    {
+      "category": "Admin UI",
+      "entries": [
+        {
+          "text": "Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list in place by an icon in the page's toolbar, filled while on, the way the Ontology view is; it is no longer a modal.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-11: opening a detail view puts it in the address, so every detail view has a precise link (not a search) and Back returns to it.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition: how the measure or derived value is computed, in business language (for example net revenue is gross order value less refunds and discounts, on the order date, in the order's currency).",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Business Glossary & Ontology",
+      "entries": [
+        {
+          "text": "A third generated system schema, ontology, holds the model's meaning, as meta holds its structure.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Column-Level Lineage Graph",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Command Line",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Control Plane",
+      "entries": [
+        {
+          "text": "The control plane is PostgreSQL only, in every tier and every test: embedded PostgreSQL (pgserver) where no control-plane URL is given -- demo, native, desktop, an ephemeral profile (in a throwaway data directory removed when the process ends), the UI e2e lanes and the unit tests -- and an external PostgreSQL server otherwise.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Cypher Query Frontend (Phase AU)",
+      "entries": [
+        {
+          "text": "Cypher's temporal values are read as openCypher defines them.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Data Catalog Integration",
+      "entries": [
+        {
+          "text": "The data product panel shows the product's owner a different subset from other readers.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-11.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Demo Provisioning",
+      "entries": [
+        {
+          "text": "Each published named demo is its own bundle, built and published on its own and never part of a release or the app image.",
+          "changes": [
+            "logs, code directories and download_from follow held() for the own-disk rule"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Deployment",
+      "entries": [
+        {
+          "text": "A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Environments",
+      "entries": [
+        {
+          "text": "A credential addresses exactly one environment.",
+          "changes": []
+        },
+        {
+          "text": "A merge can be scoped to part of a model.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Glossary Admin",
+      "entries": [
+        {
+          "text": "[SUPERSEDED by 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Hasura Migration",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "MCP & AI Integration",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-13: an LLM client is sent every MCP tool's definition on every model call, and the server's full list is large (88 tools, about 15,000 tokens, measured that day).",
+          "changes": [
+            "List only the tools a session's roles may use; each visible command is its own typed tool",
+            "A sip session lists no command tools; they are listed in full mode only"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Protocol Conformance",
+      "entries": [
+        {
+          "text": "Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's FlightSql.proto), so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built on them) connect and query it.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Registration & Governance",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-10.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-17 ('def need to have hyperlinks for cypher/sql/sparql/graphql - to see a relationship... similar to ones we have in the data products screens'; 'we could create queries for relationships across all surfaces as well').",
+          "changes": [
+            "A relationship links to itself on every query surface",
+            "A table's Identity section links it on every query surface",
+            "A relationship's gRPC link reads it through its own field"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "SPARQL Query Frontend",
+      "entries": [
+        {
+          "text": "SPARQL is a graph query language served over the semantic model, a peer of Cypher.",
+          "changes": [
+            "Drops and Show children stay in the selected domains, one shared path finder",
+            "A SPARQL drop's scope in the vocabulary's labels; the SPARQL view reads the graph schema"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Security",
+      "entries": [
+        {
+          "text": "[SUPERSEDED by 2026-11-10 -- the default applies only to a column registered with no grant named.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Source Connectors",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        },
+        {
+          "text": "Maintainer 2026-11-15: 'add a requirement to code resolvers to use a @change decorator, that is only called when the code resolver is landed'.",
+          "changes": [
+            "A code resolver's incremental setting on its form and on the landed view"
+          ]
+        }
+      ]
+    },
+    {
+      "category": "Table Registration",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-09.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Workflow",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal); Provisa feeds them and stays the system of record for what was decided.",
+          "changes": []
+        }
+      ]
+    }
+  ],
   "changes": [
+    {
+      "scope": "actions",
+      "entries": [
+        "Read an action's nested relationship fields through the governed pipeline"
+      ]
+    },
     {
       "scope": "admin",
       "entries": [
-        "A bulk delete reaches each single delete when GraphQL runs it"
+        "Tables listing hands timeTravel the view's schema"
+      ]
+    },
+    {
+      "scope": "ai",
+      "entries": [
+        "On a server of many no AI value comes from the server's environment"
       ]
     },
     {
       "scope": "api",
       "entries": [
-        "A client that disconnects cancels its statement on the engine"
+        "Binding refusals answer under their code on the Cypher and SPARQL surfaces",
+        "/debug/logs is the platform plane's",
+        "An API table the operator puts on its replica is read from it, never fetched"
       ]
     },
     {
-      "scope": "bolt",
+      "scope": "api_source",
       "entries": [
-        "An internal fault in RUN is UnknownError, not SyntaxError",
-        "Answer each deliberate RUN refusal as Cypher over HTTP does"
+        "Hold OAuth tokens per organization and per resolved credential"
       ]
     },
     {
-      "scope": "build",
+      "scope": "auth",
       "entries": [
-        "Pyodide is pinned by sha256 and downloaded once per pin, never inside a build"
+        "A personal access token's scopes are the roles it may use",
+        "A signed-in register needs user_management; only a verified email is matched",
+        "A signed-in register that names no org is refused, not a 500",
+        "Wire sign-ins act only as held roles; cross-org judged from assignments",
+        "HTTP and Bolt act only as held roles; Bolt judges cross-org from assignments",
+        "Wire sign-ins judge cross_org with the deployment org bound"
+      ]
+    },
+    {
+      "scope": "bench",
+      "entries": [
+        "Read REST field names from the anyOf fields form (R511-S4A)"
+      ]
+    },
+    {
+      "scope": "billing-ui",
+      "entries": [
+        "Stripe embedded checkout replaces the Lemon Squeezy overlay"
+      ]
+    },
+    {
+      "scope": "binding",
+      "entries": [
+        "A text given a vector query is stamped as the text; a failed statement command is named",
+        "A join over a relationship that feeds a search is the feed's; sonnets links its echoes in one statement"
+      ]
+    },
+    {
+      "scope": "catalog-import",
+      "entries": [
+        "Glossary reading on its own inbound port; MetadataExport stays outbound-only"
       ]
     },
     {
       "scope": "clickhouse",
       "entries": [
-        "A decided CASE keeps an aggregate it would drop; a NULL array is described by its cast"
+        "A time of day held as Int64 microseconds on servers without Time64",
+        "No raised AST bounds; the range fold no longer needs them"
+      ]
+    },
+    {
+      "scope": "cloud",
+      "entries": [
+        "first-login ends the Firebase session; seeded public sandbox invite; only reset wipes"
+      ]
+    },
+    {
+      "scope": "codesource",
+      "entries": [
+        "What a code resolver must be, and the call that reads its matches",
+        "@change keeps a landed code resolver's result fresh by cursor",
+        "Count a brokered view's rows in mat_store; save a set's change under its bridge's schema; gate codeResolverIncremental"
       ]
     },
     {
       "scope": "commands",
       "entries": [
-        "Native SQL source_query command on a relational source"
+        "A source operation saved from the form is never declared VOID"
       ]
     },
     {
       "scope": "compiler",
       "entries": [
-        "A joined list row that is absent is no element, not one of nulls (J1218)",
-        "Guard only a nested list, not a to-one; recapture GraphQL goldens (J1218)"
+        "A statement binds a table's parameters in one step",
+        "A join's keys are read from the statement; IN (SELECT) binds; a real-column filter reads its column",
+        "end-to-end proofs of parameter binding; refusals carry their code on pgwire and REST",
+        "A view is expanded only where it is read as a table",
+        "Relate a subquery to a marked view along its relationship",
+        "Key the physical table map by source and table"
       ]
     },
     {
       "scope": "conformance",
       "entries": [
-        "Bind before Prepare matches DuckDB 2.0's wording of a missing value",
-        "An internal type's own functions are by design in the function report"
+        "Call every overload with edge values; served within a stated bound",
+        "Read a call's grid row as the translator reads it",
+        "An edge call reads at most 1001 rows",
+        "The polyfill check judges a rewrite function's refusal instead of crashing",
+        "The instance's PostgreSQL password is no name a measure reads",
+        "The TCK session user is assigned tck_empty, the role its Bolt sessions act as",
+        "The pgwire suite reads the validator's V007 by the function measure's rule",
+        "Report a column call skipped by design by its group",
+        "Psycopg date overflow tests pass since the encoder writes PostgreSQL's whole date range"
       ]
     },
     {
-      "scope": "core",
+      "scope": "conformance-tests",
       "entries": [
-        "Background work submitted while shutdown runs is refused, never started on a fresh pool"
+        "Import by_design as the one sibling module, never re-executed"
       ]
     },
     {
-      "scope": "data-products",
+      "scope": "cypher",
       "entries": [
-        "Gate bid and decision routes, one commit per product, hook secret as entered"
+        "A join onto a table's parameter makes it no key of the table's node",
+        "A parameter's property binds it; a relationship joined on one is not written",
+        "The first translation in a process does a later one's work",
+        "A junction its own registered relationships join keeps its Cypher node; a junction suggestion names its junction"
+      ]
+    },
+    {
+      "scope": "ddn",
+      "entries": [
+        "Read only files whose real path is inside the project"
+      ]
+    },
+    {
+      "scope": "demo",
+      "entries": [
+        "Trade affirmation named demo",
+        "Affirmation price break seeded above the matcher's tolerance",
+        "Affirmation views join only along declared relationships",
+        "Affirmation SSI relationships get their own GraphQL fields",
+        "Affirmation legs view stored, so it feeds the matcher",
+        "Affirmation card on the site in BI across sources; catalog search model",
+        "Sonnets links its echoes in three statements under the parameter call cap"
+      ]
+    },
+    {
+      "scope": "deploy",
+      "entries": [
+        "Commerce preflight and first-launch forward the Stripe settings",
+        "Assert billing settings after the compose that forwards them",
+        "Read the env dump whole so no check fails on a broken pipe"
       ]
     },
     {
       "scope": "discovery",
       "entries": [
-        "Ask before running, run only the kinds asked, use the assigned model's own key, say what each kind found",
-        "A model answer cut off at its token limit keeps its complete suggestions and says so; accept or reject every suggestion in one request"
+        "The count before Run answers for tables read only with an argument",
+        "A table that requires a parameter is known from its registration and never read",
+        "Mark suggestions found on reduced information; catalogue the dialog's refusals",
+        "The count before Run reads no table and is an upper bound",
+        "A column is grouped by the IR type its source's spelling names",
+        "Keep and show what a run leaves out; ask Jev with evidence; state the confidence rubric",
+        "A left-out proposal is accepted once its run has ended",
+        "One table of a run's proposals with Apply; a new run starts from the last one's fields",
+        "Run proposals declared in the SQL schema and the inventory; key tests pass the run's tables",
+        "The model's score decides; Jev's is shown beside it; MCP discovery is a run",
+        "Restore a run over everything as everything; name tables registered since outside it; wider result dialog",
+        "Last run's fields only on New run; refuse a set of no table; name tables left out",
+        "The relationships route refuses a field it does not read",
+        "Each proposed pair measured on its data decides its cardinality and score; the threshold is the person's own",
+        "Accept a many-to-many pair as a shared dimension",
+        "Measure only the band, after Jev; key value overlap choice with cutoff and sample size",
+        "A shared dimension's edges take unique names too",
+        "One collapsible run block, Run in background, one page line; send no untyped name",
+        "The run block's own line does not repeat its first line",
+        "Date and timestamp columns are in no compared type group",
+        "The key value overlap band runs from the cutoff up to the run's threshold",
+        "Key value overlap is one engine join count per pair on limited non-null rows",
+        "A run lists every pair it found but existing and not-again pairs",
+        "Results open with a kept Score >= 10% filter; Accept acts on shown rows",
+        "Every threshold and sample size a run uses is a run setting, recorded and kept per person",
+        "The measure join runs governed without the approved-relationship check; an unreadable pair is left unmeasured",
+        "One per-person settings store holds the run settings and the Score filter",
+        "Relationship discovery reads and proposes only within the selected domains"
       ]
     },
     {
-      "scope": "docker",
+      "scope": "duckdb",
       "entries": [
-        "Copy provisa-graph into the graph-render stage, drop the removed erd layout file (#340)",
-        "Give pip a 120 s read timeout and 10 retries in the image build",
-        "Give Dockerfile.dev's wheel stage the same pip timeout and retries"
+        "Factorial past 32177 raises 22003 at once, as numeric_fac does",
+        "polygon(n, circle), bit(.., n,..), date_mii of infinity and factorial past 4300 digits answer or raise as PostgreSQL does",
+        "Bpchar past MaxAllocSize raises palloc's XX000, and a NULL typmod or explicit answers NULL",
+        "A NULL path step into an object is 22004, as in PostgreSQL"
       ]
     },
     {
-      "scope": "dq",
+      "scope": "engine",
       "entries": [
-        "A product's checks name the failures of their latest scan",
-        "Keep a regulation check as a Soda failed_rows rule citing its section",
-        "A kept regulation check's condition reads the named column alone",
-        "The regulation-check route asks pgwire for a sign-in's validator, not its own copy"
+        "The default Trino heap fits its 7g container"
       ]
     },
     {
-      "scope": "draft",
+      "scope": "entitlements",
       "entries": [
-        "An org_admin's SQL statement naming a draft reads it through the preview path",
-        "An org_admin role's GraphQL and REST surface offers drafts, read through the preview path",
-        "The ways to reach a draft are told to a role holding org_admin, marked as a draft's",
-        "A draft is served by the right to register tables in its domain, not by a role id",
-        "The Access section answers a draft to its preview's right; a catalog publish omits drafts",
-        "An ordinary statement pays nothing for drafts; test stand-ins carry the build's fields"
+        "An email names a known person only by an address verified at sign-in",
+        "Valid time on the entitlement store",
+        "Owner capabilities and their kinds",
+        "The expiry run acts on expiries and sends them through the outbound hook",
+        "Stored effective rows per person, role and capability",
+        "A model build recomputes every holder's effective rows, batched per org",
+        "Role grants on every path recompute the person's effective rows",
+        "A removed account leaves no effective rows under its name"
       ]
     },
     {
-      "scope": "export",
+      "scope": "environments",
       "entries": [
-        "Snowflake TERM tag in the landing reconcile; unset stale Unity Catalog tags"
-      ]
-    },
-    {
-      "scope": "fakes",
-      "entries": [
-        "The Test data dialog offers by column family, Stable only when it can be, and names the saved text"
+        "Every environment route reads the caller's right in the path's org",
+        "The owner path needs current membership and the path's org",
+        "The env CLI names its org; org-path routes are checked to bind the path's org",
+        "Stage in the switcher and on the environments page, translated",
+        "Stage picker fits the row at 1280"
       ]
     },
     {
       "scope": "federation",
       "entries": [
-        "Never route a source to a connector whose extension has no build for the running DuckDB",
-        "A closed native engine builds no runtime, and its close ends every open result"
+        "The native attach carries download_from, which the sandbox check reads"
+      ]
+    },
+    {
+      "scope": "functions",
+      "entries": [
+        "A source operation that requires a parameter is a function read as its table",
+        "A function's catalog rows are scoped to the table it returns; a spec is read once for its reads too",
+        "A derived table is in service with its function; a relationship on a parameter is named; update reads the stored row only for a reading operation",
+        "A derived table's parameters are named as the function's arguments, unaliased"
       ]
     },
     {
       "scope": "glossary",
       "entries": [
-        "Metric term picker, dataset metrics panel, locales, meta golden",
-        "The term page says Grounded in columns"
+        "A person's term delete retires it",
+        "A cut-off relationship suggestion keeps its complete relationships and asks again for the rest",
+        "The ontology's AI assistants work only within the selected domains",
+        "Definition assistant reads bound columns' descriptions, types and samples",
+        "Definition assistant's own sample count; an unreadable table gives no samples and is named",
+        "Term finding and table search work only within the selected domains",
+        "List a catalog's business glossary; catalog terms become draft terms or merge",
+        "No retirement history is an empty answer in the editor"
       ]
     },
     {
-      "scope": "gql",
+      "scope": "golden",
       "entries": [
-        "A free node never reads a parameterized table"
+        "Read demo views by schema.table key and the reader's names; bitemporal test refs the view's own catalog"
       ]
     },
     {
       "scope": "graph",
       "entries": [
-        "Term lane level with its columns, blocks of siblings where their lines are flattest; tests and SPEC to the new rule",
-        "A drop's path stays in the selected domains and out of system domains",
-        "The paths between two nodes never walk a link from a constant",
-        "Label pills read in the light theme; text colour by contrast",
-        "Saved frames read back join the page's frames, never replace them"
+        "Cypher graph labels follow the theme, and restyle on a theme switch",
+        "Cypher graph colours from provisa-graph's graphTokens",
+        "A cluster edge is laid out twice its label's width, so no two labels overlap"
       ]
     },
     {
-      "scope": "graph-ui",
+      "scope": "graph-render",
       "entries": [
-        "Split the Cypher explorer node list into Nodes and Parameterized nodes"
+        "The image's renderer resolves the theme and Mantine that graphTokens import"
       ]
     },
     {
-      "scope": "graph3d",
+      "scope": "graphql_remote",
       "entries": [
-        "Read a term's snippet a hop at a time, each term once",
-        "Open a term's snippet as every hop it read, in one query",
-        "Pin each line name to its own line, hide colliding names",
-        "A line name on a patch of the canvas, readable over its own line",
-        "The Product map opens on products, their tables and product links",
-        "A term's graph expands a table to its other columns, read on asking",
-        "A selected term lights its associations in 2D (J1240)",
-        "Open as query offers the search now shown, once its hop reads are in"
+        "A relationship is offered only to a table mapped in full",
+        "A stored relationship takes the nested column it rides on",
+        "A column in use refuses the whole registration"
       ]
     },
     {
-      "scope": "graphql",
+      "scope": "grpc",
       "entries": [
-        "Where takes _not; the Ontology View's root excludes with it"
+        "read_mask relation paths read each row's relationships nested",
+        "A field per relationship on the row message, named by its GraphQL relationship"
+      ]
+    },
+    {
+      "scope": "http",
+      "entries": [
+        "Name the kind and address of an httpx failure, never an empty reason"
       ]
     },
     {
       "scope": "i18n",
       "entries": [
-        "The translation memory records only the test-data strings translated here",
-        "Translate maintenanceTab stopTitle and stopConsequence in every locale",
-        "Keep the TM sidecars in their order, add only the two tag keys"
+        "Billing checkout strings and error codes in every locale",
+        "The retired discovery.endpoint_has_no_key leaves every translated catalog"
       ]
     },
     {
-      "scope": "installer",
+      "scope": "import",
       "entries": [
-        "install_systemd uses an env_file it defines, renders the unit atomically"
+        "Confine Hasura !include to the upload; permission values as sqlglot literals",
+        "An imported role passes the role forms' checks and carries only rights its importer holds"
       ]
     },
     {
-      "scope": "ir",
+      "scope": "jsonapi",
       "entries": [
-        "Typed arrays are an IR type"
+        "Row reads need no primary key; dotted includes and fields per included type",
+        "A one-to-many include never collapses its resources",
+        "A column named id is a real id; GET /<type>/<id> only for a real identifier"
       ]
     },
     {
-      "scope": "lanes",
+      "scope": "llm",
       "entries": [
-        "Fix the column lane, align tables and products to their columns"
+        "A model has an input and an output limit",
+        "Stream a request the Anthropic SDK refuses to send whole; say a failed request in the product's words",
+        "Read an endpoint's vault-held key where the vault is bound"
       ]
     },
     {
       "scope": "mcp",
       "entries": [
-        "list_fake_kinds names no column type when it reads the fake catalog",
-        "describe_table names how the caller reads each column",
-        "Sip mode lists a session its asking tools and adds groups on request"
+        "The MCP chat works only within the selected domains",
+        "Every MCP chat tool stays within the selected domains"
       ]
     },
     {
       "scope": "meta",
       "entries": [
-        "The meta relationships table lists no retired relationship"
+        "stand-in contexts carry parameters; no requirement id in the meta view SQL",
+        "The registered tables view's SQL names no requirement"
       ]
     },
     {
-      "scope": "meta,background",
+      "scope": "meta-views",
       "entries": [
-        "A retired domain is not in the meta domains table; cancel_background cancels queued work first"
-      ]
-    },
-    {
-      "scope": "metadata-export",
-      "entries": [
-        "Send ODCS customProperties to OpenMetadata in the shapes its model reads"
+        "No requirement ids inside served view SQL"
       ]
     },
     {
       "scope": "model",
       "entries": [
-        "A draft's row of registered_tables is read by a role holding org_admin",
-        "Retired column listed again is restored; retired objects declare no key and leave the ERD",
-        "Retired objects are not served; retired names refused; restore per kind",
-        "A relationship that joins a retired column is not traversable",
-        "Retirement aftermath on the release branch",
-        "A domain that still holds a retired table is kept",
-        "A retired table holds its source too; refusals name it as retired"
+        "deploy/undo and metric removal retire, never delete",
+        "Withdrawn tests, catalog views and meta rows leave withdrawn out",
+        "Withdrawn source's tables take no write ops; kept builds listed; fakes carry the withdrawn column",
+        "A withdrawn table's builds are listed to who may preview it",
+        "A relationship never hides a column; a clash is refused by name"
       ]
     },
     {
-      "scope": "model-history",
+      "scope": "model-store",
       "entries": [
-        "Name each changed object by its model URI, never a serial id",
-        "Keep the requirement id out of a refusal; the relationship fake is a whole row"
+        "The store model leaves out built-in relationships"
       ]
     },
     {
-      "scope": "model-reload",
+      "scope": "money",
       "entries": [
-        "Reconcile reads only the added and changed sources"
+        "Cents back to dollars by a decimal, not a Float64"
+      ]
+    },
+    {
+      "scope": "mv",
+      "entries": [
+        "A view over a command call reads the tables the call is given",
+        "The preflight purity check refuses frame, generator and traceback attributes",
+        "A held organization's Python preflight runs in a confined process of its own",
+        "A held organization's preflight runs as a call to its warm sandboxed worker",
+        "The preflight worker reads the environment its interpreter starts from",
+        "A transform view's stored rows are read under the reader's row rules and masks",
+        "A transform view's kept inputs come from the stored rule rows, building no role",
+        "Stored code-command views read under the reader's rules; a rule change rebuilds, refused by name until it publishes",
+        "A code-command view's rows are filtered by the reader's rule on each input through its relationship",
+        "A read walks a snapshot of the MV registry; a server fault on /data/sql is a named 500"
+      ]
+    },
+    {
+      "scope": "naming",
+      "entries": [
+        "Pin customer360 incident-to-company field; disambiguation store holds naming_rules",
+        "Dictionary first; rule form only for a word the dictionary does not know",
+        "general-English noun dictionary (ESDB/SCOWLv2) first, lemminflect rules only for unlisted words",
+        "An everyday plural is its own singular; a function word read as another noun is not inflected",
+        "A tie between dictionary plurals is broken by general-English frequency",
+        "A zero plural wins only in the dictionary's (fish | fishes*) pattern"
       ]
     },
     {
       "scope": "nl",
       "entries": [
-        "gRPC preview row read unpacks the helper's (cq, result) pair"
+        "Derived gRPC, JSON:API and REST panels read relationships nested",
+        "natural-language query works only within the selected domains"
       ]
     },
     {
       "scope": "offers",
       "entries": [
-        "bid.granted stores None as SQL NULL; dbt product tests build the offer tables",
-        "A synthetic offer is served through a role-wide fake mask",
-        "A synthetic acceptance refused for a column with no fake lists the offer for review"
+        "A declared sample is checked by the build after the load"
       ]
     },
     {
-      "scope": "ontology",
+      "scope": "ops",
       "entries": [
-        "Draft explanation moves into the Draft badge tip"
+        "Publish ops.entitlements and ops.entitlement_expiries"
       ]
     },
     {
-      "scope": "ontology-import",
+      "scope": "orgs",
       "entries": [
-        "import, review and apply an ontology from the Ontology page; a term shows its IRI"
+        "Deleting an org and granting org_admin need org_admin"
+      ]
+    },
+    {
+      "scope": "packaging",
+      "entries": [
+        "AppImage installs Provisa only from its bundled wheelhouse, never PyPI (R511-S6D)"
+      ]
+    },
+    {
+      "scope": "parameters",
+      "entries": [
+        "A table's parameter limits are published in the meta views and every catalog comment",
+        "The table page states a parameterized table's limits; an unread profiler member is reported"
       ]
     },
     {
       "scope": "pgwire",
       "entries": [
-        "Describe ClickHouse's bytea, time, array and window results as PostgreSQL's types",
-        "ClickHouse Strings of bytes read as bytes; bigint[] described by the call; ordered array_agg refused by name on ClickHouse",
-        "A MERGE whose USING reads another source is read first, then merged on its target",
-        "Describe only a literal cast to interval as interval; a column cast keeps the engine type"
-      ]
-    },
-    {
-      "scope": "polly",
-      "entries": [
-        "Polly reads the MCP explorer",
-        "The /explore row says how a run_sql statement goes to /sql or /python"
+        "Carry a MERGE's BY SOURCE delete on every path; narrow a MERGE's deletes by the delete rule",
+        "An edge value is answered or raised, the connection kept",
+        "A statement's own 0A000 no longer poisons a pooled passthrough connection",
+        "A catalog function reads an oid past the type as oidin does and a constant NULL as a strict function does",
+        "A call's type is read once per typing; ClickHouse's five range calls past 30 s answer",
+        "A write to a session temp table advances the generation keying its cached reads (SEC-C2)"
       ]
     },
     {
       "scope": "polyfill",
       "entries": [
-        "A column and a page per connector dialect; array_length reads its dimension on Trino and ClickHouse; refusals name the routed dialect",
-        "array_length refused by name on array-less sources, first dimension only on Snowflake, BigQuery, Databricks, Hive and Druid; the index is one table per dialect",
-        "array_append, array_prepend and array_cat of a NULL array on ClickHouse as PostgreSQL answers; the array text pass reads every statement's tree",
-        "pg_timezone_names and timezone() of a POSIX zone as grid rows on DuckDB",
-        "Trino type operators answer as PostgreSQL or are refused by name, from the grid",
-        "Trino's engine errors of pg_catalog functions as grid rows",
-        "int8shl's exact wrap, jsonb literals and pgwire's server forms on Trino",
-        "age(xid), mxid_age, pg_char_to_encoding and the last Trino engine errors as grid rows",
-        "json_agg of a said text and unnest of a tsvector on ClickHouse refused by name",
-        "ClickHouse array_agg keeps its NULLs; current_schemas refused by name on ClickHouse",
-        "ClickHouse NULL-array fold, text dates, date_trunc and window defaults as grid rows",
-        "ClickHouse json_agg of said scalars, numeric_mod by nullIf; regression tests of run 43410717058 engine errors; polyfill docs",
-        "A NULL IS NOT NULL is false in the ClickHouse CASE fold; record orders, int8shl, window offsets, array_to_string, ts_rank seed on ClickHouse; numeric_mod kept elsewhere",
-        "A row polyfilling ClickHouse alone refuses nothing on a dialect with no grid column (array_agg, date_trunc, numeric_mod on spark)",
-        "The last engine errors of run 43450123314: jsonb casts, spg_poly_quad_compress, range_intersect_agg",
-        "ClickHouse answers bool and numeric of a jsonb value, its limits a grid Limitation",
-        "ClickHouse reads the grid before refusing a type, and compares timestamptz",
-        "ClickHouse answers max, min, isfinite, date, timestamp and date_trunc of timestamptz",
-        "ClickHouse answers date_part, extract, overlaps, timezone and precision of timestamptz",
-        "ClickHouse answers the 33 geometric measures through pg_forms_geometric",
-        "ClickHouse answers bytea's functions as its bytes, date_trunc at a zone, tstzrange's bounds and to_char of a NULL",
-        "An instant's row keeps the old form on a dialect outside the grid",
-        "ClickHouse's four holes give PostgreSQL's answer, its error outside a bound, or a refusal",
-        "ClickHouse's LIKE ESCAPE, timestamp bounds, row-computed range bounds, bytea LIKE/ILIKE and native exception text",
-        "interval_mul, interval_div and mul_d_interval on ClickHouse, PostgreSQL 17's float cascade in Float64 (J1337 tranche 2)",
-        "DuckDB keeps its own reading of an interval input not read here, refusing only what PostgreSQL refuses; function_macros reads a row named by its signature (J1337)",
-        "DuckDB refuses by name an interval input it fails on or misreads, keeping a bare number of seconds (J1337)",
-        "ClickHouse array_agg of arrays writes no NULL of an array; PostgreSQL's errors of its arrays, the edge of no rows raised by name"
+        "ClickHouse answers 12 overloads in DuckDB's form, verified on edge values",
+        "Carry a ClickHouse call only where the statement says every argument's type",
+        "Adapt time and interval, overlaps, int8inc_any and money's limits on ClickHouse",
+        "ClickHouse's NULL array rule names what it reads",
+        "ClickHouse answers regexp count, instr, substr, like and split; the old table keeps Trino's refusals",
+        "ClickHouse holds a bit string as its text; 39 bit overloads answered",
+        "ClickHouse's new rows keep every other dialect's old form",
+        "ClickHouse answers array containment, array_remove, array_position from a start, pg_size_pretty, pg_encoding_max_length, pg_typeof, bit of an integer and max/min of tids",
+        "read-first rows answer only calls the old table refuses; oidvectortypes stays refused on ClickHouse; a column's bit varying cast keeps ClickHouse's",
+        "ClickHouse's array containment rows are their own family; a server form's split into rows stays refused",
+        "ClickHouse's refusals name their call as name() of what has no form",
+        "ClickHouse lcm, factorial and chr at their edges; a row reads its argument once",
+        "ClickHouse in_range of numbers and float aggregates at PostgreSQL's edges",
+        "ClickHouse to_hex and its kin read a literal past its type as PostgreSQL does",
+        "ClickHouse sum of bigints exact and of floats overflowing; a kept row reads no argument",
+        "ClickHouse text by characters and character(n) literals",
+        "ClickHouse rows leave range forms' own text, char() and a form's abs as they were",
+        "ClickHouse edge wrong answers (degree trig, double literals, byte compares, dimensions, ranges)",
+        "Jsonb key existence and object keys on ClickHouse",
+        "exp, ln and tanh of a double on ClickHouse",
+        "round/trunc of a numeric to a negative or text scale on ClickHouse",
+        "ClickHouse jsonb_exists_any/all read an untyped text[] literal; jsonb_delete by index on a ClickHouse without Variant types"
       ]
     },
     {
-      "scope": "products",
+      "scope": "profiler",
       "entries": [
-        "Offer requests go through hooks; open offers are public data; sanitized profiles"
+        "The classification sample is non-null values per column",
+        "A masked or pii column shows its classification state and count",
+        "A declared profile of a table that requires a parameter is stored; a code command's score follows's mask"
       ]
     },
     {
       "scope": "provisa-graph",
       "entries": [
-        "Lanes placed from a barycentre order, spread to the tallest, boxes apart; labels sized and wrapped; readable fit; no dot grid",
-        "Readable floor across too, a lane hint that says the wheel scrolls, depth redraw pinned",
-        "A label wraps at its spaces unless a word is wider than its room",
-        "Fit control fits the whole image; control tips on one line",
-        "Draw a beside-lane line's name clear of the term boxes (J1227)",
-        "A graph with a focus opens and resets with the focus in view"
+        "Lanes draw each beside-lane name on its own run to the track"
       ]
     },
     {
-      "scope": "reload",
+      "scope": "ranges",
       "entries": [
-        "A retired source is not among the rows a schema build reads"
+        "ClickHouse reads a fold's items as ranges before the fold"
       ]
     },
     {
-      "scope": "request-thread",
+      "scope": "rebuild",
       "entries": [
-        "The client watch keeps one receive relay; shard plan holds the disconnect test"
+        "Each schema build records its phases, cause, stamps and counts",
+        "The admin pass-through hands the build no cause; its caller is read past it"
       ]
     },
     {
-      "scope": "router",
+      "scope": "redaction",
       "entries": [
-        "provisa-admin is typed and dialected by the source-state loader"
+        "An error told inside a 200 answer is redacted like a 400"
       ]
     },
     {
-      "scope": "sandboxes",
+      "scope": "relationships",
       "entries": [
-        "A template whose folder is not on this node is not served as built"
+        "A code resolver kept as a bridge view and two relationships, as one",
+        "A code resolver set carries a junction relationship for Cypher",
+        "Refuse ids with a prefix reserved for built-in relationships",
+        "Code resolver set gated, readers by the visibility rule, guard after columns",
+        "A code resolver set's panel note spaced, its retire named, its change form titled by the set",
+        "The page's suggestions are decided in the run result's table; a relationship joins on its columns",
+        "No suggested section on the page; a joined or decided pair is never suggested again",
+        "Generated relationship names never collide"
+      ]
+    },
+    {
+      "scope": "release",
+      "entries": [
+        "Bound and retry notarytool submit; a stalled upload hung the Demo DMG job 44 min",
+        "macOS Core DMG installs uv.lock's versions into the native runtime"
+      ]
+    },
+    {
+      "scope": "rest",
+      "entries": [
+        "Fields takes dot-paths through relationships and nests the related row"
+      ]
+    },
+    {
+      "scope": "roles",
+      "entries": [
+        "Org admins hold the five owner capabilities",
+        "One job per standard role"
+      ]
+    },
+    {
+      "scope": "sandbox",
+      "entries": [
+        "A template whose shape is unchanged is kept; a live landing gives up its build-queue place"
       ]
     },
     {
       "scope": "schema",
       "entries": [
-        "is_system is a column of the sources CREATE TABLE, not an ALTER",
-        "sources.is_system keeps its ADD COLUMN beside the table's others"
+        "ADD COLUMN for every column added to an existing table"
       ]
     },
     {
-      "scope": "site",
+      "scope": "secrets",
       "entries": [
-        "Sources story leads with classes and the connector tree"
+        "The platform-plane secret search skips platform-state tables"
+      ]
+    },
+    {
+      "scope": "security",
+      "entries": [
+        "Hold a source's producer command to commands.allow_host_code",
+        "Every value in the DuckDB engine's DDL is written through one quoting helper",
+        "A held organization's member neither saves nor edits an environment reference",
+        "SEC-C3b the seven failures of focused run 43877114094",
+        "A governed statement calls no function that reads or acts on its server",
+        "The redaction marker sent to a client names no rule",
+        "A held org's downloads and its demo's logs follow held() and the declared paths",
+        "Revoking org_admin needs org_admin at every door",
+        "Hold a held org's webhooks, triggers, commands, sync/export endpoints, token exchanges, registries, code hosts and source clients to public destinations",
+        "An org's redaction rules apply only to its own text, run bounded, and read no server environment",
+        "/debug/logs filters with the bounded matcher",
+        "An admin-trail entry is stored under and redacted by the org it is about",
+        "Check applied webhooks and triggers, word endpoint refusals, pin Dataplex and Qdrant",
+        "V007 serves the product's own call governance writes into a view body",
+        "A view body's mark comes only from a view the server expands",
+        "A view reference is the view only under its own schema",
+        "A catalog-qualified reference keeps the catalog it names"
+      ]
+    },
+    {
+      "scope": "setup",
+      "entries": [
+        "first-run setup refuses a configured deployment"
+      ]
+    },
+    {
+      "scope": "sources",
+      "entries": [
+        "A held org's source reads no file on the server's own disk outside its folder",
+        "Ask the held rule before the upload types' own path checks",
+        "A JDBC source's file URL is held to the own-disk rule"
       ]
     },
     {
       "scope": "sparql",
       "entries": [
-        "A table the model reads through a view is named by its registered name"
+        "Wikidata branded source preset, starter tables, class-table builder (server)"
       ]
     },
     {
-      "scope": "store",
+      "scope": "subscriptions",
       "entries": [
-        "Write a metrics view by its declaration alone"
-      ]
-    },
-    {
-      "scope": "syncing",
-      "entries": [
-        "A new entry's direction follows its type until chosen; tour says an entry can import",
-        "An entry's panel offers Duplicate, and its head actions take the head's one style"
+        "A Kafka sink and an open stream end with their owner's role; sinks capped per person",
+        "Starting a Kafka sink needs the write right; claims-mode sinks end with the sign-in"
       ]
     },
     {
       "scope": "tables",
       "entries": [
-        "Register table source picker omits __derived__ and is_system sources",
-        "Associations relationship links carry the detail param; system relationships left out"
+        "AI describe on the Register table form before registration"
       ]
     },
     {
-      "scope": "tags",
+      "scope": "temp-tables",
       "entries": [
-        "Reserve the term tag name for the grounded term",
-        "Tag definitions and assignments cite library sections",
-        "Read tags report rows as the tag admin reads assignments",
-        "Tags report reads term domains without the ontology views",
-        "Required tags, on the admin API and as missing rows in the tags report",
-        "One form for a tag assignment: reason, expiry and citations",
-        "Meta views connecting tags, library sections and objects",
-        "meta.library_documents, related to the library views both ways"
+        "UPDATE and DELETE of a temporary table read as the session's role"
+      ]
+    },
+    {
+      "scope": "textsearch",
+      "entries": [
+        "ts_lexize of a constant is a text[], even of no lexeme"
       ]
     },
     {
       "scope": "transpiler",
       "entries": [
-        "Array text and NULL arrays on Trino and ClickHouse; Trino array results as PostgreSQL arrays",
-        "ClickHouse's day of a value a call computes is Date32's, and the call keeps its bound",
-        "The interval keyword's literal read whole; interval literals on ClickHouse, Trino and DuckDB answered or refused by name; f(..)::text of an interval call answered (J1337 part 1)",
-        "array_to_tsvector raises PostgreSQL's error for a NULL or empty lexeme on the engine",
-        "A grid row walks a statement only on a dialect it writes; forms and json matrices follow what the engines now answer"
+        "A rewrite's mention walks a statement only on its own dialect",
+        "ClickHouse percentile of an array of fractions without Variant types"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "Graph marks only what a view sets; controls bottom-left, legend top-right",
-        "Graph copy says done beside its control; ERD filter test reads the graph's dim class",
-        "A junction is a diamond, the one named exception to the node shape",
-        "Stacked terms spaced at the drawn node height; SPEC names the junction diamond",
-        "A fit keeps the diagram below the legend",
-        "PanelDelete releases its panel lock with the settle, not a later effect",
-        "Data product offers in a tabbed right-hand panel; locale strings",
-        "Product panel details closed by default; in-panel offer forms guard leaving; sample view placeholder",
-        "Contracts only per offer; hand-written contract editor and save removed",
-        "Contracts only per offer, no ?contract= links; offer change kinds in words",
-        "Every list page's detail panel is in the URL",
-        "Escape in a detail panel asks before dropping unsaved changes",
-        "Derived roles and webhooks have their own deep links",
-        "Bulk delete strings in 13 locales; Tables bulk delete keeps its refusals shown",
-        "Ontology import review passes the busy-flag and panel-head guards",
-        "An expanded term graph opens on the term alone",
-        "An expanded term graph opens at the product graph's depth",
-        "Each dependent of a refused delete is its page's label, linked to its panel",
-        "A dependent's link reads at the list's size",
-        "A 2D graph being laid out says so and draws no stacked nodes",
-        "A graph's layout starts once the frame saying so is painted",
-        "View controls sit in the canvas stack in 2D and 3D",
-        "The ontology graph's Lateral edges chip is called Associations",
-        "The Associations hint sits on a span round the chip",
-        "A list page's own add button is the filled primary",
-        "Reword the Related to dialog intro and heading in plain words",
-        "A form read flows as its edit form; the term page reads through it, its state hints beside their values",
-        "One Cancel button everywhere (CancelButton)",
-        "The product panel's edit action takes the panel head's one style",
-        "The data product page is summary rows; quality is status and counts",
-        "Each test-data section lays its fields out in its own form layout",
-        "A destructive confirm is filled red, one component, Delete says Delete",
-        "A node picked in the plan diagram keeps the view; a row picked brings its node into view",
-        "+ Source opens empty; Duplicate opens the create form from a source",
-        "Duplicate and empty create for Commands, Tables and Views, Relationships, Metrics",
-        "Stop a running query in the SQL editor and the GraphQL, Cypher and SPARQL explorers",
-        "Keep the query bar's Stop off the bar's edge",
-        "Duplicate for Roles, Derived roles, RLS rules, Data Products, Terms, Triggers, Regions, Grants; _copy for SQL names; view copy name editable",
-        "Duplicate beside Edit on a term; a rule's tip names its panel title",
-        "The SQL page's running flag is cleared in a finally",
-        "Stop all services asks for confirmation first",
-        "3D graph floor Grid is off at first; the choice is remembered",
-        "Tag citations of the reference library in the tag editor, chips and Library",
-        "Tag citation links read as links; the detail spacing; render fixes",
-        "Native SQL arguments take no relation kind",
-        "Table panel edits import set, file glob and column discovery; Register one blocked table",
-        "Register sits under the row's reason; read-view guard knows the moved fields",
-        "MultiSelect option carries its own reason when it cannot be picked",
-        "The Tables field states its listing in its hint, at long width",
-        "A native SQL command's read view shows its source and its SQL",
-        "Register Table combines files into one table",
-        "The Combine section reads as one block at every width",
-        "Required switch in the tag editor and Required badge in the tag list",
-        "A graph whose ELK layout fails after it started shows the error",
-        "A change of size reads Enlarge; a row's detail reads Expand/Collapse",
-        "Register Table keeps its Tables list open while the list is asked again; a remote source is saved only once its settings are read",
-        "ELK layouts run through provisa-elk only; a failed layout is shown",
-        "Every standard role sees its pages and opens the app on one",
-        "Sandbox Create Organization signs out as Log Out does; invite button never switches role",
-        "Discovery dialog's Run and Cancel sit in the form's footer spacing"
+        "A role holding the query right opens the app on Explore",
+        "Discovery dialog on the run API: scope, count, model, progress, Stop, run suggestions",
+        "The file-source Combine switch lines up with the glob input, not its label",
+        "The discovery dialog says its count is an upper bound and names the tables not read",
+        "A created source whose tables were registered closes Your data on its read view",
+        "A created source opens in its read view when registering its tables is skipped",
+        "Clear npm audit high/critical advisories",
+        "Withdraw and put back tables and sources; withdrawn badges; Show withdrawn in the ERD views",
+        "No draft left in the table read view; a source's Tables section marks its withdrawn tables",
+        "The token list's Revoked badge reads whole",
+        "Put back's confirm is the filled primary button, as a non-destructive confirm is",
+        "Discover dialog results scroll under a pinned header; New run beside Apply",
+        "Mermaid 12 with mermaid 11's look pinned",
+        "Discover dialog takes the wide size only for a run's results",
+        "A many-to-many proposal is accepted as the shared dimension it names",
+        "A many-to-many row's note names its dimension first",
+        "Key value overlap under Semantics with cutoff and sample size; summary and admitted note",
+        "Relationship discovery heads the model's rating Confidence; no date or timestamp groups",
+        "The discover dialog sets every threshold and sample size; the count shows calls and table pairs",
+        "Discover dialog is wide only while it lists proposals",
+        "Relationship query links on every surface, each named",
+        "Wikidata in the source picker; starter and class table chooser",
+        "Wikidata class chooser groups browse and filter fields",
+        "Drop formatter churn from untouched code",
+        "A table's associated terms link to the term on the Ontology page",
+        "Every column of the discovery results has a filter",
+        "Duplicate in a row of labelled buttons is bordered and labelled",
+        "Name the tables that gave no samples after drafting definitions",
+        "Ws is a devDependency of its own, so the websocket e2e specs resolve it",
+        "Context nav labels in every locale; docs name the Context pages",
+        "Context Classification state as text; e2e for the read-only Context views",
+        "List pages reopen the detail left open",
+        "Data Products list filters by domain",
+        "Wikidata starter/class switch level with the Identity row's inputs",
+        "Tag list shows a policy badge only for a required policy"
       ]
     },
     {
-      "scope": "ui,api",
+      "scope": "vector",
       "entries": [
-        "Bulk delete on Relationships, Metrics, Sources, Roles, Domains, Data products, Tags, Scheduled tasks"
+        "Embedding keys and addresses through the resolver; none from the server's environment on a server of many",
+        "Refuse a missing embedding library at startup; hub endpoint setting; org OpenAI key and env base_url for embedding models"
+      ]
+    },
+    {
+      "scope": "views",
+      "entries": [
+        "A star over a view's code command call reads the command's declared columns",
+        "A lowered view reference is the view under its org's derived catalog"
+      ]
+    },
+    {
+      "scope": "wikidata",
+      "entries": [
+        "Live CI check, i18n for 13 locales",
+        "Keep describe-class queries within the query service's limit",
+        "Keep the written join order of starter and class tables",
+        "Count Wikidata in the sources index, site and tour"
       ]
     },
     {
       "scope": "",
       "entries": [
-        "Tables panel leaves the preview when an action changes the panel body",
-        "The SQL editor and modeling dialog hover buttons use the shared canvas controls"
+        "Release Unit failures: core_long optional, affirmation wired, explode kept by name",
+        "Full set 2 blockers A: audit stage column, step on the real control plane, ClickHouse forms matrix follows what CONF-CH4 answers",
+        "Set 3 blockers -- stale fixtures and the DuckDB attach view's download_from",
+        "Four integration blockers of R511-S4D"
       ]
     }
   ]

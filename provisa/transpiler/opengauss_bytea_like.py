@@ -15,7 +15,10 @@ which on a UTF-8 database matches the bytes as multibyte text: a value ending in
 too few bytes after it is read past its end, so the answer varies from run to run. like, notlike,
 bytealike, byteanlike and the ~~ and !~~ operators on bytea all reach it. openGauss's own rawlike
 and rawnlike match byte-wise (SB_MatchText), as PostgreSQL's bytea LIKE does, so each such call is
-written as rawlike(CAST(value AS raw), CAST(pattern AS raw)), or rawnlike for the negated forms.
+written as rawlike(hextoraw(encode(value, 'hex')), hextoraw(encode(pattern, 'hex'))), or rawnlike
+for the negated forms. openGauss has no cast from bytea to raw ("cannot cast type bytea to raw");
+hextoraw of the value's hex digits is a raw with the same bytes, an empty bytea gives an empty raw,
+and a NULL stays NULL (shown live by tests/integration/test_opengauss_bytea_like.py).
 
 openGauss keeps the postgres dialect; this step runs for the openGauss engine kind only.
 """
@@ -31,8 +34,6 @@ _BYTEA_ONLY = {"bytealike": False, "byteanlike": True}
 # The functions with a bytea overload among others, chosen by a bytea operand.
 _OVERLOADED = {"like": False, "notlike": True}
 
-_RAW = exp.DataType.build("raw", dialect="postgres", udt=True)
-
 
 def mentioned(pg_sql: str) -> bool:
     """Whether ``pg_sql`` may hold a LIKE this step rewrites: a cheap text test before a parse."""
@@ -47,10 +48,16 @@ def _is_bytea(node: exp.Expr) -> bool:
     )
 
 
+def _as_raw(node: exp.Expr) -> exp.Expr:
+    """openGauss's raw with the bytes of bytea ``node``: hextoraw(encode(node, 'hex'))."""
+    hex_digits = exp.Anonymous(this="encode", expressions=[node.copy(), exp.Literal.string("hex")])
+    return exp.Anonymous(this="hextoraw", expressions=[hex_digits])
+
+
 def _raw_match(value: exp.Expr, pattern: exp.Expr, negated: bool) -> exp.Expr:
     return exp.Anonymous(
         this="rawnlike" if negated else "rawlike",
-        expressions=[exp.cast(value.copy(), _RAW.copy()), exp.cast(pattern.copy(), _RAW.copy())],
+        expressions=[_as_raw(value), _as_raw(pattern)],
     )
 
 
