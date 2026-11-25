@@ -120,6 +120,14 @@ class _Cursor:
     def fetchall(self):
         return self._rows
 
+    def fetchall_arrow(self):
+        # databricks-sql-connector's Arrow read: the Databricks driver takes its result this way
+        # (REQ-2194).
+        import pyarrow as pa
+
+        names = [d[0] for d in self.description]
+        return pa.table({n: [r[i] for r in self._rows] for i, n in enumerate(names)})
+
     def cancel(self) -> None:
         self._conn._cancelled()
 

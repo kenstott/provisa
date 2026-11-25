@@ -266,7 +266,12 @@ def test_sqlalchemy_run_cancels_via_the_psycopg2_connection() -> None:
     proxied = type(
         "_Proxied",
         (),
-        {"cursor": lambda self: _Cur(), "commit": lambda self: None},
+        {
+            "cursor": lambda self: _Cur(),
+            "commit": lambda self: None,
+            # run() rolls the held connection back after a failed statement (REQ-1912).
+            "rollback": lambda self: None,
+        },
     )()
     proxied.dbapi_connection = _fake_dbapi_conn("psycopg2.extensions", b)  # type: ignore[attr-defined]
     rt = SqlAlchemyFederationRuntime.__new__(SqlAlchemyFederationRuntime)
@@ -372,7 +377,12 @@ def test_sqlalchemy_mysql_kills_the_query_thread_on_a_side_connection(module) ->
     proxied = type(
         "_Proxied",
         (),
-        {"cursor": lambda self: dbapi.cursor(), "commit": lambda self: None},
+        {
+            "cursor": lambda self: dbapi.cursor(),
+            "commit": lambda self: None,
+            # run() rolls the held connection back after a failed statement (REQ-1912).
+            "rollback": lambda self: None,
+        },
     )()
     proxied.dbapi_connection = dbapi  # type: ignore[attr-defined]
     rt = SqlAlchemyFederationRuntime.__new__(SqlAlchemyFederationRuntime)

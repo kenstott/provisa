@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from provisa.executor.drivers.arrow_result import source_arrow_result
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
 
@@ -31,6 +32,15 @@ def connector_error() -> type[Exception]:  # REQ-2230
     from snowflake.connector.errors import Error
 
     return Error
+
+
+def _json_format_result(cur: Any) -> QueryResult:  # noqa: ANN401 — a Snowflake cursor
+    """A result Snowflake sends in its JSON format, not Arrow (REQ-2194): a DDL's status row, a
+    SHOW or DESCRIBE listing. The connector has no Arrow interface for it (``fetch_arrow_all``
+    raises ``NotSupportedError``), so its rows are the result. The connector records the format on
+    the cursor and exposes nothing public for it (``SnowflakeFederationRuntime`` reads the same)."""
+    names = [d[0] for d in cur.description]
+    return QueryResult(rows=[tuple(r) for r in cur.fetchall()], column_names=names)
 
 
 class SnowflakeDriver(DirectDriver):  # REQ-988
@@ -66,6 +76,9 @@ class SnowflakeDriver(DirectDriver):  # REQ-988
                 schema=self._extra.get("schema"),
                 warehouse=self._extra.get("warehouse"),
                 role=self._extra.get("role"),
+                # REQ-2194: a NUMBER with a scale arrives in the Arrow table as decimal128, the
+                # exact value its row gave as a Decimal, never as float64.
+                arrow_number_to_decimal=True,
             )
 
         self._conn = await asyncio.to_thread(_open)
@@ -75,9 +88,11 @@ class SnowflakeDriver(DirectDriver):  # REQ-988
             cur = self._conn.cursor()
             try:
                 cur.execute(sql, params or None)
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = cur.fetchall() if cur.description else []
-                return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
+                if not cur.description:
+                    return QueryResult(rows=[], column_names=[])
+                if cur._query_result_format != "arrow":  # pyright: ignore[reportPrivateUsage]
+                    return _json_format_result(cur)
+                return source_arrow_result(cur.fetch_arrow_all(force_return_table=True))
             finally:
                 cur.close()
 
