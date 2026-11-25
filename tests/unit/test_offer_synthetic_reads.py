@@ -101,9 +101,7 @@ async def _model(control_plane, *, synthetic_role: str | None) -> None:
                     )
             await product_repo.upsert(
                 conn,
-                DataProduct(
-                    id="c360", domain_id="sales", name="C360", owner_role="owner", created_by="o1"
-                ),
+                DataProduct(id="c360", domain_id="sales", name="C360", created_by="o1"),
             )
             await conn.execute_core(
                 insert(data_product_tables).values(product_id="c360", table_id=1)

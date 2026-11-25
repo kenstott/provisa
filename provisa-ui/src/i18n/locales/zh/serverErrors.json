@@ -560,7 +560,6 @@
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
       "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑",
-      "table_has_dependents": "表 '{{name}}' 仍被其他对象读取或引用：请先停用或修改这些对象",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢复",
       "source_withdrawn": "源 {{source}} 已撤下",
@@ -575,6 +574,8 @@
       "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
       "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。",
+      "domain_stewards_saved": "已保存域 '{{domain}}' 的数据管家",
+      "table_has_dependents": "表 '{{name}}' 仍被其他对象读取或引用：请先停用或修改这些对象",
       "file_types_differ": "模式 {{glob}} 匹配了多种类型的文件（{{types}}）；同一张表的文件必须为同一种类型。"
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "域 {{domain}} 没有数据管家。",
         "no_description": "此数据产品既未说明用途，也未说明使用方式。",
         "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
-      }
+      },
+      "owner_not_eligible": "{{owner}} 没有拥有 data_product_owner 能力的角色，因此不能被指定为数据产品 {{data_product}} 的所有者。请先授予其此类角色。",
+      "owner_role_not_eligible": "角色 {{role}} 不具备 data_product_owner 能力，因此不能被指定为数据产品 {{data_product}} 的所有者。请先为该角色授予此能力。",
+      "owners_change_refused": "只有组织管理员或数据产品 {{data_product}} 的现任所有者可以更改其所有者。"
     },
     "erd": {
       "database_unavailable": "无法读取 ERD 布局:数据库不可用",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。",
-      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
+      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。",
+      "owner_not_eligible": "{{owner}} 没有拥有 relationship_owner 能力的角色，因此不能被指定为关系 {{relationship}} 的所有者。请先授予其此类角色。",
+      "owner_role_not_eligible": "角色 {{role}} 不具备 relationship_owner 能力，因此不能被指定为关系 {{relationship}} 的所有者。请先为该角色授予此能力。",
+      "owners_change_refused": "只有组织管理员或关系 {{relationship}} 的现任所有者可以更改其所有者。"
     },
     "syncing": {
       "not_found": "不存在条目 {{entry}}。",
@@ -981,6 +988,11 @@
       "read_only": "此角色通过身份提供商授予；Provisa 没有可确认或撤销的授予",
       "webhook_invalid": "Webhook URL 无法使用：{{url}}",
       "webhook_secret_required": "Webhook 需要用于为定期审查签名的密钥"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的数据管家。请先授予其此类角色。",
+      "steward_role_not_eligible": "角色 {{role}} 不具备 domain_steward 能力，因此不能被指定为域 {{domain}} 的数据管家。请先为该角色授予此能力。",
+      "stewards_change_refused": "只有组织管理员或域 {{domain}} 的现任数据管家可以更改其数据管家。"
     }
   }
 }

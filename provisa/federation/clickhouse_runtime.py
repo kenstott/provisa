@@ -784,9 +784,11 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     # -- execution -------------------------------------------------------------
 
-    async def execute(self, physical_or_governed_sql: str) -> QueryResult:
+    async def execute(self, physical_or_governed_sql: str, *, generated: bool) -> QueryResult:
         """Execute physical SQL (post-governance) on the engine (transpiled to ClickHouse)."""
-        return await self.run(transpile(physical_or_governed_sql, "clickhouse"))
+        return await self.run(
+            transpile(physical_or_governed_sql, "clickhouse", generated=generated)
+        )
 
     # -- NativeEngineBackend runtime protocol ----------------------------------
 

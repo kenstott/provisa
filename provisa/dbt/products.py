@@ -92,12 +92,6 @@ def ungrouped(manifest: DbtManifest) -> list[DbtModel]:
     return [m for m in offered_models(manifest) if m.group is None]
 
 
-def owner_role(product: PlannedProduct, role_ids: set[str]) -> str | None:
-    """The role the manifest's group or owner names, when one does."""
-    names = (product.group, None if product.owner is None else product.owner.name)
-    return next((name for name in names if name in role_ids), None)
-
-
 def _test_label(model: DbtModel, test: DbtNode) -> str:
     call = f"{test.test_name}({test.column})" if test.column else str(test.test_name)
     return f"{model.name}.{call}"
@@ -127,7 +121,6 @@ def preview(
     manifest: DbtManifest,
     registered: dict[str, int],
     existing: set[str],
-    role_ids: set[str],
 ) -> dict:
     """What registering the public models would do. ``registered`` maps a model's unique id to the
     table it is already registered as; ``existing`` is the product ids already in use."""
@@ -137,7 +130,6 @@ def preview(
                 "id": p.id,
                 "group": p.group,
                 "owner": None if p.owner is None else asdict(p.owner),
-                "owner_role": owner_role(p, role_ids),
                 "exists": p.id in existing,
                 "tests": tests_of(manifest, p),
                 "models": [

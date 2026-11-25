@@ -44,7 +44,14 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage, tag_edit
+from provisa.api.mcp import (
+    admin_api,
+    docs_tools,
+    model_tool_specs,
+    polly_pages,
+    polly_usage,
+    tag_edit,
+)
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
@@ -201,6 +208,53 @@ _TOOLS: list[Any] = [
                 },
             },
             "required": ["question"],
+        },
+    },
+    # REQ-2114: the product documentation, the same built docs the in-app Docs page serves.
+    {
+        "name": "search_docs",
+        "description": (
+            "Search Provisa's own product documentation -- every page the in-app Docs page "
+            "serves -- for how the product works: code sources and code resolvers (their tags, "
+            "annotations and types per language), source types and their setup, table "
+            "registration, relationships, security, query surfaces, configuration. Returns each "
+            "matching section's title, address (<page>#<section>) and a snippet. Read a "
+            "section in full with read_doc before you answer from it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "language": {
+                    "type": "string",
+                    "description": (
+                        "The language the user writes in, as a locale code (en, fr, de, es, "
+                        "pt, it, zh, zh-HK, ru, he). A page not translated into it is read in "
+                        "English."
+                    ),
+                },
+            },
+            "required": ["query", "language"],
+        },
+    },
+    {
+        "name": "read_doc",
+        "description": (
+            "Read one page of the product documentation, or one section of it with its "
+            "subsections, by its address: <page> (e.g. code-sources) or <page>#<section> "
+            "(e.g. code-sources#code-resolvers), as search_docs gives it. An address the docs "
+            "do not have is refused by name, with the page's sections listed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "address": {"type": "string"},
+                "language": {
+                    "type": "string",
+                    "description": "As for search_docs; en reads the English original.",
+                },
+            },
+            "required": ["address", "language"],
         },
     },
     {
@@ -631,7 +685,11 @@ _TOOLS: list[Any] = [
                 "id": {"type": "string"},
                 "domain_id": {"type": "string"},
                 "name": {"type": "string"},
-                "owner_role": {"type": "string"},
+                # REQ-2219: the people who own it, by user id; omitted, its owners are kept.
+                "owners": {"type": "array", "items": {"type": "string"}},
+                # REQ-2219 (amended 2026-11-23): the roles that own it, every holder of each an
+                # owner; omitted, its roles are kept.
+                "owner_roles": {"type": "array", "items": {"type": "string"}},
                 "team_role": {"type": "string"},
                 "purpose": {"type": "string"},
                 "limitations": {"type": "string"},
@@ -1055,6 +1113,18 @@ _SYSTEM = (
     "says, or what a business term means, is answered from the org's reference library: call "
     "search_reference_library, answer from the passages it returns and cite each one you use by "
     "its document title and section or page, and only those you use. "
+    # REQ-2114: the product docs, read by Polly herself.
+    "THE PRODUCT DOCS: a question about Provisa itself -- code resolver annotations, tags "
+    "and types, a source type's setup, table registration, relationships, a setting, a query "
+    "surface's syntax -- is answered from the product documentation, which you read yourself: "
+    "call search_docs in the user's language, then read_doc for the sections you will use, "
+    "answer from what you read and cite each section by its title and address (e.g. "
+    "code-sources#code-resolvers). The per-language code references are the sections "
+    "code-sources#python-reference, #node-reference, #go-reference, #rust-reference and "
+    "#spark-reference; read the one for the user's language. Never tell the user to read the "
+    "docs and paste them to you, never say you cannot read the docs, and never guess a syntax, "
+    "a tag or a type the docs state: read it. Only when the docs do not cover it, say so and "
+    "say which sections you read. "
     "Never invent table, column, or schema names — discover them with the tools. If a "
     "tool returns an error or empty result, say so plainly. Keep answers concise and lead with the "
     "answer. Never narrate your steps ('Let me look at...', 'I'll check...') before or between "
@@ -1628,6 +1698,10 @@ async def _dispatch_tool(
         return await mcp_tools.search_reference_library(
             state, role, args["question"], k=int(args.get("k", 5))
         )
+    if name == "search_docs":  # REQ-2114
+        return docs_tools.search_docs(args["query"], args["language"])
+    if name == "read_doc":  # REQ-2114
+        return docs_tools.read_doc(args["address"], args["language"])
     if name == "run_sql":
         # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
         # and the result says why it was not quoted.
@@ -1794,7 +1868,8 @@ async def _dispatch_tool(
                 args["id"],
                 args["domain_id"],
                 args["name"],
-                owner_role=args.get("owner_role"),
+                owners=args.get("owners"),
+                owner_roles=args.get("owner_roles"),
                 team_role=args.get("team_role"),
                 purpose=args.get("purpose", ""),
                 limitations=args.get("limitations", ""),

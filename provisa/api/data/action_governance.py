@@ -238,11 +238,11 @@ async def govern_action_rows(
 
     resolved = resolve_settings(governed, session_vars_for(state.roles.get(role_id)))  # REQ-1682
     # REQ-913: built, governed and resolved as a tree; written once, where it goes to the engine.
-    sql = resolved.sql(dialect="postgres")
+    sql = resolved.sql(dialect="postgres")  # REQ-2236: Provisa's own, of a GraphQL action
 
     engine = state.federation_engine
     started = time.monotonic()
-    result = await engine.execute_engine(engine.transpile_physical(sql))
+    result = await engine.execute_engine(engine.transpile_physical(sql, generated=True))
     # The engine hands back its own scalar types (Decimal for a numeric literal, date objects);
     # convert them the way every data surface converts a query result.
     from provisa.executor.serialize import result_records

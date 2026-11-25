@@ -29,7 +29,7 @@ pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
 def _rows(conn, pg_sql: str) -> list:
     cur = conn.cursor()
-    cur.execute(transpile(pg_sql, "trino"))
+    cur.execute(transpile(pg_sql, "trino", generated=False))
     return cur.fetchall()
 
 
@@ -50,7 +50,7 @@ def test_an_inet_reads_as_its_text_and_an_operation_on_it_is_refused_by_name(tri
         " WHERE provisa_subtype(h.ip, 'inet') <<= '10.0.0.0/8'",
     ):
         with pytest.raises(SubtypeOperationRefused) as refused:
-            transpile(statement, "trino")
+            transpile(statement, "trino", generated=False)
         assert (refused.value.params["subtype"], refused.value.params["dialect"]) == (
             "inet",
             "trino",
@@ -86,5 +86,6 @@ def test_an_operator_trino_neither_has_nor_emulates_is_refused_by_name():
             "SELECT 1 FROM (VALUES ('a')) AS h(v)"
             " WHERE provisa_subtype(h.v, 'tsvector') @@ to_tsquery('a')",
             "trino",
+            generated=False,
         )
     assert refused.value.params == {"subtype": "tsvector", "operation": "@@", "dialect": "trino"}

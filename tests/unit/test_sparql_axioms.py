@@ -198,7 +198,7 @@ def _answer(con, query: str, readable=tuple(_DATA)) -> list[tuple]:
     assert compiled.ast is not None
     sql, _, graph_vars = cypher_to_sql(compiled.ast, sparql, {})
     sql = apply_graph_rewrites(sql, graph_vars, sparql)
-    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
     keep = compiled.variables or ["s", "p", "o"]

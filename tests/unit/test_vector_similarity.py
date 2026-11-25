@@ -195,17 +195,17 @@ _GOVERNED = "SELECT d.id, cosine_similarity(d.vec, $1, 'mini', 3) AS s FROM docs
     ],
 )
 def test_each_terminal_computes_it_in_its_own_sql(dialect, pgvector, form):
-    assert form in transpile(_GOVERNED, dialect, pgvector=pgvector)
+    assert form in transpile(_GOVERNED, dialect, pgvector=pgvector, generated=False)
 
 
 def test_a_terminal_without_a_form_refuses_rather_than_passing_the_call_on():
     with pytest.raises(SimilarityRefused, match="cannot be computed in mysql SQL"):
-        transpile(_GOVERNED, "mysql")
+        transpile(_GOVERNED, "mysql", generated=False)
 
 
 def test_an_ungoverned_call_never_reaches_a_terminal():
     with pytest.raises(SimilarityRefused, match="was not governed"):
-        transpile("SELECT cosine_similarity(vec, '[1,0,0]') FROM docs", "duckdb")
+        transpile("SELECT cosine_similarity(vec, '[1,0,0]') FROM docs", "duckdb", generated=False)
 
 
 def test_duckdb_ranks_a_governed_search_by_similarity():
@@ -217,7 +217,9 @@ def test_duckdb_ranks_a_governed_search_by_similarity():
     governed = _governed(
         "SELECT d.id, cosine_similarity(d.vec, $1) AS s FROM docs d ORDER BY s DESC LIMIT 2"
     )
-    rows = con.execute(transpile(governed, "duckdb"), ["[1.0, 0.0, 0.0]"]).fetchall()
+    rows = con.execute(
+        transpile(governed, "duckdb", generated=False), ["[1.0, 0.0, 0.0]"]
+    ).fetchall()
     assert [r[0] for r in rows] == [1, 3]
     assert rows[0][1] == pytest.approx(1.0) and rows[1][1] == pytest.approx(0.7071, abs=1e-4)
 
@@ -228,7 +230,9 @@ def test_plain_postgres_ranks_a_governed_search_by_similarity(embedded_postgres)
     governed = _governed(
         "SELECT d.id, cosine_similarity(d.vec, $1) AS s FROM docs d ORDER BY s DESC LIMIT 2"
     )
-    physical = cast(LiteralString, transpile(governed, "postgres").replace("$1", "%s"))
+    physical = cast(
+        LiteralString, transpile(governed, "postgres", generated=False).replace("$1", "%s")
+    )
     with psycopg.connect(embedded_postgres.dsn()) as conn:
         conn.execute("CREATE TEMP TABLE docs (id int, vec real[], title text)")
         conn.execute(
@@ -257,4 +261,4 @@ def test_a_search_runs_on_a_source_only_where_its_sql_computes_it(dialect, to_en
 def test_lowering_leaves_a_statement_without_a_search_alone():
     sql = "SELECT id FROM docs"
     assert similarity.lower(sql, "duckdb") == sql
-    assert sqlglot.parse_one(transpile(sql, "duckdb"))
+    assert sqlglot.parse_one(transpile(sql, "duckdb", generated=False))

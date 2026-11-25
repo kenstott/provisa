@@ -70,7 +70,7 @@ def _check(run: Callable[[str], list[Any]], dialect: str, type_name: str) -> Non
     samples = corpus.SAMPLES[type_name]
     for statement in _STATEMENTS:
         marked = mark_subtype_operations(statement, {("s", "t"): {"v": type_name}})
-        rows = run(_inline(transpile(marked, dialect), samples, dialect))
+        rows = run(_inline(transpile(marked, dialect, generated=False), samples, dialect))
         got = [_text(row[-1], statement, dialect) for row in rows]
         assert got == RECORDED[type_name][statement], statement
 

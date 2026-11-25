@@ -560,7 +560,6 @@
       "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
       "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\".",
       "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה",
-      "table_has_dependents": "הטבלה '{{name}}' עדיין נקראת או מוזכרת על ידי אובייקטים אחרים: יש להוציא אותם משימוש או לשנות אותם תחילה",
       "table_withdrawn": "הטבלה {{table}} הוסרה מהייצור",
       "table_put_back": "הטבלה {{table}} הוחזרה",
       "source_withdrawn": "המקור {{source}} הוסר מהייצור",
@@ -575,6 +574,8 @@
       "table_state_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ומצב השחרור שלה הוא של הפונקציה: היא אינה נמשכת או מוחזרת בפני עצמה",
       "table_region_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ויש לה את האזור שלה: היא אינה מועברת לאזור אחר בפני עצמה",
       "table_name_reserved": "שם הטבלה '{{table}}' שמור: פקודות של דומיין מוגשות תחת 'commands'. רשמו את הטבלה בשם או בכינוי אחר.",
+      "domain_stewards_saved": "ה-Stewards של התחום '{{domain}}' נשמרו",
+      "table_has_dependents": "הטבלה '{{name}}' עדיין נקראת או מוזכרת על ידי אובייקטים אחרים: יש להוציא אותם משימוש או לשנות אותם תחילה",
       "file_types_differ": "התבנית {{glob}} תואמת קבצים מיותר מסוג אחד ({{types}}); כל הקבצים של טבלה אחת חייבים להיות מאותו סוג."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "לתחום {{domain}} אין Steward.",
         "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
         "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
-      }
+      },
+      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת data_product_owner, ולכן לא ניתן למנות אותו לבעלים של מוצר הנתונים {{data_product}}. הקצו לו תפקיד כזה תחילה.",
+      "owner_role_not_eligible": "לתפקיד {{role}} אין את היכולת data_product_owner, ולכן לא ניתן למנות אותו לבעלים של מוצר הנתונים {{data_product}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "owners_change_refused": "רק מנהל הארגון או בעלים נוכחי של מוצר הנתונים {{data_product}} רשאים לשנות את בעליו."
     },
     "erd": {
       "database_unavailable": "לא ניתן לקרוא את פריסות ה-ERD: מסד הנתונים אינו זמין",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר.",
-      "join_through_none": "לקשרים '{{first}}' ו-'{{second}}' אין טבלת ביניים משותפת, או שהקצוות האחרים שלהם כבר מצורפים דרכה."
+      "join_through_none": "לקשרים '{{first}}' ו-'{{second}}' אין טבלת ביניים משותפת, או שהקצוות האחרים שלהם כבר מצורפים דרכה.",
+      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת relationship_owner, ולכן לא ניתן למנות אותו לבעלים של הקשר {{relationship}}. הקצו לו תפקיד כזה תחילה.",
+      "owner_role_not_eligible": "לתפקיד {{role}} אין את היכולת relationship_owner, ולכן לא ניתן למנות אותו לבעלים של הקשר {{relationship}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "owners_change_refused": "רק מנהל הארגון או בעלים נוכחי של הקשר {{relationship}} רשאים לשנות את בעליו."
     },
     "syncing": {
       "not_found": "אין רשומה {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "תפקיד זה מוקצה דרך ספק הזהויות; ל-Provisa אין הקצאה לאשר או לשלול",
       "webhook_invalid": "כתובת ה-Webhook אינה שמישה: {{url}}",
       "webhook_secret_required": "Webhook זקוק לסוד שבו נחתמות סקירות מתוזמנות"
+    },
+    "domain": {
+      "steward_not_eligible": "ל-{{steward}} אין תפקיד עם היכולת domain_steward, ולכן לא ניתן למנות אותו ל-Steward של התחום {{domain}}. הקצו לו תפקיד כזה תחילה.",
+      "steward_role_not_eligible": "לתפקיד {{role}} אין את היכולת domain_steward, ולכן לא ניתן למנות אותו ל-Steward של התחום {{domain}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "stewards_change_refused": "רק מנהל הארגון או Steward נוכחי של התחום {{domain}} רשאים לשנות את ה-Stewards שלו."
     }
   }
 }

@@ -212,7 +212,6 @@ async def test_data_products_projected_from_live_state():  # REQ-1634
         "id": "customer_360",
         "domain_id": "sales",
         "name": "Customer 360",
-        "owner_role": "alice",
         "purpose": "Unified customer view",
         "support_contact": "data-team@example.com",
     }

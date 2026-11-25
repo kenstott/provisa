@@ -1083,3 +1083,49 @@ def test_address_tag_statements_tag_each_table_with_its_provisa_address():  # RE
 
 def test_address_tag_statements_are_empty_without_tables():
     assert address_tag_statements([], _ADDR) == []
+
+
+def test_publish_binds_each_table_at_its_address_in_the_engines_store(monkeypatch):  # REQ-194
+    """REQ-1389, REQ-194: every table the publish reached is recorded in the bindings under its
+    address in the engine's store, so the names table carries the name Snowflake gives it."""
+    from dataclasses import replace
+
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    uri = "provisa://acme/tables/pets"
+    table = replace(_table_asset("petstore-api", "public", "pets", "Pets"), semantic_uri=uri)
+    snapshot = SimpleNamespace(
+        environment=None, data_products=[], governance_tags=[], model_tags=[], tables=[table]
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok, result.errors
+    address = "landing.org_acme_export.petstore-api__public__pets"
+    assert result.bindings == {uri: (address, address)}
+
+
+def test_publish_binds_no_table_it_could_not_reach(monkeypatch):  # REQ-194
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=False)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    table = _table_asset("petstore-api", "public", "pets", description="Pets")
+    snapshot = SimpleNamespace(
+        environment=None, data_products=[], governance_tags=[], model_tags=[], tables=[table]
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert not result.ok
+    assert result.bindings == {}

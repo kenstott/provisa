@@ -187,7 +187,7 @@ def test_an_instant_literal_is_written_as_its_utc_wall_time_for_the_mysql_family
 
     def where(literal: str, dialect: str) -> str:
         sql = f"SELECT id FROM t WHERE ts = CAST('{literal}' AS TIMESTAMPTZ)"
-        return transpile(sql, dialect).split("WHERE ", 1)[1]
+        return transpile(sql, dialect, generated=False).split("WHERE ", 1)[1]
 
     assert where("2024-01-01 20:04:05-05:00", "mysql") == "ts = TIMESTAMP('2024-01-02 01:04:05')"
     assert where("2024-01-02 03:04:05.5+02", "mysql") == (

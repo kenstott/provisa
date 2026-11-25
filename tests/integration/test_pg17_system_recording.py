@@ -92,7 +92,7 @@ def test_enum_forms_answer_on_the_postgresql_that_holds_the_type(postgres_17: st
         wrong = {}
         for sql in ENUM_STATEMENTS:
             enum_written = marked_source_casts(with_source_enums(sql, ENUMS), ENUMS)
-            written_sql = transpile(enum_written, "postgres")
+            written_sql = transpile(enum_written, "postgres", generated=False)
             got = _answer(source, written_sql)
             if got[0] != "ok" or got[2] != RECORDED[sql][2]:
                 wrong[sql] = f"{got} of {written_sql}"

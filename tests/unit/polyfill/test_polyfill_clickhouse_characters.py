@@ -329,7 +329,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -360,4 +360,4 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
     ],
 )
 def test_trino_keeps_its_form(sql):
-    assert "UTF8" not in transpile(sql, "trino")
+    assert "UTF8" not in transpile(sql, "trino", generated=False)

@@ -29,7 +29,11 @@ from fastapi.testclient import TestClient
 from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
 from provisa.api.rate_limit import NoopRateLimiter
 from provisa.auth.middleware import AuthMiddleware
-from tests.unit.test_auth_middleware_multitenancy import _Pool, _Provider
+from tests.unit.test_auth_middleware_multitenancy import (  # noqa: F401 (an autouse fixture)
+    _no_owner_rewrite,
+    _Pool,
+    _Provider,
+)
 
 pytestmark = pytest.mark.unbound
 

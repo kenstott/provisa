@@ -102,6 +102,8 @@ const PRODUCT = {
   limitations: "",
   usage: "",
   customProperties: {},
+  owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 function core(): ProductCore {

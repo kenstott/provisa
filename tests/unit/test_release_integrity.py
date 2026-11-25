@@ -52,6 +52,10 @@ _LEGS = {
 # Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
 # wheels are release assets, and the publish leg lists them in the GitHub Pages index.
 _PYPI: tuple[str, ...] = ()
+#: REQ-2269: legs that run on a dry run alone (every job gated `!inputs.publish`). They build and
+#: publish nothing, and no build or publication waits for one: on a release they are skipped, and a
+#: job that needed one would be skipped with them.
+_DRY_RUN_ONLY = {"install-host": "release-install-host.yml"}
 #: REQ-2225: the orchestrator's other publication, the Spark connector's image that
 #: platform-connectors built and kept in the run.
 _IMAGE_PUSH = "publish-connector-image"
@@ -90,10 +94,24 @@ def test_build_dmg_publish_job_exists():
     """The release has a publish-release job, in the leg the orchestrator calls `publish`."""
     orchestrator = _load("build-dmg.yml")["jobs"]
     assert {job: body["uses"] for job, body in orchestrator.items() if "uses" in body} == {
-        job: f"./.github/workflows/{leg}" for job, leg in _LEGS.items()
+        job: f"./.github/workflows/{leg}" for job, leg in {**_LEGS, **_DRY_RUN_ONLY}.items()
     }
-    assert set(orchestrator) == set(_LEGS) | set(_PYPI) | {_IMAGE_PUSH}
+    assert set(orchestrator) == set(_LEGS) | set(_DRY_RUN_ONLY) | set(_PYPI) | {_IMAGE_PUSH}
     assert "publish-release" in _load("release-publish.yml")["jobs"]
+
+
+def test_dry_run_only_legs_never_run_on_a_release_and_publish_nothing():
+    """A dry-run-only leg is skipped on a release, so it is outside "every leg" a publication
+    waits for: nothing that builds or publishes needs it, and it sends nothing out of the run."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    for leg, name in _DRY_RUN_ONLY.items():
+        assert orchestrator[leg]["with"]["publish"] == orchestrator["publish"]["with"]["publish"]
+        for job, body in _load(name)["jobs"].items():
+            assert body["if"] == "${{ !inputs.publish }}", (leg, job)
+            assert not any(_publishes(step) for step in body.get("steps") or []), (leg, job)
+        for job, body in orchestrator.items():
+            needs = body.get("needs") or []
+            assert leg not in ([needs] if isinstance(needs, str) else needs), job
 
 
 def test_build_dmg_publish_job_depends_on_all_builds():
@@ -188,6 +206,10 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-packages.yml", "build-sdk-python"): (
         "provisa-sdk/python/dist/provisa_sdk-*.whl",
         "provisa-sdk/python/dist/provisa_sdk-*.tar.gz",
+    ),
+    ("release-packages.yml", "build-provisa-pyspark"): (
+        "provisa-pyspark/dist/provisa_pyspark-*.whl",
+        "provisa-pyspark/dist/provisa_pyspark-*.tar.gz",
     ),
     ("release-packages.yml", "build-sdk-typescript"): (
         "provisa-sdk/typescript/dist/provisa-sdk-*.tgz",

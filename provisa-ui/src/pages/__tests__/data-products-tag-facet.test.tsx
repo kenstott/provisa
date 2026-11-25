@@ -98,6 +98,8 @@ const products = [
     domainId: "sales",
     name: "EU Customers",
     status: "live",
+    owners: [],
+    namedOwners: [],
     purpose: "Customers resident in the EU",
     limitations: "",
     usage: "",
@@ -108,6 +110,8 @@ const products = [
     domainId: "care",
     name: "Pet Health",
     status: "live",
+    owners: [],
+    namedOwners: [],
     purpose: "Pet health records",
     limitations: "",
     usage: "",
@@ -118,6 +122,8 @@ const products = [
     domainId: "ops",
     name: "Workforce Ops",
     status: "draft",
+    owners: [],
+    namedOwners: [],
     purpose: "Shelter staffing",
     limitations: "",
     usage: "",
@@ -208,10 +214,7 @@ describe("the Data Products list's tag facet", () => {
     await waitFor(() => expect(listed()).toHaveLength(3));
     await userEvent.click(facet());
     await screen.findByRole("option", { name: "risk:high", hidden: true });
-    expect(optionsOf(facet())).toEqual([
-      "residency:eu",
-      "risk:high",
-    ]);
+    expect(optionsOf(facet())).toEqual(["residency:eu", "risk:high"]);
   });
 
   it("narrows the list to the products carrying each tag chosen", async () => {
@@ -244,11 +247,7 @@ describe("the Data Products list's domain facet", () => {
     await waitFor(() => expect(listed()).toHaveLength(3));
     await userEvent.click(domainFacet());
     await screen.findByRole("option", { name: "care", hidden: true });
-    expect(optionsOf(domainFacet())).toEqual([
-      "care",
-      "ops",
-      "sales",
-    ]);
+    expect(optionsOf(domainFacet())).toEqual(["care", "ops", "sales"]);
   });
 
   it("narrows the list to the products of the domains chosen", async () => {

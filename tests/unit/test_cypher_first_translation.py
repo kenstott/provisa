@@ -61,7 +61,7 @@ empty = CypherLabelMap(nodes={}, relationships={})
 def translated(query):
     before, parses[0] = set(sys.modules), 0
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), empty, {})
-    transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
+    transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
     return {"modules": sorted(set(sys.modules) - before), "parses": parses[0]}
 
 

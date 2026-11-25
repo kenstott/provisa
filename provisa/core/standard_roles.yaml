@@ -67,12 +67,14 @@ modeler:
   capabilities: [ignore_relationships]
 
 data_product_owner:
-  description: "A role to name in a data product's Owner field: edits the data products that name it."
-  # REQ-2188: it holds nothing of its own. Naming a role in an Owner field gives that role RW on data
-  # products with the generated U and D rules (security/row_filters.with_owner_grant), this one or any other.
+  description: "Owns the data products a person holding it is named owner of: edits those products and no other."
+  # REQ-2188, REQ-2219 (amended 2026-11-23): a person named in a product's Owner field holds a
+  # data_product_owner row naming it on a role carrying the capability. Such a role holds RW on data
+  # products with the generated U and D rules (security/row_filters.with_owner_grant), held to the
+  # products the person's own rows name.
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: []
+  capabilities: [data_product_owner]
 
 security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."
@@ -131,7 +133,8 @@ org_admin:
   # REQ-2188: every data product, with no U or D rule.
   # REQ-2219: the five owner capabilities are held with no list, so an org admin owns every object
   # of those kinds.
-  capabilities: [environment_management, environment_data, org_glossary_rw, data_product_rw, data_product_owner, relationship_owner, domain_steward, term_owner, judgment_basis_owner]
+  # data_product_owner it holds through its parent data_product_owner (REQ-2219, amended 2026-11-23).
+  capabilities: [environment_management, environment_data, org_glossary_rw, data_product_rw, relationship_owner, domain_steward, term_owner, judgment_basis_owner]
 
 sandbox:
   description: "A Try it Out visitor: what the product does, inside an environment that expires, but not members, environments or the organization glossary."

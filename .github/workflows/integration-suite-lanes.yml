@@ -42,6 +42,14 @@ on:
         type: string
         required: false
         default: ""
+      # A targeted warehouse UI run's Playwright file filters, space-separated (relative to
+      # provisa-ui, e.g. e2e/source-to-query-special-cases.spec.ts): only the warehouse-ui job
+      # runs, its "warehouse" project on those specs; no suite, cluster or live pytest lane.
+      # Refused with `tests`. Empty runs the warehouse UI job whole, as before (REQ-1742).
+      ui_specs:
+        type: string
+        required: false
+        default: ""
       include_warehouse:
         type: boolean
         required: false
@@ -270,12 +278,29 @@ jobs:
           # The caller's choice: 'all' on a push, the dispatcher's list on demand.
           LANES: ${{ inputs.lanes }}
           PROVISA_LANE_TESTS: ${{ inputs.tests }}
+          PROVISA_UI_SPECS: ${{ inputs.ui_specs }}
           # A targeted run is routed to the lanes whose markers select its tests, a live lane among
           # them only when the dispatch includes it; one naming a test no such lane selects fails
           # here, naming the test and the lane it needs (run_lane.py routes).
           PROVISA_INCLUDE_LIVE: >-
             ${{ inputs.include_warehouse && 'warehouse' || '' }},${{ inputs.include_salesforce && 'salesforce' || '' }},${{ inputs.include_athena && 'athena' || '' }},${{ inputs.include_servicenow && 'servicenow' || '' }},${{ inputs.include_microsoft_365 && 'microsoft_365' || '' }}
         run: |
+          # A targeted warehouse UI run plans no lane of its own: only warehouse-ui runs.
+          if [ -n "$PROVISA_UI_SPECS" ]; then
+            if [ -n "$PROVISA_LANE_TESTS" ]; then
+              echo "::error::ui_specs and tests name two targeted runs: dispatch each on its own"
+              exit 1
+            fi
+            {
+              echo 'matrix={"include":[]}'
+              echo "suite=false"
+              echo "cluster=false"
+              for lane in warehouse salesforce athena servicenow microsoft_365; do
+                echo "$lane=false"
+              done
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           suite=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
@@ -300,6 +325,8 @@ jobs:
   # for its Maven plugins and the kafka lane's lookup failed (run 44379779451).
   trino-plugins:
     name: Trino plugins
+    # A targeted warehouse UI run starts no job that mounts them.
+    if: inputs.ui_specs == ''
     runs-on: ubuntu-latest
     # A miss of all three caches builds the plugin, the zaychik image and the duckdb-ext wheels.
     timeout-minutes: 45
@@ -687,7 +714,9 @@ jobs:
   # WAREHOUSE_TITLES: Snowflake, Databricks, BigQuery, Fabric, Google Sheets), as the Playwright
   # project "warehouse". Maintainer 2026-10-29: the UI core lane never touches a live warehouse;
   # these run only with the warehouse lane -- nightly, and on a dispatch that includes it. A
-  # targeted run (inputs.tests names pytest tests) leaves them out.
+  # targeted run (inputs.tests names pytest tests) leaves them out. A targeted warehouse UI run
+  # (inputs.ui_specs) runs this job alone, on the named specs within the "warehouse" project
+  # (REQ-1742); a named spec the project does not collect fails Playwright's "No tests found".
   # It holds the live-cloud-warehouses group with the warehouse job: both wake and stop the same
   # shared compute, so one waits for the other and neither cancels the other. Its after-script
   # (ui-core-after.sh) deletes this run's Fabric workspace and capacity, leaves the Databricks warehouse stopped and
@@ -695,7 +724,7 @@ jobs:
   warehouse-ui:
     name: warehouse UI (live cloud warehouses, Playwright)
     needs: plan
-    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && inputs.tests == ''
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.include_warehouse || inputs.ui_specs != ''))) && inputs.tests == ''
     concurrency:
       group: live-cloud-warehouses
       queue: max
@@ -721,12 +750,16 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
         PROVISA_E2E_WORKERS=1
+        PROVISA_UI_SPECS=${{ inputs.ui_specs }}
       working-directory: provisa-ui
       # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
-      # reports.
+      # reports. PROVISA_UI_SPECS (inputs.ui_specs) names the specs of a targeted run, split on
+      # spaces without globbing; empty, the whole project runs.
       run: >-
+        read -ra specs <<< "$PROVISA_UI_SPECS";
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
         npx playwright test --project=warehouse --global-timeout=3000000 --reporter=line,html,json
+        "${specs[@]}"
       prepare: scripts/ci/lanes/ui-core-prepare.sh
       after: bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json
       artifact-name: playwright-report-warehouse

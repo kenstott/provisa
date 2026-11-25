@@ -1409,7 +1409,6 @@ def _req019_define(shared_data):
         source_column="customer_id",
         target_column="id",
         cardinality=Cardinality.many_to_one,
-        owner="steward-alice",
     )
     shared_data["xsrc_store"].persist(rel)
     shared_data["xsrc_rel"] = rel
@@ -1441,7 +1440,6 @@ def _req020_rel(shared_data):
         source_column="customer_id",
         target_column="id",
         cardinality=Cardinality.many_to_one,
-        owner="steward-bob",
         version=1,
         needs_review=False,
     )
@@ -1469,8 +1467,9 @@ def _req020_then(shared_data):
     assert shared_data["rel020_affected"] is True
     assert rel.needs_review is True
     assert rel.version == 2
-    # Ownership is recorded so the owner can be notified.
-    assert rel.owner == "steward-bob"
+    # REQ-2219: ownership is a relationship_owner entitlement row, not a field of the
+    # relationship, so the owners notified are read from the store.
+    assert "owner" not in type(rel).model_fields
 
 
 # ---------------------------------------------------------------------------

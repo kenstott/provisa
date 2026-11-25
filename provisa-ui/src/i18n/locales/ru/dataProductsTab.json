@@ -10,7 +10,6 @@
     "nameLabel": "Имя",
     "namePlaceholder": "Отображаемое имя",
     "ownerLabel": "Владелец",
-    "ownerPlaceholder": "Роль, отвечающая за этот продукт",
     "teamLabel": "Команда",
     "teamPlaceholder": "Роль, которая ежедневно поддерживает этот продукт",
     "purposeLabel": "Назначение",

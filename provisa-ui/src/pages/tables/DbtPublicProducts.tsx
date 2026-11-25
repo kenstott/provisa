@@ -43,8 +43,6 @@ function ProductPreview({ product }: { product: DbtPlannedProduct }) {
           {owner && (
             <>
               {t("dbtPublicProducts.owner", { owner })}
-              {product.owner_role &&
-                ` · ${t("dbtPublicProducts.ownerRole", { role: product.owner_role })}`}
               <br />
             </>
           )}

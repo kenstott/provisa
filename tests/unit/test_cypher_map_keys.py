@@ -36,7 +36,11 @@ def rows():
 
     def _rows(cypher: str) -> list[tuple]:
         sql_ast, _, _ = cypher_to_sql(parse_cypher(cypher), lm, {})
-        return sorted(con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall())
+        return sorted(
+            con.execute(
+                transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+            ).fetchall()
+        )
 
     return _rows
 
@@ -82,7 +86,7 @@ def returned():
     def _returned(cypher: str) -> list[tuple[str, object]]:
         sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
         sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
-        cur = con.execute(transpile_to_duckdb(sql))
+        cur = con.execute(transpile_to_duckdb(sql, generated=False))
         (row,) = cur.fetchall()
         return list(zip((d[0] for d in cur.description), row, strict=True))
 

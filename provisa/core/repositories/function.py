@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from provisa.core import model_change, model_uri
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete as _delete, func as _sa_func, select
+from sqlalchemy import Table, delete as _delete, func as _sa_func, select, update as _update
 
 from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
@@ -115,6 +115,54 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         set_extra={"updated_at": _sa_func.now()},
     )
     return function_id
+
+
+async def _update_one(conn: "Connection", table: Table, name: str, values: dict[str, Any]) -> int:
+    """Set ``values`` on the command or webhook ``name`` and stamp ``updated_at``. Returns the
+    row count changed, 0 when there is no such object."""
+    model_change.name("update", model_change.uri(model_uri.command_uri, name))  # REQ-1524
+    result = await conn.execute_core(
+        _update(table).where(table.c.name == name).values(**values, updated_at=_sa_func.now())
+    )
+    return int(result.rowcount or 0)
+
+
+async def update_function(
+    conn: "Connection", name: str, values: dict[str, Any]
+) -> int:  # REQ-205, REQ-1919
+    """Change the stored columns of tracked function ``name``: the admin edit. Returns the row
+    count changed, 0 when there is no such function."""
+    return await _update_one(conn, tracked_functions, name, values)
+
+
+async def update_webhook(
+    conn: "Connection", name: str, values: dict[str, Any]
+) -> int:  # REQ-209, REQ-1919
+    """Change the stored columns of tracked webhook ``name``: the admin edit. Returns the row
+    count changed, 0 when there is no such webhook."""
+    return await _update_one(conn, tracked_webhooks, name, values)
+
+
+async def set_kind(
+    conn: "Connection", table: Table, name: str, kind: str
+) -> int:  # REQ-870, REQ-1944, REQ-1919
+    """Reclassify the command or webhook ``name`` (``table`` is tracked_functions or
+    tracked_webhooks). Returns the row count changed."""
+    if table is not tracked_functions and table is not tracked_webhooks:
+        raise ValueError(f"set_kind writes a command or a webhook, not {table.name}")
+    return await _update_one(conn, table, name, {"kind": kind})
+
+
+async def save_webhook(conn: "Connection", row: dict[str, Any]) -> None:  # REQ-209, REQ-1919
+    """Create tracked webhook ``row["name"]``, or replace every other column of the stored one:
+    the admin registration, whose ``row`` is already validated. Stamps ``updated_at``."""
+    model_change.name("upsert", model_change.uri(model_uri.command_uri, row["name"]))  # REQ-1524
+    await conn.upsert(
+        tracked_webhooks,
+        {**row, "updated_at": _sa_func.now()},
+        index_elements=["name"],
+        update_columns=[c for c in row if c != "name"] + ["updated_at"],
+    )
 
 
 async def get_function(conn: "Connection", name: str) -> dict | None:  # REQ-205, REQ-304

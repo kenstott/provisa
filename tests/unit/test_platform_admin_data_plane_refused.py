@@ -888,6 +888,14 @@ def org_runtime(monkeypatch):
             return rt
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
+
+        async def _unread(_conn) -> None:
+            # Recomputing the member's rows rewrites object_owners from the org's model tables,
+            # which this stand-in, holding role rows only, does not have; who owns what is
+            # tested over a real store (test_owner_roles).
+            return None
+
+        monkeypatch.setattr("provisa.entitlements.owners.write_object_owners", _unread)
         return db
 
     return _install

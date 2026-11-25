@@ -88,9 +88,7 @@ async def _store(control_plane):
                 )
             await product_repo.upsert(
                 conn,
-                DataProduct(
-                    id="c360", domain_id="sales", name="C360", owner_role="owner", created_by="o1"
-                ),
+                DataProduct(id="c360", domain_id="sales", name="C360", created_by="o1"),
             )
             for tid in (1, 2, 5):
                 await conn.execute_core(

@@ -95,6 +95,9 @@ class _Rows:
     def fetchone(self):
         return self._rows[0] if self._rows else None
 
+    def __iter__(self):
+        return iter(self._rows)
+
 
 def _relationship(rel_id, source, source_column, target, target_column, **extra):
     return {
@@ -130,6 +133,10 @@ class _Conn:
             return _Rows([])  # REQ-1921: no table here is withdrawn, itself or by its source
         if "registered_tables.retired IS true" in sql:
             return _Rows([])  # no table here is retired
+        if "domains.retired IS true" in sql:
+            return _Rows([])  # no domain here is retired
+        if "FROM entitlements" in sql:
+            return _Rows([])  # no Steward field names anyone here (REQ-2219)
         if "table_columns.scope" in sql:
             # REQ-2153: the listed columns, outside the domains the query names as reached.
             reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
@@ -144,10 +151,7 @@ class _Conn:
             return _Rows(wanted)
         if "FROM domains" in sql:
             return _Rows(
-                [
-                    {"id": d, "steward": None, "parent_domain_id": None}
-                    for d in ("hr", "marketing", "sales")
-                ]
+                [{"id": d, "parent_domain_id": None} for d in ("hr", "marketing", "sales")]
             )
         return _Rows(
             _TABLES + [{k: v for k, v in t.items() if k != "columns"} for t in self._extra]
@@ -227,8 +231,15 @@ def _model(monkeypatch):
     monkeypatch.setattr(
         schema_query,
         "_domain_from_row",
-        lambda row, _effective_steward: types.SimpleNamespace(**row),
+        lambda row, _stewards, _effective_stewards, _field: types.SimpleNamespace(**row),
     )
+
+    async def _no_stewards(conn, kind, *, exact=False):  # noqa: ARG001
+        return {}  # REQ-2219: who stewards a domain is not what scoping decides
+
+    from provisa.entitlements import owners
+
+    monkeypatch.setattr(owners, "holders", _no_stewards)
 
     async def _metrics(conn):  # noqa: ARG001
         return [

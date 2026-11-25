@@ -638,7 +638,6 @@ data_products:
   id: pet_health
   tables: [pets, pets_quality, vets, vets_quality]
   name: Pet Health
-  owner: org_admin
   support_contact: kennethstott@gmail.com
 glossary_terms:
 - name: referral

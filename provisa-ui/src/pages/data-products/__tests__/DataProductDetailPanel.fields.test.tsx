@@ -30,7 +30,8 @@ const PRODUCT = {
   name: "Pet Health",
   version: "1.2.0",
   status: "live",
-  ownerRole: "vet_lead",
+  owners: ["vera", "vik"],
+  namedOwners: [{ principal: "vera", kind: "person" as const }, { principal: "vik", kind: "person" as const }],
   teamRole: null,
   support: "#pet-health",
   supportContact: "vets@petstore.example",
@@ -61,10 +62,12 @@ function fields(p: DataProduct): [string, string][] {
   );
   // The values are in the header's Details, closed at first.
   fireEvent.click(screen.getByTestId(`data-product-card-details-${p.id}-toggle`));
-  return within(screen.getByTestId(`data-product-read-${p.id}`))
-    // Opened just now: its open transition has not run in the test's document.
-    .getAllByRole("term", { hidden: true })
-    .map((dt) => [dt.textContent ?? "", dt.nextElementSibling?.textContent ?? ""]);
+  return (
+    within(screen.getByTestId(`data-product-read-${p.id}`))
+      // Opened just now: its open transition has not run in the test's document.
+      .getAllByRole("term", { hidden: true })
+      .map((dt) => [dt.textContent ?? "", dt.nextElementSibling?.textContent ?? ""])
+  );
 }
 
 describe("a data product's read view", () => {
@@ -75,7 +78,7 @@ describe("a data product's read view", () => {
       ["Domain", "pet-store"],
       ["Version", "1.2.0"],
       ["Status", "Live"],
-      ["Owner", "vet_lead"],
+      ["Owner", "vera, vik"],
       ["Team", "—"],
       ["Support", "#pet-health"],
       ["Support contact", "vets@petstore.example"],

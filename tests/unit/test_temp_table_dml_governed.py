@@ -89,7 +89,7 @@ class Store:
 
         def system_rows(state: Any, pg_sql: str, label: str) -> tuple[list[str], list[tuple]]:
             self.system.append(pg_sql)
-            cursor = self.duck.execute(transpile(pg_sql, "duckdb"))
+            cursor = self.duck.execute(transpile(pg_sql, "duckdb", generated=False))
             return [d[0] for d in cursor.description], cursor.fetchall()
 
         async def land(
@@ -110,7 +110,7 @@ class Store:
         if violations:
             raise Refused(violations)
         governed = apply_governance(sql, self.gov).replace('"pg".', "")
-        cursor = self.duck.execute(transpile(governed, "duckdb"))
+        cursor = self.duck.execute(transpile(governed, "duckdb", generated=False))
         return QueryResult(rows=cursor.fetchall(), column_names=[d[0] for d in cursor.description])
 
     async def run(self, sql: str) -> QueryResult:

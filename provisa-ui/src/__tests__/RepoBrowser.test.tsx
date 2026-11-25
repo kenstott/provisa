@@ -15,6 +15,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { RepoBrowser } from "../components/admin/RepoBrowser";
+import { editorOf, languageOf } from "../test-utils/codeEditor";
+import { languageForPath } from "../components/codeLanguage";
 
 vi.mock("../api/environments", () => ({
   fetchRepoBranches: vi.fn(),
@@ -76,7 +78,22 @@ describe("RepoBrowser", () => {
     await waitFor(() =>
       expect(mockFile).toHaveBeenCalledWith("acme", "prod", "domains/sales.yaml"),
     );
-    expect(await screen.findByTestId("repo-file-text")).toHaveTextContent("name: sales");
+    await screen.findByTestId("repo-file-text");
+    await waitFor(() =>
+      expect(editorOf("repo-file-text").state.doc.toString()).toBe("name: sales\n"),
+    );
+  });
+
+  it("shows the file in the code editor, read-only, in its extension's language (REQ-1984)", async () => {
+    render(<RepoBrowser orgId="acme" />);
+    fireEvent.click(await screen.findByTestId("repo-path-domains/sales.yaml"));
+    await screen.findByTestId("repo-file-text");
+    await waitFor(() =>
+      expect(editorOf("repo-file-text").state.doc.toString()).toBe("name: sales\n"),
+    );
+    const view = editorOf("repo-file-text");
+    expect(view.state.readOnly).toBe(true);
+    expect(languageOf(view)).toBe("yaml");
   });
 
   it("drops a path the newly-selected ref does not have", async () => {
@@ -102,5 +119,18 @@ describe("RepoBrowser", () => {
     expect(screen.queryByTestId("repo-against-select")).toBeNull();
     fireEvent.click(screen.getByTestId("repo-compare-toggle"));
     expect(await screen.findByTestId("repo-against-select")).toBeInTheDocument();
+  });
+});
+
+describe("a repository file's language (REQ-1984)", () => {
+  it("is named by its extension", () => {
+    expect(languageForPath("domains/sales.yaml")).toBe("yaml");
+    expect(languageForPath("specs/items.json")).toBe("json");
+    expect(languageForPath("views/orders.sql")).toBe("sql");
+    expect(languageForPath("axioms/kyc.ttl")).toBe("turtle");
+  });
+
+  it("refuses an extension it has no language for, by name", () => {
+    expect(() => languageForPath("notes/README.md")).toThrow(/notes\/README\.md.*"md"/);
   });
 });

@@ -107,11 +107,12 @@ async def test_a_domain_created_with_no_parent_does_not_rebuild(plane):
     assert created.success and plane.rebuilds == []
 
 
-async def test_the_domains_query_reports_the_parent_and_the_inherited_steward(plane, monkeypatch):
+async def test_the_domains_query_reports_the_parent(plane, monkeypatch):
+    # Its stewards, own and inherited down the tree: test_domain_steward_gate (REQ-2219).
     from provisa.api.admin import schema_query
 
     async with plane.acquire() as conn:
-        await domain_repo.upsert(conn, Domain(id="retail", steward="bu_steward"))
+        await domain_repo.upsert(conn, Domain(id="retail"))
         await domain_repo.upsert(conn, Domain(id="retail_emea", parent_domain_id="retail"))
     scope = types.SimpleNamespace(lists_domain=lambda _domain, _holding: True)
 
@@ -126,12 +127,8 @@ async def test_the_domains_query_reports_the_parent_and_the_inherited_steward(pl
     monkeypatch.setattr(schema_query, "_listed_tables", _no_tables)
     monkeypatch.setattr(schema_query, "_resolve_admin_context", lambda _info: None)
     listed = {d.id: d for d in await schema_query.Query().domains(_info())}
-    assert (listed["retail_emea"].parent_domain_id, listed["retail_emea"].steward) == (
-        "retail",
-        None,
-    )
-    assert listed["retail_emea"].effective_steward == "bu_steward"
-    assert listed["finance"].effective_steward is None
+    assert listed["retail_emea"].parent_domain_id == "retail"
+    assert listed["finance"].parent_domain_id is None
 
 
 def _config(domain_rows: list[dict]) -> dict:

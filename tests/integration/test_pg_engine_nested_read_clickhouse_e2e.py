@@ -235,7 +235,7 @@ def _run(
     bound = propagate_literal_join_predicates(
         sql, "postgres", eligible, column_types, allow_params=True, read_once=read_once
     )
-    physical = transpile(bound, "postgres")
+    physical = transpile(bound, "postgres", generated=False)
     mark = client.command("SELECT now64(6)")
     started = time.perf_counter()
     rows = runtime.run_sync(physical, params).rows

@@ -2685,7 +2685,11 @@ def _rows_of(cypher: str, label_map: CypherLabelMap) -> list[tuple]:
     from provisa.transpiler.transpile import transpile_to_duckdb
 
     sql, _params, _graph_vars = cypher_to_sql(parse_cypher(cypher, label_map), label_map, {})
-    return duckdb.connect().execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall()
+    return (
+        duckdb.connect()
+        .execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
+        .fetchall()
+    )
 
 
 @pytest.mark.parametrize(

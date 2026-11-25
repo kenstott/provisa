@@ -1416,3 +1416,25 @@ def test_inside_its_budget_a_lane_runs_every_test(tmp_path):
     done = _session_under_budget(tmp_path, time.time() + 3600)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "2 passed" in done.stdout
+
+
+def test_the_warehouse_lane_stages_the_govdata_bundle_and_has_the_key():
+    """REQ-294: a running Provisa never fetches a bundle, and an AskAmerica source's server is the
+    pgwire-govdata bundle; unstaged, the warehouse lane's govdata tests are refused with
+    BundleNotStaged. The lane's prepare step stages it from the pinned release, and the job hands
+    the tests the AskAmerica key (checked present before anything runs)."""
+    steps = _job_steps("warehouse")
+    (prepare,) = [s for s in steps if "scripts/ci/lanes/suite-prepare.sh" in s.get("run", "")]
+    assert prepare["run"].split()[-1] == "warehouse"
+    script = (REPO / "scripts" / "ci" / "lanes" / "suite-prepare.sh").read_text()
+    block = script.split('if [ "${1:-}" = warehouse ]; then', 1)[1].split("fi", 1)[0]
+    assert (
+        "uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only govdata "
+        "--github-release" in block
+    )
+    job = _lanes_workflow()["jobs"]["warehouse"]
+    assert job["env"]["ASKAMERICA_API_KEY"] == "${{ secrets.ASKAMERICA_API_KEY }}"
+    assert "ASKAMERICA_API_KEY" in _credentials_step("warehouse")["run"]
+    stage_at = steps.index(prepare)
+    (run_lane,) = [s for s in steps if s.get("name") == "Run lane"]
+    assert stage_at < steps.index(run_lane)

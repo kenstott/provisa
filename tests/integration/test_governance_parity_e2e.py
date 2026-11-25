@@ -79,7 +79,7 @@ def _load_duckdb():
 def test_duckdb_candidate_is_governance_certified_against_reference():
     """DuckDB's execution of the query diffs clean against the reference golden set."""
     con = _load_duckdb()
-    ddl = transpile(_GOVERNED_PG_SQL, "duckdb")
+    ddl = transpile(_GOVERNED_PG_SQL, "duckdb", generated=False)
     candidate = con.execute(ddl).fetchall()
 
     result = compare_governed_results(_REFERENCE_GOVERNED, candidate)
@@ -90,7 +90,7 @@ def test_duckdb_candidate_is_governance_certified_against_reference():
 def test_parity_is_order_independent():
     """NULL/collation ordering is an allowed semantic edge — the diff is a multiset compare."""
     con = _load_duckdb()
-    ddl = transpile(_GOVERNED_PG_SQL + " ORDER BY id DESC", "duckdb")
+    ddl = transpile(_GOVERNED_PG_SQL + " ORDER BY id DESC", "duckdb", generated=False)
     candidate = con.execute(ddl).fetchall()
 
     # Reversed row order must still certify.
@@ -101,7 +101,7 @@ def test_suite_catches_an_rls_leak_on_a_noncompliant_engine():
     """An engine that drops the RLS predicate leaks a row — the suite MUST fail it (no false certify)."""
     con = _load_duckdb()
     leaky_sql = "SELECT id, first_name, state, 'REDACTED' AS email FROM customers"  # no WHERE
-    candidate = con.execute(transpile(leaky_sql, "duckdb")).fetchall()
+    candidate = con.execute(transpile(leaky_sql, "duckdb", generated=False)).fetchall()
 
     result = compare_governed_results(_REFERENCE_GOVERNED, candidate)
 
@@ -114,7 +114,7 @@ def test_suite_catches_a_masking_divergence():
     """An engine that fails to mask a cell diverges — visibility/masking is EXACT."""
     con = _load_duckdb()
     unmasked_sql = "SELECT id, first_name, state, email FROM customers WHERE state = 'NY'"
-    candidate = con.execute(transpile(unmasked_sql, "duckdb")).fetchall()
+    candidate = con.execute(transpile(unmasked_sql, "duckdb", generated=False)).fetchall()
 
     result = compare_governed_results(_REFERENCE_GOVERNED, candidate)
 
@@ -131,7 +131,7 @@ def test_certification_gate_blocks_uncertified_engine():
         reg.require_certified("snowflake")
 
     # DuckDB passes the suite -> certify -> now selectable.
-    candidate = con.execute(transpile(_GOVERNED_PG_SQL, "duckdb")).fetchall()
+    candidate = con.execute(transpile(_GOVERNED_PG_SQL, "duckdb", generated=False)).fetchall()
     assert compare_governed_results(_REFERENCE_GOVERNED, candidate).certified
     reg.certify("duckdb")
     reg.require_certified("duckdb")  # does not raise
@@ -170,13 +170,15 @@ async def test_postgres_candidate_matches_duckdb_candidate_cross_engine():
             "INSERT INTO parity_e2e.customers VALUES ($1, $2, $3, $4)", _GOLDEN_ROWS
         )
         pg_sql = _GOVERNED_PG_SQL.replace("FROM customers", "FROM parity_e2e.customers")
-        pg_rows = [tuple(r) for r in await conn.fetch(transpile(pg_sql, "postgres"))]
+        pg_rows = [
+            tuple(r) for r in await conn.fetch(transpile(pg_sql, "postgres", generated=False))
+        ]
     finally:
         await conn.execute("DROP SCHEMA IF EXISTS parity_e2e CASCADE")
         await conn.close()
 
     con = _load_duckdb()
-    duck_rows = con.execute(transpile(_GOVERNED_PG_SQL, "duckdb")).fetchall()
+    duck_rows = con.execute(transpile(_GOVERNED_PG_SQL, "duckdb", generated=False)).fetchall()
 
     # Both engines certify against the reference, hence against each other.
     assert compare_governed_results(_REFERENCE_GOVERNED, pg_rows).certified

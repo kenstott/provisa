@@ -210,7 +210,6 @@ domains = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("description", Text, nullable=False, server_default=""),
-    Column("steward", Text),  # REQ-609: designated steward; NULL = pending
     Column("graphql_alias", Text),
     # REQ-1363: the domain this one sits under (a business unit and its organizations); NULL =
     # no parent. No foreign key: a load or a deploy writes the whole tree at once, in no order
@@ -231,7 +230,6 @@ data_products = Table(  # REQ-1634
     Column("id", Text, primary_key=True),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("name", Text, nullable=False),
-    Column("owner_role", Text),
     Column("team_role", Text),
     Column("purpose", Text, nullable=False, server_default=""),
     Column("limitations", Text, nullable=False, server_default=""),
@@ -502,7 +500,6 @@ relationships = Table(
     Column("source_json_key", Text),
     # REQ-2099: the target's parameters this edge feeds, {parameter: source column}.
     Column("parameters", JSON, nullable=False, default=dict, server_default="{}"),
-    Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
@@ -1288,6 +1285,28 @@ checker_targets = Table(
 
 # REQ-194: the names table of the last model version built
 # (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+# REQ-2219: the principals each product's and relationship's Owner field and each domain's Steward
+# field names, people and roles as entered (named), beside the people holding the capability on it
+# (holds). Derived state; see the matching block in schema.sql.
+object_owners = Table(
+    "object_owners",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("principal_kind", Text, primary_key=True),
+    Column("principal", Text, primary_key=True),
+    Column("named", Boolean, nullable=False),
+    Column("holds", Boolean, nullable=False),
+    CheckConstraint(
+        "object_kind IN ('data_product', 'domain', 'relationship')",
+        name="object_owners_object_kind_check",
+    ),
+    CheckConstraint(
+        "principal_kind IN ('person', 'role')",
+        name="object_owners_principal_kind_check",
+    ),
+)
+
 model_names = Table(
     "model_names",
     metadata,
