@@ -182,6 +182,90 @@ async def _notified(state, generation: int | None) -> None:
     _until(lambda: sessions._heard.get(_key(state), 0) > heard)
 
 
+def test_an_older_notification_does_not_drop_a_newer_copy():
+    """A G0 notification arriving after a G0+1 copy is stored must not drop that copy.
+
+    This is deterministic: _heard_of is driven directly with no timing involved.
+    """
+    import json
+    from datetime import UTC, datetime
+
+    sessions = cache.Sessions.__new__(cache.Sessions)
+    import threading
+
+    sessions._lock = threading.Lock()
+    sessions._held = {}
+    sessions._heard = {}
+    sessions._epoch = 0
+    sessions._connected = True
+    sessions._gates = {}
+
+    schema, user = "myorg", "ada"
+    key = (schema, user)
+    g1 = 1000
+    g0 = g1 - 1  # the earlier notification
+
+    # Store a copy at generation G0+1 = g1.
+    held = cache.Held(
+        generation=g1,
+        rights="fp",
+        used_at=datetime.now(UTC),
+        tables=[],
+        graph=None,
+        stored=False,
+        empty=True,
+    )
+    sessions._held[key] = held
+
+    # Deliver the older G0 notification directly.
+    sessions._heard_of(json.dumps({"s": schema, "u": user, "g": g0}))
+
+    # The copy must still be there: G0 < G0+1, so the copy is fresher.
+    assert sessions._held.get(key) is held, (
+        "a notification for G0 dropped a copy at G0+1 (the race this fix addresses)"
+    )
+
+    # A notification for G0+1 itself must also keep the copy (same generation).
+    sessions._heard_of(json.dumps({"s": schema, "u": user, "g": g1}))
+    assert sessions._held.get(key) is held, "notification matching copy generation must keep it"
+
+    # A notification for G0+2 (newer than the copy) must drop it.
+    sessions._heard_of(json.dumps({"s": schema, "u": user, "g": g1 + 1}))
+    assert sessions._held.get(key) is None, "notification for a newer generation must drop copy"
+
+
+def test_a_none_notification_always_drops_the_copy():
+    """A None generation (row deleted) must drop whatever copy is held."""
+    import json
+    from datetime import UTC, datetime
+
+    sessions = cache.Sessions.__new__(cache.Sessions)
+    import threading
+
+    sessions._lock = threading.Lock()
+    sessions._held = {}
+    sessions._heard = {}
+    sessions._epoch = 0
+    sessions._connected = True
+    sessions._gates = {}
+
+    schema, user = "myorg", "ada"
+    key = (schema, user)
+
+    held = cache.Held(
+        generation=1000,
+        rights="fp",
+        used_at=datetime.now(UTC),
+        tables=[],
+        graph=None,
+        stored=False,
+        empty=True,
+    )
+    sessions._held[key] = held
+    sessions._heard_of(json.dumps({"s": schema, "u": user, "g": None}))
+    assert sessions._held.get(key) is None, "None generation must drop the copy"
+
+
 async def test_a_notification_of_the_generation_a_copy_holds_keeps_it(workers):
     # A worker hears of its own write too, after its next statement read the row anew.
     one, _two = workers
