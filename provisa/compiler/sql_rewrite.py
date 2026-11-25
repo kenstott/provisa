@@ -1884,26 +1884,16 @@ def translate_epoch_temporal_columns(  # REQ-1908
     return tree.sql(dialect="postgres")
 
 
-def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
-    """Copy outer ``alias._nf_col = value`` conditions into the governed inner subquery for each
-    alias, so ClickHouse's PostgreSQL DATABASE engine forwards them to the sidecar on its COPY.
-
-    ClickHouse materialises a governed subquery ``(SELECT … _nf_tag FROM sidecar_db.t) AS r``
-    without the outer ``WHERE r._nf_tag = 'joined'`` condition, because the materialisation happens
-    before the outer filter is applied.  The sidecar therefore receives no ``_nf_*`` constraint,
-    calls the function with no arguments, and every row gets ``_nf_tag = NULL``; the outer filter
-    then drops everything.  Pushing the condition into the inner SELECT's WHERE sends it on the
-    PostgreSQL COPY that ClickHouse issues to the sidecar, so ``nf_given`` finds it and the
-    function is called with the right argument."""
-    import sqlglot
+def _push_nf_into_select(select: "exp.Select") -> None:  # REQ-2267
+    """Mutate *select* in place: copy each ``alias._nf_col = value`` from its outer WHERE into the
+    matching aliased subquery's inner WHERE, so ClickHouse's PostgreSQL DATABASE engine forwards
+    the condition to the sidecar on its COPY (see :func:`push_nf_into_subqueries`)."""
     import sqlglot.expressions as exp
 
-    tree = sqlglot.parse_one(sql, read="clickhouse")
-    outer_where = tree.args.get("where")
+    outer_where = select.args.get("where")
     if outer_where is None:
-        return sql
+        return
 
-    # Collect all AND-parts of the outer WHERE that are ``alias._nf_col = literal``.
     def _and_parts(
         node: exp.Expression,
     ) -> list[exp.Expression]:  # allow-complex: recursive AND-walk
@@ -1929,9 +1919,8 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         nf_conditions.setdefault(alias, []).append(cond)
 
     if not nf_conditions:
-        return sql
+        return
 
-    # Build a lookup of alias -> subquery node from FROM and JOINs.
     def _alias_name(node: exp.Expression) -> str | None:
         alias = node.args.get("alias")
         if alias is None:
@@ -1940,21 +1929,20 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         return name.name if hasattr(name, "name") else str(name)
 
     subqueries: dict[str, exp.Subquery] = {}
-    from_clause = tree.args.get("from")
+    from_clause = select.args.get("from")
     if from_clause is not None:
         sub = from_clause.this
         if isinstance(sub, exp.Subquery):
             name = _alias_name(sub)
             if name:
                 subqueries[name] = sub
-    for join in tree.args.get("joins") or []:
+    for join in select.args.get("joins") or []:
         sub = join.this
         if isinstance(sub, exp.Subquery):
             name = _alias_name(sub)
             if name:
                 subqueries[name] = sub
 
-    # Push the _nf_ conditions into their target subqueries.
     for alias, conds in nf_conditions.items():
         sub = subqueries.get(alias)
         if sub is None:
@@ -1962,7 +1950,6 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         inner_select = sub.this
         inner_where = inner_select.args.get("where")
         for cond in conds:
-            # Rewrite the column reference: drop the outer alias, keep the bare column name.
             bare_col = exp.Column(this=exp.Identifier(this=cond.left.name, quoted=True))
             pushed = exp.EQ(this=bare_col, expression=cond.right.copy())
             if inner_where is None:
@@ -1971,6 +1958,49 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
             else:
                 inner_where.set("this", exp.And(this=inner_where.this, expression=pushed))
 
+
+def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
+    """Copy outer ``alias._nf_col = value`` conditions into the governed inner subquery for each
+    alias, so ClickHouse's PostgreSQL DATABASE engine forwards them to the sidecar on its COPY.
+
+    ClickHouse materialises a governed subquery ``(SELECT … _nf_tag FROM sidecar_db.t) AS r``
+    without the outer ``WHERE r._nf_tag = 'joined'`` condition, because the materialisation happens
+    before the outer filter is applied.  The sidecar therefore receives no ``_nf_*`` constraint,
+    calls the function with no arguments, and every row gets ``_nf_tag = NULL``; the outer filter
+    then drops everything.  Pushing the condition into the inner SELECT's WHERE sends it on the
+    PostgreSQL COPY that ClickHouse issues to the sidecar, so ``nf_given`` finds it and the
+    function is called with the right argument.
+
+    Handles three forms:
+
+    * Flat SELECT — the outer WHERE contains the ``_nf_*`` conditions directly.
+    * CTE-wrapped SELECT — the SQL is ``WITH __cte AS (SELECT … WHERE …) SELECT * FROM __cte``;
+      the outer SELECT has no WHERE so the conditions are in each CTE body.
+    * INSERT INTO FUNCTION wrapper (delivery) — the SELECT is the ``expression`` of an INSERT;
+      the INSERT node has no WHERE of its own."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="clickhouse")
+
+    # INSERT INTO FUNCTION (delivery wrapper): push into the inner SELECT.
+    if isinstance(tree, exp.Insert):
+        inner = tree.args.get("expression")
+        if isinstance(inner, exp.Select):
+            _push_nf_into_select(inner)
+        return tree.sql(dialect="clickhouse")
+
+    # CTE-wrapped: outer SELECT has no WHERE but each CTE body may.
+    with_ = tree.args.get("with_")
+    if with_ is not None and tree.args.get("where") is None:
+        for cte in with_.expressions:
+            if isinstance(cte.this, exp.Select):
+                _push_nf_into_select(cte.this)
+        return tree.sql(dialect="clickhouse")
+
+    # Flat SELECT.
+    if isinstance(tree, exp.Select):
+        _push_nf_into_select(tree)
     return tree.sql(dialect="clickhouse")
 
 

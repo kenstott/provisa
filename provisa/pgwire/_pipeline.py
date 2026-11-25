@@ -6707,6 +6707,14 @@ async def _route_compiled(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _exec_sql = fold_catalog_into_schema(_exec_sql)
+        if state.federation_engine.dialect == "clickhouse":
+            # REQ-2267: same push the raw-SQL/pgwire path applies in route_governed — the
+            # compiled path (GraphQL, Cypher, REST, gRPC, Flight SQL) also runs through
+            # _engine_form, so without this call every non-pgwire front door returned zero rows
+            # from a ClickHouse code source.  One helper (_push_nf_into_select), both paths.
+            from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+
+            _exec_sql = push_nf_into_subqueries(_exec_sql)
         # REQ-2236: the compiled path's statement is Provisa's own, from a graph IR.
         return _exec_sql, state.federation_engine.transpile_physical(_exec_sql, generated=True)
 

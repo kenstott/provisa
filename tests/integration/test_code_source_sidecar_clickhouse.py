@@ -119,6 +119,61 @@ def test_clickhouse_joins_a_dev_sources_function_read_through_its_sidecar(server
     assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}
 
 
+# REQ-2267: every front door must return the same rows.  The compiled path (_engine_form) was
+# missing the push_nf_into_subqueries call that the raw-SQL/pgwire path had, so GraphQL and Cypher
+# both returned zero rows from a ClickHouse code source.
+
+
+_GQL_JOIN = """
+{
+  orders(where: {region: {eq: "eu-west"}}) {
+    id
+    regionDetail {
+      label
+      asked
+    }
+  }
+}
+"""
+
+_CYPHER_JOIN = (
+    "MATCH (o:orders)-[:regionDetail]->(r:regions) "
+    "WHERE o.region = 'eu-west' "
+    "RETURN o.id AS id, r.label AS label, r.asked AS asked"
+)
+
+
+def test_graphql_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):
+    resp = httpx.post(
+        f"{server.base_url}/data/graphql",
+        json={"query": _GQL_JOIN},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "errors" not in body, body
+    orders = body["data"]["orders"]
+    assert orders, "GraphQL: no eu-west orders joined to their region"
+    region_rows = [r for o in orders for r in (o.get("regionDetail") or [])]
+    assert region_rows, "GraphQL: regionDetail is empty"
+    assert {(r["label"], r["asked"]) for r in region_rows} == {("EU West", "joined")}
+
+
+def test_cypher_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):
+    resp = httpx.post(
+        f"{server.base_url}/data/cypher",
+        json={"query": _CYPHER_JOIN},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    rows = body["rows"]
+    assert rows, "Cypher: no eu-west orders joined to their region"
+    assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}
+
+
 def test_the_join_reads_the_code_table_from_the_sources_database_not_a_landed_copy(
     server, dev_source
 ):

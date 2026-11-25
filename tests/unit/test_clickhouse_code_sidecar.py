@@ -206,6 +206,78 @@ def test_push_nf_into_subqueries_moves_nf_condition_into_governed_subquery():
     pytest.fail("no subquery with alias 'r' found in result")
 
 
+def test_push_nf_into_subqueries_handles_cte_wrapped_select():
+    # REQ-2267: the compiled path (GraphQL / Cypher) can emit a CTE-wrapped SELECT.  The outer
+    # SELECT has no WHERE of its own, so the current code returned unchanged.  The fix must look
+    # inside each CTE body for the _nf_* condition and push it into the governed subquery there.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    sql = (
+        "WITH __result AS ("
+        'SELECT "o"."id", "r"."label" '
+        'FROM (SELECT "id", "region" FROM "orders_db"."orders") AS "o" '
+        'JOIN (SELECT "region", "label", "_nf_tag" FROM "sidecar_db"."regions") AS "r" '
+        'ON "r"."region" = "o"."region" '
+        'WHERE "r"."_nf_tag" = \'joined\' AND "o"."region" = \'eu-west\''
+        ") SELECT * FROM __result"
+    )
+    result = push_nf_into_subqueries(sql)
+    tree = sqlglot.parse_one(result, read="clickhouse")
+    # The CTE body must carry the pushed condition.
+    with_ = tree.args.get("with_")
+    assert with_ is not None, "CTE stripped from result"
+    for cte in with_.expressions:
+        body = cte.this
+        for join in body.args.get("joins") or []:
+            sub = join.this
+            if isinstance(sub, exp.Subquery):
+                alias = sub.args.get("alias")
+                alias_name = (
+                    alias.this.name.lower() if alias and hasattr(alias.this, "name") else ""
+                )
+                if alias_name == "r":
+                    inner_where = sub.this.args.get("where")
+                    assert inner_where is not None, "inner subquery inside CTE has no WHERE"
+                    inner_sql = inner_where.sql(dialect="clickhouse")
+                    assert "_nf_tag" in inner_sql, f"_nf_tag not in inner WHERE: {inner_sql}"
+                    return
+    pytest.fail("no subquery with alias 'r' found in any CTE body")
+
+
+def test_push_nf_into_subqueries_handles_insert_function_wrapper():
+    # REQ-2267: ClickHouse delivery wraps the governed SELECT in
+    # INSERT INTO FUNCTION s3(...) SELECT ...  The outer Insert has no WHERE, so the fix must
+    # locate the inner SELECT's WHERE and push the _nf_* conditions into its subqueries.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    sql = (
+        "INSERT INTO FUNCTION s3('bucket', 'key', 'Parquet') "
+        'SELECT "o"."id", "r"."label" '
+        'FROM (SELECT "id", "region" FROM "orders_db"."orders") AS "o" '
+        'JOIN (SELECT "region", "label", "_nf_tag" FROM "sidecar_db"."regions") AS "r" '
+        'ON "r"."region" = "o"."region" '
+        'WHERE "r"."_nf_tag" = \'joined\' AND "o"."region" = \'eu-west\''
+    )
+    result = push_nf_into_subqueries(sql)
+    tree = sqlglot.parse_one(result, read="clickhouse")
+    assert isinstance(tree, exp.Insert), "result is not an INSERT"
+    # Walk all subqueries inside the INSERT to find the one for alias r.
+    for sub in tree.find_all(exp.Subquery):
+        alias = sub.args.get("alias")
+        alias_name = alias.this.name.lower() if alias and hasattr(alias.this, "name") else ""
+        if alias_name == "r":
+            inner_where = sub.this.args.get("where")
+            assert inner_where is not None, "inner subquery inside INSERT has no WHERE"
+            inner_sql = inner_where.sql(dialect="clickhouse")
+            assert "_nf_tag" in inner_sql, f"_nf_tag not in inner WHERE: {inner_sql}"
+            return
+    pytest.fail("no subquery with alias 'r' found inside INSERT")
+
+
 def test_the_catalog_answers_current_setting_and_format_type_as_postgresql_does():
     import duckdb
 
