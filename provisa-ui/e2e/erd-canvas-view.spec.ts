@@ -75,17 +75,23 @@ test("fitted whole, the ERD stays whole when the splitter to the detail panel is
   const fitted = await diagramInCanvas(page);
   expect(inView(fitted), JSON.stringify(fitted)).toBe(true);
 
-  // The splitter dragged toward the ERD: the panel widens and the ERD narrows.
+  // The splitter dragged toward the ERD: the panel widens and the ERD narrows -- as far as the
+  // whole model can still be drawn above the graph's least zoom (0.1; the demo model is some
+  // thousands of px across), and no further than 300px.
+  const modelWidth = (fitted.drawing.x2 - fitted.drawing.x1) / fitted.zoom;
+  const narrowest = Math.ceil(modelWidth * 0.1 * 1.2 + 40);
+  const by = Math.min(300, fitted.width - narrowest);
+  expect(by, JSON.stringify({ fitted, narrowest })).toBeGreaterThanOrEqual(60);
   const h = (await handle.boundingBox())!;
   await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
   await page.mouse.down();
-  await page.mouse.move(h.x + h.width / 2 - 150, h.y + h.height / 2, { steps: 5 });
-  await page.mouse.move(h.x + h.width / 2 - 300, h.y + h.height / 2, { steps: 5 });
+  await page.mouse.move(h.x + h.width / 2 - by / 2, h.y + h.height / 2, { steps: 5 });
+  await page.mouse.move(h.x + h.width / 2 - by, h.y + h.height / 2, { steps: 5 });
   await page.mouse.up();
 
   await expect
     .poll(async () => (await diagramInCanvas(page)).width, { timeout: 10_000 })
-    .toBeLessThan(fitted.width - 200);
+    .toBeLessThan(fitted.width - by / 2);
   // Every node still in view, fitted to the narrower canvas: no jump to a zoomed-in view.
   await expect
     .poll(async () => {
