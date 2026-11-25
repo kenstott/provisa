@@ -153,13 +153,10 @@ RAISED = [
 
 #: (statement, the reason the refusal names)
 REFUSED = [
-    ("SELECT regexp_substr('abcd', '(a|ab)(c|bcd)') AS v", "of alternatives"),
-    ("SELECT regexp_replace('ab', 'a|b*', 'X') AS v", "of alternatives"),
-    ("SELECT regexp_count('ab', '(a)|(ab)') AS v", "of alternatives"),
-    ("SELECT regexp_substr('aabbb', 'a+?b+') AS v", "of quantifiers of mixed greediness"),
-    ("SELECT regexp_instr('aabbb', 'a*b+?') AS v", "of quantifiers of mixed greediness"),
-    ("SELECT regexp_substr('abcd', '(ab)?(abcd)?') AS v", "of a group repeated"),
+    # Answered as PostgreSQL matches since (test_polyfill_clickhouse_regex_longest), but for a
+    # group's part of the match.
     ("SELECT substring('abcd' from '(ab)?(abcd)?') AS v", "of a group repeated"),
+    ("SELECT regexp_split_to_array('ab', 'a|b*') AS v", "of alternatives"),
     ("SELECT regexp_replace('aa', '(a)\\1', 'X', 1, 1) AS v", "of a back reference"),
     ("SELECT substring('abc' from '%#\"b#\"%' for '#') AS v", "of escape-double-quote separators"),
     (
@@ -292,14 +289,13 @@ def test_similar_to_as_postgresql_writes_its_regular_expression(pattern, escape,
 @pytest.mark.parametrize(
     "sql",
     [
-        "SELECT regexp_replace('abcb', 'B', 'X', 1, 2, 'i') AS v",
-        "SELECT regexp_replace('abcb', 'b', 'X', 1, 2, 'g') AS v",
         "SELECT regexp_replace(a, b, 'X', 1, 1) AS v FROM (VALUES ('ab', 'b')) AS t(a, b)",
+        "SELECT regexp_replace(a, b, 'X', 1, 1, 'i') AS v FROM (VALUES ('ab', 'b')) AS t(a, b)",
     ],
 )
-def test_six_arguments_and_a_varying_nth_pattern_stay_refused_by_name(sql):
-    """REQ-2167 (amended 2026-11-02): regexp_replace of six arguments is refused by name, and so is
-    the Nth match of a pattern that varies on ClickHouse, before the grid reads the call."""
+def test_a_varying_nth_pattern_stays_refused_by_name(sql):
+    """The Nth match of a pattern that varies is refused by name on ClickHouse, before the grid
+    reads the call (six arguments are answered since REQ-2167's amendment of 2026-11-25)."""
     with pytest.raises(FunctionRefused) as refused:
         transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate == "0A000"

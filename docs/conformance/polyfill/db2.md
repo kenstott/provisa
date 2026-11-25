@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on Db2. A feat
 
 When Db2 is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 413, of which 145 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 414, of which 146 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 240 of the grid's 635 features are native on Db2 and left out.
 
@@ -181,9 +181,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: regexp_replace($s, $p, $r, $f::text). <code>0A000</code> regexp_replace has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match).</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match), with flags or without.</td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)

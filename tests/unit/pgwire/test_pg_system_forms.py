@@ -244,21 +244,39 @@ def test_repeat_of_nothing_is_null_for_any_count_elsewhere(dialect: str):
     assert re.search(r"\ba\W* IS NOT NULL", written), written
 
 
+#: The engines with no exact form of six-argument regexp_replace (REQ-2167, amended 2026-11-25).
+_NO_SIX_ARGUMENT_FORM = tuple(e for e in _ENGINES if e != "clickhouse")
+
+
 @pytest.mark.parametrize("n", [2, 1, 0, 3])
 def test_the_six_argument_form_is_refused_whatever_its_flag(n: int):
-    # REQ-2167 (amended 2026-11-02, Six-argument regexp_replace is not supported).
+    # REQ-2167 (amended 2026-11-25): refused by name where no exact form exists.
     sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
-    for dialect in _ENGINES:
+    for dialect in _NO_SIX_ARGUMENT_FORM:
         with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
             transpile(sql, dialect, generated=False)
 
 
+@pytest.mark.parametrize(("n", "want"), [(2, "aXb-c"), (1, "a-bXc"), (0, "a-b-c"), (3, "aXbXc")])
+def test_the_six_argument_form_is_answered_on_clickhouse(n: int, want: str):
+    # REQ-2167 (amended 2026-11-25): g beside n changes nothing, as in PostgreSQL.
+    sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
+    answer = chdb.query(transpile(sql, "clickhouse", generated=False), "CSV").bytes().decode()
+    assert answer.strip() == f'"{want}"'
+
+
 @pytest.mark.parametrize("flags", ["'gi'", "'i'", "f"])
-@pytest.mark.parametrize("dialect", _ENGINES)
+@pytest.mark.parametrize("dialect", _NO_SIX_ARGUMENT_FORM)
 def test_a_flag_beside_n_is_refused_by_name(flags: str, dialect: str):
     sql = f"SELECT regexp_replace(a, 'X', '-', 1, 2, {flags}) AS v FROM t"
     with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
         transpile(sql, dialect, generated=False)
+
+
+def test_flags_that_are_no_literal_beside_n_are_refused_by_name_on_clickhouse():
+    sql = "SELECT regexp_replace(a, 'X', '-', 1, 2, f) AS v FROM t"
+    with pytest.raises(FunctionRefused, match="regexp_replace.*has no form on clickhouse"):
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(

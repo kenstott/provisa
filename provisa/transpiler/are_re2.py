@@ -151,6 +151,9 @@ class Re2:
     #: Whether the first capturing group may take no part in a match (it is optional, or in one
     #: of several alternatives): PostgreSQL's substring answers NULL there, RE2's extract ''.
     first_group_optional: bool = False
+    #: Whether PostgreSQL matches the shortest text at a match's start (the whole pattern is
+    #: non-greedy), rather than the longest.
+    shortest: bool = False
 
 
 @dataclass
@@ -231,6 +234,16 @@ class _Frame:
     optional: bool = False
     #: The groups within it, at any depth.
     groups: int = 0
+    #: The preference of each atom of the branch being read, in order: 1 the longest match, -1
+    #: the shortest, 0 none (PostgreSQL's greediness, Re2.shortest).
+    prefs: list[int] = field(default_factory=list)
+
+    def preference(self) -> int:
+        """Its preference as PostgreSQL reads it: alternatives prefer the longest; a branch the
+        preference of its first atom that has one."""
+        if self.bars:
+            return 1
+        return next((pref for pref in self.prefs if pref), 0)
 
 
 class _Reader:
@@ -257,6 +270,8 @@ class _Reader:
         self.closed_last: _Frame | None = None
         #: Whether what was read last is a quantifier, which a ? makes non-greedy.
         self.after_quantifier = False
+        #: Whether that quantifier is a fixed count ({m}), which keeps its atom's preference.
+        self.fixed_count = False
         self.repeated_group = False
         #: The first capturing group, and the groups and the whole pattern around it.
         self.first_group: _Frame | None = None
@@ -299,6 +314,7 @@ class _Reader:
                 self.out.append(c)
                 self.at += 1
                 self.word_before = False
+                self.frames[-1].prefs.append(0)
             else:
                 self._atom(_literal(c), word=_is_word(c))
 
@@ -308,6 +324,7 @@ class _Reader:
         self.out.append(written)
         self.at += width
         self.word_before = word
+        self.frames[-1].prefs.append(0)
         if not zero:
             self.frames[-1].width += 1
 
@@ -317,15 +334,23 @@ class _Reader:
         if c == "?" and self.after_quantifier:  # a non-greedy quantifier
             self.greedy[-1] = False
             self.after_quantifier = False
+            prefs = self.frames[-1].prefs
+            if prefs and not self.fixed_count:
+                prefs[-1] = -1
             return
         if c in "*?":
             self.word_before = False
         self._quantified(least=1 if c == "+" else 0, varying=True)
 
-    def _quantified(self, *, least: int, varying: bool) -> None:
-        """A quantifier of at ``least`` repetitions, ``varying`` where it allows more."""
+    def _quantified(self, *, least: int, varying: bool, fixed: bool = False) -> None:
+        """A quantifier of at ``least`` repetitions, ``varying`` where it allows more, ``fixed``
+        where it is a count alone ({m}), which keeps its atom's preference."""
         self.greedy.append(True)
         self.after_quantifier = True
+        self.fixed_count = fixed
+        prefs = self.frames[-1].prefs
+        if prefs and not fixed:
+            prefs[-1] = 1
         self.frames[-1].width = -(10**9)  # no fixed width
         repeated = self.closed_last
         if repeated is not None:
@@ -361,7 +386,7 @@ class _Reader:
         counts = bound[1:-1].split(",")
         least = int(counts[0]) if _all_in(counts[0], "0123456789") and counts[0] else 0
         varying = len(counts) > 1 and counts[1] != counts[0]
-        self._quantified(least=least, varying=varying)
+        self._quantified(least=least, varying=varying, fixed=len(counts) == 1)
 
     def _open(self) -> None:
         text = self.text
@@ -410,6 +435,7 @@ class _Reader:
         frame.end = len(self.out)
         frame.widths.append(frame.width)
         self.frames[-1].width += frame.width if not frame.bars else -(10**9)
+        self.frames[-1].prefs.append(frame.preference())
         self.out.append(")")
         self.at += 1
         self.word_before = False
@@ -571,6 +597,7 @@ class _Reader:
         self.out.append(written)
         self.at = end
         self.word_before = word
+        self.frames[-1].prefs.append(0)
         self.frames[-1].width += 1
 
     def _bracket_at(self, at: int) -> tuple[str, int, bool]:
@@ -711,6 +738,12 @@ class _Reader:
             written.extend((["|"] if i else []) + alternative)
         self.out[frame.start : frame.end] = written
 
+    def shortest(self) -> bool:
+        """Whether PostgreSQL matches the shortest text at a match's start: the whole pattern's
+        preference is a non-greedy quantifier's (src/backend/regex/regcomp.c, the first atom
+        that has a preference decides a branch's; alternatives prefer the longest)."""
+        return self.frames[0].preference() < 0
+
     def first_group_optional(self) -> bool:
         if self.first_group is None:
             return False
@@ -802,6 +835,7 @@ def translated(pattern: str, flags: str = "") -> Re2:
         options.newline in "nw",
         leftmost,
         reader.first_group_optional(),
+        reader.shortest(),
     )
 
 

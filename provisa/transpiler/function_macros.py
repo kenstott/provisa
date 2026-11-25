@@ -616,6 +616,10 @@ def _polyfilled(
         raise RowRefused(called, dialect, refused.refusal) from refused
 
 
+#: A grid row's name that is a function's.
+_FUNCTION_NAME = re.compile(r"[a-z_][a-z_0-9]*")
+
+
 def _feature_of(target: exp.Expr) -> str:
     """The name of the grid's feature a typed node's rule is of."""
     names = type(target).sql_names() if isinstance(target, exp.Func) else ()
@@ -663,7 +667,10 @@ def _polyfilled_by_rule(
         replacement = _replacement(form, dialect, applied.rule.pattern)
         written = _grafted(replacement, params, args, node, called, dialect)
     if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
-        return exp.alias_(written, called)  # named for the function
+        # Named for the function, as PostgreSQL names the column; a row named for what it covers
+        # ("regexp_replace from a start") names no column.
+        named = called if _FUNCTION_NAME.fullmatch(called) else _feature_of(target)
+        return exp.alias_(written, named)
     return written
 
 
