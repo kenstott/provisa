@@ -232,3 +232,17 @@ def test_the_33_measures_are_rows_and_every_other_dialect_keeps_what_it_had():
             assert "exact" in stated.text and "0A000" in stated.text
             # No edge value overflows, so the row states no raise an edge call is held to.
             assert "raises 0A000" not in stated.text
+
+
+@pytest.mark.parametrize(
+    ("count", "sqlstate"),
+    [("'-2147483648'", "22023"), ("1", "22023"), ("2147483647", "54000")],
+)
+def test_polygon_of_a_count_past_its_bounds_raises_postgresqls_error(runtime, count, sqlstate):
+    """ClickHouse builds every branch of a form: the points are drawn of no count PostgreSQL
+    refuses, so its own check raises first (geo_ops.c circle_poly)."""
+    sql = f"SELECT polygon({count}::integer, '<(0,0),1>'::circle) AS v"
+    with pytest.raises(Exception) as raised:
+        _one(runtime, sql)
+    error = from_engine(raised.value)
+    assert error is not None and error.sqlstate == sqlstate
