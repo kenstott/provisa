@@ -43,15 +43,17 @@ def _counted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def test_a_repeated_statement_is_derived_once(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _counted(monkeypatch)
-    first = transpile_to_duckdb("SELECT 1 AS a")
+    first = transpile_to_duckdb("SELECT 1 AS a", generated=False)
     derived = len(seen)
-    assert transpile_to_duckdb("SELECT 1 AS a") == first
+    assert transpile_to_duckdb("SELECT 1 AS a", generated=False) == first
     assert len(seen) == derived
 
 
 def test_another_statement_is_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _counted(monkeypatch)
-    assert transpile_to_duckdb("SELECT 1 AS a") != transpile_to_duckdb("SELECT 2 AS a")
+    assert transpile_to_duckdb("SELECT 1 AS a", generated=False) != transpile_to_duckdb(
+        "SELECT 2 AS a", generated=False
+    )
     assert set(seen) == {"SELECT 1 AS a", "SELECT 2 AS a"}
 
 
@@ -67,8 +69,8 @@ def test_a_refusal_is_not_kept(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(transpile.pg_money, "lowered", refused_once)
     with pytest.raises(ValueError, match="refused"):
-        transpile_to_duckdb("SELECT 3 AS a")
-    assert "3" in transpile_to_duckdb("SELECT 3 AS a")
+        transpile_to_duckdb("SELECT 3 AS a", generated=False)
+    assert "3" in transpile_to_duckdb("SELECT 3 AS a", generated=False)
 
 
 def test_the_stage_is_traced_on_a_kept_statement_too(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,7 +78,7 @@ def test_the_stage_is_traced_on_a_kept_statement_too(monkeypatch: pytest.MonkeyP
 
     traced: list[tuple[str, str]] = []
     monkeypatch.setattr(stage_trace, "trace_stage", lambda stage, sql: traced.append((stage, sql)))
-    kept = transpile_to_duckdb("SELECT 4 AS a")
+    kept = transpile_to_duckdb("SELECT 4 AS a", generated=False)
     traced.clear()
-    assert transpile_to_duckdb("SELECT 4 AS a") == kept
+    assert transpile_to_duckdb("SELECT 4 AS a", generated=False) == kept
     assert traced == [("transpile.duckdb", kept)]

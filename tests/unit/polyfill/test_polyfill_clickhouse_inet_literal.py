@@ -754,12 +754,15 @@ def _text(value: object) -> str | None:
 
 @pytest.mark.parametrize(("sql", "want"), ANSWERED)
 def test_clickhouse_answers_postgresql(runtime, sql, want):
-    got = [_text(row[0]) for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    got = [
+        _text(row[0])
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
     assert got == want
 
 
 @pytest.mark.parametrize(("sql", "sqlstate"), RAISED)
 def test_clickhouse_raises_postgresqls_class(runtime, sql, sqlstate):
     with pytest.raises(FunctionRefused) as refused:  # of constants: raised as the statement is read
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert getattr(refused.value, "sqlstate", "")[:2] == sqlstate[:2]

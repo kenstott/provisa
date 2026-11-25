@@ -84,28 +84,28 @@ def test_a_subtyped_column_read_as_a_value_keeps_its_text_form():
 
 def test_postgresql_and_duckdb_give_the_column_its_native_type():
     sql = _marked("h.ip = '10.0.0.1'", " ORDER BY h.ip")
-    assert transpile(sql, "postgres").endswith(
+    assert transpile(sql, "postgres", generated=False).endswith(
         "WHERE CAST(h.ip AS INET) = CAST('10.0.0.1' AS INET) ORDER BY CAST(h.ip AS INET)"
     )
-    assert "CAST(h.ip AS INET)" in transpile(sql, "duckdb")
+    assert "CAST(h.ip AS INET)" in transpile(sql, "duckdb", generated=False)
     # The select list is the text form still.
-    assert transpile(sql, "postgres").startswith("SELECT h.ip, h.mac FROM")
+    assert transpile(sql, "postgres", generated=False).startswith("SELECT h.ip, h.mac FROM")
 
 
 def test_a_statement_at_a_source_with_the_type_runs_the_types_own_operator_there():
     # A single-source statement is routed to its source, whose dialect is then the routed one.
     assert "CAST(h.span AS INT4RANGE) && '[1,5)'" in transpile(
-        _marked("h.span && '[1,5)'"), "postgres"
+        _marked("h.span && '[1,5)'"), "postgres", generated=False
     )
-    assert "@@" in transpile(_marked("h.words @@ to_tsquery('a')"), "postgres")
+    assert "@@" in transpile(_marked("h.words @@ to_tsquery('a')"), "postgres", generated=False)
 
 
 def test_a_spatial_predicate_gives_the_column_and_its_wkt_the_native_type():
     sql = _marked("ST_Contains(h.area, 'POINT(1 1)')")
     assert "ST_CONTAINS(ST_GEOMFROMTEXT(h.area), ST_GEOMFROMTEXT('POINT(1 1)'))" in transpile(
-        sql, "duckdb"
+        sql, "duckdb", generated=False
     )
-    assert "ST_GEOMETRYFROMTEXT(h.area)" in transpile(sql, "trino")
+    assert "ST_GEOMETRYFROMTEXT(h.area)" in transpile(sql, "trino", generated=False)
 
 
 # --- refused by name where the dialect has neither ---------------------------------------------
@@ -123,7 +123,7 @@ def test_an_operation_the_dialect_cannot_answer_natively_is_refused_by_name(
     where, order, dialect, subtype, operation
 ):
     with pytest.raises(SubtypeOperationRefused) as refused:
-        transpile(_marked(where, order), dialect)
+        transpile(_marked(where, order), dialect, generated=False)
     assert refused.value.code == "query.subtype_operation_unsupported"
     assert refused.value.params == {"subtype": subtype, "operation": operation, "dialect": dialect}
 
@@ -132,7 +132,7 @@ def test_a_range_is_refused_on_no_dialect():
     """REQ-2171, RANGES ARE EMULATED ON EVERY ENGINE; tests/unit/test_pg_ranges.py proves the
     emulation."""
     for dialect in ("duckdb", "trino", "clickhouse", "tsql", "mysql", "bigquery"):
-        written = transpile(_marked("TRUE", " ORDER BY h.span"), dialect)
+        written = transpile(_marked("TRUE", " ORDER BY h.span"), dialect, generated=False)
         assert "nullif(h.span, 'empty')" in written.lower()
 
 
@@ -144,7 +144,7 @@ _ELEMENTS = [0, 1, 3, 5, 9]
 
 def _duckdb_answer(where: str) -> bool:
     """The emulated predicate, as Provisa writes it for DuckDB, run in DuckDB over one row."""
-    statement = transpile(_marked(where), "duckdb")
+    statement = transpile(_marked(where), "duckdb", generated=False)
     tree = sqlglot.parse_one(statement, read="duckdb")
     predicate = tree.args["where"].this.sql(dialect="duckdb")
     ((value,),) = duckdb.sql(f"SELECT {predicate} FROM (SELECT * FROM _row) AS h").fetchall()
@@ -204,10 +204,12 @@ def test_an_inet_operation_on_trino_is_refused_and_its_text_form_reads():
     a value is its text form, as on every engine."""
     for where, order in (("h.ip <<= '10.0.0.0/8'", ""), ("TRUE", " ORDER BY h.ip")):
         with pytest.raises(SubtypeOperationRefused) as refused:
-            transpile(_marked(where, order), "trino")
+            transpile(_marked(where, order), "trino", generated=False)
         assert refused.value.params["subtype"] == "inet"
         assert refused.value.params["dialect"] == "trino"
-    assert transpile(_marked("h.id = 1"), "trino").startswith("SELECT h.ip, h.mac FROM")
+    assert transpile(_marked("h.id = 1"), "trino", generated=False).startswith(
+        "SELECT h.ip, h.mac FROM"
+    )
 
 
 # --- the registered subtype reaches the physical statement --------------------------------------

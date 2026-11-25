@@ -55,3 +55,12 @@ fi
 if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ]; then
   ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py up "$GITHUB_ENV" )
 fi
+
+# REQ-294: a running Provisa never fetches a connector bundle, and an AskAmerica source's server is
+# the pgwire-govdata bundle (pgwire_bundles.py CONNECTOR_RELEASE["govdata"]). Staged here, from the
+# pinned GitHub release, for the job that runs the AskAmerica specs: the provisioning job, the one
+# passed FREE_ASKAMERICA_KEY (ui-e2e-core.yml). Unstaged, the govdata case's source never serves
+# (run 45471924124).
+if [ -n "${FREE_ASKAMERICA_KEY:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only govdata --github-release )
+fi

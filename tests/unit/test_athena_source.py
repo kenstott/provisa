@@ -49,7 +49,9 @@ def connected(monkeypatch):
 
     def connect(**kwargs):
         given.update(kwargs)
-        return SimpleNamespace(close=lambda: None)
+        # REQ-2194: connecting runs one statement and reads its result from the output location.
+        probe = SimpleNamespace(execute=lambda statement: None, close=lambda: None)
+        return SimpleNamespace(close=lambda: None, cursor=lambda cls, **kw: probe)
 
     monkeypatch.setattr(driver_mod.pyathena, "connect", connect)
     return given

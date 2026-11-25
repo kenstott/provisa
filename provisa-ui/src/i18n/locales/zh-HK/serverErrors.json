@@ -574,7 +574,7 @@
       "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
       "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
-      "domain_stewards_saved": "已儲存域 '{{domain}}' 的管理員",
+      "domain_stewards_saved": "已儲存網域 '{{domain}}' 的數據管家",
       "table_has_dependents": "表 '{{name}}' 仍被其他物件讀取或引用：請先停用或修改這些物件",
       "file_types_differ": "模式 {{glob}} 符合多於一種類型的檔案（{{types}}）；同一個表的檔案必須全部屬於同一種類型。"
     },
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Webhook 需要用於為定期審查簽署的密鑰"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} 沒有具備 domain_steward 能力的角色，因此不能被指定為域 {{domain}} 的管理員。請先授予其此類角色。",
-      "steward_role_not_eligible": "角色 {{role}} 不具備 domain_steward 能力，因此不能被指定為域 {{domain}} 的管理員。請先為該角色授予此能力。",
-      "stewards_change_refused": "只有組織管理員或域 {{domain}} 的現任管理員可以更改其管理員。"
+      "steward_not_eligible": "{{steward}} 沒有具備 domain_steward 能力的角色，因此不能被指定為網域 {{domain}} 的數據管家。請先授予其此類角色。",
+      "steward_role_not_eligible": "角色 {{role}} 不具備 domain_steward 能力，因此不能被指定為網域 {{domain}} 的數據管家。請先為該角色授予此能力。",
+      "stewards_change_refused": "只有組織管理員或網域 {{domain}} 的現任數據管家可以更改其數據管家。"
     },
     "product_suggestion": {
       "database_not_connected": "數據庫未連接",

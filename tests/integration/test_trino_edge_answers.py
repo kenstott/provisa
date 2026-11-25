@@ -671,7 +671,7 @@ def _written(sql: str) -> str:
     except MetadataFunctionRefused as refused:
         # provisa.pgwire.catalog._read_meta answers a refused catalog form with 0A000.
         raise PostgresError("0A000", str(refused)) from refused
-    return transpile(expanded.sql(dialect="postgres"), "trino")
+    return transpile(expanded.sql(dialect="postgres"), "trino", generated=False)
 
 
 def _refused_by_name(error: Exception) -> bool:

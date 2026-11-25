@@ -3543,7 +3543,7 @@ async def _rebuild_schemas_impl(
     # stamps, so the config watcher rebuilds once more; reading them afterwards would record stamps
     # newer than the model built.
     from provisa.core import config_stamp as _config_stamp
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     # REQ-351: every relationship's effective names, in the naming convention now in force: a build
     # follows each save, configuration load and change of convention. Stored before the stamp is
@@ -4800,6 +4800,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         stop_all_servers()
 
+    # REQ-2267: every dev-mode code source's pgwire sidecar, before the workers its calls run on.
+    with tolerate_shutdown_failure("code source pgwire sidecars stop"):
+        from provisa.codesource.pgwire_sidecar import stop_all_sidecars
+
+        stop_all_sidecars()
+
     # REQ-1984, REQ-1993: every code source's worker process (each its own child, not ended by
     # ours unless it is told its socket closed).
     with tolerate_shutdown_failure("code source workers stop"):
@@ -5973,6 +5979,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
+    from provisa.api.admin.developer_services_router import router as developer_services_router
+
+    app.include_router(developer_services_router)  # REQ-2106, REQ-2112
     from provisa.api.admin.connectors_router import router as connectors_router
 
     app.include_router(connectors_router)  # REQ-2221

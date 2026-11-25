@@ -14,7 +14,7 @@
 
 from provisa.core import model_change, model_uri
 from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
@@ -22,7 +22,6 @@ from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
-from provisa.core.relationship_names import store_effective_names
 from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import registered_tables, relationships, table_columns
@@ -491,6 +490,163 @@ async def remove_where(conn: "Connection", *where) -> None:
     longer declares. Any other relationship is retired (:func:`delete`). It does not ask the
     dependency guard."""
     await conn.execute_core(_delete(relationships).where(*where))
+
+
+async def store_effective_names(conn: "Connection", ids: list[str] | None = None) -> None:
+    """Derive and store the effective names of the relationships ``ids`` (every one when None),
+    in the naming convention now in force. Called where a relationship is saved and by every schema
+    build, which follows each save, configuration load and change of naming convention. A row
+    whose stored names are already these is not written, and with none to write no change is
+    opened: a worker reloading another's change builds outside any model change scope. Names that
+    do differ are written inside one (REQ-1524)."""
+    from provisa.compiler.naming import active_gql_convention
+
+    from provisa.core.relationship_names import (
+        derive_graphql_alias,
+        effective_cypher_type,
+        target_field_name,
+    )
+    from provisa.core.schema_org import naming_rules, sources
+
+    convention = active_gql_convention()
+    # REQ-155: the derived field is named for the target's GraphQL field, which the naming rules
+    # shape, in the order the schema build applies them.
+    rules = [
+        {"pattern": r.pattern, "replacement": r.replacement}
+        for r in (
+            await conn.execute_core(
+                select(naming_rules.c.pattern, naming_rules.c.replacement).order_by(
+                    naming_rules.c.id
+                )
+            )
+        ).fetchall()
+    ]
+    target = registered_tables.alias("target")
+    target_source = sources.alias("target_source")
+    via = registered_tables.alias("via")
+    query = select(
+        relationships.c.id,
+        relationships.c.alias,
+        relationships.c.graphql_alias,
+        relationships.c.source_column,
+        relationships.c.cardinality,
+        relationships.c.via_label_source,
+        relationships.c.via_type_value,
+        relationships.c.cypher_type,
+        relationships.c.graphql_field,
+        target.c.table_name.label("target_table_name"),
+        target.c.alias.label("target_alias"),
+        target.c.gql_naming_convention.label("target_convention"),
+        target_source.c.gql_naming_convention.label("target_source_convention"),
+        via.c.table_name.label("via_table_name"),
+    ).select_from(
+        relationships.outerjoin(target, target.c.id == relationships.c.target_table_id)
+        .outerjoin(target_source, target_source.c.id == target.c.source_id)
+        .outerjoin(via, via.c.id == relationships.c.via_table_id)
+    )
+    if ids is not None:
+        query = query.where(relationships.c.id.in_(ids))
+    rows = [r._mapping for r in (await conn.execute_core(query)).fetchall()]
+    respelled: list[tuple[str, str | None, str | None]] = []
+    for r in rows:
+        cypher_type = effective_cypher_type(
+            alias=r["alias"],
+            source_column=r["source_column"] or "",
+            cardinality=r["cardinality"] or "",
+            via_label_source=r["via_label_source"],
+            via_type_value=r["via_type_value"],
+            via_table_name=r["via_table_name"],
+        )
+        graphql_field = r["graphql_alias"] or derive_graphql_alias(
+            target_field_name(
+                r["target_table_name"],
+                r["target_alias"],
+                rules,
+                r["target_convention"] or r["target_source_convention"],
+            )
+            if r["target_table_name"]
+            else "",
+            r["cardinality"] or "",
+            convention,
+            via_label_source=r["via_label_source"],
+            via_type_value=r["via_type_value"],
+            via_table_name=r["via_table_name"],
+            cypher_alias=r["alias"],
+        )
+        if (r["cypher_type"], r["graphql_field"]) != (cypher_type, graphql_field):
+            respelled.append((r["id"], cypher_type, graphql_field))
+    if not respelled:
+        return
+    # REQ-1524: a model write is part of a change. A save or a load writing these is that change
+    # (the scope joins it); a build that finds them in another naming convention -- after the
+    # convention changed -- writes them as a change of its own, never outside one.
+    from provisa.core import model_change
+
+    async with model_change.scope("relationship names follow the naming convention"):
+        for rel_id, cypher_type, graphql_field in respelled:
+            await conn.execute_core(
+                update(relationships)
+                .where(relationships.c.id == rel_id)
+                .values(cypher_type=cypher_type, graphql_field=graphql_field)
+            )
+
+
+async def flag_for_review(conn: "Connection", rel_ids: list[str]) -> None:  # REQ-020, REQ-1531
+    """Set ``needs_review`` on the relationships ``rel_ids``, their version unchanged: a
+    cross-domain edge is the other domain's to review."""
+    await conn.execute_core(
+        update(relationships).where(relationships.c.id.in_(rel_ids)).values(needs_review=True)
+    )
+
+
+async def set_code_resolver(  # REQ-1919
+    conn: "Connection", rel_ids: list[str], set_id: str
+) -> None:
+    """Mark the relationships ``rel_ids`` as the code resolver set ``set_id``'s."""
+    await conn.execute_core(
+        update(relationships).where(relationships.c.id.in_(rel_ids)).values(code_resolver=set_id)
+    )
+
+
+async def seed(  # REQ-1919
+    conn: "Connection", row: dict[str, Any], update_columns: list[str]
+) -> None:
+    """Write a built-in relationship the startup seed declares: created when absent, and
+    ``update_columns`` brought to ``row``'s values when present."""
+    await conn.upsert(relationships, row, index_elements=["id"], update_columns=update_columns)
+
+
+async def insert_discovered(  # REQ-399, REQ-413, REQ-415, REQ-1919
+    conn: "Connection",
+    rel_id: str,
+    src_id: int,
+    tgt_id: int,
+    src_col: str,
+    tgt_col: str,
+    cardinality: str,
+    alias: str | None,
+    graphql_alias: str | None,
+) -> bool:
+    """Insert a relationship a foreign key was found for; True when it is new, False when a
+    relationship with its id was already there (which is left as it is)."""
+    result = await conn.execute(
+        """
+        INSERT INTO relationships
+            (id, source_table_id, target_table_id, source_column, target_column, cardinality,
+             alias, graphql_alias)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT DO NOTHING
+        """,
+        rel_id,
+        src_id,
+        tgt_id,
+        src_col,
+        tgt_col,
+        cardinality,
+        alias,
+        graphql_alias,
+    )
+    return result == "INSERT 0 1"
 
 
 async def mark_relationships_for_review(  # REQ-020

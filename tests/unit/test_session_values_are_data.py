@@ -28,7 +28,7 @@ HOSTILE = ["x\\' OR 1=1 --", "x' OR 1=1 --", "it's", "back\\slash"]
 @pytest.mark.parametrize("value", HOSTILE)
 def test_a_session_value_is_one_value_of_its_one_comparison(engine, value):
     backend = build_engine(engine).backend
-    physical = backend.transpile_physical(GOVERNED)
+    physical = backend.transpile_physical(GOVERNED, generated=False)
     resolved = _resolve_session_settings(physical, {"tenant": value}, backend.dialect)
     (statement,) = [s for s in sqlglot.parse(resolved, read=backend.dialect) if s is not None]
     where = statement.args["where"].this

@@ -53,7 +53,7 @@ def _run(con: duckdb.DuckDBPyConnection, sql: str) -> object:
     timer = threading.Timer(QUICK_S, con.interrupt)
     timer.start()
     try:
-        row = con.execute(transpile_to_duckdb(sql)).fetchone()
+        row = con.execute(transpile_to_duckdb(sql, generated=False)).fetchone()
         assert row is not None
         return row[0]
     finally:

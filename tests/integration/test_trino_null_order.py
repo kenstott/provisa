@@ -99,7 +99,9 @@ def test_an_ordered_limited_read_answers_on_trino_as_on_postgresql(
     with psycopg.connect(_pg_dsn()) as conn:
         expected = [tuple(r) for r in conn.execute(cast(LiteralString, sql)).fetchall()]
     lowered = transpile(
-        f'SELECT "v" FROM "{_CATALOG}"."{_SCHEMA}"."{table}" ORDER BY "d" {order} {limit}', "trino"
+        f'SELECT "v" FROM "{_CATALOG}"."{_SCHEMA}"."{table}" ORDER BY "d" {order} {limit}',
+        "trino",
+        generated=False,
     )
     trino_over_postgres.execute(lowered)
     assert [tuple(r) for r in trino_over_postgres.fetchall()] == expected, lowered

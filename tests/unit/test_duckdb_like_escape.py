@@ -62,5 +62,5 @@ def test_a_like_matches_as_in_postgresql(attached, condition):
     sql = f"SELECT v FROM t WHERE {condition}"
     with psycopg.connect(pg.dsn("like_escape")) as conn:
         expected = sorted(r[0] for r in conn.execute(cast(LiteralString, sql)).fetchall())
-    duck_sql = transpile_to_duckdb(f"SELECT v FROM p.public.t WHERE {condition}")
+    duck_sql = transpile_to_duckdb(f"SELECT v FROM p.public.t WHERE {condition}", generated=False)
     assert sorted(r[0] for r in duck.execute(duck_sql).fetchall()) == expected, duck_sql

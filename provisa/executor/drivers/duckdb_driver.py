@@ -62,16 +62,15 @@ def _arrow_result(cursor: Any) -> QueryResult:  # noqa: ANN401 — a DuckDB conn
 
 
 class _ArrowCursor:
-    """A DuckDB cursor read through its Arrow reader for :class:`PooledCursorStream`:
-    ``fetchmany`` builds the next rows from the record batches (duckdb_arrow.arrow_rows), never
-    from DuckDB's DB-API rows (REQ-2194); an engine error met in a later batch is PostgreSQL's own
-    (duckdb_arrow.answered_batches)."""
+    """A DuckDB cursor read through its Arrow reader for :class:`PooledArrowCursorStream`:
+    ``fetch_batch`` hands on DuckDB's next record batch, never its DB-API rows (REQ-2194); an
+    engine error met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches)."""
 
     def __init__(self, conn: Any) -> None:  # noqa: ANN401 — a DuckDB connection
         self._cursor = conn.cursor()
         self._description: Any = None
         self._reader: Iterator[Any] | None = None
-        self._pending: list[tuple] = []
+        self.schema: Any = None
 
     @property
     def description(self) -> Any:  # noqa: ANN401 — DuckDB's description
@@ -85,17 +84,17 @@ class _ArrowCursor:
         rel = self._cursor.sql(sql, params=params) if params else self._cursor.sql(sql)
         self._description = rel.description
         if self._description:
-            self._reader = answered_batches(rel.to_arrow_reader(FETCH_CHUNK_ROWS))
+            reader = rel.to_arrow_reader(FETCH_CHUNK_ROWS)
+            self.schema = reader.schema
+            self._reader = answered_batches(reader)
 
-    def fetchmany(self, size: int) -> list[tuple]:
-        while len(self._pending) < size and self._reader is not None:
-            batch = next(self._reader, None)
-            if batch is None:
-                self._reader = None
-                break
-            self._pending.extend(arrow_rows(batch))
-        rows, self._pending = self._pending[:size], self._pending[size:]
-        return rows
+    def fetch_batch(self) -> Any:  # noqa: ANN401 — a pyarrow RecordBatch, or None once exhausted
+        if self._reader is None:
+            return None
+        batch = next(self._reader, None)
+        if batch is None:
+            self._reader = None
+        return batch
 
     def interrupt(self) -> None:
         self._cursor.interrupt()
@@ -243,16 +242,17 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
 
     async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
         """The result a batch at a time: a cursor of the pooled connection, read through its
-        Arrow reader (:class:`_ArrowCursor`); DuckDB's own ``interrupt`` stops a statement still
-        running."""
-        from provisa.executor.drivers.cursor_stream import PooledCursorStream
+        Arrow reader (:class:`_ArrowCursor`) and handed on as its record batches (REQ-2194);
+        DuckDB's own ``interrupt`` stops a statement still running."""
+        from provisa.executor.drivers.cursor_stream import PooledArrowCursorStream
 
-        return PooledCursorStream(
+        return PooledArrowCursorStream(
             self._require_pool(),
             open_cursor=_ArrowCursor,
             execute=lambda cur: cur.execute(sql, params),
             columns=lambda cur: [desc[0] for desc in cur.description],
             cancel=lambda _conn, cur: cur.interrupt(),
+            to_rows=arrow_rows,
         )
 
     async def close(self) -> None:

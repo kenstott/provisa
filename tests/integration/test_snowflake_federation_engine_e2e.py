@@ -94,7 +94,7 @@ def _compile_to_snowflake(si: SchemaInput, gql: str, rls: RLSContext | None = No
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
         sql = apply_governance(sql, gov_ctx)
-    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "snowflake")
+    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "snowflake", generated=True)
 
 
 _CATALOG = _SRC.replace("-", "_")  # compiler catalog for source id (e2e_sf_<run>)

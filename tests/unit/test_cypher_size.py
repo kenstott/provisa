@@ -37,14 +37,18 @@ def test_size_of_a_text_column_is_its_character_count(dialect):
         "MATCH (e:Employees)-[:WORKS_IN]->(d:Departments) RETURN size(e.name) AS a, "
         "size(d.title) AS b"
     )
-    written = transpile_to_duckdb(semantic) if dialect == "duckdb" else transpile(semantic, dialect)
+    written = (
+        transpile_to_duckdb(semantic, generated=False)
+        if dialect == "duckdb"
+        else transpile(semantic, dialect, generated=False)
+    )
     assert "CARDINALITY" not in written.upper(), written
     assert "LENGTH(" in written.upper(), written
 
 
 def test_the_count_is_of_characters():
     semantic = _semantic("WITH 'héllo' AS s RETURN size(s) AS n")
-    assert duckdb.sql(transpile_to_duckdb(semantic)).fetchall() == [(5,)]
+    assert duckdb.sql(transpile_to_duckdb(semantic, generated=False)).fetchall() == [(5,)]
 
 
 @pytest.mark.parametrize(
@@ -60,7 +64,11 @@ def test_the_count_is_of_characters():
 @pytest.mark.parametrize("dialect", ["postgres", "trino", "duckdb"])
 def test_size_of_a_computed_string_is_its_character_count(dialect, expression):
     semantic = _semantic(f"MATCH (e:Employees) WITH {expression} AS s RETURN size(s) AS n")
-    written = transpile_to_duckdb(semantic) if dialect == "duckdb" else transpile(semantic, dialect)
+    written = (
+        transpile_to_duckdb(semantic, generated=False)
+        if dialect == "duckdb"
+        else transpile(semantic, dialect, generated=False)
+    )
     assert "CARDINALITY" not in written.upper(), written
     assert "LENGTH(" in written.upper(), written
 
@@ -69,4 +77,4 @@ def test_size_of_a_list_stays_a_list_count():
     semantic = _semantic(
         "MATCH (e:Employees) WITH collect(e.name) AS names RETURN size(names) AS n"
     )
-    assert "CARDINALITY(" in transpile(semantic, "postgres").upper()
+    assert "CARDINALITY(" in transpile(semantic, "postgres", generated=False).upper()

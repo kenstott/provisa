@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import insert, or_, select, update
+from sqlalchemy import or_, select
 
 from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
 from provisa.api.admin.capabilities import (
@@ -189,16 +189,17 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
             raise ApiError(
                 409, "roles.already_exists", f"Role {body.id!r} already exists", role=body.id
             )
-        await conn.execute_core(
-            insert(roles).values(
-                id=body.id,
-                description=description,
-                capabilities=body.capabilities,
-                domain_access=body.domain_access,
-                residency_values=body.residency_values,
-                org_id=org_id,
-                parents=body.parents,
-            )
+        await role_repo.create(
+            conn,
+            {
+                "id": body.id,
+                "description": description,
+                "capabilities": body.capabilities,
+                "domain_access": body.domain_access,
+                "residency_values": body.residency_values,
+                "org_id": org_id,
+                "parents": body.parents,
+            },
         )
     from provisa.api.app import _rebuild_schemas
 
@@ -404,16 +405,16 @@ async def update_role(
         require_reach_of_added_domains_request(  # REQ-1531
             request, existing["domain_access"], new_domains
         )
-        await conn.execute_core(
-            update(roles)
-            .where(roles.c.id == role_id)
-            .values(
-                description=new_description,
-                capabilities=new_caps,
-                domain_access=new_domains,
-                residency_values=new_values,
-                parents=new_parents,
-            )
+        await role_repo.update_definition(
+            conn,
+            role_id,
+            {
+                "description": new_description,
+                "capabilities": new_caps,
+                "domain_access": new_domains,
+                "residency_values": new_values,
+                "parents": new_parents,
+            },
         )
     from provisa.api.app import _rebuild_schemas
 

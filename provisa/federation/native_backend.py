@@ -722,8 +722,12 @@ class NativeEngineBackend(EngineBackend):
         if self.landed_signals:
             from provisa.observability.native_traces import signal_views, traces_dir
 
+            # REQ-2236: an ops view is PostgreSQL SQL written by hand, read as PostgreSQL reads it.
             self._runtime.attach_region_ops(
-                "otel", "signals", {}, signal_views(traces_dir(), self.transpile_physical)
+                "otel",
+                "signals",
+                {},
+                signal_views(traces_dir(), lambda s: self.transpile_physical(s, generated=False)),
             )
         return complete
 

@@ -256,8 +256,8 @@ class TestRoundTripPreservation:
         pg = f"SELECT {collist} FROM t ORDER BY {_q('rid')}"
         duck = _make_duck(cols, rows)
         slite = _make_sqlite(cols, rows)
-        d = _norm_rows(_duck_rows(duck, transpile(pg, "duckdb")))
-        s = _norm_rows(_sqlite_rows(slite, transpile(pg, "sqlite")))
+        d = _norm_rows(_duck_rows(duck, transpile(pg, "duckdb", generated=False)))
+        s = _norm_rows(_sqlite_rows(slite, transpile(pg, "sqlite", generated=False)))
         # Ground truth: what we inserted, normalised the same way.
         want = _norm_rows(
             [tuple([r["rid"]] + [_store_val(c, r[c.name]) for c in cols]) for r in rows]
@@ -282,8 +282,8 @@ class TestDifferentialFilter:
         pg = f"SELECT {_q('rid')} FROM t WHERE {pred}"
         duck = _make_duck(cols, rows)
         slite = _make_sqlite(cols, rows)
-        d = _norm_rows(_duck_rows(duck, transpile(pg, "duckdb")))
-        s = _norm_rows(_sqlite_rows(slite, transpile(pg, "sqlite")))
+        d = _norm_rows(_duck_rows(duck, transpile(pg, "duckdb", generated=False)))
+        s = _norm_rows(_sqlite_rows(slite, transpile(pg, "sqlite", generated=False)))
         assert d == s, (
             "IR filter selected different rows per engine (silent misinterpretation).\n"
             f"pred: {pred}\nrows: {rows}\nduck: {d}\nsqlite: {s}"
@@ -308,8 +308,8 @@ class TestGovernanceMetamorphic:
         governed = _inject_where(base, policy)
         duck = _make_duck(cols, rows)
         slite = _make_sqlite(cols, rows)
-        d = _norm_rows(_duck_rows(duck, transpile(governed, "duckdb")))
-        s = _norm_rows(_sqlite_rows(slite, transpile(governed, "sqlite")))
+        d = _norm_rows(_duck_rows(duck, transpile(governed, "duckdb", generated=False)))
+        s = _norm_rows(_sqlite_rows(slite, transpile(governed, "sqlite", generated=False)))
         assert d == s, (
             "Same policy excluded different rows per dialect.\n"
             f"policy: {policy}\ngoverned: {governed}\nrows: {rows}"
@@ -328,8 +328,8 @@ class TestGovernanceMetamorphic:
         qualified_pred = _qualified_predicate(read_rule(policy), "t").sql(dialect="postgres")
         qual = _inject_where(base, qualified_pred)
         duck = _make_duck(cols, rows)
-        a = _norm_rows(_duck_rows(duck, transpile(bare, "duckdb")))
-        b = _norm_rows(_duck_rows(duck, transpile(qual, "duckdb")))
+        a = _norm_rows(_duck_rows(duck, transpile(bare, "duckdb", generated=False)))
+        b = _norm_rows(_duck_rows(duck, transpile(qual, "duckdb", generated=False)))
         assert a == b, (
             "Column qualification changed the policy's row set.\n"
             f"policy: {policy}\nqualified: {qualified_pred}\nrows: {rows}"
@@ -346,8 +346,8 @@ class TestGovernanceMetamorphic:
         once = _inject_where(base, policy)
         twice = _inject_where(base, f"NOT (NOT ({policy}))")
         duck = _make_duck(cols, rows)
-        a = _norm_rows(_duck_rows(duck, transpile(once, "duckdb")))
-        b = _norm_rows(_duck_rows(duck, transpile(twice, "duckdb")))
+        a = _norm_rows(_duck_rows(duck, transpile(once, "duckdb", generated=False)))
+        b = _norm_rows(_duck_rows(duck, transpile(twice, "duckdb", generated=False)))
         assert a == b, f"Double negation changed the row set.\npolicy: {policy}\nrows: {rows}"
 
 
@@ -369,8 +369,8 @@ class TestIndirectionMetamorphic:
         # Indirection: the base relation reached through a wrapping subquery aliased back to `t`.
         indirect = f"SELECT {_q('rid')} FROM (SELECT * FROM t) AS t WHERE {pred}"
         duck = _make_duck(cols, rows)
-        a = _norm_rows(_duck_rows(duck, transpile(direct, "duckdb")))
-        b = _norm_rows(_duck_rows(duck, transpile(indirect, "duckdb")))
+        a = _norm_rows(_duck_rows(duck, transpile(direct, "duckdb", generated=False)))
+        b = _norm_rows(_duck_rows(duck, transpile(indirect, "duckdb", generated=False)))
         assert a == b, (
             "Indirection through an equivalent source changed the row set.\n"
             f"pred: {pred}\nrows: {rows}"

@@ -168,7 +168,7 @@ def conn(pgwire):
     state.federation_engine = engine
 
     async def _govern(text, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
-        return _engine_plan(transpile_to_duckdb(text))
+        return _engine_plan(transpile_to_duckdb(text, generated=False))
 
     async def _no_cache(plan, st):
         return None
@@ -313,7 +313,7 @@ def registered(pgwire):
     table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID, "types_fixture": FIXTURE_TABLE_ID}
 
     async def _govern(text, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
-        plan = _engine_plan(transpile_to_duckdb(text))
+        plan = _engine_plan(transpile_to_duckdb(text, generated=False))
         plan.result_shape = _kept_result_shape({}, text, table_map, ctx, state)
         return plan
 

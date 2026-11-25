@@ -112,7 +112,7 @@ def _compile(rls=None, schema=_SCH):
         sql = apply_governance(
             sql, build_governance_context("admin", rls, {}, ctx, s.tables, role=_ADMIN)
         )
-    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "tsql")
+    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "tsql", generated=True)
 
 
 @pytest.fixture(scope="module")

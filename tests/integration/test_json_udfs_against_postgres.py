@@ -262,7 +262,7 @@ def _on_duckdb(db: Any, sql: str) -> list[tuple] | str:
         return text_of(cast.coerce(value) if cast is not None and cast.coerce else value)
 
     try:
-        rows = db.execute(transpile_to_duckdb(sql)).fetchall()
+        rows = db.execute(transpile_to_duckdb(sql, generated=False)).fetchall()
     except Exception as refused:  # noqa: BLE001 -- the statement's outcome
         error = from_engine(refused)
         return error.sqlstate if error is not None else "engine"

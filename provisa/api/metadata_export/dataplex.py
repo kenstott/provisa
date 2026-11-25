@@ -287,7 +287,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
                         AssetError(asset=AssetRefStub("glossary"), message=f"glossary: {message}")
                     )
             for product in snapshot.data_products:
-                assets: dict[str, "TableAsset | None"] = {}
+                assets: dict[str, "TableAsset"] = {}
                 for member in product.members:
                     resource = member_resource(
                         member,
@@ -305,7 +305,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
                             )
                         )
                         continue
-                    assets[resource] = tables.get(member.fqn())
+                    # A product's members are tables of the snapshot (scope.for_entry keeps only those).
+                    assets[resource] = tables[member.fqn()]
                 if not product.owner_emails:
                     result.errors.append(
                         AssetError(
@@ -334,13 +335,22 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     continue
                 result.published["data_products"] = result.published.get("data_products", 0) + 1
                 result.published["data_assets"] = result.published.get("data_assets", 0) + count
+                # REQ-1389, REQ-194: each member is catalogued under its BigQuery resource name,
+                # which is both Dataplex's id for it and the name it carries there; each of its
+                # columns under that entry's schema path (Schema.<column>), as a definition link
+                # addresses it.
+                for resource, table in assets.items():
+                    result.bindings[table.semantic_uri] = (resource, resource)
+                    for column in table.columns:
+                        address = f"{resource}#Schema.{column.name}"
+                        result.bindings[column.semantic_uri] = (address, address)
         return result
 
     async def _publish_product(
         self,
         client: httpx.AsyncClient,
         product: "DataProductAsset",
-        assets: dict[str, "TableAsset | None"],
+        assets: dict[str, "TableAsset"],
         environment: "EnvironmentStage | None",
     ) -> int:
         """Create or update the data product and converge its assets to ``assets``; the number of
@@ -378,7 +388,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 await self._done(client, await client.delete(self._url(asset_name)))
         for resource, table in assets.items():
             labels = {"provisa-product": label(product.id), **environment_labels(environment)}
-            if table is not None and table.cache_ttl is not None:
+            if table.cache_ttl is not None:
                 # REQ-2118: the member's refresh cadence, from its freshness (-1: never expires).
                 labels["provisa-freshness-seconds"] = label(str(table.cache_ttl))
             asset = {"resource": resource, "labels": labels}

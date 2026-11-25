@@ -135,7 +135,7 @@ def test_a_step_of_the_chain_edits_the_tree_it_is_handed(dialect: str, sql: str)
     """``inline`` and what it calls no longer copy: ``transpile`` hands each its tree and keeps
     only the answer. A caller that kept using its tree would see it edited."""
     tree = sqlglot.parse_one(sql, read="postgres")
-    assert function_macros.inline(tree, dialect) is tree
+    assert function_macros.inline(tree, dialect, generated=False) is tree
 
 
 def test_the_held_types_step_edits_the_tree_it_is_handed() -> None:
@@ -147,11 +147,11 @@ def test_the_held_types_step_edits_the_tree_it_is_handed() -> None:
 def test_what_a_form_writes_holds_no_node_twice(dialect: str, sql: str) -> None:
     """The next step edits in place what this one wrote. A form that placed one node in two
     positions would have the edit of one reach the other, which a copy between them used to part."""
-    out = function_macros.inline(sqlglot.parse_one(sql, read="postgres"), dialect)
+    out = function_macros.inline(sqlglot.parse_one(sql, read="postgres"), dialect, generated=False)
     assert [w for w in _shared_or_misparented(out) if w.startswith("held twice")] == []
 
 
 @pytest.mark.parametrize(("dialect", "sql"), _FORMS)
 def test_a_statement_written_twice_is_written_the_same(dialect: str, sql: str) -> None:
     """The forms are memoized by name and text: an edit reaching one would show on the second."""
-    assert transpile(sql, dialect) == transpile(sql, dialect)
+    assert transpile(sql, dialect, generated=False) == transpile(sql, dialect, generated=False)

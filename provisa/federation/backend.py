@@ -112,23 +112,27 @@ class EngineBackend:
             )
         return dialect
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the engine's physical dialect. Native
         engines use the plain SQLGlot transpile to their dialect; the Trino backend overrides with
         its dialect-specific rewrite pipeline. Callers reach this through the seam so they never
-        hardcode a specific engine's dialect."""
+        hardcode a specific engine's dialect. ``generated``: see ``transpiler.transpile``."""
         from provisa.transpiler.transpile import transpile
 
-        return transpile(pg_sql, self.dialect, engine_kind=self.engine_kind)
+        return transpile(pg_sql, self.dialect, generated=generated, engine_kind=self.engine_kind)
 
-    def transpile_typed(self, pg_sql: str, column_types: Any) -> str:
+    def transpile_typed(self, pg_sql: str, column_types: Any, *, generated: bool) -> str:
         """``transpile_physical`` for an engine whose dialect writes a construct by its operands'
         types (``typed_columns.TYPED_DIALECTS``: Db2, SAP HANA), handed the registered
         ``column_types`` of the tables ``pg_sql`` reads (REQ-2236)."""
         from provisa.transpiler.transpile import transpile
 
         return transpile(
-            pg_sql, self.dialect, column_types=column_types, engine_kind=self.engine_kind
+            pg_sql,
+            self.dialect,
+            column_types=column_types,
+            generated=generated,
+            engine_kind=self.engine_kind,
         )
 
     def exact_reads(self, state: Any, physical_sql: str) -> str:
@@ -1057,7 +1061,7 @@ class TrinoBackend(EngineBackend):
 
         return frozenset(OPS_TABLES)
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
             rewrite_instants_for_trino,
@@ -1077,7 +1081,7 @@ class TrinoBackend(EngineBackend):
             return sql
 
         # REQ-2171: a geometric form's routines are kept as written, ahead of the statement.
-        return around(transpile_to_trino(pg_sql), rewritten)
+        return around(transpile_to_trino(pg_sql, generated=generated), rewritten)
 
     def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
         """Register (once per process) and return the catalog Trino reads the store ``dsn`` under

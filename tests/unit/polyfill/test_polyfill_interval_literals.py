@@ -300,7 +300,7 @@ def _stamp(value: datetime.datetime) -> str:
 
 
 def _ch_rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[Any]:
-    rows = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    rows = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return [_stamp(r[0]) if isinstance(r[0], datetime.datetime) else r[0] for r in rows]
 
 
@@ -325,7 +325,7 @@ def _fields(text: str | None) -> tuple[int, int, int] | None:
 
 def _duckdb_rows(sql: str, want: list[Any]) -> list[Any]:
     """DuckDB's answer: an interval as its (months, days, microseconds), a timestamp as text."""
-    written = transpile(sql, "duckdb")
+    written = transpile(sql, "duckdb", generated=False)
     con = duckdb.connect()
     if any(w is not None and not w[:4].isdigit() for w in want):
         written = (
@@ -407,7 +407,7 @@ def test_trino_writes_a_literal_a_timestamp_is_moved_by(sql, written):
     """Trino has no type named interval. A timestamp moved by a value of months alone, or of days
     and whole seconds, is moved by Trino's INTERVAL 'n' UNIT; the answer is the timestamp. On the
     base '1 day 02:03' was INTERVAL '1' DAY (a wrong answer) and '3 mons' INTERVAL '3' MONS."""
-    assert transpile(sql, "trino") == written
+    assert transpile(sql, "trino", generated=False) == written
 
 
 @pytest.mark.parametrize(
@@ -428,7 +428,7 @@ def test_trino_refuses_by_name_any_other_literal(sql, named):
     On the base, each reached Trino as INTERVAL '1' DAY (a wrong answer) or as a cast to a type
     it has none of (an engine error)."""
     with pytest.raises(FunctionRefused, match="trino") as refused:
-        transpile(sql, "trino")
+        transpile(sql, "trino", generated=False)
     assert named in str(refused.value)
 
 
@@ -455,7 +455,7 @@ def test_trino_refuses_by_name_any_other_literal(sql, named):
 def test_clickhouse_refuses_by_name_a_literal_no_call_reads(runtime, sql, named):
     """On the base each reached ClickHouse as CAST(.. AS Nullable(INTERVAL)): an engine error."""
     with pytest.raises(FunctionRefused, match="clickhouse") as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert named in str(refused.value)
     assert getattr(refused.value, "sqlstate", "0A000") == "0A000"
 
@@ -474,7 +474,7 @@ def test_a_table_s_interval_column_is_refused_by_name(call):
     holds no interval of it. On the base: CAST(c_interval AS Nullable(INTERVAL)), an engine error."""
     sql = f"SELECT {call} AS v FROM conformance.function_columns WHERE id = 1"
     with pytest.raises(FunctionRefused, match="a table's interval column") as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate == "0A000"
 
 
@@ -545,19 +545,19 @@ def test_duckdb_refuses_by_name_an_input_not_read_here(text):
     """PostgreSQL refuses the first three (22007), which DuckDB answered (2 days, 3 mons,
     03:03:00); DuckDB fails on ISO 8601, the SQL standard's forms and infinity (an engine error)."""
     with pytest.raises(FunctionRefused, match="duckdb"):
-        transpile(f"SELECT '{text}'::interval AS v", "duckdb")
+        transpile(f"SELECT '{text}'::interval AS v", "duckdb", generated=False)
 
 
 @pytest.mark.parametrize("text", ["0", "5"])
 def test_duckdb_keeps_its_own_reading_of_a_form_not_read_here(text):
     """A bare number is seconds in both: DuckDB reads it as PostgreSQL does."""
-    assert transpile(f"SELECT '{text}'::interval AS v", "duckdb") == (
+    assert transpile(f"SELECT '{text}'::interval AS v", "duckdb", generated=False) == (
         f"SELECT CAST('{text}' AS INTERVAL) AS v"
     )
 
 
 def test_duckdb_keeps_a_text_it_reads_alike():
-    assert transpile("SELECT '1 day 02:03:04'::interval AS v", "duckdb") == (
+    assert transpile("SELECT '1 day 02:03:04'::interval AS v", "duckdb", generated=False) == (
         "SELECT CAST('1 day 02:03:04' AS INTERVAL) AS v"
     )
 
@@ -566,7 +566,7 @@ def test_an_engine_error_is_never_the_answer(runtime):
     """Every statement here either answers or is refused by name on ClickHouse."""
     for sql, _ in PG:
         try:
-            written = transpile(sql, "clickhouse")
+            written = transpile(sql, "clickhouse", generated=False)
         except FunctionRefused:
             continue
         try:
@@ -612,7 +612,7 @@ def test_percentile_cont_of_intervals_is_refused_by_its_name(sql, dialect):
     '1 day 02:03:04' anywhere but a timestamp's plus or minus"), which the run counts an engine
     error; it names percentile_cont, as main's refusal did."""
     with pytest.raises(FunctionRefused, match=dialect) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert str(refused.value).startswith("percentile_cont() ")
     assert _named_by_the_run(str(refused.value))
 
@@ -636,7 +636,7 @@ def test_an_interval_an_aggregate_orders_by_is_refused_by_its_name(sql, named, d
     main string_agg and percentile_disc reached both engines as a cast to interval (an engine
     error); a refusal that names no call is counted one too."""
     with pytest.raises(FunctionRefused, match=dialect) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert str(refused.value).startswith(f"{named}() of an interval ")
     assert _named_by_the_run(str(refused.value))
 
@@ -664,7 +664,7 @@ def test_the_interval_rows_read_a_deep_form_once_a_row(sql, monkeypatch):
         return walk(node)
 
     monkeypatch.setattr(intervals, "_mentions_interval", counted)
-    written = transpile(sql, "clickhouse")
+    written = transpile(sql, "clickhouse", generated=False)
     nodes = sum(1 for _ in sqlglot.parse_one(written, read="clickhouse").walk())
     assert walks <= nodes, (walks, nodes)
 
@@ -720,7 +720,7 @@ def test_a_cast_of_a_column_to_interval_served_as_text_stays_text():
 
 def test_clickhouse_serves_the_literal_as_the_text_pgwire_reads():
     """The text the ClickHouse rewrite writes for the literal is the one pgwire reads back."""
-    written = transpile("SELECT '1 day 02:03'::interval AS v", "clickhouse")
+    written = transpile("SELECT '1 day 02:03'::interval AS v", "clickhouse", generated=False)
     literal = sqlglot.parse_one(written, read="clickhouse").find(exp.Literal)
     assert literal is not None
     assert interval_parts(interval_of_text(literal.this)) == (0, 1, 7_380_000_000)

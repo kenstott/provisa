@@ -503,8 +503,10 @@ async def _seed_meta_domain(
         )
     ).scalar()
     if _rt_id is not None and _tc_id is not None:
-        await conn.upsert(
-            _relationships_t,
+        from provisa.core.repositories import relationship as _relationship_repo
+
+        await _relationship_repo.seed(
+            conn,
             {
                 "id": "meta:registered_tables:table_columns",
                 "source_table_id": _rt_id,
@@ -513,8 +515,7 @@ async def _seed_meta_domain(
                 "target_column": "table_id",
                 "cardinality": "one-to-many",
             },
-            index_elements=["id"],
-            update_columns=[],
+            [],
         )
 
 
@@ -764,16 +765,15 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
         # declared junction that is not registered yet has no edge to seed either.
         if _src_id is None or _tgt_id is None or (_via_table is not None and _via_id is None):
             continue
-        await conn.upsert(
-            _relationships_t,
+        await _relationship_repo.seed(
+            conn,
             {
                 **_cols,
                 "source_table_id": _src_id,
                 "target_table_id": _tgt_id,
                 "via_table_id": _via_id,
             },
-            index_elements=["id"],
-            update_columns=list(RELATIONSHIP_SEED_COLUMNS),
+            list(RELATIONSHIP_SEED_COLUMNS),
         )
 
 

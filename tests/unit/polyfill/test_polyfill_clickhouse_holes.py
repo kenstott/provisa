@@ -35,7 +35,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
@@ -161,7 +161,9 @@ def test_to_char_of_a_template_strftime_would_misread_is_written_from_its_tokens
     # Each keyword is written as PostgreSQL's text (provisa.transpiler.to_char), on Trino
     # too (tests/unit/polyfill/test_polyfill_to_char.py), where these were refused by name.
     assert _one(runtime, f"SELECT to_char({_STAMP}, '{template}') AS v") == answer
-    assert "DATE_FORMAT" not in transpile(f"SELECT to_char({_STAMP}, '{template}') AS v", "trino")
+    assert "DATE_FORMAT" not in transpile(
+        f"SELECT to_char({_STAMP}, '{template}') AS v", "trino", generated=False
+    )
 
 
 # --- 4. bytea's LIKE in a statement that names no function -------------------------------------

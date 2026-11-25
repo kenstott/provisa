@@ -891,8 +891,8 @@
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
       },
-      "owner_not_eligible": "{{owner}} heeft geen rol met de bevoegdheid data_product_owner en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef eerst zo'n rol.",
-      "owner_role_not_eligible": "Rol {{role}} heeft de bevoegdheid data_product_owner niet en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef de rol eerst die bevoegdheid.",
+      "owner_not_eligible": "{{owner}} heeft geen rol met de capability data_product_owner en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef eerst zo'n rol.",
+      "owner_role_not_eligible": "Rol {{role}} heeft de capability data_product_owner niet en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef de rol eerst die capability.",
       "owners_change_refused": "Alleen een organisatiebeheerder of een huidige eigenaar van dataproduct {{data_product}} kan de eigenaren ervan wijzigen."
     },
     "erd": {
@@ -946,8 +946,8 @@
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
       "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld.",
-      "owner_not_eligible": "{{owner}} heeft geen rol met de bevoegdheid relationship_owner en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef eerst zo'n rol.",
-      "owner_role_not_eligible": "Rol {{role}} heeft de bevoegdheid relationship_owner niet en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef de rol eerst die bevoegdheid.",
+      "owner_not_eligible": "{{owner}} heeft geen rol met de capability relationship_owner en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef eerst zo'n rol.",
+      "owner_role_not_eligible": "Rol {{role}} heeft de capability relationship_owner niet en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef de rol eerst die capability.",
       "owners_change_refused": "Alleen een organisatiebeheerder of een huidige eigenaar van relatie {{relationship}} kan de eigenaren ervan wijzigen."
     },
     "syncing": {
@@ -990,8 +990,8 @@
       "webhook_secret_required": "Een webhook heeft het geheim nodig waarmee geplande reviews worden ondertekend"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} heeft geen rol met de bevoegdheid domain_steward en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef eerst zo'n rol.",
-      "steward_role_not_eligible": "Rol {{role}} heeft de bevoegdheid domain_steward niet en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef de rol eerst die bevoegdheid.",
+      "steward_not_eligible": "{{steward}} heeft geen rol met de capability domain_steward en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef eerst zo'n rol.",
+      "steward_role_not_eligible": "Rol {{role}} heeft de capability domain_steward niet en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef de rol eerst die capability.",
       "stewards_change_refused": "Alleen een organisatiebeheerder of een huidige steward van domein {{domain}} kan de stewards ervan wijzigen."
     },
     "product_suggestion": {

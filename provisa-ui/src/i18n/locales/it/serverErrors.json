@@ -574,7 +574,7 @@
       "table_state_from_function": "La tabella '{{table}}' è derivata dalla funzione '{{name}}' e ne ha lo stato di rilascio: non viene ritirata né ripristinata da sola",
       "table_region_from_function": "La tabella '{{table}}' deriva dalla funzione '{{name}}' e ha la sua regione: non viene spostata da sola in un'altra regione",
       "table_name_reserved": "Il nome di tabella '{{table}}' è riservato: i comandi di un dominio sono serviti sotto 'commands'. Registra la tabella con un altro nome o alias.",
-      "domain_stewards_saved": "Responsabili del dominio '{{domain}}' salvati",
+      "domain_stewards_saved": "Steward del dominio '{{domain}}' salvati",
       "table_has_dependents": "La tabella '{{name}}' è ancora letta o referenziata da altri oggetti: ritirali o modificali prima",
       "file_types_differ": "Il modello {{glob}} corrisponde a file di più tipi ({{types}}); i file di una tabella devono essere tutti dello stesso tipo."
     },
@@ -891,8 +891,8 @@
         "no_description": "Questo prodotto dati non indica né il suo scopo né il suo utilizzo.",
         "successor_retired": "Anche il prodotto dati che ha preso i membri di questo, '{{successor}}', è stato ritirato."
       },
-      "owner_not_eligible": "{{owner}} non ha alcun ruolo con la capacità data_product_owner, quindi non può essere nominato proprietario del prodotto dati {{data_product}}. Assegnagli prima un ruolo simile.",
-      "owner_role_not_eligible": "Il ruolo {{role}} non ha la capacità data_product_owner, quindi non può essere nominato proprietario del prodotto dati {{data_product}}. Assegna prima questa capacità al ruolo.",
+      "owner_not_eligible": "{{owner}} non ha alcun ruolo con la capability data_product_owner, quindi non può essere nominato proprietario del prodotto dati {{data_product}}. Assegnagli prima un ruolo simile.",
+      "owner_role_not_eligible": "Il ruolo {{role}} non ha la capability data_product_owner, quindi non può essere nominato proprietario del prodotto dati {{data_product}}. Assegna prima questa capability al ruolo.",
       "owners_change_refused": "Solo un amministratore dell'organizzazione o un proprietario attuale del prodotto dati {{data_product}} può cambiarne i proprietari."
     },
     "erd": {
@@ -946,8 +946,8 @@
     "relationship": {
       "name_taken": "Il nome '{{name}}' è già usato dalla relazione '{{held_by}}'. Assegnare un altro nome a questa.",
       "join_through_none": "Le relazioni '{{first}}' e '{{second}}' non condividono una tabella intermedia, oppure le loro altre estremità sono già unite tramite essa.",
-      "owner_not_eligible": "{{owner}} non ha alcun ruolo con la capacità relationship_owner, quindi non può essere nominato proprietario della relazione {{relationship}}. Assegnagli prima un ruolo simile.",
-      "owner_role_not_eligible": "Il ruolo {{role}} non ha la capacità relationship_owner, quindi non può essere nominato proprietario della relazione {{relationship}}. Assegna prima questa capacità al ruolo.",
+      "owner_not_eligible": "{{owner}} non ha alcun ruolo con la capability relationship_owner, quindi non può essere nominato proprietario della relazione {{relationship}}. Assegnagli prima un ruolo simile.",
+      "owner_role_not_eligible": "Il ruolo {{role}} non ha la capability relationship_owner, quindi non può essere nominato proprietario della relazione {{relationship}}. Assegna prima questa capability al ruolo.",
       "owners_change_refused": "Solo un amministratore dell'organizzazione o un proprietario attuale della relazione {{relationship}} può cambiarne i proprietari."
     },
     "syncing": {
@@ -990,9 +990,9 @@
       "webhook_secret_required": "Un webhook richiede il segreto con cui sono firmate le revisioni pianificate"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} non ha alcun ruolo con la capacità domain_steward, quindi non può essere nominato responsabile del dominio {{domain}}. Assegnagli prima un ruolo simile.",
-      "steward_role_not_eligible": "Il ruolo {{role}} non ha la capacità domain_steward, quindi non può essere nominato responsabile del dominio {{domain}}. Assegna prima questa capacità al ruolo.",
-      "stewards_change_refused": "Solo un amministratore dell'organizzazione o un responsabile attuale del dominio {{domain}} può cambiarne i responsabili."
+      "steward_not_eligible": "{{steward}} non ha alcun ruolo con la capability domain_steward, quindi non può essere nominato steward del dominio {{domain}}. Assegnagli prima un ruolo simile.",
+      "steward_role_not_eligible": "Il ruolo {{role}} non ha la capability domain_steward, quindi non può essere nominato steward del dominio {{domain}}. Assegna prima questa capability al ruolo.",
+      "stewards_change_refused": "Solo un amministratore dell'organizzazione o uno steward attuale del dominio {{domain}} può cambiarne gli steward."
     },
     "product_suggestion": {
       "database_not_connected": "Database non connesso",

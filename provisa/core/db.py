@@ -353,43 +353,6 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
             )
 
 
-def assert_standard_roles(sync_conn, schema: str) -> None:  # REQ-2155
-    """Write every standard role into ``schema`` exactly as :data:`STANDARD_ROLES` defines it, on
-    every init_schema: a standard role is Provisa's and locked, so its row is re-asserted rather
-    than seeded once -- a right Provisa adds reaches every org and environment on its next start.
-    The sandbox's demonstrated list is part of its definition (REQ-1602)."""
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-    from provisa.core.schema_org import roles
-
-    sync_conn.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
-    rows = [
-        {
-            "id": role_id,
-            "description": spec.description,
-            "capabilities": list(spec.capabilities),
-            "parents": list(spec.parents),
-            "demonstrated": sandbox_demonstrated() if role_id == "sandbox" else [],
-            "domain_access": list(spec.domain_access),
-            "org_id": None,
-        }
-        for role_id, spec in STANDARD_ROLES.items()
-    ]
-    stmt = pg_insert(roles).values(rows)
-    sync_conn.execute(
-        stmt.on_conflict_do_update(
-            index_elements=["id"],
-            set_={
-                c: stmt.excluded[c]
-                for c in ("description", "capabilities", "parents", "demonstrated", "domain_access")
-            },
-        )
-    )
-    from provisa.core.repositories.retired_roles import drop_retired_role_ids
-
-    drop_retired_role_ids(sync_conn)  # REQ-1297, after platform_admin is written above
-
-
 async def init_schema(
     pool: "Database",
     schema_sql: str,
@@ -441,7 +404,9 @@ async def init_schema(
             engine.begin() as sa_conn,
         ):
             add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
-            assert_standard_roles(sa_conn, schema_name)  # REQ-2155
+            from provisa.core.repositories import standard_roles
+
+            standard_roles.assert_standard_roles(sa_conn, schema_name)  # REQ-2155
             # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
             from provisa.core import config_stamp
 
@@ -456,7 +421,7 @@ async def init_schema(
 def layout_digest(schema_sql: str, audit_sql: str) -> str:
     """The digest of the layout init_schema and init_audit_schema give an org schema: the
     ``schema.sql`` script, the metadata add_missing_columns reconciles against, the standard roles
-    assert_standard_roles writes, the tables config_stamp.install triggers and the function those
+    standard_roles.assert_standard_roles writes, the tables config_stamp.install triggers and the function those
     triggers call, and the audit DDL. A schema stamped with it (:func:`read_layout_digest`) is
     laid out as this release lays it out."""
     import hashlib
@@ -518,7 +483,7 @@ async def apply_tenancy_role_grants(  # REQ-1337
     """Assert the tenancy-dependent role grants: ``platform_settings`` and ``cross_org``.
 
     Every other right of a standard role is its definition, re-asserted by init_schema
-    (:func:`assert_standard_roles`, REQ-2155). The deployment-wide settings surface (federation
+    (:func:`provisa.core.repositories.standard_roles.assert_standard_roles`, REQ-2155). The deployment-wide settings surface (federation
     engine, cache storage, encryption, auth provider, the config file, query-engine lifecycle) is
     gated by the ``platform_settings`` RIGHT, never by a role name. Which roles hold that right is
     the only thing tenancy decides:
@@ -533,24 +498,6 @@ async def apply_tenancy_role_grants(  # REQ-1337
     _validate_org_id(org_id)
     async with pool.acquire() as conn:
         await conn.execute(f'SET search_path TO "{org_schema(org_id, env)}"')  # REQ-1623
-        # REQ-1337: cross_org is withdrawn in BOTH modes -- org authority is confined to the org
-        # being acted in, so no role but platform_admin holds it however the deployment is
-        # configured, and holding it is what marks a role control-plane.
-        await conn.execute(
-            "UPDATE roles SET capabilities = COALESCE("
-            "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-            "   WHERE v <> '\"cross_org\"'::jsonb), '[]'::jsonb)"
-            " WHERE id <> 'platform_admin' AND capabilities ? 'cross_org'"
-        )
-        if multitenancy:
-            await conn.execute(
-                "UPDATE roles SET capabilities = COALESCE("
-                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-                "   WHERE v <> '\"platform_settings\"'::jsonb), '[]'::jsonb)"
-                " WHERE id = 'org_admin' AND capabilities ? 'platform_settings'"
-            )
-        else:
-            await conn.execute(
-                "UPDATE roles SET capabilities = capabilities || '[\"platform_settings\"]'::jsonb"
-                " WHERE id = 'org_admin' AND NOT capabilities ? 'platform_settings'"
-            )
+        from provisa.core.repositories import standard_roles
+
+        await standard_roles.apply_tenancy_grants(conn, multitenancy=multitenancy)

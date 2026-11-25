@@ -882,6 +882,15 @@ async def register_table(
         return _refused.result
     if _staged is not None:
         _staged.apply()  # this process takes what the transaction stored, once it committed
+    # REQ-2267: the relationships a code source's @discover declares that this table completes,
+    # written once both of their tables are registered.
+    from provisa.codesource.languages import CODE_SOURCE_TYPES as _CODE_TYPES
+
+    if src_row is not None and src_row["type"] in _CODE_TYPES:
+        from provisa.api.admin._code_source_relationships import store_declared_relationships
+        from provisa.api.app import state as _rel_state
+
+        await store_declared_relationships(pool, _rel_state, input.source_id, input.table_name)
 
     if _effective_view_sql and input.materialize:
         await _sync_view_mv(
@@ -1089,7 +1098,7 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         )
 
     dialect = state.source_pools.dialect_for(target_source_id) or "postgres"
-    native_sql = transpile(physical_sql, dialect)
+    native_sql = transpile(physical_sql, dialect, generated=False)  # REQ-2236: a steward's SQL
 
     ddl = f'CREATE OR REPLACE VIEW "{target_schema}"."{view_name}" AS {native_sql}'
     await state.source_pools.execute_ddl(target_source_id, ddl)

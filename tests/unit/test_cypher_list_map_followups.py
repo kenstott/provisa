@@ -42,11 +42,17 @@ def _semantic_sql(statement: str) -> str:
 
 def _postgres(statement: str) -> exp.Expr:
     """The statement as the pg engine runs it, parsed."""
-    return sqlglot.parse_one(transpile(_semantic_sql(statement), "postgres"), read="postgres")
+    return sqlglot.parse_one(
+        transpile(_semantic_sql(statement), "postgres", generated=False), read="postgres"
+    )
 
 
 def _duckdb(statement: str) -> list[tuple]:
-    return duckdb.connect().execute(transpile_to_duckdb(_semantic_sql(statement))).fetchall()
+    return (
+        duckdb.connect()
+        .execute(transpile_to_duckdb(_semantic_sql(statement), generated=False))
+        .fetchall()
+    )
 
 
 def _calls(tree: exp.Expr, name: str) -> list[exp.Anonymous]:

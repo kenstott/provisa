@@ -55,7 +55,7 @@ def connection():
 @pytest.mark.parametrize("sql", CORPUS)
 def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     try:
-        got: Any = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
+        got: Any = connection.execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
     except duckdb.Error as raised:
         got = raised
     assert same_answer(sql, got, RECORDED[sql])
@@ -71,7 +71,9 @@ def test_a_form_is_postgresql_syntax(form: Any):
 
 
 def test_a_refusal_is_clickhouses_throw_where_its_cast_reads_null():
-    written = transpile("SELECT int4pl(2147483647::integer, 1::integer) AS v", "clickhouse")
+    written = transpile(
+        "SELECT int4pl(2147483647::integer, 1::integer) AS v", "clickhouse", generated=False
+    )
     assert "throwIf(1" in written
     assert MARK in written
 
@@ -85,7 +87,9 @@ def test_an_engine_error_reads_back_as_postgresqls():
 def _served(sql: str, dialect: str) -> str:
     """A statement of a server form as a catalog route hands it to an engine."""
     return transpile(
-        expand(sqlglot.parse_one(sql, read="postgres"), FACTS).sql("postgres"), dialect
+        expand(sqlglot.parse_one(sql, read="postgres"), FACTS).sql("postgres"),
+        dialect,
+        generated=False,
     )
 
 

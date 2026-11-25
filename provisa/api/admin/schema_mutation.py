@@ -1469,11 +1469,7 @@ async def save_relationship(
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
             # source steward's to clear — the flag is the other domain's notice that its tables are
             # now reachable through an edge it did not define.
-            await _conn.execute_core(
-                update(relationships)
-                .where(relationships.c.id == input.id)
-                .values(needs_review=True)
-            )
+            await rel_repo.flag_for_review(_conn, [input.id])
         if input.record_candidate and not input.target_function_name:
             _rres = await _conn.execute_core(
                 select(relationships.c.source_table_id, relationships.c.target_table_id).where(
@@ -2675,6 +2671,16 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
             from provisa.codesource.source import forget
 
             forget(id)
+            from provisa.codesource import remote_sources
+
+            if remote_sources.is_native(_existing["mapping"]):
+                # REQ-2225: a host this server runs for the source stops and its state goes.
+                import asyncio
+
+                from provisa.codesource import native_connector
+                from provisa.core.request_context import require_current_org
+
+                await asyncio.to_thread(native_connector.stop, require_current_org(), id)
         return MutationResult(
             success=True,
             message=f"Source {id!r} deleted",
