@@ -1,5 +1,5 @@
 {
-  description = "Provisa: its NixOS module, its release as a package and an app, and a development shell";
+  description = "Provisa: a NixOS module for your host, its release as a package and an app, and a development shell";
 
   # The commit packaging/nixos/flake.nix pins (nixos-26.05): move both together.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7c8764b7c7b09b34f632464276218ef9090eaa11";
@@ -27,8 +27,9 @@
         };
     in
     {
-      # A host flake imports it as inputs.provisa.nixosModules.provisa.
-      nixosModules.provisa = ./packaging/nixos/configuration.nix;
+      # REQ-1900: a user's host imports it as inputs.provisa.nixosModules.provisa and sets
+      # services.provisa.enable: the release package below as a system service.
+      nixosModules.provisa = import ./packaging/nixos/module.nix { inherit self; };
 
       packages = lib.genAttrs releaseSystems (system: {
         default = (pkgsFor system).callPackage ./packaging/nixos/package.nix { };

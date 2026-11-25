@@ -5,8 +5,8 @@ name: NixOS
 # its prebuilt wheels, the embedded PostgreSQL, the native tier run as a systemd service,
 # Playwright's Chromium, the ODBC driver, the JDK, and AskAmerica's bundled pgwire server. The container-backed lanes' images are the
 # same on any distro, so only the core lane is repeated here, for the host processes it starts.
-# The repository's root flake is tested here too: its checks, a host that imports its module, and
-# `nix run` of its release package.
+# The repository's root flake is tested here too: its checks, a host that imports its module and
+# runs its service, and `nix run` of its release package.
 #
 # A hosted runner is Ubuntu, so NixOS is a QEMU guest on it (.github/actions/nixos-vm, the system
 # in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
@@ -349,6 +349,26 @@ jobs:
 
       - name: nix run starts Provisa and the services answer
         run: packaging/nixos/vm-run 'packaging/nixos/ci/flake-runs.sh'
+
+      - *console
+
+  # A user's host (packaging/nixos/host) that enables the root flake's nixosModules.provisa: its
+  # provisa service runs the release as the unprivileged service user, and the API and UI answer.
+  flake-module:
+    name: module service (user host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/nixos-vm
+        with:
+          flake: packaging/nixos/host
+          system: ci
+          user: ci
+
+      - name: The provisa service is active and answers
+        run: packaging/nixos/vm-run 'packaging/nixos/ci/module-runs.sh'
 
       - *console
 

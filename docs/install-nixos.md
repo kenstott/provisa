@@ -1,6 +1,6 @@
 # Install with Nix
 
-The repository's root is a flake. It gives you Provisa's release as a package you can run, the NixOS module Provisa's own NixOS host is built from, and a shell with the toolchain for working on Provisa.
+The repository's root is a flake. It gives you Provisa's release as a package you can run, a NixOS module that runs that package as a system service, and a shell with the toolchain for working on Provisa.
 
 ## Run Provisa
 
@@ -19,13 +19,13 @@ nix run github:kenstott/provisa -- status
 nix run github:kenstott/provisa -- stop
 ```
 
-The release runs inside a sandbox that puts its loader and libraries where a prebuilt Linux binary expects them. A NixOS host therefore needs no nix-ld and no other settings for it. Start Provisa through the flake each time. The `provisa` command the first run copies to `~/.local/bin` runs outside that sandbox, and on NixOS it needs the host settings described below.
+The release runs inside a sandbox that puts its loader and libraries where a prebuilt Linux binary expects them. A NixOS host therefore needs no nix-ld and no other settings for it. Start Provisa through the flake each time. The `provisa` command the first run copies to `~/.local/bin` runs outside that sandbox, and on NixOS it needs nix-ld with the libraries in `packaging/nixos/preinstall.nix`.
 
 The package is built for x86_64 Linux only, because the release has no Linux build for other processors.
 
-## Import the module into a NixOS host
+## Run Provisa as a NixOS service
 
-A host flake names the repository as an input and imports its module:
+A host flake names the repository as an input, imports its module and turns the service on:
 
 ```nix
 {
@@ -38,13 +38,29 @@ A host flake names the repository as an input and imports its module:
       modules = [
         ./hardware-configuration.nix
         provisa.nixosModules.provisa
+        { services.provisa.enable = true; }
       ];
     };
   };
 }
 ```
 
-The module makes the host Provisa's NixOS CI runs on. It turns on nix-ld with the libraries prebuilt binaries need, turns on Docker and adds a JDK. It also creates a `provisa` user in the `wheel` and `docker` groups, with sudo that asks for no password. Its `provisa` service runs `provisa run --demo` from a source checkout at `/home/provisa/provisa`, and it stays skipped until that checkout has its `.venv`. Read `packaging/nixos/configuration.nix` before you import it into a host you share.
+After `sudo nixos-rebuild switch`, the `provisa` systemd service runs the flake's package as the system user `provisa`. That user has no login shell, no password and no sudo, and is in no group but its own. No source checkout is needed. The service's first start stages the release with the setup defaults (DuckDB on the native tier, no Docker, no demo), so it takes a few minutes before the API answers.
+
+The module also turns on nix-ld with the libraries the release's binaries load, for any of them started outside the package's sandbox.
+
+| Option | Default | What it sets |
+|---|---|---|
+| `services.provisa.enable` | `false` | Runs the service. |
+| `services.provisa.port` | `8000` | The API's port. |
+| `services.provisa.uiPort` | `3000` | The UI's port. |
+| `services.provisa.dataDir` | `/var/lib/provisa` | The service user's home. Provisa keeps its runtime, configuration and data in `.provisa` under it. |
+| `services.provisa.openFirewall` | `false` | Opens the API and UI ports. |
+| `services.provisa.package` | the flake's package | The release the service runs. |
+
+The service stays active while the API and the UI server run. When either stops, systemd restarts the service. Its logs are in `journalctl -u provisa` and in `.provisa/.logs` under the data directory.
+
+`packaging/nixos/configuration.nix` is a different thing: the host Provisa's NixOS CI runs its test suites on. It is not exported by the flake.
 
 ## Work on Provisa
 

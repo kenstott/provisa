@@ -1,4 +1,5 @@
-# A NixOS host that runs Provisa's native tier from a source checkout and runs its test suites.
+# The NixOS workflow's CI host: Provisa's native tier from a source checkout, and its test suites.
+# For CI only; a user's host imports the root flake's nixosModules.provisa (module.nix).
 #
 # The checkout lives at /home/provisa/provisa and its environment is the repo's own `uv sync` venv,
 # exactly as on every other Linux host. What NixOS changes is that nothing prebuilt finds a loader
