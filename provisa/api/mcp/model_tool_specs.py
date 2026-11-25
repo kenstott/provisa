@@ -23,7 +23,7 @@ from typing import Any
 
 from provisa.api.mcp import model_tools
 
-_TABLE_ID = {"type": "integer", "description": "The registered table's numeric id."}
+_TABLE_ID = {"type": "integer", "description": "From find_table_id."}
 _CHECKER_ID = {
     "type": "integer",
     "description": (
@@ -43,10 +43,9 @@ SPECS: list[dict] = [
     {
         "name": "find_table_id",
         "description": (
-            "The numeric id of a registered table, which the profiler, constraint, check and fake"
-            " tools take. domain: the table's domain (schema); table: its registered name or "
-            "alias. Returns every match (id, source, domain, name, profiler); empty if none. Read"
-            " only. " + _RIGHT_TABLE
+            "A registered table's numeric id, which the profiler, constraint, check and fake "
+            "tools take. domain: its domain (schema); table: its name or alias. Returns every "
+            "match (id, source, domain, name, profiler). Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"domain": {"type": "string"}, "table": {"type": "string"}}, ["domain", "table"]
@@ -65,8 +64,8 @@ SPECS: list[dict] = [
         "description": (
             "Add a table to a profiler (profiler_source_id from list_profilers) or remove it "
             "(null). A table whose rows need a required filter cannot join; refusals come back "
-            "verbatim. Removing stops its scheduled profiling: confirm with the user "
-            "(present_choice, mode='yes_no') first. " + _RIGHT_TABLE
+            "verbatim. Removing stops its scheduled profiling: confirm with the user first. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -186,7 +185,7 @@ SPECS: list[dict] = [
         "name": "export_profile_constraint",
         "description": (
             "Add an accepted constraint to a data-quality checker table that scans the table. "
-            "checker_table_id: needed only when several checkers scan it. " + _RIGHT_TABLE
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -210,8 +209,7 @@ SPECS: list[dict] = [
         "name": "create_drift_check",
         "description": (
             "Add a drift check over the table's drift result table (registered on the profiler) "
-            "to a checker. checker_table_id: needed only when several checkers scan it. "
-            + _RIGHT_TABLE
+            "to a checker. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "checker_table_id": _CHECKER_ID}, ["table_id"]
@@ -222,8 +220,7 @@ SPECS: list[dict] = [
         "description": (
             "Add a check comparing the table's drift results with an expectations table "
             "(expectations_table_id, from list_profile_checks' expectationTables). The drift "
-            "table must be registered; checker_table_id: needed only when several checkers scan "
-            "it. " + _RIGHT_TABLE
+            "table must be registered. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -305,13 +302,12 @@ SPECS: list[dict] = [
     {
         "name": "define_synthetic_dataset",
         "description": (
-            "Define or replace a synthetic dataset: dataset_id, seed, scale (rows relative to the"
-            " profiled tables), tables [{tableId, profileEnv, runId, scale?}] from "
-            "list_synthetic_profile_runs. Optional: fanoutConditions [{relationship, condition, "
-            "count: {fixed} | {low, high} | {measured: true}}], assertions [statement], "
-            "privateEpsilon (makes it private), closenessThreshold with closenessDraws (both or "
-            "neither). Refused for an invalid name, a table missing a parent its relationships "
-            "need, or a pii column with neither fake nor synthetic rule. " + _RIGHT_ENV
+            "Define or replace a synthetic dataset. scale: rows relative to the profiled tables;"
+            " tables from list_synthetic_profile_runs. A fanout condition's count: {fixed} | "
+            "{low, high} | {measured: true}. privateEpsilon makes it private; closenessThreshold "
+            "and closenessDraws go together. Refused for an invalid name, a table missing a "
+            "parent its relationships need, or a pii column with neither fake nor synthetic "
+            "rule. " + _RIGHT_ENV
         ),
         "input_schema": _obj(
             {
@@ -371,7 +367,7 @@ SPECS: list[dict] = [
         "name": "drop_synthetic_dataset",
         "description": (
             "Drop a synthetic dataset and its generated tables. Irreversible: confirm with the "
-            "user (present_choice, mode='yes_no') first. " + _RIGHT_ENV
+            "user first. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
@@ -391,7 +387,7 @@ SPECS: list[dict] = [
             "Change an environment's data mode and/or mutation handling. inherit and unbound set "
             "every source's binding; the test modes leave them. A change to or from "
             "test_synthetic discards kept mutations: refused unless confirmDiscard is true, so "
-            "ask the user first (present_choice, mode='yes_no'). test_fake is refused while a "
+            "ask the user first. test_fake is refused while a "
             "sensitive column has no fake. Needs environment_data."
         ),
         "input_schema": _obj(
@@ -448,9 +444,9 @@ SPECS: list[dict] = [
     {
         "name": "generate_environment_model",
         "description": (
-            "Generate a Test (synthetic) environment's whole model, in two calls. Without digest "
+            "Generate a Test (synthetic) environment's whole model in two calls. Without digest "
             "it generates nothing and returns the Limitations of Synthetic Data warning: show it "
-            "and ask the user (present_choice, mode='yes_no'); once they confirm, call again with"
+            "and ask the user; once they confirm, call again with"
             " the same runs, seed and scale and the warning's digest to generate in the "
             "background (get_environment_detail shows progress). runs: {table id: profile run "
             "id}; an omitted table takes the preselected run. Needs environment_data."
@@ -470,8 +466,7 @@ SPECS: list[dict] = [
         "name": "reset_environment_mutations",
         "description": (
             "Drop the mutations a Reversible environment keeps, returning it to its baseline. "
-            "Irreversible: confirm with the user (present_choice, mode='yes_no') first. Needs "
-            "environment_data."
+            "Irreversible: confirm with the user first. Needs environment_data."
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
@@ -563,9 +558,11 @@ SYSTEM_SECTION = (
     "set_environment_data, set_source_binding, recopy_environment_sources, "
     "generate_environment_model, "
     "reset_environment_mutations "
-    "(get_environment_detail and get_environment_synthetic_plan read). Confirm with "
-    "present_choice (mode='yes_no') before drop_synthetic_dataset and before set_table_profiler "
-    "removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "
+    "(get_environment_detail and get_environment_synthetic_plan read). Where a tool says to "
+    "confirm with or ask the user first, ask with present_choice (mode='yes_no'): before "
+    "drop_synthetic_dataset, reset_environment_mutations, set_table_profiler removing a table "
+    "from its profiler, set_environment_data discarding kept mutations, and "
+    "generate_environment_model's second call. propose_fakes saves nothing: show its proposals, ask which "
     "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. A "
     "refusal from any of these is the admin's own message — report it to the user as it is. "
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
@@ -612,7 +609,7 @@ _CITATION = {
     },
     "required": ["document_id"],
 }
-_CONFIRMED = " Shown to the user to confirm in the chat; written at once over MCP."
+_CONFIRMED = " Over MCP, written at once."
 
 TAG_SPECS: list[dict] = [
     {
