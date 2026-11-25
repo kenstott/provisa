@@ -2259,23 +2259,54 @@ A function that takes a `provisa_services.ReadContext` (or the SDK's `provisa.Re
 
 **`@table`**
 
-A `@table` function takes an optional `context.Context` first, then its inputs struct; it returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`.
+A `@table` function takes an optional `context.Context` first, then its inputs struct and its read context, each left out or not; it returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`.
 
 === "Doc comment"
 
     ```go
+    package scoring
+
+    import "context"
+
+    type Risk struct {
+    	Score float64 `json:"score"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
     // ChurnRisk is the churn risk of one account.
     //
     // @table
     func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-        return []Risk{{Score: 0.82}}, nil
+    	return []Risk{{Score: 0.82}}, nil
     }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package scoring
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type Risk struct {
+    	Score float64 `json:"score"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // ChurnRisk is the churn risk of one account.
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+    	return []Risk{{Score: 0.82}}, nil
+    }
 
     var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
     ```
@@ -2350,18 +2381,59 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package audit
+
+    import (
+    	"context"
+    	"iter"
+    )
+
+    type AuditEvent struct {
+    	ID     int64  `json:"id"`
+    	Action string `json:"action"`
+    }
+
+    type AuditInputs struct {
+    	System string `json:"system"`
+    }
+
     // AuditEvents streams audit events.
     //
     // @stream
     func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
-        return func(yield func(AuditEvent, error) bool) { ... }
+    	return func(yield func(AuditEvent, error) bool) {
+    		yield(AuditEvent{ID: 1, Action: "login"}, nil)
+    	}
     }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package audit
+
+    import (
+    	"context"
+    	"iter"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type AuditEvent struct {
+    	ID     int64  `json:"id"`
+    	Action string `json:"action"`
+    }
+
+    type AuditInputs struct {
+    	System string `json:"system"`
+    }
+
+    // AuditEvents streams audit events.
+    func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
+    	return func(yield func(AuditEvent, error) bool) {
+    		yield(AuditEvent{ID: 1, Action: "login"}, nil)
+    	}
+    }
 
     var _ = provisa.Stream[AuditInputs, AuditEvent](AuditEvents)
     ```
@@ -2371,38 +2443,70 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package orders
+
     // CancelOrder cancels one order.
     //
     // @command
     func CancelOrder(orderID int) (bool, error) {
-        return true, nil
+    	return true, nil
     }
     ```
 
 === "SDK"
 
     ```go
+    package orders
+
     import provisa "provisa.dev/sdk/go"
+
+    // CancelOrder cancels one order.
+    func CancelOrder(orderID int) (bool, error) {
+    	return true, nil
+    }
 
     var _ = provisa.Command(CancelOrder)
     ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
+`@update` and `@delete` are written the same way, with `provisa.Update` and `provisa.Delete`.
+
 === "Doc comment"
 
     ```go
+    package orders
+
+    type Order struct {
+    	ID    int64   `json:"id"`
+    	Total float64 `json:"total"`
+    }
+
     // AddOrders inserts orders.
     //
     // @command
     // @insert orders
-    func AddOrders(rows []Order) (int, error) { ... }
+    func AddOrders(rows []Order) (int, error) {
+    	return len(rows), nil
+    }
     ```
 
 === "SDK"
 
     ```go
+    package orders
+
     import provisa "provisa.dev/sdk/go"
+
+    type Order struct {
+    	ID    int64   `json:"id"`
+    	Total float64 `json:"total"`
+    }
+
+    // AddOrders inserts orders.
+    func AddOrders(rows []Order) (int, error) {
+    	return len(rows), nil
+    }
 
     var _ = provisa.Command(AddOrders, provisa.Insert("orders"))
     ```
@@ -2412,16 +2516,60 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package stores
+
+    // TableRef is a governed table the function takes; Provisa knows it by its name.
+    type TableRef[Row any] struct {
+    	Ref string `json:"ref"`
+    }
+
+    type Store struct {
+    	ID     int64  `json:"id"`
+    	Region string `json:"region"`
+    }
+
+    type Region struct {
+    	Code string `json:"code"`
+    }
+
+    type Match struct {
+    	StoreID int64  `json:"store_id"`
+    	Region  string `json:"region"`
+    }
+
     // StoresInRegions matches stores to regions.
     //
     // @query
-    func StoresInRegions(stores TableRef[Store], regions TableRef[Region]) ([]Match, error) { ... }
+    func StoresInRegions(stores TableRef[Store], regions TableRef[Region]) ([]Match, error) {
+    	return nil, nil
+    }
     ```
 
 === "SDK"
 
     ```go
+    package stores
+
     import provisa "provisa.dev/sdk/go"
+
+    type Store struct {
+    	ID     int64  `json:"id"`
+    	Region string `json:"region"`
+    }
+
+    type Region struct {
+    	Code string `json:"code"`
+    }
+
+    type Match struct {
+    	StoreID int64  `json:"store_id"`
+    	Region  string `json:"region"`
+    }
+
+    // StoresInRegions matches stores to regions.
+    func StoresInRegions(stores provisa.TableRef[Store], regions provisa.TableRef[Region]) ([]Match, error) {
+    	return nil, nil
+    }
 
     var _ = provisa.Query(StoresInRegions)
     ```
@@ -2431,16 +2579,53 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package addresses
+
+    import "strings"
+
+    type Address struct {
+    	Street string `json:"street"`
+    	City   string `json:"city"`
+    }
+
     // ParseAddress parses raw addresses.
     //
     // @columns
-    func ParseAddress(raw []string) ([]Address, error) { ... }
+    func ParseAddress(raw []string) ([]Address, error) {
+    	out := make([]Address, len(raw))
+    	for i, line := range raw {
+    		street, city, _ := strings.Cut(line, ",")
+    		out[i] = Address{Street: street, City: strings.TrimSpace(city)}
+    	}
+    	return out, nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package addresses
+
+    import (
+    	"strings"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type Address struct {
+    	Street string `json:"street"`
+    	City   string `json:"city"`
+    }
+
+    // ParseAddress parses raw addresses.
+    func ParseAddress(raw []string) ([]Address, error) {
+    	out := make([]Address, len(raw))
+    	for i, line := range raw {
+    		street, city, _ := strings.Cut(line, ",")
+    		out[i] = Address{Street: street, City: strings.TrimSpace(city)}
+    	}
+    	return out, nil
+    }
 
     var _ = provisa.Columns(ParseAddress)
     ```
@@ -2450,19 +2635,65 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package stores
+
+    // TableRef is a governed table the function takes; Provisa knows it by its name.
+    type TableRef[Row any] struct {
+    	Ref string `json:"ref"`
+    }
+
+    type Store struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Region struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Changed struct {
+    	StoreID  int64 `json:"store_id"`
+    	RegionID int64 `json:"region_id"`
+    	Removed  bool  `json:"removed"`
+    	Seq      int64 `json:"seq"`
+    }
+
     // StoreRegionChanges returns matches changed since the cursor.
     //
     // @change table=store_regions
     // @change key=store_id,region_id
     // @change removed=removed
     // @change cursor=seq
-    func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int) ([]Changed, error) { ... }
+    func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int64) ([]Changed, error) {
+    	return nil, nil
+    }
     ```
 
 === "SDK"
 
     ```go
+    package stores
+
     import provisa "provisa.dev/sdk/go"
+
+    type Store struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Region struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Changed struct {
+    	StoreID  int64 `json:"store_id"`
+    	RegionID int64 `json:"region_id"`
+    	Removed  bool  `json:"removed"`
+    	Seq      int64 `json:"seq"`
+    }
+
+    // StoreRegionChanges returns matches changed since the cursor.
+    func StoreRegionChanges(stores provisa.TableRef[Store], regions provisa.TableRef[Region], since *int64) ([]Changed, error) {
+    	return nil, nil
+    }
 
     var _ = provisa.Change(StoreRegionChanges, "store_regions", []string{"store_id", "region_id"}, "removed", "seq")
     ```
@@ -2472,16 +2703,39 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package life
+
+    import "context"
+
+    var region string
+
     // Setup runs once on start.
     //
     // @on-start
-    func Setup(ctx context.Context, values map[string]string) error { ... }
+    func Setup(ctx context.Context, values map[string]string) error {
+    	region = values["region"]
+    	return nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package life
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    var region string
+
+    // Setup runs once on start.
+    func Setup(ctx context.Context, values map[string]string) error {
+    	region = values["region"]
+    	return nil
+    }
 
     var _ = provisa.OnStart(Setup)
     ```
@@ -2491,16 +2745,33 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package life
+
+    import "context"
+
     // Teardown runs once on stop.
     //
     // @on-stop
-    func Teardown(ctx context.Context) error { ... }
+    func Teardown(ctx context.Context) error {
+    	return nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package life
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    // Teardown runs once on stop.
+    func Teardown(ctx context.Context) error {
+    	return nil
+    }
 
     var _ = provisa.OnStop(Teardown)
     ```
@@ -2510,18 +2781,33 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package life
+
+    import "context"
+
     // Status returns the code's health.
     //
     // @health
     func Status(ctx context.Context) (string, error) {
-        return "ok", nil
+    	return "ok", nil
     }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package life
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    // Status returns the code's health.
+    func Status(ctx context.Context) (string, error) {
+    	return "ok", nil
+    }
 
     var _ = provisa.Health(Status)
     ```
@@ -2531,21 +2817,58 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
+    package feeds
+
+    import "context"
+
+    type Row struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Inputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
     // Fetch fetches rows.
     //
     // @table
     // @requires REGION
     // @requires API_KEY:secret
-    func Fetch(ctx context.Context, in Inputs) ([]Row, error) { ... }
+    func Fetch(ctx context.Context, in Inputs) ([]Row, error) {
+    	return []Row{{ID: 1}}, nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    import provisa "provisa.dev/sdk/go"
+    package feeds
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type Row struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Inputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // Fetch fetches rows.
+    func Fetch(ctx context.Context, in Inputs) ([]Row, error) {
+    	return []Row{{ID: 1}}, nil
+    }
 
     var _ = provisa.Table[Inputs, Row](Fetch, provisa.Requires("REGION"), provisa.Requires("API_KEY", provisa.Secret))
     ```
+
+**`@discover`**
+
+Not offered for Go: `@discover` is read from a Python code source only, and a Go function tagged with it is refused by name.
 
 #### Field naming
 
