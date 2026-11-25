@@ -79,7 +79,7 @@ function collectReads(page: Page, match: (query: string) => boolean) {
 async function filteredView(page: Page) {
   await page.goto("/context/ontology");
   await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
-  await page.getByTestId("glossary-ontology-toggle").click();
+  await page.getByTestId("glossary-view-graph").click();
   await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
     timeout: 60_000,
   });
@@ -156,7 +156,7 @@ test.describe("Open as query", () => {
   }) => {
     await page.goto("/context/ontology");
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
-    await page.getByTestId("glossary-ontology-toggle").click();
+    await page.getByTestId("glossary-view-graph").click();
     await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
       timeout: 60_000,
     });
