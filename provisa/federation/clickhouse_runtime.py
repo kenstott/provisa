@@ -610,9 +610,24 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         refuse_live_in_write_surface(schema, source.table_name)  # REQ-1912
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
-        self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(schema)}")
+        # REQ-2267: for code sources the DATABASE is created with its PostgreSQL ENGINE in the
+        # attach_ddl branch below; creating it here (no ENGINE) would prevent the ENGINE from
+        # being set by the subsequent CREATE DATABASE IF NOT EXISTS (which would be a no-op).
+        if not details.get("is_code_source"):
+            self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(schema)}")
         phys = ch_ident(schema, source.table_name)
         if "attach_ddl" in details:  # relational DATABASE engine (postgresql/mysql)
+            if details.get("is_code_source"):
+                # REQ-2267: create the DATABASE at the live-view-schema path directly so
+                # ClickHouse queries the sidecar table with WHERE conditions pushed through.
+                # A VIEW wrapper prevents ClickHouse from pushing predicates to its PostgreSQL
+                # DATABASE engine in a JOIN, so parameter _nf_ conditions must reach the sidecar
+                # directly — the DATABASE name IS the live-view schema, no VIEW needed.
+                db_ident = ch_ident(schema)
+                for stmt in details["attach_ddl"]:
+                    self._backend.command(stmt.replace(ch_ident(details["local_schema"]), db_ident))
+                self._made_for(source.id, ("database", db_ident))
+                return
             for stmt in details["attach_ddl"]:
                 self._backend.command(stmt)
             self._made_for(source.id, ("database", ch_ident(details["local_schema"])))

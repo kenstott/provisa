@@ -208,6 +208,11 @@ class ClickHouseCodeHostConnector(CodeHost, Connector):  # REQ-2267
         local_schema = engine_attach_name("ch", attach_catalog(source))
         # The sidecar checks no credentials (it is reached only where the deployment's engines
         # are): the engine's password argument is required, and empty.
+        # REQ-2267: ``is_code_source`` tells attach_source to create the DATABASE at the
+        # live-view-schema path directly, skipping the intermediate VIEW. ClickHouse does not
+        # push WHERE conditions through a VIEW to its underlying PostgreSQL DATABASE engine in
+        # a JOIN; without the VIEW the engine queries the sidecar directly and pushes the
+        # _nf_ parameter conditions, so the function is called with the right inputs.
         return {
             "attach_ddl": [
                 f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} ENGINE = PostgreSQL("
@@ -215,6 +220,7 @@ class ClickHouseCodeHostConnector(CodeHost, Connector):  # REQ-2267
                 f"{ch_lit(SIDECAR_SCHEMA)})"
             ],
             "local_schema": local_schema,
+            "is_code_source": True,
         }
 
 

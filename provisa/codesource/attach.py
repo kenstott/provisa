@@ -193,12 +193,16 @@ async def _prepare_dev(state: Any) -> None:
 
 def _drop_on_engine(state: Any, source_id: str) -> None:
     """REQ-2267: the engine's catalog of a source whose sidecar stopped for good goes, so its
-    next attach reads the catalog of the code as it is then. A source this state has no catalog
-    for (deleted, its catalog dropped already) has nothing to drop."""
-    catalogs = getattr(state, "source_catalogs", None) or {}
-    if source_id not in catalogs:
+    next attach reads the catalog of the code as it is then. Trino names each dev-mode source's
+    catalog in ``state.source_catalogs``; a source not found there was never registered (deleted),
+    so there is nothing to drop. Engines without a named catalog directory (ClickHouse, DuckDB)
+    never set ``state.source_catalogs``, so every stopped source id is forwarded to drop."""
+    catalogs = getattr(state, "source_catalogs", None)
+    if catalogs is not None and source_id not in catalogs:
+        # Trino: the source was deleted and its catalog dropped with it; nothing left to drop.
         return
-    state.federation_engine.drop_source(source_id, catalog_name=catalogs[source_id])
+    catalog_name = catalogs.get(source_id) if catalogs is not None else None
+    state.federation_engine.drop_source(source_id, catalog_name=catalog_name)
 
 
 async def _prepare_built(state: Any) -> None:

@@ -142,6 +142,9 @@ def test_clickhouse_mounts_a_dev_sources_sidecar_through_its_postgresql_engine(i
             "'host.docker.internal:15433', 'code', 'provisa', '', 'public')"
         ],
         "local_schema": "ch_org_acme__scores_src",
+        # REQ-2267: attach_source uses this flag to create the DATABASE at the live-view-schema
+        # path and skip the VIEW wrapper that prevents _nf_ parameter pushdown in ClickHouse JOINs.
+        "is_code_source": True,
     }
     assert isolated == [_PREPARED]  # the attach started (or found) the sidecar of its code
 
@@ -326,9 +329,12 @@ async def test_the_schema_build_names_dev_sources_to_clickhouse_and_writes_no_bu
 async def test_a_sidecar_stopped_for_good_drops_clickhouses_database_of_it(prepared_code):
     connector = ClickHouseCodeHostConnector("python")
     registered: list = []
-    await attach.prepare(_state(connector, registered))
+    state = _state(connector, registered)
+    # REQ-2267: ClickHouse has no named catalog directory; _drop_on_engine forwards source id only.
+    del state.source_catalogs
+    await attach.prepare(state)
     pgwire_sidecar._stopped([("acme", "scores-src")])
-    assert registered == [("dropped", "scores-src", "org_acme__scores_src")]
+    assert registered == [("dropped", "scores-src", None)]
 
 
 async def test_no_dev_source_on_an_engine_with_no_code_host_attach_is_prepared(monkeypatch):
