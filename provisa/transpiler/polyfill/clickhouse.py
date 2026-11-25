@@ -46,7 +46,8 @@ text read by the integer input (0x, 0o and 0b prefixes, underscores), and past t
 22003, a text the input does not read 22P02. A numeric: ClickHouse reads a number with a fraction as
 a Float64 (1.005 as 1.00499..., 0.1 at scale 30 as 0.1000000000000000090...) and truncates a text
 past the scale; the literal is cast from its text, rounded half away from zero to the scale,
-22003 past the precision, a value of no precision said held up to 38 digits (0A000 past them).
+22003 past the precision, a value of no precision said held up to 76 digits as a Decimal256
+(0A000 past them).
 
 A date and a number of days by their operator (date + integer, integer + date, date - integer):
 date_pli's, integer_pl_date's or date_mii's ClickHouse form (polyfill.dates.ch_moved), of operands
@@ -972,8 +973,9 @@ TID_EXTREMES = Feature(
 )
 
 
-#: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
-_MOST_DIGITS = 38
+#: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision):
+#: its Decimal256's 76, the type _NUMERIC_MOD computes in (REQ-2236).
+_MOST_DIGITS = 76
 _NUMERIC_OUT_OF_BOUND = (
     f"numeric_in() of a value of more than {_MOST_DIGITS} digits has no exact form on clickhouse"
 )

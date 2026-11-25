@@ -213,7 +213,7 @@ BOUND = [
     "SELECT pg_catalog.date_pli('2299-12-31'::date, 1) AS v",
     "SELECT pg_catalog.date_mii('1900-01-01'::date, 1) AS v",
     "SELECT pg_catalog.integer_pl_date(1, '2299-12-31'::date) AS v",
-    "SELECT 1234567890123456789012345678901234567890::numeric AS v",
+    "SELECT 12345678901234567890123456789012345678901234567890123456789012345678901234567::numeric AS v",
 ]
 
 #: A text time_in reads that no row here reads: refused by name.

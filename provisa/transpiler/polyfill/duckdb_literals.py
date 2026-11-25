@@ -88,9 +88,9 @@ def _instants_us(read: re.Match[str], zoned: bool) -> tuple[int, int | None] | N
     return fields, fields - (offset if read[8] == "+" else -offset) * 1_000_000
 
 
-def past_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """A text cast to a timestamp or a timestamptz past what DuckDB holds: PostgreSQL's 22008 past
-    its own range, refused by name past DuckDB's. None for any other node: DuckDB reads it."""
+def stamp_cast(node: exp.Expr) -> tuple[str, bool] | None:
+    """The text a node casts to a timestamp (``zoned``: a timestamptz), and whether it is zoned;
+    None for any other node, a cast that answers NULL on failure among them."""
     if not isinstance(node, exp.Cast) or isinstance(node, exp.TryCast):
         return None
     zoned = node.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
@@ -98,7 +98,14 @@ def past_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     if not isinstance(node.this, exp.Literal) or not node.this.is_string:
         return None
-    text = node.this.this
+    return node.this.this, zoned
+
+
+def far_stamp(text: str, zoned: bool) -> tuple[bool, bool] | None:
+    """Of a timestamp's text in ISO form of a year of five digits or more: whether it is past
+    PostgreSQL's range (timestamp_in's and timestamptz_in's 22008), and whether past the last
+    microsecond a 64-bit count from the epoch holds (DuckDB's TIMESTAMP, ClickHouse's
+    DateTime64(6)). None for a text not read here, which the engine's reading is left."""
     read = _FAR_STAMP.fullmatch(text)
     if read is None or int(read[1]) > _PG_LAST_YEAR:
         return None
@@ -109,10 +116,23 @@ def past_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     # PostgreSQL's range is of the instant: one in the session's zone is past it in every zone
     # only when it is past by the widest offset.
     pg_instant = fields if not zoned else (fields - _WIDEST_OFFSET_US if utc is None else utc)
-    if pg_instant >= _PG_PAST_US:
+    # The engine reads the text's own fields into its type before it takes an offset off.
+    past_held = fields > _DUCKDB_END_US or (utc is not None and utc > _DUCKDB_END_US)
+    return pg_instant >= _PG_PAST_US, past_held
+
+
+def past_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text cast to a timestamp or a timestamptz past what DuckDB holds: PostgreSQL's 22008 past
+    its own range, refused by name past DuckDB's. None for any other node: DuckDB reads it."""
+    cast = stamp_cast(node)
+    far = None if cast is None else far_stamp(*cast)
+    if cast is None or far is None:
+        return None
+    text, zoned = cast
+    past_pg, past_held = far
+    if past_pg:
         raise Refused(Refusal("22008", f'timestamp out of range: "{text}"'), ruling=True)
-    # DuckDB reads the text's own fields into its type before it takes an offset off.
-    if fields > _DUCKDB_END_US or (utc is not None and utc > _DUCKDB_END_US):
+    if past_held:
         raise Refused(Refusal("0A000", PAST_TIMESTAMPTZ if zoned else PAST_TIMESTAMP), ruling=True)
     return None
 

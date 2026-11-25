@@ -2101,6 +2101,11 @@ def transpile(
         SQL string in target dialect.
     """
     given = pg_sql  # the statement as given, whose columns pgwire describes (REQ-2236)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
+        from provisa.transpiler.polyfill.instants import refuse_past_range
+
+        refuse_past_range(pg_sql)
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
     pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
