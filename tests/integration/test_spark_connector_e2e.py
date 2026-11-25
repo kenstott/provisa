@@ -596,7 +596,11 @@ def provisa_server(tmp_path_factory, spark_host, flight_tls):
         "digest": "sha256:" + "b" * 64,
         "code_hash": spark_host.hashed,
         "arch": "amd64",
-        "requires": [{"name": "script", "multiline": True, "script": True}, {"name": "cluster"}],
+        # As connectors/spark/connector.yaml states them: the cluster left unset is the org's default.
+        "requires": [
+            {"name": "script", "multiline": True, "script": True},
+            {"name": "cluster", "org_default": "spark_cluster"},
+        ],
     }
     labels = {
         "code_hash": spark_host.hashed,

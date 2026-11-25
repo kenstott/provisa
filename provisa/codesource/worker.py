@@ -63,6 +63,16 @@ so the code's own tracing joins the request's trace. While a call runs, Provisa'
 (provisa/codesource/services.py) answer the worker's requests naming it (``X-Provisa-Call``) in
 the request's scope: their stages report to the same request.
 
+VALIDATE (REQ-2225). A script connector's remote host, and only it, answers a validation of a
+script -- the one it serves, or one Provisa gives -- on a connection held for it, as ``health``
+is (:meth:`provisa.codesource.remote.RemoteWorker.validate`, provisa/codehost/front.py):
+
+    Provisa -> host  {op: "validate", id, step: "static", script}
+                     {op: "validate", id, step: "run", script, request}
+    host -> Provisa  {op: "validated", id, hash, document}  -- static: the reader's document
+                     {op: "validated", id, report}          -- run: the dry run and the keys
+                     {op: "validated", id, failed}          -- why the step could not run
+
 The hello names the protocol the host speaks (:data:`PROTOCOL`) and the content hash of the code
 it runs (``PROVISA_CODE_HASH`` in its environment: the worker gives it, an image built for a
 remote host carries it). A host that speaks another protocol, or runs other code than the source
@@ -149,6 +159,9 @@ DISCOVERED_ENV = "PROVISA_DISCOVERED"
 
 #: How long a started host has to connect and say hello.
 START_TIMEOUT_S = 30.0
+#: REQ-2225: how long a script connector's host has to answer a validate message: a dry run is
+#: every tagged function of the script on the cluster.
+VALIDATE_TIMEOUT_S = 960.0
 
 #: How often a start checks that its host is still coming while it waits for it to connect.
 _ACCEPT_POLL_S = 0.05

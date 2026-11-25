@@ -43,11 +43,20 @@ front runs the code's @on-start with them once in its life (:class:`Lifecycle`),
 whether that is still needed; ``health`` calls @health, and a SIGTERM runs @on-stop. A front that
 starts again has no values: Provisa gives them when it next dials.
 
+VALIDATE (REQ-2225). A script connector's host validates a script -- the one it serves, or one
+Provisa gives -- without serving it. ``{op: "validate", id, step: "static", script}`` is answered
+``{op: "validated", id, hash, document}``: the script's reader document, read under the code's own
+Python as at pairing, the static check's input. ``{op: "validate", id, step: "run", script,
+request}`` runs the code's validator (:data:`VALIDATOR`, connectors/spark/provisa_spark/validate.py)
+on the script with ``request`` -- the dry run of each tagged function and its keys -- and is
+answered ``{op: "validated", id, report}``. Either is answered ``{op: "validated", id, failed}``
+naming why it could not run. ``script`` null validates the script the host serves.
+
 Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's and Arrow's, in the
 image beside this program; the code's own environment is the code's.
 """
 
-# Requirements: REQ-2098, REQ-2100, REQ-2221
+# Requirements: REQ-2098, REQ-2100, REQ-2221, REQ-2225
 from __future__ import annotations
 
 import base64
@@ -66,6 +75,7 @@ import struct
 import subprocess  # nosec B404 - argv-list invocation of the image's own worker
 import sys
 import threading
+import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -92,6 +102,18 @@ SCRIPT_MODULE = "connector_script"
 SCRIPT_NAMES = "script_names.json"
 #: How long the code's reader has to import the script and read its tags.
 _READ_SCRIPT_TIMEOUT_S = 120
+#: REQ-2225: the module of a script connector's entry package that validates a script, run by the
+#: code's own Python after the host program's ``load`` (connectors/spark/provisa_spark/validate.py).
+VALIDATOR = "validate"
+#: How long a validation's dry run, every function of the script on the cluster, may take.
+_VALIDATE_TIMEOUT_S = 900
+#: The validator, run as ``-c``: the host program beside it loads the script as the host does.
+_VALIDATE_PROGRAM = (
+    "import importlib, sys\n"
+    "sys.path.insert(0, sys.argv[1])\n"
+    "importlib.import_module('host').load(sys.argv[2], sys.argv[3])\n"
+    f"sys.exit(importlib.import_module(sys.argv[3] + '.{VALIDATOR}').main())\n"
+)
 #: REQ-2225: the address the front listens on. An image's front serves its container's port on
 #: every interface; a native host on the demo's machine is started on loopback alone
 #: (codesource/native_connector.py), so it is never reachable from the network.
@@ -814,8 +836,11 @@ class Script:
 
     def __init__(self, state: Path, worker_argv: list[str]) -> None:
         self.path = state / self.FILE
+        #: REQ-2225: where a script given to validate is kept while it is validated.
+        self._candidates = state / "validate"
         # The worker's argv: python, its flag, the host program, its socket, the code, the entry.
-        self._python, self._flag, host, _, self._code, *_ = worker_argv
+        self._python, self._flag, host, _, self._code, self._entry, *_ = worker_argv
+        self._host_dir = str(Path(host).parent)
         self._reader = str(Path(host).with_name("reader.py"))
 
     @property
@@ -830,10 +855,11 @@ class Script:
         self.path.write_text(text)
         self.path.chmod(0o600)
 
-    def read_tags(self) -> dict:
-        """The document the language's reader writes for the script; one naming the failure when
-        the reader itself did not finish, for Provisa to refuse by name."""
-        env = {**os.environ, SCRIPT_FILE_ENV: str(self.path)}
+    def read_tags(self, path: Path | None = None) -> dict:
+        """The document the language's reader writes for the script at ``path``, else the one
+        served; one naming the failure when the reader itself did not finish, for Provisa to
+        refuse by name."""
+        env = {**os.environ, SCRIPT_FILE_ENV: str(path or self.path)}
         try:
             done = subprocess.run(  # noqa: S603  # nosec B603 - the image's own reader, argv-list
                 [self._python, self._flag, self._reader, self._code, SCRIPT_MODULE],
@@ -848,6 +874,55 @@ class Script:
         if done.returncode != 0:
             return _unread(done.stderr.strip()[-2000:])
         return json.loads(done.stdout)
+
+    def validated(self, message: dict) -> dict:
+        """REQ-2225: the answer to a ``validate`` message (see the module's docstring), without
+        its op and id."""
+        given = message.get("script")
+        if given is None:
+            if not self.held:
+                return {"failed": "this host has been given no script to validate"}
+            return self._validated(self.path, message)
+        self._candidates.mkdir(mode=0o700, exist_ok=True)
+        path = self._candidates / f"{uuid.uuid4().hex}.py"
+        path.write_text(given)
+        path.chmod(0o600)
+        try:
+            return self._validated(path, message)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def _validated(self, path: Path, message: dict) -> dict:
+        step = message.get("step")
+        if step == "static":
+            return {
+                "hash": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "document": self.read_tags(path),
+            }
+        if step == "run":
+            return self._run_validator(path, message["request"])
+        return {"failed": f"no validation step {step!r}: a step is static or run"}
+
+    def _run_validator(self, path: Path, request: dict) -> dict:
+        """The validator's report on the script at ``path``, run under the code's own Python."""
+        env = {**os.environ, SCRIPT_FILE_ENV: str(path)}
+        argv = [self._python, self._flag, "-c", _VALIDATE_PROGRAM, self._host_dir, self._code]
+        try:
+            done = subprocess.run(  # noqa: S603  # nosec B603 - the code's own Python, argv-list
+                [*argv, self._entry],
+                env=env,
+                input=json.dumps(request),
+                capture_output=True,
+                text=True,
+                timeout=_VALIDATE_TIMEOUT_S,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return {"failed": f"the validation took over {_VALIDATE_TIMEOUT_S}s"}
+        if done.returncode != 0:
+            said = done.stderr.strip()[-2000:]
+            return {"failed": said or f"the validator exited with {done.returncode}"}
+        return {"report": json.loads(done.stdout)}
 
 
 def _unread(why: str) -> dict:
@@ -1014,6 +1089,10 @@ class _Handler(socketserver.BaseRequestHandler):
                     threading.Thread(
                         target=self._lifecycle, args=(connection, message), daemon=True
                     ).start()
+                elif op == "validate":  # REQ-2225: a dry run takes long: off this reader
+                    threading.Thread(
+                        target=self._validate, args=(connection, message), daemon=True
+                    ).start()
                 elif op == "refused":
                     sys.stderr.write(f"provisa refused this host: {message.get('message')}\n")
                     return
@@ -1032,6 +1111,16 @@ class _Handler(socketserver.BaseRequestHandler):
             connection.send(frame({"op": "setup_done", "id": message["id"], "failed": failed}))
             return
         connection.send(frame({"op": "health", "id": message["id"], **lifecycle.health()}))
+
+    def _validate(self, connection: Connection, message: dict) -> None:
+        """REQ-2225: answer Provisa's ``validate`` under its id."""
+        script = self.front.script
+        answer = (
+            {"failed": "this host serves no script: only a script connector's host validates one"}
+            if script is None
+            else script.validated(message)
+        )
+        connection.send(frame({"op": "validated", "id": message["id"], **answer}))
 
     def _pgwire(self, conn: ssl.SSLSocket) -> None:
         if not self.front.identity.paired or not conn.getpeercert():
