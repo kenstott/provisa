@@ -1541,49 +1541,79 @@
         {
           "name": "iceberg_catalog_type",
           "at": "federationHintsJson",
-          "note": "one of GLUE, REST, JDBC, SNOWFLAKE"
+          "choices": [
+            "GLUE",
+            "REST",
+            "JDBC",
+            "SNOWFLAKE"
+          ]
         },
         {
           "name": "iceberg_table_id",
           "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type",
           "note": "the table's identifier in the catalog"
         },
         {
           "name": "iceberg_catalog_uri",
           "at": "federationHintsJson",
-          "when": "iceberg_catalog_type=REST|JDBC|SNOWFLAKE",
-          "note": "required for REST, JDBC, SNOWFLAKE"
+          "required": true,
+          "when": "iceberg_catalog_type=REST"
         },
         {
           "name": "iceberg_catalog_name",
           "at": "federationHintsJson",
-          "when": "iceberg_catalog_type=JDBC",
-          "note": "required for JDBC"
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
         },
         {
           "name": "iceberg_catalog_warehouse",
           "at": "federationHintsJson",
-          "when": "iceberg_catalog_type=JDBC",
-          "note": "required for JDBC"
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_uri",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=JDBC"
         },
         {
           "name": "iceberg_catalog_user",
           "at": "federationHintsJson",
-          "when": "iceberg_catalog_type=JDBC|SNOWFLAKE",
-          "note": "required for SNOWFLAKE"
+          "when": "iceberg_catalog_type=JDBC"
         },
         {
           "name": "iceberg_catalog_password",
           "at": "federationHintsJson",
           "secret": true,
-          "when": "iceberg_catalog_type=JDBC|SNOWFLAKE",
-          "note": "required for SNOWFLAKE"
+          "when": "iceberg_catalog_type=JDBC"
+        },
+        {
+          "name": "iceberg_catalog_uri",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        },
+        {
+          "name": "iceberg_catalog_user",
+          "at": "federationHintsJson",
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
+        },
+        {
+          "name": "iceberg_catalog_password",
+          "at": "federationHintsJson",
+          "required": true,
+          "secret": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
         },
         {
           "name": "iceberg_catalog_role",
           "at": "federationHintsJson",
-          "when": "iceberg_catalog_type=SNOWFLAKE",
-          "note": "required for SNOWFLAKE"
+          "required": true,
+          "when": "iceberg_catalog_type=SNOWFLAKE"
         }
       ],
       "note": "",
@@ -1836,7 +1866,11 @@
           "name": "auth",
           "at": "federationHintsJson",
           "required": true,
-          "note": "'key' or 'entra'"
+          "default": "key",
+          "choices": [
+            "key",
+            "entra"
+          ]
         },
         {
           "name": "password",
@@ -2054,6 +2088,33 @@
           "name": "llm",
           "at": "mappingJson",
           "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
         }
       ],
       "note": "",
@@ -2064,7 +2125,11 @@
         "settings",
         "workers",
         "lockfile",
-        "llm"
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
       ],
       "federation_hints": []
     },
@@ -2131,6 +2196,33 @@
           "name": "llm",
           "at": "mappingJson",
           "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
         }
       ],
       "note": "",
@@ -2142,7 +2234,11 @@
         "settings",
         "workers",
         "lockfile",
-        "llm"
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
       ],
       "federation_hints": []
     },
@@ -2209,6 +2305,33 @@
           "name": "llm",
           "at": "mappingJson",
           "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
         }
       ],
       "note": "",
@@ -2220,7 +2343,11 @@
         "settings",
         "workers",
         "lockfile",
-        "llm"
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
       ],
       "federation_hints": []
     },
@@ -2287,6 +2414,33 @@
           "name": "llm",
           "at": "mappingJson",
           "note": "{cap_usd}: a cap on what the code's model calls spend"
+        },
+        {
+          "name": "mode",
+          "at": "mappingJson",
+          "note": "dev runs the code on this server; built runs its image on a remote host",
+          "default": "dev",
+          "choices": [
+            "dev",
+            "built"
+          ]
+        },
+        {
+          "name": "remote",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the remote host, kept as given"
+        },
+        {
+          "name": "content_hash",
+          "at": "mappingJson",
+          "when": "mode=built",
+          "note": "the pinned code hash"
+        },
+        {
+          "name": "connector",
+          "at": "mappingJson",
+          "note": "the connector the code is from, kept as given"
         }
       ],
       "note": "",
@@ -2298,7 +2452,11 @@
         "settings",
         "workers",
         "lockfile",
-        "llm"
+        "llm",
+        "mode",
+        "remote",
+        "content_hash",
+        "connector"
       ],
       "federation_hints": []
     },
@@ -2429,7 +2587,10 @@
         {
           "name": "reasoner",
           "at": "mappingJson",
-          "note": "'hermit', with its axioms"
+          "note": "with its axioms",
+          "choices": [
+            "hermit"
+          ]
         },
         {
           "name": "axioms",
@@ -2439,7 +2600,11 @@
         {
           "name": "auth",
           "at": "mappingJson",
-          "note": "'bearer' or 'basic'; left out, none"
+          "note": "left out, none",
+          "choices": [
+            "bearer",
+            "basic"
+          ]
         },
         {
           "name": "password",
@@ -3193,13 +3358,23 @@
         {
           "name": "kafka_security_protocol",
           "at": "federationHintsJson",
-          "note": "PLAINTEXT (the default), SSL, SASL_PLAINTEXT or SASL_SSL"
+          "default": "PLAINTEXT",
+          "choices": [
+            "PLAINTEXT",
+            "SSL",
+            "SASL_PLAINTEXT",
+            "SASL_SSL"
+          ]
         },
         {
           "name": "kafka_sasl_mechanism",
           "at": "federationHintsJson",
           "when": "SASL",
-          "note": "PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512"
+          "choices": [
+            "PLAIN",
+            "SCRAM-SHA-256",
+            "SCRAM-SHA-512"
+          ]
         },
         {
           "name": "kafka_ssl_ca",
@@ -3456,7 +3631,12 @@
           "name": "auth_type",
           "at": "mappingJson",
           "required": true,
-          "note": "CLIENT_CREDENTIALS, USERNAME_PASSWORD, ACCESS_TOKEN"
+          "default": "CLIENT_CREDENTIALS",
+          "choices": [
+            "CLIENT_CREDENTIALS",
+            "USERNAME_PASSWORD",
+            "ACCESS_TOKEN"
+          ]
         },
         {
           "name": "username",
@@ -3623,7 +3803,11 @@
           "name": "environment",
           "at": "mappingJson",
           "required": true,
-          "note": "sandbox or production"
+          "default": "sandbox",
+          "choices": [
+            "sandbox",
+            "production"
+          ]
         },
         {
           "name": "username",
@@ -3818,6 +4002,12 @@
         {
           "name": "calendar_send_updates",
           "at": "mappingJson"
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "secret": true,
+          "note": "an approval kept from before the server held approvals; carried through, never entered"
         }
       ],
       "note": "the account is connected (signed in) by the user on the Sources form; Polly never takes a refresh token or a password",
@@ -3831,7 +4021,8 @@
         "mail_search",
         "mail_since",
         "mail_include_spam_trash",
-        "calendar_send_updates"
+        "calendar_send_updates",
+        "refresh_token"
       ],
       "federation_hints": []
     },
@@ -3879,6 +4070,12 @@
         {
           "name": "calendar_send_updates",
           "at": "mappingJson"
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "secret": true,
+          "note": "an approval kept from before the server held approvals; carried through, never entered"
         }
       ],
       "note": "the account is connected (signed in) by the user on the Sources form; Polly never takes a refresh token or a password",
@@ -3888,7 +4085,8 @@
         "mailboxes",
         "mail_since",
         "calendar_check_days",
-        "calendar_send_updates"
+        "calendar_send_updates",
+        "refresh_token"
       ],
       "federation_hints": []
     },
@@ -4431,7 +4629,13 @@
         {
           "name": "drift_season",
           "at": "mappingJson",
-          "default": "none"
+          "default": "none",
+          "choices": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ]
         },
         {
           "name": "drift_distance",
@@ -4569,6 +4773,12 @@
       "hive",
       "hive_s3",
       "iceberg"
+    ],
+    "cloudFileTypes": [
+      "csv",
+      "duckdb",
+      "parquet",
+      "sqlite"
     ]
   }
 }

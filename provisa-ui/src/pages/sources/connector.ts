@@ -16,6 +16,14 @@
 
 import type { Connector, ConnectorSetting } from "../../api/connectors";
 import type { SourceFormState } from "./SourceFormFields";
+import { mappingKey, mappingParentKey } from "./descriptor";
+
+// REQ-2114: the keys a connector's source is joined with are the descriptor's, stated for the
+// built-in connector type (provisa/api/admin/source_types.py, Spark).
+const JOINED = "spark";
+const JOIN = mappingKey(JOINED, "connector_join");
+const SECRETS = mappingKey(JOINED, "secrets");
+const SETTINGS = mappingParentKey(JOINED, "settings");
 
 /** Where each standard source setting a connector can set is kept in the form. */
 const FORM_KEYS: Record<string, keyof SourceFormState> = {
@@ -140,7 +148,7 @@ export function connectorMappingJson(
     else settings[r.name] = r.fixed_value ?? given;
   }
   return JSON.stringify({
-    connector_join: {
+    [JOIN]: {
       connector: connector.name,
       ...(connector.native
         ? {}
@@ -151,7 +159,7 @@ export function connectorMappingJson(
           }),
       ...(chose.length ? { chose } : {}),
     },
-    secrets,
-    settings,
+    [SECRETS]: secrets,
+    [SETTINGS]: settings,
   });
 }

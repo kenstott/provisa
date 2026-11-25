@@ -220,3 +220,44 @@ class TestTheUiReadsTheDescriptor:
         assert st.brand_auth("wikipedia") == "none"
         with pytest.raises(KeyError):
             st.brand_auth("postgresql")
+
+
+class TestTheFormBuildersShape:
+    """What the UI's builders read from the descriptor: choices, defaults, per-choice fields."""
+
+    def _field(self, type_name: str, name: str, when: str = "") -> st.Field:
+        return next(
+            f
+            for f in _by_name()[type_name].fields
+            if f.name == name and (not when or f.when == when)
+        )
+
+    def test_value_sets_are_the_modules_that_read_them(self):
+        from provisa.kafka.security import SASL_MECHANISMS, SECURITY_PROTOCOLS
+        from provisa.profiler.source import DRIFT_SEASONS
+        from provisa.quickbooks.settings import ENVIRONMENTS
+        from provisa.sparql.reasoning import REASONERS
+        from provisa.sparql.source import AUTH_KINDS
+
+        assert self._field("kafka", "kafka_security_protocol").choices == SECURITY_PROTOCOLS
+        assert self._field("kafka", "kafka_sasl_mechanism").choices == SASL_MECHANISMS
+        assert self._field("data_profiler", "drift_season").choices == DRIFT_SEASONS
+        assert self._field("quickbooks", "environment").choices == ENVIRONMENTS
+        assert self._field("sparql", "reasoner").choices == REASONERS
+        assert self._field("sparql", "auth").choices == AUTH_KINDS
+        assert self._field("salesforce", "auth_type").choices == tuple(st.SALESFORCE_AUTH)
+
+    def test_each_iceberg_catalog_states_its_own_fields(self):
+        for catalog, entries in st.ICEBERG_CATALOG.items():
+            when = f"iceberg_catalog_type={catalog}"
+            stated = [(f.name, f.required) for f in _by_name()["iceberg"].fields if f.when == when]
+            assert stated == list(entries), catalog
+
+    def test_a_code_source_lists_every_key_its_reader_takes(self):
+        for name in ("node", "python", "go", "rust"):
+            keys = set(_by_name()[name].mapping_json)
+            assert {"mode", "remote", "content_hash", "connector"} <= keys, name
+
+    def test_a_mail_source_lists_an_earlier_approval_as_a_secret(self):
+        for name in ("google_workspace", "microsoft_365"):
+            assert self._field(name, "refresh_token").secret, name

@@ -30,32 +30,67 @@
 //
 // The content hash of the code is pinned by the server when the source is saved.
 
+import generated from "../../generated/sourceTypes.json";
+import { mappingKeysOf } from "./descriptor";
+
 export const NODE = "node";
 export const PYTHON = "python";
 export const GO = "go";
 export const RUST = "rust";
 /** REQ-2225: a built-in source type whose code is the Spark host's, run on Python. */
 export const SPARK = "spark";
-export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO, RUST, SPARK]);
+
+// REQ-2114: the code types, their runtimes, package kinds and named entries, and the mapping keys
+// are the descriptor's (provisa/api/admin/source_types.py, from provisa/codesource/languages.py).
+interface CodeLanguage {
+  runtimes: string[];
+  package_kind: string;
+  named_entry: boolean;
+  builtin_host: boolean;
+}
+const LANGUAGES = new Map<string, CodeLanguage>(
+  generated.types.flatMap((t) => (t.code ? [[t.name, t.code as CodeLanguage] as const] : [])),
+);
+function language(type: string): CodeLanguage {
+  const found = LANGUAGES.get(type);
+  if (!found) throw new Error(`${type} is not a code source type in the descriptor`);
+  return found;
+}
+
+export const CODE_SOURCE_TYPES = new Set(LANGUAGES.keys());
 
 /** The languages whose source names where its code is entered: Python's module, Go's package,
- * Rust's crate. */
-export const NAMED_ENTRY = new Set([PYTHON, GO, RUST]);
+ * Rust's crate. A built-in host (Spark) is joined, never entered. */
+export const NAMED_ENTRY = new Set(
+  [...LANGUAGES].filter(([, l]) => l.named_entry && !l.builtin_host).map(([name]) => name),
+);
 
-export const NODE_RUNTIMES = ["node", "bun", "deno"] as const;
+export const NODE_RUNTIMES: readonly string[] = language(NODE).runtimes;
+
+/** The mapping keys a code source is saved with (every code language takes the same ones). */
+const K = mappingKeysOf(PYTHON, [
+  "runtime",
+  "code",
+  "lockfile",
+  "entry",
+  "secrets",
+  "llm",
+  "settings",
+  "workers",
+  "mode",
+  "remote",
+  "content_hash",
+  "connector",
+] as const);
 
 /** Where the code comes from: a package (npm, PyPI, a Go module or a crate), a Git repository, or an
  * upload. */
 export type CodeOrigin = "package" | "git" | "upload" | "directory";
 
 /** The package kind each language's packages come from. */
-export const PACKAGE_KIND: Record<string, string> = {
-  [NODE]: "npm",
-  [PYTHON]: "pypi",
-  [GO]: "gomod",
-  [RUST]: "cargo",
-  [SPARK]: "pypi", // REQ-2225: the Spark host is a Python project
-};
+export const PACKAGE_KIND: Record<string, string> = Object.fromEntries(
+  [...LANGUAGES].map(([name, l]) => [name, l.package_kind]),
+);
 
 /** The lockfiles each language installs from (provisa/node/install.py, provisa/python/install.py,
  * provisa/golang/install.py, provisa/rustlang/install.py). */
@@ -141,7 +176,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();
   // A connector's source keeps its values whole: one may be multi-line text.
-  const held = fields.code_connector ? { connector: fields.code_connector } : {};
+  const held = fields.code_connector ? { [K.connector]: fields.code_connector } : {};
   const settings = fields.code_connector
     ? (JSON.parse(fields.code_connector_settings || "{}") as Record<string, unknown>)
     : settingsOf(fields.code_settings ?? "");
@@ -150,21 +185,24 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const built =
     fields.code_mode === "built"
       ? {
-          mode: "built",
-          remote: JSON.parse(fields.code_remote || "{}") as Record<string, unknown>,
-          content_hash: fields.code_content_hash ?? "",
+          [K.mode]: "built",
+          [K.remote]: JSON.parse(fields.code_remote || "{}") as Record<string, unknown>,
+          [K.content_hash]: fields.code_content_hash ?? "",
         }
       : {};
+  // Node names its runtime, the first of its runtimes when the form names none; Python, Go and
+  // Rust each have one; Spark's host runs on Python.
+  const runtimes = language(type).runtimes;
+  const runtime = runtimes.length === 1 ? runtimes[0] : (fields.code_runtime ?? runtimes[0]);
   return JSON.stringify({
-    // Node names its runtime; Python, Go and Rust each have one; Spark's host runs on Python.
-    runtime: type === NODE ? (fields.code_runtime ?? "node") : type === SPARK ? PYTHON : type,
-    code,
-    ...(lockfile ? { lockfile } : {}),
-    ...(NAMED_ENTRY.has(type) && entry ? { entry } : {}),
-    ...(secrets ? { secrets } : {}),
-    ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
-    ...(Object.keys(settings).length ? { settings } : {}),
-    ...(workers !== 1 ? { workers } : {}),
+    [K.runtime]: runtime,
+    [K.code]: code,
+    ...(lockfile ? { [K.lockfile]: lockfile } : {}),
+    ...(NAMED_ENTRY.has(type) && entry ? { [K.entry]: entry } : {}),
+    ...(secrets ? { [K.secrets]: secrets } : {}),
+    ...(cap ? { [K.llm]: { cap_usd: Number(cap) } } : {}),
+    ...(Object.keys(settings).length ? { [K.settings]: settings } : {}),
+    ...(workers !== 1 ? { [K.workers]: workers } : {}),
     ...built,
     ...held,
   });

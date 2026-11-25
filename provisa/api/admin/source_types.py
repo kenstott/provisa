@@ -33,8 +33,9 @@ Where each part comes from:
 A secret is never a value in a descriptor's create call: it is a ``${secret:NAME}`` reference,
 its value entered by the user on the Sources form or in the organization's secrets.
 
-The per-type mapping and hint builders still run in the UI (provisa-ui/src/pages/sources/*.ts);
-the descriptor states their keys, and the UI's tests hold the two to the same keys.
+The per-type mapping and hint builders run in the UI (provisa-ui/src/pages/sources/*.ts) and take
+their keys, required and secret flags, choices and defaults from this descriptor (through the
+generated file); a UI test fails when a builder writes a key the descriptor does not list.
 """
 
 # Requirements: REQ-2114, REQ-1923, REQ-1984, REQ-2225
@@ -43,8 +44,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from provisa.codesource import remote_sources
 from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
+from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
+from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
+from provisa.profiler.source import DRIFT_SEASONS
+from provisa.quickbooks.settings import ENVIRONMENTS as QUICKBOOKS_ENVIRONMENTS
+from provisa.quickbooks.settings import SANDBOX
+from provisa.sparql.reasoning import REASONERS
+from provisa.sparql.source import AUTH_KINDS as SPARQL_AUTH_KINDS
 
 #: Where a field is given: a ``SourceInput`` argument (by its GraphQL name), a key of the
 #: ``mappingJson`` or ``federationHintsJson`` object, a key of a REST route's body, or a brand's
@@ -68,6 +77,8 @@ class Field:
     value: Any = None
     #: The value used when none is given.
     default: Any = None
+    #: The values it takes, when it takes one of a fixed set.
+    choices: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -393,23 +404,26 @@ def _object_store_fields() -> tuple[Field, ...]:
 
 
 def _iceberg_fields() -> tuple[Field, ...]:
-    out = [
-        _hint("iceberg_catalog_type", note="one of " + ", ".join(ICEBERG_CATALOG)),
-        _hint("iceberg_table_id", note="the table's identifier in the catalog"),
-    ]
-    keys = dict.fromkeys(key for entries in ICEBERG_CATALOG.values() for key, _ in entries)
-    for key in keys:
-        needs = [c for c, entries in ICEBERG_CATALOG.items() if (key, True) in entries]
-        takes = [c for c, entries in ICEBERG_CATALOG.items() if any(k == key for k, _ in entries)]
-        out.append(
+    # One field per catalog type that takes the key, required as that type needs it.
+    return (
+        _hint("iceberg_catalog_type", choices=tuple(ICEBERG_CATALOG)),
+        _hint(
+            "iceberg_table_id",
+            required=True,
+            when="iceberg_catalog_type",
+            note="the table's identifier in the catalog",
+        ),
+        *(
             _hint(
                 key,
+                required=required,
                 secret=key.endswith("password"),
-                when="iceberg_catalog_type=" + "|".join(takes),
-                note=f"required for {', '.join(needs)}" if needs else "",
+                when=f"iceberg_catalog_type={catalog}",
             )
-        )
-    return tuple(out)
+            for catalog, entries in ICEBERG_CATALOG.items()
+            for key, required in entries
+        ),
+    )
 
 
 def _lake_storage(required_region: bool) -> tuple[Field, ...]:
@@ -455,6 +469,15 @@ def _code_fields(source_type: str) -> tuple[Field, ...]:
         _map("workers", default=1),
         _map("lockfile", note="{filename, upload}: an uploaded lockfile"),
         _map("llm", note="{cap_usd}: a cap on what the code's model calls spend"),
+        _map(
+            "mode",
+            choices=remote_sources.MODES,
+            default=remote_sources.DEV,
+            note="dev runs the code on this server; built runs its image on a remote host",
+        ),
+        _map("remote", when=f"mode={remote_sources.BUILT}", note="the remote host, kept as given"),
+        _map("content_hash", when=f"mode={remote_sources.BUILT}", note="the pinned code hash"),
+        _map("connector", note="the connector the code is from, kept as given"),
     ]
     return tuple(fields)
 
@@ -590,7 +613,7 @@ _OWN: dict[str, tuple[Field, ...]] = {
     "cosmosdb": (
         _in("host", required=True, note="the account endpoint"),
         _in("database", required=True),
-        _hint("auth", required=True, note="'key' or 'entra'"),
+        _hint("auth", required=True, choices=(AUTH_KEY, AUTH_ENTRA), default=AUTH_KEY),
         _in("password", required=True, secret=True, when="auth=key", note="the account key"),
         _hint("tenant_id", required=True, when="auth=entra"),
         _hint("client_id", required=True, when="auth=entra"),
@@ -604,9 +627,9 @@ _OWN: dict[str, tuple[Field, ...]] = {
     "sparql": (
         _in("host", required=True, note="the endpoint URL"),
         _hint("default_graph_uri"),
-        _map("reasoner", note="'hermit', with its axioms"),
+        _map("reasoner", choices=REASONERS, note="with its axioms"),
         _map("axioms", when="reasoner"),
-        _map("auth", note="'bearer' or 'basic'; left out, none"),
+        _map("auth", choices=SPARQL_AUTH_KINDS, note="left out, none"),
         _in("password", secret=True, when="auth=bearer|basic", note="the token or password"),
         _in("username", when="auth=basic"),
     ),
@@ -642,9 +665,10 @@ _OWN: dict[str, tuple[Field, ...]] = {
     "kafka": (
         _hint(
             "kafka_security_protocol",
-            note="PLAINTEXT (the default), SSL, SASL_PLAINTEXT or SASL_SSL",
+            choices=SECURITY_PROTOCOLS,
+            default=PROTOCOL_PLAINTEXT,
         ),
-        _hint("kafka_sasl_mechanism", when="SASL", note="PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512"),
+        _hint("kafka_sasl_mechanism", when="SASL", choices=SASL_MECHANISMS),
         _hint("kafka_ssl_ca", when="SSL"),
         _in("username", when="SASL"),
         _in("password", secret=True, when="SASL"),
@@ -664,7 +688,12 @@ _OWN: dict[str, tuple[Field, ...]] = {
     ),
     "salesforce": (
         _in("host", required=True, note="the login URL"),
-        _map("auth_type", required=True, note=", ".join(SALESFORCE_AUTH)),
+        _map(
+            "auth_type",
+            required=True,
+            choices=tuple(SALESFORCE_AUTH),
+            default=next(iter(SALESFORCE_AUTH)),
+        ),
         _in("username", when="auth_type!=ACCESS_TOKEN", required=True, note="the consumer key"),
         _in(
             "password",
@@ -697,7 +726,7 @@ _OWN: dict[str, tuple[Field, ...]] = {
     ),
     "quickbooks": (
         _in("database", required=True, note="the realm id"),
-        _map("environment", required=True, note="sandbox or production"),
+        _map("environment", required=True, choices=QUICKBOOKS_ENVIRONMENTS, default=SANDBOX),
         _in("username", required=True, note="the client id"),
         _in("password", required=True, secret=True, note="the client secret"),
         _map("refresh_token", secret=True),
@@ -719,6 +748,12 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _map("mail_since"),
         _map("mail_include_spam_trash"),
         _map("calendar_send_updates"),
+        _map(
+            "refresh_token",
+            secret=True,
+            note="an approval kept from before the server held approvals; carried through, never "
+            "entered",
+        ),
     ),
     "microsoft_365": (
         _map("resources", required=True, note="any of mail, calendar, tasks"),
@@ -727,6 +762,12 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _map("mail_since"),
         _map("calendar_check_days", when="resources has calendar", required=True),
         _map("calendar_send_updates"),
+        _map(
+            "refresh_token",
+            secret=True,
+            note="an approval kept from before the server held approvals; carried through, never "
+            "entered",
+        ),
     ),
     "splunk": (
         _in("host", required=True),
@@ -742,7 +783,7 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _map("sample_above_cells"),
         _map("low_cardinality_max", default=100),
         _map("drift_window", default=7),
-        _map("drift_season", default="none"),
+        _map("drift_season", default="none", choices=DRIFT_SEASONS),
         _map("drift_distance", default=3),
         _map("drift_slope", default=3),
         _map("drift_ks", default=0.2),
@@ -1087,7 +1128,11 @@ def as_json(d: SourceTypeDescriptor) -> dict[str, Any]:
     out = asdict(d)
     out["create"] = {k: v for k, v in out["create"].items() if v}
     out["fields"] = [
-        {k: v for k, v in f.items() if v not in ("", None, False) or k in ("name", "at")}
+        {
+            k: v
+            for k, v in f.items()
+            if (v not in ("", None, False) and v != ()) or k in ("name", "at")
+        }
         for f in out["fields"]
     ]
     out["mapping_json"] = list(d.mapping_json)
@@ -1115,4 +1160,5 @@ def families() -> dict[str, list[str]]:
         "fileSources": sorted(FILE_SOURCES),
         "noConnection": sorted(NO_CONNECTION_TYPES),
         "dataLake": sorted(DATA_LAKE),
+        "cloudFileTypes": sorted(CLOUD_FILE_TYPES),
     }
