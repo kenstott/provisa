@@ -92,79 +92,79 @@ class TestSourceToDialectMapping:
 
 class TestTranspileClickhouse:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "clickhouse")
+        sql = transpile(_SIMPLE_SELECT, "clickhouse", generated=False)
         assert "SELECT" in sql
         assert "orders" in sql
 
     def test_where_clause(self):
-        sql = transpile(_WHERE_SELECT, "clickhouse")
+        sql = transpile(_WHERE_SELECT, "clickhouse", generated=False)
         assert "WHERE" in sql
         assert "region" in sql.lower() or "region" in sql
 
     def test_limit_offset(self):
-        sql = transpile(_LIMIT_SELECT, "clickhouse")
+        sql = transpile(_LIMIT_SELECT, "clickhouse", generated=False)
         assert "LIMIT" in sql
 
 
 class TestTranspileMariaDB:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, SOURCE_TO_DIALECT["mariadb"])
+        sql = transpile(_SIMPLE_SELECT, SOURCE_TO_DIALECT["mariadb"], generated=False)
         assert "SELECT" in sql
         assert "orders" in sql
 
     def test_where_clause(self):
-        sql = transpile(_WHERE_SELECT, SOURCE_TO_DIALECT["mariadb"])
+        sql = transpile(_WHERE_SELECT, SOURCE_TO_DIALECT["mariadb"], generated=False)
         assert "WHERE" in sql
 
 
 class TestTranspileRedshift:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "redshift")
+        sql = transpile(_SIMPLE_SELECT, "redshift", generated=False)
         assert "SELECT" in sql
 
     def test_limit_offset(self):
-        sql = transpile(_LIMIT_SELECT, "redshift")
+        sql = transpile(_LIMIT_SELECT, "redshift", generated=False)
         assert "LIMIT" in sql
 
 
 class TestTranspileDatabricks:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "databricks")
+        sql = transpile(_SIMPLE_SELECT, "databricks", generated=False)
         assert "SELECT" in sql
         assert "orders" in sql
 
     def test_where_clause(self):
-        sql = transpile(_WHERE_SELECT, "databricks")
+        sql = transpile(_WHERE_SELECT, "databricks", generated=False)
         assert "WHERE" in sql
 
 
 class TestTranspileHive:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "hive")
+        sql = transpile(_SIMPLE_SELECT, "hive", generated=False)
         assert "SELECT" in sql
 
     def test_limit(self):
-        sql = transpile(_LIMIT_SELECT, "hive")
+        sql = transpile(_LIMIT_SELECT, "hive", generated=False)
         assert "LIMIT" in sql
 
 
 class TestTranspileDruid:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "druid")
+        sql = transpile(_SIMPLE_SELECT, "druid", generated=False)
         assert "SELECT" in sql
 
     def test_where_clause(self):
-        sql = transpile(_WHERE_SELECT, "druid")
+        sql = transpile(_WHERE_SELECT, "druid", generated=False)
         assert "WHERE" in sql
 
 
 class TestTranspileExasol:
     def test_simple_select(self):
-        sql = transpile(_SIMPLE_SELECT, "exasol")
+        sql = transpile(_SIMPLE_SELECT, "exasol", generated=False)
         assert "SELECT" in sql
 
     def test_where_clause(self):
-        sql = transpile(_WHERE_SELECT, "exasol")
+        sql = transpile(_WHERE_SELECT, "exasol", generated=False)
         assert "WHERE" in sql
 
     def test_inner_table_columns_are_uppercased_when_outer_subquery_shares_the_alias(self):
@@ -181,6 +181,7 @@ class TestTranspileExasol:
             '       FROM "provisa"."widgets" AS "widgets") AS "widgets"'
             ' ORDER BY "id"',
             "exasol",
+            generated=False,
         )
         # Inner column names from the real table must arrive in uppercase.
         assert '"ID"' in sql, sql
@@ -193,12 +194,12 @@ class TestTranspileExasol:
 class TestTranspileSinglestore:
     def test_simple_select(self):
         dialect = SOURCE_TO_DIALECT["singlestore"]
-        sql = transpile(_SIMPLE_SELECT, dialect)
+        sql = transpile(_SIMPLE_SELECT, dialect, generated=False)
         assert "SELECT" in sql
 
     def test_where_clause(self):
         dialect = SOURCE_TO_DIALECT["singlestore"]
-        sql = transpile(_WHERE_SELECT, dialect)
+        sql = transpile(_WHERE_SELECT, dialect, generated=False)
         assert "WHERE" in sql
 
 
@@ -208,19 +209,19 @@ class TestTranspileAllNewDialects:
     @pytest.mark.parametrize("source_type", sorted(_NEW_DIALECTS))
     def test_select_produces_output(self, source_type):
         dialect = SOURCE_TO_DIALECT[source_type]
-        sql = transpile(_SIMPLE_SELECT, dialect)
+        sql = transpile(_SIMPLE_SELECT, dialect, generated=False)
         assert sql.strip(), f"transpile produced empty output for {source_type!r}"
 
     @pytest.mark.parametrize("source_type", sorted(_NEW_DIALECTS))
     def test_where_produces_output(self, source_type):
         dialect = SOURCE_TO_DIALECT[source_type]
-        sql = transpile(_WHERE_SELECT, dialect)
+        sql = transpile(_WHERE_SELECT, dialect, generated=False)
         assert "WHERE" in sql
 
     @pytest.mark.parametrize("source_type", sorted(_NEW_DIALECTS))
     def test_limit_produces_output(self, source_type):
         dialect = SOURCE_TO_DIALECT[source_type]
-        sql = transpile(_LIMIT_SELECT, dialect)
+        sql = transpile(_LIMIT_SELECT, dialect, generated=False)
         assert "LIMIT" in sql
 
 

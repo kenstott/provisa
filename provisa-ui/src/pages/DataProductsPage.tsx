@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import { Alert, Button, Checkbox, Group, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, Package } from "lucide-react";
 import { useDomains, useTables, useRoles, useRelationships } from "../hooks/useAdminQueries";
+import { useOwnerField } from "../hooks/useOwnerField";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
@@ -67,6 +68,10 @@ const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 // REQ-1634: top-level data-products management page (list / create / edit / delete).
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
 // detail panel; Edit/Delete live inside it and edit swaps the panel for the inline form.
+/** REQ-2219 (amended 2026-11-24): a product's owners as its Owner field names them, people and
+ * roles as entered: what the list shows, sorts, groups and searches by. */
+const ownerNames = (p: DataProduct) => p.namedOwners.map((o) => o.principal);
+
 export function DataProductsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -96,6 +101,15 @@ export function DataProductsPage() {
   // The model's relationships: each dataset's associations in the Related tab.
   const { relationships } = useRelationships();
   const roleOptions = roles.map((r) => r.id);
+  // REQ-2219 (amended 2026-11-23): the roles the Owner field may name, those holding
+  // data_product_owner.
+  const ownerRoleOptions = roles
+    .filter((r) => r.effectiveCapabilities.includes("data_product_owner"))
+    .map((r) => r.id);
+  const readOwnerField = useOwnerField();
+  // The product whose Owner field, as it names people and roles, the open form holds. Until it
+  // is read, a save leaves the field as held.
+  const [ownerFieldFor, setOwnerFieldFor] = useState<string | null>(null);
   const { createDataProduct, loading: creatingProduct } = useCreateDataProduct();
   const { updateDataProduct, loading: updatingProduct } = useUpdateDataProduct();
   const saving = creatingProduct || updatingProduct;
@@ -104,26 +118,26 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  const { selectedRoles, availableRoles, actingRoles } = useAuth();
+  const { selectedRoles, availableRoles, actingRoles, userId } = useAuth();
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
   );
   const viewer = useMemo(() => ({ held, acting: actingRoles }), [held, actingRoles]);
+  // REQ-2219 (amended 2026-11-23): the signed-in person is one of the product's owners.
+  const namedOwner = (p: DataProduct) => userId !== null && p.owners.includes(userId);
   // REQ-2188: a holder of data_product_rw sees the owner's view of every product, its read rights
-  // capping what is in it (REQ-2152). REQ-2160: and so does a reader holding the owner or team role.
+  // capping what is in it (REQ-2152). REQ-2160: and so does an owner, or a reader holding the
+  // team role.
   const ownsProduct = (p: DataProduct) =>
-    canEdit ||
-    (p.ownerRole != null && held.has(p.ownerRole)) ||
-    (p.teamRole != null && held.has(p.teamRole));
-  // REQ-2188: RW that comes only from an Owner field reaches the products naming a role the caller
-  // holds; the store's row rule is what enforces it, and this only keeps Edit off the others. RW
-  // of a role's own (or an ancestor's) is offered every product.
+    canEdit || namedOwner(p) || (p.teamRole != null && held.has(p.teamRole));
+  // REQ-2188: RW that comes only from an Owner field reaches the products naming the caller; the
+  // store's row rule is what enforces it, and this only keeps Edit off the others. RW of a role's
+  // own (or an ancestor's) is offered every product.
   const rwOfItsOwn = availableRoles.some(
     (r) => held.has(r.id) && r.capabilities?.includes("data_product_rw"),
   );
-  const mayEdit = (p: DataProduct) =>
-    canEdit && (rwOfItsOwn || (p.ownerRole != null && held.has(p.ownerRole)));
+  const mayEdit = (p: DataProduct) => canEdit && (rwOfItsOwn || namedOwner(p));
   // REQ-2146: each product's findings, and the list narrowed to the products that have any.
   const productFindings = useDataProductFindings();
   const statusActions = useDataProductStatus();
@@ -211,6 +225,11 @@ export function DataProductsPage() {
   const [membersVersion, setMembersVersion] = useState(0);
   const reader = useMetaReader();
   const [msg, setMsg] = useState("");
+  // The Owner field's people search failed: said where the form says what went wrong.
+  const onPeopleError = useCallback(
+    (e: unknown) => setMsg(e instanceof Error ? e.message : String(e)),
+    [setMsg],
+  );
   // REQ-2156: the expanded product's lineage, cut to what the reader may read; read again after
   // the product is saved.
   const [lineageGraph, setLineageGraph] = useState<ProductLineage | null>(null);
@@ -275,11 +294,25 @@ export function DataProductsPage() {
     setCreating(false);
     setEditingId(p.id);
     setExpanded(p.id);
+    setOwnerFieldFor(null);
+    readOwnerField("data_product", p.id)
+      .then((field) => {
+        setForm((f) =>
+          f.id === p.id || f.id === `${p.id}-copy`
+            ? { ...f, owners: field.people, ownerRoles: field.roles }
+            : f,
+        );
+        setOwnerFieldFor(p.id);
+      })
+      .catch(onPeopleError);
     setForm({
       id: p.id,
       domainId: p.domainId,
       name: p.name,
-      ownerRole: p.ownerRole ?? "",
+      // Its owners as its Owner field names them, read above; the product's owners (p.owners)
+      // count every holder of a role named, who are not the field's.
+      owners: [],
+      ownerRoles: [],
       teamRole: p.teamRole ?? "",
       purpose: p.purpose,
       limitations: p.limitations,
@@ -322,7 +355,11 @@ export function DataProductsPage() {
       id: form.id.trim(),
       domainId: form.domainId.trim(),
       name: form.name.trim(),
-      ownerRole: form.ownerRole.trim() || null,
+      // An edited product's Owner field is sent once it has been read; before that it is left
+      // as held.
+      ...(editingId === null || ownerFieldFor === editingId
+        ? { owners: form.owners, ownerRoles: form.ownerRoles }
+        : { owners: null, ownerRoles: null }),
       teamRole: form.teamRole.trim() || null,
       purpose: form.purpose.trim(),
       limitations: form.limitations.trim(),
@@ -403,6 +440,8 @@ export function DataProductsPage() {
       setForm={setForm}
       domainOptions={domainOptions}
       roleOptions={roleOptions}
+      ownerRoleOptions={ownerRoleOptions}
+      onPeopleError={onPeopleError}
       tables={tables}
       selectedTableIds={selectedTableIds}
       setSelectedTableIds={setSelectedTableIds}
@@ -422,7 +461,7 @@ export function DataProductsPage() {
     () =>
       dataProducts.filter(
         (p) =>
-          matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
+          matchesQuery([p.id, p.name, p.domainId, ...ownerNames(p), p.purpose], search) &&
           (!toReviewOnly || productFindings.findings.has(p.id)) &&
           tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
           (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
@@ -451,8 +490,8 @@ export function DataProductsPage() {
       {
         key: "owner",
         label: t("dataProductsTab.colOwner"),
-        sortValue: (p) => p.ownerRole ?? "",
-        groupValue: (p) => p.ownerRole ?? "",
+        sortValue: (p) => ownerNames(p).join(", "),
+        groupValue: (p) => ownerNames(p).join(", "),
       },
       {
         key: "status",
@@ -519,7 +558,7 @@ export function DataProductsPage() {
         canEdit={mayEdit(selectedProduct)}
         canDelete={mayEdit(selectedProduct)}
         owner={ownsProduct(selectedProduct)}
-        seesConsumers={isProductOwner(selectedProduct, selectedRoles)}
+        seesConsumers={isProductOwner(selectedProduct, userId, selectedRoles)}
         lineageLoading={lineageLoading}
         lineageError={lineageError}
         lineageGraph={lineageGraph}
@@ -725,11 +764,11 @@ export function DataProductsPage() {
                             <Table.Td>
                               <Group gap={4} wrap="nowrap">
                                 <Text size="xs" truncate="end">
-                                  {p.ownerRole ?? ""}
+                                  {ownerNames(p).join(", ")}
                                 </Text>
-                                {p.ownerRole && (
+                                {p.namedOwners.length > 0 && (
                                   <OwnerResolutionIcon
-                                    refs={[p.ownerRole]}
+                                    refs={ownerNames(p)}
                                     ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
                                   />
                                 )}

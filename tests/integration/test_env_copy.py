@@ -133,7 +133,7 @@ async def seeded(envs):
         dialect="postgresql",
         description="the warehouse",
     )
-    await envs.insert(domains, id="sales", description="revenue", steward="ana")
+    await envs.insert(domains, id="sales", description="revenue")
     await envs.insert(
         registered_tables,
         source_id="warehouse",

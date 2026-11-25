@@ -64,6 +64,17 @@ log = logging.getLogger(__name__)
 _NOTHING_HELD = HeldEntitlements()
 
 
+def _with_role_rows(
+    state: Any, held: HeldEntitlements, role_ids: Collection[str]
+) -> HeldEntitlements:
+    """``held`` with the rows an Owner or Steward field wrote on any of ``role_ids`` (REQ-2219,
+    amended 2026-11-23: a role named makes every person acting as it a holder)."""
+    rows = tuple(r for role_id in role_ids for r in state.role_owner_rows.get(role_id, ()))
+    if not rows:
+        return held
+    return HeldEntitlements((*held.lists, *rows), held.expiries)
+
+
 @dataclass(frozen=True)
 class EntitlementRequest:
     """One person's identity-provider lists, as bound for a call. What Provisa holds is read
@@ -325,7 +336,11 @@ def _reaches(
     request = _current.get()
     if request is None:
         raise RuntimeError(f"no person is bound to this call: who may reach {kind} cannot be read")
-    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
+    held = _with_role_rows(
+        state,
+        state.held_entitlements.get(request.user_id, _NOTHING_HELD),
+        [m for role_id in request.acting_roles for m in _members(role_id)],
+    )
     wanted = set(capabilities)
     now = datetime.now(UTC)
     for role_id in request.acting_roles:
@@ -354,6 +369,40 @@ def _reaches(
                 if reach.reaches(paths):
                     return True
     return False
+
+
+def owned_products(state: Any) -> tuple[str, ...]:
+    """The ids of the products the bound person owns (REQ-2219, amended 2026-11-23): those a
+    data_product_owner row of theirs names, Provisa-held or their identity provider's, on a role
+    they act as that holds the capability. A role holding it with no list owns nothing by it.
+    Ownership is a person's: with no person bound there is no one to own anything, so a write no
+    person makes is held to no product (``entitlements.owners``)."""
+    from provisa.entitlements.owners import DATA_PRODUCT_OWNER, owned_by  # noqa: PLC0415
+
+    request = _current.get()
+    if request is None:
+        return ()
+    members = [m for role_id in request.acting_roles for m in _members(role_id)]
+    held = _with_role_rows(
+        state, state.held_entitlements.get(request.user_id, _NOTHING_HELD), members
+    )
+
+    def holds_owner(role_id: str) -> bool:
+        # Held by the role or an ancestor: a role holds what its parents hold (REQ-2155).
+        return any(
+            DATA_PRODUCT_OWNER in ((state.roles.get(anc) or {}).get("capabilities") or ())
+            for anc in state.role_chains.get(role_id, [role_id])
+        )
+
+    return owned_by(
+        held.lists,
+        request.idp,
+        held.expiries,
+        members,
+        holds_owner,
+        state.data_product_refs,
+        datetime.now(UTC),
+    )
 
 
 def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:

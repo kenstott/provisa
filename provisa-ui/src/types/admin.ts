@@ -78,11 +78,16 @@ export interface Domain {
   id: string;
   description: string;
   graphqlAlias?: string | null;
-  steward?: string | null; // REQ-609: role or user id; null means PENDING
+  // REQ-609, REQ-2219: its stewards, people (user ids) whose domain_steward rows name it.
+  stewards: string[];
+  // REQ-2219 (amended 2026-11-24): what its Steward field names, people and roles as entered:
+  // what the page shows of its own stewards.
+  stewardField: { people: string[]; roles: string[] };
   // REQ-1363: the domain this one sits under; a role that lists the parent reaches this one too.
   parentDomainId?: string | null;
-  // REQ-1363: its own steward, else its nearest ancestor's; null when none up the tree has one.
-  effectiveSteward?: string | null;
+  // REQ-1363: the people it answers to -- a row naming it or a domain above it. Empty: PENDING,
+  // unless it is a system domain.
+  effectiveStewards: string[];
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
@@ -95,6 +100,9 @@ export interface ListedNames {
 }
 
 // REQ-1634: a first-class DataProduct entity; a table or command is a member of any number of them, set on the product (REQ-1634).
+/** A principal an Owner or Steward field names, as entered: a person or a role (REQ-2219). */
+export type NamedPrincipal = { principal: string; kind: "person" | "role" };
+
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
 // individuals via the existing role machinery; tags, terms, inputs and output ports are read
 // from the meta domain (REQ-2125, REQ-2126) rather than stored here.
@@ -102,7 +110,13 @@ export interface DataProduct {
   id: string;
   domainId: string;
   name: string;
-  ownerRole?: string | null;
+  // REQ-2219 (amended 2026-11-24): its owners, people (user ids) holding a data_product_owner row
+  // naming it, a named role's holders among them, read through its owners relationship
+  // (data_product_owners_meta). Rights are theirs.
+  owners: string[];
+  // REQ-2219 (amended 2026-11-24): what its Owner field names, people and roles as entered: what
+  // a page shows of its owners.
+  namedOwners: NamedPrincipal[];
   teamRole?: string | null;
   purpose: string;
   limitations: string;
@@ -143,7 +157,7 @@ export interface ContractVersion {
   saved_by: string | null;
 }
 
-// REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
+// REQ-609/REQ-1634: a team role/visible_to ref resolved to one individual.
 export interface UserSummary {
   // userId and email are user_management's; null for every other caller.
   userId?: string | null;

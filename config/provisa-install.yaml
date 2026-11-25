@@ -14,14 +14,12 @@ data_products:
   tables: [pets, pets_quality, vets, vets_quality]
   commands: [add_pet]
   name: Pet Health
-  owner: org_admin
   support_contact: kennethstott@gmail.com
 - purpose: "Shelter staffing — employee roster and shift coverage"
   domain_id: shelter
   id: workforce_ops
   tables: [assignments, employees, schedules]
   name: Workforce Ops
-  owner: org_admin
   support_contact: kennethstott@gmail.com
 discovery:
   api_key: ${env:ANTHROPIC_API_KEY:-}

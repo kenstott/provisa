@@ -147,7 +147,7 @@ def _on_trino(zaychik: Any, name: str) -> Any:
 
 
 def _run_on_trino(zaychik: Any, pg_sql: str) -> Any:
-    sql = transpile_to_trino(pg_sql).replace(
+    sql = transpile_to_trino(pg_sql, generated=False).replace(
         "FROM t ORDER", f"FROM (VALUES {_TRINO_ROWS}) AS t(i, c) ORDER"
     )
     # The zone travels with the statement, in its own Trino session.
@@ -217,7 +217,7 @@ def clickhouse() -> Iterator[_ServerBackend]:
 )  # to_json has no form on ClickHouse: it is refused by name (pg_forms_json), in every zone
 def test_clickhouse_answers_as_postgresql_17_answered(clickhouse, set_zone, name, want):
     def run() -> Any:
-        return clickhouse.query_arrow(transpile(statement(name), "clickhouse"))
+        return clickhouse.query_arrow(transpile(statement(name), "clickhouse", generated=False))
 
     rows = _in_zone(set_zone, run).column(0).to_pylist()
     assert tuple(_sent(set_zone, value) for value in rows) == want

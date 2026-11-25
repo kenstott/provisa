@@ -52,7 +52,10 @@
       "placeholder": "Search by name or email",
       "typedEmail": "{{email}} (waits for their first sign-in)",
       "typeMore": "Type at least two characters",
-      "noneFound": "No one matches. Type a full email to grant to it."
+      "noneFound": "No one matches. Type a full email to grant to it.",
+      "peopleGroup": "People",
+      "rolesGroup": "Roles",
+      "roleChip": "Role: {{role}}"
     },
     "form": {
       "personLabel": "Person",

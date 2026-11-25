@@ -102,6 +102,8 @@ const products = [
     domainId: "care",
     name: "Pet Health",
     status: "live",
+    owners: [],
+    namedOwners: [],
     purpose: "Pet health records",
     limitations: "",
     usage: "",

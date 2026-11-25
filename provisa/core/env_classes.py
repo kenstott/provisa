@@ -265,6 +265,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "openlineage_dataset_facets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-2219: derived from its own entitlement rows by its own model build.
+        "object_owners",
         # REQ-194: its own names table and refused clashes, from its own model build.
         "model_names",
         "model_name_clashes",

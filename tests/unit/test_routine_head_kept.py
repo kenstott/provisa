@@ -29,7 +29,7 @@ from provisa.transpiler.pg_forms_geometric import around, routines_apart
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 _CLOSE_SB = "SELECT close_sb('[(1,2),(3,4)]'::lseg, '(5,5),(0,0)'::box) AS v"
-_SQL = transpile(_CLOSE_SB, "trino")
+_SQL = transpile(_CLOSE_SB, "trino", generated=False)
 _HEAD, _STATEMENT = routines_apart(_SQL)
 
 
@@ -65,7 +65,7 @@ def test_a_statement_of_no_routine_is_wrapped_as_it_is(sql: str):
 
 
 def test_transpile_to_trino_keeps_each_routine_as_written():
-    written = transpile_to_trino(_CLOSE_SB)
+    written = transpile_to_trino(_CLOSE_SB, generated=False)
     _kept(written)
     for name in geometric._CALLED.findall(_HEAD):
         assert geometric.ROUTINES[name.lower()][0] in written, name
@@ -77,7 +77,7 @@ def test_the_trino_backend_keeps_the_head(monkeypatch):
     from provisa.federation.engine import build_trino_engine
 
     monkeypatch.setattr(trino_connectors, "trino_utc_wall_columns", lambda _state: {})
-    _kept(TrinoBackend(build_trino_engine()).transpile_physical(_CLOSE_SB))
+    _kept(TrinoBackend(build_trino_engine()).transpile_physical(_CLOSE_SB, generated=False))
 
 
 def test_a_zero_row_probe_keeps_the_head():

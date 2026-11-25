@@ -79,6 +79,7 @@ GATE_NAMES = frozenset(
         "_require_user_management",
         "_member",
         "_require_join_requester",  # REQ-1250: a Firebase sign-in; the requester is the caller
+        "_require_services_token",  # REQ-2106: PAT-in-path; the token IS the credential
     }
 )
 

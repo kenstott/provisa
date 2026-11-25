@@ -10,7 +10,7 @@ When SQLite is a serving engine reading a source it attaches directly, it may pu
 
 Rules on this page: 401, of which 251 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-275 of the grid's 627 features are native on SQLite and left out.
+275 of the grid's 629 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -220,6 +220,8 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max_character</strong><br>The maximum character(n) value in the database&#x27;s collation, without trailing-space padding in the comparison.</td><td></td><td><ul><li>Over a column the statement says is character(n): refused, with &quot;max() has no form on sqlite&quot;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min_character</strong><br>The minimum character(n) value in the database&#x27;s collation, without trailing-space padding in the comparison.</td><td></td><td><ul><li>Over a column the statement says is character(n): refused, with &quot;min() has no form on sqlite&quot;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

@@ -8,6 +8,7 @@
 #             ├─ windows ─┤
 #             └─ linux ───┼─ publish-connector-image ─┬─ publish
 #   packages ─────────────┘                           ┘
+#   prebuilt + packages ── install-host (a dry run only: install-host.sh, then the smoke checks)
 #
 # Every job that builds a release asset attaches it to the draft release itself, once
 # (.github/actions/attach-release-assets); the publish leg copies nothing -- it checks the draft
@@ -127,6 +128,21 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release-linux.yml
+    with:
+      version: ${{ inputs.version || github.ref_name }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+
+  # REQ-2269: the one-script Linux install, run on a clean Ubuntu host from this run's own assets
+  # (the provisa wheel and provisa_notebook from packages, provisa_duckdb_ext and the Trino plugins
+  # from prebuilt), then the smoke checks against the installed host. A dry run's leg: a release
+  # is cut from a dry run that passed it, so the publishing jobs below do not wait for it.
+  install-host:
+    name: Install on a Linux host
+    needs: [prebuilt, packages]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/release-install-host.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}

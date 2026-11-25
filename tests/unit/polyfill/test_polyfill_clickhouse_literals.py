@@ -226,7 +226,10 @@ REFUSED = [
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 def _held(value: object) -> object:
@@ -268,7 +271,7 @@ def test_a_result_column_of_the_last_time_raises(sql):
     23:59:59.999999 back: a result column of it raises the row's stated 0A000 (REQ-2236, AN EDGE
     CASE RAISES), never 00:00:00."""
     with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate == "0A000"
     assert str(refused.value) == clocks.LAST_SHOWN.message
 
@@ -289,7 +292,7 @@ def test_a_value_outside_the_bound_raises_0a000(runtime, sql):
 @pytest.mark.parametrize("sql", REFUSED)
 def test_a_time_text_no_row_reads_is_refused_by_name(sql):
     with pytest.raises(RowRefused, match="has no form on clickhouse") as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate == "0A000"
 
 
@@ -311,7 +314,7 @@ def test_a_time_text_no_row_reads_is_refused_by_name(sql):
 )
 def test_a_literal_raises_postgresql_s_message(sql, message):
     with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert str(refused.value) == message
 
 
@@ -344,7 +347,7 @@ def test_a_literal_clickhouse_reads_exactly_and_a_column_are_written_as_before(s
 
 def test_a_date_column_moved_by_days_keeps_clickhouse_s_own():
     """A date whose type the statement does not say: ClickHouse's own arithmetic, as stated."""
-    assert "throwIf" not in transpile("SELECT d + 1 AS v FROM t", "clickhouse")
+    assert "throwIf" not in transpile("SELECT d + 1 AS v FROM t", "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("name", ["time", "integer", "numeric input", "date + integer"])
@@ -376,8 +379,8 @@ def test_another_engine_is_unchanged(dialect, sql):
     if dialect == "trino" and "2147483648::integer" in sql:
         # Trino's own row reads the literal as int4in does (polyfill.trino_literals): 22003.
         with pytest.raises(RowRefused) as refused:
-            transpile(sql, dialect)
+            transpile(sql, dialect, generated=False)
         assert refused.value.sqlstate == "22003"
         return
-    written = transpile(sql, dialect)
+    written = transpile(sql, dialect, generated=False)
     assert "throwIf" not in written and "toTime64" not in written

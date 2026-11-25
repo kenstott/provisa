@@ -46,6 +46,8 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   customProperties: {},
+  owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 const node = (id: string, relation: string): LineageNode => ({

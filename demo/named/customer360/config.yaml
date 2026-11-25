@@ -59,7 +59,6 @@ data_products:
 - id: account_health
   domain_id: customer360
   name: Account Health
-  owner_role: org_admin
   purpose: Which accounts renewing this quarter are at risk, read across the CRM, the service desk,
     engineering and billing through the customer master, checked against the evidence in each system
   usage: Read renewal_risk_checked for the at-risk renewals, master for the golden customer record, and

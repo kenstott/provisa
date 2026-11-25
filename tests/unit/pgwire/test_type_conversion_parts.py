@@ -33,7 +33,7 @@ from provisa.transpiler.transpile import transpile_to_duckdb
 def _duck(sql: str):
     con = duckdb.connect()
     try:
-        return con.execute(transpile_to_duckdb(sql)).fetchone()
+        return con.execute(transpile_to_duckdb(sql, generated=False)).fetchone()
     finally:
         con.close()
 
@@ -84,10 +84,10 @@ def test_an_exact_numeric_literal_keeps_every_digit():
 def test_an_untyped_null_result_column_is_text_and_only_there():
     con = duckdb.connect()
     try:
-        con.execute(transpile_to_duckdb("SELECT NULL AS v"))
+        con.execute(transpile_to_duckdb("SELECT NULL AS v", generated=False))
         assert con.description[0][1] == "VARCHAR"
         # A set operation's NULL takes the other branch's type, as PostgreSQL resolves it.
-        con.execute(transpile_to_duckdb("SELECT NULL AS v UNION ALL SELECT 1"))
+        con.execute(transpile_to_duckdb("SELECT NULL AS v UNION ALL SELECT 1", generated=False))
         assert con.description[0][1] == "INTEGER"
     finally:
         con.close()

@@ -21,14 +21,17 @@ from sqlalchemy import insert, select
 from provisa.core import product_findings
 from provisa.core.models import DataProduct
 from provisa.core.repositories import data_product as repo
+from provisa.entitlements.owners import set_domain_stewards, set_product_owners
 from provisa.core.schema_org import (
     data_product_commands,
     data_products,
     domains,
     registered_tables,
+    roles,
     sources,
     tag_assignments,
     tracked_functions,
+    user_role_assignments,
 )
 
 TODAY = datetime.date(2026, 10, 23)
@@ -42,9 +45,20 @@ async def _store(control_plane):
     db = control_plane.org()
     try:
         async with db.acquire() as conn:
-            await conn.execute_core(insert(domains).values(id="sales", steward="dana"))
+            await conn.execute_core(insert(domains).values(id="sales"))
             await conn.execute_core(insert(domains).values(id="finance"))
             await conn.execute_core(insert(sources).values(id="crm", type="postgres"))
+            # REQ-2219: every product is owned by sam, a person holding data_product_owner.
+            await conn.execute_core(
+                insert(roles).values(
+                    id="sales_lead", capabilities=["data_product_owner"], domain_access=["*"]
+                )
+            )
+            await conn.execute_core(
+                insert(user_role_assignments).values(
+                    user_id="sam", role_id="sales_lead", domain_id="*"
+                )
+            )
             for pid, domain, status in (
                 ("c360", "sales", "live"),
                 ("c360_v2", "sales", "draft"),
@@ -55,11 +69,23 @@ async def _store(control_plane):
                         id=pid,
                         domain_id=domain,
                         name=pid.upper(),
-                        owner_role="sales_lead",
                         purpose="One view",
                         status=status,
                     )
                 )
+                await set_product_owners(conn, pid, domain, ["sam"], set_by=None)
+            # REQ-609, REQ-2219: dana stewards sales, holding a role with domain_steward.
+            await conn.execute_core(
+                insert(roles).values(
+                    id="sales_steward", capabilities=["domain_steward"], domain_access=["*"]
+                )
+            )
+            await conn.execute_core(
+                insert(user_role_assignments).values(
+                    user_id="dana", role_id="sales_steward", domain_id="*"
+                )
+            )
+            await set_domain_stewards(conn, "sales", ["dana"], set_by=None)
             for tid, name in ((1, "customers"), (2, "orders")):
                 await conn.execute_core(
                     insert(registered_tables).values(
@@ -259,10 +285,9 @@ async def test_findings_name_what_a_curator_should_look_at(control_plane):
         # the ones a product's own fields raise, and the one a configured target does
         required = product_findings.Context(today=TODAY, support_contact_required=True)
         await conn.execute_core(
-            data_products.update()
-            .where(data_products.c.id == "c360_v2")
-            .values(owner_role=None, purpose="")
+            data_products.update().where(data_products.c.id == "c360_v2").values(purpose="")
         )
+        await set_product_owners(conn, "c360_v2", "sales", [], set_by=None)
         kinds = [f["kind"] for f in (await product_findings.findings(conn, required))["c360_v2"]]
         assert kinds == ["no_members", "no_owner", "no_support_contact", "no_description"]
 

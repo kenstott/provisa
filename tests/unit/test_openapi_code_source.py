@@ -21,6 +21,7 @@ an ephemeral loopback port, which records each call."""
 from __future__ import annotations
 
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,6 +39,20 @@ from provisa.codesource.manifest import discovered_handlers
 from provisa.openapi import code_source as oc
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def ps(monkeypatch):
+    """Provisa's services module, on the path as the host puts it (provisa/python/host.py)."""
+    import importlib
+
+    from provisa.python.source import HOST
+
+    monkeypatch.syspath_prepend(str(HOST.parent / "services"))
+    module = importlib.import_module("provisa_services")
+    yield module
+    sys.modules.pop("provisa_services", None)
+
 
 SPEC = json.loads(
     (Path(__file__).parents[1] / "fixtures" / "openapi_code" / "petstore.json").read_text()
@@ -474,3 +489,79 @@ async def test_a_key_given_with_another_input_is_refused_by_name(prepared):
         await code_table.read(
             None, _table(prepared.manifest, "listPets"), {"id": 3, "status": "sold"}
         )
+
+
+# -- the credential: a secret reference, read at each call (REQ-2267, amended 2026-11-22) ----------
+
+
+def test_a_credential_is_written_as_its_declared_secret_never_its_value(tmp_path):
+    auth = {"type": "bearer", "token": "${secret:petstore_token}"}
+    directory = tmp_path / "code"
+    oc.write_code(directory, source_id="pets-src", spec=SPEC, base_url="http://x", auth=auth)
+    # The source's mapping declares the reference; the code reads the declared secret by name.
+    assert oc.declared_secrets("pets-src", auth) == {"credential": "${secret:petstore_token}"}
+    held = json.loads((directory / oc.SOURCE_FILE).read_text())["auth"]
+    assert held == {"type": "bearer", "token": {"$secret": "credential"}}
+    assert all("petstore_token" not in p.read_text() for p in directory.iterdir())
+
+
+def test_a_credential_given_as_a_value_is_refused_by_name_and_nothing_is_written(tmp_path):
+    from provisa.codesource.bundle import BundleRefused
+
+    auth = {"type": "basic", "username": "ada", "password": "hunter2"}
+    with pytest.raises(BundleRefused) as refused:
+        oc.write_code(
+            tmp_path / "code", source_id="pets-src", spec=SPEC, base_url="http://x", auth=auth
+        )
+    assert refused.value.code == "codesource.credential_not_reference"
+    assert "source pets-src: its password is a reference" in str(refused.value)
+    assert "hunter2" not in str(refused.value)
+    assert not (tmp_path / "code").exists()
+
+
+def test_the_credential_is_read_from_the_secrets_service_at_each_call(tmp_path, monkeypatch, ps):
+    auth = {"type": "api_key", "header_name": "X-Key", "api_key": "${env:PETSTORE_KEY}"}
+    directory = tmp_path / "code"
+    oc.write_code(directory, source_id="pets-src", spec=SPEC, base_url="http://x", auth=auth)
+    code = oc.OpenAPICode.load(directory)
+    values = iter(["key-1", "key-2"])
+    asked: list[str] = []
+
+    def read(name: str) -> str:
+        asked.append(name)
+        return next(values)
+
+    monkeypatch.setattr(ps.secrets, "get", staticmethod(read))
+    # A rotated secret is the next call's.
+    assert code.source().auth.key == "key-1"
+    assert code.source().auth.key == "key-2"
+    assert asked == ["credential", "credential"]
+
+
+# -- an answer cut at max_pages carries the built-in source's warning (amended 2026-11-22) ---------
+
+
+async def test_a_read_cut_at_max_pages_carries_the_warning_handle_api_query_gives(
+    code, monkeypatch, ps
+):
+    import asyncio
+
+    from provisa.api_source import caller
+
+    cut = caller.AnswerCut(max_pages=2, rows=len(PETS))
+
+    async def call_api(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(caller, "call_api", call_api)
+    monkeypatch.setattr(caller, "answer_rows", lambda _endpoint, _answer: (PETS, cut))
+    openapi = oc.OpenAPICode.load(code.directory)
+
+    async def served() -> tuple[list, list]:
+        ps._bind(1, None)  # as the host binds the call it serves
+        rows = await openapi.serve_table("listPets", {}, ps.ReadContext())
+        return rows, ps._taken()
+
+    rows, taken = await asyncio.create_task(served())
+    assert rows == PETS
+    assert taken == [caller.answer_cut_warning("listPets", cut).as_dict()]

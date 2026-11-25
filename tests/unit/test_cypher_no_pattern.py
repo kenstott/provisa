@@ -192,7 +192,9 @@ def test_a_temporal_value_written_as_a_string_is_a_value_of_its_type(query, valu
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     duck = duckdb.connect()
     duck.execute("SET TimeZone = 'UTC'")
-    [(got,)] = duck.sql(transpile(sql_ast.sql(dialect="postgres"), "duckdb")).fetchall()
+    [(got,)] = duck.sql(
+        transpile(sql_ast.sql(dialect="postgres"), "duckdb", generated=True)
+    ).fetchall()
     assert str(got).startswith(value)
 
 
@@ -216,8 +218,10 @@ def test_size_of_a_list_is_its_length_zero_when_empty_and_null_when_null():
     )
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     semantic = sql_ast.sql(dialect="postgres")
-    assert duckdb.sql(transpile_to_duckdb(semantic)).fetchall() == [(3, 0, None, 2)]
+    assert duckdb.sql(transpile_to_duckdb(semantic, generated=False)).fetchall() == [
+        (3, 0, None, 2)
+    ]
     for dialect in ("postgres", "trino"):
-        written = transpile(semantic, dialect)
+        written = transpile(semantic, dialect, generated=False)
         assert "CARDINALITY(" in written, (dialect, written)
         assert "ARRAY[]" not in written, (dialect, written)

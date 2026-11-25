@@ -560,7 +560,6 @@
       "incremental_no_change": "El origen de código no tiene ninguna función @change para {{table}}. Declare una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada».",
       "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función",
-      "table_has_dependents": "La tabla '{{name}}' todavía es leída o referida por otros objetos: retírelos o cámbielos primero",
       "table_withdrawn": "Tabla {{table}} retirada",
       "table_put_back": "Tabla {{table}} restablecida",
       "source_withdrawn": "Origen {{source}} retirado",
@@ -575,6 +574,8 @@
       "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
       "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias.",
+      "domain_stewards_saved": "Stewards del dominio '{{domain}}' guardados",
+      "table_has_dependents": "La tabla '{{name}}' todavía es leída o referida por otros objetos: retírelos o cámbielos primero",
       "file_types_differ": "El patrón {{glob}} coincide con archivos de más de un tipo ({{types}}); los archivos de una tabla deben ser todos de un mismo tipo."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "El dominio {{domain}} no tiene steward.",
         "no_description": "Este producto de datos no indica ni su propósito ni su uso.",
         "successor_retired": "El producto de datos que recibió los miembros de este, '{{successor}}', también se ha retirado."
-      }
+      },
+      "owner_not_eligible": "{{owner}} no tiene ningún rol con la capacidad data_product_owner, por lo que no puede ser nombrado propietario del producto de datos {{data_product}}. Asígnele primero un rol así.",
+      "owner_role_not_eligible": "El rol {{role}} no tiene la capacidad data_product_owner, por lo que no puede ser nombrado propietario del producto de datos {{data_product}}. Otorgue primero esa capacidad al rol.",
+      "owners_change_refused": "Solo un administrador de la organización o un propietario actual del producto de datos {{data_product}} puede cambiar sus propietarios."
     },
     "erd": {
       "database_unavailable": "No se pueden leer los diseños del ERD: la base de datos no está disponible",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta.",
-      "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella."
+      "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella.",
+      "owner_not_eligible": "{{owner}} no tiene ningún rol con la capacidad relationship_owner, por lo que no puede ser nombrado propietario de la relación {{relationship}}. Asígnele primero un rol así.",
+      "owner_role_not_eligible": "El rol {{role}} no tiene la capacidad relationship_owner, por lo que no puede ser nombrado propietario de la relación {{relationship}}. Otorgue primero esa capacidad al rol.",
+      "owners_change_refused": "Solo un administrador de la organización o un propietario actual de la relación {{relationship}} puede cambiar sus propietarios."
     },
     "syncing": {
       "not_found": "No hay ninguna entrada {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "Este rol se asigna a través del proveedor de identidad; Provisa no tiene ninguna asignación que confirmar o revocar",
       "webhook_invalid": "La URL del webhook no es utilizable: {{url}}",
       "webhook_secret_required": "Un webhook necesita el secreto con el que se firman las revisiones programadas"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} no tiene ningún rol con la capacidad domain_steward, por lo que no puede ser nombrado steward del dominio {{domain}}. Asígnele primero un rol así.",
+      "steward_role_not_eligible": "El rol {{role}} no tiene la capacidad domain_steward, por lo que no puede ser nombrado steward del dominio {{domain}}. Otorgue primero esa capacidad al rol.",
+      "stewards_change_refused": "Solo un administrador de la organización o un steward actual del dominio {{domain}} puede cambiar sus stewards."
     }
   }
 }

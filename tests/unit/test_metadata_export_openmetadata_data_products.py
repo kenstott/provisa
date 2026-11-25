@@ -46,7 +46,7 @@ from provisa.core.models import (
 TABLE_FQN = "wh.default.public.orders"
 
 
-def _config(*, owner: str | None = "alice") -> ProvisaConfig:
+def _config() -> ProvisaConfig:
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[Domain(id="sales", description="Sales")],
@@ -64,7 +64,6 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner_role=owner,
                 purpose="Unified customer view",
                 tables=["wh.public.orders"],
             )
@@ -118,9 +117,10 @@ def _offer(
     )
 
 
-def build_snapshot(config: ProvisaConfig, **kw: Any):
+def build_snapshot(config: ProvisaConfig, *, owner: str | None = "alice", **kw: Any):
     """The snapshot a publish is given (REQ-2180): its product's default offer, and one more,
-    with their contracts."""
+    with their contracts. Its product is owned by ``owner`` (REQ-2219: owners are people)."""
+    kw.setdefault("product_owners", {"customer_360": (owner,)} if owner else {})
     snapshot = _build_snapshot(config, **kw)
     if snapshot.data_products:
         (product,) = snapshot.data_products
@@ -197,7 +197,7 @@ async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch
 
 @pytest.mark.asyncio
 async def test_data_product_without_owner_publishes_with_no_owners_field(monkeypatch):
-    snapshot = build_snapshot(_config(owner=None), org_id="acme", dialect="postgres", contexts={})
+    snapshot = build_snapshot(_config(), owner=None, org_id="acme", dialect="postgres", contexts={})
     puts = _mock_transport(monkeypatch)
 
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
@@ -299,7 +299,8 @@ def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
         org_id="acme",
         dialect="postgres",
         contexts={},
-        owner_emails={"alice": ("alice@example.com",), "analyst": ("ana@example.com",)},
+        owner_emails={"analyst": ("ana@example.com",)},
+        person_emails={"alice": "alice@example.com"},
     )
     (contract,) = _data_contract_entities(snapshot)
     assert contract.body["team"] == [

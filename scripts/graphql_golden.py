@@ -641,8 +641,8 @@ def answer_on_duckdb(pg: Any, databases: dict[str, str], stmt: dict, plain: bool
         con.execute(
             f"ATTACH '{pg.dsn(databases[catalog])}' AS \"{catalog}\" (TYPE POSTGRES, READ_ONLY)"
         )
-    # As the DuckDB engine writes a statement (provisa.transpiler.transpile).
-    cursor = con.execute(transpile_to_duckdb(stmt["sql"]), stmt["params"])
+    # As the DuckDB engine writes a statement (provisa.transpiler.transpile): compiled, generated.
+    cursor = con.execute(transpile_to_duckdb(stmt["sql"], generated=True), stmt["params"])
     if plain:
         columns, rows = _rows(cursor)
     else:

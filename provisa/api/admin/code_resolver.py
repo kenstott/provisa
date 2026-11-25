@@ -288,11 +288,9 @@ async def _mark(conn: "Connection", set_id: str, bridge_id: int) -> None:
         .where(registered_tables.c.id == bridge_id)
         .values(code_resolver=set_id)
     )
-    await conn.execute_core(
-        update(relationships)
-        .where(relationships.c.id.in_(set_names.relationships))
-        .values(code_resolver=set_id)
-    )
+    from provisa.core.repositories import relationship as rel_repo
+
+    await rel_repo.set_code_resolver(conn, list(set_names.relationships), set_id)
 
 
 async def _discard(conn: "Connection", set_id: str, bridge_id: int | None) -> None:

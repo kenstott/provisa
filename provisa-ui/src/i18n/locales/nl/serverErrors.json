@@ -560,7 +560,6 @@
       "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden).",
       "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt",
-      "table_has_dependents": "Tabel '{{name}}' wordt nog gelezen of genoemd door andere objecten: trek ze eerst in of wijzig ze",
       "table_withdrawn": "Tabel {{table}} teruggetrokken",
       "table_put_back": "Tabel {{table}} teruggezet",
       "source_withdrawn": "Bron {{source}} teruggetrokken",
@@ -575,6 +574,8 @@
       "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
       "table_region_from_function": "De tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar regio: ze wordt niet op zichzelf naar een andere regio verplaatst",
       "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias.",
+      "domain_stewards_saved": "Stewards van domein '{{domain}}' opgeslagen",
+      "table_has_dependents": "Tabel '{{name}}' wordt nog gelezen of genoemd door andere objecten: trek ze eerst in of wijzig ze",
       "file_types_differ": "Het patroon {{glob}} komt overeen met bestanden van meer dan één type ({{types}}); de bestanden van één tabel moeten allemaal van hetzelfde type zijn."
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "Domein {{domain}} heeft geen steward.",
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
-      }
+      },
+      "owner_not_eligible": "{{owner}} heeft geen rol met de capability data_product_owner en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef eerst zo'n rol.",
+      "owner_role_not_eligible": "Rol {{role}} heeft de capability data_product_owner niet en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef de rol eerst die capability.",
+      "owners_change_refused": "Alleen een organisatiebeheerder of een huidige eigenaar van dataproduct {{data_product}} kan de eigenaren ervan wijzigen."
     },
     "erd": {
       "database_unavailable": "De ERD-indelingen kunnen niet worden gelezen: de database is niet beschikbaar",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
-      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld.",
+      "owner_not_eligible": "{{owner}} heeft geen rol met de capability relationship_owner en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef eerst zo'n rol.",
+      "owner_role_not_eligible": "Rol {{role}} heeft de capability relationship_owner niet en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef de rol eerst die capability.",
+      "owners_change_refused": "Alleen een organisatiebeheerder of een huidige eigenaar van relatie {{relationship}} kan de eigenaren ervan wijzigen."
     },
     "syncing": {
       "not_found": "Er is geen vermelding {{entry}}.",
@@ -981,6 +988,11 @@
       "read_only": "Deze rol wordt toegewezen via de identiteitsprovider; Provisa bewaart geen toewijzing om te bevestigen of in te trekken",
       "webhook_invalid": "De webhook-URL is niet bruikbaar: {{url}}",
       "webhook_secret_required": "Een webhook heeft het geheim nodig waarmee geplande reviews worden ondertekend"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} heeft geen rol met de capability domain_steward en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef eerst zo'n rol.",
+      "steward_role_not_eligible": "Rol {{role}} heeft de capability domain_steward niet en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef de rol eerst die capability.",
+      "stewards_change_refused": "Alleen een organisatiebeheerder of een huidige steward van domein {{domain}} kan de stewards ervan wijzigen."
     }
   }
 }

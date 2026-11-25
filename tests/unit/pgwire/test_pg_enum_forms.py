@@ -54,12 +54,12 @@ ENUM_STATEMENTS = [
 
 
 def _duckdb(sql: str) -> list[str | None]:
-    written = transpile_to_duckdb(with_source_enums(sql, ENUMS))
+    written = transpile_to_duckdb(with_source_enums(sql, ENUMS), generated=False)
     return [_shown(row[-1]) for row in duckdb.connect().execute(written).fetchall()]
 
 
 def _clickhouse(sql: str) -> list[str | None]:
-    written = transpile(with_source_enums(sql, ENUMS), "clickhouse")
+    written = transpile(with_source_enums(sql, ENUMS), "clickhouse", generated=False)
     held = chdb.query(written, "TabSeparated").bytes().decode()
     return [None if line == "\\N" else _array(line) for line in held.splitlines()]
 
@@ -115,7 +115,7 @@ def _duckdb_table(sql: str, held: list[str]) -> list[str | None]:
     columns = ", ".join(f"c{i} VARCHAR" for i in range(len(held)))
     engine.execute(f"CREATE TABLE t ({columns})")
     engine.execute(f"INSERT INTO t VALUES ({', '.join(held)})")
-    written = transpile_to_duckdb(with_source_enums(sql, ENUMS, _native))
+    written = transpile_to_duckdb(with_source_enums(sql, ENUMS, _native), generated=False)
     return [_shown(row[-1]) for row in engine.execute(written).fetchall()]
 
 
@@ -128,7 +128,9 @@ def _clickhouse_table(sql: str, held: list[str]) -> list[str | None]:
         try:
             engine.query(f"CREATE TABLE d.t ({columns}) ENGINE = Memory")
             engine.query(f"INSERT INTO d.t VALUES ({', '.join(held)})")
-            written = transpile(with_source_enums(sql, ENUMS, _native), "clickhouse")
+            written = transpile(
+                with_source_enums(sql, ENUMS, _native), "clickhouse", generated=False
+            )
             cells = engine.query(written.replace(" FROM t", " FROM d.t"), "TabSeparated").bytes()
         finally:
             engine.query("DROP DATABASE d")
@@ -154,14 +156,14 @@ def test_many_rows_are_ordered_by_the_labels_not_the_alphabet():
     written = with_source_enums(
         "SELECT max(c0) AS high, min(c0) AS low FROM t", enums, lambda _t, _n: "e"
     )
-    assert engine.execute(transpile_to_duckdb(written)).fetchall() == [("x", "z")]
+    assert engine.execute(transpile_to_duckdb(written, generated=False)).fetchall() == [("x", "z")]
 
 
 def test_no_row_has_no_extreme():
     written = with_source_enums("SELECT max(c0) AS v FROM t WHERE c0 = 'none'", ENUMS, _native)
     engine = duckdb.connect()
     engine.execute("CREATE TABLE t (c0 VARCHAR)")
-    assert engine.execute(transpile_to_duckdb(written)).fetchall() == [(None,)]
+    assert engine.execute(transpile_to_duckdb(written, generated=False)).fetchall() == [(None,)]
 
 
 def test_a_registered_column_is_the_enum_its_source_declares():
@@ -210,7 +212,7 @@ def test_a_statement_with_no_enum_is_left_as_it_is():
 @pytest.mark.parametrize("dialect", ["duckdb", "trino", "clickhouse"])
 def test_lastval_is_postgresql_error_in_a_session_that_advanced_nothing(dialect: str):
     assert "lastval is not yet defined in this session" in transpile(
-        'SELECT pg_catalog."lastval"() AS v', dialect
+        'SELECT pg_catalog."lastval"() AS v', dialect, generated=False
     )
 
 
@@ -221,7 +223,7 @@ def test_lastval_beside_nextval_is_refused_by_name(dialect: str):
         "FROM (SELECT nextval('conformance.probe_sequence') OFFSET 0) s"
     )
     with pytest.raises(FunctionRefused, match="lastval"):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino", "clickhouse"])
@@ -229,15 +231,17 @@ def test_lastval_beside_nextval_is_refused_by_name(dialect: str):
     "call", ["VARIADIC NULL::text[]", "VARIADIC '{}'::text[]", "VARIADIC ARRAY[]::text[]"]
 )
 def test_no_publication_is_no_row(dialect: str, call: str):
-    written = transpile(f'SELECT pg_catalog."pg_get_publication_tables"({call}) AS v', dialect)
+    written = transpile(
+        f'SELECT pg_catalog."pg_get_publication_tables"({call}) AS v', dialect, generated=False
+    )
     assert "WHERE FALSE" in written.upper()
     assert "VARIADIC" not in written.upper()
 
 
 def test_no_row_runs_on_duckdb_and_clickhouse():
     sql = 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC NULL::text[]) AS v'
-    assert duckdb.connect().execute(transpile_to_duckdb(sql)).fetchall() == []
-    assert chdb.query(transpile(sql, "clickhouse"), "CSV").bytes() == b""
+    assert duckdb.connect().execute(transpile_to_duckdb(sql, generated=False)).fetchall() == []
+    assert chdb.query(transpile(sql, "clickhouse", generated=False), "CSV").bytes() == b""
 
 
 @pytest.mark.parametrize(
@@ -245,7 +249,7 @@ def test_no_row_runs_on_duckdb_and_clickhouse():
 )
 def test_a_publication_named_does_not_exist(call: str):
     with pytest.raises(PostgresError, match='publication "p" does not exist') as held:
-        transpile(f"SELECT pg_get_publication_tables({call}) AS v", "trino")
+        transpile(f"SELECT pg_get_publication_tables({call}) AS v", "trino", generated=False)
     assert held.value.sqlstate == "42704"
 
 
@@ -253,7 +257,7 @@ def test_a_publication_named_does_not_exist(call: str):
 def test_no_publication_gets_past_the_catalogs_forms_to_the_engine(dialect: str):
     sql = "SELECT pg_get_publication_tables(VARIADIC NULL::text[]) AS v"
     tree = expand(sqlglot.parse_one(sql, read="postgres"), CatalogFacts("analyst"))
-    assert "WHERE FALSE" in transpile(tree.sql("postgres"), dialect).upper()
+    assert "WHERE FALSE" in transpile(tree.sql("postgres"), dialect, generated=False).upper()
 
 
 def test_a_publication_beside_a_table_reads_a_server_and_stays_refused():
@@ -264,7 +268,7 @@ def test_a_publication_beside_a_table_reads_a_server_and_stays_refused():
 
 def test_publications_a_column_names_are_refused_by_name():
     with pytest.raises(FunctionRefused, match="pg_get_publication_tables"):
-        transpile("SELECT pg_get_publication_tables(c) AS v FROM t", "trino")
+        transpile("SELECT pg_get_publication_tables(c) AS v FROM t", "trino", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -277,17 +281,20 @@ def test_publications_a_column_names_are_refused_by_name():
 )
 def test_a_pattern_a_column_holds_is_refused_by_name_on_clickhouse(call: str):
     with pytest.raises(FunctionRefused, match=r"regexp_replace\(\) has no form on clickhouse"):
-        transpile(f"SELECT {call} AS v FROM t", "clickhouse")
+        transpile(f"SELECT {call} AS v FROM t", "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino"])
 def test_a_pattern_a_column_holds_is_read_where_the_engine_can(dialect: str):
-    assert transpile("SELECT regexp_replace(c, p, 'x', 1, 1) AS v FROM t", dialect)
+    assert transpile("SELECT regexp_replace(c, p, 'x', 1, 1) AS v FROM t", dialect, generated=False)
 
 
 def test_a_constant_pattern_on_a_column_answers_on_clickhouse():
     sql = "SELECT regexp_replace(c, 'b', 'x', 1, 2) AS v FROM (SELECT 'abcb'::text AS c) t"
-    assert chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes() == b"abcx\n"
+    assert (
+        chdb.query(transpile(sql, "clickhouse", generated=False), "TabSeparated").bytes()
+        == b"abcx\n"
+    )
 
 
 @pytest.mark.parametrize(
@@ -299,7 +306,7 @@ def test_a_constant_pattern_on_a_column_answers_on_clickhouse():
     ],
 )
 def test_repeat_under_pg_catalog_answers_on_clickhouse(call: str, want: bytes):
-    written = transpile(f'SELECT pg_catalog."repeat"({call}) AS v', "clickhouse")
+    written = transpile(f'SELECT pg_catalog."repeat"({call}) AS v', "clickhouse", generated=False)
     assert "pg_catalog" not in written
     assert chdb.query(written, "TabSeparated").bytes() == want
 
@@ -328,23 +335,23 @@ def _marked(sql: str) -> str:
 )
 def test_a_cast_to_a_source_enum_is_refused_by_the_types_name(dialect: str, sql: str):
     with pytest.raises(FunctionRefused, match=rf"{_NAME}(\[\])?\(\) has no form on {dialect}"):
-        transpile(_marked(sql), dialect)
+        transpile(_marked(sql), dialect, generated=False)
 
 
 def test_a_cast_to_a_source_enum_reaches_the_duckdb_that_attaches_it():
-    assert f"CAST('a' AS {_NAME})" in transpile_to_duckdb(_marked(_DERIVED))
+    assert f"CAST('a' AS {_NAME})" in transpile_to_duckdb(_marked(_DERIVED), generated=False)
 
 
 def test_a_cast_to_a_source_enum_reaches_the_postgresql_that_holds_it():
     sql = f"SELECT v FROM (SELECT 'a'::{_NAME} AS v, ARRAY['b']::{_NAME}[] AS w) s"
-    assert transpile(_marked(sql), "postgres") == (
+    assert transpile(_marked(sql), "postgres", generated=False) == (
         f"SELECT v FROM (SELECT CAST('a' AS {_NAME}) AS v, CAST(ARRAY['b'] AS {_NAME}[]) AS w) AS s"
     )
 
 
 def test_a_cast_a_form_consumed_is_no_cast_left_to_refuse():
     sql = f"SELECT enum_first('a'::{_NAME}) AS v"
-    assert transpile(_marked(sql), "trino") == "SELECT 'a' AS v"
+    assert transpile(_marked(sql), "trino", generated=False) == "SELECT 'a' AS v"
 
 
 @pytest.mark.parametrize(
@@ -367,12 +374,14 @@ def test_no_enum_declared_marks_nothing():
 
 @pytest.mark.parametrize("sql", [s for s in ENUM_STATEMENTS if "OVER" not in s.upper()])
 def test_no_form_or_marker_reaches_a_postgresql_source(sql: str):
-    written = transpile(with_source_enums(sql, ENUMS), "postgres")
+    written = transpile(with_source_enums(sql, ENUMS), "postgres", generated=False)
     assert not re.search(r"pg_typed_|pg_enum_|pg_source_cast", written, re.I), written
 
 
 def test_an_extreme_on_a_postgresql_source_is_read_over_the_labels():
-    written = transpile(with_source_enums("SELECT max(c0) AS v FROM t", ENUMS, _native), "postgres")
+    written = transpile(
+        with_source_enums("SELECT max(c0) AS v FROM t", ENUMS, _native), "postgres", generated=False
+    )
     assert written == (
         "SELECT (ARRAY['a', 'b', 'c'])[MAX(ARRAY_POSITION(ARRAY['a', 'b', 'c'], CAST(c0 AS TEXT)))] "
         "AS v FROM t"

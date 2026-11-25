@@ -28,7 +28,6 @@ from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.schema_org import (
     data_product_tables,
     data_products,
-    domains,
     registered_tables,
     tag_assignments,
 )
@@ -114,11 +113,15 @@ async def member_deprecated(conn: "Connection", _ctx: Context) -> dict[str, list
 
 
 async def no_owner(conn: "Connection", _ctx: Context) -> dict[str, list[Finding]]:
-    """A product no role is accountable for."""
+    """A product no person owns (REQ-2219, amended 2026-11-23: an owner is a person whose
+    data_product_owner row names it)."""
+    from provisa.entitlements.owners import product_owners
+
+    owners = await product_owners(conn)
     return {
-        p.id: [_finding("no_owner", "no owner role is accountable for it")]
+        p.id: [_finding("no_owner", "no person owns it")]
         for p in await _in_service(conn)
-        if not p.owner_role
+        if not owners.get(p.id)
     }
 
 
@@ -164,17 +167,11 @@ async def retirement_blocked(conn: "Connection", ctx: Context) -> dict[str, list
 
 
 async def domain_steward_unset(conn: "Connection", _ctx: Context) -> dict[str, list[Finding]]:
-    """A product whose domain has no steward yet (REQ-609: pending)."""
-    unset = {
-        r.id
-        for r in (
-            await conn.execute_core(
-                select(domains.c.id).where(
-                    domains.c.steward.is_(None), domains.c.retired.is_(False)
-                )
-            )
-        ).fetchall()
-    }
+    """A product whose domain no person stewards yet (REQ-609: pending; REQ-2219: a steward is a
+    person whose domain_steward row names the domain or one above it)."""
+    from provisa.entitlements.owners import unstewarded_domains
+
+    unset = set(await unstewarded_domains(conn))
     return {
         p.id: [_finding("domain_steward_unset", "its domain has no steward", domain=p.domain_id)]
         for p in await _in_service(conn)

@@ -24,7 +24,6 @@ from provisa.security.domain_tree import (
     children_of,
     descendants,
     expand,
-    effective_steward,
     flatten_role_domains,
     parent_map,
     parent_problem,
@@ -175,17 +174,8 @@ class TestADomainRowFilterCoversTheSubtree:
         assert _table_rules("r", rules) == {}
 
 
-class TestAStewardIsInherited:
-    STEWARDS = {"retail": "bu_steward", "retail_emea": None, "retail_emea_uk": "uk_steward"}
-
-    def test_a_domain_with_no_steward_answers_to_its_nearest_ancestors(self):
-        assert effective_steward("retail_emea", self.STEWARDS, PARENTS) == "bu_steward"
-
-    def test_a_domain_keeps_its_own_steward(self):
-        assert effective_steward("retail_emea_uk", self.STEWARDS, PARENTS) == "uk_steward"
-
-    def test_no_steward_up_the_tree_is_none(self):
-        assert effective_steward("finance", self.STEWARDS, PARENTS) is None
+# A steward is inherited down the tree: tests/unit/test_domain_steward_gate.py (REQ-2219, amended
+# 2026-11-23: a steward is a person whose domain_steward row names the domain or one above it).
 
 
 @pytest.mark.parametrize("domain_id", sorted(PARENTS))

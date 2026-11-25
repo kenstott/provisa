@@ -30,7 +30,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select
 
 from provisa.api.errors import ApiError
-from provisa.core.schema_org import domains, registered_tables, sources, table_columns
+from provisa.core.schema_org import registered_tables, sources, table_columns
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.schema_common import remote_source_counts
 from provisa.api.admin.read_rights import (
@@ -572,12 +572,10 @@ async def register_graphql_remote_source(
             cache_ttl=_declared_cache_ttl(body),
         )
         if body.domain_id:
-            await _conn.upsert(
-                domains,
-                {"id": body.domain_id},  # REQ-1919: written when created
-                index_elements=["id"],
-                update_columns=[],
-            )
+            from provisa.core.repositories import domain as domain_repo
+
+            # REQ-1919: written when created; "" is the column's own default.
+            await domain_repo.ensure(_conn, body.domain_id, "")
     state.graphql_remote_sources[body.source_id] = {
         "source_id": body.source_id,
         "url": url,

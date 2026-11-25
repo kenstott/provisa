@@ -50,7 +50,7 @@ def test_trinos_varbinary_is_sent_as_bytea(served):
 )
 def test_a_null_send_is_a_null_of_varbinary_on_trino(pg_sql):
     """What Trino is sent: a NULL of the type the wire describes as bytea."""
-    tree = sqlglot.parse_one(transpile(pg_sql, "trino"), read="trino")
+    tree = sqlglot.parse_one(transpile(pg_sql, "trino", generated=False), read="trino")
     (cast,) = tree.find_all(exp.Cast)
     assert isinstance(cast.this, exp.Null)
     assert cast.to.is_type(exp.DataType.Type.VARBINARY)
@@ -76,7 +76,7 @@ def test_a_null_of_a_type_the_engine_does_not_hold_is_refused_by_name(pg_sql, fu
     text. It is refused by the message the call of a value gets, not answered as text: the
     translator raises it from the grid's row (provisa.transpiler.polyfill.type_io)."""
     with pytest.raises(RowRefused) as refused:
-        transpile(pg_sql, dialect)
+        transpile(pg_sql, dialect, generated=False)
     assert str(refused.value) == f"{function} does not read this value"
     assert refused.value.sqlstate == "0A000"
 
@@ -92,7 +92,7 @@ def test_a_null_of_a_type_the_engine_does_not_hold_is_refused_by_name(pg_sql, fu
     ],
 )
 def test_duckdb_still_answers_the_null_of_its_own_type(pg_sql, kind):
-    tree = sqlglot.parse_one(transpile(pg_sql, "duckdb"), read="duckdb")
+    tree = sqlglot.parse_one(transpile(pg_sql, "duckdb", generated=False), read="duckdb")
     (cast,) = tree.find_all(exp.Cast)
     assert isinstance(cast.this, exp.Null) and cast.to.is_type(kind)
 
@@ -123,6 +123,6 @@ def _null_guarded(tree: exp.Expr) -> bool:
 def test_money_text_of_a_null_is_null_on_trino(pg_sql):
     """Trino's format('$%,.2f', NULL) is '$nu': Java writes null, cut to the two digits asked for.
     PostgreSQL's cash_out is strict."""
-    written = transpile(pg_sql, "trino")
+    written = transpile(pg_sql, "trino", generated=False)
     tree = sqlglot.parse_one(written, read="trino")
     assert _null_guarded(tree), written

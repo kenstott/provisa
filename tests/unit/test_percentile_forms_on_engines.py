@@ -90,13 +90,15 @@ def test_clickhouse_produces_dead_branch_for_null_fraction_array(function: str):
     # "error" — ClickHouse is now expected to raise its own engine error because the implicit-else
     # NULL of CASE WHEN FALSE THEN Array(Float64) END is a type mismatch in ClickHouse (arrays
     # are non-nullable). The transpilation must succeed and emit the dead-branch guard.
-    sql = transpile(_NULL_ARRAY.format(f=function), "clickhouse")
+    sql = transpile(_NULL_ARRAY.format(f=function), "clickhouse", generated=False)
     assert "CASE WHEN FALSE" in sql, f"expected CASE WHEN FALSE dead branch, got: {sql!r}"
 
 
 @pytest.mark.parametrize("function", ["percentile_cont", "percentile_disc"])
 def test_a_null_fraction_alone_is_still_served_on_clickhouse(function: str):
-    assert "CASE WHEN FALSE" in transpile(_NULL_FRACTION.format(f=function), "clickhouse")
+    assert "CASE WHEN FALSE" in transpile(
+        _NULL_FRACTION.format(f=function), "clickhouse", generated=False
+    )
 
 
 @pytest.mark.parametrize("function", ["percentile_cont", "percentile_disc"])
@@ -114,22 +116,29 @@ def test_a_null_fraction_on_clickhouse_is_one_row_of_the_group(function: str, ro
         f"FROM (VALUES {rows}) AS t(c){where}"
     )
     with closing(ClickHouseFederationRuntime.embedded()) as runtime:
-        assert list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()) == [(None,)]
+        assert list(
+            runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+        ) == [(None,)]
 
 
 def test_trino_still_answers_a_null_fraction_array():
-    assert "CASE WHEN FALSE" in transpile(_NULL_ARRAY.format(f="percentile_cont"), "trino")
+    assert "CASE WHEN FALSE" in transpile(
+        _NULL_ARRAY.format(f="percentile_cont"), "trino", generated=False
+    )
 
 
 @pytest.mark.parametrize("sql", list(NULL_ELEMENTS))
 def test_duckdb_answers_a_null_element_in_its_place(connection, sql: str):
-    assert agrees(connection.execute(transpile(sql, "duckdb")).fetchone()[0], NULL_ELEMENTS[sql])
+    assert agrees(
+        connection.execute(transpile(sql, "duckdb", generated=False)).fetchone()[0],
+        NULL_ELEMENTS[sql],
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 @pytest.mark.parametrize("sql", list(NULL_ELEMENTS))
 def test_a_null_element_is_served_on_trino_and_clickhouse(sql: str, dialect: str):
-    transpile(sql, dialect)  # FunctionRefused would fail the test
+    transpile(sql, dialect, generated=False)  # FunctionRefused would fail the test
 
 
 def test_an_interval_percentile_keeps_a_null_element_in_its_place(connection):
@@ -137,13 +146,13 @@ def test_an_interval_percentile_keeps_a_null_element_in_its_place(connection):
         "SELECT percentile_cont(ARRAY[0.5, NULL]::float8[]) WITHIN GROUP (ORDER BY c1) AS v "
         "FROM (VALUES ('1 day'::interval), ('3 days'::interval)) AS t(c1)"
     )
-    got = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
+    got = connection.execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
     assert got == [datetime.timedelta(days=2), None]
 
 
 @pytest.mark.parametrize("sql", NO_KEYS)
 def test_duckdb_answers_null_over_no_keys(connection, sql: str):
-    assert connection.execute(transpile(sql, "duckdb")).fetchone()[0] is None
+    assert connection.execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] is None
 
 
 @pytest.mark.parametrize("sql", NO_KEYS)
@@ -152,7 +161,9 @@ def test_trino_reads_no_element_of_no_keys(sql: str):
     # between two keys over no keys reads index 0: the sorted keys answer NULL when there are none,
     # before any element of them is read -- an empty array (only NULL keys) or no array at all
     # (array_agg over no rows) (test_percentile_null_elements_on_engines runs it).
-    assert "CASE WHEN COALESCE(CARDINALITY(_s), 0) = 0 THEN NULL ELSE" in transpile(sql, "trino")
+    assert "CASE WHEN COALESCE(CARDINALITY(_s), 0) = 0 THEN NULL ELSE" in transpile(
+        sql, "trino", generated=False
+    )
 
 
 #: A ClickHouse without Variant types (24.3, the integration lanes' server) holds no common type of
@@ -179,7 +190,9 @@ def _chdb(sql: str) -> list[object]:
 
     import chdb
 
-    data = chdb.query(transpile(sql, "clickhouse") + _NO_VARIANT, "JSONCompactEachRow").data()
+    data = chdb.query(
+        transpile(sql, "clickhouse", generated=False) + _NO_VARIANT, "JSONCompactEachRow"
+    ).data()
     return [json.loads(line)[0] for line in data.splitlines() if line]
 
 

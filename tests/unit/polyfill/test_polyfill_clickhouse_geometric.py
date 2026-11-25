@@ -31,7 +31,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -166,14 +166,14 @@ def test_an_answer_that_is_not_finite_raises(runtime):
 )
 def test_an_overload_the_statement_does_not_type_keeps_its_refusal(sql, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert str(refused.value) == f"{function}() has no form on clickhouse"
 
 
 def test_a_name_of_one_overload_reads_a_value_of_no_type_as_it():
     # diagonal has the one overload, of a box: PostgreSQL reads an untyped literal as one.
     sql = "SELECT pg_catalog.\"diagonal\"('(0,0),(3,4)') AS v"
-    assert "postgresql-error 0A000: box_diagonal" in transpile(sql, "clickhouse")
+    assert "postgresql-error 0A000: box_diagonal" in transpile(sql, "clickhouse", generated=False)
 
 
 def test_the_33_measures_are_rows_and_every_other_dialect_keeps_what_it_had():

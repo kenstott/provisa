@@ -158,6 +158,7 @@ def _read(pg, column: str, where: str = "id = 1"):
         f"SELECT CAST({marker} AS TEXT), pg_typeof({marker})::text "
         f'FROM "{schema}"."orders" AS "o" WHERE {where}',
         "postgres",
+        generated=False,
     )
     cur = con.cursor()
     cur.execute(sql)

@@ -13,9 +13,9 @@
 # Requirements: REQ-042, REQ-059, REQ-060, REQ-215
 
 from provisa.core import model_change, model_uri
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, insert as _insert, select, update as _update
 
 from provisa.core.models import Role
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
@@ -122,6 +122,22 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "default_entitlements",
         ],
     )
+
+
+async def create(conn: "Connection", row: dict[str, Any]) -> None:  # REQ-042, REQ-1919
+    """Create role ``row["id"]`` from the admin's role form: ``row`` is already checked (its
+    parents, its definition, the reach it hands out) and the id is free."""
+    model_change.name("create", model_change.uri(model_uri.role_uri, row["id"]))  # REQ-1524
+    await conn.execute_core(_insert(roles).values(**row))
+
+
+async def update_definition(
+    conn: "Connection", role_id: str, values: dict[str, Any]
+) -> None:  # REQ-042, REQ-1919
+    """Set the admin role form's ``values`` on role ``role_id``; what the form does not carry
+    (:data:`KEPT_ON_FORM_EDIT`) is kept as stored."""
+    model_change.name("update", model_change.uri(model_uri.role_uri, role_id))  # REQ-1524
+    await conn.execute_core(_update(roles).where(roles.c.id == role_id).values(**values))
 
 
 def _default_entitlements(role: Role, stored: dict | None) -> dict[str, list[str]]:

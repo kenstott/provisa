@@ -97,7 +97,7 @@ def _compile_to_postgres(si: SchemaInput, gql: str, rls: RLSContext | None = Non
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
         sql = apply_governance(sql, gov_ctx)
-    return transpile(rewrite_semantic_to_physical(sql, ctx), "postgres")
+    return transpile(rewrite_semantic_to_physical(sql, ctx), "postgres", generated=True)
 
 
 def _si(customers_schema: str, orders_schema: str) -> SchemaInput:

@@ -19,6 +19,9 @@ Two places hold cases:
   acceptance;
 - docs/code-sources.md, whose every tagged example in a built language is a tab pair, the
   docstring (or JSDoc) tab first and the SDK tab second. Each pair is a case that must be accepted.
+  An example whose every tag has no SDK spelling in its language (a case named for the tag leaves
+  out the language, or its ``sdk`` spelling, in ``unspelled``) is a single docstring or JSDoc block
+  outside any tab instead, and is not a case.
 
 ``case.json`` holds, per language, per spelling, ``problems`` (the manifest's refusal, every
 problem in order; absent means accepted) and ``checker`` (``accepts`` or ``rejects``: whether the
@@ -197,8 +200,28 @@ def _tagged(language: str, code: str) -> bool:
     return bool(tags_of(code)) or imports_sdk(language, code)
 
 
+def _sdk_less(language: str) -> set[str]:
+    """The tags with no SDK spelling in ``language``: each names a case whose ``unspelled`` leaves
+    out the language or its ``sdk`` spelling."""
+    return {
+        name for name, left_out in unspelled() if left_out in (language, f"{language}/sdk")
+    } & TAGS
+
+
+def _single(block: _Block, language: str) -> bool:
+    """Whether ``block`` is a lone docstring or JSDoc example of tags that have no SDK spelling."""
+    tags = tags_of(block.code)
+    return (
+        block.tab is None
+        and not imports_sdk(language, block.code)
+        and bool(tags)
+        and tags <= _sdk_less(language)
+    )
+
+
 def doc_cases(markdown: Path = DOCS) -> tuple[list[Case], list[str]]:
-    """The tab pairs of ``markdown`` as cases, and every tagged example that is not one."""
+    """The tab pairs of ``markdown`` as cases, and every tagged example that is neither one nor a
+    single block of tags with no SDK spelling."""
     languages = {fence: language for language, fence in FENCES.items()}
     cases: list[Case] = []
     problems: list[str] = []
@@ -210,6 +233,9 @@ def doc_cases(markdown: Path = DOCS) -> tuple[list[Case], list[str]]:
         block = blocks[index]
         language = languages.get(block.language)
         if language is None or not _tagged(language, block.code):
+            index += 1
+            continue
+        if _single(block, language):
             index += 1
             continue
         where = at.format(block.line)

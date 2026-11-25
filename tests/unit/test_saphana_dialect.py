@@ -30,7 +30,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _hana(sql: str) -> str:
-    return transpile(sql, "saphana")
+    return transpile(sql, "saphana", generated=False)
 
 
 def test_saphana_is_a_registered_sqlglot_dialect() -> None:

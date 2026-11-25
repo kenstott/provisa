@@ -139,9 +139,11 @@ class TestWhatEachHolds:
     def test_data_quality_needs_no_table_registration(self):
         assert _rights("dq_steward") == _rights("viewer") | {"dq_read", "dq_rw"}
 
-    def test_a_data_product_owner_holds_nothing_until_an_owner_field_names_it(self):
-        """REQ-2188: the Owner field gives RW, with the generated rules, to any role it names."""
-        assert _rights("data_product_owner") == _rights("viewer")
+    def test_a_data_product_owner_holds_the_owner_capability_and_no_rw_of_its_own(self):
+        """REQ-2188, REQ-2219 (amended 2026-11-23): the role carries data_product_owner, so a
+        person holding it can be named in an Owner field; RW comes with the generated rules, held
+        to the products the person's own rows name, and is not stored on the role."""
+        assert _rights("data_product_owner") == _rights("viewer") | {"data_product_owner"}
 
     def test_org_admin_holds_data_product_rw_directly(self):
         assert "data_product_rw" in STANDARD_ROLES["org_admin"].capabilities
@@ -217,9 +219,16 @@ class TestWhatEachHolds:
             "term_owner",
             "judgment_basis_owner",
         }
-        assert owners <= set(STANDARD_ROLES["org_admin"].capabilities)
-        holders = {r for r in STANDARD_ROLES if owners & _rights(r)}
-        assert holders == {"org_admin"}
+        assert owners <= _rights("org_admin")
+        others = owners - {"data_product_owner"}
+        assert {r for r in STANDARD_ROLES if others & _rights(r)} == {"org_admin"}
+
+    def test_the_data_product_owner_role_and_its_children_hold_data_product_owner(self):
+        """REQ-2219 (amended 2026-11-23): an Owner field names people, each holding a role that
+        carries data_product_owner; the standard data_product_owner role carries it, and the roles
+        composed from it inherit it."""
+        holders = {r for r in STANDARD_ROLES if "data_product_owner" in _rights(r)}
+        assert holders == {"data_product_owner", "org_admin", "sandbox"}
 
     def test_platform_admin_holds_the_platform_rights_alone(self):
         assert _rights("platform_admin") == {"platform_settings", "cross_org"}
@@ -288,9 +297,9 @@ class TestTheSandbox:
         lies about what the caller may do."""
         import inspect
 
-        from provisa.core import db
+        from provisa.core.repositories import standard_roles
 
-        source = inspect.getsource(db.assert_standard_roles)
+        source = inspect.getsource(standard_roles.assert_standard_roles)
         assert 'sandbox_demonstrated() if role_id == "sandbox" else []' in source
 
     def test_it_demonstrates_what_org_admin_holds_and_it_does_not_except_user_management(self):
@@ -326,7 +335,7 @@ class TestTheSeed:
     async def test_an_edited_standard_role_is_written_back(self, control_plane):
         from sqlalchemy import update
 
-        from provisa.core.db import assert_standard_roles
+        from provisa.core.repositories.standard_roles import assert_standard_roles
         from provisa.core.environments import org_schema
         from provisa.core.schema_org import roles
 

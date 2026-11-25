@@ -10,7 +10,6 @@
     "projectProduct": "數據產品 {{id}}（整個項目）",
     "exists": "名為 {{id}} 的數據產品已存在。請重新命名或刪除它，以註冊這些模型。",
     "owner": "擁有者：{{owner}}",
-    "ownerRole": "擁有者角色 {{role}}",
     "tests": "測試：{{tests}}",
     "version": "版本 {{version}}",
     "columns": "承諾的欄：{{columns}}",

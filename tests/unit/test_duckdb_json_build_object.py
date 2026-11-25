@@ -26,7 +26,8 @@ from provisa.transpiler.transpile import transpile_to_duckdb
 def test_a_postgres_json_object_constructor_runs_on_duckdb(fn: str) -> None:
     sql = transpile_to_duckdb(
         f"SELECT json_agg({fn}('name', t.name, 'n', t.n)) AS j "
-        "FROM (VALUES ('a', 1), ('b', 2)) AS t(name, n)"
+        "FROM (VALUES ('a', 1), ('b', 2)) AS t(name, n)",
+        generated=False,
     )
     assert fn.upper() not in sql.upper()
     ((value,),) = duckdb.sql(sql).fetchall()
@@ -35,7 +36,7 @@ def test_a_postgres_json_object_constructor_runs_on_duckdb(fn: str) -> None:
 
 def test_a_nested_constructor_is_rewritten_too() -> None:
     sql = transpile_to_duckdb(
-        "SELECT jsonb_build_object('outer', jsonb_build_object('inner', 1)) AS j"
+        "SELECT jsonb_build_object('outer', jsonb_build_object('inner', 1)) AS j", generated=False
     )
     assert "BUILD_OBJECT" not in sql.upper()
     ((value,),) = duckdb.sql(sql).fetchall()

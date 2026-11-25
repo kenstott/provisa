@@ -58,4 +58,4 @@ _FILTERED = "SELECT FILTER(l, y -> y > 1) AS f FROM t"
 def test_a_filtered_list_survives_rewrites_and_reaches_each_target(target, written):
     from provisa.transpiler.transpile import transpile
 
-    assert written in transpile(_rewritten(_FILTERED, 3), target).replace('"', "")
+    assert written in transpile(_rewritten(_FILTERED, 3), target, generated=False).replace('"', "")

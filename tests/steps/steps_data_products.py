@@ -78,9 +78,9 @@ def the_whole_scenario_as_the_requirement_states_it(shared_data: dict) -> None:
 
 @given('a DataProduct "customer_360" owned by "alice" in domain "sales"')
 def dataproduct_exists(shared_data: dict) -> None:
-    shared_data["product"] = DataProduct(
-        id="customer_360", domain_id="sales", name="customer_360", owner_role="alice"
-    )
+    # REQ-2219 (amended 2026-11-23): its owner is a person, held as an entitlement row, not a
+    # field of the product.
+    shared_data["product"] = DataProduct(id="customer_360", domain_id="sales", name="customer_360")
 
 
 @given('two tables in domain "sales" both set product_id="customer_360"')
@@ -114,7 +114,13 @@ def metadata_export_runs(shared_data: dict) -> None:
         data_products=[shared_data["product"]],
         roles=[],
     )
-    shared_data["snapshot"] = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    shared_data["snapshot"] = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"customer_360": ("alice",)},  # alice's owner row names it
+    )
 
 
 @when('an attempt is made to set product_id="customer_360" on the marketing table')

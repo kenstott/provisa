@@ -184,25 +184,29 @@ def _expired_reason(rule: ExpiryRule) -> str:
 
 
 async def _remove_identifiers(db: "Database", d: Due) -> None:
-    """Take what ``d`` ends out of the list it was set with, by an appended row attributed to the
-    expiry: the matching ordinary removal. Nothing is appended once they are gone."""
+    """Take what ``d`` ends out of the lists of the kind it was set with -- the role's own, and
+    each owner capability's row of that kind (REQ-2219: an owner row expires like any other) --
+    by an appended row attributed to the expiry: the matching ordinary removal. Nothing is
+    appended once they are gone."""
     rule = d.rule
     assert rule.list_kind is not None
     ended = set(rule.ends["*"])
     async with db.acquire() as conn:
         async with conn.transaction():
-            listed = await store.held_list(conn, d.principal, rule.role_id, rule.list_kind)
-            if listed is None or not ended & set(listed):
-                return
-            await store.set_list(
-                conn,
-                d.principal,
-                rule.role_id,
-                rule.list_kind,
-                [i for i in listed if i not in ended],
-                set_by=EXPIRY,
-                reason=_expired_reason(rule),
-            )
+            held = await store.held_lists(conn, d.principal, rule.role_id, rule.list_kind)
+            for capability, listed in sorted(held.items(), key=lambda kv: kv[0] or ""):
+                if not ended & set(listed):
+                    continue
+                await store.set_list(
+                    conn,
+                    d.principal,
+                    rule.role_id,
+                    rule.list_kind,
+                    [i for i in listed if i not in ended],
+                    set_by=EXPIRY,
+                    reason=_expired_reason(rule),
+                    capability=capability,
+                )
 
 
 async def _close(db: "Database", d: Due) -> None:
@@ -253,6 +257,13 @@ async def run(db: "Database", org_id: str, now: datetime, hook: HookTarget | Non
             if removes:
                 await _close(db, d)
                 removed.append(d)
+    if outcome.expired:
+        # REQ-2219: an owner or steward entry that has expired names its object no longer, whether
+        # Provisa held it (removed above) or the identity provider did.
+        from provisa.entitlements.owners import write_object_owners
+
+        async with db.acquire() as conn:
+            await write_object_owners(conn)
     return Run(outcome.expiring, outcome.expired, tuple(removed), tuple(failed))
 
 

@@ -25,6 +25,7 @@ import type {
   TrackedWebhook,
 } from "../../api/actions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
+import { CodeEditorField } from "../../components/CodeEditorField";
 import { IMPL_KINDS, isNativeSql } from "./types";
 
 function ReadHeading({ children }: { children: string }) {
@@ -143,6 +144,16 @@ export function FunctionRead({
     if (v === null || v === undefined) return null;
     return Array.isArray(v) ? v.join(" ") : String(v);
   };
+  // REQ-1984: a command's SQL reads in the code editor, read-only, highlighted as SQL.
+  const sqlField = (label: string, testId: string): DetailField => ({
+    label,
+    value: CodeEditorField.readValue({
+      label,
+      value: bound("sql"),
+      language: "sql",
+      "data-testid": testId,
+    }),
+  });
   const yesNo = (v: boolean) => (v ? t("commandsPage.yes") : t("commandsPage.no"));
   const bySource = impl === "source_procedure" || impl === "source_operation";
   // REQ-2001: a statement command is its statement; its kind and written table are shown as the
@@ -152,16 +163,16 @@ export function FunctionRead({
   const isTemplate = impl === "sql_expression";
   const declaresItsShape = isStatement || isTemplate;
   const implementation: DetailField[] = isTemplate
-    ? [{ label: t("commandFormFields.bindingTemplate"), value: bound("sql") }]
+    ? [sqlField(t("commandFormFields.bindingTemplate"), "function-read-template")]
     : isStatement
       ? [
-          { label: t("commandFormFields.bindingSql"), value: bound("sql") },
+          sqlField(t("commandFormFields.bindingSql"), "function-read-sql"),
           ...contractFields(fn.contract, t),
         ]
       : isNativeSql(impl, binding)
         ? [
             { label: t("commandFormFields.source"), value: fn.sourceId },
-            { label: t("commandFormFields.nativeSql"), value: bound("sql") },
+            sqlField(t("commandFormFields.nativeSql"), "function-read-native-sql"),
           ]
         : bySource
           ? [

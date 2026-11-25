@@ -86,7 +86,7 @@ def test_bytea_like_answers_as_postgres_on_opengauss() -> None:
             assert cur.fetchone() == ("deadbeef",)
             wrong: list[str] = []
             for statement, expected in _CASES:
-                written = transpile(statement, "postgres", engine_kind="opengauss")
+                written = transpile(statement, "postgres", generated=False, engine_kind="opengauss")
                 assert "rawlike" in written.lower() or "rawnlike" in written.lower(), written
                 answers = set()
                 for _ in range(_RUNS):

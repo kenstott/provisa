@@ -37,7 +37,9 @@ def _written(options: str, catalog: int, dialect: str) -> str:
         f"SELECT pg_catalog.\"postgresql_fdw_validator\"('{options}'::text[], {catalog}::oid) AS v"
     )
     tree = sqlglot.parse_one(sql, read="postgres")
-    return transpile(expand(tree, CatalogFacts("analyst")).sql("postgres"), dialect)
+    return transpile(
+        expand(tree, CatalogFacts("analyst")).sql("postgres"), dialect, generated=False
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "postgres"])
@@ -87,7 +89,9 @@ def _over_rows(rows: str) -> str:
         f"FROM (VALUES {rows}) AS t(o)"
     )
     tree = sqlglot.parse_one(sql, read="postgres")
-    return transpile(expand(tree, CatalogFacts("analyst")).sql("postgres"), "clickhouse")
+    return transpile(
+        expand(tree, CatalogFacts("analyst")).sql("postgres"), "clickhouse", generated=False
+    )
 
 
 def test_clickhouse_refuses_per_row_only_where_a_row_has_an_unlisted_option():
