@@ -137,6 +137,9 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
+    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
+    # (connectors/spark); a built-in code source type, made by joining that host.
+    spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -4163,6 +4166,11 @@ class ConnectorConfig(BaseModel):  # REQ-2221
         return self
 
 
+#: REQ-2225: the source types built in as a platform connector's host: each is listed with the
+#: source types and never offered as a connector, so an organisation's model cannot name one.
+BUILTIN_CONNECTORS: frozenset[str] = frozenset({"spark"})
+
+
 def repeated_connector_names(connectors: list[ConnectorConfig]) -> list[str]:  # REQ-2221
     """The names used by more than one connector, sorted."""
     names = [c.name for c in connectors]
@@ -4299,6 +4307,13 @@ class ProvisaConfig(BaseModel):
         repeated = repeated_connector_names(self.connectors)
         if repeated:
             raise ValueError(f"connector names used more than once: {repeated}")
+        # REQ-2225: a built-in source type is not a connector an organisation offers.
+        builtin = sorted(c.name for c in self.connectors if c.name in BUILTIN_CONNECTORS)
+        if builtin:
+            raise ValueError(
+                f"{', '.join(builtin)}: a built-in source type, not a connector an organisation "
+                "offers"
+            )
         return self
 
     @model_validator(mode="after")

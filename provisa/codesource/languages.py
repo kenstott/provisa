@@ -19,7 +19,7 @@ Everything that asks whether a source type is code asks :data:`CODE_SOURCE_TYPES
 This module imports nothing of any language's, so any layer may ask it.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227
+# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227, REQ-2225
 from __future__ import annotations
 
 import importlib
@@ -78,6 +78,11 @@ LANGUAGES: dict[str, CodeLanguage] = {
         # REQ-2227: Rust, compiled by the pinned toolchain into one static host per code hash.
         CodeLanguage(
             "rust", ("rust",), "cargo", True, "provisa.rustlang.prepare", "provisa.rustlang.image"
+        ),
+        # REQ-2225: Spark, one annotated PySpark script run by the Spark host (connectors/spark)
+        # on the pinned CPython; a source of it is made by joining that host, never in dev mode.
+        CodeLanguage(
+            "spark", ("python",), "pypi", True, "provisa.python.prepare", "provisa.python.image"
         ),
     )
 }

@@ -69,6 +69,7 @@ const ALIASES: Record<string, string> = {
   // The Code Resolvers group: what a person looking to run their own logic types.
   python: "code resolver",
   node: "javascript code resolver",
+  spark: "apache pyspark code resolver", // REQ-2225
 };
 
 function readRecent(): string[] {

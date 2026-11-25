@@ -19,6 +19,8 @@ import { PasswordInput, Select, Text, Textarea, TextInput } from "@mantine/core"
 import { useTranslation } from "react-i18next";
 import { fetchSecrets } from "../../api/secrets";
 import type { Connector, ConnectorRequirement } from "../../api/connectors";
+import { CodeEditorField } from "../../components/CodeEditorField";
+import { SparkSourceCluster } from "../../components/spark/SparkClusterFields";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useAuth } from "../../context/AuthContext";
 import { requiredField } from "./connector";
@@ -27,6 +29,8 @@ interface Props {
   connector: Connector;
   fields: Record<string, string>;
   setFields: (fields: Record<string, string>) => void;
+  /** REQ-2225: the host of a built-in source type (Spark), not a connector the org offers. */
+  builtin?: boolean;
 }
 
 /** A required value that is not a secret: read-only when its connector fixes it. */
@@ -49,18 +53,27 @@ function RequiredValue({
     onChange: (e: { currentTarget: { value: string } }) => onChange(e.currentTarget.value),
     "data-testid": `connector-require-${required.name}`,
   };
+  if (required.org_default === "spark_cluster")
+    // REQ-2225 (amended 2026-11-24): the cluster as structured fields composing its one address;
+    // left blank, the organisation's default, which the fields name.
+    return <SparkSourceCluster value={common.value} onChange={onChange} readOnly={fixed} />;
   return (
     <FormField
       size={required.multiline ? "full" : "medium"}
-      hint={
-        fixed
-          ? t("connectorSetup.fixedHint")
-          : required.org_default === "spark_cluster"
-            ? t("connectorSetup.sparkClusterDefaultHint")
-            : undefined
-      }
+      hint={fixed ? t("connectorSetup.fixedHint") : undefined}
     >
-      {required.multiline ? (
+      {required.script ? (
+        // REQ-2225: the Spark connector's script, a PySpark program, is the only script kind.
+        <CodeEditorField
+          label={common.label}
+          required={common.required}
+          readOnly={fixed}
+          value={common.value}
+          onChange={onChange}
+          language="python"
+          data-testid={common["data-testid"]}
+        />
+      ) : required.multiline ? (
         <Textarea
           {...common}
           autosize
@@ -99,7 +112,7 @@ export function ConnectorSourceValues({ connector, fields, setFields }: Props) {
   );
 }
 
-export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
+export function ConnectorSetupFields({ connector, fields, setFields, builtin = false }: Props) {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
   const [orgSecrets, setOrgSecrets] = useState<string[]>([]);
@@ -123,7 +136,10 @@ export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
     <>
       <FormField size="long">
         <Text size="sm" data-testid="connector-identity">
-          {t("connectorSetup.identity", { name: connector.name, ref: connector.ref })}
+          {t(builtin ? "connectorSetup.builtinIdentity" : "connectorSetup.identity", {
+            name: connector.name,
+            ref: connector.ref,
+          })}
         </Text>
       </FormField>
       {connector.native ? (
