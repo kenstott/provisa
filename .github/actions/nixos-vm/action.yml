@@ -61,12 +61,15 @@ runs:
 
     # path: takes the directory as it is on disk, the run's key included; a git flake would see
     # only tracked files. A host flake's provisa input is this checkout, in place of GitHub's.
+    # path: also avoids `revCount is not available` on GitHub's shallow-clone runners: git+file://
+    # requires a full git history for revCount; path: hashes the directory tree directly.
+    # REQ-1900: the NixOS CI workflow must pass the module service job (run 45637595821).
     - name: Build the VM
       shell: bash
       run: |
         provisa=()
         if [ "${{ inputs.flake }}" != packaging/nixos ]; then
-          provisa=(--override-input provisa "git+file://$GITHUB_WORKSPACE" --no-write-lock-file)
+          provisa=(--override-input provisa "path:$GITHUB_WORKSPACE" --no-write-lock-file)
         fi
         nix build "path:$GITHUB_WORKSPACE/${{ inputs.flake }}#nixosConfigurations.${{ inputs.system }}.config.system.build.vm" \
           "${provisa[@]}" --out-link "$RUNNER_TEMP/vm" --print-build-logs

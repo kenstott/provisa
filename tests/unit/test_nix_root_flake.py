@@ -157,7 +157,10 @@ def test_the_vm_action_builds_a_host_flake_against_this_checkout():
     action = yaml.safe_load((_ROOT / ".github" / "actions" / "nixos-vm" / "action.yml").read_text())
     assert set(action["inputs"]) == {"flake", "system", "user"}
     (build,) = [s["run"] for s in action["runs"]["steps"] if s.get("name") == "Build the VM"]
-    assert '--override-input provisa "git+file://$GITHUB_WORKSPACE"' in build
+    # path: (not git+file://) avoids `revCount is not available` on GitHub's shallow-clone runners.
+    # git+file:// requires a full git history to compute revCount; path: hashes the directory tree.
+    # REQ-1900: the NixOS CI workflow must pass the module service job (run 45637595821).
+    assert '--override-input provisa "path:$GITHUB_WORKSPACE"' in build
     assert (
         "path:$GITHUB_WORKSPACE/${{ inputs.flake }}#nixosConfigurations.${{ inputs.system }}"
         in build
