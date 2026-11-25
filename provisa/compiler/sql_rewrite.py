@@ -1903,6 +1903,30 @@ def _push_nf_into_select(select: "exp.Select") -> None:  # REQ-2267
             return _and_parts(left) + _and_parts(right)
         return [node]
 
+    def _alias_name(node: exp.Expression) -> str | None:
+        alias = node.args.get("alias")
+        if alias is None:
+            return None
+        name = alias.this
+        return name.name if hasattr(name, "name") else str(name)
+
+    subqueries: dict[str, exp.Subquery] = {}
+    from_clause = select.args.get("from_")
+    if from_clause is not None:
+        sub = from_clause.this
+        if isinstance(sub, exp.Subquery):
+            name = _alias_name(sub)
+            if name:
+                subqueries[name] = sub
+    joins = select.args.get("joins") or []
+    for join in joins:
+        sub = join.this
+        if isinstance(sub, exp.Subquery):
+            name = _alias_name(sub)
+            if name:
+                subqueries[name] = sub
+    sole = next(iter(subqueries)) if not joins and len(subqueries) == 1 else None
+
     nf_conditions: dict[str, list[exp.EQ]] = {}  # alias -> conditions
     for cond in _and_parts(outer_where.this):
         if not isinstance(cond, exp.EQ):
@@ -1913,35 +1937,15 @@ def _push_nf_into_select(select: "exp.Select") -> None:  # REQ-2267
         col_name = col.name
         if not col_name.startswith("_nf_"):
             continue
-        alias = col.table
+        # Unqualified, the column is the one relation's: a SELECT reading a single governed
+        # subquery (a GraphQL root read) names it bare.
+        alias = col.table or sole
         if not alias:
             continue
         nf_conditions.setdefault(alias, []).append(cond)
 
     if not nf_conditions:
         return
-
-    def _alias_name(node: exp.Expression) -> str | None:
-        alias = node.args.get("alias")
-        if alias is None:
-            return None
-        name = alias.this
-        return name.name if hasattr(name, "name") else str(name)
-
-    subqueries: dict[str, exp.Subquery] = {}
-    from_clause = select.args.get("from")
-    if from_clause is not None:
-        sub = from_clause.this
-        if isinstance(sub, exp.Subquery):
-            name = _alias_name(sub)
-            if name:
-                subqueries[name] = sub
-    for join in select.args.get("joins") or []:
-        sub = join.this
-        if isinstance(sub, exp.Subquery):
-            name = _alias_name(sub)
-            if name:
-                subqueries[name] = sub
 
     for alias, conds in nf_conditions.items():
         sub = subqueries.get(alias)
@@ -1977,7 +1981,10 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
     * CTE-wrapped SELECT — the SQL is ``WITH __cte AS (SELECT … WHERE …) SELECT * FROM __cte``;
       the outer SELECT has no WHERE so the conditions are in each CTE body.
     * INSERT INTO FUNCTION wrapper (delivery) — the SELECT is the ``expression`` of an INSERT;
-      the INSERT node has no WHERE of its own."""
+      the INSERT node has no WHERE of its own.
+
+    The statement is read and written as PostgreSQL: both callers hand it on to stages that read
+    PostgreSQL (``unalias_write_target``, ``transpile_physical``)."""
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -1988,7 +1995,7 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         inner = tree.args.get("expression")
         if isinstance(inner, exp.Select):
             _push_nf_into_select(inner)
-        return tree.sql(dialect="clickhouse")
+        return tree.sql(dialect="postgres")
 
     # CTE-wrapped: outer SELECT has no WHERE but each CTE body may.
     with_ = tree.args.get("with_")
@@ -1996,12 +2003,12 @@ def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
         for cte in with_.expressions:
             if isinstance(cte.this, exp.Select):
                 _push_nf_into_select(cte.this)
-        return tree.sql(dialect="clickhouse")
+        return tree.sql(dialect="postgres")
 
     # Flat SELECT.
     if isinstance(tree, exp.Select):
         _push_nf_into_select(tree)
-    return tree.sql(dialect="clickhouse")
+    return tree.sql(dialect="postgres")
 
 
 # --- Main compilation ---

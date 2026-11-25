@@ -119,45 +119,41 @@ def test_clickhouse_joins_a_dev_sources_function_read_through_its_sidecar(server
     assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}
 
 
-# REQ-2267: every front door must return the same rows.  The compiled path (_engine_form) was
-# missing the push_nf_into_subqueries call that the raw-SQL/pgwire path had, so GraphQL and Cypher
-# both returned zero rows from a ClickHouse code source.
+# REQ-2267: every front door reads the function with its parameter. The compiled path
+# (_engine_form) pushes the parameter into the governed subquery as the raw-SQL/pgwire path does
+# (push_nf_into_subqueries); without it the sidecar is called without the argument. A GraphQL
+# root read names the parameter column unqualified, over the one governed subquery it reads.
 
-
-_GQL_JOIN = """
+_GQL_READ = """
 {
-  orders(where: {region: {eq: "eu-west"}}) {
-    id
-    regionDetail {
-      label
-      asked
-    }
+  regions(tag: "joined", where: {region: {eq: "eu-west"}}) {
+    label
+    asked
   }
 }
 """
 
+# Labels are the tables' PascalCase type names; the relationship type is the field's
+# (cql_rel_type: regionDetail, many-to-one -> IS_REGION_DETAIL); the parameter binds by its name.
 _CYPHER_JOIN = (
-    "MATCH (o:orders)-[:IS_REGION_DETAIL]->(r:regions) "
-    "WHERE o.region = 'eu-west' "
+    "MATCH (o:Orders)-[:IS_REGION_DETAIL]->(r:Regions) "
+    "WHERE o.region = 'eu-west' AND r.tag = 'joined' "
     "RETURN o.id AS id, r.label AS label, r.asked AS asked"
 )
 
 
-def test_graphql_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):
+def test_graphql_reads_the_clickhouse_code_source_with_its_parameter(server, dev_source):
     resp = httpx.post(
         f"{server.base_url}/data/graphql",
-        json={"query": _GQL_JOIN},
+        json={"query": _GQL_READ},
         headers={"X-Provisa-Role": _ROLE},
         timeout=server.request_timeout + 120,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "errors" not in body, body
-    orders = body["data"]["orders"]
-    assert orders, "GraphQL: no eu-west orders joined to their region"
-    region_rows = [r for o in orders for r in (o.get("regionDetail") or [])]
-    assert region_rows, "GraphQL: regionDetail is empty"
-    assert {(r["label"], r["asked"]) for r in region_rows} == {("EU West", "joined")}
+    rows = body["data"]["regions"]
+    assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}, body
 
 
 def test_cypher_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):
@@ -169,9 +165,12 @@ def test_cypher_join_through_clickhouse_code_source_returns_same_rows(server, de
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    rows = body["rows"]
+    rows = [
+        dict(r) if isinstance(r, dict) else dict(zip(body["columns"], r, strict=True))
+        for r in body["rows"]
+    ]
     assert rows, "Cypher: no eu-west orders joined to their region"
-    assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}
+    assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}, body
 
 
 def test_the_join_reads_the_code_table_from_the_sources_database_not_a_landed_copy(

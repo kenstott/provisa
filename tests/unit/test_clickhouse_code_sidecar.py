@@ -278,6 +278,68 @@ def test_push_nf_into_subqueries_handles_insert_function_wrapper():
     pytest.fail("no subquery with alias 'r' found inside INSERT")
 
 
+def test_push_nf_into_subqueries_keeps_the_statement_in_postgres_dialect():
+    # REQ-2267: both callers (_pipeline route_governed and _engine_form) hand the result on to
+    # stages that read PostgreSQL (unalias_write_target, transpile_physical). Written as
+    # ClickHouse, a text cast became CAST(... AS Nullable(String)), which PostgreSQL reads as a
+    # cast to an unknown type: the transpile then lost the type the statement says of the value.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    sql = (
+        'SELECT "r"."label" '
+        'FROM (SELECT "region", "label", "_nf_tag" FROM "sidecar_db"."regions") AS "r" '
+        'WHERE "r"."_nf_tag" = \'joined\' AND CAST("r"."region" AS TEXT) = $1'
+    )
+    result = push_nf_into_subqueries(sql)
+    casts = list(sqlglot.parse_one(result, read="postgres").find_all(exp.Cast))
+    assert [c.to.this for c in casts] == [exp.DataType.Type.TEXT], result
+    assert "$1" in result, result
+
+
+def test_push_nf_into_subqueries_pushes_into_the_subquery_in_from():
+    # REQ-2267: the code table read first (FROM, not a JOIN) is a governed subquery too. sqlglot
+    # keeps a SELECT's FROM under the key "from_"; read under "from", it was never found.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+
+    sql = (
+        'SELECT "o"."id", "r"."label" '
+        'FROM (SELECT "region", "label", "_nf_tag" FROM "sidecar_db"."regions") AS "r" '
+        'JOIN (SELECT "id", "region" FROM "orders_db"."orders") AS "o" '
+        'ON "r"."region" = "o"."region" '
+        'WHERE "r"."_nf_tag" = \'joined\' AND "o"."region" = \'eu-west\''
+    )
+    result = push_nf_into_subqueries(sql)
+    sub = sqlglot.parse_one(result, read="postgres").args["from_"].this
+    inner_where = sub.this.args.get("where")
+    assert inner_where is not None, result
+    assert inner_where.sql(dialect="postgres") == "WHERE \"_nf_tag\" = 'joined'", result
+
+
+def test_push_nf_into_subqueries_pushes_an_unqualified_condition_into_the_one_subquery():
+    # REQ-2267: a GraphQL root read of a code table compiles to one governed subquery whose
+    # outer WHERE names the parameter column unqualified ("_nf_tag" = 'joined'). Not pushed,
+    # ClickHouse calls the sidecar without the argument and the outer filter drops every row.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    sql = (
+        'SELECT "label", "asked" FROM (SELECT "regions"."region" AS "region", '
+        '"regions"."label" AS "label", "regions"."asked" AS "asked", '
+        '"regions"."_nf_tag" AS "_nf_tag" FROM "regions_src_default"."regions" AS "regions") '
+        'AS "regions" WHERE "region" = $1 AND "_nf_tag" = \'joined\' LIMIT 100'
+    )
+    result = push_nf_into_subqueries(sql)
+    sub = sqlglot.parse_one(result, read="postgres").args["from_"].this
+    assert isinstance(sub, exp.Subquery), result
+    inner_where = sub.this.args.get("where")
+    assert inner_where is not None, result
+    assert inner_where.sql(dialect="postgres") == "WHERE \"_nf_tag\" = 'joined'", result
+
+
 def test_the_catalog_answers_current_setting_and_format_type_as_postgresql_does():
     import duckdb
 
@@ -314,3 +376,110 @@ def test_the_catalog_answers_current_setting_and_format_type_as_postgresql_does(
         ("at", "timestamp with time zone"),
         ("tags", "text[]"),
     ]
+
+
+def _code_join_label_map():
+    """The label map of tests/integration/test_code_source_sidecar_clickhouse.py's model: a
+    Postgres ``orders`` and the code source's ``regions`` (a ``tag`` parameter) in domain fx,
+    related by ``regionDetail`` (many-to-one)."""
+    from provisa.compiler.context import build_context
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.gql.label_map import CypherLabelMap
+
+    role = {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]}
+
+    def column(name: str) -> dict:
+        return {"column_name": name, "visible_to": ["analyst"]}
+
+    def table(tid: int, source: str, schema: str, name: str, columns: list[dict]) -> dict:
+        return {
+            "id": tid,
+            "source_id": source,
+            "domain_id": "fx",
+            "schema_name": schema,
+            "table_name": name,
+            "columns": columns,
+            "write_ops": [],
+            "write_returns_rows": False,
+            "write_refused_forms": [],
+        }
+
+    tables = [
+        table(1, "sales-pg", "public", "orders", [column("id"), column("region")]),
+        table(
+            2,
+            "regions-src",
+            "default",
+            "regions",
+            [
+                column("region"),
+                column("label"),
+                column("asked"),
+                {"column_name": "_nf_tag", "visible_to": [], "native_filter_type": "query_arg"},
+            ],
+        ),
+    ]
+    relationships = [
+        {
+            "id": 1,
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "region",
+            "target_column": "region",
+            "cardinality": "many-to-one",
+            "graphql_alias": "regionDetail",
+        }
+    ]
+    types = {
+        t["id"]: [
+            ColumnMetadata(column_name=c["column_name"], data_type="varchar", is_nullable=True)
+            for c in t["columns"]
+        ]
+        for t in tables
+    }
+    ctx = build_context(
+        SchemaInput(
+            tables=tables,
+            relationships=relationships,
+            column_types=types,
+            naming_rules=[],
+            role=role,
+            domains=[{"id": "fx", "description": "code host"}],
+        )
+    )
+    return CypherLabelMap.from_schema(ctx, domain_access=["*"])
+
+
+def test_the_cypher_join_names_the_tables_by_their_registered_labels():
+    # REQ-2267: labels are the tables' PascalCase type names (:Orders, :Regions), as Cypher
+    # matches them case-sensitively; :orders is no registered label. The code table's parameter
+    # binds by its own name, so the join reads the function called with tag = 'joined'.
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.translator_types import CypherMistake
+
+    label_map = _code_join_label_map()
+    with pytest.raises(CypherMistake) as refused:
+        cypher_to_sql(
+            parse_cypher(
+                "MATCH (o:orders)-[:IS_REGION_DETAIL]->(r:regions) "
+                "WHERE o.region = 'eu-west' RETURN o.id AS id"
+            ),
+            label_map,
+            {},
+        )
+    assert refused.value.code == "cypher.unknown_label"
+
+    sql, _, _ = cypher_to_sql(
+        parse_cypher(
+            "MATCH (o:Orders)-[:IS_REGION_DETAIL]->(r:Regions) "
+            "WHERE o.region = 'eu-west' AND r.tag = 'joined' "
+            "RETURN o.id AS id, r.label AS label, r.asked AS asked"
+        ),
+        label_map,
+        {},
+    )
+    text = sql.sql(dialect="postgres")
+    assert "INNER JOIN" in text, text
+    assert "r.\"_nf_tag\" = 'joined'" in text, text
