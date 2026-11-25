@@ -124,6 +124,7 @@ def start(reachable: Callable[[], bool]) -> bool:
         _marker(PROJECT).touch()
         pull_images_with_retry(
             ["docker", "compose", "-p", PROJECT, "-f", _COMPOSE_FILE],
+            services=["postgres"],
         )
         subprocess.run(
             ["docker", "compose", "-p", PROJECT, "-f", _COMPOSE_FILE, "up", "postgres", "-d"],

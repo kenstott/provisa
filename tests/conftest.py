@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: be5aefb1-047c-45bf-bbd3-3d7280b5f906
+# Canary: 0af7033b-7200-40ea-ab3a-7740fad6b1f3
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -767,14 +767,19 @@ class _DockerServiceManager:
             check=False,
         )
 
-        # Pull all images before starting, retrying on truncated downloads (unexpected
-        # EOF, short read).  compose up does not re-pull a layer it thinks it already
-        # has, so a corrupt layer from a cut-off pull would fail the start-up silently;
-        # pulling first catches and recovers from registry hiccups before up runs.
+        # Pull only the images this run will start, retrying on truncated downloads
+        # (unexpected EOF, short read).  compose up does not re-pull a layer it thinks
+        # it already has, so a corrupt layer from a cut-off pull would fail the
+        # start-up silently; pulling first catches and recovers from registry hiccups
+        # before up runs.  Pulling the whole file would pull druid, cassandra, splunk
+        # and other heavy images the lane never starts, wasting bandwidth and runner
+        # time (REQ-1742).
+        up_services = [svc for batch in batches for svc in batch]
         pull_images_with_retry(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS],
             cwd=_REPO_ROOT,
             env=_itest_compose_env(),
+            services=up_services,
         )
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already

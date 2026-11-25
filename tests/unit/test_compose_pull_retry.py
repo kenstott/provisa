@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: be5aefb1-047c-45bf-bbd3-3d7280b5f906
+# Canary: b6051b4e-8db0-4448-b790-a2388c9bad4d
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -109,3 +109,39 @@ class TestNoRetryOnNonPullError:
             pull_images_with_retry(_CMD, _runner=runner, max_attempts=3, backoff_seconds=0)
 
         assert len(runner.calls) == 1
+
+
+# Requirements: REQ-1742
+class TestPullNamesUpServices:
+    def test_pull_cmd_includes_named_services(self):
+        """pull command lists exactly the services passed — no extra images are pulled."""
+        runner = _make_runner([(0, "")])
+        services = ["kafka", "schema-registry", "postgres"]
+        pull_images_with_retry(_CMD, services=services, _runner=runner, backoff_seconds=0)
+        assert runner.calls == [[*_CMD, "pull", *services]]
+
+    def test_pull_cmd_excludes_services_not_in_up(self):
+        """Services absent from the up list must not appear in the pull command."""
+        runner = _make_runner([(0, "")])
+        services = ["postgres", "redis"]
+        pull_images_with_retry(_CMD, services=services, _runner=runner, backoff_seconds=0)
+        issued = runner.calls[0]
+        # Only "pull" and the named services — no other service names
+        assert issued == [*_CMD, "pull", "postgres", "redis"]
+        assert "kafka" not in issued
+        assert "cassandra" not in issued
+
+    def test_services_preserved_across_retries(self):
+        """Service names appear in every retry attempt."""
+        runner = _make_runner(
+            [
+                (1, "unexpected EOF"),
+                (0, ""),
+            ]
+        )
+        services = ["trino", "minio"]
+        pull_images_with_retry(
+            _CMD, services=services, _runner=runner, max_attempts=3, backoff_seconds=0
+        )
+        for call in runner.calls:
+            assert call == [*_CMD, "pull", *services]

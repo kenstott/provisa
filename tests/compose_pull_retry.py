@@ -54,16 +54,18 @@ def _is_pull_transient(output: str) -> bool:
     return any(needle.lower() in low for needle in _PULL_TRANSIENT_NEEDLES)
 
 
+# Requirements: REQ-1742
 def pull_images_with_retry(
     compose_cmd: list[str],
     cwd: str | None = None,
     env: dict | None = None,
     max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
     backoff_seconds: float = _DEFAULT_BACKOFF_SECONDS,
+    services: list[str] | None = None,
     *,
     _runner: Callable[..., subprocess.CompletedProcess] | None = None,
 ) -> None:
-    """Run ``<compose_cmd> pull`` and retry on transient download errors.
+    """Run ``<compose_cmd> pull [services]`` and retry on transient download errors.
 
     Parameters
     ----------
@@ -79,12 +81,17 @@ def pull_images_with_retry(
         How many pull attempts to make before giving up.  Must be >= 1.
     backoff_seconds:
         Seconds to wait between attempts.
+    services:
+        Explicit service names to pull.  When given, only those images are
+        pulled — the same list the matching ``compose up`` will start.  When
+        ``None``, all services in the compose file are pulled (legacy behaviour,
+        kept for call sites that have no service list yet).
     _runner:
         Injected for unit tests.  Defaults to ``subprocess.run``.
     """
     runner = _runner if _runner is not None else subprocess.run
 
-    pull_cmd = [*compose_cmd, "pull"]
+    pull_cmd = [*compose_cmd, "pull", *(services or [])]
     last_stderr = ""
     for attempt in range(1, max_attempts + 1):
         result: subprocess.CompletedProcess = runner(
