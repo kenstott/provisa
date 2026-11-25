@@ -1,0 +1,11 @@
+{
+  "explore": {
+    "resizeSide": "Resize the side panel",
+    "resizeEditor": "Resize the editor and the results",
+    "results": "Results",
+    "prefixesSummary_one": "{{count}} prefix",
+    "prefixesSummary_other": "{{count}} prefixes",
+    "showPrefixes": "Show the prefixes",
+    "hidePrefixes": "Hide the prefixes"
+  }
+}

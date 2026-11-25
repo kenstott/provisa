@@ -88,7 +88,7 @@ export function ReportsTab() {
     reports[0] ??
     null;
 
-  // The list's width is kept per browser (useLocalStorage, the store useResizableWidth keeps its
+  // The list's width is kept per browser (useLocalStorage, the store useResizableSize keeps its
   // width in). The hook measures a panel docked at the right of its row; this list sits at the
   // left, so the drag measures from the list's left edge here and the key and storage rules match.
   const [listWidth, setListWidth] = useLocalStorage(LIST_WIDTH_KEY, LIST_INITIAL);

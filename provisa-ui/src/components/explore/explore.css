@@ -1,0 +1,171 @@
+/* REQ-2277: the Explore surface shell. The gutter is the management pages' (--page-gutter, App.css)
+ * and nothing is drawn inside it but the surface: its toolbar strip, then its panes edge to edge,
+ * each divided from the next by one line. */
+.explore-shell {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--page-gutter);
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* The surface's toolbar: one strip, then a single divider above the panes. */
+.explore-shell__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.explore-shell__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+/* A side panel at the left of the body; its right edge is the divider that resizes it. */
+.explore-side {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* The rest of the row beside a side panel. */
+.explore-main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* What stands above the work (a note, an error) keeps its height; the work itself takes the rest
+ * by its own flex (the result panel, a stack, a chat). */
+.explore-main > * {
+  flex-shrink: 0;
+}
+
+/* An editor above its results. */
+.explore-stack {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.explore-stack__editor {
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.explore-stack__results {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Inside the shell the splitter is the divider itself: one pixel of line, its 9px of grip laid over
+ * the panes on either side rather than between them. */
+.explore-shell .split-pane__handle--vertical {
+  margin-inline: -4px;
+  position: relative;
+  z-index: 2;
+}
+.split-pane__handle--horizontal {
+  flex: 0 0 9px;
+  margin-block: -4px;
+  cursor: row-resize;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+.split-pane__handle--horizontal > div {
+  height: 1px;
+  width: 100%;
+  background: var(--border);
+}
+.split-pane__handle--horizontal:focus-visible > div,
+.split-pane__handle--horizontal:hover > div {
+  height: 3px;
+  width: 100%;
+  background: var(--primary);
+}
+
+/* The result panel: its strip, a single divider, and the result edge to edge. */
+.result-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+.result-panel__strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+  padding-inline: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.result-panel__title {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.result-panel__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* The views sit in the strip: their tab line is the strip's own divider. */
+.result-panel__views {
+  align-self: stretch;
+  display: flex;
+}
+.result-panel__views .mantine-Tabs-list {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+.result-panel__views .mantine-Tabs-list::before {
+  display: none;
+}
+.result-panel__actions {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.result-panel__body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}

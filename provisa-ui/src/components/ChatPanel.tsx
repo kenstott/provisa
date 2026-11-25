@@ -62,7 +62,7 @@ import type {
   PresentChoiceRequest,
 } from "../mcp/clientTools";
 import { gql } from "@apollo/client";
-import { useResizableWidth } from "../hooks/useResizableWidth";
+import { useResizableSize } from "../hooks/useResizableSize";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
 import { Tip, TipSurface } from "./Tip";
 import { ChatArtifact } from "./ChatArtifact";
@@ -148,13 +148,13 @@ export function ChatPanel() {
 
   // Resizable width (REQ-1795), persisted per browser so it survives closing/reopening the
   // panel and page reloads. Dragged from a handle on the drawer's left edge.
-  // The mechanism is shared with the pages' detail panels (useResizableWidth).
+  // The mechanism is shared with the pages' detail panels (useResizableSize).
   const {
     ref: panelRef,
-    width,
+    size: width,
     startResize,
     onHandleKeyDown,
-  } = useResizableWidth<HTMLDivElement>("provisa.chatPanel.width", {
+  } = useResizableSize<HTMLDivElement>("provisa.chatPanel.width", {
     initial: DEFAULT_WIDTH,
     min: MIN_WIDTH,
     max: MAX_WIDTH,

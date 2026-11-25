@@ -33,6 +33,7 @@ import { tableRef } from "../components/relationships/relationship-types";
 import { useAuth } from "../context/AuthContext";
 import { uuid } from "../lib/uuid";
 import "./GraphPage.css";
+import { ExploreMain, ExploreShell, ResultPanel } from "../components/explore";
 import {
   useLocalStorage,
   graphStateOf,
@@ -524,18 +525,21 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   );
 
   // One statement's result, of the frame's, shown: its drawing, rows and error.
-  const showStatement = useCallback((id: string, index: number) => {
-    setFrames((f) => {
-      const next = f.map((fr) =>
-        fr.id === id && fr.statements
-          ? { ...fr, ...showing(fr.statements[index]), statementIndex: index }
-          : fr,
-      );
-      graphState.frames = next;
-      saveGraphState(graphState);
-      return next;
-    });
-  }, [graphState]);
+  const showStatement = useCallback(
+    (id: string, index: number) => {
+      setFrames((f) => {
+        const next = f.map((fr) =>
+          fr.id === id && fr.statements
+            ? { ...fr, ...showing(fr.statements[index]), statementIndex: index }
+            : fr,
+        );
+        graphState.frames = next;
+        saveGraphState(graphState);
+        return next;
+      });
+    },
+    [graphState],
+  );
 
   const runQuery = useCallback(
     async (typed: string, view?: FrameView, frameId?: string) => {
@@ -587,26 +591,32 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     runQuery(forwarded.query, forwarded.view, frameId);
   }, [runQuery, authLoading, forwarded, language]);
 
-  const closeFrame = useCallback((id: string) => {
-    // A closed frame reads no answer: its request, if one is out, is aborted.
-    requests.current.get(id)?.controller.abort();
-    requests.current.delete(id);
-    setFrames((f) => {
-      const next = f.filter((fr) => fr.id !== id);
-      graphState.frames = next;
-      saveGraphState(graphState);
-      return next;
-    });
-  }, [graphState]);
+  const closeFrame = useCallback(
+    (id: string) => {
+      // A closed frame reads no answer: its request, if one is out, is aborted.
+      requests.current.get(id)?.controller.abort();
+      requests.current.delete(id);
+      setFrames((f) => {
+        const next = f.filter((fr) => fr.id !== id);
+        graphState.frames = next;
+        saveGraphState(graphState);
+        return next;
+      });
+    },
+    [graphState],
+  );
 
-  const handlePin = useCallback((id: string) => {
-    setFrames((f) => {
-      const next = f.map((fr) => (fr.id === id ? { ...fr, pinned: !fr.pinned } : fr));
-      graphState.frames = next;
-      saveGraphState(graphState);
-      return next;
-    });
-  }, [graphState]);
+  const handlePin = useCallback(
+    (id: string) => {
+      setFrames((f) => {
+        const next = f.map((fr) => (fr.id === id ? { ...fr, pinned: !fr.pinned } : fr));
+        graphState.frames = next;
+        saveGraphState(graphState);
+        return next;
+      });
+    },
+    [graphState],
+  );
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
   const { pkMap, labelToTableLabel, labelToTableId } = useMemo(() => {
@@ -918,7 +928,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   );
 
   return (
-    <div className="graph-page">
+    <ExploreShell testId={sparql ? "sparql-page" : "graph-page"} className="graph-page">
       {nfModal && (
         <NativeFilterModal
           label={nfModal.label}
@@ -1009,7 +1019,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         }
       />
 
-      <div className="graph-content">
+      <ExploreMain className="graph-content">
         {sparql && vocabulary && (
           <SparqlEndpointBar
             base={vocabulary.base}
@@ -1036,70 +1046,78 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
 
         {/* REQ-2010: the status of the last forwarded query's frame, which a demo tour step waits
             on until it is done. */}
-        <div
-          className="graph-stream"
-          data-handoff-status={frames.find((f) => f.id === handoffFrameId)?.status}
-        >
-          {frames.length === 0 && (
-            <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
-              <div className="graph-stream-empty-icon" aria-hidden="true">
-                ⬡
+        <ResultPanel testId={sparql ? "sparql-results" : "cypher-results"}>
+          <div
+            className="graph-stream"
+            data-handoff-status={frames.find((f) => f.id === handoffFrameId)?.status}
+          >
+            {frames.length === 0 && (
+              <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
+                <div className="graph-stream-empty-icon" aria-hidden="true">
+                  ⬡
+                </div>
+                <Text component="div">
+                  {t(
+                    language === "sparql"
+                      ? "graphPage.emptyStateHintSparql"
+                      : "graphPage.emptyStateHint",
+                  )}
+                </Text>
+                <Text component="div" className="graph-stream-hint">
+                  {t("graphPage.emptyStateShortcut")}
+                </Text>
               </div>
-              <Text component="div">{t(language === "sparql" ? "graphPage.emptyStateHintSparql" : "graphPage.emptyStateHint")}</Text>
-              <Text component="div" className="graph-stream-hint">
-                {t("graphPage.emptyStateShortcut")}
-              </Text>
-            </div>
-          )}
-          {[...frames]
-            .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
-            .map((frame) => (
-              <GraphFrame
-                key={frame.id}
-                frame={frame}
-                requestedView={frameViews[frame.id]}
-                onClose={closeFrame}
-                onRerun={rerunFrame}
-                onStop={stopFrame}
-                // A drop, an expansion and an exclusion write Cypher against the model's labels and
-                // relationships; a SPARQL drop edits its query, its expansion merges a DESCRIBE.
-                onTableDrop={sparql ? undefined : onTableDrop}
-                onDomainDrop={sparql ? undefined : onDomainDrop}
-                onSparqlDrop={sparql ? onSparqlDrop : undefined}
-                onNodePath={sparql ? undefined : (a, b) => onNodePath(frame.id, a, b)}
-                colorOverrides={colorOverrides}
-                sizeOverrides={sizeOverrides}
-                labelProperty={labelProperty}
-                sizeByProperty={sizeByProperty}
-                sizeMultiplier={sizeMultiplier}
-                relLineOverrides={relLineOverrides}
-                onColorChange={handleColorChange}
-                pkMap={pkMap}
-                labelToTableLabel={labelToTableLabel}
-                labelToTableId={labelToTableId}
-                relationships={sparql ? [] : adminRels}
-                graphRelationships={sparql ? [] : graphRels}
-                schemaRels={sparql ? [] : schemaRels}
-                parameterized={parameterized}
-                pathScope={pathScope}
-                autoImpute={autoImpute}
-                language={language}
-                sparqlPrefixes={sparql ? framePrefixes : undefined}
-                classProperties={sparql ? classProperties : undefined}
-                onExpandResource={sparql ? expandResource : undefined}
-                onDescribeResource={sparql ? describeResource : undefined}
-                onDescribeResources={sparql ? describeResources : undefined}
-                onSaveEdgeAlias={handleSaveEdgeAlias}
-                onSelectedLabelChange={setActiveLabel}
-                onEffectiveDataChange={onEffectiveDataChange}
-                onAddFavorite={handleAddFavorite}
-                isFavorited={isFavorited}
-                onPin={handlePin}
-                onStatement={showStatement}
-              />
-            ))}
-        </div>
-      </div>
-    </div>
+            )}
+            {[...frames]
+              .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+              .map((frame) => (
+                <GraphFrame
+                  key={frame.id}
+                  frame={frame}
+                  requestedView={frameViews[frame.id]}
+                  onClose={closeFrame}
+                  onRerun={rerunFrame}
+                  onStop={stopFrame}
+                  // A drop, an expansion and an exclusion write Cypher against the model's labels and
+                  // relationships; a SPARQL drop edits its query, its expansion merges a DESCRIBE.
+                  onTableDrop={sparql ? undefined : onTableDrop}
+                  onDomainDrop={sparql ? undefined : onDomainDrop}
+                  onSparqlDrop={sparql ? onSparqlDrop : undefined}
+                  onNodePath={sparql ? undefined : (a, b) => onNodePath(frame.id, a, b)}
+                  colorOverrides={colorOverrides}
+                  sizeOverrides={sizeOverrides}
+                  labelProperty={labelProperty}
+                  sizeByProperty={sizeByProperty}
+                  sizeMultiplier={sizeMultiplier}
+                  relLineOverrides={relLineOverrides}
+                  onColorChange={handleColorChange}
+                  pkMap={pkMap}
+                  labelToTableLabel={labelToTableLabel}
+                  labelToTableId={labelToTableId}
+                  relationships={sparql ? [] : adminRels}
+                  graphRelationships={sparql ? [] : graphRels}
+                  schemaRels={sparql ? [] : schemaRels}
+                  parameterized={parameterized}
+                  pathScope={pathScope}
+                  autoImpute={autoImpute}
+                  language={language}
+                  sparqlPrefixes={sparql ? framePrefixes : undefined}
+                  classProperties={sparql ? classProperties : undefined}
+                  onExpandResource={sparql ? expandResource : undefined}
+                  onDescribeResource={sparql ? describeResource : undefined}
+                  onDescribeResources={sparql ? describeResources : undefined}
+                  onSaveEdgeAlias={handleSaveEdgeAlias}
+                  onSelectedLabelChange={setActiveLabel}
+                  onEffectiveDataChange={onEffectiveDataChange}
+                  onAddFavorite={handleAddFavorite}
+                  isFavorited={isFavorited}
+                  onPin={handlePin}
+                  onStatement={showStatement}
+                />
+              ))}
+          </div>
+        </ResultPanel>
+      </ExploreMain>
+    </ExploreShell>
   );
 }

@@ -45,6 +45,7 @@ import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
+import { ExploreMain, ExploreShell, ExploreStack } from "../components/explore/ExploreShell";
 import { JoinCanvas } from "./sql/JoinCanvas";
 import { SqlEditorPanel } from "./sql/SqlEditorPanel";
 import { ResultsPanel } from "./sql/ResultsPanel";
@@ -923,211 +924,203 @@ export function SqlPage() {
   }, []);
 
   return (
-    <div
-      style={{
-        flex: 1,
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "var(--bg)",
-      }}
-    >
-      {/* Header */}
-      <Group
-        justify="space-between"
-        wrap="nowrap"
-        style={{
-          padding: "0.75rem 1rem",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        <Group gap="0.75rem" wrap="nowrap">
-          <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
-            {t("sqlPage.title")}
-          </Text>
-          <SegmentedControl
-            size="xs"
-            value={topTab}
-            onChange={(v) => setTopTab(v as TopTab)}
-            data={[
-              { label: t("sqlPage.tabSql"), value: "sql" },
-              { label: t("sqlPage.tabCanvas"), value: "canvas" },
-            ]}
-            data-testid="sql-page-top-tabs"
-          />
-        </Group>
-        <Group gap="0.75rem" wrap="nowrap" ml="auto">
-          {sqlReferencesMetrics && (
-            <>
-              <Button
-                size="compact-xs"
-                variant="default"
-                onClick={handleShowExpansion}
-                data-testid="sql-show-expansion"
-              >
-                {t("sqlPage.showExpansion")}
-              </Button>
-              <Button
-                size="compact-xs"
-                color="orange"
-                variant="light"
-                onClick={handleDetach}
-                data-testid="sql-detach"
-              >
-                {t("sqlPage.detachToSemantic")}
-              </Button>
-            </>
-          )}
-          {execMs !== null && (
-            <Text size="0.75rem" c="var(--text-muted)">
-              {t("sqlPage.execMs", { ms: execMs })}
+    <ExploreShell
+      testId="sql-page"
+      toolbar={
+        <Group justify="space-between" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="0.75rem" wrap="nowrap">
+            <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
+              {t("sqlPage.title")}
             </Text>
-          )}
-          <Checkbox
-            size="xs"
-            label={t("sqlPage.queryStats")}
-            checked={statsEnabled}
-            onChange={(e) => {
-              setStatsEnabled(e.currentTarget.checked);
-              setStored("sql:statsEnabled", String(e.currentTarget.checked));
-            }}
-            data-testid="sql-page-stats-checkbox"
-          />
+            <SegmentedControl
+              size="xs"
+              value={topTab}
+              onChange={(v) => setTopTab(v as TopTab)}
+              data={[
+                { label: t("sqlPage.tabSql"), value: "sql" },
+                { label: t("sqlPage.tabCanvas"), value: "canvas" },
+              ]}
+              data-testid="sql-page-top-tabs"
+            />
+          </Group>
+          <Group gap="0.75rem" wrap="nowrap" ml="auto">
+            {sqlReferencesMetrics && (
+              <>
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  onClick={handleShowExpansion}
+                  data-testid="sql-show-expansion"
+                >
+                  {t("sqlPage.showExpansion")}
+                </Button>
+                <Button
+                  size="compact-xs"
+                  color="orange"
+                  variant="light"
+                  onClick={handleDetach}
+                  data-testid="sql-detach"
+                >
+                  {t("sqlPage.detachToSemantic")}
+                </Button>
+              </>
+            )}
+            {execMs !== null && (
+              <Text size="0.75rem" c="var(--text-muted)">
+                {t("sqlPage.execMs", { ms: execMs })}
+              </Text>
+            )}
+            <Checkbox
+              size="xs"
+              label={t("sqlPage.queryStats")}
+              checked={statsEnabled}
+              onChange={(e) => {
+                setStatsEnabled(e.currentTarget.checked);
+                setStored("sql:statsEnabled", String(e.currentTarget.checked));
+              }}
+              data-testid="sql-page-stats-checkbox"
+            />
+          </Group>
         </Group>
-      </Group>
+      }
+    >
+      {/* Schema browser drawer */}
+      <SchemaBrowser
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        domainGroups={domainGroups}
+        domainMap={domainMap}
+        expandedDomains={expandedDomains}
+        expandedTables={expandedTables}
+        domainPages={domainPages}
+        topTab={topTab}
+        insertAtCursor={insertAtCursor}
+        toggleDomain={toggleDomain}
+        toggleTable={toggleTable}
+        setDomainPages={setDomainPages}
+        metrics={domainFilteredMetrics}
+        tables={domainFilteredTables}
+      />
 
-      {/* Body: sidebar + right pane */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Schema browser drawer */}
-        <SchemaBrowser
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          domainGroups={domainGroups}
-          domainMap={domainMap}
-          expandedDomains={expandedDomains}
-          expandedTables={expandedTables}
-          domainPages={domainPages}
-          topTab={topTab}
-          insertAtCursor={insertAtCursor}
-          toggleDomain={toggleDomain}
-          toggleTable={toggleTable}
-          setDomainPages={setDomainPages}
-          metrics={domainFilteredMetrics}
-          tables={domainFilteredTables}
-        />
-
-        {/* Right pane */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div
-            style={{
-              display: topTab === "canvas" ? "flex" : "none",
-              flex: 1,
-              overflow: "hidden",
-              flexDirection: "column",
+      {/* Right pane */}
+      <ExploreMain>
+        <div
+          style={{
+            display: topTab === "canvas" ? "flex" : "none",
+            flex: 1,
+            overflow: "hidden",
+            flexDirection: "column",
+          }}
+        >
+          <JoinCanvas
+            tables={tables}
+            existingRels={existingRels}
+            metrics={metrics}
+            onGenerateSql={(generatedSql) => {
+              setSqlText(generatedSql);
+              setTopTab("sql");
             }}
-          >
-            <JoinCanvas
-              tables={tables}
-              existingRels={existingRels}
-              metrics={metrics}
-              onGenerateSql={(generatedSql) => {
-                setSqlText(generatedSql);
-                setTopTab("sql");
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              display: topTab === "sql" ? "flex" : "none",
-              flex: 1,
-              overflow: "hidden",
-              flexDirection: "column",
-            }}
-          >
-            <SqlEditorPanel
-              tabs={tabs}
-              activeTabId={activeTabId}
-              switchTab={switchTab}
-              addTab={addTab}
-              closeTab={closeTab}
-              renameTab={renameTab}
-              nlText={nlText}
-              setNlText={setNlText}
-              nlLoading={nlLoading}
-              setNlLoading={setNlLoading}
-              nlError={nlError}
-              setNlError={setNlError}
-              setSqlText={setSqlText}
-              role={role}
-              sqlText={sqlText}
-              sqlExtensions={sqlExtensions}
-              editorViewRef={editorViewRef}
-              copied={copied}
-              handleCopy={handleCopy}
-              running={running}
-              handleRun={handleRun}
-              handleStop={handleStop}
-              handleAnalyze={handleAnalyze}
-              analyzing={analyzing}
-              sampleMode={sampleMode}
-              setSampleMode={setSampleMode}
-              sampleSize={sampleSize}
-              setSampleSize={setSampleSize}
-              roles={roleOptions}
-              setRole={setRole}
-              asOf={asOf}
-              setAsOf={(v) => {
-                setAsOf(v);
-                setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
-              }}
-              asRecorded={asRecorded}
-              setAsRecorded={(v) => {
-                setAsRecorded(v);
-                setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
-              }}
-              boundParams={boundParams}
-              viewTable={viewTable}
-              viewSaving={viewSaving}
-              setViewSaving={setViewSaving}
-              updateTable={updateTable}
-              canCreateView={canCreateView}
-              canRequestView={canRequestView}
-              onOpenViewModal={handleOpenViewModal}
-            />
-            <ResultsPanel
-              resultTab={resultTab}
-              setResultTab={setResultTab}
-              running={running}
-              stopped={stopped}
-              resultError={resultError}
-              resultRedirect={resultRedirect}
-              resultRows={resultRows}
-              resultColumns={resultColumns}
-              rowsPartial={resultPartial}
-              answered={execMs !== null}
-              statements={statements}
-              statementIndex={statementIndex}
-              // A batch's statements are held only after a run or a restore, each of which keeps
-              // the tab's query.
-              onStatement={(i) =>
-                showStatement(statements, i, resultQueries.current.get(activeTabId)!)
-              }
-              grid={grid}
-              errors={errors}
-              history={history}
-              queryStats={queryStats}
-              analyzePlan={analyzePlan}
-              analyzeError={analyzeError}
-              sqlText={sqlText}
-              setSqlText={setSqlText}
-              setRole={setRole}
-            />
-          </div>
+          />
         </div>
-      </div>
+
+        <div
+          style={{
+            display: topTab === "sql" ? "flex" : "none",
+            flex: 1,
+            overflow: "hidden",
+            flexDirection: "column",
+          }}
+        >
+          <ExploreStack
+            storageKey="provisa.sql.editorHeight"
+            initial={380}
+            min={200}
+            testId="sql-stack"
+            editor={
+              <SqlEditorPanel
+                tabs={tabs}
+                activeTabId={activeTabId}
+                switchTab={switchTab}
+                addTab={addTab}
+                closeTab={closeTab}
+                renameTab={renameTab}
+                nlText={nlText}
+                setNlText={setNlText}
+                nlLoading={nlLoading}
+                setNlLoading={setNlLoading}
+                nlError={nlError}
+                setNlError={setNlError}
+                setSqlText={setSqlText}
+                role={role}
+                sqlText={sqlText}
+                sqlExtensions={sqlExtensions}
+                editorViewRef={editorViewRef}
+                copied={copied}
+                handleCopy={handleCopy}
+                running={running}
+                handleRun={handleRun}
+                handleStop={handleStop}
+                handleAnalyze={handleAnalyze}
+                analyzing={analyzing}
+                sampleMode={sampleMode}
+                setSampleMode={setSampleMode}
+                sampleSize={sampleSize}
+                setSampleSize={setSampleSize}
+                roles={roleOptions}
+                setRole={setRole}
+                asOf={asOf}
+                setAsOf={(v) => {
+                  setAsOf(v);
+                  setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
+                }}
+                asRecorded={asRecorded}
+                setAsRecorded={(v) => {
+                  setAsRecorded(v);
+                  setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
+                }}
+                boundParams={boundParams}
+                viewTable={viewTable}
+                viewSaving={viewSaving}
+                setViewSaving={setViewSaving}
+                updateTable={updateTable}
+                canCreateView={canCreateView}
+                canRequestView={canRequestView}
+                onOpenViewModal={handleOpenViewModal}
+              />
+            }
+            results={
+              <ResultsPanel
+                resultTab={resultTab}
+                setResultTab={setResultTab}
+                running={running}
+                stopped={stopped}
+                resultError={resultError}
+                resultRedirect={resultRedirect}
+                resultRows={resultRows}
+                resultColumns={resultColumns}
+                rowsPartial={resultPartial}
+                answered={execMs !== null}
+                statements={statements}
+                statementIndex={statementIndex}
+                // A batch's statements are held only after a run or a restore, each of which keeps
+                // the tab's query.
+                onStatement={(i) =>
+                  showStatement(statements, i, resultQueries.current.get(activeTabId)!)
+                }
+                grid={grid}
+                errors={errors}
+                history={history}
+                queryStats={queryStats}
+                analyzePlan={analyzePlan}
+                analyzeError={analyzeError}
+                sqlText={sqlText}
+                setSqlText={setSqlText}
+                setRole={setRole}
+              />
+            }
+          />
+        </div>
+      </ExploreMain>
 
       {/* REQ-1322: read-only server expansion of the metric query */}
       <Drawer
@@ -1186,6 +1179,6 @@ export function SqlPage() {
         onNavigateToViews={() => navigate("/views")}
         onCloseConfirmation={handleCloseConfirmation}
       />
-    </div>
+    </ExploreShell>
   );
 }

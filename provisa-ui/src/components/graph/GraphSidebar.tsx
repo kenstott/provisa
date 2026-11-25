@@ -24,6 +24,7 @@ import {
   type RelContextMenuState,
 } from "./graph-context-menus";
 import { Tip } from "../Tip";
+import { SplitHandle } from "../list/SplitHandle";
 import { getStored, setStored } from "../../lib/browserStorage";
 
 /** What a class's menu is opened on, as a right click on its pill does. */
@@ -266,6 +267,12 @@ export function Sidebar({
     },
     [width, onWidthChange],
   );
+
+  const onHandleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    onWidthChange(Math.max(160, Math.min(480, width + (e.key === "ArrowRight" ? 32 : -32))));
+  };
 
   const handleNodeRightClick = useCallback(
     (e: React.MouseEvent, node: SchemaNodeLabel) => {
@@ -1004,14 +1011,16 @@ export function Sidebar({
         )}
       </div>
 
-      <div
-        className="graph-sidebar-resizer"
-        onMouseDown={onMouseDown}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("graphSidebar.resizeSidebar")}
-        tabIndex={0}
-      />
+      {/* REQ-2277: the splitter every Explore surface uses; it stands at the sidebar's right edge. */}
+      <div className="graph-sidebar-resizer">
+        <SplitHandle
+          orientation="vertical"
+          label={t("graphSidebar.resizeSidebar")}
+          onPointerDown={onMouseDown}
+          onKeyDown={onHandleKeyDown}
+          testId="graph-sidebar-handle"
+        />
+      </div>
 
       {contextMenu && (
         <NodeContextMenu

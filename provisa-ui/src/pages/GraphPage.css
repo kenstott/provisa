@@ -1,36 +1,31 @@
 /* Graph page — Neo4j Browser-style layout */
 
 /* ── Page shell ─────────────────────────────────────────────────────────────── */
-.graph-page {
-  display: flex;
-  height: calc(100vh - 52px);
-  overflow: hidden;
-  background: var(--bg);
-}
+/* REQ-2277: the page is an Explore shell; its sidebar and the query with its frames are the panes. */
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────────── */
 .graph-sidebar {
   display: flex;
   flex-shrink: 0;
   background: var(--bg);
-  border-inline-end: 1px solid var(--border);
   overflow: hidden;
   position: relative;
 }
 
+/* The splitter (SplitHandle) laid over the sidebar's right edge: its line is the divider. */
 .graph-sidebar-resizer {
   position: absolute;
   inset-inline-end: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
-  cursor: col-resize;
+  width: 9px;
+  display: flex;
   z-index: 10;
 }
-
-.graph-sidebar-resizer:hover {
-  background: var(--primary);
-  opacity: 0.5;
+.graph-sidebar-resizer > .split-pane__handle {
+  flex: 1 0 9px;
+  margin-inline: 0;
+  justify-content: flex-end;
 }
 
 .graph-sidebar-tabs {

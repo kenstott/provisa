@@ -282,9 +282,11 @@ export function SqlEditorPanel({
       </Group>
 
       {/* Editor */}
+      {/* REQ-2277: the editor takes the height the stack gives it, less its strips. */}
       <div
         style={{
-          flex: "0 0 220px",
+          flex: "1 1 0",
+          minHeight: 0,
           overflow: "hidden",
           borderBottom: "1px solid var(--border)",
           position: "relative",
@@ -324,7 +326,7 @@ export function SqlEditorPanel({
         )}
         <CodeMirror
           value={sqlText}
-          height="220px"
+          height="100%"
           theme={cmTheme}
           extensions={sqlExtensions}
           onChange={(v) => {
@@ -333,7 +335,7 @@ export function SqlEditorPanel({
           onCreateEditor={(view) => {
             editorViewRef.current = view;
           }}
-          style={{ fontSize: "0.8rem" }}
+          style={{ fontSize: "0.8rem", height: "100%" }}
         />
         <CanvasControls testId="sql-editor">
           <CanvasButton

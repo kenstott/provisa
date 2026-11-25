@@ -11,12 +11,16 @@
   --color-error: 0, 84%, 60%;
 }
 
-/* query-page fills remaining height via #root flex layout */
-.query-page {
+/* query-page fills remaining height via #root flex layout; it is an Explore shell (REQ-2277), whose
+ * body holds the notices and GraphiQL in a column. */
+.query-page-root {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
+  flex-direction: column;
+}
+.query-page .explore-shell__body {
   flex-direction: column;
 }
 
@@ -35,9 +39,8 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 6px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--surface-alt);
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   color: var(--text);
 }
