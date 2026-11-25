@@ -183,6 +183,11 @@ def test_postgresql_refuses_as_postgresql_refuses(sql: str, raised: str):
         ("SELECT dist_ps('(1,2)'::point, '[(-Infinity,0),(1,1)]'::lseg)", 2.0),
         ("SELECT point_distance('(Infinity,-inf)'::point, '(1,2)'::point)", float("inf")),
         ("SELECT spg_poly_quad_compress('((0,0),(NaN,1),(1,1))'::polygon)", "(NaN,1),(0,0)"),
+        ("SELECT dist_pl('(nan,0)'::point, '{1,-1,0}'::line)", float("nan")),
+        ("SELECT line_eq('{inf,1,0}'::line, '{1,-1,0}'::line)", False),
+        ("SELECT close_ls('{1,-1,0}'::line, '[(inf,0),(1,1)]'::lseg)", "(0,0)"),
+        ("SELECT poly_same('((nan,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)", False),
+        ("SELECT path_inter('[(0,0),(inf,1)]'::path, '[(0,0),(1,1)]'::path)", True),
     ],
 )
 def test_a_shape_not_finite_answers_as_postgresql_does(sql: str, want: Any):
@@ -359,11 +364,6 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
         ),
         ("width_bucket", "width_bucket(0.9999999999999999999::numeric, 0::numeric, 3::numeric, 3)"),
         ("width_bucket", "width_bucket('B'::text, ARRAY['a', 'c'])"),
-        ("dist_pl", "dist_pl('(nan,0)'::point, '{1,-1,0}'::line)"),
-        ("line_eq", "line_eq('{inf,1,0}'::line, '{1,-1,0}'::line)"),
-        ("close_ls", "close_ls('{1,-1,0}'::line, '[(inf,0),(1,1)]'::lseg)"),
-        ("poly_same", "poly_same('((nan,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)"),
-        ("path_inter", "path_inter('[(0,0),(inf,1)]'::path, '[(0,0),(1,1)]'::path)"),
     ],
 )
 def test_what_no_engine_answers_is_refused_by_name(name: str, sql: str):

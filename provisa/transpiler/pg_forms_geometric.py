@@ -390,8 +390,10 @@ _FUZZY = {"eq": _fp_eq, "lt": _fp_lt, "le": _fp_le, "gt": _fp_gt, "ge": _fp_ge}
 
 @_hoisted("hypot", ("DOUBLE", "DOUBLE"), "DOUBLE")
 def _hypot(e: Engine, dx: str, dy: str) -> str:
-    """pg_hypot: infinite if either is, else NaN if either is."""
-    if not e.routines:
+    """pg_hypot: infinite if either is, else NaN if either is. On ClickHouse the two are bound
+    once; DuckDB's binding of a lambda grows with how deep it is nested, so there they are
+    written in place, as a routine's parameters are on Trino."""
+    if e is CLICKHOUSE:
         return _let(e, "_hv", _list(e, dx, dy), _hypot_of(e, "_hv[1]", "_hv[2]"))
     return _hypot_of(e, dx, dy)
 
@@ -2487,10 +2489,11 @@ def planned(sql: str, dialect: str) -> str:
     routine the statement defines. A ClickHouse one is planned by its old analyzer: the new one takes
     most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
     1.3s), with the same answers. A DuckDB one has each run of names a pipeline (:func:`_pipelined`):
-    its deepest forms bound in gigabytes. A form is known by its check of a shape's letters."""
+    its deepest forms bound in gigabytes. A form is known by its reading of a shape's coordinates,
+    or width_bucket's by its check of a number's letters."""
     if dialect == "trino":
         return _defined(sql)
-    if f"'{_NOT_FINITE}'" not in sql:
+    if _COORDINATE not in sql and f"'{_NOT_FINITE}'" not in sql:
         return sql
     if dialect == "duckdb":
         return _pipelined(sql)
