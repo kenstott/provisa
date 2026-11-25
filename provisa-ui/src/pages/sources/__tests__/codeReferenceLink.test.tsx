@@ -54,6 +54,13 @@ describe("a code source's reference link", () => {
     expect(link.textContent).toBe(`${label} reference`);
   });
 
+  it("opens in a new tab, so the source dialog stays open", () => {
+    render(form("python"));
+    const link = screen.getByTestId("code-reference-link");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("changes with the language chosen", () => {
     const { rerender } = render(form("python"));
     expect(screen.getByTestId("code-reference-link").getAttribute("href")).toBe(
