@@ -98513,7 +98513,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
     confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
     tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
-    link or by clicking through from a screen she reaches.'
+    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.)'
 - id: REQ-2278
   status: proposed
   target: 2026-Q4
