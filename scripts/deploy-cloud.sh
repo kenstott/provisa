@@ -1039,6 +1039,45 @@ push_mail_env() {
   ssh_node "sudo systemctl restart provisa"
 }
 
+# REQ-2194: the engine image and the Zaychik proxy image must match the release being deployed.
+# Release-publish.yml tags both at the same version as the git tag, so the checkout's tag is the
+# right pin. Without this, a node provisioned by an older terraform apply keeps its old images
+# across deploys: the same idle-stop/restart that resets commerce settings would revert hand-edits
+# too, so the deploy sets them here, the same way push_commerce_env heals the Stripe keys.
+# After the images are pinned in the env file, the main restart in each arm starts the app with
+# the new settings; the app's own converge_boot_shard then applies the updated pod manifest to
+# GKE, rolling the engine pod to the new images (engine_wake.py:302).
+IMAGE_REGISTRY="ghcr.io/kenstott"
+
+push_engine_env() {
+  echo "== engine image env"
+  local ver engine_img zaychik_img changed="" env_dump running_engine running_zaychik
+  ver="$(git -C "$REPO" describe --tags --exact-match HEAD 2>/dev/null)" || {
+    echo "   not a tagged commit; engine image pin skipped"
+    return 0
+  }
+  engine_img="$IMAGE_REGISTRY/provisa-trino-engine:$ver"
+  zaychik_img="$IMAGE_REGISTRY/provisa-zaychik:$ver"
+  env_dump="$(ssh_node "sudo docker inspect $API_CONTAINER --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^PROVISA_(ENGINE_IMAGE|ZAYCHIK_IMAGE)=' || true" | tr -d '\r')"
+  running_engine="$(printf '%s\n' "$env_dump" | sed -n 's/^PROVISA_ENGINE_IMAGE=//p')"
+  running_zaychik="$(printf '%s\n' "$env_dump" | sed -n 's/^PROVISA_ZAYCHIK_IMAGE=//p')"
+  if [ "$running_engine" != "$engine_img" ]; then
+    echo "   PROVISA_ENGINE_IMAGE: ${running_engine:-<unset>} -> $engine_img"
+    set_node_env PROVISA_ENGINE_IMAGE "$engine_img"
+    changed=1
+  fi
+  if [ "$running_zaychik" != "$zaychik_img" ]; then
+    echo "   PROVISA_ZAYCHIK_IMAGE: ${running_zaychik:-<unset>} -> $zaychik_img"
+    set_node_env PROVISA_ZAYCHIK_IMAGE "$zaychik_img"
+    changed=1
+  fi
+  if [ -n "$changed" ]; then
+    echo "== engine image env: set; engine shard will roll on startup"
+  else
+    echo "== engine image env: up to date ($ver)"
+  fi
+}
+
 # REQ-1468: the demo overlay, which is what makes the demo sources part of the deployment rather
 # than something started by hand. Three of the demo config's sources are served by Provisa's own
 # mock backends — petstore-mock:8080 (OpenAPI), graphql-demo:4000 (GraphQL) and grpc-demo:50071 —
@@ -1507,13 +1546,13 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
     # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; build_deps; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; push_engine_env; build_api; build_deps; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; push_engine_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
     # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; push_engine_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1521,10 +1560,10 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce ;;
+    preflight_engine; push_commerce_env; push_engine_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; push_engine_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

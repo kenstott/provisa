@@ -166,6 +166,14 @@ class EngineUnreachable(ConnectionError):
     A ConnectionError, so the engine read retries it inside its budget (coordinator loss)."""
 
 
+class EngineContractError(RuntimeError):
+    """An Arrow field from the Zaychik proxy is missing required trino.type metadata.
+
+    Every field the proxy streams must carry ``trino.type``, ``trino.type_signature`` and
+    ``trino.encoding``. A missing field means the proxy version predates the server: the
+    proxy must be updated to match (REQ-2194)."""
+
+
 def create_flight_connection(  # REQ-045, REQ-144, REQ-271
     host: str = "localhost",
     port: int = 8480,
@@ -314,7 +322,15 @@ def engine_error(exc: BaseException) -> BaseException:
 
 def column_types(schema: pa.Schema) -> list[str]:
     """Each column's Trino type, as the coordinator names it (``trino.type``)."""
-    return [f.metadata[TYPE_KEY].decode("utf-8") for f in schema]
+    result = []
+    for f in schema:
+        if f.metadata is None or TYPE_KEY not in f.metadata:
+            raise EngineContractError(
+                f"column {f.name!r} has no trino.type metadata; "
+                "the Zaychik proxy version is older than the server — update the proxy image"
+            )
+        result.append(f.metadata[TYPE_KEY].decode("utf-8"))
+    return result
 
 
 def _mapper(signature: bytes) -> Callable[[Any], Any]:
