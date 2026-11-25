@@ -15,7 +15,7 @@ called with the item's name. A generated table may batch a join's keys under the
 (REQ-2100). A name a generated item shares with another item is refused by name. The worker is a
 real Python host process (unsandboxed)."""
 
-# Requirements: REQ-2267, REQ-2100
+# Requirements: REQ-2267, REQ-2100, REQ-1350
 from __future__ import annotations
 
 import json
@@ -45,13 +45,30 @@ from provisa.python.source import HOST, READER
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture
+def ps(monkeypatch):
+    """Provisa's services module, on the path as the host puts it (provisa/python/host.py)."""
+    import importlib
+
+    from provisa.python.source import HOST
+
+    monkeypatch.syspath_prepend(str(HOST.parent / "services"))
+    module = importlib.import_module("provisa_services")
+    yield module
+    sys.modules.pop("provisa_services", None)
+
+
 CODE = '''
 from dataclasses import dataclass, field, make_dataclass
+
+import provisa_services as ps
 
 from provisa_services import (
     Discovered,
     DiscoveredCommand,
     DiscoveredQuery,
+    DiscoveredRelationship,
     DiscoveredTable,
     ReadContext,
 )
@@ -98,6 +115,24 @@ def discover() -> Discovered:
             DiscoveredQuery("customers_by_status", table="customers", parameters=StatusParams),
         ],
         commands=[DiscoveredCommand("close_order", parameters=CloseParams, returns=str)],
+        relationships=[
+            DiscoveredRelationship(
+                "order_customer",
+                source_table="orders",
+                source_column="id",
+                target_table="customers",
+                target_column="id",
+                description="The customer who placed the order",
+            ),
+            DiscoveredRelationship(
+                "customer_accounts",
+                source_table="customers",
+                source_column="name",
+                target_table="accounts",
+                target_column="account_id",
+                cardinality="one-to-many",
+            ),
+        ],
         table_handler=serve_table,
         query_handler=serve_query,
         command_handler=serve_command,
@@ -108,6 +143,10 @@ def serve_table(name, inputs, context):
     global _calls
     _calls += 1
     if name == "customers":
+        if inputs.get("region") == "cut":
+            # Its read stops at its page limit: the rows come back with the warning.
+            ps.answer_cut("customers", max_pages=3, rows=1)
+            ps.warn("shop.stale", "the customers are an hour old", age_s=3600)
         return [{"id": 1, "name": f"{name}:{inputs.get('region')}"}]
     if context.keys is None:
         return [{"account_id": inputs.get("account_id"), "batch": 0, "call": _calls}]
@@ -439,3 +478,103 @@ def test_a_generated_command_taking_scalars_is_recorded_beside_a_hand_written_ta
     assert archive.kind == "command"
     assert archive.handler is None
     assert archive.parameters[0].shape == TableOf(Named("Order"))
+
+
+# -- relationships between the code's tables (amended 2026-11-22) ----------------------------------
+
+
+def test_discover_declares_the_relationships_between_its_tables(prepared):
+    from provisa.codesource.manifest import Relationship
+
+    assert prepared.manifest.relationships == (
+        Relationship(
+            "order_customer",
+            "orders",
+            "id",
+            "customers",
+            "id",
+            "many-to-one",
+            "The customer who placed the order",
+        ),
+        Relationship("customer_accounts", "customers", "name", "accounts", "account_id",
+                     "one-to-many"),
+    )  # fmt: skip
+    # Kept with a built source as they were read.
+    kept = manifest_from_json(manifest_json(prepared.manifest))
+    assert kept.relationships == prepared.manifest.relationships
+
+
+_ORDER_CUSTOMER = """            DiscoveredRelationship(
+                "order_customer",
+                source_table="orders",
+                source_column="id",
+                target_table="customers",
+                target_column="id","""
+
+
+@pytest.mark.parametrize(
+    "new, problem",
+    [
+        (
+            _ORDER_CUSTOMER.replace('target_table="customers"', 'target_table="nowhere"'),
+            "relationship order_customer: its target table nowhere is no table of the code's",
+        ),
+        (
+            _ORDER_CUSTOMER.replace('source_column="id"', 'source_column="total"'),
+            "relationship order_customer: its source column total is no column of orders",
+        ),
+        (
+            _ORDER_CUSTOMER.replace('target_column="id",', 'target_column="id",\n'
+                                    '                cardinality="many-to-many",'),
+            "relationship order_customer: its cardinality 'many-to-many' is none of many-to-one, "
+            "one-to-many, one-to-one",
+        ),
+        (
+            _ORDER_CUSTOMER.replace('"order_customer"', '"customer_accounts"'),
+            "relationship customer_accounts: declared twice; every relationship has a name of "
+            "its own",
+        ),
+    ],
+)  # fmt: skip
+def test_a_relationship_that_cannot_hold_is_refused_by_name(tmp_path, new, problem):
+    assert _ORDER_CUSTOMER in CODE
+    problems = _problems(tmp_path, CODE.replace(_ORDER_CUSTOMER, new))
+    assert problem in problems, problems
+
+
+def test_relationships_without_a_discover_function_are_refused_by_name():
+    raw = {"exports": [], "types": {}, "relationships": [{"name": "r"}]}
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest(raw, PYTHON_RULES)
+    assert refused.value.problems == [
+        "relationships are declared by a @discover function, and none is read"
+    ]
+
+
+# -- warnings: a read's rows come back with what its code said of them (amended 2026-11-22) -------
+
+
+async def test_a_read_cut_at_its_page_limit_carries_the_built_in_sources_warning(prepared):
+    from provisa.api_source.caller import AnswerCut, answer_cut_warning
+    from provisa.core.statement_warnings import ServerWarning, collecting
+
+    with collecting() as warnings:
+        read = await code_table.read(None, _customers(), {"region": "cut"})
+    assert [(r["id"], r["name"]) for r in read.rows] == [(1, "customers:cut")]
+    assert warnings == [
+        answer_cut_warning("customers", AnswerCut(max_pages=3, rows=1)),
+        ServerWarning("shop.stale", "the customers are an hour old", {"age_s": 3600}),
+    ]
+
+
+async def test_a_read_whose_code_says_nothing_carries_no_warning(prepared):
+    from provisa.core.statement_warnings import collecting
+
+    with collecting() as warnings:
+        await code_table.read(None, _customers(), {"region": "EU"})
+    assert warnings == []
+
+
+def test_a_warning_outside_a_call_is_an_error_by_name(ps):
+    with pytest.raises(RuntimeError, match="warning 'x.y': no call is being served"):
+        ps.warn("x.y", "nothing carries this")

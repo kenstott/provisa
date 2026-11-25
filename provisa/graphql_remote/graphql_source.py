@@ -33,6 +33,7 @@ from provisa_services import (
     Discovered,
     DiscoveredCommand,
     DiscoveredQuery,
+    DiscoveredRelationship,
     DiscoveredTable,
     ReadContext,
 )
@@ -130,10 +131,24 @@ def discover() -> Discovered:
         )
         for c in plan.commands.values()
     ]
+    # The relationships the mapping detects between the tables (REQ-313), each named as the
+    # graphql_remote registration names it.
+    relationships = [
+        DiscoveredRelationship(
+            r["id"],
+            source_table=r["source_table_id"],
+            source_column=r["source_column"],
+            target_table=r["target_table_id"],
+            target_column=r["target_column"],
+            cardinality=r["cardinality"],
+        )
+        for r in plan.relationships
+    ]
     return Discovered(
         tables=tables,
         queries=queries,
         commands=commands,
+        relationships=relationships,
         table_handler=serve_table,
         query_handler=serve_query,
         command_handler=serve_command,

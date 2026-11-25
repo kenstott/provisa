@@ -22,7 +22,9 @@ is iterated; any other function runs on a thread, so a slow one holds no other c
 rows go in batches of 1000 -- a generator's pulled a batch per thread hop -- a stream's each as
 it is yielded. A row is a dict, a dataclass, a NamedTuple, a Pydantic model or an object with
 annotated fields; a function may also return or yield Arrow (a Table, a RecordBatch or a
-RecordBatchReader), sent as it is, cast to the call's schema.
+RecordBatchReader), sent as it is, cast to the call's schema. The warnings a call took
+(provisa_services.warn, REQ-2267) are sent after its rows, each a ``warning`` message, before its
+end.
 
 Rows go as Arrow IPC batches against the schema the call gives (REQ-2098,
 provisa/codesource/arrow_rows.py): a field Arrow has no exact form for (a ``numeric``, a ``json``
@@ -267,6 +269,16 @@ def _for_field(value: typing.Any, field: typing.Any) -> typing.Any:  # a value; 
     return value
 
 
+def _taken_warnings() -> list[dict]:
+    """REQ-2267: the warnings the call this task serves took (provisa_services.warn), in order.
+    Code that never imported Provisa's services module took none: a warning is taken through it
+    alone."""
+    services = sys.modules.get("provisa_services")
+    if services is None:
+        return []
+    return services._taken()
+
+
 def _bind_call(call_id: int, traceparent: str | None) -> None:
     """REQ-2106: the call this task serves, for Provisa's services (provisa_services, on the path
     beside this host), and the request's trace for the code's own OpenTelemetry, when it has it.
@@ -472,6 +484,9 @@ class Host:
                     await self._run_keyed(call_id, fn, positional, keywords, rows_schema)
                 else:
                     await self._run(call_id, fn, kind, positional, keywords, rows_schema)
+            # REQ-2267: what the call's answer carries, each warning the code took, before its end.
+            for warning in _taken_warnings():
+                await self.send({"op": "warning", "id": call_id, **warning})
             # REQ-2106: the CPU the call took in this process (every thread of it).
             cpu_ms = round((time.process_time() - started) * 1000, 3)
             await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
