@@ -1969,6 +1969,8 @@ These are from `provisa_sdk`; each is an alias of its standard Python equivalent
 
 A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come from TypeScript. The optional `@provisa/sdk` package wraps each function with a branded type, so your type checker can hold it to its tag's rules before Provisa reads the code.
 
+Node reads every tag Python does except `@discover`, which is read from a Python code source only.
+
 #### Tags
 
 **`@table`**
