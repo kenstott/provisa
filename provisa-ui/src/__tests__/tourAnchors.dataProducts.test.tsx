@@ -89,6 +89,7 @@ const PET_HEALTH = [
     limitations: "",
     usage: "",
     customProperties: {},
+    owners: [],
     namedOwners: [],
   } as unknown as DataProduct,
 ];
