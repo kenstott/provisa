@@ -42,11 +42,14 @@ import { CloudopsFields } from "./CloudopsFields";
 import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
+import { CodeReferenceLink } from "./CodeReferenceLink";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
 import { sourceFormLanded } from "./loadManagement";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
-import { fixedFormKeys } from "./connector";
+import { connectorScript, fixedFormKeys } from "./connector";
+import { ScriptValidationPanel } from "./ScriptValidationPanel";
+import { useAuth } from "../../context/AuthContext";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -171,6 +174,9 @@ export function SourceFormFieldsExtended({
   // A kind whose tables land cannot be created without its Cache TTL (sourceKind).
   const landsWithTtl = useCacheTtlRequired(form.type);
   const { t } = useTranslation();
+  const { activeOrgId } = useAuth();
+  // REQ-2225: a saved Spark source's script, which its form validates.
+  const heldScript = heldBy ? connectorScript(heldBy, authFields) : null;
   const namingConventions = useNamingConventions();
   const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
@@ -652,6 +658,11 @@ export function SourceFormFieldsExtended({
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
+      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984: the chosen language's reference
+        <FieldGroup>
+          <CodeReferenceLink type={form.type} />
+        </FieldGroup>
+      )}
       {connector && (
         <ConnectorSetupFields
           connector={connector}
@@ -678,6 +689,13 @@ export function SourceFormFieldsExtended({
         )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
+      )}
+      {heldBy && editingSourceId && activeOrgId && heldScript !== null && (
+        <ScriptValidationPanel // REQ-2225
+          orgId={activeOrgId}
+          sourceId={editingSourceId}
+          script={heldScript}
+        />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}

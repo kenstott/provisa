@@ -59,6 +59,24 @@ function language(type: string): CodeLanguage {
 
 export const CODE_SOURCE_TYPES = new Set(LANGUAGES.keys());
 
+/** REQ-1984 (amended 2026-11-24): each code language's reference section in the docs (the page and
+ * the anchor docs/code-sources.md gives it), opened in the in-app Docs page at that section. */
+export const CODE_REFERENCE_PAGE = "code-sources/";
+const CODE_REFERENCE_SECTION: Record<string, string> = {
+  [NODE]: "node-reference",
+  [PYTHON]: "python-reference",
+  [GO]: "go-reference",
+  [RUST]: "rust-reference",
+  [SPARK]: "spark-reference",
+};
+
+/** The in-app Docs route for a code language's reference section. */
+export function codeReferenceHref(type: string): string {
+  const section = CODE_REFERENCE_SECTION[type];
+  if (!section) throw new Error(`${type} is not a code source type`);
+  return `/docs?page=${CODE_REFERENCE_PAGE}#${section}`;
+}
+
 /** The languages whose source names where its code is entered: Python's module, Go's package,
  * Rust's crate. A built-in host (Spark) is joined, never entered. */
 export const NAMED_ENTRY = new Set(
