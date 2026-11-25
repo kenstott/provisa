@@ -316,10 +316,13 @@ def duckdb_year_of_era(value: str) -> str:
     years have no era:
     -5 months is 0 years on both, so an interval's YEAR is its own (typeof is the bound type, one
     value for the statement). The correction reads YEAR(value), which parses back as exp.Year, so
-    SQL generated again is not corrected a second time."""
+    SQL generated again is not corrected a second time. A timestamptz's YEAR is ICU's year of its
+    era, 4713 of 4713 BC, whose text marks the era ``(BC)``: that year is negated. The era is read
+    from the text, which every type DuckDB writes YEAR of has (date_part('era') binds no interval)."""
     year = f"YEAR({value})"
     return (
-        f"CASE WHEN {year} <= 0 AND TYPEOF({value}) <> 'INTERVAL' THEN {year} - 1 ELSE {year} END"
+        f"CASE WHEN {year} <= 0 AND TYPEOF({value}) <> 'INTERVAL' THEN {year} - 1 "
+        f"WHEN CAST({value} AS VARCHAR) LIKE '% (BC)%' THEN -{year} ELSE {year} END"
     )
 
 

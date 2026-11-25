@@ -49,6 +49,7 @@ from provisa.transpiler.pg_literals import (
     postgres_literals,
 )
 from provisa.transpiler.pg_input_refusals import refuse_past_inputs
+from provisa.transpiler.polyfill.duckdb_literals import refuse_past_stamps
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
@@ -755,6 +756,7 @@ def _duckdb_form(pg_sql: str, generated: bool) -> str:
     on each run, its plan kept or not. A refusal raises and is not kept."""
     # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
     refuse_past_inputs(pg_sql)
+    refuse_past_stamps(pg_sql)  # REQ-2236: a timestamp past DuckDB's, as its grid row states
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
     written = transpile(
@@ -859,6 +861,26 @@ def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
             icu = read(written.this)
             if icu is not None:
                 written.replace(exp.Literal.string(icu))
+                continue
+            # REQ-2236: a text PostgreSQL reads as no zone raises its 22023, where DuckDB's
+            # TIMEZONE raises an error of its own.
+            unrecognized = pg_zones.zone_unrecognized(written.this)
+            if unrecognized is not None:
+                raise unrecognized
+    # DuckDB's TIMEZONE(zone, value), as the forms of timezone() write it, of a text PostgreSQL
+    # reads as no zone: its 22023 (REQ-2236). Its zone is the form's, not rewritten here.
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() != "timezone" or len(call.expressions) != 2:  # noqa: PLR2004
+            continue
+        written = call.expressions[0]
+        while isinstance(written, exp.Cast):
+            written = written.this
+        if isinstance(written, exp.Literal) and written.is_string:
+            from provisa.transpiler import pg_zones
+
+            unrecognized = pg_zones.zone_unrecognized(written.this)
+            if unrecognized is not None:
+                raise unrecognized
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167

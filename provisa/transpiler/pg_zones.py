@@ -25,6 +25,7 @@ import re
 import struct
 import zoneinfo
 
+from provisa.core.pg_error import PostgresError
 from provisa.pgwire.catalog_pg17_abbrevs import TIMEZONE_ABBREVS
 
 #: The pinned release's zone names, links included: its ``zones`` list.
@@ -71,6 +72,23 @@ def icu_fixed_zone(written: str) -> str | None:
     if written.lower() in _NAMED:
         return None
     return _icu(_POSIX_FIXED.fullmatch(written.strip()), "-")
+
+
+#: A POSIX zone's text as pg_tzset's tzparse needs it to start: an optional standard name, then
+#: an offset's digits (a daylight name and rules may follow). A text of no offset is no POSIX zone.
+_POSIX_ANY = re.compile(r"(?:<[A-Za-z0-9+-]+>|[A-Za-z]{3,})?[+-]?\d.*", re.DOTALL)
+
+
+def zone_unrecognized(written: str) -> PostgresError | None:
+    """PostgreSQL's error for a zone's text it reads as no zone (timezone(), AT TIME ZONE and
+    make_timestamptz: 22023 ``time zone "<text>" not recognized``): neither a zone's name nor an
+    abbreviation of the pinned release, in any case, nor the start of a POSIX zone. None for a
+    text it may read, which the engine's own zone reading is left (REQ-2236)."""
+    if written.lower() in _NAMED or written.strip().lower() in _NAMED:
+        return None
+    if _POSIX_ANY.fullmatch(written.strip()) is not None:
+        return None
+    return PostgresError("22023", f'time zone "{written}" not recognized')
 
 
 def icu_numeric_zone(written: str) -> str | None:

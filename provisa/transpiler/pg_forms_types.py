@@ -998,21 +998,65 @@ ARRAY_OPERATORS: tuple[Form, ...] = (
     Form("arrayoverlap", "a, b", "a && b"),
 )
 
+#: The last day whose midnight DuckDB's TIMESTAMP holds (to 294247-01-10 04:00:54.775806).
+_DUCKDB_LAST_STAMP_DAY = "DATE '294247-01-10'"
+#: What a date past DuckDB's timestamps answers against a timestamp, on its side of the call, by
+#: comparison: PostgreSQL's date2timestamp_opt_overflow holds a date past the timestamps it holds
+#: as greater than every finite one and less than infinity, and DuckDB holds none past its end.
+_PAST_ANSWER = {
+    "left": {
+        "eq": "FALSE", "ne": "TRUE", "lt": "{inf}", "le": "{inf}", "gt": "NOT {inf}",
+        "ge": "NOT {inf}", "cmp": "CASE WHEN {inf} THEN -1 ELSE 1 END",
+    },
+    "right": {
+        "eq": "FALSE", "ne": "TRUE", "lt": "NOT {inf}", "le": "NOT {inf}", "gt": "{inf}",
+        "ge": "{inf}", "cmp": "CASE WHEN {inf} THEN 1 ELSE -1 END",
+    },
+}  # fmt: skip
+
+
+def _past_stamps(left: str, right: str, read: str) -> dict[str, str]:
+    """DuckDB's forms of a date against a timestamp or timestamptz (REQ-2236, amended 2026-11-24:
+    a CASE returns PostgreSQL's answer at an edge): a date past the last day DuckDB's timestamps
+    hold answers as PostgreSQL's overflow does (``_PAST_ANSWER``), where DuckDB's cast of it
+    raises. The cast reads NULL in its place, so a literal's cast is not folded into that raise."""
+    side, date, other = ("left", "a", "b") if left == "date" else ("right", "b", "a")
+    sql_type = read.removeprefix("CAST({} AS ").removesuffix(")")
+    past = f"(isfinite(CAST({date} AS DATE)) AND CAST({date} AS DATE) > {_DUCKDB_LAST_STAMP_DAY})"
+    held = read.replace("{}", f"(CASE WHEN {past} THEN NULL ELSE {date} END)")
+    them = {date: held, other: read.replace("{}", other)}
+    a, b = them["a"], them["b"]
+    inf = f"({read.replace('{}', other)} = CAST('infinity' AS {sql_type}))"
+    near = {name: f"{a} {op} {b}" for name, op in _ORDER.items()} | {"cmp": _compare(a, b)}
+    kind = {"cmp": "INTEGER"}
+    return {
+        f"{left}_{name}_{right}": (
+            f"CASE WHEN {other} IS NULL THEN CAST(NULL AS {kind.get(name, 'BOOLEAN')}) "
+            f"WHEN {past} THEN {_PAST_ANSWER[side][name].format(inf=inf)} ELSE {near[name]} END"
+        )
+        for name in near
+    }
+
+
 #: Engine tweaks, each added after a replay failed. DuckDB's / of two bigints is a double, which
 #: loses the low bits of a bigint past 2^53.
-DUCKDB_TWEAKS = {
-    form.name: form.sql.replace(
-        "CAST(a AS BIGINT) / CAST(b AS BIGINT)", "CAST(a AS BIGINT) // CAST(b AS BIGINT)"
-    )
-    for form in OPERATORS
-    if form.name == "int8div"
-} | {
-    # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
-    # day count of DuckDB's marker would read as a finite day past the range.
-    form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
-    for form in _DATED_ARITHMETIC
-    if form.name in ("date_pli", "date_mii")
-}
+DUCKDB_TWEAKS = (
+    {
+        form.name: form.sql.replace(
+            "CAST(a AS BIGINT) / CAST(b AS BIGINT)", "CAST(a AS BIGINT) // CAST(b AS BIGINT)"
+        )
+        for form in OPERATORS
+        if form.name == "int8div"
+    }
+    | {
+        # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
+        # day count of DuckDB's marker would read as a finite day past the range.
+        form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
+        for form in _DATED_ARITHMETIC
+        if form.name in ("date_pli", "date_mii")
+    }
+    | {name: sql for row in _DATED if "date" in row[:2] for name, sql in _past_stamps(*row).items()}
+)
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.
 HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar"))) | {

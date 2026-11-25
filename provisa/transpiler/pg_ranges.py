@@ -30,6 +30,7 @@ statement writes as literals are answered here, on every dialect, by provisa.cor
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 
@@ -129,6 +130,8 @@ _OFFSET_MINUTES_ADDED = {
 #: The seconds from ``{b}`` to ``{a}``, two timestamps, as a double.
 #: A date or timestamp on DuckDB as PostgreSQL stores it: days or microseconds from 2000-01-01, an
 #: infinity its sentinel (DATEVAL_NOEND/NOBEGIN, DT_NOEND/NOBEGIN). ``{v}``: the value.
+#: A date's ISO text of a year past 9999, which the bound reader (datetime) does not read.
+_FAR_DATE = re.compile(r"\s*\d{5,}-\d{2}-\d{2}\s*", re.ASCII)
 _DUCKDB_STORED = {
     "date": (
         "(CASE WHEN {v} = CAST('infinity' AS DATE) THEN 2147483647 "
@@ -680,6 +683,11 @@ class _Writer:
         inner = _unwrapped(node)
         # A literal, or a literal cast to its type ('2020-01-10'::date): read as a bound's text is.
         written = _string_literal(inner.this if isinstance(inner, exp.Cast) else inner)
+        if written is not None and self.dialect == "duckdb" and rtype.element == "date":
+            if _FAR_DATE.fullmatch(written) is not None:
+                # REQ-2236: a date past 9999, which DuckDB's DATE holds to PostgreSQL's last day
+                # (one past it raised PostgreSQL's 22008 when the statement was read).
+                return self.bound_from_text(_string(written.strip()), rtype.element)
         if written is not None:
             return self._literal_bound(pg_range.read_element(rtype, written, self.bc), rtype)
         return self.typed(node, rtype.element)
