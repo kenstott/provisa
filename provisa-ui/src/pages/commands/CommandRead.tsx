@@ -245,10 +245,11 @@ export function FunctionRead({
           ...common.tail,
         ]}
       />
-      {!toTable && (
+      {/* A dataset's columns are on the Columns tab; a statement's come from its statement. */}
+      {!toTable && isStatement && (
         <ResponseColumns
           title={t("commandFormFields.outputColumnsTitle")}
-          columns={isStatement ? (fn.contract?.outputs ?? []) : (fn.outputColumns ?? [])}
+          columns={fn.contract?.outputs ?? []}
           testId="function-read-columns"
         />
       )}

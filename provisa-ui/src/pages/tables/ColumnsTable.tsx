@@ -29,7 +29,7 @@ import { ColumnGlossaryHover, type ColumnDefinitionLine } from "./ColumnGlossary
 import { ColumnTabs } from "./ColumnTabs";
 import { DescriptionField } from "./DescriptionField";
 import { ColumnBadge } from "./ColumnBadge";
-import { METADATA_TABS, useColumnTab } from "./columnTopics";
+import { METADATA_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 
 export function ColumnsTable({
   columns,
@@ -43,15 +43,26 @@ export function ColumnsTable({
   describeColumn,
   setError,
   empty,
+  tabs = METADATA_TABS,
+  selectable = true,
+  tabValue,
+  onTabChange,
 }: {
   columns: ColumnForm[];
+  /** The topics shown; a command's output columns have no Type tab's key and scope. */
+  tabs?: ColumnTab[];
+  /** Whether each row has the checkbox that includes it: a registering table's columns do. */
+  selectable?: boolean;
+  /** The tab in view, when the page holds it (its deep link); else the editor holds it. */
+  tabValue?: ColumnTab;
+  onTabChange?: (tab: ColumnTab) => void;
   /** Absent in read-only mode: nothing is edited. */
   updateCol?: (
     i: number,
     key: keyof ColumnForm,
     value: string | boolean | string[] | MaskEntry[],
   ) => void;
-  roles: Role[];
+  roles: Pick<Role, "id">[];
   irTypes: string[];
   sourceType: string;
   /** REQ-2239 (amended 2026-11-11): the same table, read-only -- a column of a data product's
@@ -75,6 +86,9 @@ export function ColumnsTable({
         tableId={tableId}
         testId={testId}
         empty={empty}
+        tabs={tabs}
+        tabValue={tabValue}
+        onTabChange={onTabChange}
       />
     );
   }
@@ -88,6 +102,10 @@ export function ColumnsTable({
       sourceType={sourceType}
       describeColumn={describeColumn}
       setError={setError}
+      tabs={tabs}
+      selectable={selectable}
+      tabValue={tabValue}
+      onTabChange={onTabChange}
     />
   );
 }
@@ -129,19 +147,27 @@ function ReadOnlyColumns({
   tableId,
   testId,
   empty,
+  tabs,
+  tabValue,
+  onTabChange,
 }: {
   columns: ColumnForm[];
   sourceType: string;
   tableId?: number;
   testId?: string;
   empty?: string;
+  tabs: ColumnTab[];
+  tabValue?: ColumnTab;
+  onTabChange?: (tab: ColumnTab) => void;
 }) {
   const { t } = useTranslation();
-  const [tab, setTab] = useColumnTab(METADATA_TABS);
+  const [heldTab, setHeldTab] = useColumnTab(tabs);
+  const tab = tabValue ?? heldTab;
+  const setTab = onTabChange ?? setHeldTab;
   const definitionOf = useDefinitionOf(sourceType);
   return (
     <>
-      <ColumnTabs value={tab} onChange={setTab} shown={METADATA_TABS} nested />
+      <ColumnTabs value={tab} onChange={setTab} shown={tabs} nested />
       {columns.length === 0 && empty !== undefined ? (
         <Text size="sm" c="dimmed" data-testid={testId && `${testId}-empty`}>
           {empty}
@@ -236,6 +262,10 @@ function EditableColumns({
   sourceType,
   describeColumn,
   setError,
+  tabs,
+  selectable,
+  tabValue,
+  onTabChange,
 }: {
   columns: ColumnForm[];
   updateCol: (
@@ -243,15 +273,21 @@ function EditableColumns({
     key: keyof ColumnForm,
     value: string | boolean | string[] | MaskEntry[],
   ) => void;
-  roles: Role[];
+  roles: Pick<Role, "id">[];
   irTypes: string[];
   sourceType: string;
   describeColumn?: (column: string) => Promise<string>;
   setError?: (e: string | null) => void;
+  tabs: ColumnTab[];
+  selectable: boolean;
+  tabValue?: ColumnTab;
+  onTabChange?: (tab: ColumnTab) => void;
 }) {
   const { t } = useTranslation();
   // A table not registered yet has no test data: its columns' own attributes only.
-  const [tab, setTab] = useColumnTab(METADATA_TABS);
+  const [heldTab, setHeldTab] = useColumnTab(tabs);
+  const tab = tabValue ?? heldTab;
+  const setTab = onTabChange ?? setHeldTab;
   // The column whose description the AI is writing.
   const [describing, setDescribing] = useState<string | null>(null);
   const generateFor = (i: number, column: string) =>
@@ -282,12 +318,12 @@ function EditableColumns({
   const definitionOf = useDefinitionOf(sourceType);
   return (
     <>
-      <ColumnTabs value={tab} onChange={setTab} shown={METADATA_TABS} errors={errors} />
+      <ColumnTabs value={tab} onChange={setTab} shown={tabs} errors={errors} />
       <Table.ScrollContainer minWidth={640}>
         <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
           <Table.Thead>
             <Table.Tr>
-              <Table.Th></Table.Th>
+              {selectable && <Table.Th></Table.Th>}
               <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
               {tab === "naming" && (
                 <>
@@ -317,16 +353,18 @@ function EditableColumns({
             {columns.map((col, i) => (
               <Fragment key={col.name}>
                 <Table.Tr>
-                  <Table.Td>
-                    <Checkbox
-                      checked={col.selected}
-                      onChange={(e) => updateCol(i, "selected", e.currentTarget.checked)}
-                      aria-label={t("registerTableForm.includeColumnAriaLabel", {
-                        name: col.name,
-                      })}
-                      data-testid={`register-table-col-selected-${col.name}`}
-                    />
-                  </Table.Td>
+                  {selectable && (
+                    <Table.Td>
+                      <Checkbox
+                        checked={col.selected}
+                        onChange={(e) => updateCol(i, "selected", e.currentTarget.checked)}
+                        aria-label={t("registerTableForm.includeColumnAriaLabel", {
+                          name: col.name,
+                        })}
+                        data-testid={`register-table-col-selected-${col.name}`}
+                      />
+                    </Table.Td>
+                  )}
                   <Table.Td ff="monospace" fz="sm">
                     <ColumnGlossaryHover columnName={col.name} definition={definitionOf(col)}>
                       {/* A raw source column name can run to 60+ characters: it is cut with an
@@ -473,7 +511,7 @@ function EditableColumns({
                 </Table.Tr>
                 {tab === "access" && masksOpen.has(col.name) && (
                   <Table.Tr>
-                    <Table.Td></Table.Td>
+                    {selectable && <Table.Td></Table.Td>}
                     <Table.Td colSpan={4}>
                       <MaskListEditor
                         value={col.masks}

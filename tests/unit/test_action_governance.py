@@ -118,6 +118,16 @@ class TestContract:
     def test_output_columns_win(self):
         assert contract_columns(FN)[0]["name"] == "id"
 
+    def test_naming_of_an_output_column_is_kept(self):  # REQ-1159 (amended 2026-11-25)
+        fn = {
+            "name": "f",
+            "output_columns": [
+                {"name": "ssn", "type": "varchar", "alias": "tax_id", "description": "Tax id"}
+            ],
+        }
+        col = contract_columns(fn)[0]
+        assert (col["alias"], col["description"]) == ("tax_id", "Tax id")
+
     def test_return_schema_array_of_objects_is_a_contract(self):
         fn = {
             "name": "f",
@@ -138,7 +148,16 @@ class TestContract:
     def test_json_string_column_is_read(self):
         assert contract_columns(
             {"name": "f", "output_columns": '[{"name":"x","type":"varchar"}]'}
-        ) == [{"name": "x", "type": "varchar", "visible_to": None, "masks": []}]
+        ) == [
+            {
+                "name": "x",
+                "type": "varchar",
+                "visible_to": None,
+                "masks": [],
+                "alias": None,
+                "description": None,
+            }
+        ]
 
     def test_scalar_return_has_no_contract(self):
         assert contract_columns({"name": "f", "returns": "String"}) is None

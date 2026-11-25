@@ -71,6 +71,7 @@ import {
   CommandBindingsRead,
   CommandSectionTabs,
 } from "./commands/CommandBindings";
+import { CommandColumnsFields, CommandColumnsRead } from "./commands/CommandColumns";
 import type { CommandSection } from "./commands/bindingLanguages";
 import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -596,6 +597,12 @@ export function CommandsPage() {
               bindings={form.languageBindings}
               onChange={(languageBindings) => setForm({ ...form, languageBindings })}
             />
+          ) : fnSection === "columns" ? (
+            <CommandColumnsFields
+              columns={form.outputColumns}
+              onChange={(outputColumns) => setForm({ ...form, outputColumns })}
+              roleOptions={formFieldsProps.roleOptions}
+            />
           ) : (
             <CommandFormFields {...formFieldsProps} />
           )}
@@ -607,6 +614,8 @@ export function CommandsPage() {
             <CommandSectionTabs value={fnSection} onChange={setFnSection} />
             {fnSection === "bindings" ? (
               <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
+            ) : fnSection === "columns" ? (
+              <CommandColumnsRead columns={fn.outputColumns ?? []} />
             ) : (
               <FunctionRead
                 fn={fn}

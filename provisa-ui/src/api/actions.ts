@@ -21,6 +21,9 @@ export interface DatasetColumn {
   // REQ-1679: per-column governance of the response, stored on the column as posted (wire keys).
   visible_to?: string[] | null;
   masks?: MaskEntry[]; // REQ-2059: the ordered mask list
+  // REQ-1159 (amended 2026-11-25): the SQL alias consumers query the column by, and its description.
+  alias?: string | null;
+  description?: string | null;
 }
 
 export interface ActionArg {

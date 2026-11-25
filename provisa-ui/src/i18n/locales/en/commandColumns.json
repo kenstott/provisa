@@ -1,0 +1,6 @@
+{
+  "commandColumns": {
+    "none": "This command declares no output columns.",
+    "hint": "A column with no role listed is read by the roles the command is assigned to."
+  }
+}

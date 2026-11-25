@@ -2735,6 +2735,10 @@ class DatasetColumn(BaseModel):  # REQ-1159
     # None = no grant list declared = visible (the contract is the action's public shape).
     visible_to: list[str] | None = None
     masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
+    # REQ-1159 (amended 2026-11-25): an output column carries a table column's naming too, the SQL
+    # alias consumers query it by and its description.
+    alias: str | None = None
+    description: str | None = None
 
 
 class FunctionArgument(BaseModel):

@@ -174,7 +174,7 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
 });
 
 describe("CommandFormFields — response governance (REQ-1679)", () => {
-  it("offers visibility and mask controls on each output column", () => {
+  it("leaves each output column's governance to the Columns tab", () => {
     render(
       <Harness
         initial={{
@@ -185,9 +185,8 @@ describe("CommandFormFields — response governance (REQ-1679)", () => {
         }}
       />,
     );
-    expect(screen.getByTestId("output-column-governance-0-visible-to")).toBeInTheDocument();
-    // REQ-2059: the column's mask list, empty until a first entry is added.
-    expect(screen.getByTestId("output-column-governance-0-masks-start")).toBeInTheDocument();
+    expect(screen.getByTestId("output-column-0")).toBeInTheDocument();
+    expect(screen.queryByTestId("output-column-governance-0-visible-to")).not.toBeInTheDocument();
   });
 
   it("offers the same controls on each inline return field of a webhook", () => {
@@ -453,7 +452,7 @@ describe("CommandFormFields — a Snowflake source's operations", () => {
 });
 
 describe("CommandFormFields — lists laid out as the shared form lays out a list", () => {
-  it("sets each output column apart as one entry, its row and its governance together", () => {
+  it("sets each output column apart as one entry", () => {
     render(
       <Harness
         initial={{
@@ -470,7 +469,6 @@ describe("CommandFormFields — lists laid out as the shared form lays out a lis
     for (const i of [0, 1]) {
       const entry = screen.getByTestId(`output-column-${i}`);
       expect(entry).toHaveClass("form-entry");
-      expect(entry).toContainElement(screen.getByTestId(`output-column-governance-${i}`));
     }
     expect(screen.getByText("Output Dataset Columns")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ Add Output Column" })).toBeInTheDocument();
