@@ -135,6 +135,7 @@ export function ClassificationKindsTab({
         />
       </FormField>
       <FormFooter
+        panel
         onSave={() => save(k)}
         onCancel={closeForm}
         saving={saving}

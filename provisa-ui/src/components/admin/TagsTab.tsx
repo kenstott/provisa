@@ -504,6 +504,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         </FormField>
       )}
       <FormFooter
+        panel
         onSave={handleSubmit}
         onCancel={closeForm}
         saveProps={{
