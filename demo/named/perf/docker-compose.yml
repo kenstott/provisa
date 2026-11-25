@@ -150,7 +150,21 @@ services:
       retries: 30
       start_period: 60s
   clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    # ClickHouse 26 or later (REQ-2194): config.yaml's bench-clickhouse source is DIRECT, which reads
+    # results as Arrow, and the driver refuses an older server at connect. Same pinned digest as
+    # docker-compose.test.yml's clickhouse-26.
+    # Upgrading a host whose ./data/clickhouse was written by 24.3: ClickHouse keeps a one-year
+    # compatibility window (two LTS releases), and 24.3 -> 26.8 is outside it, so the directory is
+    # not reused in place. Recreate it; the other engines' data and the shared ./data/.seeded marker
+    # stay:
+    #   docker compose stop clickhouse && docker compose rm -f clickhouse
+    #   rm -rf ./data/clickhouse
+    #   docker compose up -d --wait clickhouse
+    #   docker compose run --rm --no-deps --entrypoint python seeder generate_clickhouse.py \
+    #     --orders "${PROVISA_BENCH_ORDERS:-20000000}"
+    # The image is a seed input (bench/seed_inputs.py), so the seed hash changes and the
+    # three-device bench needs a new seed image from bench/seed_lifecycle.sh before its next run.
+    image: clickhouse/clickhouse-server@sha256:e49863ded96abdc0545bcd0320c1b99c979c18f27915eb6519a5546760d24cb9  # clickhouse/clickhouse-server:26.8.46.6
     restart: unless-stopped
     labels:
       <<: *demo-labels
