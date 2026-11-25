@@ -207,6 +207,10 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
         "provisa-sdk/python/dist/provisa_sdk-*.whl",
         "provisa-sdk/python/dist/provisa_sdk-*.tar.gz",
     ),
+    ("release-packages.yml", "build-provisa-pyspark"): (
+        "provisa-pyspark/dist/provisa_pyspark-*.whl",
+        "provisa-pyspark/dist/provisa_pyspark-*.tar.gz",
+    ),
     ("release-packages.yml", "build-sdk-typescript"): (
         "provisa-sdk/typescript/dist/provisa-sdk-*.tgz",
     ),
