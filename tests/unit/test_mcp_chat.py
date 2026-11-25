@@ -245,6 +245,90 @@ class TestChatLoop:
         assert tr["is_error"] is True
         assert events[-1]["type"] == "done"
 
+    async def test_read_doc_unknown_address_is_error_not_raised(self, monkeypatch):  # REQ-2114
+        """When read_doc raises UnknownDocAddress the error reaches the model as is_error=True
+        and the turn continues — it never ends silently with _NO_ANSWER because the error blocked
+        the tool_result from being delivered."""
+        from provisa.api.mcp import docs_tools
+
+        resp1 = SimpleNamespace(
+            content=[
+                _block(
+                    type="tool_use",
+                    name="read_doc",
+                    input={"address": "nowhere#missing", "language": "en"},
+                    id="rd1",
+                )
+            ],
+            stop_reason="tool_use",
+        )
+        resp2 = SimpleNamespace(
+            content=[_block(type="text", text="That page does not exist in the docs.")],
+            stop_reason="end_turn",
+        )
+        _install_fake_anthropic(monkeypatch, [resp1, resp2])
+        monkeypatch.setattr(
+            docs_tools,
+            "read_doc",
+            lambda address, language, **_kw: (_ for _ in ()).throw(
+                docs_tools.UnknownDocAddress(f"the docs have no page {address!r}")
+            ),
+        )
+
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "read nowhere#missing"}]
+            )
+        ]
+        tr = next(e for e in events if e["type"] == "tool_result")
+        assert tr["is_error"] is True
+        # The model answered after receiving the error — the turn is not ended by _NO_ANSWER.
+        text_events = [e for e in events if e["type"] == "text"]
+        assert text_events and "does not exist" in text_events[0]["text"]
+        assert events[-1]["type"] == "done"
+
+    async def test_docs_unavailable_is_error_not_raised(self, monkeypatch):  # REQ-2114
+        """When search_docs raises DocsUnavailable the error reaches the model as is_error=True
+        and the turn continues."""
+        from provisa.api.mcp import docs_tools
+
+        resp1 = SimpleNamespace(
+            content=[
+                _block(
+                    type="tool_use",
+                    name="search_docs",
+                    input={"query": "code resolver", "language": "en"},
+                    id="sd1",
+                )
+            ],
+            stop_reason="tool_use",
+        )
+        resp2 = SimpleNamespace(
+            content=[_block(type="text", text="The docs are not available in this install.")],
+            stop_reason="end_turn",
+        )
+        _install_fake_anthropic(monkeypatch, [resp1, resp2])
+        monkeypatch.setattr(
+            docs_tools,
+            "search_docs",
+            lambda query, language, **_kw: (_ for _ in ()).throw(
+                docs_tools.DocsUnavailable("the built docs site is not in this install")
+            ),
+        )
+
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "find code resolver docs"}]
+            )
+        ]
+        tr = next(e for e in events if e["type"] == "tool_result")
+        assert tr["is_error"] is True
+        text_events = [e for e in events if e["type"] == "text"]
+        assert text_events and "not available" in text_events[0]["text"]
+        assert events[-1]["type"] == "done"
+
     async def test_admin_query_dispatches_as_the_user(self, monkeypatch):  # REQ-2114
         resp1 = SimpleNamespace(
             content=[
