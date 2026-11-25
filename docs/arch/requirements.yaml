@@ -73330,7 +73330,7 @@
     \ a restart applying the config again.] A restart is a new launch: it reissues the engine catalogs from\
     \ the model store, since an engine does not keep them, and never applies the configuration file to the model again. The file seeds the model once, at first start (REQ-1919). (Amended 2026-10-13, POSTGRESQL\
     \ ONLY -- REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL\
-    \ is given, an external server otherwise. The boot lock is PostgreSQL's advisory lock everywhere."
+    \ is given, an external server otherwise. The boot lock is PostgreSQL's advisory lock everywhere. (Amended 2026-11-25 by the maintainer. The repository root has a flake.nix: it re-exports the NixOS module (nixosModules.provisa) so a host flake imports it as inputs.provisa.nixosModules.provisa; it offers packages.<system>.default and apps.<system>.default wrapping the released binaries the module already runs, so nix run github:kenstott/provisa starts Provisa; and a devShells.default with the toolchain for working on Provisa. The NixOS workflow tests nix run and the module import.)"
   use_case: 'Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required checking
     whether the app''s own auxiliary protocol servers could survive running as multiple processes at all. That was verified empirically per-protocol rather than assumed, since getting this wrong would silently serve
