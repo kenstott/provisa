@@ -99,6 +99,7 @@ class Engine:
     sort: str
     raises: str  # condition, sqlstate and message's text, answer
     fold: str  # list, the running value's name, its first value, body
+    folds: str  # fold's, the running value any type: its first value's
     bigint: str
     wide: str  # a text or a number, as the engine's widest integer
     quotient: str  # two of those, the second positive: the first's whole number of the second
@@ -204,6 +205,7 @@ DUCKDB = Engine(
     sort="list_sort({})",
     raises=f"CASE WHEN {{0}} THEN error('{MARK} {{1}}') ELSE {{2}} END",
     fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), LAMBDA {1}, _item : {3})",
+    folds="list_reduce({0}, LAMBDA {1}, _item : {3}, {2})",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS HUGEINT)",
     quotient="({} // {})",
@@ -241,6 +243,7 @@ TRINO = Engine(
     sort="array_sort({})",
     raises=f"CASE WHEN {{0}} THEN fail('{MARK} {{1}}') ELSE {{2}} END",
     fold="reduce({0}, CAST({2} AS BIGINT), ({1}, _item) -> {3}, _s -> _s)",
+    folds="reduce({0}, {2}, ({1}, _item) -> {3}, _s -> _s)",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS DECIMAL(38, 0))",
     quotient="(({0} - {0} % {1}) / {1})",
@@ -287,6 +290,7 @@ CLICKHOUSE = Engine(
     # the answer once: an `if` of two copies doubles a form at each check, and the analyzer's time.
     raises="tupleElement((throwIf(ifNull({0}, 0), '" + MARK + " {1}'), {2}), 2)",
     fold="arrayFold(({1}, _item) -> toInt64({3}), {0}, toInt64({2}))",
+    folds="arrayFold(({1}, _item) -> {3}, {0}, {2})",
     bigint="toInt64({})",
     wide="toInt256OrZero(toString({}))",
     quotient="intDiv({}, {})",
@@ -692,99 +696,164 @@ def _inside(e: Engine, poly: str, x: str, y: str) -> str:
     return _let(e, "_k", crossings, f"({e.size.format(on_it)} > 0 OR {e.sum_of.format('_k')} <> 0)")
 
 
-def _splits(e: Engine, poly: str) -> str:
-    """Where along the edge ``_d`` (_p[1], _p[2] to _q[1], _q[2]) the boundary of ``poly`` meets it,
-    as fractions of the edge: 0, 1, each crossing, and each vertex on it, in order."""
-    u, v = ("_s[1]", "_s[2]"), ("_s[3]", "_s[4]")
-    sx, sy = f"({v[0]} - {u[0]})", f"({v[1]} - {u[1]})"
-    ox, oy = f"({u[0]} - _p[1])", f"({u[1]} - _p[2])"
-    denominator = f"(_d[1] * {sy} - _d[2] * {sx})"
-    along = f"({ox} * {sy} - {oy} * {sx}) / {denominator}"
-    across = f"({ox} * _d[2] - {oy} * _d[1]) / {denominator}"
-    crossing = (
-        f"CASE WHEN _d[3] = 0 OR {denominator} = 0 THEN -1.0 "
-        f"WHEN {along} >= 0 AND {along} <= 1 AND {across} >= 0 AND {across} <= 1 THEN {along} "
-        "ELSE -1.0 END"
+# lseg_inside_poly's recursion as a work list: a frame is a call, [a.x, a.y, b.x, b.y, start]; a
+# call's own check fails as the frame [0, 0, 0, 0, -1], which is kept to the end.
+_FAILED = "-1e0"
+
+
+def _touched(a_s0: str, a_s1: str) -> str:
+    """touched_lseg_inside_poly of the segment ``_f`` from one end, a, and the edge ``_s``, of
+    the flags ``_g`` (``a_s0``, ``a_s1``: whether a is either end of the edge): which end of the edge
+    the call it makes runs to (1: s.p[0], 2: s.p[1]), 0 where it makes none."""
+    return (
+        f"CASE WHEN {a_s0} = 1 THEN CASE WHEN _g[4] = 1 THEN 2 ELSE 0 END "
+        f"WHEN {a_s1} = 1 THEN CASE WHEN _g[3] = 1 THEN 1 ELSE 0 END "
+        "WHEN _g[3] = 1 THEN 1 WHEN _g[4] = 1 THEN 2 ELSE 0 END"
     )
-    point = (u[0], u[1])
-    start, end = ("_p[1]", "_p[2]"), ("_q[1]", "_q[2]")
-    on_edge = _fp_eq(
-        e, f"({_dist(e, point, start)} + {_dist(e, point, end)})", _dist(e, start, end)
-    )
-    at_vertex = (
-        f"CASE WHEN _d[3] = 0 THEN -1.0 "
-        f"WHEN {on_edge} THEN ({ox} * _d[1] + {oy} * _d[2]) / _d[3] ELSE -1.0 END"
-    )
+
+
+def _edge_end(which: str, axis: int) -> str:
+    """The end of the edge ``_s`` a touched call runs to (1: s.p[0], 2: s.p[1])."""
+    return f"CASE WHEN {which} = 1 THEN _s[{axis}] ELSE _s[{axis + 2}] END"
+
+
+def _scanned(e: Engine, poly: str, f: str) -> str:
+    """lseg_inside_poly's loop of the frame ``f`` over the edges of ``poly`` from its start: for
+    each edge i, [i, t inside the edge, the first call's flag and segment, the second's]."""
+    n = _half(e, e.size.format(poly))
     edge = _list(
         e,
-        _vertex(poly, _before(e, poly, "_v"))[0],
-        _vertex(poly, _before(e, poly, "_v"))[1],
-        _vertex(poly, "_v")[0],
-        _vertex(poly, "_v")[1],
+        *_vertex(poly, _before(e, poly, "_i")),
+        *_vertex(poly, "_i"),
     )
-    met = e.map.format(
-        e.upto.format(_half(e, e.size.format(poly))),
-        "_v",
-        _let(e, "_s", edge, _list(e, crossing, at_vertex)),
+    yes = lambda c: f"CASE WHEN {c} THEN {_ONE} ELSE {_NIL} END"  # noqa: E731
+    a, b, s0, s1 = _xy(f), _xy(f, 3), _xy("_s"), _xy("_s", 3)
+    # lseg_contain_point of each of the four, of the six distances _d: a to each end of the edge,
+    # b to each, the edge's, the segment's. A sum of two doubles is the same in either order.
+    distances = _list(
+        e, _dist(e, a, s0), _dist(e, a, s1), _dist(e, b, s0), _dist(e, b, s1),
+        _dist(e, s0, s1), _dist(e, a, b),
+    )  # fmt: skip
+    on = lambda one, other, whole: _fp_eq(e, f"(_d[{one}] + _d[{other}])", f"_d[{whole}]")  # noqa: E731
+    # _g: a on the edge, b on it, its ends on the segment, a each end, b each end; the X-cross.
+    met = e.concat.format(
+        _list(
+            e,
+            yes(on(1, 2, 5)),
+            yes(on(3, 4, 5)),
+            yes(on(1, 3, 6)),
+            yes(on(2, 4, 6)),
+            yes(_same_point(e, a, s0)),
+            yes(_same_point(e, a, s1)),
+            yes(_same_point(e, b, s0)),
+            yes(_same_point(e, b, s1)),
+        ),
+        _cut(e, f, "_s"),
     )
-    within = e.filter.format(e.flatten.format(met), "_o", "_o > 0 AND _o < 1")
-    ends = _list(e, e.double.format("0"), e.double.format("1"))
-    return e.sort.format(e.concat.format(ends, within))
+    a_on, b_on, crossed = "_g[1] = 1", "_g[2] = 1", "_g[9] = 1"
+    from_a, from_b = f"({_touched('_g[5]', '_g[6]')})", f"({_touched('_g[7]', '_g[8]')})"
+    which = f"CASE WHEN {a_on} THEN {from_a} ELSE {from_b} END"
+    first = f"CASE WHEN {a_on} OR {b_on} THEN {which} > 0 ELSE {crossed} END"
+    first_to = (
+        f"CASE WHEN {a_on} OR {b_on} THEN {_edge_end(which, 1)} ELSE _g[10] END",
+        f"CASE WHEN {a_on} OR {b_on} THEN {_edge_end(which, 2)} ELSE _g[11] END",
+    )
+    first_from = (
+        f"CASE WHEN {a_on} THEN {f}[3] ELSE {f}[1] END",
+        f"CASE WHEN {a_on} THEN {f}[4] ELSE {f}[2] END",
+    )
+    second = f"NOT {a_on} AND NOT {b_on} AND {crossed}"
+    item = _list(
+        e,
+        e.double.format("_i"),
+        yes(f"{a_on} AND {b_on}"),
+        yes(first),
+        *first_from,
+        *first_to,
+        yes(second),
+        f"{f}[3]",
+        f"{f}[4]",
+        "_g[10]",
+        "_g[11]",
+    )
+    starts = e.filter.format(e.upto.format(n), "_i", f"_i >= {f}[5]")
+    scan = _let(e, "_d", distances, _let(e, "_g", met, item))
+    return e.map.format(starts, "_i", _let(e, "_s", edge, scan))
 
 
-@_hoisted("edge_inside", (_ARRAY, _ARRAY, "BIGINT"), "BOOLEAN")
-def _edge_inside(e: Engine, outer: str, inner: str, at: str) -> str:
-    """The edge of ``inner`` ending at vertex ``at``: each piece's midpoint is inside ``outer``."""
-    pieces = e.upto.format(f"{e.size.format('_u')} - 1")
-    mid = _let(
-        e,
-        "_f",
-        "(_u[_w + 1] + _u[_w + 2]) / 2.0",
-        _inside(e, outer, "(_p[1] + _d[1] * _f)", "(_p[2] + _d[2] * _f)"),
+@_hoisted("seg_inside", (_ARRAY, _ARRAY), _NUMBERS)
+def _seg_inside(e: Engine, poly: str, f: str) -> str:
+    """The calls lseg_inside_poly of the frame ``f`` makes, as frames; the frame failed where its own
+    check fails. A call returns true at the first edge holding its whole segment, so it makes only
+    the calls of the edges before; where it made no X-cross, the segment's middle is inside."""
+    n = e.double.format(_half(e, e.size.format(poly)))
+    stop = e.min_of.format(
+        e.concat.format(
+            _list(e, n), e.map.format(e.filter.format("_k", "_y", "_y[2] = 1"), "_y", "_y[1]")
+        )
     )
-    outside = e.filter.format(pieces, "_w", f"NOT {mid}")
-    test = _let(e, "_u", _splits(e, outer), f"{e.size.format(outside)} = 0")
-    delta = _list(
-        e,
-        "_q[1] - _p[1]",
-        "_q[2] - _p[2]",
-        "(_q[1] - _p[1]) * (_q[1] - _p[1]) + (_q[2] - _p[2]) * (_q[2] - _p[2])",
+    before = e.filter.format("_k", "_y", "_y[1] < _z")
+    crossed = f"{e.size.format(e.filter.format(before, '_y', '_y[8] = 1'))} > 0"
+    calls = e.concat.format(
+        e.map.format(
+            e.filter.format(before, "_y", "_y[3] = 1"),
+            "_y",
+            _list(e, "_y[4]", "_y[5]", "_y[6]", "_y[7]", "_y[1] + 1"),
+        ),
+        e.map.format(
+            e.filter.format(before, "_y", "_y[8] = 1"),
+            "_y",
+            _list(e, "_y[9]", "_y[10]", "_y[11]", "_y[12]", "_y[1] + 1"),
+        ),
     )
-    return _let(
-        e,
-        "_p",
-        _list(e, *_vertex(inner, _before(e, inner, at))),
-        _let(e, "_q", _list(e, *_vertex(inner, at)), _let(e, "_d", delta, test)),
+    mid = (f"({f}[1] + {f}[3])", f"({f}[2] + {f}[4])")
+    checked = f"_z >= {n} AND NOT ({crossed})"
+    # float8_pl of the ends' coordinates: an overflow of two finite ones raises, as it does there.
+    overflow = " OR ".join(
+        f"(NOT {e.finite.format(s)} AND {e.finite.format(f'{f}[{i}]')} "
+        f"AND {e.finite.format(f'{f}[{i + 2}]')})"
+        for s, i in zip(mid, (1, 2))
+    )
+    inside = e.raises.format(
+        f"{checked} AND ({overflow})",
+        "22003: value out of range: overflow",
+        _inside(e, poly, f"{mid[0]} / 2.0", f"{mid[1]} / 2.0"),
+    )
+    failed = _list(e, _list(e, _NIL, _NIL, _NIL, _NIL, _FAILED))
+    answer = f"CASE WHEN NOT ({checked}) OR {inside} THEN {calls} ELSE {failed} END"
+    return (
+        f"CASE WHEN {f}[5] < 0 THEN {_list(e, f)} ELSE "
+        + _let(e, "_k", _scanned(e, poly, f), _let(e, "_z", stop, answer))
+        + " END"
     )
 
 
 @_hoisted("contains", (_ARRAY, _ARRAY), "BOOLEAN")
 def _contains(e: Engine, outer: str, inner: str) -> str:
-    """poly_contain_poly: the bounding boxes, then each edge of ``inner``."""
+    """poly_contain_poly: the bounding boxes, then lseg_inside_poly of each edge of ``inner``, its
+    recursion a list of the calls to make, each round the calls the last made. A call starts past
+    the edge of the call that made it, so after one round to an edge of ``outer`` and one more,
+    only the failed are left."""
     edges = e.upto.format(_half(e, e.size.format(inner)))
-    out = e.filter.format(edges, "_t", f"NOT {_edge_inside(e, outer, inner, '_t')}")
+    first = e.map.format(
+        edges,
+        "_t",
+        _list(e, *_vertex(inner, _before(e, inner, "_t")), *_vertex(inner, "_t"), _NIL),
+    )
+    rounds = e.upto.format(f"{_half(e, e.size.format(outer))} + 1")
+    calls = e.map.format("_w", "_f", _seg_inside(e, outer, "_f"))
+    # One level: ClickHouse's arrayFlatten flattens to the doubles.
+    step = (
+        f"arrayReduce('groupArrayArray', {calls})" if e is CLICKHOUSE else e.flatten.format(calls)
+    )
+    left = e.folds.format(rounds, "_w", first, step)
     boxes = _let(
         e,
         "_h",
         _bounds(e, outer),
         _let(e, "_l", _bounds(e, inner), _box_contains(e, "_h", "_l")),
     )
-    return f"({boxes} AND {e.size.format(out)} = 0)"
-
-
-def _contains_finite(e: Engine, outer: str, inner: str, f: str) -> str:
-    """poly_contain_poly, refused by name where the boxes pass and a coordinate is infinite: an
-    edge with an infinite end holds every point (lseg_contain_point compares Infinity with
-    itself), which lseg_inside_poly's recursion meets and :func:`_contains`' splits do not."""
-    infinite = e.filter.format(e.concat.format(outer, inner), "_x", f"abs(_x) = {e.infinity}")
-    boxes = _let(
-        e, "_h", _bounds(e, outer), _let(e, "_l", _bounds(e, inner), _box_contains(e, "_h", "_l"))
-    )
-    return e.raises.format(
-        f"{e.size.format(infinite)} > 0 AND {boxes}",
-        f"0A000: {f} {REFUSED}",
-        _contains(e, outer, inner),
-    )
+    return f"({boxes} AND {e.size.format(left)} = 0)"
 
 
 _ONE, _NIL, _MINUS = "1e0", "0e0", "-1e0"
@@ -2161,10 +2230,8 @@ def _rows() -> list[Row]:
     )
     _circles(add)
     _lists(add)
-    add("poly_contain", "a:polygon, b:polygon", 1, lambda e, f: _contains_finite(e, "_a", "_b", f))
-    add(
-        "poly_contained", "a:polygon, b:polygon", 1, lambda e, f: _contains_finite(e, "_b", "_a", f)
-    )
+    add("poly_contain", "a:polygon, b:polygon", 1, lambda e, _: _contains(e, "_a", "_b"))
+    add("poly_contained", "a:polygon, b:polygon", 1, lambda e, _: _contains(e, "_b", "_a"))
     _lines(add)
     _distances(add)
     _closest(add)

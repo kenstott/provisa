@@ -12,15 +12,16 @@
 STATED BOUND COMES BEFORE A REFUSAL).
 
 area, center, diagonal, height, width, radius, isclosed, isopen, ishorizontal, isvertical,
-isparallel, isperp, lseg_length, path_length, pt_contained_circle and pt_contained_poly are each the
-form pg_forms_geometric writes of its geo_ops.c row (pg_forms_geometric.MEASURES) on each of the
+isparallel, isperp, length, lseg_length, path_length, pt_contained_circle and pt_contained_poly are
+each the form pg_forms_geometric writes of its geo_ops.c row (pg_forms_geometric.MEASURES) on each of the
 three: the same floating-point steps in the same order, a sum added in turn, so the answer is
 PostgreSQL's, NaN and infinities included. An answer that is not finite of arguments all finite, an
 overflow float8's arithmetic raises 22003 on, is refused by name with 0A000 naming the row: no edge
 value reaches it, so the row states no raise it is held to. An overload of a name is told by the
 type the statement says of its argument; one it does not say is the old table's (pg_forms), which
-answers it on DuckDB and Trino and refuses it by name on ClickHouse. Every other dialect keeps what
-it had."""
+answers it on DuckDB and Trino and refuses it by name on ClickHouse. length is a shape's only of an
+argument the statement says is an lseg or a path: every other length keeps its own type's row.
+Every other dialect keeps what it had."""
 
 # Requirements: REQ-2236, REQ-2167
 
@@ -45,6 +46,7 @@ FAMILY = "geometric measures"
 _CALLS: dict[tuple[str, int], tuple[tuple[tuple[str, ...] | None, str], ...]] = {
     ("area", 1): ((("box",), "box_area"), (("circle",), "circle_area"), (("path",), "path_area")),
     ("center", 1): ((("circle",), "circle_center"),),  # center(box) is the old table's
+    ("length", 1): ((("lseg",), "lseg_length"), (("path",), "path_length")),
     ("circle_center", 1): ((None, "circle_center"),),
     ("diagonal", 1): ((None, "box_diagonal"),),
     ("height", 1): ((None, "box_height"),),
@@ -76,6 +78,10 @@ _CALLS: dict[tuple[str, int], tuple[tuple[tuple[str, ...] | None, str], ...]] = 
         )
     },
 }
+#: The names other types share (length of a bytea, a text, a bit string): a call is read as a
+#: measure's only where the statement says a shape's type of its argument, before any rule's
+#: pattern, so every other call keeps its own row.
+_SHARED = frozenset({("length", 1)})
 #: A literal's text in a form: a parameter's name is not read inside one.
 _QUOTED = re.compile(r"'(?:[^']|'')*'")
 
@@ -102,6 +108,10 @@ _STATED = (
 _OVERLOADED = (
     " An argument whose type the statement does not say is refused by name: PostgreSQL resolves "
     "no one overload of {}() for it."
+)
+_SHARED_STATED = (
+    " A call of {}() is this row's only where the statement says the shape's type of its argument; "
+    "every other keeps its own type's row."
 )
 _ROWS = {row.name: row for row in pg_forms_geometric.MEASURES}
 
@@ -155,20 +165,35 @@ def _features() -> tuple[Feature, ...]:
     for (name, arity), overloads in _CALLS.items():
         rows = sorted({r for _, r in overloads})
         stated = " ".join(_STATED.format(r, r) for r in rows)
-        if any(types is not None for types, _ in overloads):
+        if (name, arity) in _SHARED:
+            stated += _SHARED_STATED.format(name)
+        elif any(types is not None for types, _ in overloads):
             stated += _OVERLOADED.format(name)
-        forms = {
-            **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-            **{column: Rewrite(_measured(name, arity, column)) for column in _ENGINES},
-        }
         holes = ", ".join("$" + h for h in "ab"[:arity])
+        if (name, arity) in _SHARED:
+            mentions = (
+                r"\b(" + "|".join(sorted({t for ts, _ in overloads for t in ts or ()})) + r")\b"
+            )
+            rule = Rule(
+                None,
+                {
+                    column: Rewrite(_measured(name, arity, column), mentions=mentions, first=True)
+                    for column in _ENGINES
+                },
+            )
+        else:
+            forms = {
+                **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                **{column: Rewrite(_measured(name, arity, column)) for column in _ENGINES},
+            }
+            rule = Rule(f"{name}({holes})", forms)
         features.append(
             Feature(
                 f"{name}({', '.join(['shape'] * arity)})" if arity else name,
                 FAMILY,
                 f"PostgreSQL's {', '.join(rows)}.",
                 read=Side(
-                    rules=(Rule(f"{name}({holes})", forms),),
+                    rules=(rule,),
                     limitations={column: (Limitation(stated),) for column in _ENGINES},
                 ),
             )

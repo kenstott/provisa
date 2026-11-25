@@ -212,9 +212,8 @@ def per_engine() -> dict[tuple[str, str], dict[str, str]]:
         ("btoidvectorcmp", "a, b"): {name: _oidvector_cmp(e) for name, e in ENGINES},
         ("bttidcmp", "a, b"): {name: _tid_cmp(e) for name, e in ENGINES},
         ("btcharcmp", "a, b"): {name: _char_cmp(e) for name, e in ENGINES},
-        # make_bound_box's box, as poly_box answers it. ClickHouse's is the polyfill grid's row
-        # (provisa.transpiler.polyfill.clickhouse).
+        # make_bound_box's box, as poly_box answers it, on each engine.
         ("spg_poly_quad_compress", "value"): {
-            e.name: geometric.bounding_box(e, "value") for e in (geometric.DUCKDB, geometric.TRINO)
+            e.name: geometric.bounding_box(e, "value") for e in geometric.ENGINES
         },
     }

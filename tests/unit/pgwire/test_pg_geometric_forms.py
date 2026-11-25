@@ -214,14 +214,13 @@ def test_polygon_of_a_count_past_its_bounds_raises_as_postgresql_does(sql: str, 
         duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
 
 
-def test_a_polygon_holding_an_infinity_in_another_is_refused_by_name():
-    """An edge with an infinite end holds every point (lseg_contain_point), which the containment
-    form's splits do not reproduce: it is refused once the boxes pass."""
+def test_a_polygon_holding_an_infinity_contains_as_postgresql_17_answers():
+    """An edge with an infinite end holds every point (lseg_contain_point compares Infinity with
+    itself): lseg_inside_poly's recursion meets it, and PostgreSQL 17 answers t."""
     sql = (
         "SELECT poly_contain('((0,0),(Infinity,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon)"
     )
-    with pytest.raises(duckdb.Error, match="poly_contain does not read this value"):
-        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
+    assert duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] is True
 
 
 @pytest.mark.parametrize(

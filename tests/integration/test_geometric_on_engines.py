@@ -34,6 +34,7 @@ from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.geometric_replay import (
     BY_FUNCTION,
     column_statement,
+    outcome,
     problems,
     same,
 )
@@ -142,3 +143,37 @@ def test_geometric_columns_on_clickhouse():
         failures_of_every_case(sorted(BY_FUNCTION), lambda f: _on_columns(f, "clickhouse", rows))
         == {}
     )
+
+
+#: PostgreSQL 17's answers of a shape holding NaN or an infinity, for the forms whose literal
+#: statements Trino's measure reaches only in conformance-functions: poly_contain and
+#: poly_contained from the recording, and these (geo_ops.c's make_bound_box, lseg_length and
+#: path_length).
+_NOT_FINITE = {
+    "SELECT spg_poly_quad_compress('((0,0),(NaN,1),(1,1))'::polygon) AS v": "(NaN,1),(0,0)",
+    "SELECT spg_poly_quad_compress('((0,0),(Infinity,1),(1,1))'::polygon) AS v": "(Infinity,1),(0,0)",
+    "SELECT length('[(0,0),(NaN,1)]'::lseg) AS v": "NaN",
+    "SELECT length('[(-Infinity,0),(1,1)]'::lseg) AS v": "Infinity",
+    "SELECT length('((0,0),(NaN,1),(1,1))'::path) AS v": "NaN",
+    "SELECT length('[(0,0),(inf,1)]'::path) AS v": "Infinity",
+}
+
+
+@pytest.mark.requires_trino
+def test_a_shape_not_finite_answers_postgresql_on_trino(trino_conn):
+    def run(sql: str) -> Any:
+        cursor = trino_conn.cursor()
+        cursor.execute(sql)
+        return cursor.fetchall()[0][0]
+
+    contained = [
+        sql
+        for sql in (*BY_FUNCTION["poly_contain"], *BY_FUNCTION["poly_contained"])
+        if "NaN" in sql or "Infinity" in sql
+    ]
+    wrong = [s for s in (outcome(sql, "trino", run) for sql in contained) if s != "ok"]
+    for sql, want in _NOT_FINITE.items():
+        got = run(transpile(sql, "trino", generated=False))
+        if not same(got, want):
+            wrong.append(f"{sql}: {got!r}, PostgreSQL {want}")
+    assert len(contained) == 12 and not wrong, wrong

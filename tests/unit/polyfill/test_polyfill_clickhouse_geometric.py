@@ -212,9 +212,9 @@ def test_a_name_of_one_overload_reads_a_value_of_no_type_as_it():
     assert "postgresql-error 0A000: box_diagonal" in transpile(sql, "clickhouse", generated=False)
 
 
-def test_the_33_measures_are_rows_and_every_other_dialect_keeps_what_it_had():
+def test_the_35_measures_are_rows_and_every_other_dialect_keeps_what_it_had():
     calls = [overload for overloads in geometric._CALLS.values() for overload in overloads]
-    assert len(calls) == 33
+    assert len(calls) == 35
     call = sqlglot.parse_one(_call("area", ("'(3,4),(0,0)'", "box")), read="postgres")
     node = call.selects[0].this.expression  # past pg_catalog
     for dialect in ("clickhouse", "duckdb", "trino"):
@@ -246,3 +246,88 @@ def test_polygon_of_a_count_past_its_bounds_raises_postgresqls_error(runtime, co
         _one(runtime, sql)
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == sqlstate
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # make_bound_box's box as poly_box answers it: float8out's text of each extreme.
+        (_call("spg_poly_quad_compress", ("'((0,0),(NaN,1),(1,1))'", "polygon")), "(NaN,1),(0,0)"),
+        (_call("spg_poly_quad_compress", ("'((0,0),(1e3,1),(1.50,-2))'", "polygon")), "(1000,1),(0,-2)"),
+        (_call("spg_poly_quad_compress", ("'((0,0),(Infinity,1),(1,1))'", "polygon")), "(Infinity,1),(0,0)"),
+        (_call("spg_poly_quad_compress", ("NULL", "polygon")), None),
+    ],
+)  # fmt: skip
+def test_spg_poly_quad_compress_is_postgresqls_bounding_box_on_clickhouse(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+_LSEG_NAN, _PATH_NAN = "'[(0,0),(NaN,1)]'", "'((0,0),(NaN,1),(1,1))'"
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # length of a shape is told by its type: lseg_length, path_length (geo_ops.c's rows).
+        (_call("length", ("'[(0,0),(3,4)]'", "lseg")), 5.0),
+        (_call("length", (_LSEG_NAN, "lseg")), _NAN),
+        (_call("length", ("'((1,1),(4,1),(4,5))'", "path")), 12.0),
+        (_call("length", (_PATH_NAN, "path")), _NAN),
+        (_call("length", ("NULL", "lseg")), None),
+    ],
+)  # fmt: skip
+@pytest.mark.parametrize("engine", ["clickhouse", "duckdb"])
+def test_length_of_a_shape_answers_postgresql(runtime, sql, answer, engine):
+    if engine == "duckdb":
+        got = duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
+    else:
+        got = _one(runtime, sql)
+    assert got == answer or (isinstance(answer, float) and math.isnan(answer) and math.isnan(got))
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        ("SELECT pg_catalog.\"length\"('\\xdeadbeef'::bytea) AS v", 4),
+        ("SELECT pg_catalog.\"length\"('abc'::text) AS v", 3),
+    ],
+)
+def test_length_of_what_is_no_shape_keeps_its_row_on_clickhouse(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize("dialect", ["clickhouse", "duckdb", "trino"])
+def test_length_of_a_shape_is_the_measures_form_on_each_engine(dialect):
+    call = sqlglot.parse_one(_call("length", (_LSEG_NAN, "lseg")), read="postgres")
+    applied = GRID.read_first(call.selects[0].this.expression, dialect, ())
+    assert applied is not None and applied.form.function.__name__ == f"measured_length_1_{dialect}"
+
+
+_INFINITE = "((0,0),(Infinity,1),(1,1))"
+_TRIANGLE = "((0,0),(1,0),(1,1))"
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # PostgreSQL 17's answers: an edge with an infinite end holds every point
+        # (lseg_contain_point compares Infinity with itself), which lseg_inside_poly meets.
+        (_call("poly_contain", (f"'{_INFINITE}'", "polygon"), (f"'{_TRIANGLE}'", "polygon")), True),
+        (_call("poly_contain", (f"'{_TRIANGLE}'", "polygon"), (f"'{_INFINITE}'", "polygon")), False),
+        (_call("poly_contain", (f"'{_INFINITE}'", "polygon"), (f"'{_INFINITE}'", "polygon")), True),
+        (_call("poly_contained", (f"'{_TRIANGLE}'", "polygon"), (f"'{_INFINITE}'", "polygon")), True),
+        (_call("poly_contained", (f"'{_INFINITE}'", "polygon"), (f"'{_TRIANGLE}'", "polygon")), False),
+        (_call("poly_contain", ("'((0,0),(NaN,1),(1,1))'", "polygon"), (f"'{_TRIANGLE}'", "polygon")), False),
+        # Finite: an edge crossing a notch, touching a vertex, lying along an edge.
+        (_call("poly_contain", ("'((0,4),(6,4),(3,2),(6,0),(0,0))'", "polygon"), ("'((1,2.5),(5,2.5),(5,1.5),(1,1.5))'", "polygon")), False),
+        (_call("poly_contain", ("'((0,0),(4,0),(4,4),(0,4))'", "polygon"), ("'((2,0),(4,2),(2,4),(0,2))'", "polygon")), True),
+        (_call("poly_contain", ("'((0,0),(4,0),(4,4),(2,2),(0,4))'", "polygon"), ("'((1,1),(3,1),(3,3),(1,3))'", "polygon")), False),
+    ],
+)  # fmt: skip
+@pytest.mark.parametrize("engine", ["clickhouse", "duckdb"])
+def test_a_polygon_contains_a_polygon_as_lseg_inside_poly_does(runtime, sql, answer, engine):
+    if engine == "duckdb":
+        got = duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
+    else:
+        got = _one(runtime, sql)
+    assert got is answer
