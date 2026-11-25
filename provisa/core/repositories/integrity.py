@@ -646,6 +646,19 @@ async def _is_retired(conn: "Connection", ref: ObjectRef) -> bool:
     kind = KINDS.get(ref.kind)
     if kind is None:
         return False
+    if ref.kind == "materialized_view" and str(ref.id).startswith("view-"):
+        # A view's storage row (``view-<table name>``, _attributes) is a part of its table and
+        # keeps no retirement of its own: it is retired with that table.
+        tables = metadata.tables["registered_tables"]
+        retired = (
+            await conn.execute_core(
+                select(tables.c.retired).where(
+                    tables.c.table_name == str(ref.id).removeprefix("view-"),
+                    tables.c.view_sql.is_not(None),
+                )
+            )
+        ).scalar_one_or_none()
+        return bool(retired)
     table = metadata.tables[kind.table]
     if "retired" not in table.c:
         return False
