@@ -90817,7 +90817,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     results show; it is not reported as matching no kind. (Amended 2026-11-15, A MASKED COLUMN SHOWS ITS
     TOO-FEW STATE:) Maintainer 2026-11-15. A masked or pii column shows the ''too few values to classify''
     state and the count of non-null values its sample held, as any column does: the state says how many
-    values there were, never what they were.'
+    values there were, never what they were. (Amended 2026-11-25 by the maintainer. The kinds are not only the shipped ones. An org admin adds a custom kind: its name, its test as a regular expression with an optional named check from the shipped set (Luhn, mod 97, mod 11 and the like), the share of sampled values that must pass, whether it is sensitive, the mask it offers and the glossary term a confirmed column takes; and edits or deletes it. A shipped kind keeps its coded test, but the org may change its share that must pass, its sensitive flag and its mask, and may copy it into a custom kind to change the test. Custom kinds and changed settings are tested and suggested exactly like shipped kinds, and are part of the model, so they move with the model across environments.)'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
