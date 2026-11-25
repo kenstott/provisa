@@ -83,6 +83,7 @@ node_modules/
 !/.claude/settings.local.json
 /.codex/
 /jdbc-driver/target/
+/provisa-spark-jar/target/
 /.wrangler/cache/pages.json
 
 # DMG build artifacts
