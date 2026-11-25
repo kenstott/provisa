@@ -51,11 +51,11 @@ assumed):
 
 URN rebind (REQ-1385/REQ-1389): the import job's only identity is the asset full name inside
 its domain — the physical FQN — and the job itself has no rename operation. The rebind
-therefore happens BEFORE the job: the exporter captures each table's asset UUID at publish
-time (``catalog_bindings``), and when the stored binding shows the name changed it renames
+therefore happens BEFORE the job: the exporter captures each table's and column's asset UUID at
+publish time (``catalog_bindings``), and when the stored binding shows the name changed it renames
 the live asset first — ``PATCH /rest/2.0/assets/{id}`` with the new name — so the name-keyed
 import that follows matches the SAME asset, enrichment intact, instead of creating a
-duplicate. The canonical business identity is still published on every table as the
+duplicate. The canonical business identity is still published on every table and column as the
 ``Provisa URI`` attribute.
 
 REQ-1387 — business glossary, and the containment argument that keeps REPLACE away from a
@@ -348,6 +348,9 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
         for column in table.columns:
             column_attributes: dict[str, Any] = {
                 DESCRIPTION_ATTRIBUTE: [{"value": column.description}],
+                # REQ-1385, REQ-194: the binding key, so a column's UUID is captured as a
+                # table's is.
+                URI_ATTRIBUTE: [{"value": column.semantic_uri}],
             }
             column_governance = _governance_value(snapshot, column.ref.fqn())
             if column_governance is not None:
@@ -494,7 +497,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
 
     @staticmethod
     def _row_uri(row: dict[str, Any]) -> str | None:
-        """The Provisa URN a row carries, when it carries one (tables do)."""
+        """The Provisa URN a row carries, when it carries one (tables and columns do)."""
         values = row.get("attributes", {}).get(URI_ATTRIBUTE)
         return values[0]["value"] if values else None
 

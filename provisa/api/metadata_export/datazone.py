@@ -323,6 +323,13 @@ class DataZoneExport(MetadataExport):  # REQ-2118
             assets[table.semantic_uri] = asset["id"]
             # REQ-1389: the next publish revises this asset by its id, not by a search.
             result.bindings[table.semantic_uri] = (asset["id"], table.semantic_uri)
+            # REQ-194: each column is an entry of the asset's ProvisaTableForm columns, named
+            # within it.
+            for column in table.columns:
+                result.bindings[column.semantic_uri] = (
+                    f"{asset['id']}#{TABLE_FORM}.columns.{column.name}",
+                    f"{table.semantic_uri}#{TABLE_FORM}.columns.{column.name}",
+                )
             client.create_listing_change_set(
                 **self._scope(),
                 entityIdentifier=asset["id"],

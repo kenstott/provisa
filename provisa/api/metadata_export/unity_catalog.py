@@ -35,7 +35,8 @@ table the engine reads in place, its external table (``DatabricksFederationRunti
   Databricks. Sharing needs the member in Delta, so a member that is not is reported and left out.
 
 It runs only when Databricks is the configured engine; on any other engine a publish is a no-op.
-Each schema's and view's full name is recorded in the target's bindings (REQ-1389).
+Each schema's, view's and view column's full name is recorded in the target's bindings
+(REQ-1389).
 """
 
 # Requirements: REQ-2117, REQ-2238
@@ -407,6 +408,10 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
             views[name] = view
             members[name] = member
             result.bindings[table.semantic_uri] = (".".join(view), ".".join(view))
+            # REQ-1389, REQ-194: each of its columns under the view's full name and its own.
+            for column in table.columns:
+                address = ".".join((*view, column.name))
+                result.bindings[column.semantic_uri] = (address, address)
         for (stale,) in self._rows(
             cur,
             f"SELECT table_name FROM {q(catalog)}.information_schema.views "
