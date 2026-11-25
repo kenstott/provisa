@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pyarrow as pa
 import pytest
 
 # -- a DB-API cursor and a pool that record what the stream did ----------------------------------
@@ -273,20 +274,21 @@ def test_snowflake_streams_its_cursor_and_aborts_one_closed_early():
 
 
 def test_bigquery_reads_its_job_a_page_at_a_time_and_cancels_one_closed_early():
+    from google.cloud.bigquery import SchemaField
+
     from provisa.executor.drivers.bigquery import BigQueryDriver
 
     pulled: list[int] = []
-
-    def rows():
-        for i in range(1, 4):
-            pulled.append(i)
-            yield SimpleNamespace(values=lambda i=i: (i,))
+    fields = [SchemaField("id", "INTEGER")]
 
     class _Result:
-        schema = [SimpleNamespace(name="id")]
+        schema = fields
 
-        def __iter__(self):
-            return rows()
+        def to_arrow_iterable(self):
+            # REQ-2194: the job's row iterator yields a record batch a page at a time.
+            for i in range(1, 4):
+                pulled.append(i)
+                yield pa.RecordBatch.from_arrays([pa.array([i])], names=["id"])
 
     cancelled: list[int] = []
     job = SimpleNamespace(result=lambda: _Result(), cancel=lambda: cancelled.append(1))
@@ -302,7 +304,7 @@ def test_bigquery_reads_its_job_a_page_at_a_time_and_cancels_one_closed_early():
 
     columns, first = asyncio.run(run())
     assert columns == ["id"] and first == [(1,), (2,)]
-    assert pulled == [1, 2]  # the third row was never pulled
+    assert pulled == [1, 2]  # the third page was never pulled
     assert cancelled == [1]
 
 
