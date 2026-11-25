@@ -192,7 +192,9 @@ def _lsn_text(number: str) -> str:
     high = f"CAST((_n - {low}) / 4294967296 AS BIGINT)"
     return _bound(
         f"ROUND({number})",
-        f"CASE WHEN _n < 0 OR _n >= 18446744073709551616 "
+        # The bound is the greatest pg_lsn, which every dialect reads as an integer: 2^64 is past
+        # ClickHouse's UInt64, read as a Float64, and the position compared as one.
+        f"CASE WHEN _n < 0 OR _n > 18446744073709551615 "
         f"THEN {_fails('22023', 'pg_lsn out of range', 'TEXT')} "
         f"ELSE UPPER(HEX({high})) || '/' || UPPER(HEX(CAST({low} AS BIGINT))) END",
         "_n",
@@ -308,10 +310,13 @@ def _in_range(value: str, sql_type: str, pg_name: str, bits: int) -> str:
     """``value`` as the integer type, or PostgreSQL's refusal of one it does not fit: a dialect's
     cast may wrap or saturate where it does not refuse."""
     lowest, highest = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    # The narrowed value is NULL past the range, so no branch can raise: a dialect that folds
+    # every branch of a CASE of constants (embedded ClickHouse) would raise its own overflow first.
+    clamped = f"CASE WHEN {value} >= {lowest} AND {value} <= {highest} THEN {value} END"
     return (
         f"CASE WHEN {value} < {lowest} OR {value} > {highest} "
         f"THEN {_fails('22003', f'{pg_name} out of range', sql_type)} "
-        f"ELSE CAST({value} AS {sql_type}) END"
+        f"ELSE CAST({clamped} AS {sql_type}) END"
     )
 
 
@@ -344,6 +349,11 @@ def _integer(stem: str, sql_type: str, pg_name: str, wide: str, bits: int) -> li
     wider = max(bits, 32)
     promoted = f"CAST(a AS {'INTEGER' if bits < wider else sql_type})"
 
+    # The divisor of the ELSE branch: NULL where an earlier branch answers (0 and -1), so it cannot
+    # raise where a dialect folds every branch of a CASE of constants (embedded ClickHouse).
+    # Cast again, so the division is still read as one of integers.
+    divisor = f"CAST(NULLIF(NULLIF({own_b}, 0), -1) AS {sql_type})"
+
     def checked(value: str) -> str:
         return _in_range(value, sql_type, pg_name, bits)
 
@@ -356,14 +366,14 @@ def _integer(stem: str, sql_type: str, pg_name: str, wide: str, bits: int) -> li
             "a, b",
             f"CASE {_strict(sql_type)}WHEN {own_b} = 0 THEN {zero} "
             f"WHEN {own_b} = -1 THEN {checked(f'(-{a})')} "
-            f"ELSE CAST({own_a} / {own_b} AS {sql_type}) END",
+            f"ELSE CAST({own_a} / {divisor} AS {sql_type}) END",
         ),
         Form(
             f"{stem}mod",
             "a, b",
             f"CASE {_strict(sql_type)}WHEN {own_b} = 0 THEN {zero} "
             f"WHEN {own_b} = -1 THEN {own_a} - {own_a} "
-            f"ELSE CAST({own_a} % {own_b} AS {sql_type}) END",
+            f"ELSE CAST({own_a} % {divisor} AS {sql_type}) END",
         ),
         Form(f"{stem}um", "a", checked(f"(-{a})")),
         Form(f"{stem}up", "a", own_a),
@@ -664,15 +674,25 @@ def _inet_bitwise(name: str, op: str) -> Form:
     )
 
 
-def _inet_moved(name: str, params: str, inet: str, number: str) -> Form:
+def _inet_moved(name: str, params: str, inet: str, sign: str) -> Form:
+    """inetpl and its kin: the address moved by ``sign`` b. An IPv6 address is refused by name,
+    except the zero address moved below zero, which is PostgreSQL's underflow (inet.c's
+    internal_inetpl): its 128 bits need not be held to know it."""
+    out_of_range = _fails("22003", "result is out of range", "TEXT")
     moved = _bound(
-        number,
-        "CASE WHEN _m < 0 OR _m > 4294967295 THEN "
-        + _fails("22003", "result is out of range", "TEXT")
-        + f" ELSE {_inet_text('CAST(_m AS BIGINT)', f'_len{inet}')} END",
+        f"_ip{inet} {sign} {_WIDE_B}",
+        f"CASE WHEN _m < 0 OR _m > 4294967295 THEN {out_of_range}"
+        f" ELSE {_inet_text('CAST(_m AS BIGINT)', f'_len{inet}')} END",
         "_m",
     )
-    return Form(name, params, _v4(name, "TEXT", moved, inet))
+    host = _before(f"CAST({inet} AS TEXT)", "/")
+    zero_v6 = f"STRPOS({host}, ':') > 0 AND TRIM(BOTH ':0' FROM {host}) = ''"
+    return Form(
+        name,
+        params,
+        f"CASE WHEN {zero_v6} AND 0 {sign} {_WIDE_B} < 0 THEN {out_of_range} "
+        f"ELSE {_v4(name, 'TEXT', moved, inet)} END",
+    )
 
 
 def _set_masklen(name: str, cleared: bool) -> Form:
@@ -787,9 +807,9 @@ _NETWORK_KEYS: tuple[Form, ...] = (
     _inet_bitwise("inetand", "&"),
     _inet_bitwise("inetor", "|"),
     Form("inetnot", "a", _v4("inetnot", "TEXT", _inet_text("4294967295 - _ipa", "_lena"), "a")),
-    _inet_moved("inetpl", "a, b", "a", f"_ipa + {_WIDE_B}"),
-    _inet_moved("inetmi_int8", "a, b", "a", f"_ipa - {_WIDE_B}"),
-    _inet_moved("int8pl_inet", "b, a", "a", f"_ipa + {_WIDE_B}"),
+    _inet_moved("inetpl", "a, b", "a", "+"),
+    _inet_moved("inetmi_int8", "a, b", "a", "-"),
+    _inet_moved("int8pl_inet", "b, a", "a", "+"),
     Form("inetmi", "a, b", _v4("inetmi", "BIGINT", "_ipa - _ipb", "a", "b")),
 )
 
@@ -1038,12 +1058,16 @@ def _past_stamps(left: str, right: str, read: str) -> dict[str, str]:
     }
 
 
+#: int8div's divisor, as _integer writes it: the DuckDB tweak below replaces the division by it.
+_INT8_DIVISOR = "CAST(NULLIF(NULLIF(CAST(b AS BIGINT), 0), -1) AS BIGINT)"
+assert f"CAST(a AS BIGINT) / {_INT8_DIVISOR}" in FORMS_BY_NAME["int8div"].sql
+
 #: Engine tweaks, each added after a replay failed. DuckDB's / of two bigints is a double, which
 #: loses the low bits of a bigint past 2^53.
 DUCKDB_TWEAKS = (
     {
         form.name: form.sql.replace(
-            "CAST(a AS BIGINT) / CAST(b AS BIGINT)", "CAST(a AS BIGINT) // CAST(b AS BIGINT)"
+            f"CAST(a AS BIGINT) / {_INT8_DIVISOR}", f"CAST(a AS BIGINT) // {_INT8_DIVISOR}"
         )
         for form in OPERATORS
         if form.name == "int8div"
