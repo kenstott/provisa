@@ -48,7 +48,7 @@ def _refusal(refused: SparkClusterRefused) -> ApiError:
     return ApiError(refused.status, refused.code, str(refused), None, **refused.params)
 
 
-async def _in_use(org_id: str) -> dict:
+async def in_use(org_id: str) -> dict:
     """What a source naming no cluster runs on now. The local test cluster is shown, never
     started: viewing the tab does not download Spark."""
     if await spark_cluster.read(_admin_pool(), org_id) is None:
@@ -82,7 +82,7 @@ async def get_cluster(request: Request, org_id: str) -> dict:
         "cluster": None
         if kept is None
         else {"address": kept.address, "credential": kept.credential},
-        "in_use": await _in_use(org_id),
+        "in_use": await in_use(org_id),
     }
 
 
@@ -98,7 +98,7 @@ async def put_cluster(request: Request, org_id: str, body: ClusterBody) -> dict:
         raise _refusal(refused) from None
     return {
         "cluster": {"address": kept.address, "credential": kept.credential},
-        "in_use": await _in_use(org_id),
+        "in_use": await in_use(org_id),
     }
 
 
@@ -107,7 +107,7 @@ async def delete_cluster(request: Request, org_id: str) -> dict:
     """Remove the default. A secret it named is the administrator's and is not touched."""
     await _org_guard(request, org_id)
     removed = await spark_cluster.forget(_admin_pool(), org_id)
-    return {"removed": removed, "in_use": await _in_use(org_id)}
+    return {"removed": removed, "in_use": await in_use(org_id)}
 
 
 async def _address_to_test(org_id: str, body: ClusterBody | None) -> str:

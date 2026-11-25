@@ -51,7 +51,7 @@
     "firstPage": "最初のページ",
     "lastPage": "最後のページ",
     "listedElsewhere": "他のドメインで一覧表示",
-    "listedElsewhereHint": "他のドメインが一覧表示している名前です。読むにはそのドメインにアクセスを依頼してください。",
+    "listedElsewhereHint": "他のドメインが掲載している名前です。そのドメインにテーブルを求めるには、プロダクトを提案してください。",
     "pageOf": "ページ {{page}} / {{totalPages}}",
     "loadFailed": "登録済みテーブルを読み込めませんでした: {{message}}",
     "editViewDefinitionTitle": "ビュー定義を編集",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "取り下げ中",
     "withdrawnTitle": "本番外：戻すまで、どのロールも読み取れません",
-    "sourceWithdrawnTitle": "ソース {{source}} が取り下げ中です：ソースを戻すまで、どのロールも読み取れません"
+    "sourceWithdrawnTitle": "ソース {{source}} が取り下げ中です：ソースを戻すまで、どのロールも読み取れません",
+    "suggestProduct": "プロダクトを提案"
   }
 }

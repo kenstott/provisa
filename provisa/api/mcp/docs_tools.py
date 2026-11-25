@@ -29,12 +29,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-# The UI directory ui_server serves (REQ-1127): the wheel's packaged provisa/_ui, else the repo's
-# static/ the image and the dev tree use. Resource location, not error-hiding: the chosen
-# directory is used unconditionally, and a missing site is refused by name.
-_PACKAGED_UI = Path(__file__).resolve().parents[2] / "_ui"
-_REPO_STATIC = Path(__file__).resolve().parents[3] / "static"
-DOCS_SITE = (_PACKAGED_UI if _PACKAGED_UI.is_dir() else _REPO_STATIC) / "docs-site"
+from provisa.docs_site_path import DOCS_SITE  # noqa: F401 — re-exported; callers may import it here
 
 DEFAULT_LOCALE = "en"
 HOME = "index"

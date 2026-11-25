@@ -12,13 +12,10 @@
 // access key pair (`username` / `password`): its region, workgroup, result location, catalog and
 // the role it assumes, saved as its federation hints (provisa/executor/drivers/athena.py).
 
-export const ATHENA_HINTS = [
-  "region",
-  "workgroup",
-  "s3_staging_dir",
-  "catalog",
-  "role_arn",
-] as const;
+import { hintKeys } from "./descriptor";
+
+// REQ-2114: the hints are the descriptor's (provisa/api/admin/source_types.py).
+export const ATHENA_HINTS: readonly string[] = hintKeys("athena");
 
 /** The hints a form saves: each one given, trimmed. */
 export function athenaHints(fields: Record<string, string>): Record<string, string> {

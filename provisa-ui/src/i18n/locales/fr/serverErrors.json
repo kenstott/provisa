@@ -993,6 +993,15 @@
       "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Attribuez-lui d'abord un tel rôle.",
       "steward_role_not_eligible": "Le rôle {{role}} n'a pas la capacité domain_steward et ne peut donc pas être nommé intendant du domaine {{domain}}. Donnez d'abord cette capacité au rôle.",
       "stewards_change_refused": "Seul un administrateur de l'organisation ou un intendant actuel du domaine {{domain}} peut modifier ses intendants."
+    },
+    "product_suggestion": {
+      "database_not_connected": "Base de données non connectée",
+      "sign_in_required": "Connectez-vous pour suggérer un produit.",
+      "tables_required": "Une suggestion nomme au moins une table.",
+      "table_not_listed": "La table {{tables}} ne vous est pas listée ; un produit se suggère à partir d'une table que le catalogue liste.",
+      "reason_required": "Une suggestion indique sa raison.",
+      "no_recipient": "Le domaine {{domain}} n'a ni propriétaire de produit de données ni data steward pour recevoir une suggestion.",
+      "not_a_recipient": "Les suggestions du domaine {{domain}} sont lues par ses data stewards et propriétaires de produits de données."
     }
   }
 }

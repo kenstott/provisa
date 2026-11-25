@@ -2,10 +2,10 @@
   "connectorSetup": {
     "identity": "Connector {{name}}, volgt {{ref}}.",
     "missing": "Vul de host, poort en koppelcode van de connector in, en elke vereiste waarde.",
-    "missingNative": "Vul elke waarde in die de connector nodig heeft.",
+    "missingNative": "Vul elke waarde in die de connector vereist.",
     "image": "Image",
     "imageHint": "De image die uw deployment uitvoert. Provisa controleert de host hiermee bij het verbinden.",
-    "native": "Draait op deze server, gebouwd uit {{path}}. Een host of koppelcode is niet nodig.",
+    "native": "Draait op deze server, gebouwd uit {{path}}. Er is geen host of koppelcode nodig.",
     "host": "Host",
     "hostHint": "De host die de image uitvoert, zoals Provisa die bereikt.",
     "port": "Poort",
@@ -13,6 +13,7 @@
     "pairingHint": "De regel die de container bij de eerste start afdrukte, na \"pairing code:\". Hij wordt één keer gebruikt en niet bewaard.",
     "secretHint": "Het secret van de organisatie dat wordt gebruikt. De waarde ervan wordt hier nooit ingevoerd.",
     "fixedHint": "Ingesteld door deze connector. Kan niet worden gewijzigd.",
-    "sparkClusterDefaultHint": "Laat leeg om het standaard Spark-cluster van de organisatie te gebruiken (Beheer, Spark-cluster)."
+    "sparkClusterDefaultHint": "Laat leeg om het standaard Spark-cluster van de organisatie te gebruiken (Beheer, Spark-cluster).",
+    "builtinIdentity": "De Spark-host, volgt {{ref}}."
   }
 }

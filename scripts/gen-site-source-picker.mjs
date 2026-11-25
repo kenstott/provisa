@@ -8,7 +8,7 @@
 //   node scripts/gen-site-source-picker.mjs            write the fragment and every stated count
 //   node scripts/gen-site-source-picker.mjs --check    exit 1 when a page or a count is out of step
 //
-// Source of truth: provisa-ui/src/pages/sources/constants.ts (SOURCE_TYPES: order, labels,
+// Source of truth: provisa-ui/src/generated/sourceTypes.json (the SOURCE_TYPES constants.ts reads: order, labels,
 // categories, the hosted Postgres services in `managed`) and provisa-ui/src/components/sourceLogoMarks.ts
 // (which types have a published simple-icons mark, which a bundled logo file under
 // provisa-ui/src/assets/source-logos, copied to site/assets; the rest are lettered tiles in the
@@ -45,12 +45,17 @@ const CATEGORY_FIRST = ["Enterprise"];
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// REQ-2114: the picker is the server's source-type descriptor, written for the UI as
+// src/generated/sourceTypes.json (scripts/gen_source_types.py); constants.ts's SOURCE_TYPES reads it.
 async function loadSourceTypes() {
-  const ts = require("typescript");
-  const src = fs.readFileSync(path.join(UI, "src/pages/sources/constants.ts"), "utf8");
-  const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const mod = await import("data:text/javascript;base64," + Buffer.from(js).toString("base64"));
-  return mod.SOURCE_TYPES;
+  const generated = JSON.parse(fs.readFileSync(path.join(UI, "src/generated/sourceTypes.json"), "utf8"));
+  return generated.types.map((t) => ({
+    value: t.name,
+    label: t.label,
+    category: t.category,
+    defaultPort: t.default_port,
+    ...(t.managed ? { managed: t.managed } : {}),
+  }));
 }
 
 // Each category's heading, as the product's picker shows it in English (the id is its key there).

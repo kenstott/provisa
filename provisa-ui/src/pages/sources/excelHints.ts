@@ -14,6 +14,8 @@
 // source, for one workbook by its file name, and for one table by the name the reader gives it.
 
 /** Each count hint, with the value the reader uses when it is unset (null: it detects). */
+import { mappingKey } from "./descriptor";
+
 export const COUNT_HINTS = [
   { key: "header_rows", auto: null },
   { key: "max_header_rows", auto: 3 },
@@ -49,6 +51,9 @@ export interface ExcelHints {
   entries: HintEntry[];
 }
 
+// REQ-2114: the mapping key is the descriptor's (provisa/api/admin/source_types.py).
+const EXCEL_HINTS = mappingKey("files", "excel_hints");
+
 export const NO_EXCEL_HINTS: ExcelHints = { counts: {}, entries: [] };
 
 /** The form field the hints ride in (the source form's per-type fields are text). */
@@ -68,7 +73,7 @@ function counts(raw: unknown, allowed: readonly CountHint[]): Partial<Record<Cou
 /** The hints a source's mapping holds. */
 export function excelHintsFromMapping(mappingJson: string | null | undefined): ExcelHints {
   const mapping = mappingJson ? (JSON.parse(mappingJson) as Record<string, unknown>) : {};
-  const raw = mapping.excel_hints as Record<string, unknown> | undefined;
+  const raw = mapping[EXCEL_HINTS] as Record<string, unknown> | undefined;
   if (!raw) return NO_EXCEL_HINTS;
   const entries: HintEntry[] = [];
   for (const [scope, group, allowed] of [
@@ -142,8 +147,8 @@ export function filesMappingJson(
   const previous = previousMappingJson
     ? (JSON.parse(previousMappingJson) as Record<string, unknown>)
     : {};
-  const { excel_hints: _dropped, ...rest } = previous;
+  const { [EXCEL_HINTS]: _dropped, ...rest } = previous;
   void _dropped;
   const hints = excelHintsMapping(excelHintsOf(fields));
-  return JSON.stringify(hints ? { ...rest, excel_hints: hints } : rest);
+  return JSON.stringify(hints ? { ...rest, [EXCEL_HINTS]: hints } : rest);
 }

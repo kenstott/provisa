@@ -13,6 +13,7 @@
     "pairingHint": "The line the container printed on its first start, after \"pairing code:\". It is used once and not kept.",
     "secretHint": "The organization secret to use. Its value is never entered here.",
     "fixedHint": "Set by this connector. It cannot be changed.",
-    "sparkClusterDefaultHint": "Leave empty to use the organization's default Spark cluster (Admin, Spark cluster)."
+    "sparkClusterDefaultHint": "Leave empty to use the organization's default Spark cluster (Admin, Spark cluster).",
+    "builtinIdentity": "The Spark host, following {{ref}}."
   }
 }

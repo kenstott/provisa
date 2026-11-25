@@ -12,6 +12,35 @@
     "tested": "Connesso a {{target}}: Spark {{version}}",
     "saved": "Salvato",
     "removed": "Rimosso",
-    "remove": "Rimuovi predefinito"
+    "remove": "Rimuovi predefinito",
+    "host": "Host del cluster Spark",
+    "hostHelp": "Il nome host o l'indirizzo del server Spark Connect del cluster, senza sc:// né porta.",
+    "port": "Porta",
+    "tls": "TLS",
+    "tlsHelp": "Connetti tramite TLS. Un token viene inviato solo tramite TLS, quindi indicare un token lo attiva.",
+    "userId": "ID utente",
+    "userIdHelp": "L'utente con cui il cluster esegue lo script, se ne richiede uno. Facoltativo.",
+    "badHost": "Un nome host o un indirizzo, senza sc://, porta o percorso",
+    "badPort": "Una porta da 1 a 65535",
+    "badToken": "Un riferimento a un segreto, ad esempio ${secret:spark_token}",
+    "extra": "Altri parametri, mantenuti come indicati: {{params}}",
+    "paste": "Incolla indirizzo",
+    "pasteTitle": "Incolla un indirizzo Spark Connect",
+    "pasteHelp": "Un indirizzo sc://, ad esempio sc://spark.example.com:15002/;use_ssl=true. Viene suddiviso nei campi; un token contenuto viene conservato come segreto.",
+    "pasteApply": "Compila i campi",
+    "pasteToken": "L'indirizzo contiene un token. Viene conservato come segreto dell'organizzazione e il cluster fa riferimento a quel segreto; il token non viene conservato nell'indirizzo.",
+    "pasteSecretName": "Nome del segreto",
+    "pasteSecretHelp": "Il segreto dell'organizzazione in cui viene conservato il token. Un segreto con questo nome viene sostituito.",
+    "pasteKeep": "Conserva il token come segreto",
+    "storedUnread": "Il cluster conservato per questa origine non può essere letto: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} non è un indirizzo Spark Connect: inizia con sc://",
+      "host": "{{part}} non indica un host",
+      "port": "{{part}} non è una porta da 1 a 65535",
+      "param": "{{part}} non è un parametro nome=valore"
+    },
+    "blankUsesOrg": "Se lasciato vuoto, questa origine viene eseguita sul cluster Spark predefinito dell'organizzazione ({{target}}).",
+    "blankUsesLocal": "Se lasciato vuoto, questa origine viene eseguita sul cluster di test locale ({{target}}).",
+    "blankUsesNone": "Se lasciato vuoto, questa origine non ha un cluster su cui essere eseguita: {{detail}}"
   }
 }

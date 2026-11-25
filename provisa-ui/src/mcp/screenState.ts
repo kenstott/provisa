@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo } from "react";
 import { currentDataAddress } from "../lib/dataAddress";
+import { CODE_FIELD_SELECTOR, readCodeField, type CodeFieldState } from "./codeFields";
 import { accessibleName, hidden } from "./uiActions";
 
 /**
@@ -171,19 +172,20 @@ export function useScreenTags(object: ScreenTaggedObject | null): void {
   }, [text]);
 }
 
-const FIELD_SELECTOR = "input, textarea, select";
-// Polly's own chat and the code editors are not form fields: the editors are reported from their
-// own state above.
-const NOT_FIELDS = "[data-testid='chat-panel'], .cm-editor, .graphiql-container, .monaco-editor";
+// A form's code field (CodeEditorField) is a field, read from its editor (codeFields.ts).
+const FIELD_SELECTOR = `input, textarea, select, ${CODE_FIELD_SELECTOR}`;
+// Polly's own chat and the query editors are not form fields: the query editors are reported from
+// their own state above.
+const CHAT = "[data-testid='chat-panel']";
+const NOT_FIELDS = `${CHAT}, .cm-editor, .graphiql-container, .monaco-editor`;
 
 function onScreen(el: HTMLElement): boolean {
   return !hidden(el) && el.checkVisibility();
 }
 
-interface ScreenField {
-  label: string;
-  value: string | boolean;
-}
+/** A labelled field; a code field also says its language and whether it is read-only. */
+type ScreenField =
+  { label: string; value: string | boolean } | ({ label: string } & CodeFieldState);
 
 function fieldValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
   if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
@@ -207,9 +209,12 @@ function screenTags(): ScreenTaggedObject[] {
 function screenFields(): ScreenField[] {
   const fields: ScreenField[] = [];
   for (const el of document.querySelectorAll<HTMLInputElement>(FIELD_SELECTOR)) {
-    if (el.type === "hidden" || el.closest(NOT_FIELDS) || !onScreen(el)) continue;
+    const code = el.matches(CODE_FIELD_SELECTOR);
+    if (code ? el.closest(CHAT) : el.type === "hidden" || el.closest(NOT_FIELDS)) continue;
+    if (!onScreen(el)) continue;
     const label = accessibleName(el).trim();
-    if (label) fields.push({ label, value: fieldValue(el) });
+    if (label)
+      fields.push(code ? { label, ...readCodeField(el) } : { label, value: fieldValue(el) });
   }
   return fields;
 }

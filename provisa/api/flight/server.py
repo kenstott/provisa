@@ -2385,12 +2385,26 @@ class ProvisaFlightServer(
                         # REQ-2131: a column transform's answered batches are passed on as
                         # each is answered, not gathered into larger record batches.
                         from provisa.codesource.columns import BATCH
+                        from provisa.executor.result import ArrowStreamResult, is_arrow
+                        from provisa.federation.runtime_support import declared_arrow_stream
 
-                        arrow_schema, batch_gen = arrow_batches_from_rows(
-                            stream,
-                            shape=self._result_shape_of(plan),
-                            **({"batch_rows": BATCH} if plan.columns is not None else {}),
-                        )
+                        if is_arrow(stream):
+                            # REQ-2194: a driver that fetches Arrow hands on its own record
+                            # batches, each registered column cast to its registered type and a
+                            # lossy cast refused naming the column -- never rebuilt from rows.
+                            arrow_schema, batch_gen = declared_arrow_stream(
+                                stream.schema
+                                if isinstance(stream, ArrowStreamResult)
+                                else stream.table.schema,
+                                stream.arrow_batches(),
+                                self._result_shape_of(plan),
+                            )
+                        else:
+                            arrow_schema, batch_gen = arrow_batches_from_rows(
+                                stream,
+                                shape=self._result_shape_of(plan),
+                                **({"batch_rows": BATCH} if plan.columns is not None else {}),
+                            )
                     except BaseException:
                         _release_slot()
                         raise

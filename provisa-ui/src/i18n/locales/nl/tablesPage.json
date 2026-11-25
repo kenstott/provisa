@@ -51,7 +51,7 @@
     "firstPage": "Eerste pagina",
     "lastPage": "Laatste pagina",
     "listedElsewhere": "Vermeld in andere domeinen",
-    "listedElsewhereHint": "Namen die andere domeinen vermelden. Vraag dat domein om toegang om ze te lezen.",
+    "listedElsewhereHint": "Namen die andere domeinen vermelden. Stel een product voor om dat domein om een tabel te vragen.",
     "pageOf": "Pagina {{page}} / {{totalPages}}",
     "loadFailed": "Kan geregistreerde tabellen niet laden: {{message}}",
     "editViewDefinitionTitle": "Viewdefinitie bewerken",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Teruggetrokken",
     "withdrawnTitle": "Buiten productie: geen rol leest haar totdat ze wordt teruggezet",
-    "sourceWithdrawnTitle": "Haar bron {{source}} is teruggetrokken: geen rol leest haar totdat de bron wordt teruggezet"
+    "sourceWithdrawnTitle": "Haar bron {{source}} is teruggetrokken: geen rol leest haar totdat de bron wordt teruggezet",
+    "suggestProduct": "Product voorstellen"
   }
 }

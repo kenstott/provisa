@@ -20,6 +20,7 @@ env. Falls back to Application Default Credentials when the source carries no ex
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from typing import Any
 
 from provisa.executor.drivers.arrow_result import source_arrow_result
@@ -89,19 +90,21 @@ class BigQueryDriver(DirectDriver):
     def supports_streaming(self) -> bool:  # REQ-1190
         return True
 
-    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
-        """The result a batch at a time: the query job's rows are read page by page as
-        ``fetchmany`` asks, and ``job.cancel()`` stops a job still running."""
+    async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190, REQ-2194
+        """The result a batch at a time, as the record batches the job's row iterator yields
+        (``to_arrow_iterable``), one page at a time; ``job.cancel()`` stops a job still running."""
         del params  # BigQuery read SQL arrives fully formed from the governed pipeline
-        from provisa.executor.drivers.cursor_stream import CursorStream
+        from provisa.core.ir_arrow import column_values
+        from provisa.executor.drivers.cursor_stream import ArrowCursorStream
 
         client = self._client
         if client is None:
             raise RuntimeError("BigQueryDriver is not connected")
-        return CursorStream(
+        return ArrowCursorStream(
             open_cursor=lambda: _JobCursor(client),
             execute=lambda cur: cur.execute(sql),
             cancel=lambda cur: cur.cancel(),
+            to_rows=lambda batch: list(zip(*(column_values(c) for c in batch.columns))),
         )
 
     async def close(self) -> None:
@@ -115,32 +118,48 @@ class BigQueryDriver(DirectDriver):
 
 
 class _JobCursor:
-    """A BigQuery query job read as a DB-API cursor (REQ-1190): ``description`` names the result's
-    fields, and ``fetchmany`` takes the next rows from the job's row iterator, which fetches one
-    page at a time."""
+    """A BigQuery query job read as an Arrow cursor (REQ-1190, REQ-2194): ``description`` names
+    the result's fields, ``schema`` is their Arrow schema, and ``fetch_batch`` takes the next
+    record batch from the job's row iterator (``to_arrow_iterable``), which fetches one page at a
+    time."""
 
     def __init__(self, client: Any) -> None:
         self._client = client
         self._job: Any = None
-        self._rows: Any = None
+        self._batches: Iterator[Any] | None = None
         self.description: list[tuple[str]] | None = None
+        self.schema: Any = None
 
     def execute(self, sql: str) -> None:
+        from google.cloud.bigquery._pandas_helpers import bq_to_arrow_field
+
         self._job = self._client.query(sql)
         result = self._job.result()
-        self._rows = iter(result)
-        self.description = [(field.name,) for field in result.schema] if result.schema else None
+        if not result.schema:
+            return
+        # The client's own BigQuery-to-Arrow typing, the one its pages are built with: a field
+        # it has no Arrow type for (an INTERVAL) is refused by name, not typed by its values.
+        fields = [(field, bq_to_arrow_field(field)) for field in result.schema]
+        untyped = [f"{field.name} {field.field_type}" for field, arrow in fields if arrow is None]
+        if untyped:
+            raise ValueError(f"BigQuery result columns with no Arrow type: {', '.join(untyped)}")
+        import pyarrow as pa
 
-    def fetchmany(self, size: int) -> list[tuple]:
-        import itertools
+        self.schema = pa.schema([arrow for _, arrow in fields])
+        self.description = [(field.name,) for field in result.schema]
+        self._batches = iter(result.to_arrow_iterable())
 
-        if self._rows is None:
-            return []
-        return [tuple(row.values()) for row in itertools.islice(self._rows, size)]
+    def fetch_batch(self) -> Any:  # noqa: ANN401 — a pyarrow RecordBatch, or None once exhausted
+        if self._batches is None:
+            return None
+        batch = next(self._batches, None)
+        if batch is None:
+            self._batches = None
+        return batch
 
     def cancel(self) -> None:
         if self._job is not None:
             self._job.cancel()
 
     def close(self) -> None:
-        self._rows = None
+        self._batches = None

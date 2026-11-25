@@ -67,10 +67,12 @@ describe("Admin › Spark cluster", () => {
     expect(item?.capability).toBe("org_settings");
   });
 
-  it("shows the default as entered and that sources naming none use it", async () => {
+  it("shows the default as entered, in its fields, and that sources naming none use it", async () => {
     render(<SparkClusterTab />);
-    const address = (await screen.findByTestId("spark-cluster-address")) as HTMLInputElement;
-    expect(address.value).toBe("sc://spark.acme.test:15002");
+    // REQ-2225 (amended 2026-11-24): the address is entered as structured fields.
+    const host = (await screen.findByTestId("spark-cluster-host")) as HTMLInputElement;
+    expect(host.value).toBe("spark.acme.test");
+    expect((screen.getByTestId("spark-cluster-port") as HTMLInputElement).value).toBe("15002");
     expect((screen.getByTestId("spark-cluster-credential") as HTMLInputElement).value).toBe(
       "${secret:spark_token}",
     );
@@ -95,19 +97,58 @@ describe("Admin › Spark cluster", () => {
     );
   });
 
-  it("saves the address and the token reference, an empty token as none", async () => {
+  it("saves the address its fields compose and the token reference, an empty token as none", async () => {
     render(<SparkClusterTab />);
-    fireEvent.change(await screen.findByTestId("spark-cluster-address"), {
-      target: { value: " sc://other.acme.test " },
+    fireEvent.change(await screen.findByTestId("spark-cluster-host"), {
+      target: { value: "other.acme.test" },
     });
+    fireEvent.change(screen.getByTestId("spark-cluster-port"), { target: { value: "443" } });
+    // A token turns TLS on; without one the switch is the administrator's.
+    expect(screen.getByTestId("spark-cluster-tls")).toBeDisabled();
     fireEvent.change(screen.getByTestId("spark-cluster-credential"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("spark-cluster-tls"));
+    fireEvent.change(screen.getByTestId("spark-cluster-user"), { target: { value: "ada" } });
     fireEvent.click(screen.getByTestId("spark-cluster-save"));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith("acme", {
-        address: "sc://other.acme.test",
+        address: "sc://other.acme.test:443/;use_ssl=true;user_id=ada",
         credential: null,
       }),
     );
+  });
+
+  it("keeps the token beside the address, never in it", async () => {
+    render(<SparkClusterTab />);
+    fireEvent.click(await screen.findByTestId("spark-cluster-save"));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("acme", {
+        address: "sc://spark.acme.test:15002",
+        credential: "${secret:spark_token}",
+      }),
+    );
+  });
+
+  it("is not saved while a field is wrong", async () => {
+    render(<SparkClusterTab />);
+    fireEvent.change(await screen.findByTestId("spark-cluster-port"), { target: { value: "0" } });
+    expect(screen.getByTestId("spark-cluster-save")).toBeDisabled();
+    expect(screen.getByText("A port from 1 to 65535")).toBeInTheDocument();
+  });
+
+  it("splits a pasted address into its fields", async () => {
+    render(<SparkClusterTab />);
+    fireEvent.click(await screen.findByTestId("spark-cluster-paste"));
+    fireEvent.change(await screen.findByTestId("spark-cluster-paste-input"), {
+      target: { value: "sc://pasted.acme.test:16000/;user_id=bo" },
+    });
+    fireEvent.click(screen.getByTestId("spark-cluster-paste-apply"));
+    await waitFor(() =>
+      expect((screen.getByTestId("spark-cluster-host") as HTMLInputElement).value).toBe(
+        "pasted.acme.test",
+      ),
+    );
+    expect((screen.getByTestId("spark-cluster-port") as HTMLInputElement).value).toBe("16000");
+    expect((screen.getByTestId("spark-cluster-user") as HTMLInputElement).value).toBe("bo");
   });
 
   it("tests the connection as entered and shows the Spark version", async () => {
