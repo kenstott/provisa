@@ -6,7 +6,7 @@
 
     # Code Resolvers
 
-Business logic in Python, Node or Go.
+Business logic in Python, Node, Go or Rust.
 
 If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type. Over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
 
@@ -843,6 +843,8 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 - **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution. Go runs no code while it fetches modules, and every module is checked against the code's `go.sum`; one it does not cover is refused by name.
 - **Your registries.** Packages come from your organization's own npm registries, PyPI indexes, Go module proxies and Git hosts, entered once under **Admin → Package registries**. The public npm registry, PyPI and Go module proxy need no entry. See [Package Registries](package-registries.md).
 - **Cached.** An install is cached by the code's content hash, so the same code installs once.
+
+The source form shows a link to the reference section for the language you choose — Python, Node, Go, Rust or Spark. The link opens in the in-app Docs page at that section.
 
 ### Node {: #node }
 
@@ -1918,7 +1920,7 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 
 A single function whose return value—a `provisa_services.Discovered`—generates tables, queries and commands at read time. The generated items share one handler function per kind.
 
-The SDK has no `@discover` decorator: write it in the docstring.
+The SDK has no `@discover` decorator: write it in the docstring. `@discover` is currently available in Python only; other languages follow as separate additions.
 
 ```python
 from provisa_services import Discovered
@@ -2755,9 +2757,9 @@ The SDK has no `TableRef` type. Declare your own generic `TableRef` struct; Prov
 
 ### Spark reference {: #spark-reference }
 
-A Spark script is a Python file. Tags go in docstrings, exactly as for any Python resolver. The script imports `provisa_spark` to reach its Spark cluster, and `provisa_services` for governed table arguments and the read context.
+A Python code source over Spark is an ordinary Python resolver. Tags go in docstrings, exactly as for any Python code source. Import `session()` from `provisa_spark` to open a Spark Connect session, and `provisa_services` for governed table arguments and the read context.
 
-The script does not carry its own setup: Provisa reads the cluster URL and the script text from the Spark source's setup form.
+Pass the name of a Spark source to `session("my-spark")` to use that source's cluster. `session()` with no argument uses the organization's default Spark cluster.
 
 #### Tags
 
@@ -2783,7 +2785,7 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
         @table
         """
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        df = session("my-spark").sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
@@ -2804,7 +2806,7 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
     @table
     def sales() -> list[SalesRow]:
         """Daily sales by region."""
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        df = session("my-spark").sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
@@ -2821,7 +2823,7 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
         @command
         """
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
+        df = session("my-spark").sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
         return df.first()["num_affected_rows"]
     ```
 
@@ -2835,7 +2837,7 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
     @command
     def archive_orders(cutoff: str) -> int:
         """Archive orders older than cutoff."""
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
+        df = session("my-spark").sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
         return df.first()["num_affected_rows"]
     ```
 
@@ -2910,12 +2912,12 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
     def warmup(values: dict) -> None:
         """@on-start"""
-        session()  # start the Spark Connect session once
+        session("my-spark")  # start the Spark Connect session once
 
 
     def shutdown() -> None:
         """@on-stop"""
-        session().stop()
+        session("my-spark").stop()
     ```
 
 === "SDK"
@@ -2927,12 +2929,12 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
     @on_start
     def warmup(values: dict) -> None:
-        session()  # start the Spark Connect session once
+        session("my-spark")  # start the Spark Connect session once
 
 
     @on_stop
     def shutdown() -> None:
-        session().stop()
+        session("my-spark").stop()
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**

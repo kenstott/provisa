@@ -1,25 +1,42 @@
-# Spark connector
+# Spark source
 
-The Spark connector runs one annotated Spark script against your cluster. The script's `@table` and `@command` functions are the source's tables and commands, so a new job needs no image build: you change the script.
+A Spark source connects Provisa to a Spark cluster through Spark Connect. Provisa reads the cluster's catalog — its databases, tables and views with their column types and storage format — and you register tables from it the same way you register tables from any database source. No script is needed.
 
-Its image is an ordinary connector ([Code Resolvers](code-sources.md)). The operator runs it and enters its host, port and pairing code in Sources. Setup asks for two values:
+Add Spark in Sources the same way you add any other source: select Spark from the Code group, enter the cluster address, and save. The setup form takes one value:
 
 | Value | What it is |
 |---|---|
-| `script` | The annotated Spark script, as multi-line text. |
-| `cluster` | The Spark Connect address of the cluster, such as `sc://spark.example:15002`. |
+| `cluster` | The Spark Connect address, as structured fields (host, port, TLS, optional user id). Paste an `sc://` address and Provisa fills the fields. |
 
-At join, Provisa gives the host the script. The host reads the script's tags and answers with what it found. The image is proven by its digest and code hash, and the script by its own hash, recorded in the source's config as `script_hash`. A host whose script does not match that hash is refused by name, at join and on every later connection.
+After you save, Provisa connects to the cluster and reads its catalog. Register Table then lists the databases and their tables and views for you to register.
 
-## Writing the script
+## Registering tables
 
-Import `session()` from `provisa_spark`. It returns a Spark session on the configured cluster, so the script never names the cluster. Declare each table's row type: the table's columns come from it, as for any code source, so a table's shape changes only when the script does.
+Register Table reads the cluster's catalog through Spark Connect. Each table and view appears with its column types. Select the ones you want and register them; they then participate in every Provisa protocol and join against tables from other sources.
+
+With Provisa's predicates and limit pushed to the cluster, results are fetched as Arrow.
+
+**Mutations.** A table's storage format determines what writes are served:
+
+| Format | Supported mutations |
+|---|---|
+| Delta, Iceberg, Hudi | `INSERT`, `UPDATE`, `DELETE`, `MERGE` |
+| Parquet, Hive | `INSERT` only |
+| Views | None (read only) |
+
+A write the format cannot perform is refused before it reaches the cluster, naming the table and its format.
+
+**No DDL.** Tables and views are created in Spark itself; Provisa admits them from the catalog. A session's own temporary tables live in Provisa's serving engine and never reach the cluster.
+
+## Python code sources over Spark
+
+Logic the cluster does not hold belongs in an ordinary Python code source. Call `session()` from `provisa_spark` with the name of your Spark source, and it returns a Spark Connect session on that cluster.
 
 ```python
 from dataclasses import dataclass
 
-from provisa_services import ReadContext
-from provisa_spark import session
+from provisa_services import ReadContext, TableRef
+from provisa_spark import dataframe, session
 
 
 @dataclass
@@ -28,87 +45,80 @@ class Order:
     amount: float
 
 
-def orders(context: ReadContext) -> list[Order]:
-    """Orders over the last day.
+def recent_orders(context: ReadContext) -> list[Order]:
+    """Orders from the last day.
 
     @table
     """
-    frame = session().sql("SELECT id, amount FROM sales.orders WHERE day = current_date()")
+    spark = session("my-spark")  # name of the Spark source
+    df = spark.sql("SELECT id, amount FROM sales.orders WHERE day = current_date()")
     if context.limit is not None:
-        frame = frame.limit(context.limit)
-    return [Order(**row.asDict()) for row in frame.collect()]
-
-
-def rebuild_orders(day: str) -> str:
-    """Rebuilds one day of orders.
-
-    @command
-    """
-    session().sql(
-        "INSERT OVERWRITE sales.orders SELECT * FROM staging.orders WHERE day = :day",
-        args={"day": day},
-    )
-    return day
+        df = df.limit(context.limit)
+    return [Order(**row.asDict()) for row in df.collect()]
 ```
 
-A `@table` is the frontier, like any connector's table: it brings data from outside, and lineage starts there. On a live read a function is given the statement's read context, a hint it may apply to its DataFrame; Provisa applies the filters, order and limit again. A `@command` with table inputs is covered in [Code Resolvers](code-sources.md).
-
-## Small jobs, big jobs, replication and caching
-
-Where a query's answer comes from decides what it costs and how fresh it is.
-
-| Setup | What a query does | Performance | Timeliness |
-|---|---|---|---|
-| Replication on (the default) | Reads rows already landed in the replica. | The job's run time is paid when the replica refreshes, not by the query. Queries are fast whatever the job costs. | As of the last refresh. Use [Freshness](replicas.md#freshness) to say how old a read may be. |
-| Replication off | Runs the script live, held to the request timeout. | The query waits for the job. Each query pays for a run on the cluster. | Current as of the run. |
-| Replication off with a cache TTL | Runs the script once per TTL and answers from the held rows between runs. | The first read waits for the job; later reads are fast. | As of the last run, up to the TTL old. |
-
-**Big jobs: keep replication on.** A job that runs for minutes or hours cannot answer within a request timeout, so a query must never have to run it. Replication builds and refreshes the table without waiting for a query, which is why it is the connector's default.
-
-**Small jobs: replication off is an option.** When the script answers well within the request timeout and the reader wants the current answer, a steward can turn replication off on the source. Mind the cluster: every query is now a Spark run. If many readers ask the same thing, add a cache TTL or keep replication on.
-
-### Transforms over governed tables
-
-A `@query` that takes a governed table can transform it on the cluster. Read the argument with `dataframe()`. Its rows reach the cluster over Arrow Flight, read as the calling role, so the job sees only what that role may read.
+A `@table` function can also return the DataFrame directly, without a row class. Provisa applies the read context and converts through Arrow:
 
 ```python
+from provisa_services import ReadContext
+from provisa_spark import session
+
+
+def recent_orders(context: ReadContext):
+    """Orders from the last day.
+
+    @table
+    """
+    return session("my-spark").sql(
+        "SELECT id, amount FROM sales.orders WHERE day = current_date()"
+    )
+```
+
+**Governed table inputs.** A `@query` function can take a registered Provisa table as a `TableRef` argument. `dataframe()` reads it over Arrow Flight as the calling role, so the job sees only what that role may read.
+
+```python
+from dataclasses import dataclass
 from provisa_services import TableRef
-from provisa_spark import dataframe
+from provisa_spark import dataframe, session
+
+
+@dataclass
+class Total:
+    region: str
+    amount: float
 
 
 def regional_totals(orders: TableRef[Order]) -> list[Total]:
-    """@query"""
+    """Totals of governed orders by region.
+
+    @query
+    """
     frame = dataframe(orders).groupBy("region").sum("amount")
-    return [Total(region=r[0], amount=r[1]) for r in frame.collect()]
+    return [Total(r[0], r[1]) for r in frame.collect()]
 ```
 
-You can call it live, `SELECT * FROM regional_totals('sales.orders')`, and the query waits for the job. For a transform that takes longer than a reader should wait, define a materialized view over the call:
+A `@query` over governed tables can be landed as a materialized view: define the view over the call, and it is built on schedule or when an input table changes.
 
-```sql
-SELECT t.region, t.amount FROM regional_totals('sales.orders') AS t
-```
+## Replication and caching
 
-The view is landed like any other materialized view. A read answers from its stored rows and never starts a Spark job. The job runs when the view refreshes:
-
-- on its refresh interval;
-- when a table it is given changes, as that table's [change signal](replicas.md#freshness) reports it.
+The same performance choices available on any code source apply to Python code sources over Spark.
 
 | Setup | What a query does | Performance | Timeliness |
 |---|---|---|---|
-| Live call | Runs the job on each query, held to the request timeout. | The query waits for the job. Each query pays for a run. | Current as of the run. |
-| Materialized view over the call | Reads the rows the last refresh landed. | Fast, whatever the job costs. The cluster runs once per refresh. | As of the last refresh: its interval, or the last change to an input table. |
+| Replication on (the default) | Reads rows already landed in the replica. | Query time is decoupled from job run time. | As of the last refresh. Use [Freshness](replicas.md#freshness) to bound staleness. |
+| Replication off | Runs the function live, held to the request timeout. | The query waits for the job. | Current as of the run. |
+| Replication off with a cache TTL | Runs the function once per TTL. | First read waits; later reads are fast. | As of the last run. |
 
-A role reading the view is held to the same rules as a live call. A role that cannot read a table the call is given is refused the view, naming that table, as it is refused the call. The job computes the rows once, from the whole table. A view that reads only the call's rows therefore refuses a role whose row rules narrow that table. A view that joins the call's rows back to the table is filtered by those rules instead.
+For a job that runs for minutes, keep replication on. For a function that answers in well under the timeout and where the reader needs current results, replication off is an option. Mind the cluster: each live query starts a Spark run.
 
 ## Streaming
 
-The recommended pattern runs one Spark streaming job and serves every subscriber from Kafka:
+The recommended pattern runs one Spark streaming job and serves every subscriber from Kafka. `@on-start` submits a streaming job writing to a Kafka topic; `@on-stop` stops it; `@health` reports whether it is running. A Provisa Kafka source on that topic then serves the subscriptions, so one Spark job covers every subscriber.
 
-- `@on-start` submits a streaming job that writes to a Kafka topic.
-- `@on-stop` stops it.
-- `@health` reports whether it is running, shown on the source in Sources.
-- A Provisa Kafka source on that topic serves the subscriptions.
+A `@stream` function also works: it runs one Spark streaming query per subscription, so size the cluster for the number of subscribers.
 
-One Spark job then serves every subscriber, however many there are.
+## Default cluster
 
-A `@stream` in the script also works: it runs one Spark streaming query per subscription, so size the cluster for the number of subscribers.
+An organization-level default Spark cluster is set under **Admin → Spark**. It holds the cluster address and a credential kept as a secret reference. A Python code source that calls `session()` with no argument uses it. A source's own cluster, when set, overrides the default for that source.
+
+The demo and local installs start a one-node Spark cluster on demand, labelled a local test cluster, as the default. It downloads a pinned Spark distribution at first use. No Docker is required. On Windows the demo names Spark unavailable; a cluster can still be set in the organization's Spark tab.
