@@ -22,13 +22,13 @@
   "clickhouse-server": {
    "total": 3319,
    "base": {
-    "passed": 2093,
+    "passed": 2091,
     "wrong_answer": 0,
     "engine_error": 0,
     "refused_by_name": 238
    },
    "edge": {
-    "served": 1822,
+    "served": 1820,
     "wrong_answer": 0,
     "engine_error": 269,
     "documented_limit": 2
