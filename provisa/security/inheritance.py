@@ -186,8 +186,8 @@ def held_capabilities(
     role_ids: Iterable[str], rows: Mapping[str, dict], adds: Collection[str]
 ) -> dict[str, set[str]]:
     """What each of ``role_ids`` and its ancestors hold (:func:`effective_rights`). RW on data
-    products from an Owner field (row_filters.with_owner_grant, which marks each role it reaches)
-    is the field's, not a parent's, so it stands on what the role holds (REQ-2188)."""
+    products from data_product_owner (row_filters.with_owner_grant, which marks each role it
+    reaches) is the owner rule's, not a parent's, so it stands on what the role holds (REQ-2188)."""
     memo: dict[str, set[str]] = {}
     for rid in role_ids:
         effective_rights(rid, rows, _capabilities, adds=adds, memo=memo)

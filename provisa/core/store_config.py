@@ -101,7 +101,8 @@ def _fields(model: type[BaseModel], row: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in row.items() if k in model.model_fields and v is not None}
 
 
-def _seeded_domains() -> frozenset[str]:
+def seeded_domains() -> frozenset[str]:
+    """The system domains: seeded into every model store, and kept across a replace-mode load."""
     from provisa.core.db import SEEDED_DOMAIN_IDS
 
     return SEEDED_DOMAIN_IDS | frozenset(domain_policy.system_domain_ids())
@@ -129,7 +130,7 @@ async def _stores_and_regions(conn: "Connection") -> tuple[list[dict], list[dict
 async def _domains(conn: "Connection") -> list[dict[str, Any]]:
     from provisa.core.repositories import domain as domain_repo
 
-    seeded = _seeded_domains()
+    seeded = seeded_domains()
     return [
         _written(Domain.model_validate(_fields(Domain, row)))
         for row in await domain_repo.list_all(conn)

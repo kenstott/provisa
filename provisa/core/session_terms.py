@@ -14,7 +14,7 @@ A session variable is one text value, and ``current_setting('provisa.<name>')`` 
 literal. ``acting_roles`` is several: the roles a caller acts as. A rule reads it the way it reads
 any variable, as one member of an IN list::
 
-    owner_role IN (current_setting('provisa.acting_roles'))
+    team_role IN (current_setting('provisa.acting_roles'))
 
 and the term is expanded here, on the tree, to one literal per value, so the same rule runs on
 every engine and in the model store. Read outside an IN list it is the comma-joined text, which
@@ -30,11 +30,12 @@ import re
 
 import sqlglot.expressions as exp
 
-from provisa.core.request_context import ACTING_ROLES_VAR
+from provisa.core.request_context import ACTING_ROLES_VAR, OWNED_PRODUCTS_VAR
 
 #: The variables holding several values, joined by a comma. A role id holds no comma: a role header
-#: names a set of them, comma-separated (security.meta_role).
-LIST_SETTINGS = frozenset({ACTING_ROLES_VAR})
+#: names a set of them, comma-separated (security.meta_role); nor does a data product id, which is
+#: one SQL name segment.
+LIST_SETTINGS = frozenset({ACTING_ROLES_VAR, OWNED_PRODUCTS_VAR})
 
 _SETTING_NAME = re.compile(r"^provisa\.([A-Za-z0-9_]+)$")
 

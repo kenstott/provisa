@@ -74,7 +74,7 @@ def _governed(
 def _answer(con, ctx, text: str, ceiling: int | None) -> tuple[list[dict], GovernanceContext]:
     [compiled] = compile_query(parse(text), ctx)
     governed, gov = _governed(make_semantic_sql(compiled.sql, ctx), compiled.params, ceiling)
-    rows = con.execute(transpile_to_duckdb(governed), compiled.params).fetchall()
+    rows = con.execute(transpile_to_duckdb(governed, generated=False), compiled.params).fetchall()
     return serialize_rows(rows, compiled.columns, compiled.root_field)["data"][
         compiled.root_field
     ], gov
@@ -154,10 +154,10 @@ def test_a_capped_list_s_filter_is_its_aggregate_s_on_each_engine():
         'FROM "public"."orders") AS t'
     )
     # Trino has no json_arrayagg: its ARRAY_AGG is filtered, inside the conversion to JSON.
-    assert "ARRAY_AGG(JSON_PARSE(" in transpile_to_trino(capped)
-    assert "FILTER(WHERE t.__list_rn <= 2) AS JSON)" in transpile_to_trino(capped)
+    assert "ARRAY_AGG(JSON_PARSE(" in transpile_to_trino(capped, generated=False)
+    assert "FILTER(WHERE t.__list_rn <= 2) AS JSON)" in transpile_to_trino(capped, generated=False)
     # DuckDB's json_group_array is a macro: its own aggregate (list, ARRAY_AGG) is filtered.
-    written = transpile_to_duckdb(capped)
+    written = transpile_to_duckdb(capped, generated=False)
     assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', " in written
     assert ")) FILTER(WHERE t.__list_rn <= 2)) FROM" in written
 
@@ -189,7 +189,9 @@ def _cypher_rows(terms, cypher: str, ceiling: int | None) -> tuple[list[tuple], 
         ),
     }
     governed, gov = _governed(sql, [], ceiling, tables)
-    return sorted(con.execute(transpile_to_duckdb(governed)).fetchall(), key=repr), gov
+    return sorted(
+        con.execute(transpile_to_duckdb(governed, generated=False)).fetchall(), key=repr
+    ), gov
 
 
 def _lengths(rows: list[tuple]) -> dict:

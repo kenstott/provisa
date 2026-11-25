@@ -15,8 +15,9 @@ catalog and routed through the same role + domain access control as business tab
 
 REQ-1386: management report views (usage_ranking, deprecated_usage, pii_access,
 policy_denials, surface_mix, query_health, stale_metadata, join_hotspots) created
-and registered on the same seed path — always seeded on install, not demo data —
-with org_admin stewarding the ops domain.
+and registered on the same seed path — always seeded on install, not demo data. The ops
+domain is a system domain, exempt from the REQ-609 steward gate, so no steward is seeded for it
+(REQ-2219, amended 2026-11-23).
 """
 
 from __future__ import annotations
@@ -84,10 +85,10 @@ class TestOpsRegistry:
         schema_sql = (
             Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql"
         ).read_text()
-        # REQ-1386: seeded with org_admin as steward.
+        # REQ-2219 (amended 2026-11-23): a system domain is seeded with no steward.
         assert (
-            "INSERT INTO domains (id, description, steward) "
-            "VALUES ('ops', 'Operational telemetry', 'org_admin')" in schema_sql
+            "INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')"
+            in schema_sql
         )
 
     def test_seed_registers_under_ops_domain(self):
@@ -116,9 +117,9 @@ class TestOpsRegistry:
         assert {"id", "user_id", "status_code"} <= registered_col_names
         assert "query_text_enc" not in registered_col_names
 
-    def test_seed_registers_report_views_and_steward(self):
-        # REQ-1386: every report view is registered under ops with pk `id`, and
-        # org_admin is set as the ops-domain steward.
+    def test_seed_registers_report_views_and_no_steward(self):
+        # REQ-1386: every report view is registered under ops with pk `id`. REQ-2219 (amended
+        # 2026-11-23): ops is a system domain, so the seed names no steward for it.
         from provisa.api.startup_seed import _seed_ops_domain
 
         view_cols = [
@@ -140,10 +141,8 @@ class TestOpsRegistry:
             assert registered[view_name]["domain_id"] == "ops"
             assert registered[view_name]["source_id"] == "provisa-admin"
 
-        steward_update = conn.execute_core.await_args_list[-1].args[0]
-        compiled = str(steward_update)
-        assert "UPDATE domains" in compiled
-        assert steward_update.compile().params["steward"] == "org_admin"
+        statements = [str(c.args[0]) for c in conn.execute_core.await_args_list if c.args]
+        assert not any("UPDATE domains" in s for s in statements)
 
 
 # --------------------------------------------------------------------------- #

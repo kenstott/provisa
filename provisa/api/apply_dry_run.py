@@ -85,7 +85,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     from provisa.compiler.names_table import build_model_names, clash_policy
     from provisa.compiler.naming import source_to_catalog
     from provisa.core.models import Metric
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.schema_org import domains as domains_t
     from provisa.core.schema_org import naming_rules as naming_rules_t

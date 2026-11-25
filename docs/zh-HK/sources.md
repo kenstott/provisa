@@ -877,8 +877,6 @@ Stripe 是由 `openapi` 承載的品牌數據來源，其建構方式與基於 `
 
 **排除項。** Stripe 已棄用的權杖與 Sources 支付整合未包含在隨附的規格中。其清單見[以規格建構的數據來源上的排除項](#exclusions-on-a-specification-built-source)。營運者自己的 `exclusions` 會追加到品牌的排除項之後。
 
-`stripe` 也出現在 `SourceType` 中，位於被存根化的 Supabase `wrappers` 類型之列。透過表單新增的 Stripe 數據來源是 `openapi` 數據來源，而不是那個存根。
-
 #### 以規格建構的數據來源上的排除項 {: #exclusions-on-a-specification-built-source }
 
 已發佈的 OpenAPI 規格描述了遠端 API 接受的一切，包括其供應商已棄用的內容，以及部署絕不能送出的內容。OpenAPI 數據來源可以帶有排除項：規格中存在但該數據來源不提供的內容。

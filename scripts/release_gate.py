@@ -75,7 +75,9 @@ _PACKAGING = "build-dmg.yml"
 NIGHTLY_BRANCH = "nightly/main"
 #: What runs each night on that one commit, by lane: a release is cut only from a night where
 #: every lane is green (REQ-1989, amended 2026-11-22). Packaging is the whole release build as a
-#: dry run -- build-dmg.yml's macOS, Windows and Linux AppImage legs -- and the DuckDB extensions.
+#: dry run -- build-dmg.yml's macOS, Windows and Linux AppImage legs, and its install of those
+#: assets on a clean Linux host by scripts/install-host.sh, smoke-checked (REQ-2269) -- and the
+#: DuckDB extensions.
 NIGHTLY_LANES: dict[str, tuple[str, ...]] = {
     "unit": ("unit-tests.yml", "ui-unit-tests.yml"),
     "lint": ("lint.yml",),

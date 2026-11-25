@@ -10,7 +10,6 @@
     "projectProduct": "データプロダクト {{id}}（プロジェクト全体）",
     "exists": "{{id}} という名前のデータプロダクトは既に存在します。これらのモデルを登録するには、名前を変更するか削除してください。",
     "owner": "オーナー: {{owner}}",
-    "ownerRole": "オーナーロール {{role}}",
     "tests": "テスト: {{tests}}",
     "version": "バージョン {{version}}",
     "columns": "保証される列: {{columns}}",

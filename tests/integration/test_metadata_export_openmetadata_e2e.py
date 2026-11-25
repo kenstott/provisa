@@ -35,6 +35,7 @@ from tests.integration.metadata_export_server import (
     ORDERS_AMOUNT_DESCRIPTION,
     PRODUCT,
     PRODUCT_FIELDS,
+    PRODUCT_OWNER,
     RLS_FILTER,
     SCHEMA,
     SOURCE,
@@ -169,7 +170,7 @@ async def test_the_unstewarded_domain_publishes_without_a_fabricated_owner(publi
     assert not lab.get("owners")
     assert "governance pending" in lab["description"].lower()
     sales = await _get(token, "/api/v1/domains/name/sales", fields="owners")
-    assert [o["name"] for o in sales["owners"]] == ["data_owner"]
+    assert [o["name"] for o in sales["owners"]] == [PRODUCT_OWNER]
 
 
 async def test_the_catalog_is_never_handed_a_path_to_the_source(published, token):

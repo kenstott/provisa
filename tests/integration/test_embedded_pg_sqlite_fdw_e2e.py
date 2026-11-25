@@ -93,7 +93,9 @@ def _compile(si: SchemaInput, gql: str, rls: RLSContext) -> str:
     compiled = compile_query(parse_query(generate_schema(si), gql, {}, ctx=ctx), ctx)[0]
     gov = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
     return transpile(
-        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "postgres"
+        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx),
+        "postgres",
+        generated=True,
     )
 
 

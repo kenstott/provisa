@@ -27,12 +27,14 @@ _TRINO = ("trino", "presto", "athena")
 
 
 def _sent(sql: str) -> exp.Expr:
-    return sqlglot.parse_one(transpile_to_trino(sql), read="trino")
+    return sqlglot.parse_one(transpile_to_trino(sql, generated=False), read="trino")
 
 
 def _refused(sql: str, function: str, dialect: str = "trino") -> None:
     with pytest.raises(RowRefused) as refused:
-        transpile_to_trino(sql) if dialect == "trino" else transpile(sql, dialect)
+        transpile_to_trino(sql, generated=False) if dialect == "trino" else transpile(
+            sql, dialect, generated=False
+        )
     assert refused.value.sqlstate == "0A000"
     assert str(refused.value) == f"{function}() has no form on {dialect}"
 
@@ -71,7 +73,10 @@ def test_an_order_of_the_databases_collation_is_refused_on_trino(function, args,
 
 
 def test_duckdb_keeps_its_collated_order():
-    assert "COLLATE" in transpile(_call("text_ge", "'a'::text, 'B'::text"), "duckdb").upper()
+    assert (
+        "COLLATE"
+        in transpile(_call("text_ge", "'a'::text, 'B'::text"), "duckdb", generated=False).upper()
+    )
 
 
 def test_an_order_by_bytes_is_still_answered_on_trino():
@@ -95,7 +100,9 @@ def test_a_records_order_is_refused_on_trino(function):
 @pytest.mark.parametrize("operator", [exp.GTE, exp.LT])
 def test_duckdb_keeps_its_records_order(operator):
     function = "record_ge" if operator is exp.GTE else "record_lt"
-    tree = sqlglot.parse_one(transpile(_call(function, _RECORDS), "duckdb"), read="duckdb")
+    tree = sqlglot.parse_one(
+        transpile(_call(function, _RECORDS), "duckdb", generated=False), read="duckdb"
+    )
     assert tree.find(operator) is not None
 
 
@@ -127,7 +134,9 @@ def test_arrays_of_text_or_of_no_said_type_are_refused_on_trino(function, args):
 
 
 def test_duckdb_keeps_its_array_order():
-    tree = sqlglot.parse_one(transpile(_call("array_ge", _INTEGERS), "duckdb"), read="duckdb")
+    tree = sqlglot.parse_one(
+        transpile(_call("array_ge", _INTEGERS), "duckdb", generated=False), read="duckdb"
+    )
     assert tree.find(exp.GTE) is not None
 
 
@@ -162,7 +171,7 @@ def test_max_of_a_number_is_still_trinos_own():
 
 
 def test_duckdb_keeps_its_network_forms():
-    assert transpile(_call("network_eq", _ADDRESSES), "duckdb")
+    assert transpile(_call("network_eq", _ADDRESSES), "duckdb", generated=False)
 
 
 # --- macaddr: Trino's to_hex reads bytes, not a number -------------------------------------------
@@ -248,7 +257,7 @@ def test_lower_of_text_is_still_trinos_own():
     ],
 )
 def test_a_wrapped_bigint_has_no_literal_past_a_bigint_on_trino(function, args):
-    sent = transpile_to_trino(_call(function, args))
+    sent = transpile_to_trino(_call(function, args), generated=False)
     assert "9223372036854775808 " not in sent.replace("'9223372036854775808'", "")
     assert " 18446744073709551616" not in sent
     tree = sqlglot.parse_one(sent, read="trino")
@@ -370,13 +379,14 @@ def test_factorial_is_a_product_on_trino():
 
 
 def test_oid_of_a_bigint_is_checked_for_its_range_on_trino():
-    sent = transpile_to_trino(_call("oid", "5::bigint"))
+    sent = transpile_to_trino(_call("oid", "5::bigint"), generated=False)
     assert "OID out of range" in sent and "OID(" not in sent.upper().replace("VOID(", "")
 
 
 def test_transaction_timestamp_is_the_statements_now_on_trino():
     assert _calls(_sent(_call("transaction_timestamp", ""))) == {"currenttimestamp"} or (
-        "CURRENT_TIMESTAMP" in transpile_to_trino(_call("transaction_timestamp", ""))
+        "CURRENT_TIMESTAMP"
+        in transpile_to_trino(_call("transaction_timestamp", ""), generated=False)
     )
 
 
@@ -397,7 +407,7 @@ def test_a_function_trino_has_no_form_of_is_refused_by_name(function, args):
 
 @pytest.mark.parametrize("args", ["(-5)::integer, 5::integer", "(-5000000000)::bigint, 5::bigint"])
 def test_random_between_two_bounds_is_both_bounds_inclusive_on_trino(args):
-    sent = transpile_to_trino(_call("random", args))
+    sent = transpile_to_trino(_call("random", args), generated=False)
     tree = sqlglot.parse_one(sent, read="trino")
     assert "lower bound must be less than or equal to upper bound" in sent
     assert not [n for n in tree.find_all(exp.Rand) if n.this is not None]
@@ -420,7 +430,7 @@ def test_generate_series_in_a_select_list_is_refused_on_trino(args):
 
 
 def test_generate_series_in_from_is_still_trinos_sequence():
-    sent = transpile_to_trino("SELECT * FROM generate_series(1, 3)")
+    sent = transpile_to_trino("SELECT * FROM generate_series(1, 3)", generated=False)
     assert sent == "SELECT * FROM UNNEST(SEQUENCE(1, 3))"
 
 
@@ -442,7 +452,9 @@ def test_string_agg_of_a_delimiter_trino_takes_no_value_of_is_refused(args):
 
 
 def test_string_agg_of_a_constant_delimiter_is_still_trinos_listagg():
-    assert "listagg" in transpile_to_trino("SELECT string_agg(x, ',') FROM t").lower()
+    assert (
+        "listagg" in transpile_to_trino("SELECT string_agg(x, ',') FROM t", generated=False).lower()
+    )
 
 
 @pytest.mark.parametrize("args", ["NULL::text[]", "NULL::text[], NULL::text[]"])
@@ -567,7 +579,9 @@ def _expanded(sql: str) -> str:
 )
 def test_a_server_forms_array_is_its_text_as_array_out_writes_it_on_trino(function, args):
     """The form reads each argument as text: an array's text is array_out's, not Trino's cast."""
-    tree = sqlglot.parse_one(transpile_to_trino(_expanded(_call(function, args))), read="trino")
+    tree = sqlglot.parse_one(
+        transpile_to_trino(_expanded(_call(function, args)), generated=False), read="trino"
+    )
     unread = [
         c
         for c in tree.find_all(exp.Cast)
@@ -584,7 +598,8 @@ def test_postgresql_fdw_validator_reads_the_array_itself_on_trino(args):
     """The validator walks the option elements, so its form takes the engine's own array and never
     its text: no cast of an array to varchar, and no array_to_string."""
     tree = sqlglot.parse_one(
-        transpile_to_trino(_expanded(_call("postgresql_fdw_validator", args))), read="trino"
+        transpile_to_trino(_expanded(_call("postgresql_fdw_validator", args)), generated=False),
+        read="trino",
     )
     unread = [
         c
@@ -598,7 +613,7 @@ def test_postgresql_fdw_validator_reads_the_array_itself_on_trino(args):
 
 
 def test_an_array_of_text_is_quoted_as_array_out_quotes_it_on_trino():
-    sent = transpile_to_trino("SELECT CAST('{a,\"b c\"}'::text[] AS text) AS v")
+    sent = transpile_to_trino("SELECT CAST('{a,\"b c\"}'::text[] AS text) AS v", generated=False)
     assert "REGEXP_LIKE" in sent.upper() and "'NULL'" in sent
 
 
@@ -609,6 +624,6 @@ def test_an_array_of_another_type_as_text_is_refused_on_trino(element):
 
 def test_pg_xact_status_as_pgwire_sends_it_is_refused_on_trino():
     with pytest.raises(RowRefused) as refused:
-        transpile_to_trino(_expanded(_call("pg_xact_status", "NULL::xid8")))
+        transpile_to_trino(_expanded(_call("pg_xact_status", "NULL::xid8")), generated=False)
     assert refused.value.sqlstate == "0A000"
     assert str(refused.value) == "xid8in() has no form on trino"

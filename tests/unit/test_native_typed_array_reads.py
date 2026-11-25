@@ -137,7 +137,7 @@ def test_duckdb_reads_a_typed_array_natively_and_pgwire_sends_it_as_the_array():
         "(c_int4_array INTEGER[], c_text_array VARCHAR[], c_float8_array DOUBLE[])"
     )
     con.execute("INSERT INTO conformance.types_fixture VALUES ([1,2,3], ['a','b','c'], [1.5,2.5])")
-    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "duckdb")
+    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "duckdb", generated=False)
     assert "TO_JSON" not in sql.upper()
 
     relation = con.sql(sql)
@@ -151,7 +151,9 @@ def test_duckdb_reads_a_typed_array_natively_and_pgwire_sends_it_as_the_array():
 def test_duckdb_keeps_an_array_the_wire_has_no_array_type_for_as_json():
     nested = {("s", "t"): {"v": NestedColumn("timestamp[]", 1, "timestamp")}}
     sql = transpile(
-        mark_native_nested_reads('SELECT "t"."v" FROM "s"."t" AS "t"', nested), "duckdb"
+        mark_native_nested_reads('SELECT "t"."v" FROM "s"."t" AS "t"', nested),
+        "duckdb",
+        generated=False,
     )
     assert "TO_JSON(" in sql.upper()
 
@@ -166,7 +168,7 @@ def test_postgresql_reads_a_typed_array_natively_and_pgwire_sends_it_as_the_arra
         "(SELECT ARRAY[1,2,3]::int4[] AS c_int4_array, ARRAY['a','b','c']::text[] AS c_text_array, "
         "ARRAY[1.5,2.5]::float8[] AS c_float8_array)"
     )
-    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "postgres")
+    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "postgres", generated=False)
     assert "TO_JSONB" not in sql.upper()
     with psycopg.connect(embedded_postgres.dsn()) as con:
         statement = sql.replace('"conformance"."types_fixture"', fixture)
@@ -187,7 +189,9 @@ def test_postgresql_reads_a_typed_array_natively_and_pgwire_sends_it_as_the_arra
 def test_postgresql_reads_a_float_array_with_nan_as_postgresql_does(embedded_postgres):
     nested = {("s", "t"): {"v": NestedColumn("double precision[]", 1, "double")}}
     sql = transpile(
-        mark_native_nested_reads('SELECT "t"."v" FROM "s"."t" AS "t"', nested), "postgres"
+        mark_native_nested_reads('SELECT "t"."v" FROM "s"."t" AS "t"', nested),
+        "postgres",
+        generated=False,
     )
     fixture = "(SELECT ARRAY[1.5, 'NaN']::float8[] AS v)"
     with psycopg.connect(embedded_postgres.dsn()) as con:
@@ -199,7 +203,7 @@ def test_postgresql_reads_a_float_array_with_nan_as_postgresql_does(embedded_pos
 
 
 def test_a_json_only_engine_reads_the_json_form_and_pgwire_sends_it_as_the_array():
-    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "trino")
+    sql = transpile(mark_native_nested_reads(_PHYSICAL, _NESTED), "trino", generated=False)
     assert sql.upper().count("AS JSON)") == 3
 
     batch = pa.RecordBatch.from_arrays(

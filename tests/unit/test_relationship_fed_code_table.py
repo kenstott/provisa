@@ -167,7 +167,7 @@ async def _scored(
         db.executemany("INSERT INTO customers VALUES (?, ?, ?, ?, ?)", _CUSTOMERS)
         # The executor runs the governed statement in the engine's own SQL (a regex mask's
         # universal call lowered, REQ-2142).
-        cursor = db.execute(transpile(plan, "duckdb").replace('"public".', ""))
+        cursor = db.execute(transpile(plan, "duckdb", generated=False).replace('"public".', ""))
         return QueryResult(
             rows=sorted(cursor.fetchall()), column_names=[d[0] for d in cursor.description]
         )

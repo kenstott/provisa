@@ -28,10 +28,7 @@ import os
 from provisa.federation.execution_auth import system_auth
 
 
-from provisa.core.schema_org import (
-    domains as _domains_t,
-    sources as _sources_t,
-)
+from provisa.core.schema_org import sources as _sources_t
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import spawn_background, spawn_long_lived
@@ -1025,14 +1022,10 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                         index_elements=["id"],
                         update_columns=["path", "description"],
                     )
-                    await _conn.upsert(
-                        _domains_t,
-                        {
-                            "id": "shelter",
-                            "description": "Animal shelter staff and breed management",
-                        },
-                        index_elements=["id"],
-                        update_columns=[],
+                    from provisa.core.repositories import domain as domain_repo
+
+                    await domain_repo.ensure(
+                        _conn, "shelter", "Animal shelter staff and breed management"
                     )
                 from provisa.api.admin.read_rights import SERVICE_READER
 

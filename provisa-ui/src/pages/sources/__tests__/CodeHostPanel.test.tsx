@@ -8,12 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// REQ-1984: the compose file is shown in the code editor, read-only, highlighted as YAML.
 // REQ-2098: a saved code source's Remote host panel: build its image (pushed or downloaded), the
 // compose service to run it, connect the remote host (the source is then built, and an edit of
 // the form carries that through), the host's status and re-pinning to the code it reports.
 
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
+import { language } from "@codemirror/language";
 import { fireEvent, renderInForm, screen, waitFor } from "../../../test-utils/render";
 
 vi.mock("../../../api/containerRegistries", () => ({
@@ -115,6 +118,19 @@ describe("a dev-mode source's remote host", () => {
     expect((await screen.findByTestId("code-host-compose")).textContent).toContain(
       "PROVISA_HOST_PORT:?",
     );
+  });
+
+  it("shows the compose file in the code editor, read-only, as YAML", async () => {
+    renderInForm(<Harness initial={DEV} seen={[]} />);
+    fireEvent.click(await screen.findByTestId("code-host-build"));
+    const field = await screen.findByTestId("code-host-compose");
+    const dom = field.querySelector(".cm-editor");
+    expect(dom).not.toBeNull();
+    expect(field.querySelector(".cm-lineNumbers")).not.toBeNull();
+    const view = EditorView.findFromDOM(dom as HTMLElement) as EditorView;
+    expect(view.state.doc.toString()).toBe(DONE.compose);
+    expect(view.state.readOnly).toBe(true);
+    expect(view.state.facet(language)?.name).toBe("yaml");
   });
 
   it("connects the remote host, and the source is then built", async () => {

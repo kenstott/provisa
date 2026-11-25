@@ -60,7 +60,9 @@ def _answer(keep_values: bool, query: str | None = None) -> dict:
     duck = duckdb.connect()
     duck.execute("SET TimeZone = 'UTC'")
     values = [bindable(_VALUES[name]) for name in ordered]
-    result = duck.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")), values)
+    result = duck.execute(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True), values
+    )
     columns = [d[0] for d in result.description]
     rows = [dict(zip(columns, r)) for r in result.fetchall()]
     [row] = [to_serializable(r, keep_values=keep_values) for r in assemble_rows(rows, graph_vars)]

@@ -49,7 +49,7 @@ def _system_rows(state: Any, pg_sql: str, label: str) -> tuple[list[str], list[t
     from provisa.federation.execution_auth import SystemAuth, mint_system_token
 
     engine_rt = state.federation_engine
-    sql = engine_rt.transpile_physical(pg_sql)
+    sql = engine_rt.transpile_physical(pg_sql, generated=False)  # REQ-2236: a client's values
     schema, stream = engine_rt.execute_engine_stream(
         sql,
         authorization=SystemAuth(mint_system_token(), reason=f"temp:{label}", expected_sql=sql),

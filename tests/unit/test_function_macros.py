@@ -65,7 +65,7 @@ def con():
 
 
 def _one(con, sql: str):
-    return con.execute(transpile_to_duckdb(sql)).fetchall()
+    return con.execute(transpile_to_duckdb(sql, generated=False)).fetchall()
 
 
 def test_no_function_is_left_a_macro_on_the_engine(con):
@@ -111,7 +111,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         constant = dialect == "clickhouse" and name == "regexp_replace"
         said = [args[0], "'x'", *args[2:]] if constant else said
         try:
-            out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+            out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect, generated=False)
         except FunctionRefused:
             # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
             # no column of the grid, which refuses a call a row matches by name: no form is written.
@@ -189,11 +189,11 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
     ],
 )
 def test_a_form_is_written_for_its_dialect(sql, dialect, expected):
-    assert transpile(sql, dialect) == expected
+    assert transpile(sql, dialect, generated=False) == expected
 
 
 def test_a_form_survives_the_engines_own_rewrites():
-    assert "BOOL_AND(a)" in transpile_to_trino("SELECT every(a) AS v FROM t")
+    assert "BOOL_AND(a)" in transpile_to_trino("SELECT every(a) AS v FROM t", generated=False)
 
 
 #: arraycontains on Trino, as PostgreSQL answers it: NULL of a NULL array, false where the second
@@ -212,7 +212,7 @@ _ARRAYCONTAINS_ON_TRINO = (
     ],
 )
 def test_an_arrays_containment_has_postgresqls_answers_on_trino(sql):
-    assert transpile(sql, "trino") == (
+    assert transpile(sql, "trino", generated=False) == (
         f"SELECT {_ARRAYCONTAINS_ON_TRINO.format(a='a', b='b')} AS v FROM t"
     )
 
@@ -221,7 +221,9 @@ def test_an_arrays_containment_reaches_trino_as_trinos_own_sql():
     """REQ-2176: a session hop's label filter (``__labels @> ARRAY[...]``) is PostgreSQL's operator
     in the semantic statement; the statement Trino is sent carries no ``@>``, and Trino's own
     rewrites, which read it back as Trino's SQL, read it."""
-    written = transpile_to_trino("SELECT k FROM t AS _hs WHERE _hs.\"__labels\" @> ARRAY['Big']")
+    written = transpile_to_trino(
+        "SELECT k FROM t AS _hs WHERE _hs.\"__labels\" @> ARRAY['Big']", generated=False
+    )
     assert "@>" not in written
     tree = sqlglot.parse_one(written, read="trino")
     assert tree.find(sqlglot.exp.ArrayContainsAll) is None
@@ -231,7 +233,10 @@ def test_an_arrays_containment_reaches_trino_as_trinos_own_sql():
 
 
 def test_an_arrays_containment_stays_postgresqls_operator_on_postgresql():
-    assert transpile("SELECT a @> b AS v FROM t", "postgres") == "SELECT a @> b AS v FROM t"
+    assert (
+        transpile("SELECT a @> b AS v FROM t", "postgres", generated=False)
+        == "SELECT a @> b AS v FROM t"
+    )
 
 
 @pytest.mark.parametrize(
@@ -249,7 +254,7 @@ def test_an_arrays_containment_stays_postgresqls_operator_on_postgresql():
 )
 def test_a_function_with_no_form_is_refused_by_name(sql, dialect, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert refused.value.params == {"function": function, "dialect": dialect}
     assert refused.value.code == "query.function_unsupported"
 
@@ -262,22 +267,22 @@ def test_a_function_with_no_form_is_refused_by_name(sql, dialect, function):
     ],
 )
 def test_postgresql_runs_its_own_function(sql):
-    written = transpile(sql, "postgres")
+    written = transpile(sql, "postgres", generated=False)
     assert "CASE" not in written and "CAST" not in written
 
 
 def test_a_function_of_a_name_sqlglot_writes_stays_sqlglots():
-    assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "mysql") == (
+    assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "mysql", generated=False) == (
         "SELECT REGEXP_SUBSTR(a, b) AS v FROM t"
     )
 
 
 def test_trino_has_no_regexp_substr_of_its_own():
-    assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "trino") == (
+    assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "trino", generated=False) == (
         "SELECT REGEXP_EXTRACT(a, b) AS v FROM t"
     )
     with pytest.raises(FunctionRefused):
-        transpile("SELECT regexp_substr(a, b, 2) AS v FROM t", "trino")
+        transpile("SELECT regexp_substr(a, b, 2) AS v FROM t", "trino", generated=False)
 
 
 def test_an_overload_a_dialect_does_not_take_is_refused():
@@ -288,29 +293,29 @@ def test_an_overload_a_dialect_does_not_take_is_refused():
 
 
 def test_a_function_named_in_pg_catalog_is_that_function():
-    assert transpile('SELECT pg_catalog."textcat"(a, b) AS v FROM t', "spark") == (
+    assert transpile('SELECT pg_catalog."textcat"(a, b) AS v FROM t', "spark", generated=False) == (
         "SELECT CAST(a || b AS STRING) AS v FROM t"
     )
 
 
 def test_a_call_in_an_argument_is_written_too():
-    written = transpile("SELECT textcat(textcat(a, b), a) AS v FROM t", "spark")
+    written = transpile("SELECT textcat(textcat(a, b), a) AS v FROM t", "spark", generated=False)
     assert "textcat" not in written.lower()
 
 
 def test_an_expression_argument_keeps_its_place():
-    written = transpile("SELECT textcat(x + 1, y) AS v FROM t", "spark")
+    written = transpile("SELECT textcat(x + 1, y) AS v FROM t", "spark", generated=False)
     assert "(x + 1) || y" in written
 
 
 def test_the_column_of_a_call_is_named_for_the_function(con):
-    relation = con.execute(transpile_to_duckdb("SELECT textcat(a, b) FROM t"))
+    relation = con.execute(transpile_to_duckdb("SELECT textcat(a, b) FROM t", generated=False))
     assert [d[0] for d in relation.description] == ["textcat"]
 
 
 def test_a_call_with_no_overload_of_its_argument_count_is_the_engines_to_refuse():
     tree = sqlglot.parse_one("SELECT textcat(a) FROM t", read="postgres")
-    assert inline(tree, "mysql").sql(dialect="mysql") == "SELECT TEXTCAT(a) FROM t"
+    assert inline(tree, "mysql", generated=False).sql(dialect="mysql") == "SELECT TEXTCAT(a) FROM t"
 
 
 def test_a_statement_that_calls_none_of_them_is_not_parsed():
@@ -384,11 +389,16 @@ def test_a_bit_string_of_an_integer_is_its_low_bits(con):
     ],
 )
 def test_a_call_by_pg_catalog_is_the_call_of_the_function(dialect: str, want: str):
-    assert transpile('SELECT pg_catalog."abs"(NULL::double precision) AS v', dialect) == want
+    assert (
+        transpile('SELECT pg_catalog."abs"(NULL::double precision) AS v', dialect, generated=False)
+        == want
+    )
 
 
 def test_a_qualified_call_inside_a_qualified_call_is_read_too():
-    written = transpile('SELECT pg_catalog."abs"(pg_catalog."sign"(x)) FROM t', "trino")
+    written = transpile(
+        'SELECT pg_catalog."abs"(pg_catalog."sign"(x)) FROM t', "trino", generated=False
+    )
     assert "pg_catalog" not in written.lower()
 
 
@@ -397,11 +407,11 @@ def test_a_qualified_call_inside_a_qualified_call_is_read_too():
 )
 def test_a_numeric_literal_keeps_its_digits(dialect: str, decimal: str):
     """On Trino a literal's decimal is of its digits alone (pg_literals.TIGHT)."""
-    assert decimal in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+    assert decimal in transpile("SELECT (-2.25)::numeric AS v", dialect, generated=False).upper()
 
 
 def test_a_numeric_of_a_column_stays_as_said():
-    assert transpile("SELECT x::numeric AS v FROM t", "trino") == (
+    assert transpile("SELECT x::numeric AS v FROM t", "trino", generated=False) == (
         "SELECT CAST(x AS DECIMAL) AS v FROM t"
     )
 
@@ -415,11 +425,13 @@ def test_a_numeric_of_a_column_stays_as_said():
     ],
 )
 def test_the_case_insensitive_match_is_one_form_on_any_engine(dialect: str, want: str):
-    assert want in transpile("SELECT texticregexne(a, b) AS v FROM t", dialect)
+    assert want in transpile("SELECT texticregexne(a, b) AS v FROM t", dialect, generated=False)
 
 
 def test_clickhouses_like_has_no_escape_clause():
-    assert "ESCAPE" not in transpile("SELECT textlike(a, b) AS v FROM t", "clickhouse")
+    assert "ESCAPE" not in transpile(
+        "SELECT textlike(a, b) AS v FROM t", "clickhouse", generated=False
+    )
 
 
 @pytest.mark.parametrize(
@@ -436,12 +448,15 @@ def test_clickhouses_like_has_no_escape_clause():
 )
 def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
     assert refused.value.params == {"function": function, "dialect": dialect}
 
 
 def test_a_column_of_no_said_type_is_the_engines_to_read():
-    assert transpile("SELECT avg(x) AS v FROM t", "trino") == "SELECT AVG(x) AS v FROM t"
+    assert (
+        transpile("SELECT avg(x) AS v FROM t", "trino", generated=False)
+        == "SELECT AVG(x) AS v FROM t"
+    )
 
 
 @pytest.mark.parametrize(
@@ -452,11 +467,15 @@ def test_a_column_of_no_said_type_is_the_engines_to_read():
     ],
 )
 def test_regexp_replace_with_no_flag_is_the_first_match(dialect: str, want: str):
-    assert want in transpile("SELECT regexp_replace(a, 'o', 'X') AS v FROM t", dialect)
+    assert want in transpile(
+        "SELECT regexp_replace(a, 'o', 'X') AS v FROM t", dialect, generated=False
+    )
 
 
 def test_regexp_replace_with_the_g_flag_is_every_match():
-    written = transpile("SELECT regexp_replace(a, 'o', 'X', 'g') AS v FROM t", "trino")
+    written = transpile(
+        "SELECT regexp_replace(a, 'o', 'X', 'g') AS v FROM t", "trino", generated=False
+    )
     assert written == "SELECT REGEXP_REPLACE(a, 'o', 'X') AS v FROM t"
 
 
@@ -470,7 +489,7 @@ def test_regexp_replace_with_the_g_flag_is_every_match():
     ],
 )
 def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
-    assert want in transpile(sql, "trino")
+    assert want in transpile(sql, "trino", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -485,17 +504,20 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
 )
 def test_clickhouse_refuses_what_it_cannot_evaluate_or_answers_differently(sql: str):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_call_named_for_the_engines_own_spelling_is_written_so():
-    assert transpile("SELECT cbrt(x) AS v FROM t", "clickhouse") == "SELECT cbrt(x) AS v FROM t"
+    assert (
+        transpile("SELECT cbrt(x) AS v FROM t", "clickhouse", generated=False)
+        == "SELECT cbrt(x) AS v FROM t"
+    )
 
 
 @pytest.mark.parametrize("call", ["substr(a, 1 + 1, 3)", "substr(a, 2)", "left(a, 2)"])
 def test_a_safe_position_stays_the_engines_own(call: str):
-    assert "GREATEST" not in transpile(f"SELECT {call} AS v FROM t", "trino")
-    assert "CASE" not in transpile(f"SELECT {call} AS v FROM t", "trino")
+    assert "GREATEST" not in transpile(f"SELECT {call} AS v FROM t", "trino", generated=False)
+    assert "CASE" not in transpile(f"SELECT {call} AS v FROM t", "trino", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -511,7 +533,7 @@ def test_a_safe_position_stays_the_engines_own(call: str):
 )
 def test_a_position_before_the_value_reads_as_postgresql_reads_it(call: str, want: str):
     written = sqlglot.transpile(
-        transpile(f"SELECT {call} AS v", "trino"), read="trino", write="duckdb"
+        transpile(f"SELECT {call} AS v", "trino", generated=False), read="trino", write="duckdb"
     )[0]
     assert duckdb.connect().execute(written).fetchone()[0] == want
 
@@ -527,7 +549,9 @@ def _on_chdb(sql: str) -> object:
 
 def test_a_replacement_of_nothing_is_a_deletion_on_clickhouse():
     """A replacement of nothing deletes each occurrence (polyfill.texts' replace row)."""
-    written = transpile("SELECT pg_catalog.replace('a\"b\"', '\"', '') AS v", "clickhouse")
+    written = transpile(
+        "SELECT pg_catalog.replace('a\"b\"', '\"', '') AS v", "clickhouse", generated=False
+    )
     assert _on_chdb(written) == "ab"
 
 
@@ -535,7 +559,9 @@ def test_a_replacement_of_nothing_is_a_deletion_on_clickhouse():
 def test_a_pattern_of_nothing_is_postgresql_s_answer_on_clickhouse(pattern: str, want: str):
     """An empty pattern replaces nothing and a NULL one answers NULL, as PostgreSQL's replace:
     neither reaches the server's replaceAll, which refuses both."""
-    written = transpile(f"SELECT pg_catalog.replace('abc', {pattern}, 'x') AS v", "clickhouse")
+    written = transpile(
+        f"SELECT pg_catalog.replace('abc', {pattern}, 'x') AS v", "clickhouse", generated=False
+    )
     assert _on_chdb(written) == want
 
 
@@ -544,4 +570,4 @@ def test_a_timestamp_range_is_compared_on_clickhouse():
     marked = mark_subtype_operations(
         "SELECT a.v @> b.v AS r FROM s.t AS a CROSS JOIN s.t AS b", {("s", "t"): {"v": "tsrange"}}
     )
-    assert "'\"', '')" in transpile(marked, "clickhouse")
+    assert "'\"', '')" in transpile(marked, "clickhouse", generated=False)

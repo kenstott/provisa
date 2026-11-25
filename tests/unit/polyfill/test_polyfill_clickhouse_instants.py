@@ -38,13 +38,13 @@ _TZ = "timestamp with time zone"
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
 def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
     with pytest.raises(Exception) as raised:
-        list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+        list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     error = from_engine(raised.value)
     assert error is not None, str(raised.value)[:300]
     return error
@@ -59,7 +59,7 @@ def _call(function: str, a: str, b: str, a_type: str = _TZ, b_type: str = _TZ) -
 
 def test_a_call_a_row_answers_is_read_before_its_type_is_refused():
     sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
-    written = transpile(sql, "clickhouse")
+    written = transpile(sql, "clickhouse", generated=False)
     assert "DateTime64(6, 'UTC')" in written and " < " in written
 
 
@@ -74,7 +74,7 @@ def test_a_call_a_row_answers_is_read_before_its_type_is_refused():
 )  # fmt: skip
 def test_a_call_no_row_answers_is_refused_as_it_was(sql, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     # A refusal by name, as before the grid was read first: not a row's (which carries 0A000).
     assert type(refused.value) is FunctionRefused
     assert str(refused.value) == f"{function}() has no form on clickhouse"
@@ -83,7 +83,7 @@ def test_a_call_no_row_answers_is_refused_as_it_was(sql, function):
 def test_a_literal_no_iso_form_writes_keeps_its_refusal_by_name():
     sql = _call("timestamptz_lt", "'infinity'", "'2024-06-15 12:30:45+00'")
     with pytest.raises(FunctionRefused, match=r"^timestamptz_lt\(\) has no form on clickhouse$"):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 # --- the exact case ------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ def test_a_date_past_the_bound_is_refused_by_the_row_of_its_literal():
     # date_in's row reads a date literal first, and raises 0A000 for one ClickHouse holds none of.
     sql = _call("date_lt_timestamptz", "'1899-12-31'", "'2024-06-15 12:30:45+00'", "date", _TZ)
     with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert refused.value.sqlstate == "0A000"
     assert str(refused.value).startswith('date_in() of "1899-12-31" has no form on clickhouse')
 
@@ -213,7 +213,7 @@ def off_utc():
 )
 def test_off_utc_a_value_read_in_the_session_zone_is_refused_by_name(off_utc, sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 # --- a function of one instant, and date_trunc of one --------------------------------------------
@@ -318,7 +318,7 @@ def test_isfinite_reads_only_that_a_value_is_there(runtime):
 )  # fmt: skip
 def test_a_function_of_one_instant_the_row_does_not_read_is_refused_by_name(sql, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert type(refused.value) is FunctionRefused
     assert str(refused.value) == f"{function}() has no form on clickhouse"
 
@@ -335,7 +335,7 @@ def test_a_function_of_one_instant_the_row_does_not_read_is_refused_by_name(sql,
 )
 def test_off_utc_a_function_of_one_instant_read_in_the_session_zone_is_refused(off_utc, sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_each_function_of_one_instant_states_its_bound():
@@ -427,7 +427,9 @@ def test_timezone_of_a_column_of_values_reads_each_row(runtime):
         "SELECT pg_catalog.\"timezone\"('Asia/Tokyo'::text, c1) AS v FROM (VALUES "
         f"({_SAMPLES[0]}::{_TZ}), ({_SAMPLES[1]}::{_TZ}), (NULL::{_TZ})) AS t(c1)"
     )
-    rows = [r[0] for r in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    rows = [
+        r[0] for r in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
     walls = [r and r.replace(tzinfo=None) for r in rows]
     # A VALUES list's rows reach ClickHouse as a UNION ALL: their order is not the statement's.
     assert sorted(walls, key=lambda w: (w is None, w or datetime.datetime.min)) == [
@@ -471,7 +473,7 @@ def test_a_call_of_an_instant_past_the_bound_raises(runtime, function, sql):
 )  # fmt: skip
 def test_a_call_of_an_instant_the_row_does_not_read_is_refused_by_name(sql, function):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert type(refused.value) is FunctionRefused
     assert str(refused.value) == f"{function}() has no form on clickhouse"
 
@@ -488,7 +490,7 @@ def test_a_call_of_an_instant_the_row_does_not_read_is_refused_by_name(sql, func
 )
 def test_off_utc_a_call_of_an_instant_is_refused_by_name(off_utc, sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -501,7 +503,7 @@ def test_off_utc_a_call_of_an_instant_is_refused_by_name(off_utc, sql):
 )
 def test_a_timestamp_keeps_its_own_form(sql):
     # The rows read an instant; a timestamp's call is the old table's still.
-    assert "DateTime64(6, 'UTC')" in transpile(sql, "clickhouse")
+    assert "DateTime64(6, 'UTC')" in transpile(sql, "clickhouse", generated=False)
 
 
 # --- the day of an instant a call computes (J1303's open item) ----------------------------------
@@ -628,13 +630,17 @@ def test_date_trunc_at_a_zone_past_the_bound_raises(runtime):
 )  # fmt: skip
 def test_date_trunc_at_a_zone_the_row_does_not_read_is_refused_by_name(sql):
     with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
     assert str(refused.value) == "date_trunc() has no form on clickhouse"
 
 
 def test_off_utc_date_trunc_at_a_zone_is_refused_by_name(off_utc):
     with pytest.raises(FunctionRefused):
-        transpile(_trunc_at("day", "'2024-06-15 12:00:00+00'", "Asia/Tokyo"), "clickhouse")
+        transpile(
+            _trunc_at("day", "'2024-06-15 12:00:00+00'", "Asia/Tokyo"),
+            "clickhouse",
+            generated=False,
+        )
 
 
 def _range(lower: str, upper: str, bounds: str) -> str:

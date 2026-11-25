@@ -469,7 +469,7 @@ def test_overlaps_by_its_routines_name_ends_an_interval_period(sql: str, answer:
 
     from provisa.transpiler.transpile import transpile_to_duckdb
 
-    assert duckdb.connect().sql(transpile_to_duckdb(sql)).fetchall() == [(answer,)]
+    assert duckdb.connect().sql(transpile_to_duckdb(sql, generated=False)).fetchall() == [(answer,)]
 
 
 @pytest.mark.parametrize(

@@ -16,6 +16,8 @@ import { describe, it, expect } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import type { TrackedFunction, TrackedWebhook } from "../../../api/actions";
 import { FunctionRead, WebhookRead } from "../CommandRead";
+import { EditorView } from "@codemirror/view";
+import { editorOf, languageOf } from "../../../test-utils/codeEditor";
 
 function fields(testId: string): [string, string][] {
   return within(screen.getByTestId(testId))
@@ -211,5 +213,45 @@ describe("a statement command's panel (REQ-2001)", () => {
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Broken"]).toBe("Column 'subject' could not be resolved");
     expect(shown["Declares"]).toBeUndefined();
+  });
+});
+
+describe("a command's SQL in the code editor (REQ-1984)", () => {
+  const cases: [string, Partial<TrackedFunction>, string, string][] = [
+    [
+      "a statement's SQL",
+      { implKind: "statement", binding: { sql: "DELETE FROM kb.docs" }, contract: undefined },
+      "function-read-sql",
+      "DELETE FROM kb.docs",
+    ],
+    [
+      "a source query's native SQL",
+      { implKind: "source_query", binding: { sql: "SELECT 1;\nSELECT 2" } },
+      "function-read-native-sql",
+      "SELECT 1;\nSELECT 2",
+    ],
+    [
+      "a SQL expression's template",
+      { implKind: "sql_expression", binding: { sql: "upper({{name}})" } },
+      "function-read-template",
+      "upper({{name}})",
+    ],
+  ];
+
+  it.each(cases)("shows %s read-only, highlighted as SQL", (_, over, testId, sql) => {
+    render(<FunctionRead fn={{ ...fn, ...over }} productNames={[]} />);
+    const view = editorOf(testId);
+    expect(view.state.doc.toString()).toBe(sql);
+    expect(languageOf(view)).toBe("sql");
+    expect(view.state.readOnly).toBe(true);
+    expect(view.state.facet(EditorView.editable)).toBe(false);
+  });
+
+  it("shows the empty mark when there is no SQL", () => {
+    render(
+      <FunctionRead fn={{ ...fn, implKind: "sql_expression", binding: {} }} productNames={[]} />,
+    );
+    expect(screen.queryByTestId("function-read-template")).toBeNull();
+    expect(Object.fromEntries(fields("function-read-fields"))["SQL expression"]).toBe("—");
   });
 });

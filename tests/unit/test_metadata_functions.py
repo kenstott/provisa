@@ -94,7 +94,10 @@ def test_a_value_function_is_a_row_of_the_table_native_on_postgresql(name, param
 
 
 def test_a_value_function_stays_native_on_postgresql():
-    assert "format_type(23, -1)" in transpile("SELECT format_type(23, -1)", "postgres").lower()
+    assert (
+        "format_type(23, -1)"
+        in transpile("SELECT format_type(23, -1)", "postgres", generated=False).lower()
+    )
 
 
 @pytest.mark.parametrize(
@@ -115,7 +118,9 @@ def test_a_value_function_stays_native_on_postgresql():
 def test_a_value_function_has_its_answer_on_a_dialect_without_it(call, answer):
     import duckdb
 
-    assert duckdb.sql(transpile_to_duckdb(f"SELECT {call}")).fetchall() == [(answer,)]
+    assert duckdb.sql(transpile_to_duckdb(f"SELECT {call}", generated=False)).fetchall() == [
+        (answer,)
+    ]
 
 
 # --- functions on a catalog ---------------------------------------------------------------------
@@ -347,7 +352,7 @@ _SPELLINGS = (
 def _duckdb_value(sql: str):
     import duckdb
 
-    ((value,),) = duckdb.sql(transpile_to_duckdb(f"SELECT {sql}")).fetchall()
+    ((value,),) = duckdb.sql(transpile_to_duckdb(f"SELECT {sql}", generated=False)).fetchall()
     return value
 
 
@@ -851,6 +856,12 @@ def test_a_cast_sends_no_statement_to_the_catalog(sql):
 
 
 def test_a_type_only_postgresql_has_is_what_the_engine_holds_it_as():
-    assert transpile_to_duckdb("SELECT '(1,2)'::point") == "SELECT CAST('(1,2)' AS TEXT)"
-    assert transpile_to_duckdb("SELECT '1'::xid8") == "SELECT CAST('1' AS UBIGINT)"
-    assert transpile_to_duckdb("SELECT '{}'::aclitem[]") == "SELECT CAST([] AS TEXT[])"
+    assert (
+        transpile_to_duckdb("SELECT '(1,2)'::point", generated=False)
+        == "SELECT CAST('(1,2)' AS TEXT)"
+    )
+    assert transpile_to_duckdb("SELECT '1'::xid8", generated=False) == "SELECT CAST('1' AS UBIGINT)"
+    assert (
+        transpile_to_duckdb("SELECT '{}'::aclitem[]", generated=False)
+        == "SELECT CAST([] AS TEXT[])"
+    )

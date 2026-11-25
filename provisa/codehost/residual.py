@@ -36,8 +36,7 @@ its memory, its threads and its spill to disk are the operator's settings. A sta
 spills past the cap -- DuckDB's own limit, or the end of the spill volume a built image is given
 at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`).
 A statement past what DuckDB can spill from at all is refused naming
-``codesource.duckdb_memory_mb`` and ``codesource.duckdb_threads`` (:class:`MemoryCapped`). Without an ORDER BY a statement's rows come in no particular order, as
-SQL has it, which leaves DuckDB free to answer without holding them in order.
+``codesource.duckdb_memory_mb`` and ``codesource.duckdb_threads`` (:class:`MemoryCapped`).
 
 This module is carried, as it is, by the front end of every built image and used by Provisa for a
 dev-mode source; it imports nothing of Provisa's but duckdb_sql and engine_memory, carried beside
@@ -133,7 +132,6 @@ def configure(*, memory_mb: int, threads: int, spill_cap_mb: int, spill_dir: str
                     "threads": threads,
                     "max_temp_directory_size": f"{spill_cap_mb}MiB",
                     "temp_directory": spill_dir,
-                    "preserve_insertion_order": False,
                 }
             )
         else:

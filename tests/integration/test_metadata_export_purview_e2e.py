@@ -54,6 +54,7 @@ from tests.integration.metadata_export_server import (
     CLASS_TERM,
     GLOSSARY_TERM,
     PRODUCT_FIELDS,
+    PRODUCT_OWNER,
     SOURCE,
     approve_terms,
     model_config,
@@ -71,7 +72,7 @@ pytestmark = [
 ORG = "mdx_purview_e2e"
 # The stem of the run's governance domain (purview_account names it <stem>-<run>).
 DOMAIN = "provisa-e2e-sales"
-OWNER = "provisa-e2e-owner"
+OWNER = PRODUCT_OWNER
 _CREDENTIALS = (
     "AZURE_TENANT_ID",
     "AZURE_CLIENT_ID",
@@ -208,15 +209,10 @@ def _a_tenant_user(creds: dict[str, str]) -> tuple[str, str]:
 
 
 async def _hold_owner_role(client: httpx.AsyncClient, org: str, email: str) -> None:
-    """A member holding the product's owner role, with ``email`` in the directory: the grant
-    through the admin API, the address as a member's sign-in records it."""
+    """The product's owner (named by the server, REQ-2219) with ``email`` in the directory, the
+    address as a member's sign-in records it."""
     import asyncpg
 
-    granted = await client.post(
-        f"/admin/users/{OWNER}/assignments",
-        json={"role_id": PRODUCT_FIELDS["owner_role"], "domain_id": "*"},
-    )
-    assert granted.status_code == 200, granted.text
     conn = await asyncpg.connect(
         host=os.environ["PG_HOST"],
         port=int(os.environ["PG_PORT"]),

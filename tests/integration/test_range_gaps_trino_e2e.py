@@ -77,7 +77,9 @@ def _with_samples(trino_sql: str, samples: list[str | None]) -> str:
 
 
 def _answer(conn: Any, statement: str, type_name: str) -> list | str:
-    written = transpile(mark_subtype_operations(statement, {("s", "t"): {"v": type_name}}), "trino")
+    written = transpile(
+        mark_subtype_operations(statement, {("s", "t"): {"v": type_name}}), "trino", generated=False
+    )
     cur = conn.cursor()
     try:
         cur.execute(_with_samples(written, _samples(type_name)))

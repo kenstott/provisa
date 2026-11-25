@@ -49,7 +49,7 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     form = rule.forms.get(dialect)
     if isinstance(form, Refusal):
         with pytest.raises(RowRefused) as refused:
-            transpile(f"SELECT * FROM {feature.name}()", dialect)
+            transpile(f"SELECT * FROM {feature.name}()", dialect, generated=False)
         assert (str(refused.value), refused.value.sqlstate) == (form.message, form.sqlstate)
         assert isinstance(refused.value, FunctionRefused)
         return
@@ -85,7 +85,7 @@ TIMEZONE_FORMS = [
 
 @pytest.mark.parametrize(("sql", "duckdb_sql"), TIMEZONE_FORMS)
 def test_timezone_of_a_posix_zone_on_duckdb(sql: str, duckdb_sql: str):
-    assert transpile_to_duckdb(sql) == duckdb_sql
+    assert transpile_to_duckdb(sql, generated=False) == duckdb_sql
 
 
 #: (statement, PostgreSQL 17's answer)
@@ -103,11 +103,13 @@ TIMEZONE_ANSWERS = [
 
 @pytest.mark.parametrize(("sql", "answer"), TIMEZONE_ANSWERS)
 def test_timezone_answers_as_postgresql_on_duckdb(sql: str, answer: object):
-    assert duckdb.connect().sql(transpile_to_duckdb(sql)).fetchall() == [(answer,)]
+    assert duckdb.connect().sql(transpile_to_duckdb(sql, generated=False)).fetchall() == [(answer,)]
 
 
 def test_pg_timezone_names_on_duckdb_is_each_zone_read_from_the_pinned_release():
-    out = transpile_to_duckdb("SELECT name, abbrev, utc_offset, is_dst FROM pg_timezone_names()")
+    out = transpile_to_duckdb(
+        "SELECT name, abbrev, utc_offset, is_dst FROM pg_timezone_names()", generated=False
+    )
     assert isinstance(sqlglot.parse_one(out, read="duckdb").find(exp.Subquery), exp.Subquery)
     rows = duckdb.connect().sql(out).fetchall()
     assert rows

@@ -30,7 +30,7 @@ class TestTranspileToTrino:
         # Cypher map literals emit to_json (Postgres/DuckDB encode); Trino has no to_json — its
         # CAST(x AS JSON) already encodes. Regression for "Malformed JSON" on bare strings.
         pg = 'SELECT to_json("b"."breed_name") AS x FROM "public"."breeds" "b"'
-        trino_sql = transpile_to_trino(pg).lower()
+        trino_sql = transpile_to_trino(pg, generated=False).lower()
         assert "to_json" not in trino_sql
         assert "cast(" in trino_sql and "as json)" in trino_sql
 
@@ -42,21 +42,21 @@ class TestTranspileToTrino:
             "SELECT MAP(ARRAY['user'], ARRAY[to_json(MAP(ARRAY['id'], "
             'ARRAY[to_json("b"."id")]))]) AS x FROM "public"."users" "b"'
         )
-        assert "to_json" not in transpile_to_trino(pg).lower()
+        assert "to_json" not in transpile_to_trino(pg, generated=False).lower()
 
     def test_to_json_in_a_json_object_is_its_json_text_marked_format_json(self):
         # REQ-2176: Trino's JSON_OBJECT takes a JSON value only as text marked FORMAT JSON; a
         # value of type JSON it casts to varchar, which no array or object survives ("Cannot
         # cast '["Small"]' to varchar"). A session node's labels are such a list.
         pg = "SELECT JSON_OBJECT('labels': to_json(\"__labels\"), 'k': \"k\") AS n FROM t"
-        assert transpile_to_trino(pg) == (
+        assert transpile_to_trino(pg, generated=False) == (
             "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON, "
             "'k': \"k\") AS n FROM t"
         )
 
     def test_to_json_in_a_built_object_is_its_json_text_marked_format_json(self):
         pg = "SELECT json_build_object('labels', to_json(\"__labels\")) AS n FROM t"
-        assert transpile_to_trino(pg) == (
+        assert transpile_to_trino(pg, generated=False) == (
             "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON) "
             "AS n FROM t"
         )
@@ -65,7 +65,7 @@ class TestTranspileToTrino:
         pg = (
             'SELECT json_build_object(\'u\', json_build_object(\'id\', "b"."id")) AS x FROM "t" "b"'
         )
-        assert "json_build_object" not in transpile_to_trino(pg).lower()
+        assert "json_build_object" not in transpile_to_trino(pg, generated=False).lower()
 
     def test_jsonb_build_object_is_rewritten(self):
         # NL-generated SQL uses the jsonb spelling; Trino registers neither jsonb_build_object nor
@@ -77,7 +77,7 @@ class TestTranspileToTrino:
             "WHERE inquiries.user_id = users.id) AS pet_details "
             'FROM "pet_store"."users" AS users LIMIT 100'
         )
-        out = transpile_to_trino(pg).lower()
+        out = transpile_to_trino(pg, generated=False).lower()
         assert "jsonb_build_object" not in out
         assert "json_object(" in out
 
@@ -89,7 +89,7 @@ class TestTranspileToTrino:
             'FROM "pet_store"."users" AS users'
         )
         with pytest.raises(FunctionRefused, match=r"jsonb_agg\(\) has no form on trino"):
-            transpile_to_trino(pg)
+            transpile_to_trino(pg, generated=False)
 
     def test_json_agg_is_rewritten(self):
         pg = (
@@ -97,21 +97,21 @@ class TestTranspileToTrino:
             '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
             'FROM "pet_store"."users" AS users'
         )
-        out = transpile_to_trino(pg).lower()
+        out = transpile_to_trino(pg, generated=False).lower()
         assert "json_agg" not in out
         assert "jsonb_build_object" not in out
         assert "array_agg(json_parse(" in out
 
     def test_simple_select(self):
         pg = 'SELECT "id", "amount" FROM "public"."orders"'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "id" in trino_sql.lower()
         assert "amount" in trino_sql.lower()
         assert "orders" in trino_sql.lower()
 
     def test_where_with_placeholder(self):
         pg = 'SELECT "id" FROM "public"."orders" WHERE "region" = $1'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "region" in trino_sql.lower()
 
     def test_left_join(self):
@@ -121,34 +121,34 @@ class TestTranspileToTrino:
             'LEFT JOIN "public"."customers" "t1" '
             'ON "t0"."customer_id" = "t1"."id"'
         )
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "left" in trino_sql.lower() or "LEFT" in trino_sql
         assert "join" in trino_sql.lower()
 
     def test_limit_offset(self):
         pg = 'SELECT "id" FROM "public"."orders" LIMIT 10 OFFSET 20'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "10" in trino_sql
         assert "20" in trino_sql
 
     def test_order_by(self):
         pg = 'SELECT "id" FROM "public"."orders" ORDER BY "created_at" DESC'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "desc" in trino_sql.lower()
 
     def test_in_clause(self):
         pg = 'SELECT "id" FROM "public"."orders" WHERE "region" IN ($1, $2)'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "in" in trino_sql.lower()
 
     def test_is_null(self):
         pg = 'SELECT "id" FROM "public"."orders" WHERE "region" IS NULL'
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         assert "is null" in trino_sql.lower()
 
     def test_empty_sql_raises(self):
         with pytest.raises(ParseError):
-            transpile_to_trino("")
+            transpile_to_trino("", generated=False)
 
     def test_combined_query(self):
         pg = (
@@ -160,7 +160,7 @@ class TestTranspileToTrino:
             'ORDER BY "t0"."amount" DESC '
             "LIMIT 10 OFFSET 5"
         )
-        trino_sql = transpile_to_trino(pg)
+        trino_sql = transpile_to_trino(pg, generated=False)
         lower = trino_sql.lower()
         assert "left" in lower
         assert "join" in lower
@@ -174,30 +174,30 @@ class TestMultiDialect:
     PG_SQL = 'SELECT "id", "name" FROM "public"."orders" WHERE "id" = $1 LIMIT 10'
 
     def test_to_postgres(self):
-        result = transpile(self.PG_SQL, "postgres")
+        result = transpile(self.PG_SQL, "postgres", generated=False)
         assert "id" in result.lower()
         assert "orders" in result.lower()
 
     def test_to_mysql(self):
-        result = transpile(self.PG_SQL, "mysql")
+        result = transpile(self.PG_SQL, "mysql", generated=False)
         assert "orders" in result.lower()
         # MySQL uses backticks or no quotes
         assert "10" in result
 
     def test_to_tsql(self):
-        result = transpile(self.PG_SQL, "tsql")
+        result = transpile(self.PG_SQL, "tsql", generated=False)
         assert "orders" in result.lower()
 
     def test_to_duckdb(self):
-        result = transpile(self.PG_SQL, "duckdb")
+        result = transpile(self.PG_SQL, "duckdb", generated=False)
         assert "orders" in result.lower()
 
     def test_to_snowflake(self):
-        result = transpile(self.PG_SQL, "snowflake")
+        result = transpile(self.PG_SQL, "snowflake", generated=False)
         assert "orders" in result.lower()
 
     def test_to_bigquery(self):
-        result = transpile(self.PG_SQL, "bigquery")
+        result = transpile(self.PG_SQL, "bigquery", generated=False)
         assert "orders" in result.lower()
 
 
@@ -207,7 +207,7 @@ class TestPgDuckdbJsonEmission:
 
     def test_flat_json_object_collapses_to_build_object(self):
         pg = "SELECT json_object(KEY 'name' VALUE a.name) AS obj FROM authors a"
-        out = rewrite_json_object_to_build_object(transpile(pg, "postgres"))
+        out = rewrite_json_object_to_build_object(transpile(pg, "postgres", generated=False))
         assert "JSON_BUILD_OBJECT" in out.upper()
         assert "JSON_OBJECT(" not in out.upper()
         assert "':'" not in out and "':" not in out.replace("'name'", "")
@@ -218,12 +218,12 @@ class TestPgDuckdbJsonEmission:
             "(SELECT json_agg(json_object(KEY 'title' VALUE p.title)) "
             "FROM posts p WHERE p.author_id = a.id)) AS obj FROM authors a"
         )
-        out = rewrite_json_object_to_build_object(transpile(pg, "postgres"))
+        out = rewrite_json_object_to_build_object(transpile(pg, "postgres", generated=False))
         assert out.upper().count("JSON_BUILD_OBJECT") == 2
         assert "JSON_OBJECT(" not in out.upper()
 
     def test_no_json_object_unchanged(self):
-        pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres")
+        pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres", generated=False)
         assert rewrite_json_object_to_build_object(pg) == pg
 
     def test_overlaps_reaches_postgresql_as_its_own_call(self):
@@ -234,7 +234,9 @@ class TestPgDuckdbJsonEmission:
             " AS v"
         )
         for wrapped in (pg, f"SELECT json_object(KEY 'v' VALUE ({pg}))"):
-            out = rewrite_json_object_to_build_object(transpile(wrapped, "postgres"))
+            out = rewrite_json_object_to_build_object(
+                transpile(wrapped, "postgres", generated=False)
+            )
             assert 'pg_catalog."overlaps"(' in out
             assert "overlaps_timestamp" not in out.lower()
 
@@ -242,14 +244,14 @@ class TestPgDuckdbJsonEmission:
         """REQ-2167: PostgreSQL resolves a quoted name as written; "JSON_TO_RECORD" is no
         function there."""
         pg = 'SELECT t.a FROM pg_catalog."json_to_record"(\'{"a": 1}\'::json) AS t(a integer)'
-        assert 'pg_catalog."json_to_record"(' in transpile(pg, "postgres")
+        assert 'pg_catalog."json_to_record"(' in transpile(pg, "postgres", generated=False)
 
     def test_pg_backend_transpile_physical_emits_build_object(self):
         from provisa.federation.engine import build_pg_engine
 
         backend = build_pg_engine().backend
         pg = "SELECT json_object(KEY 'name' VALUE a.name) AS obj FROM authors a"
-        out = backend.transpile_physical(pg)
+        out = backend.transpile_physical(pg, generated=False)
         assert "JSON_BUILD_OBJECT" in out.upper()
         assert "JSON_OBJECT(" not in out.upper()
 
@@ -404,14 +406,14 @@ class TestRewriteCorrelatedSubqueries:
     def test_transpile_to_trino_handles_correlated(self):
         # transpile_to_trino now routes through the general rewriter
         sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp FROM pets p"
-        result = transpile_to_trino(sql)
+        result = transpile_to_trino(sql, generated=False)
         assert "WITH" in result
         assert "_grel_0" in result
         assert "LEFT JOIN" in result.upper()
 
     def test_transpile_to_trino_plain_query_unaffected(self):
         sql = 'SELECT "id", "name" FROM "public"."orders" LIMIT 10'
-        result = transpile_to_trino(sql)
+        result = transpile_to_trino(sql, generated=False)
         assert "orders" in result.lower()
         assert "WITH" not in result
 
@@ -433,7 +435,7 @@ def test_duckdb_json_agg_rewritten_to_json_group_array_and_executes():
         'FROM "inquiries" "t1" WHERE "t1"."pet_id" = "t0"."id") AS "inquiries" '
         'FROM "pets" "t0" ORDER BY 1'
     )
-    physical = transpile_to_duckdb(pg_sql)
+    physical = transpile_to_duckdb(pg_sql, generated=False)
     assert "JSON_ARRAYAGG" not in physical.upper()
     assert "JSON_GROUP_ARRAY" in physical.upper()
 
@@ -457,7 +459,7 @@ def test_duckdb_nested_json_agg_rewritten_at_every_depth():
         "SELECT json_agg(json_object(KEY 'k' VALUE "
         '(SELECT json_agg("t2"."v") FROM "b" "t2"))) FROM "a" "t1"'
     )
-    physical = transpile_to_duckdb(pg_sql)
+    physical = transpile_to_duckdb(pg_sql, generated=False)
     assert "JSON_ARRAYAGG" not in physical.upper()
     assert physical.upper().count("JSON_GROUP_ARRAY") == 2
 
@@ -497,11 +499,12 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
 
     out = transpile_to_trino(
         "SELECT EXTRACT(EPOCH FROM CAST(a AS TIMESTAMP)) + 1, "
-        "CAST(TO_TIMESTAMP(3) AT TIME ZONE 'UTC' AS TIMESTAMP) FROM t"
+        "CAST(TO_TIMESTAMP(3) AT TIME ZONE 'UTC' AS TIMESTAMP) FROM t",
+        generated=False,
     )
     assert "TO_UNIXTIME(WITH_TIMEZONE(CAST(a AS TIMESTAMP), 'UTC'))" in out
     assert "CAST(AT_TIMEZONE(FROM_UNIXTIME(3), 'UTC') AS TIMESTAMP)" in out
-    assert transpile_to_trino("SELECT a FROM t") == "SELECT a FROM t"
+    assert transpile_to_trino("SELECT a FROM t", generated=False) == "SELECT a FROM t"
 
 
 # REQ-1731: an Exasol source is addressed as Exasol stores it -- a lowercase registered name in
@@ -554,7 +557,7 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
     ],
 )
 def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
-    assert transpile(pg_sql, "exasol") == exasol_sql
+    assert transpile(pg_sql, "exasol", generated=False) == exasol_sql
 
 
 def test_every_identifier_can_be_quoted_for_a_source_without_its_own_dialect():
@@ -564,6 +567,7 @@ def test_every_identifier_can_be_quoted_for_a_source_without_its_own_dialect():
         'SELECT id FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS w ORDER BY id',
         "postgres",
         quote_identifiers=True,
+        generated=False,
     ) == (
         'SELECT "id" FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS "w" ORDER BY "id"'
     )
@@ -574,7 +578,7 @@ def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
     # which is what Trino's own replaces.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
     assert (
-        transpile_to_trino(pg)
+        transpile_to_trino(pg, generated=False)
         == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') AS regexp_replace FROM t"
     )
 
@@ -583,7 +587,7 @@ def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
     # With no flag the first match only (function_macros._first_match): the text before the match
     # is group 1 of the form written, so PostgreSQL's \1 is Trino's $2.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
-    assert transpile_to_trino(pg) == (
+    assert transpile_to_trino(pg, generated=False) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
         "'${before}$3-$2${after}') AS regexp_replace FROM t"
     )
@@ -592,7 +596,7 @@ def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
 def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
     # PostgreSQL's \2 of a pattern of one group is nothing, not the text after the match.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
-    assert transpile_to_trino(pg) == (
+    assert transpile_to_trino(pg, generated=False) == (
         r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
         "'${before}[]${after}') AS regexp_replace FROM t"
     )
@@ -601,7 +605,7 @@ def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
 def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
     # \\ is a backslash and the 1 after it a digit; a $ is a dollar sign.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
-    assert transpile_to_trino(pg) == (
+    assert transpile_to_trino(pg, generated=False) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
         r"'${before}$2\$\\1${after}') AS regexp_replace FROM t"
     )
@@ -610,7 +614,7 @@ def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
 def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
     assert (
-        transpile_to_trino(pg)
+        transpile_to_trino(pg, generated=False)
         == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') AS regexp_replace FROM t"
     )
 
@@ -624,14 +628,14 @@ def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
 )
 def test_a_first_match_with_no_group_form_is_refused(pg: str):
     with pytest.raises(FunctionRefused, match="regexp_replace"):
-        transpile_to_trino(pg)
+        transpile_to_trino(pg, generated=False)
 
 
 def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
     # collect() of nothing is []: PostgreSQL types no bare ARRAY[], and reads '{}' as the other
     # argument's array type.
     pg = "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), ARRAY[]) FROM t"
-    assert transpile(pg, "postgres") == (
+    assert transpile(pg, "postgres", generated=False) == (
         "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), '{}') FROM t"
     )
 
@@ -639,7 +643,7 @@ def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
 def test_a_json_value_s_size_is_read_by_trino():
     # json_size(x), the size of an item of a list of several types (expr_visitor): a list's
     # items, else a string's characters.
-    assert transpile_to_trino("SELECT json_size(x) FROM t") == (
+    assert transpile_to_trino("SELECT json_size(x) FROM t", generated=False) == (
         "SELECT COALESCE(JSON_ARRAY_LENGTH(x), LENGTH(JSON_EXTRACT_SCALAR(x, '$'))) FROM t"
     )
 
@@ -649,7 +653,7 @@ def test_a_json_value_s_place_in_order_is_read_by_trino():
     # boolean 6, number 7 -- openCypher's orderability), its number, then its text with a list's
     # end first (expr_visitor). An object's rank reads the keys a node, a relationship and a path
     # are recognised by (REQ-2167); golden re-captured for that, the other ranks are unchanged.
-    assert transpile_to_trino("SELECT json_order_key(x) FROM t") == (
+    assert transpile_to_trino("SELECT json_order_key(x) FROM t", generated=False) == (
         "SELECT ROW(CASE SUBSTR(JSON_FORMAT(x), 1, 1) WHEN '{' THEN CASE"
         " WHEN NOT JSON_EXTRACT(x, '$.nodes') IS NULL AND NOT JSON_EXTRACT(x, '$.edges') IS NULL"
         " THEN 4 WHEN NOT JSON_EXTRACT(x, '$.type') IS NULL"
@@ -665,7 +669,7 @@ def test_a_json_value_s_place_in_order_is_read_by_trino():
 
 def test_a_range_s_computed_step_fails_on_trino_at_zero():
     # range_step(s): Trino's fail where the step is 0 (expr_visitor).
-    assert transpile_to_trino("SELECT SEQUENCE(2, 8, RANGE_STEP(s)) FROM t") == (
+    assert transpile_to_trino("SELECT SEQUENCE(2, 8, RANGE_STEP(s)) FROM t", generated=False) == (
         "SELECT SEQUENCE(2, 8, CASE WHEN s = 0 THEN FAIL('range() takes a step other than 0')"
         " ELSE s END) FROM t"
     )
@@ -685,12 +689,12 @@ class TestDirectPostgresJson:
     )
 
     def test_postgres_arms_are_built_as_json(self):
-        out = direct_physical(transpile(self.UNION, "postgres"), "postgres")
+        out = direct_physical(transpile(self.UNION, "postgres", generated=False), "postgres")
         assert out.upper().count("JSON_BUILD_OBJECT") == 4
         assert "JSON_OBJECT(" not in out.upper()
 
     def test_another_dialect_is_unchanged(self):
-        mysql = transpile('SELECT "id" FROM "orders"', "mysql")
+        mysql = transpile('SELECT "id" FROM "orders"', "mysql", generated=False)
         assert direct_physical(mysql, "mysql") == mysql
 
 
@@ -700,12 +704,12 @@ _JSON_ITEMS_UNWIND = "SELECT t FROM s CROSS JOIN UNNEST(json_items(s.tag)) AS _u
 def test_a_json_values_items_are_read_by_each_engine():
     # json_items(x), an UNWIND of a property held as JSON (translator, REQ-2176): a list's items,
     # any other value a list of itself, null an empty list.
-    assert transpile_to_trino(_JSON_ITEMS_UNWIND) == (
+    assert transpile_to_trino(_JSON_ITEMS_UNWIND, generated=False) == (
         "SELECT t FROM s CROSS JOIN UNNEST(CASE WHEN (s.tag) IS NULL"
         " THEN CAST(ARRAY[] AS ARRAY(JSON)) WHEN NOT JSON_ARRAY_LENGTH((s.tag)) IS NULL"
         " THEN CAST((s.tag) AS ARRAY(JSON)) ELSE ARRAY[(s.tag)] END) AS _uw0(t)"
     )
-    assert transpile(_JSON_ITEMS_UNWIND, "postgres") == (
+    assert transpile(_JSON_ITEMS_UNWIND, "postgres", generated=False) == (
         "SELECT t FROM s CROSS JOIN UNNEST(ARRAY(SELECT JSON_ARRAY_ELEMENTS(CASE"
         " WHEN JSON_TYPEOF((CAST(CAST(s.tag AS TEXT) AS JSON))) = 'array'"
         " THEN (CAST(CAST(s.tag AS TEXT) AS JSON))"
@@ -721,6 +725,7 @@ def test_a_json_values_items_are_unwound_by_duckdb():
     con.execute("CREATE TABLE s (id INTEGER, tag JSON)")
     con.execute("""INSERT INTO s VALUES (1, '["x", "y"]'), (2, '"z"'), (3, NULL)""")
     sql = transpile_to_duckdb(
-        "SELECT id, t FROM s CROSS JOIN UNNEST(json_items(s.tag)) AS _uw0(t) ORDER BY id, t"
+        "SELECT id, t FROM s CROSS JOIN UNNEST(json_items(s.tag)) AS _uw0(t) ORDER BY id, t",
+        generated=False,
     )
     assert con.execute(sql).fetchall() == [(1, '"x"'), (1, '"y"'), (2, '"z"')]

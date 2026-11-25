@@ -369,7 +369,7 @@ def route_through_federation(shared_data):
 
     # The federation engine transpiles the query to Trino SQL, preserving the
     # coercion CAST that reconciles the differing native column types.
-    shared_data["trino_sql"] = transpile_to_trino(shared_data["join_sql"])
+    shared_data["trino_sql"] = transpile_to_trino(shared_data["join_sql"], generated=False)
 
 
 @then("automatic type coercion is applied to prevent type mismatch errors")
@@ -478,13 +478,13 @@ def execute_query(shared_data):
 
         dialect = decision.dialect or "postgres"
         sql_key = "single_source_sql" if "single_source_sql" in shared_data else "cross_source_sql"
-        native_sql = transpile(shared_data[sql_key], dialect)
+        native_sql = transpile(shared_data[sql_key], dialect, generated=False)
         shared_data["native_sql"] = native_sql
         shared_data["trino_sql"] = None
     else:
         # Cross-source federated: transpile to Trino SQL.
         sql_key = "cross_source_sql"
-        trino_sql = transpile_to_trino(shared_data[sql_key])
+        trino_sql = transpile_to_trino(shared_data[sql_key], generated=False)
         shared_data["trino_sql"] = trino_sql
         shared_data["native_sql"] = None
 

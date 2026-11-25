@@ -49,7 +49,13 @@ SALES = frozenset({"sales"})
 def _state(control_plane) -> RoleState:
     return RoleState(
         contexts={"analyst": object()},
-        roles={"analyst": {"id": "analyst", "domain_access": ["*"]}},
+        roles={
+            "analyst": {
+                "id": "analyst",
+                "domain_access": ["*"],
+                "capabilities": ["table_registration"],
+            }
+        },
         model_db=control_plane.org(),
         config=SimpleNamespace(mail=SimpleNamespace(provider="")),
     )
@@ -304,7 +310,7 @@ async def test_a_source_open_to_no_selected_domain_is_not_introspected(control_p
         state = _state(control_plane)
         with (
             patch(
-                "provisa.api.admin.schema_query.Query.available_tables",
+                "provisa.api.admin.schema_query.offered_tables",
                 new=AsyncMock(return_value=[]),
             ) as listed,
             patch(

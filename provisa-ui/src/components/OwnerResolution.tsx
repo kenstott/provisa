@@ -25,16 +25,10 @@ function labelled(members: UserSummary[]): string[] {
   return members.map(summaryLabel).filter((label): label is string => label !== null);
 }
 
-// REQ-609/REQ-1634: an icon button that, on click, resolves a role/user ref list (an
-// owner_role, a domain steward, or a column's visible_to) to the individuals it grants
-// rights to. Renders nothing when refs is empty — callers gate public columns themselves.
-export function OwnerResolutionIcon({
-  refs,
-  ariaLabel,
-}: {
-  refs: string[];
-  ariaLabel?: string;
-}) {
+// REQ-609/REQ-1634: an icon button that, on click, resolves a role/user ref list (a product's
+// owners or a domain's stewards -- people, REQ-2219 -- a team role, or a column's visible_to) to
+// the individuals it names or grants rights to. Renders nothing when refs is empty — callers gate public columns themselves.
+export function OwnerResolutionIcon({ refs, ariaLabel }: { refs: string[]; ariaLabel?: string }) {
   const { t } = useTranslation();
   const resolveOwners = useResolveOwners();
   const [opened, setOpened] = useState(false);

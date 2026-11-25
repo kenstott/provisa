@@ -453,11 +453,14 @@ async def test_the_preview_says_which_models_are_registered_and_which_ids_are_ta
 
 
 @pytest.mark.asyncio
-async def test_the_preview_offers_an_owner_named_as_a_role(db, registered, grouped):
+async def test_the_preview_names_no_owner_role(db, registered, grouped):
+    """REQ-2219 (amended 2026-11-23): a product's owners are people, named in its Owner field;
+    a dbt group or owner names no role to own it, so the preview offers none even where a role
+    of that name exists."""
     await _hold(db, grouped)
     async with db.acquire() as conn:
         await conn.execute_core(insert(schema_org.roles).values(id="finance", capabilities=[]))
-    assert [p["owner_role"] for p in (await _preview())["products"]] == ["finance", None]
+    assert all("owner_role" not in p for p in (await _preview())["products"])
 
 
 @pytest.mark.asyncio

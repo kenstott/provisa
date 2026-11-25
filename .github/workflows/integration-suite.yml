@@ -14,6 +14,8 @@ name: Integration suite (containers)
 #     rest), first in, first out.
 #   * A targeted run (`tests` named) plans only the lanes its tests select, a few jobs, so it
 #     takes a group of its own ref instead and runs beside other runs (maintainer 2026-10-23).
+#     A targeted warehouse UI run (`ui_specs` named, not with `tests`) runs only the warehouse
+#     UI job on the named specs; it queues as a full run (REQ-1742).
 
 on:
   # Runs on dispatch for a release (gh workflow run integration-suite.yml --ref <release branch>):
@@ -34,6 +36,10 @@ on:
         default: "all"
       tests:
         description: "Targeted run: space-separated pytest node ids or files, each run unsharded in every lane whose markers select it, whatever lanes are listed; a test only an un-included live lane selects fails the plan (empty: the whole lanes listed)"
+        required: false
+        default: ""
+      ui_specs:
+        description: "Targeted warehouse UI run: space-separated Playwright file filters (e.g. e2e/source-to-query-special-cases.spec.ts), run in the warehouse project only, with no other lane; empty: no targeted UI run. Not with tests"
         required: false
         default: ""
       include_warehouse:
@@ -180,6 +186,7 @@ jobs:
       ref: ${{ needs.resolve-ref.outputs.ref }}
       lanes: ${{ inputs.lanes || 'all' }}
       tests: ${{ inputs.tests || '' }}
+      ui_specs: ${{ inputs.ui_specs || '' }}
       include_warehouse: ${{ inputs.include_warehouse || false }}
       include_salesforce: ${{ inputs.include_salesforce || false }}
       include_athena: ${{ inputs.include_athena || false }}

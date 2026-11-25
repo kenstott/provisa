@@ -154,7 +154,9 @@ def con(crypto_staged):
 
 @pytest.mark.parametrize("key", list(_STATEMENTS))
 def test_duckdb_answers_as_postgresql(con, key):
-    assert con.execute(transpile_to_duckdb(_STATEMENTS[key])).fetchone() == (RECORDED[key],)
+    assert con.execute(transpile_to_duckdb(_STATEMENTS[key], generated=False)).fetchone() == (
+        RECORDED[key],
+    )
 
 
 @pytest.mark.parametrize("bits", _BITS)
@@ -163,7 +165,9 @@ def test_duckdb_answers_as_postgresql(con, key):
     [("'abc'::bytea", "abc"), ("'\\x'::bytea", ""), ("NULL::bytea", None)],
 )
 def test_a_digest_is_bytes_on_duckdb_as_it_is_on_postgresql(con, bits, value, digits):
-    (got,) = con.execute(transpile_to_duckdb(f"SELECT sha{bits}({value}) AS v")).fetchone()
+    (got,) = con.execute(
+        transpile_to_duckdb(f"SELECT sha{bits}({value}) AS v", generated=False)
+    ).fetchone()
     if digits is None:
         assert got is None
     else:
@@ -171,7 +175,10 @@ def test_a_digest_is_bytes_on_duckdb_as_it_is_on_postgresql(con, bits, value, di
 
 
 def test_sha512_is_never_sha256_on_duckdb():
-    for form in (transpile_to_duckdb, lambda sql: transpile(sql, "duckdb")):
+    for form in (
+        lambda sql: transpile_to_duckdb(sql, generated=False),
+        lambda sql: transpile(sql, "duckdb", generated=False),
+    ):
         assert "SHA256" not in form("SELECT sha512(a) FROM t").upper()
         assert "SHA256" not in form("SELECT sha384(a) FROM t").upper()
 
@@ -181,7 +188,7 @@ def test_an_unstaged_extension_refuses_the_call_by_name(monkeypatch, tmp_path):
     connection = duckdb.connect()
     register(connection)
     with pytest.raises(duckdb.Error, match=r"sha512\(\) has no form on duckdb"):
-        connection.execute(transpile_to_duckdb("SELECT sha512('abc'::bytea) AS v"))
+        connection.execute(transpile_to_duckdb("SELECT sha512('abc'::bytea) AS v", generated=False))
 
 
 def test_an_unstaged_extension_leaves_sha256_and_md5_answering(monkeypatch, tmp_path):
@@ -189,9 +196,9 @@ def test_an_unstaged_extension_leaves_sha256_and_md5_answering(monkeypatch, tmp_
     connection = duckdb.connect()
     register(connection)
     for key in ("md5/text", "sha256/text"):
-        assert connection.execute(transpile_to_duckdb(_STATEMENTS[key])).fetchone() == (
-            RECORDED[key],
-        )
+        assert connection.execute(
+            transpile_to_duckdb(_STATEMENTS[key], generated=False)
+        ).fetchone() == (RECORDED[key],)
 
 
 def _algorithms(sql: str) -> set[str]:
@@ -208,7 +215,7 @@ def _algorithms(sql: str) -> set[str]:
 def test_no_dialect_is_written_another_algorithm(dialect, function):
     statement = f"SELECT {function}(a) AS v FROM t"
     try:
-        written = transpile(statement, dialect)
+        written = transpile(statement, dialect, generated=False)
     except FunctionRefused as refused:
         assert f"{function}()" in str(refused)
     else:
@@ -243,7 +250,9 @@ def test_no_dialect_is_written_another_algorithm(dialect, function):
 )
 def test_what_differs_is_refused_by_name(statement, dialect, name):
     with pytest.raises(FunctionRefused, match=rf"{name}\(\) has no form on {dialect}"):
-        transpile_to_duckdb(statement) if dialect == "duckdb" else transpile(statement, dialect)
+        transpile_to_duckdb(statement, generated=False) if dialect == "duckdb" else transpile(
+            statement, dialect, generated=False
+        )
 
 
 @pytest.mark.parametrize(
@@ -263,14 +272,14 @@ def test_what_differs_is_refused_by_name(statement, dialect, name):
     ],
 )
 def test_a_dialect_gets_the_form_that_was_replayed(statement, dialect, replayed):
-    assert transpile(statement, dialect) == replayed
+    assert transpile(statement, dialect, generated=False) == replayed
 
 
 def test_a_bytea_literal_is_its_bytes_on_any_dialect():
-    assert "FROM_HEX('616263')" in transpile("SELECT sha256('abc') AS v", "trino")
-    assert "0x00ff" in transpile("SELECT sha256('\\x00ff') AS v", "tsql")
-    assert "UNHEX('5c')" in transpile("SELECT sha256('\\\\') AS v", "spark")
-    assert "UNHEX('01')" in transpile("SELECT sha256('\\001') AS v", "mysql")
+    assert "FROM_HEX('616263')" in transpile("SELECT sha256('abc') AS v", "trino", generated=False)
+    assert "0x00ff" in transpile("SELECT sha256('\\x00ff') AS v", "tsql", generated=False)
+    assert "UNHEX('5c')" in transpile("SELECT sha256('\\\\') AS v", "spark", generated=False)
+    assert "UNHEX('01')" in transpile("SELECT sha256('\\001') AS v", "mysql", generated=False)
 
 
 def test_a_recorded_answer_keeps_its_statement():

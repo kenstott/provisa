@@ -65,7 +65,7 @@ def connection() -> Any:
 def _difference(connection: Any, sql: str, recorded: str | None = None) -> str | None:
     """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
     recorded = recorded or sql
-    written = transpile_to_duckdb(sql)
+    written = transpile_to_duckdb(sql, generated=False)
     try:
         if connection.sql(written).types == ["INTERVAL"]:
             got = _interval_read(connection, written)
@@ -120,8 +120,8 @@ def test_a_hash_reads_a_timetz_zone_of_seconds():
     time = "SELECT time_hash('12:30:45'::time) # hashint4(40530)"
     connection = duckdb.connect()
     assert (
-        connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
-        == connection.execute(transpile_to_duckdb(time)).fetchone()[0]
+        connection.execute(transpile_to_duckdb(sql, generated=False)).fetchone()[0]
+        == connection.execute(transpile_to_duckdb(time, generated=False)).fetchone()[0]
     )
 
 
@@ -135,7 +135,9 @@ def test_every_overload_has_a_form_on_the_engine(name: str, arity: int, dialect:
 def test_a_function_is_read_row_by_row():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT * FROM (VALUES (1), (-7), (NULL)) v(i)")
-    rows = connection.execute(transpile_to_duckdb("SELECT int4send(i) AS v FROM t")).fetchall()
+    rows = connection.execute(
+        transpile_to_duckdb("SELECT int4send(i) AS v FROM t", generated=False)
+    ).fetchall()
     assert [row[0] for row in rows] == [b"\x00\x00\x00\x01", b"\xff\xff\xff\xf9", None]
 
 
@@ -144,7 +146,7 @@ def test_a_statement_that_calls_none_of_them_is_not_parsed():
 
 
 def test_a_call_keeps_the_name_of_its_column():
-    written = transpile_to_duckdb("SELECT pg_catalog.int4out(NULL::integer)")
+    written = transpile_to_duckdb("SELECT pg_catalog.int4out(NULL::integer)", generated=False)
     assert duckdb.connect().execute(written).description[0][0] == "int4out"
 
 
@@ -186,7 +188,7 @@ def _fields(connection: Any, written: str) -> tuple[str, tuple[int, int, int]]:
 def test_interval_in_of_a_literal_is_an_interval_on_duckdb(connection: Any, sql: str):
     """REQ-2167: the wire says interval only of a value the engine holds as one (_describe_casts);
     a literal's interval_in folded to its text was sent as text."""
-    kind, fields = _fields(connection, transpile_to_duckdb(sql))
+    kind, fields = _fields(connection, transpile_to_duckdb(sql, generated=False))
     assert (kind, tuple(fields)) == ("INTERVAL", interval_fields(RECORDED[_INTERVALS[sql]][1]))
 
 
@@ -212,7 +214,7 @@ def postgres(embedded_postgres: Any) -> Any:
 def test_interval_in_of_a_literal_is_an_interval_on_postgresql(postgres: Any, sql: str):
     cursor = postgres.cursor()
     try:
-        cursor.execute(transpile(sql, "postgres"))
+        cursor.execute(transpile(sql, "postgres", generated=False))
         answer = (cursor.description[0].type_code, cursor.fetchone()[0])
     finally:
         cursor.close()
@@ -409,26 +411,26 @@ def test_trino_is_handed_nothing_it_refuses_to_analyze(name: str, form: str):
     ],
 )
 def test_trino_writes_the_one_digit_java_does_not(sql: str):
-    assert "'%.0e'" in transpile(sql, "trino")
+    assert "'%.0e'" in transpile(sql, "trino", generated=False)
 
 
 def test_trino_does_not_take_a_float4s_digits_from_its_cast():
     """Trino's cast keeps seven digits: 3.402823E38, where PostgreSQL's nine read back."""
     sql = """SELECT pg_catalog."float4out"('3.4028235e38'::real) AS v"""
-    written = transpile(sql, "trino")
+    written = transpile(sql, "trino", generated=False)
     assert "'%.8e'" in written and "CAST(_s AS REAL)" in written
 
 
 def test_trino_reads_an_instant_into_utc():
     """Trino keeps a text's offset, which PostgreSQL does not: 23:59:59+02 is 21:59:59+00."""
     sql = """SELECT pg_catalog."timestamptz_in"('1999-12-31 23:59:59+02'::cstring, 1184::oid, (-1)::integer) AS v"""
-    assert "TIME ZONE), 'UTC')" in transpile(sql, "trino")
+    assert "TIME ZONE), 'UTC')" in transpile(sql, "trino", generated=False)
 
 
 def test_a_null_time_is_text_on_clickhouse():
     sql = """SELECT pg_catalog."time_in"(NULL::cstring, NULL::oid, NULL::integer) AS v"""
-    assert "toTime64" not in transpile(sql, "clickhouse")
-    assert "TIME" in transpile(sql, "trino")
+    assert "toTime64" not in transpile(sql, "clickhouse", generated=False)
+    assert "TIME" in transpile(sql, "trino", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -447,7 +449,7 @@ def test_a_null_time_is_text_on_clickhouse():
 def test_a_canonical_geometric_literal_cannot_reach_a_refusal(value: str, refuses: bool):
     stem = value.split("::")[1].replace("polygon", "poly")
     sql = f'SELECT pg_catalog."{stem}_send"({value}) AS v'
-    assert (NAME_OF_THE_REFUSAL in transpile(sql, "clickhouse")) is refuses
+    assert (NAME_OF_THE_REFUSAL in transpile(sql, "clickhouse", generated=False)) is refuses
 
 
 @pytest.mark.parametrize(
@@ -468,7 +470,9 @@ def test_uuid_in_on_clickhouse_answers_or_raises_by_name_never_an_engine_error(
     raised in place of the refusal a value it does not read gets."""
     import chdb
 
-    written = transpile(f"SELECT pg_catalog.uuid_in('{value}'::cstring) AS v", "clickhouse")
+    written = transpile(
+        f"SELECT pg_catalog.uuid_in('{value}'::cstring) AS v", "clickhouse", generated=False
+    )
     if said is None:
         assert chdb.query(written, "TabSeparated").bytes().decode().strip() == value
         return
@@ -497,6 +501,6 @@ def test_a_geometric_send_on_clickhouse_reads_its_numbers_from_a_text_that_is_no
     """ClickHouse 24.3 holds no Nullable(Array): extractAll of a Nullable(String) is the engine's
     error 'Nested type Array(String) cannot be inside Nullable type', not an answer. A NULL is
     answered before the numbers are read."""
-    written = transpile(sql, "clickhouse")
+    written = transpile(sql, "clickhouse", generated=False)
     assert "extractAll(" in written
     assert re.search(r"extractAll\((?!ifNull\()", written) is None, written

@@ -567,7 +567,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -613,9 +613,9 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 )
 def test_a_scale_past_18_is_refused_by_name(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_trino_still_refuses_a_negative_scale():
     with pytest.raises(FunctionRefused):
-        transpile("SELECT round(2.5::numeric, (-2)::integer)", "trino")
+        transpile("SELECT round(2.5::numeric, (-2)::integer)", "trino", generated=False)

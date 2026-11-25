@@ -25,8 +25,8 @@ Grounding is REQ-1387's, read from the ontology schema's ``_terms_ontology.groun
 statement of ``provisa.core.glossary.term_grounding``); every walk here starts from the same edge
 definition, ``_ontology_views.GROUNDING_EDGES_CTES``. The approvals that finalise a pending term
 restate ``provisa.core.glossary.approvals_that_ground`` (the REQ-1387 path_pending finding) over
-those edges. A term's domains are ``_domains_ontology``'s; a domain's steward is its own or, when
-it has none, its nearest stewarded parent's (the rule ``stale_metadata`` applies).
+those edges. A term's domains are ``_domains_ontology``'s; a domain's stewards are the people
+whose domain_steward rows name it or a domain above it (``object_owners``, REQ-2219).
 
 Drift (terms that lost or gained grounding since the previous period) is not here: it is computed
 from the model's history by ``provisa.core.term_drift`` and shown with the report.
@@ -42,14 +42,12 @@ from provisa.api._ontology_views import GROUNDING_EDGES_CTES
 #: as a kind, part or valid value of it (REQ-1386 grounding precision).
 HUB_MIN_REACHERS = 5
 
-# A domain's steward: its own, else its nearest stewarded parent's. Read after WITH RECURSIVE.
+# A domain's stewards (REQ-2219): the people whose domain_steward rows name it or a domain above
+# it, as the build derived them (object_owners), one text per domain. Read after WITH RECURSIVE.
 _STEWARD_OF_CTE = """steward_of (domain_id, steward) AS (
-            SELECT id, steward FROM domains WHERE steward IS NOT NULL
-            UNION
-            SELECT d.id, s.steward
-            FROM domains d
-            JOIN steward_of s ON d.parent_domain_id = s.domain_id
-            WHERE d.steward IS NULL
+            SELECT object_id, STRING_AGG(principal, ', ' ORDER BY principal)
+            FROM object_owners WHERE object_kind = 'domain' AND holds
+            GROUP BY object_id
         ),
         term_domain AS (
             SELECT DISTINCT term_id, domain_id FROM _domains_ontology

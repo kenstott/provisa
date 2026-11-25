@@ -35,7 +35,7 @@ def test_trino_answers_a_null_element_in_its_place(trino_conn):
     wrong = {}
     for sql, want in NULL_ELEMENTS.items():
         cursor = trino_conn.cursor()
-        cursor.execute(transpile(sql, "trino"))
+        cursor.execute(transpile(sql, "trino", generated=False))
         got = _floats(cursor.fetchall()[0][0])
         if not agrees(got, want):
             wrong[sql] = got
@@ -49,7 +49,7 @@ def test_trino_answers_null_over_no_keys(trino_conn):
     got = {}
     for sql in NO_KEYS:
         cursor = trino_conn.cursor()
-        cursor.execute(transpile(sql, "trino"))
+        cursor.execute(transpile(sql, "trino", generated=False))
         got[sql] = cursor.fetchall()[0][0]
     assert {sql: v for sql, v in got.items() if v is not None} == {}
 
@@ -66,7 +66,7 @@ def test_clickhouse_answers_a_null_element_in_its_place():
     )
     wrong = {}
     for sql, want in NULL_ELEMENTS.items():
-        got = _floats(client.query(transpile(sql, "clickhouse")).result_rows[0][0])
+        got = _floats(client.query(transpile(sql, "clickhouse", generated=False)).result_rows[0][0])
         if not agrees(got, want):
             wrong[sql] = got
     assert not wrong, wrong

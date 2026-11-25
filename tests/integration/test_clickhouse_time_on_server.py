@@ -582,7 +582,7 @@ def _outcome(client: Any, sql: str) -> str | None:
     does not."""
     oid, want = RECORDED[sql]
     try:
-        written = transpile(sql, "clickhouse")
+        written = transpile(sql, "clickhouse", generated=False)
     except Refused as refused:
         said = f"{refused.refusal.sqlstate}: {refused.refusal.message}"
         return None if oid is None and said == want else f"refused: {said}"

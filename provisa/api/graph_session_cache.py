@@ -225,8 +225,12 @@ class Sessions:
         with self._lock:
             self._heard[key] = self._heard.get(key, 0) + 1
             held = self._held.get(key)
-            # This worker's own write is heard of too, after it read the row anew.
-            if held is not None and held.generation != said["g"]:
+            # Drop the copy only when the row was deleted (g is None) or when a generation
+            # strictly newer than the copy was written. A notification for an older generation
+            # (the race: G0 arrives after the reader already cached G0+1) leaves the fresher
+            # copy in place. Generations only increase per principal (REQ-2176), so g < held
+            # means this worker already has the more recent state.
+            if held is not None and (said["g"] is None or said["g"] > held.generation):
                 del self._held[key]
 
     def _joined(self) -> None:

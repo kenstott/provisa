@@ -45,7 +45,7 @@ def _written(sql: str, dialect: str) -> str:
     """A statement as Provisa hands it to the engine: a server's function through its form."""
     if sql in _SERVER:
         sql = expand(sqlglot.parse_one(sql, read="postgres"), _FACTS).sql("postgres")
-    return transpile(sql, dialect)
+    return transpile(sql, dialect, generated=False)
 
 
 def _function(sql: str) -> str:
@@ -67,7 +67,7 @@ def _check_hashes(run: Callable[[str], Any], dialect: str, function: str) -> Non
     for sql in _BY_FUNCTION[dialect][function]:
         want = HASHES[sql][1]
         try:
-            got = run(transpile(sql, dialect))
+            got = run(transpile(sql, dialect, generated=False))
         except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
             wrong[sql] = str(raised)[:300]
             continue

@@ -710,7 +710,12 @@ def _faked(
             carry,
             {n: p for n, p in points.items() if n in after},
         )
-    physical = transpile_to_trino(governed) if dialect == "trino" else transpile(governed, dialect)
+    # REQ-2236: the generator's statement is PostgreSQL SQL Provisa writes, not from a graph IR.
+    physical = (
+        transpile_to_trino(governed, generated=False)
+        if dialect == "trino"
+        else transpile(governed, dialect, generated=False)
+    )
     assert physical.count(placeholder) == 1, "the generated rows are read once"
     physical = physical.replace(placeholder, f"({base})")
     for g in rules:

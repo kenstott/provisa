@@ -278,8 +278,11 @@ def to_number(value: str, form: str) -> str:
 
 def en_us_key(value: str, called: str) -> str:
     """A text that compares as ``value`` does under en_US.utf8, for letters and digits: their
-    letters, then their case, lower first. Anything else it weighs by rules of its own, and a value
-    holding it is refused, naming ``called``, the function ordering it."""
+    letters, then their case, lower first; the empty text before any. Anything else it weighs by
+    rules of its own, and a value holding it is refused, naming ``called``, the function ordering
+    it."""
+    if value == "":
+        return "\x01"
     if not value.isascii() or not value.isalnum():
         raise ValueError(f"{MARK} 0A000: {called} {REFUSED}{END}")
     return f"{value.lower()}\x01{''.join('b' if c.isupper() else 'a' for c in value)}"

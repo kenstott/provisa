@@ -16,6 +16,7 @@ import { describe, it, expect } from "vitest";
 import { fireEvent, render, screen } from "../test-utils/render";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
 import { EMPTY_FORM } from "../pages/commands/types";
+import { editorOf, languageOf, typeInto } from "../test-utils/codeEditor";
 import type { FormState } from "../pages/commands/types";
 
 function Harness({ initial }: { initial: Partial<FormState> }) {
@@ -88,6 +89,26 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
     expect(
       screen.getByRole("img", { name: /Write an argument as \{\{name\}\}/ }),
     ).toBeInTheDocument();
+  });
+
+  it("edits a statement's SQL in the code editor, highlighted as SQL (REQ-1984)", () => {
+    render(<Harness initial={{ actionType: "function", implKind: "statement" }} />);
+    const view = editorOf("command-binding-sql");
+    expect(languageOf(view)).toBe("sql");
+    typeInto(view, "DELETE FROM kb.docs WHERE id = {{id}}");
+    expect(editorOf("command-binding-sql").state.doc.toString()).toBe(
+      "DELETE FROM kb.docs WHERE id = {{id}}",
+    );
+  });
+
+  it("edits a template in the code editor, highlighted as SQL (REQ-1984)", () => {
+    render(<Harness initial={{ actionType: "function", implKind: "sql_expression" }} />);
+    const view = editorOf("command-binding-template");
+    expect(languageOf(view)).toBe("sql");
+    typeInto(view, "array_to_string({list}, {delimiter})");
+    expect(editorOf("command-binding-template").state.doc.toString()).toBe(
+      "array_to_string({list}, {delimiter})",
+    );
   });
 
   it("exposes the materialize identity switch for hosted kinds", () => {
@@ -503,10 +524,13 @@ describe("CommandFormFields — native SQL on a relational source (REQ-1988)", (
   it("keeps the SQL in the binding as it is typed", () => {
     render(<RemoteHarness initial={{ actionType: "function", implKind: "source_query" }} />);
     const sql = "DELETE FROM app.notes WHERE id = {{id}}; SELECT count(*) FROM app.notes";
-    fireEvent.change(screen.getByTestId("command-binding-native-sql"), {
-      target: { value: sql },
-    });
-    expect(screen.getByTestId("command-binding-native-sql")).toHaveValue(sql);
+    typeInto(editorOf("command-binding-native-sql"), sql);
+    expect(editorOf("command-binding-native-sql").state.doc.toString()).toBe(sql);
+  });
+
+  it("edits the SQL in the code editor, highlighted as SQL (REQ-1984)", () => {
+    render(<RemoteHarness initial={{ actionType: "function", implKind: "source_query" }} />);
+    expect(languageOf(editorOf("command-binding-native-sql"))).toBe("sql");
   });
 
   it("is not offered for a MongoDB pipeline command", () => {

@@ -168,7 +168,7 @@ async def test_postgres_zero_connector_engine_lands_everything():
         rls = RLSContext(rules={1: "state = 'NY'"}, domain_rules={})
         gov_ctx = build_governance_context("admin", rls, {}, ctx, _si().tables, role=_ADMIN)
         governed = apply_governance(compiled.sql, gov_ctx)
-        sql = transpile(rewrite_semantic_to_physical(governed, ctx), "postgres")
+        sql = transpile(rewrite_semantic_to_physical(governed, ctx), "postgres", generated=True)
         rows = await conn.fetch(sql)
 
         # Every order comes back; the nested customer is governed to NY-only (native join, no FDW).

@@ -113,7 +113,7 @@ def _compile_to_databricks(si: SchemaInput, gql: str, rls: RLSContext | None = N
     if rls is not None:
         gov_ctx = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
         sql = apply_governance(sql, gov_ctx)
-    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "databricks")
+    return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "databricks", generated=True)
 
 
 @pytest.fixture(scope="module")

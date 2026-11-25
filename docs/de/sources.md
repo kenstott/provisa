@@ -877,8 +877,6 @@ Wie bei jeder OpenAPI-Quelle ist jede `GET`-Operation eine angebotene Tabelle un
 
 **Ausschlüsse.** Stripes veraltete Token- und Sources-Zahlungsintegration bleibt aus der ausgelieferten Spezifikation draußen. Die Liste steht unter [Ausschlüsse bei einer aus einer Spezifikation gebauten Quelle](#exclusions-on-a-specification-built-source). Die eigenen `exclusions` eines Operators werden denen der Marke hinzugefügt.
 
-`stripe` erscheint auch in `SourceType` unter den gestubbten Supabase-`wrappers`-Typen. Eine über das Formular hinzugefügte Stripe-Quelle ist eine `openapi`-Quelle, nicht dieser Stub.
-
 #### Ausschlüsse bei einer aus einer Spezifikation gebauten Quelle {: #exclusions-on-a-specification-built-source }
 
 Eine veröffentlichte OpenAPI-Spezifikation beschreibt alles, was die entfernte API annimmt, auch das, was ihr Hersteller als veraltet markiert hat und was ein Deployment nie senden darf. Eine OpenAPI-Quelle kann Ausschlüsse tragen: Dinge in der Spezifikation, die die Quelle nicht anbietet.
