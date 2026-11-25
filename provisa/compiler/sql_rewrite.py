@@ -1884,4 +1884,94 @@ def translate_epoch_temporal_columns(  # REQ-1908
     return tree.sql(dialect="postgres")
 
 
+def push_nf_into_subqueries(sql: str) -> str:  # REQ-2267
+    """Copy outer ``alias._nf_col = value`` conditions into the governed inner subquery for each
+    alias, so ClickHouse's PostgreSQL DATABASE engine forwards them to the sidecar on its COPY.
+
+    ClickHouse materialises a governed subquery ``(SELECT … _nf_tag FROM sidecar_db.t) AS r``
+    without the outer ``WHERE r._nf_tag = 'joined'`` condition, because the materialisation happens
+    before the outer filter is applied.  The sidecar therefore receives no ``_nf_*`` constraint,
+    calls the function with no arguments, and every row gets ``_nf_tag = NULL``; the outer filter
+    then drops everything.  Pushing the condition into the inner SELECT's WHERE sends it on the
+    PostgreSQL COPY that ClickHouse issues to the sidecar, so ``nf_given`` finds it and the
+    function is called with the right argument."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="clickhouse")
+    outer_where = tree.args.get("where")
+    if outer_where is None:
+        return sql
+
+    # Collect all AND-parts of the outer WHERE that are ``alias._nf_col = literal``.
+    def _and_parts(
+        node: exp.Expression,
+    ) -> list[exp.Expression]:  # allow-complex: recursive AND-walk
+        if isinstance(node, exp.And):
+            left: exp.Expression = node.left  # type: ignore[assignment]
+            right: exp.Expression = node.right  # type: ignore[assignment]
+            return _and_parts(left) + _and_parts(right)
+        return [node]
+
+    nf_conditions: dict[str, list[exp.EQ]] = {}  # alias -> conditions
+    for cond in _and_parts(outer_where.this):
+        if not isinstance(cond, exp.EQ):
+            continue
+        col = cond.left
+        if not isinstance(col, exp.Column):
+            continue
+        col_name = col.name
+        if not col_name.startswith("_nf_"):
+            continue
+        alias = col.table
+        if not alias:
+            continue
+        nf_conditions.setdefault(alias, []).append(cond)
+
+    if not nf_conditions:
+        return sql
+
+    # Build a lookup of alias -> subquery node from FROM and JOINs.
+    def _alias_name(node: exp.Expression) -> str | None:
+        alias = node.args.get("alias")
+        if alias is None:
+            return None
+        name = alias.this
+        return name.name if hasattr(name, "name") else str(name)
+
+    subqueries: dict[str, exp.Subquery] = {}
+    from_clause = tree.args.get("from")
+    if from_clause is not None:
+        sub = from_clause.this
+        if isinstance(sub, exp.Subquery):
+            name = _alias_name(sub)
+            if name:
+                subqueries[name] = sub
+    for join in tree.args.get("joins") or []:
+        sub = join.this
+        if isinstance(sub, exp.Subquery):
+            name = _alias_name(sub)
+            if name:
+                subqueries[name] = sub
+
+    # Push the _nf_ conditions into their target subqueries.
+    for alias, conds in nf_conditions.items():
+        sub = subqueries.get(alias)
+        if sub is None:
+            continue
+        inner_select = sub.this
+        inner_where = inner_select.args.get("where")
+        for cond in conds:
+            # Rewrite the column reference: drop the outer alias, keep the bare column name.
+            bare_col = exp.Column(this=exp.Identifier(this=cond.left.name, quoted=True))
+            pushed = exp.EQ(this=bare_col, expression=cond.right.copy())
+            if inner_where is None:
+                inner_select.set("where", exp.Where(this=pushed))
+                inner_where = inner_select.args["where"]
+            else:
+                inner_where.set("this", exp.And(this=inner_where.this, expression=pushed))
+
+    return tree.sql(dialect="clickhouse")
+
+
 # --- Main compilation ---

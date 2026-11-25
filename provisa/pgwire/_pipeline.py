@@ -3466,6 +3466,13 @@ async def route_governed(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _qualified = fold_catalog_into_schema(_qualified)
+        if state.federation_engine.dialect == "clickhouse":
+            # REQ-2267: ClickHouse materialises governed inner subqueries without the outer WHERE's
+            # _nf_* conditions.  Push them in so the sidecar receives them on its PostgreSQL COPY
+            # and calls the function with the right arguments.
+            from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+
+            _qualified = push_nf_into_subqueries(_qualified)
         # REQ-910: a write on this route (a source the engine writes through its connector) loses
         # the target alias the engine's write grammar does not take.
         from provisa.compiler.sql_rewrite import unalias_write_target

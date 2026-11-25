@@ -173,6 +173,39 @@ def test_a_text_copy_line_escapes_its_fields_and_writes_a_null_as_backslash_n(pg
     assert pgfront._text_line(body) == b"plain\t\\N\ta\\tb\\nc\\\\d\\re\n"
 
 
+def test_push_nf_into_subqueries_moves_nf_condition_into_governed_subquery():
+    # REQ-2267: ClickHouse materialises a governed inner subquery without the outer WHERE's _nf_*
+    # conditions, so the sidecar is called without arguments and returns NULL for every _nf_* column.
+    # push_nf_into_subqueries copies each outer r._nf_col = value condition into the inner SELECT
+    # for alias r, so the sidecar receives it on its COPY and calls the function with the argument.
+    from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    sql = (
+        'SELECT "o"."id", "r"."label" '
+        'FROM (SELECT "id", "region" FROM "orders_db"."orders") AS "o" '
+        'JOIN (SELECT "region", "label", "_nf_tag" FROM "sidecar_db"."regions") AS "r" '
+        'ON "r"."region" = "o"."region" '
+        'WHERE "r"."_nf_tag" = \'joined\' AND "o"."region" = \'eu-west\''
+    )
+    result = push_nf_into_subqueries(sql)
+    tree = sqlglot.parse_one(result, read="clickhouse")
+    # The inner subquery for alias r must carry the _nf_tag condition.
+    for join in tree.args.get("joins") or []:
+        sub = join.this
+        if isinstance(sub, exp.Subquery):
+            alias = sub.args.get("alias")
+            alias_name = alias.this.name.lower() if alias and hasattr(alias.this, "name") else ""
+            if alias_name == "r":
+                inner_where = sub.this.args.get("where")
+                assert inner_where is not None, "inner subquery has no WHERE"
+                inner_sql = inner_where.sql(dialect="clickhouse")
+                assert "_nf_tag" in inner_sql, f"_nf_tag not in inner WHERE: {inner_sql}"
+                return
+    pytest.fail("no subquery with alias 'r' found in result")
+
+
 def test_the_catalog_answers_current_setting_and_format_type_as_postgresql_does():
     import duckdb
 
