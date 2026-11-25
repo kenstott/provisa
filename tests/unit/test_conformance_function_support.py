@@ -1402,6 +1402,74 @@ def test_a_rule_names_what_made_two_texts_the_same(want, got, oid, rule):
         assert rule in _rules_of(_ok(want, oid=oid), _ok(got, oid=oid))
 
 
+# --- a float's last digits (REQ-2236, amended 2026-11-25) --------------------------------------
+
+#: PostgreSQL's ln(100) and exp(0.5), and a ClickHouse server's (run 45618218849).
+_LN_100 = ("4.605170185988092", "4.6051701869546955")
+_EXP_HALF = ("1.6487212707001282", "1.6487212707014907")
+
+
+@pytest.mark.parametrize(
+    ("want", "got", "oid"),
+    [
+        (*_LN_100, 701),
+        (*_EXP_HALF, 701),
+        ("{1.6487212707001282,2}", "{1.6487212707014907,2}", 1022),
+    ],
+    ids=["ln, 2.1e-10", "exp, 8.3e-13", "float8 array"],
+)
+def test_a_float_within_the_bound_differs_in_its_last_digits_alone(want, got, oid):
+    compared = _compare(_ok(want, oid=oid), _ok(got, oid=oid))
+    assert compared.difference is not None and compared.last_digits
+
+
+@pytest.mark.parametrize(
+    ("want", "got", "oid"),
+    [
+        ("4.605170185988092", "4.6051702", 701),
+        ("1.5", "1.5000001", 700),
+        (*_LN_100, 1700),
+        (*_LN_100, 25),
+    ],
+    ids=["float8 beyond the bound", "float4 one step", "numeric", "text"],
+)
+def test_a_difference_beyond_the_bound_or_not_in_a_float_is_no_last_digits(want, got, oid):
+    compared = _compare(_ok(want, oid=oid), _ok(got, oid=oid))
+    assert compared.difference is not None and not compared.last_digits
+
+
+def test_a_float_within_the_bound_beside_another_difference_is_no_last_digits():
+    want = {"ok": True, "fields": [701, 25], "rows": [(_LN_100[0], "a")]}
+    got = {"ok": True, "fields": [701, 25], "rows": [(_LN_100[1], "b")]}
+    compared = _compare(want, got)
+    assert compared.difference is not None and not compared.last_digits
+
+
+def test_a_float_within_one_part_in_10_14_is_still_the_same():
+    """The bound changes no pass: within FLOAT_TOLERANCE is the same, under its rule."""
+    compared = _compare(_ok("3.141592653589793", oid=701), _ok("3.1415926535897936", oid=701))
+    assert compared.difference is None and not compared.last_digits
+
+
+_LN = Function(
+    "ln",
+    "double precision",
+    argtypes=("double precision",),
+    volatility="i",
+    rettype="double precision",
+)
+
+
+def test_an_overload_whose_every_wrong_call_is_in_the_last_digits_says_so():
+    entry = _both(_LN, "Numeric", _ok(_LN_100[0], oid=701), _ok(_LN_100[1], oid=701))
+    assert entry["outcome"] == "wrong_answer" and entry["last_digits"] is True
+
+
+def test_an_overload_wrong_beyond_the_bound_is_no_last_digits():
+    entry = _both(_LN, "Numeric", _ok(_LN_100[0], oid=701), _ok("4.6051702", oid=701))
+    assert entry["outcome"] == "wrong_answer" and "last_digits" not in entry
+
+
 def test_an_aggregate_s_array_with_no_order_by_compares_in_any_order():
     sql = "SELECT json_agg(c1) FROM t"
     rules = _rules_of(_ok("[1, 2]", oid=114), _ok("[2,1]", oid=114), sql)

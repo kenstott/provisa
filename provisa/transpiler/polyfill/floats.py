@@ -40,7 +40,13 @@ from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
+from provisa.transpiler.polyfill.grid import (
+    Feature,
+    Rule,
+    Side,
+    last_digits,
+    written_in,
+)
 from provisa.transpiler.polyfill.numbers import (
     FAMILY,
     ch_checked,
@@ -415,15 +421,14 @@ _T_EXP = _t_checked(
 _T_LN = _t_checked(_T_LOG_RAISES, "ln($x)")
 
 #: ClickHouse server 24.3's exp and log are its own vectorized approximations, not libm's: exp(0.5)
-#: answers 1.6487212707014907 where PostgreSQL's (glibc's) is 1.6487212707001282. chDB's build
-#: answers libm's digits.
-_APPROXIMATED = (
-    "On a ClickHouse server of 24.3, its {} is its own approximation, not libm's, and can differ "
-    "from PostgreSQL's answer from the 12th significant digit; chDB answers PostgreSQL's digits."
-)
+#: answers 1.6487212707014907 where PostgreSQL's (glibc's) is 1.6487212707001282, and log(100)
+#: 4.6051701869546955 where it is 4.605170185988092. chDB's build answers libm's digits. A
+#: last-digits difference (REQ-2236, amended 2026-11-25).
+CLICKHOUSE_SERVER = "A ClickHouse server of 24.3 (not chDB)"
 
-#: tanh as sinh / cosh, each of which ClickHouse answers as libm does; past 22 both overflow toward
-#: infinity where tanh is 1 to a double's precision.
+#: tanh as sinh / cosh, each of which ClickHouse answers as libm does, within 2 units in the last
+#: place of libm's tanh (ClickHouse's own tanh answers 0 for a value below 1e-90); past 22 both
+#: overflow toward infinity where tanh is 1 to a double's precision.
 _TANH = "if(abs($x) > 22, if($x > 0, 1.0, -1.0), sinh($x) / cosh($x))"
 
 EXPONENTIALS: tuple[Feature, ...] = (
@@ -433,7 +438,7 @@ EXPONENTIALS: tuple[Feature, ...] = (
         "e raised to a power; 22003 where a finite power overflows or underflows.",
         read=Side(
             rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP, _T_EXP)),),
-            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("exp")),)},
+            limitations={"clickhouse": (last_digits(CLICKHOUSE_SERVER, "exp"),)},
         ),
     ),
     Feature(
@@ -442,7 +447,7 @@ EXPONENTIALS: tuple[Feature, ...] = (
         "The natural logarithm of a value above zero.",
         read=Side(
             rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN, _T_LN)),),
-            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("log")),)},
+            limitations={"clickhouse": (last_digits(CLICKHOUSE_SERVER, "ln"),)},
         ),
     ),
     Feature(
@@ -452,13 +457,7 @@ EXPONENTIALS: tuple[Feature, ...] = (
         read=Side(
             rules=(Rule("tanh($x)", _of_no_numeric("tanh($x)", _TANH)),),
             limitations={
-                "clickhouse": (
-                    Limitation(
-                        "The ratio of ClickHouse's sinh and cosh, within 2 units in the last place "
-                        "of libm's tanh (ClickHouse's own tanh answers 0 for a value below 1e-90); "
-                        "1 in magnitude past 22, where tanh rounds to 1."
-                    ),
-                )
+                "clickhouse": (last_digits("ClickHouse", "tanh as its sinh over its cosh"),)
             },
         ),
     ),
