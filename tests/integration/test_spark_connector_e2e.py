@@ -373,6 +373,7 @@ def provisa_server(tmp_path_factory, spark_host, project_manifest, cluster):
     connector's block and image labels stood in for (tests/integration/spark_connector_app.py)."""
     from tests.integration.isolated_server import IsolatedServer
     from tests.integration.test_code_sources_e2e import _config
+    from tests.port_lease import lease_run
 
     lan, _ = cluster
     work = tmp_path_factory.mktemp("spark-session-server")
@@ -417,6 +418,9 @@ def provisa_server(tmp_path_factory, spark_host, project_manifest, cluster):
         app="tests.integration.spark_connector_app:app",
         env={
             "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
+            # REQ-2226: the loopback block the Python source's worker reads its call's tables on.
+            "PROVISA_MINTED_FLIGHT_PORT": str(lease_run(4)),
+            "PROVISA_MINTED_FLIGHT_PORTS": "4",
             "PROVISA_TEST_SPARK_CONNECTOR": json.dumps(row),
             "PROVISA_TEST_SPARK_LABELS": json.dumps(labels),
         },
