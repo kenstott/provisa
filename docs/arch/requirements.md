@@ -5854,7 +5854,7 @@ Users can later connect their own Trino cluster, Spark, external auth provider, 
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
-AF2 is delivered in OS phases. AF2a (immediate): macOS arm64/x86 signed + notarized `.dmg`. AF2b (follow-on): Linux `.AppImage`. AF2c (follow-on): Windows signed `.exe`. Each phase bundles the container runtime for its platform, with no Docker, OrbStack, or Colima prerequisite visible to the user.
+AF2 is delivered in OS phases. AF2a (immediate): macOS arm64/x86 signed + notarized `.dmg`. AF2b (follow-on): Linux `.AppImage`. AF2c (follow-on): Windows signed `.exe`. Each phase bundles the container runtime for its platform, with no Docker, OrbStack, or Colima prerequisite visible to the user. (Amended 2026-11-25 by the maintainer, from the next release on, macOS ships one installer, Provisa.dmg. The Provisa-Container, Provisa-Obs and Provisa-Demo DMGs are no longer built. First launch downloads from the release what the DMG does not carry, when the user selects it, namely the Docker tier's compose tree and config as a release asset, and the core, Trino, observability and demo image tarballs as today.)
 
 **Use case:** OS-native signed bundles (DMG/AppImage/EXE) let users install Provisa like any desktop app without Docker.
 
@@ -12422,7 +12422,7 @@ Per-role query limits complement per-role request-rate limits ([REQ-369](#REQ-36
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-A GitHub Release must never be published in a partial state (missing any installer/download-link asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions) create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files; missing assets cause immediate failure leaving the release draft.
+A GitHub Release must never be published in a partial state (missing any installer/download-link asset). All four tag-triggered workflows (build-dmg, release-exports, build-pg-extensions, build-duckdb-extensions) create the release as a DRAFT via ensure-release; sibling workflows attach assets only with gh release upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files; missing assets cause immediate failure leaving the release draft. (Amended 2026-11-25 by the maintainer, from the next release on, the macOS part of the manifest is the one Provisa.dmg plus the release assets first launch downloads, including the compose-tree asset; the container, obs and demo DMGs are no longer in it.)
 
 **Use case:** Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release was published when build-dmg failed while sibling workflows succeeded, causing end users to download missing installers.
 
