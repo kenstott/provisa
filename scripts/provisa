@@ -510,6 +510,11 @@ native_env_pairs() {
         e+=("PROVISA_CONFIG=${demo_cfg}")
         e+=("PROVISA_DEMO_DIR=${demo_dir}")
         e+=("PROVISA_DEMO=1")
+    else
+        # REQ-528: the app has no default config path, so the launcher names it. A non-demo
+        # install's own config lives in PROVISA_HOME: absent on the first start, where the setup
+        # wizard writes it from the shipped skeleton (REQ-164), and kept across restarts.
+        e+=("PROVISA_CONFIG=${PROVISA_HOME}/provisa.yaml")
     fi
     printf '%s\n' "${e[@]}"
 }

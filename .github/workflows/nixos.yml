@@ -192,8 +192,18 @@ jobs:
       fail-fast: false
       matrix:
         guest: [bare, ci]
+    # install.sh starts the compose stack from the checkout, and Trino mounts trino/plugins/<name>
+    # from it: jars that are not in git. Without them each mount is an empty directory, Trino
+    # refuses it and never becomes healthy (run 45655242557).
+    needs: trino-plugins
     steps:
       - uses: actions/checkout@v4
+
+      # Before the VM boots: the guest copies the checkout to ~/provisa, jars included.
+      - name: Restore Trino plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       - uses: ./.github/actions/nixos-vm
         with:
@@ -330,10 +340,9 @@ jobs:
   # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
   # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
   # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  # Primed on every dispatch: the installer job restores the jars whatever lanes are asked for.
   trino-plugins:
     name: Trino plugins
-    needs: plan
-    if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
