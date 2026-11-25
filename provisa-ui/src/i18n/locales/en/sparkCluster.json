@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "Where a Spark script runs and is validated when its source names no cluster of its own. A source's own cluster is always used when it has one.",
+    "help": "The cluster a Spark source connects to when it names no cluster of its own. A source's own cluster is always used when it has one.",
     "address": "Spark Connect address",
     "addressHelp": "The cluster's Spark Connect address, for example sc://spark.example.com:15002. Leave the token out of it: keep the token as a secret and name it below.",
     "credential": "Token secret",

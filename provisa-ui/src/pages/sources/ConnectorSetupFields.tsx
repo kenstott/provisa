@@ -19,7 +19,6 @@ import { PasswordInput, Select, Text, Textarea, TextInput } from "@mantine/core"
 import { useTranslation } from "react-i18next";
 import { fetchSecrets } from "../../api/secrets";
 import type { Connector, ConnectorRequirement } from "../../api/connectors";
-import { CodeEditorField } from "../../components/CodeEditorField";
 import { SparkSourceCluster } from "../../components/spark/SparkClusterFields";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -62,18 +61,7 @@ function RequiredValue({
       size={required.multiline ? "full" : "medium"}
       hint={fixed ? t("connectorSetup.fixedHint") : undefined}
     >
-      {required.script ? (
-        // REQ-2225: the Spark connector's script, a PySpark program, is the only script kind.
-        <CodeEditorField
-          label={common.label}
-          required={common.required}
-          readOnly={fixed}
-          value={common.value}
-          onChange={onChange}
-          language="python"
-          data-testid={common["data-testid"]}
-        />
-      ) : required.multiline ? (
+      {required.multiline ? (
         <Textarea
           {...common}
           autosize

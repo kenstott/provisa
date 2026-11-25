@@ -155,12 +155,3 @@ export function connectorMappingJson(
     settings,
   });
 }
-
-/** REQ-2225: a saved connector source's script as its form holds it; null when its connector
- * serves no script. */
-export function connectorScript(connector: Connector, fields: Record<string, string>): string | null {
-  const required = connector.requires.find((r) => r.script);
-  if (!required) return null;
-  const settings = JSON.parse(fields.code_connector_settings || "{}") as Record<string, unknown>;
-  return String(settings[required.name] ?? "");
-}

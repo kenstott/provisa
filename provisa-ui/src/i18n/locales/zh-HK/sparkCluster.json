@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "當數據來源未指定自己的叢集時，Spark 指令碼在此執行和驗證。數據來源如有自己的叢集，則一律使用該叢集。",
+    "help": "當 Spark 數據來源未指定自己的叢集時所連接的叢集。數據來源如有自己的叢集，則一律使用該叢集。",
     "address": "Spark Connect 位址",
     "addressHelp": "叢集的 Spark Connect 位址，例如 sc://spark.example.com:15002。請勿在其中包含權杖：將權杖儲存為密鑰，並在下方指定。",
     "credential": "權杖密鑰",

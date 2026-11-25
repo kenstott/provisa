@@ -43,15 +43,6 @@ front runs the code's @on-start with them once in its life (:class:`Lifecycle`),
 whether that is still needed; ``health`` calls @health, and a SIGTERM runs @on-stop. A front that
 starts again has no values: Provisa gives them when it next dials.
 
-VALIDATE (REQ-2225). A script connector's host validates a script -- the one it serves, or one
-Provisa gives -- without serving it. ``{op: "validate", id, step: "static", script}`` is answered
-``{op: "validated", id, hash, document}``: the script's reader document, read under the code's own
-Python as at pairing, the static check's input. ``{op: "validate", id, step: "run", script,
-request}`` runs the code's validator (:data:`VALIDATOR`, connectors/spark/provisa_spark/validate.py)
-on the script with ``request`` -- the dry run of each tagged function and its keys -- and is
-answered ``{op: "validated", id, report}``. Either is answered ``{op: "validated", id, failed}``
-naming why it could not run. ``script`` null validates the script the host serves.
-
 Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's and Arrow's, in the
 image beside this program; the code's own environment is the code's.
 """
@@ -75,8 +66,7 @@ import struct
 import subprocess  # nosec B404 - argv-list invocation of the image's own worker
 import sys
 import threading
-import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -91,29 +81,6 @@ TRUSTED = "provisa.crt"
 SECRET = "pairing.secret"
 #: A PostgreSQL client's request for TLS, before its startup message (pgwire, REQ-2100).
 SSL_REQUEST = _HEAD.pack(8) + struct.pack(">I", 80877103)
-#: REQ-2225: names the @requires value that is the connector's script: this image serves a script
-#: given at setup, whose tags are read at join (image_build.SCRIPT_ENV).
-SCRIPT_ENV = "PROVISA_CONNECTOR_SCRIPT"
-#: The worker and the reader are told the script's path in this variable (python/host.py, reader.py).
-SCRIPT_FILE_ENV = "PROVISA_SCRIPT_FILE"
-#: The name the script is imported under, and read as.
-SCRIPT_MODULE = "connector_script"
-#: The name tables Provisa made from the script, kept for a front that starts again.
-SCRIPT_NAMES = "script_names.json"
-#: How long the code's reader has to import the script and read its tags.
-_READ_SCRIPT_TIMEOUT_S = 120
-#: REQ-2225: the module of a script connector's entry package that validates a script, run by the
-#: code's own Python after the host program's ``load`` (connectors/spark/provisa_spark/validate.py).
-VALIDATOR = "validate"
-#: How long a validation's dry run, every function of the script on the cluster, may take.
-_VALIDATE_TIMEOUT_S = 900
-#: The validator, run as ``-c``: the host program beside it loads the script as the host does.
-_VALIDATE_PROGRAM = (
-    "import importlib, sys\n"
-    "sys.path.insert(0, sys.argv[1])\n"
-    "importlib.import_module('host').load(sys.argv[2], sys.argv[3])\n"
-    f"sys.exit(importlib.import_module(sys.argv[3] + '.{VALIDATOR}').main())\n"
-)
 #: REQ-2225: the address the front listens on. An image's front serves its container's port on
 #: every interface; a native host on the demo's machine is started on loopback alone
 #: (codesource/native_connector.py), so it is never reachable from the network.
@@ -235,13 +202,10 @@ class Identity:
         conn: ssl.SSLSocket,
         bounds: Bounds,
         manifest: dict | None = None,
-        take_script: Callable[[str], dict] | None = None,
     ) -> None:
         """Take one pair message on ``conn``: with the pairing secret, keep its certificate and
         the bounds of the host's DuckDB it carries, and answer with the image's ``manifest``
-        (REQ-2221), which is what a connector known only by its image is read by. ``take_script``
-        (REQ-2225): this image serves a script given at setup; the message must carry it, and
-        the answer carries what the host read from it."""
+        (REQ-2221), which is what a connector known only by its image is read by."""
         body = read_body(conn)
         message = json.loads(body[1:]) if body and body[:1] == _JSON else {}
         with self._lock:
@@ -264,14 +228,6 @@ class Identity:
                     )
                 )
                 return
-            script: dict | None = None
-            if take_script is not None:
-                if not isinstance(message.get("script"), str):
-                    conn.sendall(
-                        frame({"op": "refused", "message": "this host serves a script: none given"})
-                    )
-                    return
-                script = take_script(message["script"])
             certificate = str(message["certificate"])
             ssl.PEM_cert_to_DER_cert(certificate)  # a certificate, or refused here
             (self.state / TRUSTED).write_text(certificate)
@@ -279,7 +235,7 @@ class Identity:
             self.context.load_verify_locations(self.state / TRUSTED)
             self.context.verify_mode = ssl.CERT_OPTIONAL
         bounds.apply(message["duckdb"])
-        conn.sendall(frame({"op": "paired", "manifest": manifest, "script": script}))
+        conn.sendall(frame({"op": "paired", "manifest": manifest}))
         sys.stderr.write("paired with Provisa\n")
 
 
@@ -429,14 +385,12 @@ class Worker:
     for its whole run on a thread of its own: a call's rows reach its Provisa connection as fast as
     it reads them, and no faster."""
 
-    def __init__(self, argv: list[str], bounds: Bounds, script_file: Path | None = None) -> None:
+    def __init__(self, argv: list[str], bounds: Bounds) -> None:
         self.bounds = bounds
         pairs = [socket.socketpair() for _ in range(CONNECTIONS)]
         theirs = [t.fileno() for _, t in pairs]
         argv = [a.replace("{fd}", f"fd:{','.join(map(str, theirs))}") for a in argv]
         env = {**os.environ, THREADPOOL_ENV: str(_THREADPOOL)}
-        if script_file is not None:
-            env[SCRIPT_FILE_ENV] = str(script_file)
         self.process = subprocess.Popen(argv, pass_fds=tuple(theirs), env=env)  # noqa: S603  # nosec B603
         for _, t in pairs:
             t.close()
@@ -557,17 +511,6 @@ class Worker:
         finally:
             with self._lock:
                 self._running.pop((id(connection), call_id), None)
-            self._release(lane)
-
-    def give_values(self, values: dict[str, Any]) -> None:
-        """REQ-2225: the setup values, handed to the host process and answered before any call
-        that reads them."""
-        lane, own = self._lease()
-        try:
-            lane.send({"op": "values", "id": own, "values": values})
-            for _ in self._frames(lane, own):
-                pass
-        finally:
             self._release(lane)
 
     def invoke(self, export: str, args: list, names: list[str]) -> Any:
@@ -758,13 +701,8 @@ class Lifecycle:
     this process's life, when Provisa gives the setup values, and its outcome answers every later
     ask, so several Provisa processes dialling at once run it once."""
 
-    def __init__(
-        self, worker: Worker, manifest: dict | None, *, gives_values: bool = False
-    ) -> None:
+    def __init__(self, worker: Worker, manifest: dict | None) -> None:
         self._worker = worker
-        #: REQ-2225: a script connector: its setup values go to the host whether or not it has
-        #: an @on-start, since any of its functions reads them.
-        self._gives_values = gives_values
         # Provisa is the judge of a manifest it cannot read (remote_sources._manifest_of): the
         # front only looks for what it has to run.
         found = {e.get("kind"): e for e in (manifest or {}).get("exports", [])}
@@ -780,24 +718,18 @@ class Lifecycle:
     def setup_needed(self) -> bool:
         """Whether Provisa should give the setup values: @on-start has not run, or failed (a dial
         is then told the failure, and the function is not run again)."""
-        return (self._on_start is not None or self._gives_values) and (
-            not self._ran or self._failed is not None
-        )
+        return self._on_start is not None and (not self._ran or self._failed is not None)
 
     def setup(self, values: dict[str, Any]) -> str | None:
         """Run @on-start with ``values`` if it has not run; why it failed, or None."""
         with self._lock:
-            if self._ran or (self._on_start is None and not self._gives_values):
+            if self._ran or self._on_start is None:
                 return self._failed
             self._ran = True
-            doing = "setup values"
+            doing = self._on_start["name"]
             try:
-                if self._gives_values:
-                    self._worker.give_values(values)
-                if self._on_start is not None:
-                    doing = self._on_start["name"]
-                    named = [p["name"] for p in self._on_start["parameters"]]
-                    self._worker.invoke(doing, [values] if named else [], named)
+                named = [p["name"] for p in self._on_start["parameters"]]
+                self._worker.invoke(doing, [values] if named else [], named)
             except _Failed as failed:
                 self._failed = f"{doing}: {failed}"
             return self._failed
@@ -837,125 +769,6 @@ class Lifecycle:
         thread.join(_STOP_WAIT_S)
 
 
-class Script:
-    """REQ-2225: the annotated script a script connector's host serves, kept in the state
-    directory as it is not a secret, so a host that starts again still has it. Its tags are read
-    under the code's own Python, as a dev-mode source's are, by the language's reader."""
-
-    FILE = "connector_script.py"
-
-    def __init__(self, state: Path, worker_argv: list[str]) -> None:
-        self.path = state / self.FILE
-        #: REQ-2225: where a script given to validate is kept while it is validated.
-        self._candidates = state / "validate"
-        # The worker's argv: python, its flag, the host program, its socket, the code, the entry.
-        self._python, self._flag, host, _, self._code, self._entry, *_ = worker_argv
-        self._host_dir = str(Path(host).parent)
-        self._reader = str(Path(host).with_name("reader.py"))
-
-    @property
-    def held(self) -> bool:
-        return self.path.is_file()
-
-    @property
-    def hash(self) -> str:
-        return hashlib.sha256(self.path.read_bytes()).hexdigest()
-
-    def keep(self, text: str) -> None:
-        self.path.write_text(text)
-        self.path.chmod(0o600)
-
-    def read_tags(self, path: Path | None = None) -> dict:
-        """The document the language's reader writes for the script at ``path``, else the one
-        served; one naming the failure when the reader itself did not finish, for Provisa to
-        refuse by name."""
-        env = {**os.environ, SCRIPT_FILE_ENV: str(path or self.path)}
-        try:
-            done = subprocess.run(  # noqa: S603  # nosec B603 - the image's own reader, argv-list
-                [self._python, self._flag, self._reader, self._code, SCRIPT_MODULE],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=_READ_SCRIPT_TIMEOUT_S,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return _unread(f"reading the script took over {_READ_SCRIPT_TIMEOUT_S}s")
-        if done.returncode != 0:
-            return _unread(done.stderr.strip()[-2000:])
-        return json.loads(done.stdout)
-
-    def validated(self, message: dict) -> dict:
-        """REQ-2225: the answer to a ``validate`` message (see the module's docstring), without
-        its op and id."""
-        given = message.get("script")
-        if given is None:
-            if not self.held:
-                return {"failed": "this host has been given no script to validate"}
-            return self._validated(self.path, message)
-        self._candidates.mkdir(mode=0o700, exist_ok=True)
-        path = self._candidates / f"{uuid.uuid4().hex}.py"
-        path.write_text(given)
-        path.chmod(0o600)
-        try:
-            return self._validated(path, message)
-        finally:
-            path.unlink(missing_ok=True)
-
-    def _validated(self, path: Path, message: dict) -> dict:
-        step = message.get("step")
-        if step == "static":
-            return {
-                "hash": hashlib.sha256(path.read_bytes()).hexdigest(),
-                "document": self.read_tags(path),
-            }
-        if step == "run":
-            return self._run_validator(path, message["request"])
-        return {"failed": f"no validation step {step!r}: a step is static or run"}
-
-    def _run_validator(self, path: Path, request: dict) -> dict:
-        """The validator's report on the script at ``path``, run under the code's own Python."""
-        env = {**os.environ, SCRIPT_FILE_ENV: str(path)}
-        argv = [self._python, self._flag, "-c", _VALIDATE_PROGRAM, self._host_dir, self._code]
-        try:
-            done = subprocess.run(  # noqa: S603  # nosec B603 - the code's own Python, argv-list
-                [*argv, self._entry],
-                env=env,
-                input=json.dumps(request),
-                capture_output=True,
-                text=True,
-                timeout=_VALIDATE_TIMEOUT_S,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return {"failed": f"the validation took over {_VALIDATE_TIMEOUT_S}s"}
-        if done.returncode != 0:
-            said = done.stderr.strip()[-2000:]
-            return {"failed": said or f"the validator exited with {done.returncode}"}
-        return {"report": json.loads(done.stdout)}
-
-
-def _unread(why: str) -> dict:
-    return {"exports": [], "types": {}, "diagnostics": [why]}
-
-
-def _script_lifecycle(document: dict) -> dict:
-    """The lifecycle functions a script's reader document names, in the manifest's shape."""
-    exports = []
-    for entry in document.get("exports", []):
-        kinds = [t for t in entry.get("tags", []) if t in (ON_START, ON_STOP, HEALTH)]
-        signatures = entry.get("signatures") or []
-        if kinds and signatures:
-            exports.append(
-                {
-                    "kind": kinds[0],
-                    "name": entry["name"],
-                    "parameters": [{"name": p["name"]} for p in signatures[0]["parameters"]],
-                }
-            )
-    return {"exports": exports}
-
-
 def _ipc(batch: Any) -> bytes:  # a pyarrow RecordBatch
     import pyarrow as pa
 
@@ -988,13 +801,11 @@ class Front(socketserver.ThreadingTCPServer):
         self,
         port: int,
         identity: Identity,
-        worker: Worker | None,
+        worker: Worker,
         names: dict,
         manifest: dict | None = None,
         *,
         bounds: Bounds,
-        script: Script | None = None,
-        worker_argv: list[str] | None = None,
         bind: str = ALL_INTERFACES,
     ) -> None:
         self.identity = identity
@@ -1002,38 +813,8 @@ class Front(socketserver.ThreadingTCPServer):
         self.names = names
         self.manifest = manifest
         self.bounds = bounds
-        self.script = script
-        self._worker_argv = worker_argv
-        self.lifecycle = None if worker is None else Lifecycle(worker, manifest)
-        if script is not None:
-            if (identity.state / SCRIPT_NAMES).is_file():
-                names.update(json.loads((identity.state / SCRIPT_NAMES).read_text()))
-            if script.held and identity.paired:
-                self._serve_script(script.read_tags())
+        self.lifecycle = Lifecycle(worker, manifest)
         super().__init__((bind, port), _Handler)
-
-    def _serve_script(self, document: dict) -> None:
-        """REQ-2225: start the worker on the script; a script that could not be read has no
-        worker, and Provisa refuses it by name from the document."""
-        assert self.script is not None and self._worker_argv is not None
-        if document.get("diagnostics"):
-            return
-        self.worker = Worker(self._worker_argv, self.bounds, self.script.path)
-        self.lifecycle = Lifecycle(self.worker, _script_lifecycle(document), gives_values=True)
-
-    def take_script(self, text: str) -> dict:
-        """REQ-2225: keep the script given at pairing and serve it: its hash and its tags."""
-        assert self.script is not None
-        self.script.keep(text)
-        document = self.script.read_tags()
-        self._serve_script(document)
-        return {"hash": self.script.hash, "document": document}
-
-    def take_names(self, names: dict) -> None:
-        """REQ-2225: the script's name tables, which only Provisa can make."""
-        self.names.clear()
-        self.names.update(names)
-        (self.identity.state / SCRIPT_NAMES).write_text(json.dumps(names))
 
 
 class _Handler(socketserver.BaseRequestHandler):
@@ -1054,13 +835,7 @@ class _Handler(socketserver.BaseRequestHandler):
                 return
             conn = self.front.identity.context.wrap_socket(raw, server_side=True)
             if not self.front.identity.paired:
-                front = self.front
-                front.identity.pair(
-                    conn,
-                    front.bounds,
-                    front.manifest,
-                    None if front.script is None else front.take_script,
-                )
+                self.front.identity.pair(conn, self.front.bounds, self.front.manifest)
                 return
             if not conn.getpeercert():
                 return  # no certificate, or not the paired Provisa's: the TLS check refused it
@@ -1072,18 +847,12 @@ class _Handler(socketserver.BaseRequestHandler):
         worker = self.front.worker
         connection = Connection(conn)
         lifecycle = self.front.lifecycle
-        if worker is None or lifecycle is None:
-            # REQ-2225: a script that could not be read has no worker to serve it.
-            connection.send(frame({"op": "refused", "message": "this host has no script to serve"}))
-            return
-        script = self.front.script
         connection.send(
             frame(
                 {
                     **worker.hello,
                     "names": self.front.names,
                     "setup_needed": lifecycle.setup_needed,
-                    **({} if script is None else {"script_hash": script.hash}),
                 }
             )
         )
@@ -1099,10 +868,6 @@ class _Handler(socketserver.BaseRequestHandler):
                     threading.Thread(
                         target=self._lifecycle, args=(connection, message), daemon=True
                     ).start()
-                elif op == "validate":  # REQ-2225: a dry run takes long: off this reader
-                    threading.Thread(
-                        target=self._validate, args=(connection, message), daemon=True
-                    ).start()
                 elif op == "refused":
                     sys.stderr.write(f"provisa refused this host: {message.get('message')}\n")
                     return
@@ -1113,30 +878,15 @@ class _Handler(socketserver.BaseRequestHandler):
     def _lifecycle(self, connection: Connection, message: dict) -> None:
         """REQ-2221: answer Provisa's ``setup`` or ``health`` under its id."""
         lifecycle = self.front.lifecycle
-        assert lifecycle is not None  # the dial was refused otherwise (_serve)
         if message["op"] == "setup":
-            if "names" in message:
-                self.front.take_names(message["names"])
             failed = lifecycle.setup(message["values"])
             connection.send(frame({"op": "setup_done", "id": message["id"], "failed": failed}))
             return
         connection.send(frame({"op": "health", "id": message["id"], **lifecycle.health()}))
 
-    def _validate(self, connection: Connection, message: dict) -> None:
-        """REQ-2225: answer Provisa's ``validate`` under its id."""
-        script = self.front.script
-        answer = (
-            {"failed": "this host serves no script: only a script connector's host validates one"}
-            if script is None
-            else script.validated(message)
-        )
-        connection.send(frame({"op": "validated", "id": message["id"], **answer}))
-
     def _pgwire(self, conn: ssl.SSLSocket) -> None:
         if not self.front.identity.paired or not conn.getpeercert():
             return  # only the paired Provisa, by its certificate, is served
-        if self.front.worker is None:
-            return  # REQ-2225: a script that could not be read has no worker to serve it
         import importlib
 
         # beside this program, in the image (REQ-2100)
@@ -1160,9 +910,7 @@ def main(argv: list[str]) -> int:
     manifest_file = os.environ.get("PROVISA_MANIFEST_FILE")
     manifest = json.loads(Path(manifest_file).read_text()) if manifest_file else None
     bounds = Bounds(Path(state), spill)
-    # REQ-2225: a script connector's worker waits for its script, given at pairing.
-    script = Script(Path(state), worker_argv) if os.environ.get(SCRIPT_ENV) else None
-    worker = None if script is not None else Worker(worker_argv, bounds)
+    worker = Worker(worker_argv, bounds)
     pairing = identity.code()
     if pairing is not None:
         sys.stderr.write(f"pairing code: {pairing}\n")
@@ -1173,16 +921,13 @@ def main(argv: list[str]) -> int:
         names,
         manifest,
         bounds=bounds,
-        script=script,
-        worker_argv=worker_argv,
         # REQ-2225: an image host sets no bind and serves every interface; a native host sets
         # loopback. The default is that design, not a recovery from a missing value.
         bind=os.environ.get(BIND_ENV, ALL_INTERFACES),
     )
 
     def shut_down() -> None:
-        if server.lifecycle is not None:
-            server.lifecycle.stop()  # REQ-2221: @on-stop, the host shutting down
+        server.lifecycle.stop()  # REQ-2221: @on-stop, the host shutting down
         os._exit(0)
 
     def stop(_signum: int, _frame: Any) -> None:

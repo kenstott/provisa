@@ -62,7 +62,7 @@ def _released_spark() -> ConnectorConfig:
         digest="sha256:" + "b" * 64,
         code_hash="c" * 64,
         arch="amd64",
-        requires=[ConnectorRequirement(name="script", multiline=True, script=True)],
+        requires=[ConnectorRequirement(name="cluster")],
     )
 
 
@@ -78,12 +78,9 @@ async def test_a_checkout_demo_has_the_spark_host_run_natively(demo, control_pla
     assert spark["native"] is True
     assert spark["language"] == "python"
     assert spark["code_hash"] == native_connector.code_hash(_PROJECT)
-    assert spark["requires"] == [
-        {"name": "script", "multiline": True, "script": True},
-        {"name": "cluster", "org_default": "spark_cluster"},
-    ]
+    assert spark["requires"] == [{"name": "cluster", "org_default": "spark_cluster"}]
     assert spark["settings"] == [{"name": "replicate", "default_value": 0}]
-    assert spark["description"].startswith("Tables and commands from one annotated Spark script")
+    assert spark["description"] == "A connection to your Spark cluster through Spark Connect."
     assert spark["icon"].startswith("data:image/svg+xml;base64,")
     assert spark["image"] == "" and spark["digest"] == ""
     assert found is not None and found["native"] is True
@@ -189,10 +186,7 @@ def native_row(monkeypatch):
         "name": "spark",
         "language": "python",
         "code_hash": "d" * 64,
-        "requires": [
-            {"name": "script", "multiline": True, "script": True},
-            {"name": "cluster", "org_default": "spark_cluster"},
-        ],
+        "requires": [{"name": "cluster", "org_default": "spark_cluster"}],
         "native": True,
     }
 
@@ -208,7 +202,7 @@ def native_row(monkeypatch):
 def _joining(**join) -> dict:
     return {
         "connector_join": {"connector": "spark", **join},
-        "settings": {"script": "def f():\n    pass\n"},
+        "settings": {},
     }
 
 
@@ -289,9 +283,9 @@ async def test_a_native_host_that_fails_to_start_fails_the_source_by_name(native
 def test_a_native_sources_worker_starts_its_host_first(monkeypatch):
     started = []
     monkeypatch.setattr(native_connector, "ensure_running", lambda *args: started.append(args))
-    remote = {"host": "127.0.0.1", "port": 40123, "pin": "p", "native": "script"}
+    remote = {"host": "127.0.0.1", "port": 40123, "pin": "p", "native": True}
     remote_sources.worker_for("acme", "spark_jobs", "d" * 64, remote, cast(Any, object()))
-    assert started == [("acme", "spark_jobs", "d" * 64, "script", 40123)]
+    assert started == [("acme", "spark_jobs", "d" * 64, 40123)]
 
 
 def test_an_image_sources_worker_starts_no_host(monkeypatch):
@@ -307,7 +301,7 @@ def test_a_host_without_its_state_is_refused_by_name(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
     with pytest.raises(NativeHostFailed, match="has no state"):
-        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", 40123)
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, 40123)
 
 
 def test_a_host_that_exits_before_it_listens_is_named_with_its_log(tmp_path):
@@ -344,15 +338,6 @@ def test_the_host_reports_its_port_and_pairing_code(tmp_path):
     assert found == (40999, "fp.secret")
 
 
-def test_the_script_value_is_the_one_the_standard_file_marks():
-    row = {"requires": [{"name": "cluster"}, {"name": "job", "script": True}]}
-    assert native_connector.script_value(row) == "job"
-    with pytest.raises(NativeHostFailed, match="2 script values"):
-        native_connector.script_value(
-            {"requires": [{"name": "a", "script": True}, {"name": "b", "script": True}]}
-        )
-
-
 # -- REQ-2225: a native host listens on loopback alone -------------------------------------------
 
 
@@ -370,6 +355,7 @@ def _host_files(work: Path) -> SimpleNamespace:
     work.mkdir(parents=True)
     code = work / "code"
     code.mkdir()
+    (code / "spark_connector.py").write_text("")  # the entry the front's worker imports
     (work / "manifest.json").write_text("{}")
     (work / "names.json").write_text("{}")
     return SimpleNamespace(python=Path(sys.executable), code=code, entry="spark_connector")
@@ -408,17 +394,15 @@ def _in_process_front(root: Path, bind: str = front.ALL_INTERFACES) -> front.Fro
     return front.Front(
         0,
         front.Identity(state),
-        None,
+        cast(Any, None),  # no worker: these tests only dial the listener
         {},
         bounds=front.Bounds(state, str(spill)),
-        script=front.Script(state, [sys.executable, "-I", "host.py", "{fd}", "code", "entry"]),
-        worker_argv=[],
         bind=bind,
     )
 
 
 def test_a_native_hosts_front_binds_loopback_alone(tmp_path):
-    env = native_connector._environment(tmp_path, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    env = native_connector._environment(tmp_path, "d" * 64)  # pyright: ignore[reportPrivateUsage]
     server = _in_process_front(tmp_path, bind=env[front.BIND_ENV])
     try:
         assert server.socket.getsockname()[0] == "127.0.0.1"
@@ -428,7 +412,7 @@ def test_a_native_hosts_front_binds_loopback_alone(tmp_path):
 
 def test_a_native_host_refuses_a_connection_from_the_network(tmp_path):
     work = tmp_path / "host"
-    env = native_connector._environment(work, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    env = native_connector._environment(work, "d" * 64)  # pyright: ignore[reportPrivateUsage]
     process, port = _start_front(work, env)
     try:
         assert _connects("127.0.0.1", port)
@@ -446,7 +430,7 @@ def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
         server.server_close()
     # The front started as an image starts it: no bind given, so the network reaches it.
     work = tmp_path / "host"
-    env = native_connector._environment(work, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    env = native_connector._environment(work, "d" * 64)  # pyright: ignore[reportPrivateUsage]
     del env[front.BIND_ENV]
     process, port = _start_front(work, env)
     try:
@@ -506,7 +490,7 @@ def test_stopping_a_source_ends_its_host_frees_its_port_and_removes_its_state(
     assert native_connector.running("acme", "spark_jobs") is None
     # A later restart finds nothing to start again.
     with pytest.raises(NativeHostFailed, match="has no state"):
-        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", port)
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, port)
 
 
 def test_stopping_one_source_leaves_another_sources_host_running(tmp_path, monkeypatch):
@@ -537,6 +521,6 @@ def test_stopping_a_source_whose_host_is_not_running_removes_its_state(tmp_path,
 
 
 def test_only_a_native_sources_mapping_is_native():
-    assert remote_sources.is_native({"mode": "built", "remote": {"native": "script"}})
+    assert remote_sources.is_native({"mode": "built", "remote": {"native": True}})
     assert not remote_sources.is_native({"mode": "built", "remote": {"host": "10.0.0.9"}})
     assert not remote_sources.is_native({"mode": "dev"})

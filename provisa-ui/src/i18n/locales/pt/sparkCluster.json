@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "Onde um script Spark é executado e validado quando sua fonte não indica um cluster próprio. O cluster próprio de uma fonte é sempre usado quando ela tem um.",
+    "help": "O cluster ao qual uma fonte Spark se conecta quando não indica um cluster próprio. O cluster próprio de uma fonte é sempre usado quando ela tem um.",
     "address": "Endereço do Spark Connect",
     "addressHelp": "O endereço do Spark Connect do cluster, por exemplo sc://spark.example.com:15002. Não inclua o token nele: guarde o token como segredo e indique-o abaixo.",
     "credential": "Segredo do token",

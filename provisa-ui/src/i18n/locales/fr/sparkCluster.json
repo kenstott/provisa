@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "L'endroit où un script Spark s'exécute et est validé lorsque sa source ne désigne aucun cluster propre. Le cluster propre d'une source est toujours utilisé lorsqu'elle en a un.",
+    "help": "Le cluster auquel une source Spark se connecte lorsqu'elle ne désigne aucun cluster propre. Le cluster propre d'une source est toujours utilisé lorsqu'elle en a un.",
     "address": "Adresse Spark Connect",
     "addressHelp": "L'adresse Spark Connect du cluster, par exemple sc://spark.example.com:15002. N'y mettez pas le jeton : conservez-le comme secret et indiquez-le ci-dessous.",
     "credential": "Secret du jeton",
