@@ -883,6 +883,15 @@ async def register_table(
         return _refused.result
     if _staged is not None:
         _staged.apply()  # this process takes what the transaction stored, once it committed
+    # REQ-2267: the relationships a code source's @discover declares that this table completes,
+    # written once both of their tables are registered.
+    from provisa.codesource.languages import CODE_SOURCE_TYPES as _CODE_TYPES
+
+    if src_row is not None and src_row["type"] in _CODE_TYPES:
+        from provisa.api.admin._code_source_relationships import store_declared_relationships
+        from provisa.api.app import state as _rel_state
+
+        await store_declared_relationships(pool, _rel_state, input.source_id, input.table_name)
 
     if _effective_view_sql and input.materialize:
         await _sync_view_mv(
