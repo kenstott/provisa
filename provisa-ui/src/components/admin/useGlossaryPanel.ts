@@ -12,9 +12,9 @@
 // graph, a term read or in its form, or with no term the stewardship summary. A link's query
 // decides that visit instead and is not saved over; only the reader's own changes are.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { namedIn, rememberedDetail, useRememberedDetail } from "../list/useDetailParam";
+import { rememberedDetail, useRememberedDetail } from "../list/useDetailParam";
 import { getStored, setStored } from "../../lib/browserStorage";
 import { listGlossaryTerms, type GlossaryTermSummary } from "../../api/glossary";
 import { useNavPayload } from "../../hooks/useNavPayload";
@@ -80,6 +80,17 @@ export function useReadableTermIds() {
   return [ids, read] as const;
 }
 
+/** REQ-2277: the page's tabs -- the term list, the Ontology View (REQ-2130) and, for a curator,
+ * the ontology imports (REQ-2237) -- named in the URL's ?panel= (the terms: none). */
+export const GLOSSARY_VIEWS = ["terms", "graph", "imports"] as const;
+export type GlossaryView = (typeof GLOSSARY_VIEWS)[number];
+
+function viewNamed(param: string | null): GlossaryView | null {
+  return (GLOSSARY_VIEWS as readonly string[]).includes(param ?? "")
+    ? (param as GlossaryView)
+    : null;
+}
+
 /**
  * `listed`: the ids of every term the viewer can read, unnarrowed by the search; `null` while
  * they load.
@@ -87,17 +98,25 @@ export function useReadableTermIds() {
 export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | null) {
   // REQ-1387, REQ-2241: the selected term is the URL's ?term= (the shared detail parameter), so a
   // relationship link, a shared URL, or Back and Forward all show the term it names.
-  const [searchParams, setSearchParams] = useSearchParams();
-  // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
-  // the term, so it opens the list.
-  const [ontology, setOntologyState] = useState(
+  const [searchParams] = useSearchParams();
+  const namedView = viewNamed(searchParams.get("panel"));
+  // A visit naming nothing reopens the view it was left on: the graph is written into the URL as
+  // the page arrives. A ?term= link opens the term, so it opens the list.
+  const [restoringGraph, setRestoringGraph] = useState(
     () =>
-      namedIn("ontology", searchParams.toString()) === null &&
-      readStoredString("glossary.view") === "ontology",
+      searchParams.toString() === "" && readStoredString("glossary.view") === "ontology",
   );
+  const view: GlossaryView = namedView ?? (restoringGraph ? "graph" : "terms");
+  const ontology = view !== "terms";
   // REQ-2260: a visit naming no term reopens the term left open (the shared memory of list pages),
   // once the terms are read; under the graph it waits, as the graph holds the page's place.
   const detail = useRememberedDetail("ontology", ontology ? null : listed);
+  const { setParam } = detail;
+  useLayoutEffect(() => {
+    if (restoringGraph) setParam("panel", "graph", { replace: true });
+  }, [restoringGraph, setParam]);
+  // Once the URL names a view it decides from then on.
+  if (restoringGraph && namedView !== null) setRestoringGraph(false);
   const { open: openTerm, close: closeTerm } = detail;
   // The term the page reopens: it is the page's term once the terms read hold it, while the URL is
   // given it.
@@ -124,12 +143,18 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     },
     [openTerm, closeTerm],
   );
-  const setOntology = (open: boolean) => {
-    setOntologyState(open);
-    writeStored("glossary.view", open ? "ontology" : "list");
-    if (open) closeTerm({ replace: true, keep: true });
-    else if (held !== null) openTerm(held, { replace: true });
-  };
+  // A tab chosen is one history entry: the panel named, and the term set aside under the graph or
+  // the imports, open again back on the list.
+  const setView = useCallback(
+    (next: GlossaryView) => {
+      if (next === view) return;
+      if (next !== "imports") writeStored("glossary.view", next === "graph" ? "ontology" : "list");
+      setParam("panel", next === "terms" ? null : next);
+      if (next !== "terms") closeTerm({ replace: true, keep: true });
+      else if (held !== null) openTerm(held, { replace: true });
+    },
+    [view, setParam, closeTerm, openTerm, held],
+  );
   // The term open as one form (TermEditForm), or read. A URL's ?term= naming the remembered term
   // is that term reloaded, so its form reopens too.
   const [editing, setEditingState] = useState(() => {
@@ -146,42 +171,15 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     writeStoredBool("glossary.editing", on);
   }, []);
 
-  // A link (?panel=graph, ?panel=terms, ?term=) decides the page again whenever it changes while
-  // the page stays open, as it does when the page opens on it.
-  const panelParam = searchParams.get("panel");
-  const [seededPanel, setSeededPanel] = useState<string | null>(null);
-  if (panelParam !== seededPanel) {
-    setSeededPanel(panelParam);
-    if (panelParam !== null) setOntologyState(panelParam === "graph");
-  }
-  const termParam = detail.id;
-  const [seededTerm, setSeededTerm] = useState(termParam);
-  if (termParam !== seededTerm) {
-    setSeededTerm(termParam);
-    if (termParam !== null) setOntologyState(false);
-  }
-  // ?panel= is read once: the page's own state holds it from there.
-  useEffect(() => {
-    if (panelParam === null) return;
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("panel");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [panelParam, setSearchParams]);
-
   // Polly's navigate: which panel, which term, and the graph's own controls.
   useNavPayload<{ panel?: "graph" | "terms"; term?: number; graph?: Record<string, unknown> }>(
     (payload) => {
       if (payload.graph) writeGraphSettings(ONTOLOGY_SETTINGS, payload.graph);
-      if (payload.panel) setOntologyState(payload.panel === "graph");
       if (payload.term !== undefined) {
+        // The term opens on the list, in one write with its panel.
+        setParam("panel", null);
         setSelectedId(payload.term);
-        setOntologyState(false);
-      }
+      } else if (payload.panel) setView(payload.panel);
     },
   );
 
@@ -191,12 +189,12 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     const { flat, layout, preset, layers, domains, edgeTypes } =
       savedGraphSettings(ONTOLOGY_SETTINGS);
     return {
-      panel: ontology ? "graph" : "terms",
+      panel: view,
       term: selectedId,
       editing,
       graph: { flat, layout, preset, layers, domains, edgeTypes },
     };
-  }, [ontology, selectedId, editing]);
+  }, [view, selectedId, editing]);
   useScreenInputsReader("/context/ontology", readInputs);
 
   // Each term opens read, not in the form the previous term was left in; the term the page opened
@@ -215,5 +213,5 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     return () => window.clearTimeout(timer);
   }, [selectedId, setEditing, held, reopened]);
 
-  return { ontology, setOntology, selectedId, setSelectedId, editing, setEditing };
+  return { view, setView, selectedId, setSelectedId, editing, setEditing };
 }

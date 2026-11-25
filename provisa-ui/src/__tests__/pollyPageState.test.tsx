@@ -19,8 +19,8 @@ import { readScreen } from "../mcp/screenState";
 import { ONTOLOGY_SETTINGS, savedGraphSettings } from "../pages/tables/profile3d/graphSettings";
 
 function Page() {
-  const { ontology, selectedId } = useGlossaryPanel(false, null);
-  return <div data-testid="page">{`${ontology ? "graph" : "terms"}:${selectedId}`}</div>;
+  const { view, selectedId } = useGlossaryPanel(false, null);
+  return <div data-testid="page">{`${view}:${selectedId}`}</div>;
 }
 
 function Go({ label, to, state }: { label: string; to: string; state?: object }) {

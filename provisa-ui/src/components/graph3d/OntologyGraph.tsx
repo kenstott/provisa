@@ -20,7 +20,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Loader } from "@mantine/core";
+import { Alert, Button, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import { ONTOLOGY_SETTINGS, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
@@ -41,7 +41,6 @@ import {
 } from "./ontologyPresets";
 import { useOntology, type Read } from "./useOntology";
 import { useInView } from "./useInView";
-import { Tip } from "../Tip";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -154,32 +153,6 @@ function WholeOntology({
       within={within}
       testId="graph3d"
     />
-  );
-}
-
-/** The Glossary page's control opening the Ontology View in place of the term list. */
-export function OntologyToggle({
-  open,
-  onChange,
-}: {
-  open: boolean;
-  onChange: (open: boolean) => void;
-}) {
-  const { t } = useTranslation();
-  // An icon in the page's toolbar, named by its tip and its label, filled while the view is on.
-  return (
-    <Tip text={t("graph3d.ontologyView")} named>
-      <ActionIcon
-        size="input-sm"
-        variant={open ? "light" : "subtle"}
-        onClick={() => onChange(!open)}
-        aria-label={t("graph3d.ontologyView")}
-        aria-pressed={open}
-        data-testid="glossary-ontology-toggle"
-      >
-        <Network size={16} aria-hidden />
-      </ActionIcon>
-    </Tip>
   );
 }
 

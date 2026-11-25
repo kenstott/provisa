@@ -35,6 +35,7 @@ import {
 } from "../../components/list/ListTable";
 import { SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
+import { useUrlFilter } from "../../components/list/useUrlFilter";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PageHelp } from "../../components/PageHelp";
 import { PageLoading } from "../../components/PageLoading";
@@ -54,7 +55,8 @@ export function LibraryPage() {
   const canEdit = useCapability("glossary_rw");
   const [documents, setDocuments] = useState<LibraryDocument[] | null>(null);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  // REQ-2277: the list's filter, in the URL.
+  const [search, setSearch] = useUrlFilter();
   // REQ-2241: `?document=<id>` is the open document's panel.
   // REQ-2260: and the one left open is open again on coming back.
   const detail = useRememberedDetail(

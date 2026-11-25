@@ -1,6 +1,7 @@
 {
   "glossaryTab": {
     "title": "Ontology",
+    "viewTerms": "Terms",
     "searchPlaceholder": "Search terms…",
     "empty": "No terms.",
     "deprecated": "Deprecated",
