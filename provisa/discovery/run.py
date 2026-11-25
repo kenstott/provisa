@@ -30,8 +30,10 @@ import asyncio
 import copy
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from provisa.codesource import discovery as code_discovery
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import gather
 from provisa.discovery.analyzer import RelationshipCandidate
@@ -465,7 +467,11 @@ async def perform(
                 else prepared.source_ids
             )
             fk_found = await collect_fk_for_tables(
-                state.source_pools, state.source_types, conn, declaring
+                state.source_pools,
+                state.source_types,
+                conn,
+                declaring,
+                code_relationships=partial(code_discovery.relationships, state),  # REQ-2267
             )
     tables = prepared.tables
     # Declared foreign keys are the first check and are never measured (REQ-413, amended

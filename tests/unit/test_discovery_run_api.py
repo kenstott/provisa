@@ -339,7 +339,7 @@ class _World:
             # REQ-413 (amended 2026-11-18): the answer is read per listed table pair.
             return Completion(from_ids(prompt, text, _TABLE_NAMES), vendor, model, None, False)
 
-        async def fk(source_pools, source_types, conn, table_ids):
+        async def fk(source_pools, source_types, conn, table_ids, *, code_relationships):
             return [c for c in self.fk_found if c.source_table_id in table_ids]
 
         monkeypatch.setattr(discovery, "_launch", lambda *args: self.launched.append(args))

@@ -197,6 +197,10 @@ async def test_a_registration_that_read_no_declaration_records_what_its_input_de
     }
 
 
+async def _no_code(source_id: str):
+    raise AssertionError(f"{source_id} is not a code source; its code is not read")
+
+
 async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
     org_plane, sqlite_pool
 ):
@@ -218,7 +222,7 @@ async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
             ).fetchall()
         }
         candidates = await collect_fk_for_tables(
-            sqlite_pool, {"pets": "sqlite"}, conn, set(ids.values())
+            sqlite_pool, {"pets": "sqlite"}, conn, set(ids.values()), code_relationships=_no_code
         )
     assert [
         (c.source_table_id, c.source_column, c.target_table_id, c.target_column, c.cardinality)
