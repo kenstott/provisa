@@ -576,7 +576,7 @@ async def _refuse_table_outside_selection(conn: Any, table_id: int) -> None:
 
 async def list_native_tables(
     state: Any, role: str, source_id: str, schema_name: str = "public"
-) -> list[dict]:  # REQ-1833
+) -> list[dict]:  # REQ-1833, REQ-2114
     """Real table names introspected DIRECTLY from `source_id`'s own native schema — NOT the
     already-registered governed catalog list_tables/describe_table read, which is empty for a
     source that has no tables registered yet. Use this (and describe_native_table) for a source
@@ -588,22 +588,26 @@ async def list_native_tables(
     This is the SAME native-introspection path (native_tables/the engine-attach fallback) the
     admin UI's Register Table form calls before ever showing a table picker."""
     require_role(role, state)
+    if not _role_has_capability(state, role, "table_registration"):
+        raise PermissionError(f"role {role!r} does not hold table_registration")
     await _refuse_source_outside_selection(state, source_id)
-    from provisa.api.admin.schema_query import Query
+    from provisa.api.admin.schema_query import offered_tables
 
-    tables = await Query().available_tables(source_id, schema_name)  # pyright: ignore[reportCallIssue]
+    tables = await offered_tables(source_id, schema_name)
     return [{"name": t.name, "comment": t.comment} for t in tables]
 
 
 async def describe_native_table(
     state: Any, role: str, source_id: str, schema_name: str, table_name: str
-) -> list[dict]:  # REQ-1833
+) -> list[dict]:  # REQ-1833, REQ-2114
     """Real columns (name, data_type) introspected DIRECTLY from one table of `source_id` — the
     SAME resolution register_table's own validation re-checks any proposed columns against
     (_ensure_source_column_types), so a columns list built from this call's real result will
     always be accepted, unlike a guessed one. Call list_native_tables first if the exact
     table_name isn't already known."""
     require_role(role, state)
+    if not _role_has_capability(state, role, "table_registration"):
+        raise PermissionError(f"role {role!r} does not hold table_registration")
     await _refuse_source_outside_selection(state, source_id)
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
 

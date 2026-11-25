@@ -47,6 +47,7 @@ from typing import Any, Literal
 from provisa.codesource import remote_sources
 from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
+from provisa.core.paging import PaginationType
 from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
 from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
 from provisa.profiler.source import DRIFT_SEASONS
@@ -1182,4 +1183,140 @@ def families() -> dict[str, list[str]]:
         "noConnection": sorted(NO_CONNECTION_TYPES),
         "dataLake": sorted(DATA_LAKE),
         "cloudFileTypes": sorted(CLOUD_FILE_TYPES),
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# Registration: how a type's tables are registered (REQ-2114, amended 2026-11-24).
+# Every name is the admin GraphQL schema's own (tests/unit/test_polly_register_relate.py holds
+# them to it): a mutation, a query that finds what is offered, a TableInput field.
+# ---------------------------------------------------------------------------------------------
+
+#: The mutations that register tables: one TableInput, or several in one action, each table's
+#: outcome reported on its own (REQ-2234).
+REGISTER_MUTATIONS: tuple[str, ...] = ("registerTable", "registerTables")
+
+#: The TableInput fields every registration sets.
+REGISTER_BASE_FIELDS: tuple[str, ...] = (
+    "sourceId",
+    "domainId",
+    "schemaName",
+    "tableName",
+    "columns",
+)
+
+
+@dataclass(frozen=True)
+class Registration:
+    """One kind of table registration a source type uses."""
+
+    kind: Literal["tables", "connection", "file_glob", "openapi_operation", "code", "cypher"]
+    #: The admin queries that find what to register, in the order they are asked.
+    find: tuple[str, ...]
+    #: The TableInput fields this kind sets beyond :data:`REGISTER_BASE_FIELDS`.
+    fields: tuple[str, ...]
+    note: str
+    mutations: tuple[str, ...] = REGISTER_MUTATIONS
+
+
+_LISTED = ("availableSchemas", "availableTables", "availableColumnsMetadata")
+
+_TABLES = Registration(
+    "tables",
+    find=_LISTED,
+    fields=(),
+    note="availableSchemas(sourceId) names the schemas, availableTables(sourceId, schemaName) "
+    "the tables each offers, availableColumnsMetadata(sourceId, schemaName, tableName) a "
+    "table's columns; each column is registered with at least name and visibleTo. One table is "
+    "registerTable(input: TableInput!); several are registerTables(inputs: [TableInput!]!), "
+    "whose answer is each table's own outcome.",
+)
+
+_CONNECTION = Registration(
+    "connection",
+    find=_LISTED,
+    fields=("pagination",),
+    note="a remote GraphQL table is registered as any listed table; a connection table (its "
+    "rows under a Relay connection) may bound its rows with pagination {maxRows}, lower than "
+    "the organization's graphql_remote max_rows and never higher; it takes no page parameters.",
+)
+
+_FILE_GLOB = Registration(
+    "file_glob",
+    find=("fileGlobPreview", *_LISTED),
+    fields=("fileGlob", "sourceFileColumn"),
+    note="a files source registers each listed file as a table, or ONE table over many files: "
+    "fileGlobPreview(sourceId, glob, tables) shows the files a glob reads (relative to the "
+    "source's path), the columns they share and the files that differ; or, with `tables` (the "
+    "listed tables picked), derives the glob for them. Register it with fileGlob set to that "
+    "glob and the shared columns; sourceFileColumn names an optional column carrying each "
+    "row's file path. fileGlob is refused on any other source type.",
+)
+
+_OPENAPI_OPERATION = Registration(
+    "openapi_operation",
+    find=("availableTables", "availableColumnsMetadata", "sampleOpenapiColumns"),
+    fields=("pagination", "arguments"),
+    note="schemaName is 'openapi'; availableTables(sourceId, schemaName: \"openapi\") lists the "
+    "GET operations that return rows, each a table named by its operation; "
+    "availableColumnsMetadata gives the response's columns and the operation's parameters as "
+    "columns (nativeFilterType set, nativeFilterRequired where the API requires it; "
+    "requiredBySteward makes one required). An operation whose response declares no schema "
+    "has its columns suggested by sampleOpenapiColumns(sourceId, tableName, params). "
+    "pagination (PagingInput) is how the endpoint pages: type (one of "
+    + ", ".join(t.value for t in PaginationType)
+    + ", as the API pages) with pageParam, pageSizeParam, pageSize, cursorParam, cursorField and "
+    "maxPages, and rowsField naming the property the rows sit under (it may be set with no "
+    "type, for an answer wrapped and not paged). arguments fixes parameter values by name for "
+    "every read, as a JSON object.",
+)
+
+_CODE = Registration(
+    "code",
+    find=_LISTED,
+    fields=("arguments",),
+    note="schemaName is 'default'; availableTables lists the code's @table functions and every "
+    "item its @discover function generates, each by the name it is served under (@discover "
+    "itself is never offered). availableColumnsMetadata gives the row type's columns and each "
+    "parameter as a column; arguments fixes parameter values by name for every read.",
+)
+
+_CYPHER = Registration(
+    "cypher",
+    find=("availableSchemas", "neo4jPreview"),
+    fields=("queryTemplate",),
+    note="schemaName is 'neo4j'; a table is the rows a Cypher statement returns: queryTemplate "
+    "is required, its columns those the statement returns (neo4jPreview runs it to show them).",
+)
+
+
+def registration(d: SourceTypeDescriptor) -> tuple[Registration, ...]:
+    """The kinds of table registration a source of type ``d`` uses."""
+    backend = d.backend_type
+    if backend == "openapi":
+        return (_OPENAPI_OPERATION,)
+    if d.code is not None:
+        return (_CODE,)
+    if backend == "neo4j":
+        return (_CYPHER,)
+    if backend == "graphql_remote":
+        return (_CONNECTION,)
+    if backend == "files":
+        return (_TABLES, _FILE_GLOB)
+    return (_TABLES,)
+
+
+def registration_kinds() -> tuple[Registration, ...]:
+    """Every kind of registration, once each."""
+    return (_TABLES, _CONNECTION, _FILE_GLOB, _OPENAPI_OPERATION, _CODE, _CYPHER)
+
+
+def registration_json(d: SourceTypeDescriptor) -> dict[str, Any]:
+    """How ``d``'s tables are registered, as plain JSON."""
+    return {
+        "base_fields": list(REGISTER_BASE_FIELDS),
+        "kinds": [
+            {k: list(v) if isinstance(v, tuple) else v for k, v in asdict(r).items()}
+            for r in registration(d)
+        ],
     }
