@@ -25,7 +25,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import Bindings, graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
@@ -197,11 +197,336 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return None
 
 
+# DuckDB (REQ-2236): it holds an array of more than one dimension as a list of lists, as Trino
+# does. PostgreSQL reads each of these functions' arrays element by element in storage order, its
+# dimensions dropped: each nested array the statement writes is given them as that flattened array.
+_READ_FLAT = frozenset(
+    {
+        "cardinality",
+        "unnest",
+        "explode",
+        "hash_array",
+        "hash_array_extended",
+        "arraycontains",
+        "arraycontained",
+        "arrayoverlap",
+        "array_contains_all",
+        "array_has_all",
+        "array_contained_by",
+        "array_overlaps",
+        "array_to_tsvector",
+        "setweight",
+        "ts_delete",
+        "jsonb_exists_any",
+        "jsonb_exists_all",
+    }
+)
+
+#: array.c's array_cmp, of an array of more than one dimension, by the comparison each call reads
+#: of its result.
+_ORDERED: dict[str, str] = {
+    "array_eq": "=",
+    "array_ne": "<>",
+    "array_lt": "<",
+    "array_le": "<=",
+    "array_gt": ">",
+    "array_ge": ">=",
+}
+
+_INTEGERS = (
+    exp.DataType.Type.SMALLINT,
+    exp.DataType.Type.INT,
+    exp.DataType.Type.BIGINT,
+)
+
+
+def _shape(value: exp.Expr) -> tuple[int, ...] | None:
+    """The lengths of the dimensions of an array the statement writes, outermost first (() for
+    an empty one); None for any other value and for one whose sub-arrays differ in shape."""
+    elements = _elements(value)
+    if elements is None:
+        return None
+    if not elements:
+        return ()
+    inner = [_elements(e) is not None for e in elements]
+    if not any(inner):
+        return (len(elements),)
+    if not all(inner):
+        return None
+    shapes = {_shape(e) for e in elements}
+    if len(shapes) != 1:
+        return None
+    sub = shapes.pop()
+    return None if not sub else (len(elements), *sub)
+
+
+def _leaves(value: exp.Expr) -> list[exp.Expr]:
+    """The elements of an array the statement writes (one of a shape), in storage order."""
+    leaves: list[exp.Expr] = []
+    for element in _elements(value) or []:
+        leaves.extend(_leaves(element) if _elements(element) is not None else [element])
+    return leaves
+
+
+def _element_type(value: exp.Expr) -> exp.DataType | None:
+    """The element type of an array cast, None for a value no cast types."""
+    node = value.unnest()
+    if not isinstance(node, exp.Cast):
+        return None
+    to = node.to
+    while to.is_type(exp.DataType.Type.ARRAY) and to.expressions:
+        to = to.expressions[0]
+    return to
+
+
+def _flat(value: exp.Expr) -> exp.Expr:
+    """``value``, an array of more than one dimension, as the array of one dimension of its
+    elements in storage order: of the elements a statement writes, else DuckDB's flatten (of one
+    level a call) of the value."""
+    element = _element_type(value)
+    if _shape(value) is not None:
+        flat: exp.Expr = exp.Array(expressions=[leaf.copy() for leaf in _leaves(value)])
+    else:
+        flat = value.copy()
+        for _ in range(_depth(value) - 1):
+            flat = exp.Anonymous(this="flatten", expressions=[flat])
+    if element is None:
+        return flat
+    to = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element.copy()], nested=True)
+    return exp.Cast(this=flat, to=to)
+
+
+def _deep(value: exp.Expr) -> bool:
+    """Whether ``value`` is an array of more than one dimension the statement writes or casts."""
+    shape = _shape(value)
+    return len(shape) > 1 if shape is not None else _nested(value)
+
+
+def _ties(left: tuple[int, ...], right: tuple[int, ...]) -> int:
+    """array_cmp of two arrays whose elements are the same: more dimensions is larger, then the
+    longer of the first dimension that differs (each lower bound is 1)."""
+    if len(left) != len(right):
+        return 1 if len(left) > len(right) else -1
+    for a, b in zip(left, right):
+        if a != b:
+            return 1 if a > b else -1
+    return 0
+
+
+def _integer_leaves(value: exp.Expr) -> list[int] | None:
+    """The elements of an integer array the statement writes, each a constant; None otherwise."""
+    element = _element_type(value)
+    if element is None or not element.is_type(*_INTEGERS):
+        return None
+    numbers: list[int] = []
+    for leaf in _leaves(value):
+        node = leaf.unnest()
+        while isinstance(node, exp.Cast):
+            node = node.this.unnest()
+        if not isinstance(node, exp.Literal):
+            return None
+        try:
+            numbers.append(int(node.this))
+        except ValueError:
+            return None
+    return numbers
+
+
+def _static_cmp(left: exp.Expr, right: exp.Expr) -> int | None:
+    """array_cmp of two integer arrays the statement writes of constants; None otherwise."""
+    a, b = _integer_leaves(left), _integer_leaves(right)
+    shapes = _shape(left), _shape(right)
+    if a is None or b is None or shapes[0] is None or shapes[1] is None:
+        return None
+    for x, y in zip(a, b):
+        if x != y:
+            return 1 if x > y else -1
+    if len(a) != len(b):
+        return 1 if len(a) > len(b) else -1
+    return _ties(shapes[0], shapes[1])
+
+
+#: array_larger and array_smaller of arrays of different dimensions, where the statement does not
+#: decide which is larger.
+_UNDECIDED = Refusal(
+    "0A000",
+    "array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb "
+    "unless both are integer arrays of constants",
+)
+
+
+def _ordered(name: str, left: exp.Expr, right: exp.Expr) -> exp.Expr | None:
+    """array_eq, array_ne, array_lt, array_le, array_gt, array_ge, btarraycmp, array_larger or
+    array_smaller of two arrays the statement writes, one of more than one dimension: array_cmp
+    reads their elements in storage order (btarraycmp of them flattened, which reads the longer as
+    larger), then the dimensions (_ties)."""
+    shapes = _shape(left), _shape(right)
+    if shapes[0] is None or shapes[1] is None:
+        return None
+    if name in ("array_larger", "array_smaller"):
+        if len(shapes[0]) != len(shapes[1]):
+            # Each answers one of its arguments, of a list type of its own nesting on DuckDB: the
+            # choice is the statement's, of constants, or none.
+            decided = _static_cmp(left, right)
+            if decided is None:
+                raise Refused(_UNDECIDED, ruling=True)
+            larger = decided > 0 if name == "array_larger" else decided < 0
+            return (left if larger else right).copy()
+    flat_cmp: exp.Expr = exp.Anonymous(this="btarraycmp", expressions=[_flat(left), _flat(right)])
+    tie = _ties(shapes[0], shapes[1])
+    if tie:  # flat_cmp is -1, 0 or 1: twice it, plus the tie, has its sign unless it is 0
+        flat_cmp = exp.Add(
+            this=exp.Mul(this=exp.Literal.number(2), expression=exp.Paren(this=flat_cmp)),
+            expression=exp.Literal.number(tie),
+        )
+    zero = exp.Literal.number(0)
+    if name == "btarraycmp":
+        if not tie:
+            return flat_cmp
+        signed = exp.Anonymous(this="sign", expressions=[flat_cmp])
+        return exp.Cast(this=signed, to=exp.DataType.build("INT"))
+    if name in ("array_larger", "array_smaller"):
+        kind = exp.GT if name == "array_larger" else exp.LT
+        return exp.Case(
+            ifs=[
+                exp.If(this=kind(this=exp.Paren(this=flat_cmp), expression=zero), true=left.copy())
+            ],
+            default=right.copy(),
+        )
+    operator = {"=": exp.EQ, "<>": exp.NEQ, "<": exp.LT, "<=": exp.LTE, ">": exp.GT, ">=": exp.GTE}
+    return exp.Paren(this=operator[_ORDERED[name]](this=exp.Paren(this=flat_cmp), expression=zero))
+
+
+_INCOMPATIBLE = Refusal("2202E", "cannot concatenate incompatible arrays")
+
+
+def _concatenated(left: exp.Expr, right: exp.Expr) -> exp.Expr | None:
+    """array_cat of two arrays the statement writes, one of more than one dimension, as array.c
+    reads them: an empty one answers the other; arrays of as many dimensions are joined when their
+    inner dimensions agree; an array of one dimension fewer is joined as one more element of the
+    other when its dimensions are the other's inner ones. Any other pair raises."""
+    a, b = _shape(left), _shape(right)
+    if a is None or b is None:
+        return None
+    if not a or not b:
+        return (right if not a else left).copy()
+    if len(a) == len(b):
+        if a[1:] != b[1:]:
+            raise Refused(_INCOMPATIBLE, ruling=True)
+        return None  # DuckDB's own concatenation of two lists of one nesting
+    if len(a) == len(b) + 1 and a[1:] == b:
+        return exp.Anonymous(
+            this="array_cat", expressions=[left.copy(), exp.Array(expressions=[right.copy()])]
+        )
+    if len(b) == len(a) + 1 and b[1:] == a:
+        return exp.Anonymous(
+            this="array_cat", expressions=[exp.Array(expressions=[left.copy()]), right.copy()]
+        )
+    raise Refused(_INCOMPATIBLE, ruling=True)
+
+
+def _paired(args: list[exp.Expr]) -> None:
+    """json_object or jsonb_object of an array of more than one dimension: PostgreSQL reads an
+    array of two columns as its pairs, and raises for any other (json.c, ARRAY_SUBSCRIPT_ERROR).
+    The pairs are read flattened, as the one-dimensional array of keys and values; in place."""
+    if len(args) == 2:  # noqa: PLR2004
+        if any(_deep(a) for a in args):
+            raise Refused(Refusal("2202E", "wrong number of array subscripts"), ruling=True)
+        return
+    if len(args) != 1 or not _deep(args[0]):
+        return
+    shape = _shape(args[0])
+    if shape is None:
+        return  # a cast of a value: its columns are not the statement's
+    if len(shape) != 2:  # noqa: PLR2004
+        raise Refused(Refusal("2202E", "wrong number of array subscripts"), ruling=True)
+    if shape[-1] != 2:  # noqa: PLR2004
+        raise Refused(Refusal("2202E", "array must have two columns"), ruling=True)
+    args[0].replace(_flat(args[0]))
+
+
+def duckdb_of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """On DuckDB, a call of an array of more than one dimension the statement writes or casts, as
+    PostgreSQL reads it: each array a function reads element by element flattened (in place), an
+    ordering of two by array_cmp, array_cat as array.c joins them, and PostgreSQL's refusal of a
+    call it refuses of one. The call written anew, or None where it stays as it is."""
+    del dialect
+    call = trino.called(node)
+    if call is None:
+        return None
+    names, args = call
+    if not any(_deep(a) for a in args):
+        return None
+    refused = next((_REFUSED_OF_DIMENSIONS[n] for n in names if n in _REFUSED_OF_DIMENSIONS), None)
+    if refused is not None and len(args) == 2:  # noqa: PLR2004
+        raise Refused(Refusal(refused[1], refused[2]), ruling=True)
+    if "array_remove" in names:
+        raise Refused(
+            Refusal("0A000", "removing elements from multidimensional arrays is not supported"),
+            ruling=True,
+        )
+    # hash_array's rows are named by the element type (pg_forms_hash.OVERLOADS)
+    if names & _READ_FLAT or any(n.startswith("hash_array_") for n in names):
+        for argument in args:
+            if _deep(argument):
+                argument.replace(_flat(argument))
+        return None
+    if names & {"json_object", "jsonb_object", "pg_json_object"}:  # pg_functions names the first
+        _paired(args)
+        return None
+    if len(args) != 2:  # noqa: PLR2004
+        return None
+    for name in sorted(names):
+        if name in _ORDERED or name in ("btarraycmp", "array_larger", "array_smaller"):
+            return _ordered(name, args[0], args[1])
+        if name in ("array_cat", "array_concat"):
+            return _concatenated(args[0], args[1])
+    return None
+
+
+class CallRefused(Refused):
+    """PostgreSQL's refusal of a call of an array of more than one dimension, with the name of the
+    function called."""
+
+    def __init__(self, called: str, refused: Refused) -> None:
+        super().__init__(refused.refusal, ruling=refused.ruling)
+        self.called = called
+
+
+def on_duckdb(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each call of an array of more than one dimension written as DuckDB answers it
+    as PostgreSQL does (duckdb_of_dimensions), innermost first; before any function's form reads
+    the arrays. Raises CallRefused where PostgreSQL raises."""
+    for node in reversed(list(tree.walk())):
+        try:
+            written = duckdb_of_dimensions(node, "duckdb")
+        except Refused as refused:
+            called = node.name.lower() if isinstance(node, exp.Anonymous) else type(node).key
+            raise CallRefused(called, refused) from refused
+        if written is None:
+            continue
+        parent = node.parent
+        if (
+            isinstance(parent, exp.Dot)
+            and node.arg_key == "expression"
+            and isinstance(parent.this, exp.Identifier)
+            and parent.this.name.lower() == "pg_catalog"
+        ):
+            node = parent  # pg_catalog's call: the call written anew stands in its place
+        if node is tree:
+            tree = written
+        else:
+            node.replace(written)
+    return tree
+
+
 FEATURE = Feature(
     "an array of dimensions",
     FAMILY,
     "cardinality, unnest and array_to_string of an array of more than one dimension: of every "
-    "element, in storage order.",
+    "element, in storage order. On DuckDB as well each function that reads an array element by "
+    "element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c "
+    "joins arrays; the calls PostgreSQL refuses of one raise its error.",
     read=Side(
         rules=(
             Rule(
@@ -210,6 +535,15 @@ FEATURE = Feature(
                     "clickhouse": Rewrite(
                         of_dimensions,
                         mentions=r"\b(?:cardinality|unnest|array_to_string)\b",
+                        first=True,
+                    ),
+                    "duckdb": Rewrite(
+                        duckdb_of_dimensions,
+                        mentions=r"\b(?:cardinality|unnest|hash_array|hash_array_extended|"
+                        r"arraycontains|arraycontained|arrayoverlap|array_to_tsvector|setweight|"
+                        r"ts_delete|jsonb_exists_any|jsonb_exists_all|jsonb?_object|array_append|"
+                        r"array_prepend|array_positions?|array_remove|width_bucket|array_cat|"
+                        r"array_(?:eq|ne|lt|le|gt|ge|larger|smaller)|btarraycmp)\b|@>|<@|&&",
                         first=True,
                     ),
                     **trino.on_trino(
@@ -222,7 +556,21 @@ FEATURE = Feature(
                     ),
                 },
             ),
-        )
+        ),
+        limitations={
+            "duckdb": (
+                Limitation(
+                    "Only an array the statement writes, or casts to an array of arrays, is read by"
+                    " its dimensions: a column of DuckDB's list of lists keeps DuckDB's own answer."
+                ),
+                Limitation(
+                    "array_larger and array_smaller of arrays of different dimensions answer only"
+                    " for integer arrays of constants, as each answers a list of its own nesting:"
+                    " any other pair is refused.",
+                    _UNDECIDED,
+                ),
+            )
+        },
     ),
 )
 

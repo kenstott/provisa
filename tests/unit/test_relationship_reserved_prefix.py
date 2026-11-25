@@ -21,6 +21,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.entitlements.owners import Changer
 from provisa.api._meta_seed import seed_relationship_id_prefixes
 from provisa.api.admin import schema_mutation
 from provisa.api.admin.types import RelationshipInput
@@ -105,7 +106,8 @@ async def test_the_admin_save_refuses_a_reserved_prefix_with_a_code(
             target_column="id",
             cardinality="many-to-one",
         ),
-        owner=None,
+        set_by=None,
+        changer=Changer(None, org_admin=True),
         needs_review=False,
         creating=True,
     )

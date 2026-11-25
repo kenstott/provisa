@@ -2291,7 +2291,10 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answers(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
-    return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    return [
+        row[0]
+        for row in runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows()
+    ]
 
 
 def _text(value: object) -> str | None:
@@ -2377,7 +2380,9 @@ NO_VARIANT = [
 def test_delete_by_index_without_variant_types(sql, want):
     import chdb
 
-    written = transpile(sql, "clickhouse") + " SETTINGS use_variant_as_common_type = 0"
+    written = (
+        transpile(sql, "clickhouse", generated=False) + " SETTINGS use_variant_as_common_type = 0"
+    )
     rows = [line for line in chdb.query(written, "JSONCompactEachRow").data().splitlines() if line]
     got = [json.loads(line)[0] for line in rows]
     assert [None if v is None else json.loads(v) for v in got] == [

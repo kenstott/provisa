@@ -19,7 +19,7 @@ def drop_retired_role_ids(sync_conn) -> None:  # REQ-1297
     rather than an UPDATE: a user may already hold platform_admin for the same domain, and
     user_role_assignments is UNIQUE (user_id, role_id, domain_id). Deleting the roles rows cascades
     their assignments away, so the carry-over comes first. Runs on ``sync_conn`` in the schema it is
-    set to, once platform_admin is written (db.assert_standard_roles)."""
+    set to, once platform_admin is written (standard_roles.assert_standard_roles)."""
     sync_conn.exec_driver_sql(
         "INSERT INTO user_role_assignments (user_id, role_id, domain_id) "
         "SELECT DISTINCT user_id, 'platform_admin', domain_id FROM user_role_assignments "

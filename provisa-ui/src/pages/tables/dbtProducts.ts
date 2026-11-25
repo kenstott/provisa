@@ -29,7 +29,6 @@ export interface DbtPlannedProduct {
   id: string;
   group: string | null;
   owner: { name: string | null; email: string | null } | null;
-  owner_role: string | null;
   exists: boolean;
   tests: string[];
   models: DbtProductModel[];

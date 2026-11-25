@@ -41,7 +41,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple[Any, ...]]:
-    return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
 
 
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
@@ -111,7 +111,7 @@ def test_a_jsonb_cast_is_described_as_its_type_on_clickhouse(runtime, sql, oid):
     from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype, _type_oid
 
     ((served,),) = runtime.run_sync(
-        f"SELECT toTypeName(v) FROM ({transpile(sql, 'clickhouse')})"
+        f"SELECT toTypeName(v) FROM ({transpile(sql, 'clickhouse', generated=False)})"
     ).iter_rows()
     arrow = {"Nullable(String)": "string", "Nullable(Bool)": "bool"}[served]
     types: list[Any] = [_sql_type_to_bvtype(arrow)]
@@ -160,7 +160,7 @@ def test_what_is_no_exact_answer_raises_on_clickhouse(runtime, value, function, 
 )
 def test_bool_and_numeric_of_a_json_value_are_refused_by_name_on_clickhouse(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_the_clickhouse_limitation_states_what_differs():
@@ -186,7 +186,7 @@ def test_what_is_no_json_value_answers_as_before_on_clickhouse(runtime, sql, ans
 @pytest.mark.parametrize("function", ["bool", "numeric"])
 def test_trino_refuses_bool_and_numeric_of_a_jsonb_value(function):
     with pytest.raises(FunctionRefused):
-        transpile(f'SELECT pg_catalog."{function}"(NULL::jsonb) AS v', "trino")
+        transpile(f'SELECT pg_catalog."{function}"(NULL::jsonb) AS v', "trino", generated=False)
 
 
 # --- 2. spg_poly_quad_compress on ClickHouse ----------------------------------------------------
@@ -239,7 +239,9 @@ def _intersection(rows: list[str | None], range_type: str, order: str) -> str:
 
 def test_range_intersect_agg_on_trino_is_within_what_trino_compiles():
     written = transpile(
-        _intersection(["[1,5)", "empty", "(,3]"], "int4range", " ORDER BY c1"), "trino"
+        _intersection(["[1,5)", "empty", "(,3]"], "int4range", " ORDER BY c1"),
+        "trino",
+        generated=False,
     )
     # 32311 characters before, which Trino refused as too complex; range_agg's 19431 compiles.
     assert len(written) < 15000
@@ -276,6 +278,6 @@ def trino_on_duckdb() -> Any:
 def test_range_intersect_agg_on_trino_answers_as_postgresql(
     trino_on_duckdb, range_type, rows, answer, order
 ):
-    written = transpile(_intersection(rows, range_type, order), "trino")
+    written = transpile(_intersection(rows, range_type, order), "trino", generated=False)
     (on_duckdb,) = sqlglot.transpile(written, read="trino", write="duckdb")
     assert trino_on_duckdb.execute(on_duckdb).fetchall() == [(answer,)]

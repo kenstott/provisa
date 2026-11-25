@@ -45,7 +45,11 @@ def test_a_registered_public_schema_has_one_valid_tsql_physical_name():
     parts = rt._phys_parts(SimpleNamespace(schema_name="public", table_name="orders"))
     assert parts == ("wh", "provisa_public", "orders")
 
-    sql = transpile('SELECT "id" FROM "wh"."public"."orders" JOIN "wh"."sales"."x" ON 1=1', "tsql")
+    sql = transpile(
+        'SELECT "id" FROM "wh"."public"."orders" JOIN "wh"."sales"."x" ON 1=1',
+        "tsql",
+        generated=False,
+    )
     assert "[wh].[provisa_public].[orders]" in sql
     assert "[wh].[sales].[x]" in sql
-    assert transpile("SELECT 1", "tsql") == "SELECT 1"
+    assert transpile("SELECT 1", "tsql", generated=False) == "SELECT 1"

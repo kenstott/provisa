@@ -856,7 +856,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -880,17 +880,17 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 @pytest.mark.parametrize("sql", REFUSED)
 def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_native_two_argument_regexp_like_keeps_clickhouse_s_match():
     sql = "SELECT regexp_like(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "match(a, b)" in transpile(sql, "clickhouse")
+    assert "match(a, b)" in transpile(sql, "clickhouse", generated=False)
 
 
 def test_a_two_argument_regexp_count_of_a_column_pattern_keeps_clickhouse_s_count():
     sql = "SELECT regexp_count(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "countMatches(a, b)" in transpile(sql, "clickhouse")
+    assert "countMatches(a, b)" in transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(
@@ -903,4 +903,4 @@ def test_a_two_argument_regexp_count_of_a_column_pattern_keeps_clickhouse_s_coun
 )
 def test_trino_still_refuses_what_clickhouse_now_answers(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "trino")
+        transpile(sql, "trino", generated=False)

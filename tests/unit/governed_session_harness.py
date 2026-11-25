@@ -78,7 +78,9 @@ class GovernedSession(Session):
             temp_tables.unbind(token)
         if found:
             raise Refused(sql, found)
-        result = self.duck.execute(transpile_to_duckdb(sql), [bindable(params[n]) for n in ordered])
+        result = self.duck.execute(
+            transpile_to_duckdb(sql, generated=False), [bindable(params[n]) for n in ordered]
+        )
         columns = [d[0] for d in result.description]
         rows = take_overrun([dict(zip(columns, r)) for r in result.fetchall()])
         rows = assemble_rows(rows, graph_vars)

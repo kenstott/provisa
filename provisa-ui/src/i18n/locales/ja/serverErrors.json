@@ -560,7 +560,6 @@
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
       "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
       "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
-      "table_has_dependents": "テーブル '{{name}}' はまだ他のオブジェクトから読み取られているか参照されています。先にそれらを廃止するか変更してください",
       "table_withdrawn": "テーブル {{table}} を取り下げました",
       "table_put_back": "テーブル {{table}} を元に戻しました",
       "source_withdrawn": "ソース {{source}} を取り下げました",
@@ -575,6 +574,8 @@
       "table_state_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、そのリリース状態を持ちます。テーブル単独で取り下げたり戻したりはできません",
       "table_region_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、その関数のリージョンを持ちます。単独で別のリージョンへ移動することはできません",
       "table_name_reserved": "テーブル名 '{{table}}' は予約されています。ドメインのコマンドは 'commands' の下で提供されます。別の名前またはエイリアスでテーブルを登録してください。",
+      "domain_stewards_saved": "ドメイン '{{domain}}' のスチュワードを保存しました",
+      "table_has_dependents": "テーブル '{{name}}' はまだ他のオブジェクトから読み取られているか参照されています。先にそれらを廃止するか変更してください",
       "file_types_differ": "パターン {{glob}} は複数の種類のファイルに一致します（{{types}}）。1 つのテーブルのファイルはすべて同じ種類でなければなりません。"
     },
     "secrets": {
@@ -889,7 +890,10 @@
         "domain_steward_unset": "ドメイン {{domain}} にはスチュワードがいません。",
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
-      }
+      },
+      "owner_not_eligible": "{{owner}} は data_product_owner 機能を持つロールを保持していないため、データプロダクト {{data_product}} のオーナーに指定できません。先にそのようなロールを付与してください。",
+      "owner_role_not_eligible": "ロール {{role}} は data_product_owner 機能を持たないため、データプロダクト {{data_product}} のオーナーに指定できません。先にロールにその機能を付与してください。",
+      "owners_change_refused": "データプロダクト {{data_product}} のオーナーを変更できるのは、組織管理者または現在のオーナーだけです。"
     },
     "erd": {
       "database_unavailable": "ERD レイアウトを読み取れません: データベースが利用できません",
@@ -941,7 +945,10 @@
     },
     "relationship": {
       "name_taken": "名前「{{name}}」はリレーションシップ「{{held_by}}」が使用しています。別の名前を付けてください。",
-      "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。"
+      "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。",
+      "owner_not_eligible": "{{owner}} は relationship_owner 機能を持つロールを保持していないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にそのようなロールを付与してください。",
+      "owner_role_not_eligible": "ロール {{role}} は relationship_owner 機能を持たないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にロールにその機能を付与してください。",
+      "owners_change_refused": "リレーションシップ {{relationship}} のオーナーを変更できるのは、組織管理者または現在のオーナーだけです。"
     },
     "syncing": {
       "not_found": "エントリ {{entry}} はありません。",
@@ -981,6 +988,11 @@
       "read_only": "このロールは ID プロバイダー経由で付与されています。Provisa には承認または取り消せる付与がありません",
       "webhook_invalid": "Webhook URL は使用できません：{{url}}",
       "webhook_secret_required": "Webhook には、定期レビューの署名に使うシークレットが必要です"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} は domain_steward 機能を持つロールを保持していないため、ドメイン {{domain}} のスチュワードに指定できません。先にそのようなロールを付与してください。",
+      "steward_role_not_eligible": "ロール {{role}} は domain_steward 機能を持たないため、ドメイン {{domain}} のスチュワードに指定できません。先にロールにその機能を付与してください。",
+      "stewards_change_refused": "ドメイン {{domain}} のスチュワードを変更できるのは、組織管理者または現在のスチュワードだけです。"
     }
   }
 }

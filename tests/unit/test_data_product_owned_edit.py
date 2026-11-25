@@ -10,9 +10,9 @@
 
 """REQ-2188, superseding REQ-2155's data_product_owned_rw: editing a data product can be limited to
 the products a role owns, by a rule and not by a right. data_product_rw edits any product its reach
-covers; RW from a product's Owner field carries the generated rules, which admit the products whose
-owner_role the caller holds, an ancestor included, within its reach. RW includes create, which has
-no row to narrow."""
+covers; RW from data_product_owner, held by the role or an ancestor, carries the generated rules,
+which admit the products the acting person owns (REQ-2219: those their data_product_owner rows
+name), within the role's reach. RW includes create, which has no row to narrow."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ _STORED = [
         "domain_access": ["sales"],
         "parents": [],
     },
-    {"id": "owner", "capabilities": [], "domain_access": ["*"], "parents": []},
+    {"id": "owner", "capabilities": ["data_product_owner"], "domain_access": ["*"], "parents": []},
     {"id": "sales_lead", "capabilities": [], "domain_access": ["sales"], "parents": ["owner"]},
     {
         "id": "reader",
@@ -44,7 +44,7 @@ _STORED = [
         "parents": [],
     },
 ]
-_FOLDED = flatten_role_dicts(with_owner_grant(_STORED, {"owner"}))
+_FOLDED = flatten_role_dicts(with_owner_grant(_STORED))
 _CHAINS = {
     "steward": ["steward"],
     "owner": ["owner"],
@@ -94,8 +94,10 @@ def test_ownership_held_through_an_ancestor_counts():
     assert _rule("sales_lead") is not None
 
 
-def test_an_owner_edits_no_product_another_role_owns():
-    assert session_vars_for(_STATE.roles["owner"])["acting_roles"] == "owner"
+def test_with_no_person_acting_the_rule_admits_no_product():
+    """Ownership is a person's: no person bound owns nothing, and the rule's list is unbound."""
+    rule = _rule("owner")
+    assert rule is not None and "owned_products" not in rule.session_vars
 
 
 def test_an_owners_edit_stays_within_its_reach():

@@ -10,7 +10,6 @@
     "projectProduct": "Dataproduct {{id}} (het hele project)",
     "exists": "Er bestaat al een dataproduct met de naam {{id}}. Hernoem of verwijder het om deze modellen te registreren.",
     "owner": "Eigenaar: {{owner}}",
-    "ownerRole": "eigenaarsrol {{role}}",
     "tests": "Tests: {{tests}}",
     "version": "Versie {{version}}",
     "columns": "Beloofde kolommen: {{columns}}",

@@ -132,14 +132,3 @@ def flatten_role_domains(roles: list[dict], parents: dict[str, str | None]) -> l
 def ancestors(domain_id: str, parents: dict[str, str | None]) -> list[str]:
     """The domains above ``domain_id``, nearest first; a domain the map does not hold has none."""
     return ancestry(domain_id, parents)[1:] if domain_id in parents else []
-
-
-def effective_steward(
-    domain_id: str, stewards: dict[str, str | None], parents: dict[str, str | None]
-) -> str | None:
-    """The domain's own steward, else its nearest ancestor's; None when no domain up the tree has
-    one."""
-    for d in ancestry(domain_id, parents):
-        if stewards.get(d):
-            return stewards[d]
-    return None

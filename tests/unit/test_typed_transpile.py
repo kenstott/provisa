@@ -85,7 +85,12 @@ def test_an_ambiguous_or_unregistered_reference_is_left_untyped() -> None:
 
 def test_column_types_are_read_only_by_the_typed_dialects() -> None:
     with pytest.raises(ValueError, match="trino dialect reads no column types"):
-        transpile('SELECT "qty" FROM "sales_pg_public"."orders"', "trino", column_types=_TYPES)
+        transpile(
+            'SELECT "qty" FROM "sales_pg_public"."orders"',
+            "trino",
+            column_types=_TYPES,
+            generated=False,
+        )
 
 
 # -- the transpile with and without the types --------------------------------------------------
@@ -94,7 +99,7 @@ def test_column_types_are_read_only_by_the_typed_dialects() -> None:
 @pytest.mark.parametrize("dialect", ["saphana", "db2"])
 def test_a_typed_integer_column_casts_to_an_integer_type(dialect: str) -> None:
     sql = 'SELECT CAST("o"."qty" AS BIGINT), CAST("s" AS INTEGER) FROM "sales_pg_public"."orders" AS "o"'
-    assert transpile(sql, dialect, column_types=_TYPES) == (
+    assert transpile(sql, dialect, column_types=_TYPES, generated=False) == (
         'SELECT CAST("o"."qty" AS BIGINT), CAST("s" AS INTEGER) FROM "sales_pg_public"."orders" AS "o"'
     )
 
@@ -103,7 +108,9 @@ def test_a_typed_integer_column_casts_to_an_integer_type(dialect: str) -> None:
 def test_untyped_an_integer_cast_of_a_column_is_still_refused(dialect: str) -> None:
     with pytest.raises(FunctionRefused, match="integer type"):
         transpile(
-            'SELECT CAST("o"."qty" AS BIGINT) FROM "sales_pg_public"."orders" AS "o"', dialect
+            'SELECT CAST("o"."qty" AS BIGINT) FROM "sales_pg_public"."orders" AS "o"',
+            dialect,
+            generated=False,
         )
 
 
@@ -114,6 +121,7 @@ def test_a_numeric_column_cast_to_an_integer_type_is_refused_typed(dialect: str)
             'SELECT CAST("price" AS INTEGER) FROM "sales_pg_public"."orders"',
             dialect,
             column_types=_TYPES,
+            generated=False,
         )
 
 
@@ -122,6 +130,7 @@ def test_hana_typed_integer_division_truncates() -> None:
         'SELECT "qty" / "s", "n" / "qty", "s" / "s" FROM "sales_pg_public"."orders"',
         "saphana",
         column_types=_TYPES,
+        generated=False,
     ) == (
         'SELECT CAST(ROUND("qty" / "s", 0, ROUND_DOWN) AS INTEGER), '
         'CAST(ROUND("n" / "qty", 0, ROUND_DOWN) AS BIGINT), '
@@ -131,19 +140,23 @@ def test_hana_typed_integer_division_truncates() -> None:
 
 def test_hana_untyped_or_numeric_division_is_still_refused() -> None:
     with pytest.raises(FunctionRefused, match="/ of operands not known to be integers"):
-        transpile('SELECT "qty" / "s" FROM "sales_pg_public"."orders"', "saphana")
+        transpile('SELECT "qty" / "s" FROM "sales_pg_public"."orders"', "saphana", generated=False)
     with pytest.raises(FunctionRefused, match="/ of operands not known to be integers"):
         transpile(
             'SELECT "price" / "qty" FROM "sales_pg_public"."orders"',
             "saphana",
             column_types=_TYPES,
+            generated=False,
         )
 
 
 def test_db2_typed_integer_division_is_written_as_it_is() -> None:
     # Db2's quotient of two integers truncates toward zero, as PostgreSQL's.
     assert transpile(
-        'SELECT "qty" / "s" FROM "sales_pg_public"."orders"', "db2", column_types=_TYPES
+        'SELECT "qty" / "s" FROM "sales_pg_public"."orders"',
+        "db2",
+        column_types=_TYPES,
+        generated=False,
     ) == ('SELECT "qty" / "s" FROM "sales_pg_public"."orders"')
 
 
@@ -209,6 +222,7 @@ def test_a_replica_served_table_is_typed_at_its_replica_address(hana_engine: Any
         'SELECT "r"."qty" / 2 FROM "org_1_replicas"."orders" AS "r"',
         "saphana",
         column_types=nested,
+        generated=False,
     ) == (
         'SELECT CAST(ROUND("r"."qty" / 2, 0, ROUND_DOWN) AS INTEGER) '
         'FROM "org_1_replicas"."orders" AS "r"'
@@ -228,7 +242,8 @@ def test_the_engine_runtime_hands_hana_the_registered_types(hana_engine: Any) ->
     runtime = EngineRuntime(hana_engine, _State())
     assert runtime.transpile_physical(
         'SELECT "o"."qty" / "o"."s", CAST("o"."n" AS INTEGER) '
-        'FROM "sales_pg_public"."orders" AS "o"'
+        'FROM "sales_pg_public"."orders" AS "o"',
+        generated=False,
     ) == (
         'SELECT CAST(ROUND("o"."qty" / "o"."s", 0, ROUND_DOWN) AS INTEGER), '
         'CAST("o"."n" AS INTEGER) FROM "sales_pg_public"."orders" AS "o"'

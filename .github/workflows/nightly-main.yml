@@ -2,7 +2,8 @@
 #
 # Every night, one main commit gets every lane a release is cut on: unit, lint, the requirements
 # check, integration, e2e and the packaging dry run (build-dmg.yml's macOS, Windows and Linux
-# AppImage legs, and the DuckDB extensions). A packaging defect then shows up as a fix job on main,
+# AppImage legs, its install of those assets on a clean Linux host with scripts/install-host.sh
+# followed by the smoke checks (REQ-2269), and the DuckDB extensions). A packaging defect then shows up as a fix job on main,
 # not as a blocker found at the cut. "Release: ready" (release-ready.yml) reads the night's runs
 # and is green only when every lane is green on that one commit, which it names: the cut point.
 #

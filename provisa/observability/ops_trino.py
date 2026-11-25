@@ -239,10 +239,13 @@ def seed_ops_trino(  # REQ-016
     # individually). If tables already exist from a prior run, views are created/refreshed here.
     # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
     # (CREATE OR REPLACE VIEW for Iceberg requires Trino 418+).
+    # REQ-2236: an ops view is PostgreSQL SQL written by hand, read as PostgreSQL reads it.
     for view_name, _, view_select in ops_views:
         try:
             _exec(f"DROP VIEW IF EXISTS otel.signals.{view_name}")
-            _exec(f"CREATE VIEW otel.signals.{view_name} AS {transpile_to_trino(view_select)}")
+            _exec(
+                f"CREATE VIEW otel.signals.{view_name} AS {transpile_to_trino(view_select, generated=False)}"
+            )
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 

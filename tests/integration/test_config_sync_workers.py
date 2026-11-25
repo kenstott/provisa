@@ -235,10 +235,10 @@ def test_the_stored_stamp_does_not_move_while_nothing_changes(workers):
     )
 
 
-def _save_product(author: Worker, verb: str, owner_role: str) -> None:
+def _save_product(author: Worker, verb: str, team_role: str) -> None:
     res = author.admin(
         f"mutation {{ {verb}DataProduct(input: "
-        f'{{id: "orders_status", domainId: "sales", name: "Orders", ownerRole: "{owner_role}"}}) '
+        f'{{id: "orders_status", domainId: "sales", name: "Orders", teamRole: "{team_role}"}}) '
         "{ success message } }"
     )
     assert res["data"][f"{verb}DataProduct"]["success"], res
@@ -252,7 +252,8 @@ def _product_status(worker: Worker) -> str | None:
 def test_a_status_change_moves_every_workers_stamp_and_rebuilds_none(workers):
     """REQ-1914 (amended 2026-11-09): the build does not read a data product's status, so every
     worker of both instances takes the new stamp without a rebuild, and each reads the new status.
-    A change the build does read, the product's owner, still rebuilds every worker."""
+    A change of a column not named as one the build ignores (its team role) still rebuilds every
+    worker."""
     author = workers[2]
     _save_product(author, "create", "org_admin")
     _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp after the create")
@@ -275,7 +276,7 @@ def test_a_status_change_moves_every_workers_stamp_and_rebuilds_none(workers):
         version = int(w.schema_version()[1])
         return version > built_at[w.boot_id], {"version": version}
 
-    _until_every_worker(workers, _rebuilt, "rebuilt for a change of the product's owner")
+    _until_every_worker(workers, _rebuilt, "rebuilt for a change of the product's team role")
 
 
 def _evidence(*flags: str) -> list[tuple[str, str, str, str]]:

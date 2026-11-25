@@ -877,8 +877,6 @@ Como en cualquier origen OpenAPI, cada operación `GET` es una tabla ofrecida y 
 
 **Exclusiones.** La integración de pagos obsoleta de tokens y Sources de Stripe queda fuera de la especificación incluida. La lista está en [Exclusiones en un origen construido desde una especificación](#exclusions-on-a-specification-built-source). Las `exclusions` propias de un operador se suman a las de la marca.
 
-`stripe` aparece también en `SourceType` entre los tipos `wrappers` de Supabase con stub. Un origen Stripe agregado por el formulario es un origen `openapi`, no ese stub.
-
 #### Exclusiones en un origen construido desde una especificación {: #exclusions-on-a-specification-built-source }
 
 Una especificación OpenAPI publicada describe todo lo que acepta la API remota, incluido lo que su proveedor ha marcado como obsoleto y lo que un despliegue nunca debe enviar. Un origen OpenAPI puede llevar exclusiones: cosas de la especificación que el origen no ofrece.

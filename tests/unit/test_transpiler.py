@@ -93,60 +93,60 @@ class TestTranspileFunction:
 
     def test_postgres_passthrough(self):
         sql = 'SELECT "id", "name" FROM "users"'
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "id" in result
         assert "name" in result
         assert "users" in result
 
     def test_to_mysql(self):
         sql = 'SELECT "id" FROM "orders" WHERE "amount" > 100'
-        result = transpile(sql, "mysql")
+        result = transpile(sql, "mysql", generated=False)
         assert "orders" in result
         assert "100" in result
 
     def test_to_tsql(self):
         sql = 'SELECT "first_name" FROM "employees" LIMIT 10'
-        result = transpile(sql, "tsql")
+        result = transpile(sql, "tsql", generated=False)
         # TSQL uses TOP instead of LIMIT
         assert "first_name" in result or "TOP" in result.upper()
 
     def test_to_trino(self):
         sql = 'SELECT "id", "value" FROM "metrics"'
-        result = transpile(sql, "trino")
+        result = transpile(sql, "trino", generated=False)
         assert "id" in result
         assert "metrics" in result
 
     def test_to_duckdb(self):
         sql = 'SELECT "col" FROM "tbl" WHERE "col" IS NOT NULL'
-        result = transpile(sql, "duckdb")
+        result = transpile(sql, "duckdb", generated=False)
         assert "col" in result
         # DuckDB may render IS NOT NULL or NOT ... IS NULL; both are semantically equivalent
         assert ("IS NOT NULL" in result) or ("IS NULL" in result)
 
     def test_to_snowflake(self):
         sql = 'SELECT "account_id", "revenue" FROM "sales"'
-        result = transpile(sql, "snowflake")
+        result = transpile(sql, "snowflake", generated=False)
         assert "account_id" in result
         assert "sales" in result
 
     def test_to_bigquery(self):
         sql = 'SELECT "user_id", "event_type" FROM "events"'
-        result = transpile(sql, "bigquery")
+        result = transpile(sql, "bigquery", generated=False)
         assert "user_id" in result
         assert "events" in result
 
     def test_transpile_to_trino_convenience(self):
         sql = 'SELECT "id" FROM "products"'
-        result = transpile_to_trino(sql)
+        result = transpile_to_trino(sql, generated=False)
         assert "products" in result
 
     def test_returns_string(self):
-        result = transpile("SELECT 1", "postgres")
+        result = transpile("SELECT 1", "postgres", generated=False)
         assert isinstance(result, str)
 
     def test_empty_select_produces_no_useful_sql(self):
         """SQLGlot with an empty string produces an empty or whitespace-only result."""
-        result = transpile("", "postgres")
+        result = transpile("", "postgres", generated=False)
         # SQLGlot returns an empty string for empty input rather than raising
         assert result.strip() == ""
 
@@ -165,7 +165,7 @@ class TestCTEs:
         )
         SELECT "id", "score" FROM ranked WHERE "rn" = 1
         """
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "ranked" in result
         assert "score" in result
 
@@ -178,7 +178,7 @@ class TestCTEs:
         )
         SELECT "customer_id", "total" FROM top_orders ORDER BY "total" DESC
         """
-        result = transpile(sql, "trino")
+        result = transpile(sql, "trino", generated=False)
         assert "top_orders" in result
         assert "customer_id" in result
 
@@ -187,7 +187,7 @@ class TestCTEs:
         WITH summary AS (SELECT COUNT(*) AS "cnt" FROM "events")
         SELECT "cnt" FROM summary
         """
-        result = transpile(sql, "duckdb")
+        result = transpile(sql, "duckdb", generated=False)
         assert "cnt" in result
 
     def test_multiple_ctes(self):
@@ -196,7 +196,7 @@ class TestCTEs:
              b AS (SELECT "id" FROM "t2")
         SELECT a."id" FROM a JOIN b ON a."id" = b."id"
         """
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "a" in result
         assert "b" in result
 
@@ -212,7 +212,7 @@ class TestSubqueries:
         SELECT sub."id"
         FROM (SELECT "id" FROM "orders" WHERE "amount" > 100) AS sub
         """
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "orders" in result
 
     def test_subquery_in_where(self):
@@ -220,7 +220,7 @@ class TestSubqueries:
         SELECT "id" FROM "users"
         WHERE "id" IN (SELECT "user_id" FROM "admins")
         """
-        result = transpile(sql, "trino")
+        result = transpile(sql, "trino", generated=False)
         assert "admins" in result
         assert "IN" in result.upper()
 
@@ -229,7 +229,7 @@ class TestSubqueries:
         SELECT "id" FROM "products" p
         WHERE "price" > (SELECT AVG("price") FROM "products")
         """
-        result = transpile(sql, "mysql")
+        result = transpile(sql, "mysql", generated=False)
         assert "AVG" in result.upper()
         assert "price" in result
 
@@ -239,7 +239,7 @@ class TestSubqueries:
                (SELECT COUNT(*) FROM "orders" WHERE "user_id" = "users"."id") AS "order_count"
         FROM "users"
         """
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "order_count" in result
 
 
@@ -254,7 +254,7 @@ class TestWindowFunctions:
         SELECT "id", ROW_NUMBER() OVER (PARTITION BY "dept" ORDER BY "salary" DESC) AS "rn"
         FROM "employees"
         """
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "ROW_NUMBER" in result.upper()
         assert "dept" in result
 
@@ -263,7 +263,7 @@ class TestWindowFunctions:
         SELECT "id", RANK() OVER (ORDER BY "score" DESC) AS "rank"
         FROM "scores"
         """
-        result = transpile(sql, "trino")
+        result = transpile(sql, "trino", generated=False)
         assert "RANK" in result.upper()
 
     def test_lag_lead_to_duckdb(self):
@@ -273,7 +273,7 @@ class TestWindowFunctions:
                LEAD("value") OVER (ORDER BY "ts") AS "next_val"
         FROM "time_series"
         """
-        result = transpile(sql, "duckdb")
+        result = transpile(sql, "duckdb", generated=False)
         assert "prev_val" in result
         assert "next_val" in result
 
@@ -284,7 +284,7 @@ class TestWindowFunctions:
                SUM("revenue") OVER (PARTITION BY "region") AS "region_total"
         FROM "sales"
         """
-        result = transpile(sql, "bigquery")
+        result = transpile(sql, "bigquery", generated=False)
         assert "region_total" in result
 
     def test_window_frame_to_snowflake(self):
@@ -293,7 +293,7 @@ class TestWindowFunctions:
                SUM("amount") OVER (ORDER BY "id" ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS "rolling"
         FROM "txns"
         """
-        result = transpile(sql, "snowflake")
+        result = transpile(sql, "snowflake", generated=False)
         assert "rolling" in result
 
 
@@ -305,27 +305,27 @@ class TestWindowFunctions:
 class TestTypeCoercions:
     def test_cast_integer_postgres(self):
         sql = 'SELECT CAST("value" AS INTEGER) FROM "t"'
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "INTEGER" in result.upper() or "INT" in result.upper()
 
     def test_cast_to_text_trino(self):
         sql = 'SELECT CAST("id" AS TEXT) FROM "users"'
-        result = transpile(sql, "trino")
+        result = transpile(sql, "trino", generated=False)
         assert "VARCHAR" in result.upper() or "CAST" in result.upper()
 
     def test_cast_timestamp_mysql(self):
         sql = 'SELECT CAST("created_at" AS TIMESTAMP) FROM "orders"'
-        result = transpile(sql, "mysql")
+        result = transpile(sql, "mysql", generated=False)
         assert "created_at" in result
 
     def test_boolean_literal(self):
         sql = 'SELECT TRUE AS "active", FALSE AS "inactive" FROM "t"'
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "active" in result
 
     def test_interval_expression(self):
         sql = "SELECT NOW() - INTERVAL '7 days' AS \"week_ago\""
-        result = transpile(sql, "postgres")
+        result = transpile(sql, "postgres", generated=False)
         assert "week_ago" in result
 
 

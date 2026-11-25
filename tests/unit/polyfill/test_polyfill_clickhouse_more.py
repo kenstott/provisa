@@ -337,7 +337,7 @@ def runtime() -> ClickHouseFederationRuntime:
 
 
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
-    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse", generated=False)).iter_rows())
     return value
 
 
@@ -361,4 +361,4 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 @pytest.mark.parametrize("sql", REFUSED)
 def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
     with pytest.raises(FunctionRefused):
-        transpile(sql, "clickhouse")
+        transpile(sql, "clickhouse", generated=False)

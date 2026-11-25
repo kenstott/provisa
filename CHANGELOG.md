@@ -3,6 +3,653 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.511
+
+Released 2026-11-22.
+
+### Features
+
+#### Admin UI
+
+- Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list in place by an icon in the page's toolbar, filled while on, the way the Ontology view is; it is no longer a modal.
+- Maintainer 2026-11-11: opening a detail view puts it in the address, so every detail view has a precise link (not a search) and Back returns to it.
+- Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition: how the measure or derived value is computed, in business language (for example net revenue is gross order value less refunds and discounts, on the order date, in the order's currency).
+
+#### Business Glossary & Ontology
+
+- A third generated system schema, ontology, holds the model's meaning, as meta holds its structure.
+
+#### Column-Level Lineage Graph
+
+- Maintainer 2026-11-09.
+
+#### Command Line
+
+- Maintainer 2026-11-09.
+
+#### Control Plane
+
+- The control plane is PostgreSQL only, in every tier and every test: embedded PostgreSQL (pgserver) where no control-plane URL is given -- demo, native, desktop, an ephemeral profile (in a throwaway data directory removed when the process ends), the UI e2e lanes and the unit tests -- and an external PostgreSQL server otherwise.
+
+#### Cypher Query Frontend (Phase AU)
+
+- Cypher's temporal values are read as openCypher defines them.
+
+#### Data Catalog Integration
+
+- The data product panel shows the product's owner a different subset from other readers.
+- Maintainer 2026-11-11.
+
+#### Demo Provisioning
+
+- Each published named demo is its own bundle, built and published on its own and never part of a release or the app image.
+    - logs, code directories and download_from follow held() for the own-disk rule
+
+#### Deployment
+
+- A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING.
+
+#### Environments
+
+- A credential addresses exactly one environment.
+- A merge can be scoped to part of a model.
+
+#### Glossary Admin
+
+- [SUPERSEDED by 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged.
+
+#### Hasura Migration
+
+- Maintainer 2026-11-09.
+
+#### MCP & AI Integration
+
+- Maintainer 2026-11-13: an LLM client is sent every MCP tool's definition on every model call, and the server's full list is large (88 tools, about 15,000 tokens, measured that day).
+    - List only the tools a session's roles may use; each visible command is its own typed tool
+    - A sip session lists no command tools; they are listed in full mode only
+
+#### Protocol Conformance
+
+- Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's FlightSql.proto), so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built on them) connect and query it.
+
+#### Registration & Governance
+
+- Maintainer 2026-11-10.
+- Maintainer 2026-11-17 ('def need to have hyperlinks for cypher/sql/sparql/graphql - to see a relationship... similar to ones we have in the data products screens'; 'we could create queries for relationships across all surfaces as well').
+    - A relationship links to itself on every query surface
+    - A table's Identity section links it on every query surface
+    - A relationship's gRPC link reads it through its own field
+
+#### SPARQL Query Frontend
+
+- SPARQL is a graph query language served over the semantic model, a peer of Cypher.
+    - Drops and Show children stay in the selected domains, one shared path finder
+    - A SPARQL drop's scope in the vocabulary's labels; the SPARQL view reads the graph schema
+
+#### Security
+
+- [SUPERSEDED by 2026-11-10 -- the default applies only to a column registered with no grant named.
+
+#### Source Connectors
+
+- Maintainer 2026-11-09.
+- Maintainer 2026-11-09.
+- Maintainer 2026-11-15: 'add a requirement to code resolvers to use a @change decorator, that is only called when the code resolver is landed'.
+    - A code resolver's incremental setting on its form and on the landed view
+
+#### Table Registration
+
+- Maintainer 2026-11-09.
+
+#### Workflow
+
+- Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal); Provisa feeds them and stays the system of record for what was decided.
+
+### Changes
+
+#### actions
+
+- Read an action's nested relationship fields through the governed pipeline
+
+#### admin
+
+- Tables listing hands timeTravel the view's schema
+
+#### ai
+
+- On a server of many no AI value comes from the server's environment
+
+#### api
+
+- Binding refusals answer under their code on the Cypher and SPARQL surfaces
+- /debug/logs is the platform plane's
+- An API table the operator puts on its replica is read from it, never fetched
+
+#### api_source
+
+- Hold OAuth tokens per organization and per resolved credential
+
+#### auth
+
+- A personal access token's scopes are the roles it may use
+- A signed-in register needs user_management; only a verified email is matched
+- A signed-in register that names no org is refused, not a 500
+- Wire sign-ins act only as held roles; cross-org judged from assignments
+- HTTP and Bolt act only as held roles; Bolt judges cross-org from assignments
+- Wire sign-ins judge cross_org with the deployment org bound
+
+#### bench
+
+- Read REST field names from the anyOf fields form (R511-S4A)
+
+#### billing-ui
+
+- Stripe embedded checkout replaces the Lemon Squeezy overlay
+
+#### binding
+
+- A text given a vector query is stamped as the text; a failed statement command is named
+- A join over a relationship that feeds a search is the feed's; sonnets links its echoes in one statement
+
+#### catalog-import
+
+- Glossary reading on its own inbound port; MetadataExport stays outbound-only
+
+#### clickhouse
+
+- A time of day held as Int64 microseconds on servers without Time64
+- No raised AST bounds; the range fold no longer needs them
+
+#### cloud
+
+- first-login ends the Firebase session; seeded public sandbox invite; only reset wipes
+
+#### codesource
+
+- What a code resolver must be, and the call that reads its matches
+- @change keeps a landed code resolver's result fresh by cursor
+- Count a brokered view's rows in mat_store; save a set's change under its bridge's schema; gate codeResolverIncremental
+
+#### commands
+
+- A source operation saved from the form is never declared VOID
+
+#### compiler
+
+- A statement binds a table's parameters in one step
+- A join's keys are read from the statement; IN (SELECT) binds; a real-column filter reads its column
+- end-to-end proofs of parameter binding; refusals carry their code on pgwire and REST
+- A view is expanded only where it is read as a table
+- Relate a subquery to a marked view along its relationship
+- Key the physical table map by source and table
+
+#### conformance
+
+- Call every overload with edge values; served within a stated bound
+- Read a call's grid row as the translator reads it
+- An edge call reads at most 1001 rows
+- The polyfill check judges a rewrite function's refusal instead of crashing
+- The instance's PostgreSQL password is no name a measure reads
+- The TCK session user is assigned tck_empty, the role its Bolt sessions act as
+- The pgwire suite reads the validator's V007 by the function measure's rule
+- Report a column call skipped by design by its group
+- Psycopg date overflow tests pass since the encoder writes PostgreSQL's whole date range
+
+#### conformance-tests
+
+- Import by_design as the one sibling module, never re-executed
+
+#### cypher
+
+- A join onto a table's parameter makes it no key of the table's node
+- A parameter's property binds it; a relationship joined on one is not written
+- The first translation in a process does a later one's work
+- A junction its own registered relationships join keeps its Cypher node; a junction suggestion names its junction
+
+#### ddn
+
+- Read only files whose real path is inside the project
+
+#### demo
+
+- Trade affirmation named demo
+- Affirmation price break seeded above the matcher's tolerance
+- Affirmation views join only along declared relationships
+- Affirmation SSI relationships get their own GraphQL fields
+- Affirmation legs view stored, so it feeds the matcher
+- Affirmation card on the site in BI across sources; catalog search model
+- Sonnets links its echoes in three statements under the parameter call cap
+
+#### deploy
+
+- Commerce preflight and first-launch forward the Stripe settings
+- Assert billing settings after the compose that forwards them
+- Read the env dump whole so no check fails on a broken pipe
+
+#### discovery
+
+- The count before Run answers for tables read only with an argument
+- A table that requires a parameter is known from its registration and never read
+- Mark suggestions found on reduced information; catalogue the dialog's refusals
+- The count before Run reads no table and is an upper bound
+- A column is grouped by the IR type its source's spelling names
+- Keep and show what a run leaves out; ask Jev with evidence; state the confidence rubric
+- A left-out proposal is accepted once its run has ended
+- One table of a run's proposals with Apply; a new run starts from the last one's fields
+- Run proposals declared in the SQL schema and the inventory; key tests pass the run's tables
+- The model's score decides; Jev's is shown beside it; MCP discovery is a run
+- Restore a run over everything as everything; name tables registered since outside it; wider result dialog
+- Last run's fields only on New run; refuse a set of no table; name tables left out
+- The relationships route refuses a field it does not read
+- Each proposed pair measured on its data decides its cardinality and score; the threshold is the person's own
+- Accept a many-to-many pair as a shared dimension
+- Measure only the band, after Jev; key value overlap choice with cutoff and sample size
+- A shared dimension's edges take unique names too
+- One collapsible run block, Run in background, one page line; send no untyped name
+- The run block's own line does not repeat its first line
+- Date and timestamp columns are in no compared type group
+- The key value overlap band runs from the cutoff up to the run's threshold
+- Key value overlap is one engine join count per pair on limited non-null rows
+- A run lists every pair it found but existing and not-again pairs
+- Results open with a kept Score >= 10% filter; Accept acts on shown rows
+- Every threshold and sample size a run uses is a run setting, recorded and kept per person
+- The measure join runs governed without the approved-relationship check; an unreadable pair is left unmeasured
+- One per-person settings store holds the run settings and the Score filter
+- Relationship discovery reads and proposes only within the selected domains
+
+#### duckdb
+
+- Factorial past 32177 raises 22003 at once, as numeric_fac does
+- polygon(n, circle), bit(.., n,..), date_mii of infinity and factorial past 4300 digits answer or raise as PostgreSQL does
+- Bpchar past MaxAllocSize raises palloc's XX000, and a NULL typmod or explicit answers NULL
+- A NULL path step into an object is 22004, as in PostgreSQL
+
+#### engine
+
+- The default Trino heap fits its 7g container
+
+#### entitlements
+
+- An email names a known person only by an address verified at sign-in
+- Valid time on the entitlement store
+- Owner capabilities and their kinds
+- The expiry run acts on expiries and sends them through the outbound hook
+- Stored effective rows per person, role and capability
+- A model build recomputes every holder's effective rows, batched per org
+- Role grants on every path recompute the person's effective rows
+- A removed account leaves no effective rows under its name
+
+#### environments
+
+- Every environment route reads the caller's right in the path's org
+- The owner path needs current membership and the path's org
+- The env CLI names its org; org-path routes are checked to bind the path's org
+- Stage in the switcher and on the environments page, translated
+- Stage picker fits the row at 1280
+
+#### federation
+
+- The native attach carries download_from, which the sandbox check reads
+
+#### functions
+
+- A source operation that requires a parameter is a function read as its table
+- A function's catalog rows are scoped to the table it returns; a spec is read once for its reads too
+- A derived table is in service with its function; a relationship on a parameter is named; update reads the stored row only for a reading operation
+- A derived table's parameters are named as the function's arguments, unaliased
+
+#### glossary
+
+- A person's term delete retires it
+- A cut-off relationship suggestion keeps its complete relationships and asks again for the rest
+- The ontology's AI assistants work only within the selected domains
+- Definition assistant reads bound columns' descriptions, types and samples
+- Definition assistant's own sample count; an unreadable table gives no samples and is named
+- Term finding and table search work only within the selected domains
+- List a catalog's business glossary; catalog terms become draft terms or merge
+- No retirement history is an empty answer in the editor
+
+#### golden
+
+- Read demo views by schema.table key and the reader's names; bitemporal test refs the view's own catalog
+
+#### graph
+
+- Cypher graph labels follow the theme, and restyle on a theme switch
+- Cypher graph colours from provisa-graph's graphTokens
+- A cluster edge is laid out twice its label's width, so no two labels overlap
+
+#### graph-render
+
+- The image's renderer resolves the theme and Mantine that graphTokens import
+
+#### graphql_remote
+
+- A relationship is offered only to a table mapped in full
+- A stored relationship takes the nested column it rides on
+- A column in use refuses the whole registration
+
+#### grpc
+
+- read_mask relation paths read each row's relationships nested
+- A field per relationship on the row message, named by its GraphQL relationship
+
+#### http
+
+- Name the kind and address of an httpx failure, never an empty reason
+
+#### i18n
+
+- Billing checkout strings and error codes in every locale
+- The retired discovery.endpoint_has_no_key leaves every translated catalog
+
+#### import
+
+- Confine Hasura !include to the upload; permission values as sqlglot literals
+- An imported role passes the role forms' checks and carries only rights its importer holds
+
+#### jsonapi
+
+- Row reads need no primary key; dotted includes and fields per included type
+- A one-to-many include never collapses its resources
+- A column named id is a real id; GET /<type>/<id> only for a real identifier
+
+#### llm
+
+- A model has an input and an output limit
+- Stream a request the Anthropic SDK refuses to send whole; say a failed request in the product's words
+- Read an endpoint's vault-held key where the vault is bound
+
+#### mcp
+
+- The MCP chat works only within the selected domains
+- Every MCP chat tool stays within the selected domains
+
+#### meta
+
+- stand-in contexts carry parameters; no requirement id in the meta view SQL
+- The registered tables view's SQL names no requirement
+
+#### meta-views
+
+- No requirement ids inside served view SQL
+
+#### model
+
+- deploy/undo and metric removal retire, never delete
+- Withdrawn tests, catalog views and meta rows leave withdrawn out
+- Withdrawn source's tables take no write ops; kept builds listed; fakes carry the withdrawn column
+- A withdrawn table's builds are listed to who may preview it
+- A relationship never hides a column; a clash is refused by name
+
+#### model-store
+
+- The store model leaves out built-in relationships
+
+#### money
+
+- Cents back to dollars by a decimal, not a Float64
+
+#### mv
+
+- A view over a command call reads the tables the call is given
+- The preflight purity check refuses frame, generator and traceback attributes
+- A held organization's Python preflight runs in a confined process of its own
+- A held organization's preflight runs as a call to its warm sandboxed worker
+- The preflight worker reads the environment its interpreter starts from
+- A transform view's stored rows are read under the reader's row rules and masks
+- A transform view's kept inputs come from the stored rule rows, building no role
+- Stored code-command views read under the reader's rules; a rule change rebuilds, refused by name until it publishes
+- A code-command view's rows are filtered by the reader's rule on each input through its relationship
+- A read walks a snapshot of the MV registry; a server fault on /data/sql is a named 500
+
+#### naming
+
+- Pin customer360 incident-to-company field; disambiguation store holds naming_rules
+- Dictionary first; rule form only for a word the dictionary does not know
+- general-English noun dictionary (ESDB/SCOWLv2) first, lemminflect rules only for unlisted words
+- An everyday plural is its own singular; a function word read as another noun is not inflected
+- A tie between dictionary plurals is broken by general-English frequency
+- A zero plural wins only in the dictionary's (fish | fishes*) pattern
+
+#### nl
+
+- Derived gRPC, JSON:API and REST panels read relationships nested
+- natural-language query works only within the selected domains
+
+#### offers
+
+- A declared sample is checked by the build after the load
+
+#### ops
+
+- Publish ops.entitlements and ops.entitlement_expiries
+
+#### orgs
+
+- Deleting an org and granting org_admin need org_admin
+
+#### packaging
+
+- AppImage installs Provisa only from its bundled wheelhouse, never PyPI (R511-S6D)
+
+#### parameters
+
+- A table's parameter limits are published in the meta views and every catalog comment
+- The table page states a parameterized table's limits; an unread profiler member is reported
+
+#### pgwire
+
+- Carry a MERGE's BY SOURCE delete on every path; narrow a MERGE's deletes by the delete rule
+- An edge value is answered or raised, the connection kept
+- A statement's own 0A000 no longer poisons a pooled passthrough connection
+- A catalog function reads an oid past the type as oidin does and a constant NULL as a strict function does
+- A call's type is read once per typing; ClickHouse's five range calls past 30 s answer
+- A write to a session temp table advances the generation keying its cached reads (SEC-C2)
+
+#### polyfill
+
+- ClickHouse answers 12 overloads in DuckDB's form, verified on edge values
+- Carry a ClickHouse call only where the statement says every argument's type
+- Adapt time and interval, overlaps, int8inc_any and money's limits on ClickHouse
+- ClickHouse's NULL array rule names what it reads
+- ClickHouse answers regexp count, instr, substr, like and split; the old table keeps Trino's refusals
+- ClickHouse holds a bit string as its text; 39 bit overloads answered
+- ClickHouse's new rows keep every other dialect's old form
+- ClickHouse answers array containment, array_remove, array_position from a start, pg_size_pretty, pg_encoding_max_length, pg_typeof, bit of an integer and max/min of tids
+- read-first rows answer only calls the old table refuses; oidvectortypes stays refused on ClickHouse; a column's bit varying cast keeps ClickHouse's
+- ClickHouse's array containment rows are their own family; a server form's split into rows stays refused
+- ClickHouse's refusals name their call as name() of what has no form
+- ClickHouse lcm, factorial and chr at their edges; a row reads its argument once
+- ClickHouse in_range of numbers and float aggregates at PostgreSQL's edges
+- ClickHouse to_hex and its kin read a literal past its type as PostgreSQL does
+- ClickHouse sum of bigints exact and of floats overflowing; a kept row reads no argument
+- ClickHouse text by characters and character(n) literals
+- ClickHouse rows leave range forms' own text, char() and a form's abs as they were
+- ClickHouse edge wrong answers (degree trig, double literals, byte compares, dimensions, ranges)
+- Jsonb key existence and object keys on ClickHouse
+- exp, ln and tanh of a double on ClickHouse
+- round/trunc of a numeric to a negative or text scale on ClickHouse
+- ClickHouse jsonb_exists_any/all read an untyped text[] literal; jsonb_delete by index on a ClickHouse without Variant types
+
+#### profiler
+
+- The classification sample is non-null values per column
+- A masked or pii column shows its classification state and count
+- A declared profile of a table that requires a parameter is stored; a code command's score follows's mask
+
+#### provisa-graph
+
+- Lanes draw each beside-lane name on its own run to the track
+
+#### ranges
+
+- ClickHouse reads a fold's items as ranges before the fold
+
+#### rebuild
+
+- Each schema build records its phases, cause, stamps and counts
+- The admin pass-through hands the build no cause; its caller is read past it
+
+#### redaction
+
+- An error told inside a 200 answer is redacted like a 400
+
+#### relationships
+
+- A code resolver kept as a bridge view and two relationships, as one
+- A code resolver set carries a junction relationship for Cypher
+- Refuse ids with a prefix reserved for built-in relationships
+- Code resolver set gated, readers by the visibility rule, guard after columns
+- A code resolver set's panel note spaced, its retire named, its change form titled by the set
+- The page's suggestions are decided in the run result's table; a relationship joins on its columns
+- No suggested section on the page; a joined or decided pair is never suggested again
+- Generated relationship names never collide
+
+#### release
+
+- Bound and retry notarytool submit; a stalled upload hung the Demo DMG job 44 min
+- macOS Core DMG installs uv.lock's versions into the native runtime
+
+#### rest
+
+- Fields takes dot-paths through relationships and nests the related row
+
+#### roles
+
+- Org admins hold the five owner capabilities
+- One job per standard role
+
+#### sandbox
+
+- A template whose shape is unchanged is kept; a live landing gives up its build-queue place
+
+#### schema
+
+- ADD COLUMN for every column added to an existing table
+
+#### secrets
+
+- The platform-plane secret search skips platform-state tables
+
+#### security
+
+- Hold a source's producer command to commands.allow_host_code
+- Every value in the DuckDB engine's DDL is written through one quoting helper
+- A held organization's member neither saves nor edits an environment reference
+- SEC-C3b the seven failures of focused run 43877114094
+- A governed statement calls no function that reads or acts on its server
+- The redaction marker sent to a client names no rule
+- A held org's downloads and its demo's logs follow held() and the declared paths
+- Revoking org_admin needs org_admin at every door
+- Hold a held org's webhooks, triggers, commands, sync/export endpoints, token exchanges, registries, code hosts and source clients to public destinations
+- An org's redaction rules apply only to its own text, run bounded, and read no server environment
+- /debug/logs filters with the bounded matcher
+- An admin-trail entry is stored under and redacted by the org it is about
+- Check applied webhooks and triggers, word endpoint refusals, pin Dataplex and Qdrant
+- V007 serves the product's own call governance writes into a view body
+- A view body's mark comes only from a view the server expands
+- A view reference is the view only under its own schema
+- A catalog-qualified reference keeps the catalog it names
+
+#### setup
+
+- first-run setup refuses a configured deployment
+
+#### sources
+
+- A held org's source reads no file on the server's own disk outside its folder
+- Ask the held rule before the upload types' own path checks
+- A JDBC source's file URL is held to the own-disk rule
+
+#### sparql
+
+- Wikidata branded source preset, starter tables, class-table builder (server)
+
+#### subscriptions
+
+- A Kafka sink and an open stream end with their owner's role; sinks capped per person
+- Starting a Kafka sink needs the write right; claims-mode sinks end with the sign-in
+
+#### tables
+
+- AI describe on the Register table form before registration
+
+#### temp-tables
+
+- UPDATE and DELETE of a temporary table read as the session's role
+
+#### textsearch
+
+- ts_lexize of a constant is a text[], even of no lexeme
+
+#### transpiler
+
+- A rewrite's mention walks a statement only on its own dialect
+- ClickHouse percentile of an array of fractions without Variant types
+
+#### ui
+
+- A role holding the query right opens the app on Explore
+- Discovery dialog on the run API: scope, count, model, progress, Stop, run suggestions
+- The file-source Combine switch lines up with the glob input, not its label
+- The discovery dialog says its count is an upper bound and names the tables not read
+- A created source whose tables were registered closes Your data on its read view
+- A created source opens in its read view when registering its tables is skipped
+- Clear npm audit high/critical advisories
+- Withdraw and put back tables and sources; withdrawn badges; Show withdrawn in the ERD views
+- No draft left in the table read view; a source's Tables section marks its withdrawn tables
+- The token list's Revoked badge reads whole
+- Put back's confirm is the filled primary button, as a non-destructive confirm is
+- Discover dialog results scroll under a pinned header; New run beside Apply
+- Mermaid 12 with mermaid 11's look pinned
+- Discover dialog takes the wide size only for a run's results
+- A many-to-many proposal is accepted as the shared dimension it names
+- A many-to-many row's note names its dimension first
+- Key value overlap under Semantics with cutoff and sample size; summary and admitted note
+- Relationship discovery heads the model's rating Confidence; no date or timestamp groups
+- The discover dialog sets every threshold and sample size; the count shows calls and table pairs
+- Discover dialog is wide only while it lists proposals
+- Relationship query links on every surface, each named
+- Wikidata in the source picker; starter and class table chooser
+- Wikidata class chooser groups browse and filter fields
+- Drop formatter churn from untouched code
+- A table's associated terms link to the term on the Ontology page
+- Every column of the discovery results has a filter
+- Duplicate in a row of labelled buttons is bordered and labelled
+- Name the tables that gave no samples after drafting definitions
+- Ws is a devDependency of its own, so the websocket e2e specs resolve it
+- Context nav labels in every locale; docs name the Context pages
+- Context Classification state as text; e2e for the read-only Context views
+- List pages reopen the detail left open
+- Data Products list filters by domain
+- Wikidata starter/class switch level with the Identity row's inputs
+- Tag list shows a policy badge only for a required policy
+
+#### vector
+
+- Embedding keys and addresses through the resolver; none from the server's environment on a server of many
+- Refuse a missing embedding library at startup; hub endpoint setting; org OpenAI key and env base_url for embedding models
+
+#### views
+
+- A star over a view's code command call reads the command's declared columns
+- A lowered view reference is the view under its org's derived catalog
+
+#### wikidata
+
+- Live CI check, i18n for 13 locales
+- Keep describe-class queries within the query service's limit
+- Keep the written join order of starter and class tables
+- Count Wikidata in the sources index, site and tour
+
+#### General
+
+- Release Unit failures: core_long optional, affirmation wired, explode kept by name
+- Full set 2 blockers A: audit stage column, step on the real control plane, ClickHouse forms matrix follows what CONF-CH4 answers
+- Set 3 blockers -- stale fixtures and the DuckDB attach view's download_from
+- Four integration blockers of R511-S4D
+
 ## v0.1.0-alpha.510
 
 Released 2026-11-19.

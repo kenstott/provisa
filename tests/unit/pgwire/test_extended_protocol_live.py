@@ -172,7 +172,7 @@ def live(pgwire: int):
     state.federation_engine = RuntimeEngine(runtime, "duckdb")
 
     def _plan_of(sql: str, params: list | None) -> Any:
-        plan = _engine_plan(transpile_to_duckdb(sql))
+        plan = _engine_plan(transpile_to_duckdb(sql, generated=False))
         plan.exec_params = params or []
         return plan
 

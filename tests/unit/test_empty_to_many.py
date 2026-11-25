@@ -164,7 +164,7 @@ def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_j
 
     _schema, ctx, _con = meta
     root = _compiled(meta, "{ on_terms { id edgesOut { id } } }")
-    trino = transpile_to_trino(make_semantic_sql(root.sql, ctx))
+    trino = transpile_to_trino(make_semantic_sql(root.sql, ctx), generated=True)
     # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
     assert "_grel_" in trino and "LEFT JOIN" in trino
     # ...and its default is the text '[]' its json_format(...) aggregate is compared with.
@@ -196,7 +196,7 @@ def test_on_trino_a_list_default_is_text_like_its_json_format_aggregate(source):
     text, so its empty default is the text '[]', whatever form the json cast was written in."""
     from provisa.transpiler.transpile import transpile_to_trino
 
-    trino = transpile_to_trino(_TRINO_LIST.format(source=source))
+    trino = transpile_to_trino(_TRINO_LIST.format(source=source), generated=False)
     coalesce = sqlglot.parse_one(trino, read="trino").find(exp.Coalesce)
     assert coalesce is not None
     (default,) = coalesce.expressions
@@ -207,5 +207,7 @@ def test_on_trino_a_json_cast_of_a_list_literal_not_defaulting_an_aggregate_stay
     """A statement's own cast of '[]' to json is a json array on Trino (JSON_PARSE), not text."""
     from provisa.transpiler.transpile import transpile_to_trino
 
-    trino = transpile_to_trino("SELECT CAST('[]' AS JSON) AS j, COALESCE(NULL, CAST('[]' AS JSON))")
+    trino = transpile_to_trino(
+        "SELECT CAST('[]' AS JSON) AS j, COALESCE(NULL, CAST('[]' AS JSON))", generated=False
+    )
     assert trino.count("JSON_PARSE('[]')") == 2

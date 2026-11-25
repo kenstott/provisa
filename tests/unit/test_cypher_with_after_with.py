@@ -39,7 +39,7 @@ def rows():
     def _rows(cypher: str) -> list[tuple]:
         sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
         sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
-        return sorted(con.execute(transpile_to_duckdb(sql)).fetchall())
+        return sorted(con.execute(transpile_to_duckdb(sql, generated=False)).fetchall())
 
     return _rows
 

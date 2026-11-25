@@ -877,8 +877,6 @@ Come per qualsiasi origine OpenAPI, ogni operazione `GET` è una tabella offerta
 
 **Esclusioni.** L'integrazione di pagamento deprecata di Stripe basata su token e Sources è lasciata fuori dalla specifica distribuita. L'elenco è sotto [Esclusioni su un'origine costruita da una specifica](#exclusions-on-a-specification-built-source). Le `exclusions` proprie dell'operatore si aggiungono a quelle del marchio.
 
-`stripe` compare anche in `SourceType` tra i tipi stub di Supabase `wrappers`. Un'origine Stripe aggiunta tramite il modulo è un'origine `openapi`, non quello stub.
-
 #### Esclusioni su un'origine costruita da una specifica {: #exclusions-on-a-specification-built-source }
 
 Una specifica OpenAPI pubblicata descrive tutto ciò che l'API remota accetta, compreso ciò che il suo fornitore ha dichiarato obsoleto e ciò che un deployment non deve mai inviare. Un'origine OpenAPI può avere delle esclusioni: elementi della specifica che l'origine non offre.

@@ -134,3 +134,39 @@ def test_with_no_services_every_call_raises_naming_its_service(ps, monkeypatch):
         ps.cache.get("rates")
     assert raised.value.service == "cache" and raised.value.status == 0
     assert "PROVISA_SERVICES" in str(raised.value)
+
+
+def test_an_https_address_is_called_as_given(ps, monkeypatch):
+    # REQ-2106 (amended 2026-11-22): a developer's address is the instance's, often https://.
+    sent: list[str] = []
+
+    class _Answered:
+        status = 200
+
+        def read(self) -> bytes:
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc) -> None:
+            return None
+
+    def urlopen(request, timeout):  # noqa: ARG001 -- urllib's signature
+        sent.append(request.full_url)
+        return _Answered()
+
+    base = "https://provisa.example/admin/orgs/acme/code-sources/rates/services/provisa_pat_x"
+    monkeypatch.setenv("PROVISA_SERVICES", base)
+    monkeypatch.setattr(ps.urllib.request, "urlopen", urlopen)
+    ps.log("x")
+    assert sent == [f"{base}/log"]
+
+
+@pytest.mark.parametrize("address", ["provisa-services/tok", "ftp://provisa.example/tok"])
+def test_an_address_that_is_not_an_http_or_https_url_is_refused(ps, monkeypatch, address):
+    monkeypatch.setenv("PROVISA_SERVICES", address)
+    with pytest.raises(ps.ServiceError) as raised:
+        ps.cache.get("rates")
+    assert raised.value.service == "cache" and raised.value.status == 0
+    assert "is not an http:// or https:// address" in str(raised.value)

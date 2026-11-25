@@ -50,7 +50,7 @@ def _rows(terms, cypher: str) -> list[tuple]:
     lm, con = terms
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
-    return con.execute(transpile_to_duckdb(sql)).fetchall()
+    return con.execute(transpile_to_duckdb(sql, generated=False)).fetchall()
 
 
 def test_a_condition_on_a_property_the_label_has_not_matches_nothing(terms):
@@ -184,7 +184,9 @@ def _role_rows(con, cypher: str, role_id: str, governed: set | None = None) -> l
     lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
-    return sorted(con.execute(transpile_to_duckdb(make_semantic_sql(sql, ctx))).fetchall())
+    return sorted(
+        con.execute(transpile_to_duckdb(make_semantic_sql(sql, ctx), generated=False)).fetchall()
+    )
 
 
 def test_a_column_the_role_may_not_see_is_null_as_an_unknown_property_is(orders):

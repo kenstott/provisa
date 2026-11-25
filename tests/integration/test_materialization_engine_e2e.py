@@ -158,7 +158,7 @@ async def test_materialized_api_source_federates_via_pg_store():
         )[0]
         gov_ctx = build_governance_context("admin", rls, {}, ctx, _si().tables, role=_ADMIN)
         governed = apply_governance(compiled.sql, gov_ctx)
-        ddl = transpile(rewrite_semantic_to_physical(governed, ctx), "duckdb")
+        ddl = transpile(rewrite_semantic_to_physical(governed, ctx), "duckdb", generated=True)
 
         # 3) DuckDB engine: ATTACH the PG materialize store + the in-place CSV; federate.
         con = duckdb.connect()

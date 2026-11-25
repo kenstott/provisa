@@ -37,7 +37,7 @@ def _config(tables: list[Table], *, members: list[Table] | None = None) -> Provi
     left out."""
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=tables,
         data_products=with_members([], {"prod": tables if members is None else members}),
         roles=[],

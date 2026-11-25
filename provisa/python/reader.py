@@ -23,7 +23,8 @@ commands or streams, and what each type maps to, is Provisa's (provisa/codesourc
 REQ-2267: the module's one function tagged ``@discover`` is called here, once, and each table,
 query and command it generates (provisa_services.Discovered) is written as an entry of its own, as
 a hand-written ``@table``, ``@query`` or ``@command`` function's would be, carrying the name of the
-handler function that serves it.
+handler function that serves it. The relationships it declares between the code's tables
+(provisa_services.DiscoveredRelationship) are written under the document's ``relationships``.
 
 Standard library only: the code's environment is the code's, and nothing of Provisa's is on it.
 """
@@ -294,6 +295,8 @@ class _Discovery:
         self.module = module
         self.function = function
         self.problems: list[str] = []
+        #: The relationships between the code's tables it declared, as the document writes them.
+        self.relationships: list[dict] = []
 
     def _handler(self, kind: str, fn: typing.Any) -> str | None:
         """The name of the module's function ``fn`` that serves every generated item of ``kind``."""
@@ -387,7 +390,26 @@ class _Discovery:
                 out.append(entry)
         out.extend(self._commands("query", discovered.queries, discovered.query_handler, rows))
         out.extend(self._commands("command", discovered.commands, discovered.command_handler, rows))
+        self.relationships = [self._relationship(r) for r in discovered.relationships]
         return out
+
+    def _relationship(self, declared: typing.Any) -> dict:
+        """A declared relationship (a provisa_services.DiscoveredRelationship) as the document
+        writes it; the manifest checks its tables, columns and cardinality."""
+        if type(declared).__name__ != "DiscoveredRelationship":
+            raise TypeError(
+                f"a relationship is a provisa_services.DiscoveredRelationship, not a "
+                f"{type(declared).__name__}"
+            )
+        return {
+            "name": declared.name,
+            "source_table": declared.source_table,
+            "source_column": declared.source_column,
+            "target_table": declared.target_table,
+            "target_column": declared.target_column,
+            "cardinality": declared.cardinality,
+            "description": declared.description,
+        }
 
     def _commands(
         self, kind: str, items: typing.Sequence, fn: typing.Any, rows: dict[str, dict]
@@ -431,23 +453,30 @@ class _Discovery:
         return bool(tables)
 
 
-def _discover(reader: _Reader, module: types.ModuleType, exports: list[dict]) -> tuple[list, list]:
-    """REQ-2267: the module's ``@discover`` function called, and the entries of what it generated,
-    with any problem by name. Two such functions are called neither: the manifest refuses them."""
+def _discover(
+    reader: _Reader, module: types.ModuleType, exports: list[dict]
+) -> tuple[list, list, list]:
+    """REQ-2267: the module's ``@discover`` function called, and the entries of what it generated
+    and the relationships it declared, with any problem by name. Two such functions are called
+    neither: the manifest refuses them."""
     tagged = [e["name"] for e in exports if _DISCOVER in e["tags"]]
     if len(tagged) != 1:
-        return [], []
+        return [], [], []
     (function,) = tagged
     discovery = _Discovery(reader, module, function)
     try:
         discovered = getattr(module, function)()
     except Exception as exc:  # noqa: BLE001 -- the code's own failure, reported by name
-        return [], [f"{function}: @discover failed: {type(exc).__name__}: {exc}"]
+        return [], [], [f"{function}: @discover failed: {type(exc).__name__}: {exc}"]
     try:
         entries = discovery.entries(discovered, exports)
     except Exception as exc:  # noqa: BLE001 -- a generated type that cannot be read, by name
-        return [], [f"{function}: what it generated cannot be read: {type(exc).__name__}: {exc}"]
-    return entries, discovery.problems
+        return (
+            [],
+            [],
+            [f"{function}: what it generated cannot be read: {type(exc).__name__}: {exc}"],
+        )
+    return entries, discovery.relationships, discovery.problems
 
 
 def read(entry: str) -> dict:
@@ -458,6 +487,7 @@ def read(entry: str) -> dict:
         return {
             "exports": [],
             "types": {},
+            "relationships": [],
             "diagnostics": [f"importing {entry} failed: {type(exc).__name__}: {exc}"],
         }
     exports, diagnostics = [], []
@@ -468,10 +498,15 @@ def read(entry: str) -> dict:
             diagnostics.append(
                 f"{name}: its type hints cannot be read: {type(exc).__name__}: {exc}"
             )
-    generated, problems = _discover(reader, module, exports)
+    generated, relationships, problems = _discover(reader, module, exports)
     exports.extend(generated)
     diagnostics.extend(problems)
-    return {"exports": exports, "types": reader.types, "diagnostics": diagnostics}
+    return {
+        "exports": exports,
+        "types": reader.types,
+        "relationships": relationships,
+        "diagnostics": diagnostics,
+    }
 
 
 def main(argv: list[str]) -> int:

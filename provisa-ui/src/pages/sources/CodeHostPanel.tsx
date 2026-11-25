@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// REQ-1984: its Compose file is shown in the code editor.
 // REQ-2098: a saved code source's mode -- dev, its code on this server, or built, its image on a
 // remote host -- and what moves it between them: build its image (pushed to one of the
 // organisation's container registries, or downloaded), the compose service to run it, and the
@@ -19,7 +20,6 @@ import {
   Alert,
   Badge,
   Button,
-  Code,
   CopyButton,
   Group,
   PasswordInput,
@@ -42,6 +42,7 @@ import {
   type Build,
   type HostStatus,
 } from "../../api/codeHosts";
+import { CodeEditorField } from "../../components/CodeEditorField";
 import { fetchContainerRegistries, type ContainerRegistry } from "../../api/containerRegistries";
 import { FieldGroup, FormField, FormFold, FormFolds } from "../../components/form/FormLayout";
 
@@ -397,8 +398,18 @@ function BuildResult({
       )}
       {build.compose && (
         <>
-          <Group justify="space-between">
-            <Text size="sm">{t("codeHost.composeTitle")}</Text>
+          {/* REQ-1984: the Compose file is shown in the code editor, read-only. */}
+          <CodeEditorField
+            label={t("codeHost.composeTitle")}
+            value={build.compose}
+            language="yaml"
+            readOnly
+            data-testid="code-host-compose"
+          />
+          <Group justify="space-between" wrap="nowrap" align="flex-start">
+            <Text size="xs" c="dimmed">
+              {t("codeHost.composeHelp")}
+            </Text>
             <CopyButton value={build.compose}>
               {({ copied, copy }) => (
                 <Button
@@ -412,12 +423,6 @@ function BuildResult({
               )}
             </CopyButton>
           </Group>
-          <Code block data-testid="code-host-compose">
-            {build.compose}
-          </Code>
-          <Text size="xs" c="dimmed">
-            {t("codeHost.composeHelp")}
-          </Text>
         </>
       )}
     </Stack>

@@ -67,7 +67,7 @@ def _text(value: Any) -> str | None:
 def _problem(run: Callable[[str], list[Any]], dialect: str, sql: str) -> str | None:
     kind, _, want = RECORDED[sql]
     try:
-        written = transpile(sql, dialect)
+        written = transpile(sql, dialect, generated=False)
     except FunctionRefused:
         return "refused"
     except PostgresError as error:

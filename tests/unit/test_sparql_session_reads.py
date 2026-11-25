@@ -52,7 +52,7 @@ def _rows(s, compiled, read) -> list[dict]:
     assert not ordered
     ast = apply_graph_rewrites(ast, graph_vars, read.graph)
     ast = read.expand(ast)
-    result = s.duck.execute(transpile_to_duckdb(ast.sql(dialect="postgres")))
+    result = s.duck.execute(transpile_to_duckdb(ast.sql(dialect="postgres"), generated=True))
     columns = [d[0] for d in result.description]
     return assemble_rows([dict(zip(columns, r)) for r in result.fetchall()], graph_vars)
 
@@ -297,5 +297,7 @@ def test_cypher_unwinds_a_property_of_many_values_to_its_items(monkeypatch):
     ast = parse_cypher(f"MATCH (n:{UNLABELED}) UNWIND n.tag AS t RETURN t")
     sql, _, graph_vars = cypher_to_sql(ast, read.graph, {})
     sql = read.expand(apply_graph_rewrites(sql, graph_vars, read.graph))
-    rows = s.duck.execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall()
+    rows = s.duck.execute(
+        transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True)
+    ).fetchall()
     assert sorted(r[0] for r in rows) == ['"x"', '"y"', '"z"']

@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from provisa.api.role_surface import LazySurface, RoleSurface, SurfacePart, set_part
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
-from provisa.entitlements.lists import HeldEntitlements
+from provisa.entitlements.lists import HeldEntitlements, HeldList
 from provisa.entitlements.mask import MaskCache
 from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.environments import PROD
@@ -239,6 +239,9 @@ class OrgRuntime:
     # REQ-2219: user id -> the entitlement lists Provisa holds for that member; the data products
     # (id, domain id) a list can name; the masks computed for this runtime's requests.
     held_entitlements: dict[str, HeldEntitlements] = field(default_factory=dict)
+    # REQ-2219 (amended 2026-11-23): role id -> the rows an Owner or Steward field wrote on the
+    # role, which every person acting as it holds as well.
+    role_owner_rows: dict[str, tuple[HeldList, ...]] = field(default_factory=dict)
     # REQ-2219: user id -> the lists their identity provider last sent, per role and kind.
     idp_entitlements: dict[str, dict[str, dict[str, tuple[str, ...]]]] = field(default_factory=dict)
     data_product_refs: tuple[tuple[str, str], ...] = ()

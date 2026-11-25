@@ -101,7 +101,6 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
                 id="sales_360",
                 domain_id="sales",
                 name="Sales 360",
-                owner_role="data_owner",
                 purpose="Every sale",
                 limitations="No refunds",
                 version="1.2.0",
@@ -116,7 +115,9 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
         org_id="acme",
         dialect="postgres",
         contexts={},
-        owner_emails={"data_owner": owners},
+        # REQ-2219: the product's owners are people; each named here by their address.
+        product_owners={"sales_360": owners},
+        person_emails={owner: owner for owner in owners},
     )
 
 
@@ -651,3 +652,27 @@ async def test_the_product_and_each_asset_carry_the_environment_and_its_stage(ap
     assert api.assets
     for asset in api.assets.values():
         assert asset["labels"].items() >= staged.items()
+
+
+async def test_each_published_member_is_bound_under_its_bigquery_resource(api):  # REQ-194
+    """REQ-1389, REQ-194: every member a publish catalogued is recorded in the bindings, by its
+    BigQuery resource name, and each of its columns by that entry's schema path, so the names
+    table carries the name Dataplex gives each."""
+    snapshot = _snapshot()
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    by_name = {t.name: t for t in snapshot.tables}
+    sales = "//bigquery.googleapis.com/projects/proj-src/datasets/warehouse/tables/sales"
+    orders = (
+        "//bigquery.googleapis.com/projects/proj-x/datasets/org_acme__export/tables/"
+        "pg__public__orders"
+    )
+    expected = {}
+    for name, resource in (("sales", sales), ("orders", orders)):
+        table = by_name[name]
+        expected[table.semantic_uri] = (resource, resource)
+        for column in table.columns:
+            address = f"{resource}#Schema.{column.name}"
+            expected[column.semantic_uri] = (address, address)
+    assert len(expected) > 2
+    assert result.bindings == expected

@@ -70,7 +70,7 @@ def test_a_call_is_refused_by_name(conn: Any, sql: str):
 def test_every_engine_refuses_it(dialect: str, call: str):
     name = call.split("(")[0].split(".")[-1].strip('"')
     with pytest.raises(FunctionRefused, match=rf"^{name}\(\) has no form on {dialect}$"):
-        transpile(f"SELECT {call} AS v FROM t", dialect)
+        transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
 
 
 @pytest.mark.parametrize(

@@ -47,7 +47,7 @@ def _config(*, source_withdrawn: bool = False) -> ProvisaConfig:
             Source(id="wh", type=SourceType.postgresql),
             Source(id="crm", type=SourceType.postgresql, withdrawn=source_withdrawn),
         ],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=[
             table("customers", withdrawn=False),
             table("refunds", withdrawn=True),

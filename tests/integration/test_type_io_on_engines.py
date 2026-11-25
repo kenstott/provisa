@@ -57,7 +57,7 @@ def _difference(
     """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
     recorded = recorded or sql
     try:
-        got = run(transpile(sql, dialect), RECORDED[recorded][0])
+        got = run(transpile(sql, dialect, generated=False), RECORDED[recorded][0])
     except RowRefused as refused:
         # The grid row's own raise, before the engine is reached (REQ-2236, THE REFUSAL LIVES IN
         # THE GRID): the SQLSTATE and message a client receives.

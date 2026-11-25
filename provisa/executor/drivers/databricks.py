@@ -21,7 +21,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.executor.drivers.pooled import SingleStatementConnectionDriver, run_dbapi
+from provisa.executor.drivers.arrow_result import source_arrow_result
+from provisa.executor.drivers.pooled import SingleStatementConnectionDriver
 from provisa.executor.result import QueryResult
 
 
@@ -69,7 +70,22 @@ class DatabricksDriver(SingleStatementConnectionDriver):  # REQ-987
         )
 
     def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:
-        return run_dbapi(conn, sql, params, lambda cur: cur.cancel)
+        """One statement, its result read through the connector's Arrow interface
+        (``fetchall_arrow``), never its rows (REQ-2194)."""
+        from provisa.core import request_deadline
+
+        cur = conn.cursor()
+        try:
+            with request_deadline.cancel_on_deadline(cur.cancel):
+                if params:
+                    cur.execute(sql, params)
+                else:
+                    cur.execute(sql)
+                if not cur.description:
+                    return QueryResult(rows=[], column_names=[])
+                return source_arrow_result(cur.fetchall_arrow())
+        finally:
+            cur.close()
 
     def _is_broken(self, exc: BaseException) -> bool:
         # RequestError and its kin (the HTTP transport, a closed session) are OperationalError;

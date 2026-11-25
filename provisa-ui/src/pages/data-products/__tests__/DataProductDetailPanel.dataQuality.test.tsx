@@ -40,6 +40,8 @@ const PRODUCT = {
   id: "pet_health",
   domainId: "pet-store",
   name: "Pet Health",
+  owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 // Member tables as the product's membership rows (dataProductTables { registeredTable }) reach them.

@@ -54,7 +54,9 @@ def _intervals(dsn: str, array: str) -> object:
         exp.column("v", "r", quoted=True), NestedColumn("interval[]", 1, "interval")
     )
     sql = transpile(
-        f"SELECT {marker.sql(dialect='postgres')} FROM (SELECT {array} AS v) AS r", "postgres"
+        f"SELECT {marker.sql(dialect='postgres')} FROM (SELECT {array} AS v) AS r",
+        "postgres",
+        generated=False,
     )
     with psycopg.connect(dsn) as con:
         (value,) = con.execute(sql).fetchone()  # type: ignore[misc]

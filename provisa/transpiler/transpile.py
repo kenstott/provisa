@@ -97,11 +97,13 @@ def _within_group_unqualified(pg_sql: str) -> str:
     return tree.sql(dialect="postgres") if misread else pg_sql
 
 
-def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
-    """Transpile PostgreSQL-dialect SQL to Trino SQL."""
+def transpile_to_trino(pg_sql: str, *, generated: bool) -> str:  # REQ-066, REQ-068
+    """Transpile PostgreSQL-dialect SQL to Trino SQL. ``generated``: see :func:`transpile`."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
-    return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
+    return pg_forms_geometric.around(
+        transpile(pg_sql, "trino", generated=generated), _trino_rewrites
+    )
 
 
 def _trino_rewrites(result: str) -> str:
@@ -737,20 +739,20 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
-def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
-    """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
+def transpile_to_duckdb(pg_sql: str, *, generated: bool) -> str:  # REQ-066, REQ-068
+    """Transpile PostgreSQL-dialect SQL to DuckDB SQL. ``generated``: see :func:`transpile`."""
     from provisa.observability.stage_trace import trace_stage
 
-    duckdb_sql = _duckdb_form(pg_sql)
+    duckdb_sql = _duckdb_form(pg_sql, generated)
     trace_stage("transpile.duckdb", duckdb_sql)
     return duckdb_sql
 
 
 @functools.lru_cache(maxsize=2048)
-def _duckdb_form(pg_sql: str) -> str:
-    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone. A
-    statement a client repeats reaches here on each run, its
-    plan kept or not. A refusal raises and is not kept."""
+def _duckdb_form(pg_sql: str, generated: bool) -> str:
+    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text and its
+    origin (``generated``, see :func:`transpile`) alone. A statement a client repeats reaches here
+    on each run, its plan kept or not. A refusal raises and is not kept."""
     # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
     refuse_past_inputs(pg_sql)
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
@@ -762,6 +764,7 @@ def _duckdb_form(pg_sql: str) -> str:
             )
         ),
         "duckdb",
+        generated=generated,
     )
     # From here every step is of DuckDB's tree, read once: the JSON forms are several times the
     # statement's text, and each step that read it again paid for all of them.
@@ -2048,6 +2051,7 @@ def transpile(
     pgvector: bool = False,
     quote_identifiers: bool = False,
     column_types: ColumnTypes | None = None,
+    generated: bool,
     engine_kind: str | None = None,
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423, REQ-2236
     """Transpile PostgreSQL-dialect SQL to a target dialect.
@@ -2063,6 +2067,10 @@ def transpile(
             names it gives them, for a dialect whose forms read their operands' types
             (``typed_columns.TYPED_DIALECTS``, REQ-2236). Without them such a dialect refuses
             what it cannot write untyped.
+        generated: Provisa wrote ``pg_sql`` from a graph IR (Cypher, SPARQL, GraphQL: the compiled
+            path), where a list of lists is a nested list. False is SQL a client wrote (pgwire,
+            /data/sql, Flight SQL), whose array of more than one dimension is read as PostgreSQL
+            reads it (REQ-2236).
         engine_kind: the federation engine kind the statement runs on, for a product that shares
             another's dialect but answers some form differently (openGauss: the postgres dialect,
             bytea LIKE matched byte-wise, REQ-2236). None for a statement no engine runs.
@@ -2072,7 +2080,7 @@ def transpile(
     """
     given = pg_sql  # the statement as given, whose columns pgwire describes (REQ-2236)
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
-    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
@@ -2180,6 +2188,7 @@ def transpile(
         lowered = function_macros.inline(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             target_dialect,
+            generated=generated,
         )
     if target_dialect not in ("postgres", "duckdb") and _CAST_LITERAL_NAMED.search(pg_sql):
         lowered = literals_as_said(

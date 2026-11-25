@@ -40,13 +40,24 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
         {
             "id": domain.id,
             "description": domain.description,
-            "steward": domain.steward,  # REQ-609
             "graphql_alias": domain.graphql_alias,
             "parent_domain_id": domain.parent_domain_id,  # REQ-1363
             "org_id": "root",
         },
         index_elements=["id"],
-        update_columns=["description", "steward", "graphql_alias", "parent_domain_id"],
+        update_columns=["description", "graphql_alias", "parent_domain_id"],
+    )
+
+
+async def ensure(conn: "Connection", domain_id: str, description: str) -> None:  # REQ-1919
+    """Create domain ``domain_id`` with ``description`` when there is none: a source added with
+    a domain, or a boot seed. A stored domain is left as it is."""
+    model_change.name("upsert", model_change.uri(model_uri.domain_uri, domain_id))  # REQ-1524
+    await conn.upsert(
+        domains,
+        {"id": domain_id, "description": description},
+        index_elements=["id"],
+        update_columns=[],
     )
 
 
@@ -146,6 +157,10 @@ async def delete(  # REQ-021, REQ-1917, REQ-1918, REQ-2248
             .where(domains.c.id == key)
             .values(**retirement.values(reason), retired_id=domain_id)
         )
+        # REQ-2219: an object gone has no owners or stewards in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 
@@ -174,6 +189,10 @@ async def restore(conn: "Connection", key: str) -> bool:  # REQ-2248
             .where(registered_tables.c.domain_id == live_id, registered_tables.c.retired.is_(True))
             .values(**retirement.cleared())
         )
+        # REQ-2219: a restored object's owners and stewards are back in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 

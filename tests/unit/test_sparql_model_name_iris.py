@@ -201,7 +201,7 @@ def test_a_query_on_the_alias_iris_reads_the_physical_table_and_column(people_db
     assert compiled.ast is not None
     sql, _, graph_vars = cypher_to_sql(compiled.ast, lm, {})
     sql = apply_graph_rewrites(sql, graph_vars, lm)
-    cur = people_db.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = people_db.execute(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
     assert sorted(r["n"]["literal"] for r in rows) == ["Ann", "Bo"]

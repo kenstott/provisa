@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import re
 from collections.abc import Callable
 
 import jwt
@@ -187,6 +188,13 @@ _SKIP_PATHS = {
     "/orgs/branding",
     "/orgs/branding/logo",
 }
+
+
+#: REQ-2106 (amended 2026-11-24): a dev-mode code source's services, reached by its developer's
+#: personal access token. The services module sends no header, so the token is in the path, and
+#: the route resolves it itself (provisa.codesource.developer_services) with an opaque refusal
+#: on any bad token (REQ-1263); the reason is recorded only in the audit trail.
+_DEVELOPER_SERVICES_PATH = re.compile(r"^/admin/orgs/[^/]+/code-sources/[^/]+/services/[^/]+/")
 
 
 def _loaded_roles() -> dict[str, dict]:  # REQ-1337
@@ -411,7 +419,10 @@ async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
 
 
 async def org_env_capabilities(  # REQ-1573
-    identity: object, org_id: str, claims: list[str] | None = None
+    identity: object,
+    org_id: str,
+    claims: list[str]
+    | None = None,  # object-ok: AuthIdentity or SimpleNamespace(user_id, roles) when claims override roles
 ) -> set[str] | None:
     """The capabilities an ENVIRONMENT gate reads for ``identity`` in ``org_id``: judged by that
     org's own PROD role definitions (REQ-1266) -- never another org's, and never by the copy an
@@ -773,8 +784,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
-        if request.url.path in _SKIP_PATHS or request.url.path.startswith(
-            ("/public/invite-info/", "/public/demos/")  # REQ-1602; REQ-2006: before any sign-in
+        if (
+            request.url.path in _SKIP_PATHS
+            or request.url.path.startswith(
+                ("/public/invite-info/", "/public/demos/")  # REQ-1602; REQ-2006: before any sign-in
+            )
+            or _DEVELOPER_SERVICES_PATH.match(request.url.path)  # REQ-2106: its token is its path's
         ):
             return None
 

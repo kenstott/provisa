@@ -17,22 +17,21 @@ import type { Role } from "../../types/auth";
 export type ActingRole = Pick<Role, "id" | "effectiveCapabilities" | "domain_access">;
 
 /**
- * Whether a session acting as ``acting`` owns ``product``: one of its roles is the product's
- * owner_role, or holds data_product_rw reaching the product's domain (a role's domain_access
- * naming it, or "*").
- *
- * SEAM: REQ-2219 makes ownership an entitlement -- data_product_owner on the product, which its
- * creator holds from creation -- and removes owner_role. When the entitlement store reaches the
- * UI (J916/J942) this reads the session's data_product_owner (and data_product_rw) entitlements on
- * the product instead; its callers stay as they are.
+ * Whether the signed-in person (``userId``), acting as ``acting``, owns ``product``: they are one
+ * of its owners (REQ-2219, amended 2026-11-23: a person whose data_product_owner row names it,
+ * held through a role they act as that carries data_product_owner), or one of their roles holds
+ * data_product_rw reaching the product's domain (a role's domain_access naming it, or "*"). The
+ * server decides (``entitlements.owners``); this only says which view to draw.
  */
 export function isProductOwner(
-  product: { ownerRole?: string | null; domainId: string },
+  product: { owners: readonly string[]; domainId: string },
+  userId: string | null,
   acting: readonly ActingRole[],
 ): boolean {
+  const named = userId !== null && product.owners.includes(userId);
   return acting.some(
     (r) =>
-      (product.ownerRole != null && r.id === product.ownerRole) ||
+      (named && r.effectiveCapabilities.includes("data_product_owner")) ||
       (r.effectiveCapabilities.includes("data_product_rw") &&
         (r.domain_access.includes("*") || r.domain_access.includes(product.domainId))),
   );

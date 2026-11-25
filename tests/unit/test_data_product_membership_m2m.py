@@ -313,7 +313,7 @@ def _export_config() -> ProvisaConfig:
 
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql)],
-        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        domains=[Domain(id="sales", description="Sales")],
         tables=[table("customers"), table("orders")],
         data_products=[
             DataProduct(id="c360", domain_id="sales", name="C360", tables=["customers", "orders"]),

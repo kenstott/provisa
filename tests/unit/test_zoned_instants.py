@@ -96,13 +96,14 @@ def _sent(value: Any, set_zone: str) -> str:
 
 @pytest.mark.parametrize("set_zone, name, want", [case for case in CASES if case[1] != "json"])
 def test_clickhouse_answers_as_postgresql_17(chdb_session, set_zone, name, want):
-    sql = _in_session(set_zone, lambda: transpile(statement(name), "clickhouse"))
+    sql = _in_session(set_zone, lambda: transpile(statement(name), "clickhouse", generated=False))
     assert tuple(_sent(v, set_zone) for v in _rows(chdb_session, sql)) == want
 
 
 def test_a_column_that_declares_no_zone_is_a_plain_timestamp_on_clickhouse(chdb_session):
     sql = _in_session(
-        _NEW_YORK, lambda: transpile("SELECT plain::text FROM t ORDER BY i", "clickhouse")
+        _NEW_YORK,
+        lambda: transpile("SELECT plain::text FROM t ORDER BY i", "clickhouse", generated=False),
     )
     assert "-04" not in _rows(chdb_session, sql)[0]
 
@@ -111,7 +112,9 @@ def test_a_column_that_declares_no_zone_is_a_plain_timestamp_on_clickhouse(chdb_
 def test_trino_start_of_a_microsecond_is_the_value_itself(set_zone):
     """Trino's date_trunc has no microsecond; PostgreSQL's start of a microsecond of a value held
     to the microsecond is that value, in every zone (REQ-2171)."""
-    sql = _in_session(set_zone, lambda: transpile_to_trino(statement("microsecond")))
+    sql = _in_session(
+        set_zone, lambda: transpile_to_trino(statement("microsecond"), generated=False)
+    )
     assert "MICROSECOND" not in sql.upper()
 
 
@@ -122,7 +125,10 @@ def test_clickhouse_start_of_a_sub_minute_unit_writes_no_datetrunc(set_zone, uni
     """ClickHouse 24.3's dateTrunc refuses a millisecond and a microsecond, in a branch not taken
     too; chDB's does not, so the form is held to writing none."""
     sql = _in_session(
-        set_zone, lambda: transpile(f"SELECT date_trunc('{unit}', {column}) FROM t", "clickhouse")
+        set_zone,
+        lambda: transpile(
+            f"SELECT date_trunc('{unit}', {column}) FROM t", "clickhouse", generated=False
+        ),
     )
     assert "datetrunc" not in sql.lower()
 
@@ -139,7 +145,9 @@ def test_clickhouse_start_of_a_millisecond_of_a_plain_timestamp_keeps_its_fracti
         sql = _in_session(
             set_zone,
             lambda: transpile(
-                "SELECT date_trunc('millisecond', plain) FROM t WHERE i = 9", "clickhouse"
+                "SELECT date_trunc('millisecond', plain) FROM t WHERE i = 9",
+                "clickhouse",
+                generated=False,
             ),
         )
         assert _rows(chdb_session, sql)[0].microsecond == 567_000
@@ -148,19 +156,21 @@ def test_clickhouse_start_of_a_millisecond_of_a_plain_timestamp_keeps_its_fracti
 
 
 def test_clickhouse_text_of_a_text_is_that_text(chdb_session):
-    sql = _in_session(_NEW_YORK, lambda: transpile("SELECT s::text FROM t", "clickhouse"))
+    sql = _in_session(
+        _NEW_YORK, lambda: transpile("SELECT s::text FROM t", "clickhouse", generated=False)
+    )
     assert _rows(chdb_session, sql)[0] == "text"
 
 
 @pytest.mark.parametrize("name", ["date", "hour", "trunc"])
 def test_trino_writes_the_zone_into_each_read(name):
-    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(statement(name)))
+    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(statement(name), generated=False))
     assert "'America/New_York'" in sql
     assert _TIMESTAMP_ZONE in sql
 
 
 def test_trino_text_is_postgresqls_on_utc_too():
-    assert _TIMESTAMP_ZONE in transpile_to_trino(statement("text"))
+    assert _TIMESTAMP_ZONE in transpile_to_trino(statement("text"), generated=False)
 
 
 @pytest.mark.parametrize(
@@ -168,8 +178,8 @@ def test_trino_text_is_postgresqls_on_utc_too():
     [("date", "trino"), ("hour", "trino"), ("trunc", "trino"), ("hour", "clickhouse")],
 )
 def test_on_utc_what_already_answers_is_left_as_it_was(name, dialect):
-    assert "toTimeZone" not in transpile(statement(name), dialect)
-    assert "typeof" not in transpile(statement(name), dialect).lower()
+    assert "toTimeZone" not in transpile(statement(name), dialect, generated=False)
+    assert "typeof" not in transpile(statement(name), dialect, generated=False).lower()
 
 
 @pytest.mark.parametrize(
@@ -185,7 +195,7 @@ def test_on_utc_what_already_answers_is_left_as_it_was(name, dialect):
 def test_on_utc_clickhouse_answers_a_date_and_an_instant_not_a_count(chdb_session, name, typed):
     """Its own Date and DateTime reach Arrow as counts of days and seconds, which pgwire would send
     as numbers: on UTC too, the date is a Date32 and the start of a unit a DateTime64."""
-    sql = transpile(statement(name), "clickhouse")
+    sql = transpile(statement(name), "clickhouse", generated=False)
     raw = chdb_session.query(re.sub(r" FROM t\b", " FROM default.t", sql), "ArrowStream").bytes()
     assert typed(pa.ipc.open_stream(raw).schema.field(0).type)
 
@@ -200,33 +210,44 @@ def test_on_utc_clickhouse_answers_a_date_and_an_instant_not_a_count(chdb_sessio
     ],
 )
 def test_what_the_statement_says_is_no_instant_is_not_asked_about(sql):
-    assert "typeof" not in _in_session(_NEW_YORK, lambda: transpile(sql, "trino")).lower()
+    assert (
+        "typeof"
+        not in _in_session(_NEW_YORK, lambda: transpile(sql, "trino", generated=False)).lower()
+    )
 
 
 def test_an_epoch_is_the_same_in_every_zone():
-    sql = _in_session(_NEW_YORK, lambda: transpile("SELECT extract(epoch from c) FROM t", "trino"))
+    sql = _in_session(
+        _NEW_YORK,
+        lambda: transpile("SELECT extract(epoch from c) FROM t", "trino", generated=False),
+    )
     assert "America/New_York" not in sql
 
 
 def test_a_zone_cast_to_varchar_of_a_length_keeps_the_length():
-    sql = _in_session(_NEW_YORK, lambda: transpile("SELECT c::varchar(5) FROM t", "trino"))
+    sql = _in_session(
+        _NEW_YORK, lambda: transpile("SELECT c::varchar(5) FROM t", "trino", generated=False)
+    )
     assert sql.count("VARCHAR(5)") == 2
 
 
 @pytest.mark.parametrize("dialect, engine", [("trino", "Trino"), ("clickhouse", "ClickHouse")])
 def test_a_zone_the_engine_cannot_spell_is_refused_by_name(dialect, engine):
     with pytest.raises(PostgresError, match=f"{engine} cannot run this statement") as refused:
-        _in_zone(_RULED, lambda: transpile(statement("hour"), dialect))
+        _in_zone(_RULED, lambda: transpile(statement("hour"), dialect, generated=False))
     assert refused.value.sqlstate == "0A000"
 
 
 def test_a_zone_no_engine_form_needs_is_not_refused():
-    assert _in_zone(_RULED, lambda: transpile("SELECT 1 AS v FROM t", "trino"))
+    assert _in_zone(_RULED, lambda: transpile("SELECT 1 AS v FROM t", "trino", generated=False))
 
 
 def test_duckdb_is_told_its_zone_and_has_no_form_of_it():
-    plain = transpile_to_duckdb(statement("hour"))
-    assert _in_session(_NEW_YORK, lambda: transpile_to_duckdb(statement("hour"))) == plain
+    plain = transpile_to_duckdb(statement("hour"), generated=False)
+    assert (
+        _in_session(_NEW_YORK, lambda: transpile_to_duckdb(statement("hour"), generated=False))
+        == plain
+    )
 
 
 def test_an_engine_form_is_derived_again_in_another_zone():
@@ -253,7 +274,7 @@ _STATED_JSON = "SELECT to_json(CAST(c AS timestamptz)) AS v FROM t ORDER BY i"
 
 @pytest.mark.parametrize("set_zone", list(_SESSIONS))
 def test_trino_writes_to_json_of_a_stated_instant_in_the_session_zone(set_zone):
-    sql = _in_session(set_zone, lambda: transpile_to_trino(_STATED_JSON))
+    sql = _in_session(set_zone, lambda: transpile_to_trino(_STATED_JSON, generated=False))
     assert "CAST(c AS JSON)" not in sql
     assert "JSON_PARSE(CONCAT('\"'" in sql
     zone = SessionZone(_SESSIONS[set_zone]).statement_zone()
@@ -263,7 +284,9 @@ def test_trino_writes_to_json_of_a_stated_instant_in_the_session_zone(set_zone):
 @pytest.mark.parametrize("call", ["to_json", "to_jsonb"])
 @pytest.mark.parametrize("value", ["CAST(c AS timestamptz)", "now()", "(c::timestamptz)"])
 def test_trino_writes_each_to_json_of_a_stated_instant(call, value):
-    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(f"SELECT {call}({value}) FROM t"))
+    sql = _in_session(
+        _NEW_YORK, lambda: transpile_to_trino(f"SELECT {call}({value}) FROM t", generated=False)
+    )
     assert "JSON_PARSE(" in sql
     assert "'America/New_York'" in sql
 
@@ -273,19 +296,19 @@ def test_trino_writes_each_to_json_of_a_stated_instant(call, value):
 )
 def test_trino_refuses_to_json_of_a_stated_instant_in_an_array_or_a_row_by_name(value):
     with pytest.raises(PostgresError, match="to_json of a timestamptz in an array") as refused:
-        transpile_to_trino(f"SELECT to_json({value}) FROM t")
+        transpile_to_trino(f"SELECT to_json({value}) FROM t", generated=False)
     assert refused.value.sqlstate == "0A000"
 
 
 def test_trino_leaves_to_json_of_a_value_not_said_to_be_an_instant_to_its_own_cast():
     assert "CAST(c AS JSON)" in _in_session(
-        _NEW_YORK, lambda: transpile_to_trino("SELECT to_json(c) FROM t")
+        _NEW_YORK, lambda: transpile_to_trino("SELECT to_json(c) FROM t", generated=False)
     )
 
 
 def test_trino_json_text_of_an_instant_is_postgresqls():
     """The form's text, its JSON string marks aside, read as PostgreSQL's to_json writes it."""
-    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(_STATED_JSON))
+    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(_STATED_JSON, generated=False))
     assert "'T')" in sql  # the date and the time joined by a T
     assert "'+00:00'" in sql  # UTC's offset, which format_datetime writes Z
 
@@ -315,14 +338,17 @@ _OFFSET_LITERAL = "SELECT CAST('2024-01-01 07:00:00.5+05' AS timestamptz) AS v"
 def test_a_literal_with_an_offset_is_its_instant_in_every_session(set_zone, dialect):
     """REQ-2050 writes it as its UTC wall time; the session's zone is the client's, so the text
     names UTC, which Trino reads as that instant whatever the session's zone."""
-    sql = _in_session(set_zone, lambda: transpile(_OFFSET_LITERAL, dialect))
+    sql = _in_session(set_zone, lambda: transpile(_OFFSET_LITERAL, dialect, generated=False))
     assert "'2024-01-01 02:00:00.500000 UTC'" in sql
 
 
 @pytest.mark.parametrize("set_zone", list(_SESSIONS))
 def test_a_literal_with_no_offset_is_read_in_the_session_zone(set_zone):
     sql = _in_session(
-        set_zone, lambda: transpile("SELECT CAST('2024-01-01 07:00:00' AS timestamptz)", "trino")
+        set_zone,
+        lambda: transpile(
+            "SELECT CAST('2024-01-01 07:00:00' AS timestamptz)", "trino", generated=False
+        ),
     )
     assert "'2024-01-01 07:00:00'" in sql
 
@@ -331,7 +357,7 @@ def test_a_literal_with_an_offset_on_mysql_and_clickhouse_is_their_utc_wall_time
     """Their connections' sessions are UTC (executor/drivers/mysql.py) and their literals take no
     zone."""
     for dialect in ("mysql", "clickhouse"):
-        sql = transpile(_OFFSET_LITERAL, dialect)
+        sql = transpile(_OFFSET_LITERAL, dialect, generated=False)
         assert "'2024-01-01 02:00:00.500000'" in sql
 
 
@@ -350,7 +376,7 @@ def test_trino_refuses_json_of_a_stated_instant_by_name(sql, name):
     """Trino's own forms of them cast the instant to JSON, which it refuses while it types the
     statement."""
     with pytest.raises(PostgresError, match=f"^{name} of a timestamptz") as refused:
-        _in_session(_NEW_YORK, lambda: transpile_to_trino(sql))
+        _in_session(_NEW_YORK, lambda: transpile_to_trino(sql, generated=False))
     assert refused.value.sqlstate == "0A000"
 
 
@@ -363,7 +389,7 @@ def test_trino_refuses_json_of_a_stated_instant_by_name(sql, name):
     ],
 )
 def test_trino_leaves_json_of_a_value_not_said_to_be_an_instant(sql):
-    assert _in_session(_NEW_YORK, lambda: transpile_to_trino(sql))
+    assert _in_session(_NEW_YORK, lambda: transpile_to_trino(sql, generated=False))
 
 
 @pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
@@ -374,5 +400,6 @@ def test_a_range_function_reads_an_instant_that_names_utc(dialect):
         "SELECT pg_catalog.\"tstzrange_subdiff\"('2000-02-29 00:00:00-05'::timestamp with time zone,"
         " '2000-02-29 00:00:00-04'::timestamp with time zone) AS v",
         dialect,
+        generated=False,
     )
     assert "2000-02-29 05:00:00" in sql and "2000-02-29 04:00:00" in sql
