@@ -98383,3 +98383,109 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   type: behavioral
   description: 'Maintainer 2026-11-24: impersonation is supported for federation engines, and only for them. An engine can be set to impersonate (off by default, per engine): Provisa then connects to that engine as the requesting user, mapped to the engine''s principal, so the engine''s own access control and audit see the person (Trino''s session user, SET ROLE on a PostgreSQL engine, the user on Snowflake or Databricks as the engine, and the like, each engine by its own mechanism). Sources are never impersonated: the engine reads them with its own catalog credentials, and a direct read of a source uses the source''s configured credential as today. An engine with no user model (DuckDB and the like) cannot be set to impersonate, and is refused by name. The engine''s service account must hold the engine''s impersonation capability; this is checked when the setting is turned on, by impersonating a declared probe principal and reading back the effective user, and the setting is refused by name when the check fails. The principal comes from a per-engine mapping of a Provisa identity (an explicit mapping, else a rule over its user id, verified email or an attribute); a request whose user has no mapping is refused by name, never run as the service account. Provisa''s own row rules, masks and entitlements still apply, and the engine''s rules apply on top. With impersonation on, the response cache key includes the engine principal. The audit records the Provisa user, the acting role, the engine principal and the service account. Background system work runs as the service account. (Amended 2026-11-24 by the maintainer, WHY ENGINES ONLY, for sales and marketing: (1) a connection per principal to every source cannot scale through Provisa; (2) even if it did, support differs between sources and engines (a source supports it while an engine does not, or the reverse), so the outcome of a query would be hard to understand; (3) a subset of engines supports impersonation, and as long as that is what a customer needs, it works.) (Amended 2026-11-24 by the maintainer, WHY ENGINES ONLY (4): caching. The cache, replicas and landed copies are built for the federation engine. If sources were read as each person, two people asking for the same data with different rights could never share a cached result, replica or landed copy, since each would carry the rights of whoever built it; with engine impersonation the response cache key includes the engine principal, so each principal gets its own cached answer and nothing is served across rights.) (Amended 2026-11-24 by the maintainer, WHY ENGINES ONLY (5): even if caching were kept per user, the number of cache entries would grow with every user and every query, and the performance and storage cost would explode and become hard to predict.) (Amended 2026-11-24 by the maintainer: a post-freeze feature. It is not built before the feature freeze lifts.)'
   scenario: 'Given a Trino engine set to impersonate, with a mapping from ana@example.com to the Trino user ana and an impersonation rule allowing the service account to act as ana; When ana runs a query routed to that engine; Then the query reaches Trino as user ana, and the audit names ana, her acting role, Trino user ana and the service account; And a user with no mapping is refused by name, and nothing runs as the service account.'
+- id: REQ-2272
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  type: behavioral
+  priority: MUST
+  description: 'Maintainer 2026-11-25, phase 1 of serving a Spark cluster''s objects (REQ-2272..2276; amends REQ-2225
+    77a1bef19e). A Spark source is a connection to the cluster through Spark Connect. Provisa reads the
+    cluster''s catalog, its databases, tables and views with their column types and storage format, and the
+    operator registers tables and views from it as for any database source, with no script. Reads run on the
+    cluster with Provisa''s filters, order and limit applied there and are fetched as Arrow. Mutations are
+    served where the table''s format allows them, namely insert, update, delete and merge on Delta, Iceberg
+    and Hudi tables, and insert only on plain Parquet or Hive tables; views are read only. A write the
+    format cannot do is refused by name before it reaches the cluster, naming the table and its format.'
+  scenario: 'Given a Spark cluster holding a Delta table, a Parquet table and a view
+
+    When an operator registers a Spark source and opens its tables
+
+    Then all three are listed with their column types, and registering them needs no script
+
+    When a role reads, inserts, updates and deletes through Provisa
+
+    Then the Delta table takes all four, the Parquet table takes the insert and refuses the update and the
+    delete by name, and the view takes only the read'
+- id: REQ-2273
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  type: behavioral
+  priority: SHOULD
+  description: 'Maintainer 2026-11-25, phase 2 of serving a Spark cluster''s objects. A Spark table whose format
+    keeps versions (Delta, Iceberg, Hudi) takes Provisa''s as-of syntax (REQ-372), read on the cluster as
+    VERSION AS OF or TIMESTAMP AS OF, through every front door. The table''s history (Delta DESCRIBE
+    HISTORY, the Iceberg snapshots table) is served as facts about the table, namely each version with its
+    time, operation and the principal the cluster records, and feeds its lineage and audit pages. A table
+    whose format keeps no versions refuses an as-of read by name.'
+  scenario: 'Given a registered Delta table changed twice
+
+    When a role reads it as of the time between the two changes
+
+    Then the rows are the table as it was then
+
+    And its history lists both changes with their time and operation
+
+    When the same read names a Parquet table
+
+    Then it is refused by name'
+- id: REQ-2274
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  type: behavioral
+  priority: SHOULD
+  description: 'Maintainer 2026-11-25, phase 2 of serving a Spark cluster''s objects. Row changes on a Spark table are
+    served as Provisa change data: Delta''s change data feed (table_changes) and Iceberg''s changelog give
+    each insert, update and delete with its version and time, offered as the table''s change events and
+    subscriptions as for any CDC source, with no Debezium and no polling of whole tables. A Structured
+    Streaming read over a Delta or Iceberg table is offered as a stream of new rows. A table without a change
+    feed is offered no change events and says why.'
+  scenario: 'Given a registered Delta table with its change data feed on
+
+    When a row is inserted, one updated and one deleted on the cluster
+
+    Then a subscriber to the table''s changes receives the three events with their versions in order'
+- id: REQ-2275
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  type: behavioral
+  priority: SHOULD
+  description: 'Maintainer 2026-11-25, phase 3 of serving a Spark cluster''s objects. The cluster''s procedures (CALL,
+    Spark 4 and Iceberg''s system procedures such as rewrite_data_files, expire_snapshots and
+    rollback_to_snapshot) and Delta''s maintenance statements (OPTIMIZE, VACUUM, RESTORE) are offered as
+    commands, found from the catalog with their typed parameters, governed by role like any command, and
+    run on the cluster as the caller. No script is written for them.'
+  scenario: 'Given a cluster with an Iceberg table and a Delta table
+
+    When the operator opens the Spark source''s commands
+
+    Then expire_snapshots is offered for the Iceberg table and OPTIMIZE for the Delta table, each with its
+    parameters, and a role without the command''s grant is refused'
+- id: REQ-2276
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  type: behavioral
+  priority: MAY
+  description: 'Maintainer 2026-11-25, phase 4 of serving a Spark cluster''s objects, where the cluster''s catalog holds
+    them (Unity Catalog and MLflow on Databricks). Catalog functions (SQL and Python UDFs with typed
+    arguments) are offered as functions in queries, or as commands where they change data; registered models
+    are offered as scoring functions over a table''s rows; catalog volumes are offered as a file source.'
+  scenario: 'Given a cluster whose catalog holds a SQL function and a registered model
+
+    When the operator opens the Spark source
+
+    Then the function is callable in a query and the model scores rows of a governed table'

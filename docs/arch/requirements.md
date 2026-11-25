@@ -27307,3 +27307,55 @@ Maintainer 2026-11-24: impersonation is supported for federation engines, and on
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2272 · Source Connectors {#REQ-2272}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-25, phase 1 of serving a Spark cluster's objects (REQ-2272..2276; amends [REQ-2225](#REQ-2225) 77a1bef19e). A Spark source is a connection to the cluster through Spark Connect. Provisa reads the cluster's catalog, its databases, tables and views with their column types and storage format, and the operator registers tables and views from it as for any database source, with no script. Reads run on the cluster with Provisa's filters, order and limit applied there and are fetched as Arrow. Mutations are served where the table's format allows them, namely insert, update, delete and merge on Delta, Iceberg and Hudi tables, and insert only on plain Parquet or Hive tables; views are read only. A write the format cannot do is refused by name before it reaches the cluster, naming the table and its format.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2273 · Source Connectors {#REQ-2273}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-25, phase 2 of serving a Spark cluster's objects. A Spark table whose format keeps versions (Delta, Iceberg, Hudi) takes Provisa's as-of syntax ([REQ-372](#REQ-372)), read on the cluster as VERSION AS OF or TIMESTAMP AS OF, through every front door. The table's history (Delta DESCRIBE HISTORY, the Iceberg snapshots table) is served as facts about the table, namely each version with its time, operation and the principal the cluster records, and feeds its lineage and audit pages. A table whose format keeps no versions refuses an as-of read by name.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2274 · Source Connectors {#REQ-2274}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-25, phase 2 of serving a Spark cluster's objects. Row changes on a Spark table are served as Provisa change data: Delta's change data feed (table_changes) and Iceberg's changelog give each insert, update and delete with its version and time, offered as the table's change events and subscriptions as for any CDC source, with no Debezium and no polling of whole tables. A Structured Streaming read over a Delta or Iceberg table is offered as a stream of new rows. A table without a change feed is offered no change events and says why.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2275 · Source Connectors {#REQ-2275}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-25, phase 3 of serving a Spark cluster's objects. The cluster's procedures (CALL, Spark 4 and Iceberg's system procedures such as rewrite_data_files, expire_snapshots and rollback_to_snapshot) and Delta's maintenance statements (OPTIMIZE, VACUUM, RESTORE) are offered as commands, found from the catalog with their typed parameters, governed by role like any command, and run on the cluster as the caller. No script is written for them.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2276 · Source Connectors {#REQ-2276}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+Maintainer 2026-11-25, phase 4 of serving a Spark cluster's objects, where the cluster's catalog holds them (Unity Catalog and MLflow on Databricks). Catalog functions (SQL and Python UDFs with typed arguments) are offered as functions in queries, or as commands where they change data; registered models are offered as scoring functions over a table's rows; catalog volumes are offered as a file source.
+
+**Code:** —
+
+**Tests:** —
