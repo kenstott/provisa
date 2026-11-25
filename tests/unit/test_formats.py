@@ -140,6 +140,51 @@ class TestParquet:
         assert table.num_rows == 0
 
 
+# REQ-1961: a sized numeric is exact in every export format.
+_EXACT_VAL = Decimal("1234567890123456.78")  # 18 digits; float64 corrupts it to .8
+
+
+class TestCSVNumericExact:
+    """REQ-1961: Decimal in CSV must be its exact text, never float."""
+
+    def _cols(self):
+        return [
+            ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
+        ]
+
+    def test_decimal_exact_in_csv(self):
+        data = rows_to_csv([(_EXACT_VAL,)], self._cols())
+        lines = [ln.strip() for ln in data.strip().splitlines()]
+        assert lines[1] == "1234567890123456.78", f"float conversion lost digits: got {lines[1]!r}"
+
+
+class TestParquetNumericExact:
+    """REQ-1961: a numeric(18,2) column in Parquet is decimal128(18,2), not float64."""
+
+    def _cols_typed(self):
+        return [
+            ColumnRef(
+                alias=None,
+                column="amount",
+                field_name="amount",
+                nested_in=None,
+                data_type="numeric(18,2)",
+            ),
+        ]
+
+    def test_parquet_decimal128_type(self):
+        data = rows_to_parquet([(_EXACT_VAL,)], self._cols_typed())
+        table = pq.read_table(io.BytesIO(data))
+        col_type = table.schema.field("amount").type
+        assert col_type == pa.decimal128(18, 2), f"expected decimal128(18,2), got {col_type}"
+
+    def test_parquet_decimal128_exact_value(self):
+        data = rows_to_parquet([(_EXACT_VAL,)], self._cols_typed())
+        table = pq.read_table(io.BytesIO(data))
+        vals = table.column("amount").to_pylist()
+        assert vals[0] == _EXACT_VAL, f"float conversion lost digits: got {vals[0]!r}"
+
+
 class TestArrowIPC:
     def test_basic(self):
         data = rows_to_arrow_ipc(ROWS, _cols())

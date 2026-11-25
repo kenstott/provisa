@@ -20,8 +20,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from provisa.compiler.sql_gen import ColumnRef
+from provisa.core.numeric_type import decimal_text, numeric_size
 
-# Requirements: REQ-049, REQ-050
+# Requirements: REQ-049, REQ-050, REQ-1961
 
 
 def _column_names(columns: list[ColumnRef]) -> list[str]:
@@ -31,9 +32,10 @@ def _column_names(columns: list[ColumnRef]) -> list[str]:
     ]
 
 
-def _convert(val):
+def _convert_csv(val):
+    # REQ-1961: a Decimal is written as its exact digits, never as float.
     if isinstance(val, Decimal):
-        return float(val)
+        return decimal_text(val)
     return val
 
 
@@ -94,7 +96,7 @@ def _resolve_columns(
     return names, rows
 
 
-def rows_to_csv(  # REQ-049, REQ-050
+def rows_to_csv(  # REQ-049, REQ-050, REQ-1961
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> str:
@@ -104,22 +106,51 @@ def rows_to_csv(  # REQ-049, REQ-050
     writer = csv.writer(buf)
     writer.writerow(names)
     for row in flat_rows:
-        writer.writerow([_convert(v) for v in row])
+        writer.writerow([_convert_csv(v) for v in row])
     return buf.getvalue()
 
 
-def rows_to_parquet(  # REQ-049, REQ-050
+def rows_to_parquet(  # REQ-049, REQ-050, REQ-1961
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> bytes:
-    """Serialize rows to Parquet (denormalized/flat)."""
+    """Serialize rows to Parquet (denormalized/flat).
+
+    REQ-1961: a column whose ColumnRef carries a declared numeric type (e.g. ``numeric(18,2)``)
+    is written as a ``decimal128(p,s)`` Parquet column.  A column with no declared type whose
+    values happen to be Decimal is converted to float64 — the same rule as every other read path.
+    """
     names, flat_rows = _resolve_columns(rows, columns)
+
+    # Build a name→declared_size map for columns that carry a numeric type (REQ-1961).
+    # _resolve_columns may expand dict-cells into new dot-notation names with no ColumnRef, so
+    # any name not in the original set gets no size (None → float64 fallback).
+    _orig_names = _column_names(columns)
+    _decimal_sizes: dict[str, tuple[int, int] | None] = {}
+    for col, name in zip(columns, _orig_names):
+        _decimal_sizes[name] = numeric_size(col.data_type) if col.data_type else None
+
     col_data: dict[str, list] = {name: [] for name in names}
     for row in flat_rows:
         for i, name in enumerate(names):
-            col_data[name].append(_convert(row[i]))
+            val = row[i]
+            size = _decimal_sizes.get(name)
+            if size is not None and isinstance(val, Decimal):
+                col_data[name].append(val)  # kept as Decimal; typed below
+            else:
+                col_data[name].append(val if not isinstance(val, Decimal) else float(val))
 
-    table = pa.table(col_data)
+    # Build the Arrow table, overriding the type for declared numeric columns.
+    arrays: list[pa.Array] = []
+    for name in names:
+        size = _decimal_sizes.get(name)
+        if size is not None:
+            p, s = size
+            arrays.append(pa.array(col_data[name], type=pa.decimal128(p, s)))
+        else:
+            arrays.append(pa.array(col_data[name]))
+
+    table = pa.table(dict(zip(names, arrays)))
     buf = io.BytesIO()
     pq.write_table(table, buf)
     return buf.getvalue()
