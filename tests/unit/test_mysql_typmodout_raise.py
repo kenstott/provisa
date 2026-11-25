@@ -51,7 +51,7 @@ class TestIntervalTypmodoutZeroRaisesOnMysqlFamily:
     def test_transpile_raises_function_refused_not_zero(self, dialect: str) -> None:
         """transpile() must raise FunctionRefused for provisa_raise on MySQL, not return '0' SQL."""
         with pytest.raises(FunctionRefused):
-            transpile(_SQL, dialect)
+            transpile(_SQL, dialect, generated=False)
 
 
 class TestIntervalTypmodoutOtherDialectsUnaffected:
@@ -60,7 +60,7 @@ class TestIntervalTypmodoutOtherDialectsUnaffected:
     @pytest.mark.parametrize("dialect", ("duckdb", "trino"))
     def test_transpile_still_raises_on_duckdb_and_trino(self, dialect: str) -> None:
         """DuckDB and Trino transpile to an expression that raises, not to a silent form."""
-        result = transpile(_SQL, dialect)
+        result = transpile(_SQL, dialect, generated=False)
         # Neither should produce a silent '0'-returning form
         # DuckDB uses error(), Trino uses fail()
         assert "SIGNED" not in result, f"broken SIGNED form in {dialect!r} output: {result!r}"
