@@ -158,6 +158,29 @@ def test_clickhouse_attaches_no_built_source_and_refuses_one_by_name(isolated):
         assert other("python").attaches(built)
 
 
+def test_a_postgres_engine_sharing_no_directory_attaches_a_dev_sources_sidecar(
+    isolated, monkeypatch
+):
+    # REQ-2267: the identity directory is a built host's need; a dev source's sidecar has none.
+    monkeypatch.delenv(codehost_connectors.PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(codehost_connectors.PG_FILES_AT_ENV, raising=False)
+    connector = PgCodeHostConnector("python")
+    _named(connector)
+    details = connector.details(_source())
+    assert any("sslmode 'disable'" in ddl for ddl in details["attach_ddl"])
+    assert isolated == [_PREPARED]
+
+
+async def test_a_postgres_engine_sharing_no_directory_offers_the_dev_attach(monkeypatch):
+    monkeypatch.delenv(codehost_connectors.PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(codehost_connectors.PG_FILES_AT_ENV, raising=False)
+
+    async def _fetch(_sql):
+        return [(1,)]
+
+    assert (await PgCodeHostConnector("python").probe(_fetch)).available
+
+
 def test_a_built_source_keeps_its_hosts_tls_attach(isolated, tmp_path):
     connector = DuckDBCodeHostConnector("python")
     _named(connector)

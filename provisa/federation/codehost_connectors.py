@@ -212,6 +212,20 @@ class CodeHost:
             )
         return found
 
+    def identity_given(self) -> bool:
+        """Whether this engine, one that attaches built hosts (``attaches_built``), can be given
+        the identity a built host accepts now. A dev-mode source's sidecar needs none (REQ-2267),
+        so an engine that cannot still attaches those, and refuses each built source by name."""
+        return True
+
+    def refuse_built(self, source: Any) -> None:
+        """Refuse by name the attach of built source ``source`` on an engine that cannot be given
+        the identity its host accepts (:meth:`identity_given`)."""
+        raise RuntimeError(
+            f"code source {source.id!r} is built: the {getattr(self, 'engine', '')} engine "
+            "cannot be given the identity its host accepts"
+        )
+
     def target(self, source: Any) -> Target:
         """Where the engine's attach of ``source`` dials: a built source's host over TLS, or a
         dev-mode source's sidecar (REQ-2267), started now if it is not running."""
@@ -219,6 +233,8 @@ class CodeHost:
             dev = self.dev_source(source.id)
             host, port = sidecar_endpoint(dev.prepared)
             return Target(host, port, dev.schemas, None)
+        if not self.identity_given():
+            self.refuse_built(source)
         host, port = _remote(source)
         files = self.prepared()
         return Target(host, port, files.schemas_of(source.id), files)
@@ -289,15 +305,21 @@ class PgCodeHostConnector(CodeHost, Connector):
         return Capability(predicate_pushdown=True)
 
     async def probe(self, fetch) -> ProbeResult:
-        if not postgres_shares_files():
-            return ProbeResult(
-                False,
-                "Provisa shares no directory with this engine's server for the identity a built "
-                "code host accepts",
-                f"set {PG_FILES_ENV} (Provisa's side) and {PG_FILES_AT_ENV} (the server's) to "
-                "one directory both reach",
-            )
+        # REQ-2267: postgres_fdw alone; whether built hosts are attached too is per source
+        # (identity_given), since a dev-mode source's sidecar needs no identity directory.
         return await probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
+
+    def identity_given(self) -> bool:
+        """A built host's identity is written in the directory Provisa shares with the server."""
+        return postgres_shares_files()
+
+    def refuse_built(self, source: Any) -> None:
+        raise RuntimeError(
+            f"code source {source.id!r} is built, and Provisa shares no directory with this "
+            "Postgres engine's server for the identity its host accepts: set "
+            f"{PG_FILES_ENV} (Provisa's side) and {PG_FILES_AT_ENV} (the server's) to one "
+            "directory both reach"
+        )
 
     def details(self, source: Any) -> dict:
         at = self.target(source)
