@@ -70,7 +70,9 @@ test("a profile runs link opens the table on the run and the result it names", a
 
   const link = `/tables?table=${id}&section=quality&profile=r1&profileView=quantiles`;
   await page.goto(link);
-  const modal = page.getByTestId("profile-runs-modal");
+  // The test id sits on Mantine's modal root, whose overlay and dialog are fixed-position: the root
+  // itself has no box, so visibility is asked of the dialog inside it.
+  const modal = page.getByTestId("profile-runs-modal").getByRole("dialog");
   await expect(modal).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("profile-tab-quantiles")).toHaveAttribute("aria-current", "true");
   await expect(page.getByTestId("profile-panel-quantiles")).toContainText("age");
