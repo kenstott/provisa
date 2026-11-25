@@ -206,7 +206,9 @@ async def _prepare_built(state: Any) -> None:
         for sid, row in rows.items()
         if row.get("type") in CODE_SOURCE_TYPES and mode_of(row.get("mapping") or {}) == BUILT
     }
-    attaching = _attaching(state, built)
+    # An engine that cannot be given the identity refuses each built source by name at its
+    # attach (CodeHost.refuse_built), and still attaches dev-mode sources (REQ-2267).
+    attaching = [c for c in _attaching(state, built) if c.attaches_built()]
     if not attaching:
         return
     org_id = require_current_org()

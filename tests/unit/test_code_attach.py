@@ -339,7 +339,11 @@ def test_trino_attaches_the_host_through_its_postgresql_connector(registered, tm
     assert details["statistics.enabled"] == "true"
 
 
-def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(registered, tmp_path):
+def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(
+    registered, tmp_path, monkeypatch
+):
+    monkeypatch.setenv(PG_FILES_ENV, str(tmp_path / "app-side"))
+    monkeypatch.setenv(PG_FILES_AT_ENV, "/etc/provisa/codehost-client")
     connector = PgCodeHostConnector("python")
     _files(connector, tmp_path)
     details = connector.details(_source())
@@ -356,14 +360,52 @@ def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(registered, tm
     )
 
 
-async def test_a_postgres_engine_sharing_no_directory_cannot_attach_a_host(monkeypatch):
+async def test_a_postgres_engine_sharing_no_directory_still_offers_the_attach(monkeypatch):
+    # REQ-2267: the directory is a built host's need alone; a dev-mode source's sidecar has none.
     monkeypatch.delenv(PG_FILES_ENV, raising=False)
 
     async def _fetch(_sql):
         return [(1,)]
 
     probed = await PgCodeHostConnector("python").probe(_fetch)
-    assert not probed.available and "shares no directory" in probed.reason
+    assert probed.available
+
+
+def test_a_postgres_engine_sharing_no_directory_refuses_a_built_host_by_name(
+    registered, tmp_path, monkeypatch
+):
+    monkeypatch.delenv(PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(PG_FILES_AT_ENV, raising=False)
+    connector = PgCodeHostConnector("python")
+    _files(connector, tmp_path)
+    with pytest.raises(RuntimeError, match=f"is built.*shares no directory.*{PG_FILES_ENV}"):
+        connector.details(_source())
+
+
+async def test_the_schema_build_writes_no_identity_for_a_postgres_engine_sharing_none(
+    monkeypatch,
+):
+    # A built source on it is refused at its attach; the build itself goes on (REQ-2267).
+    from provisa.codesource import remote_sources
+
+    monkeypatch.delenv(PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(PG_FILES_AT_ENV, raising=False)
+
+    async def _identity(org_id):
+        raise AssertionError("no identity is written for an engine that cannot be given it")
+
+    monkeypatch.setattr(remote_sources, "identity", _identity)
+    monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
+    connector = PgCodeHostConnector("python")
+    state = SimpleNamespace(
+        runtime_sources={"scores-src": {"type": "python", "mapping": _BUILT}},
+        tables=[_TABLE],
+        federation_engine=SimpleNamespace(
+            engine=SimpleNamespace(scan_connectors={"python": connector})
+        ),
+    )
+    await attach.prepare(state)
+    assert not connector.ready()
 
 
 async def test_the_schema_build_writes_the_identity_and_names_each_sources_schemas(monkeypatch):
