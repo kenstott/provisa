@@ -131,11 +131,11 @@ def _stood_in(org_id: str, admin_db: Any, setting: str, own: Any) -> str:
     """REQ-2225: the value of a requirement an organisation setting stands in for: the source's
     own when it is set, else the setting's. ``spark_cluster`` is the only such setting."""
     from provisa.core import spark_cluster
-    from provisa.core.connection_loop import connection_loop
+    from provisa.core.connection_loop import connection_loop_or_current
 
     if setting != "spark_cluster":
         raise ValueError(f"no organisation setting {setting!r} stands in for a connector value")
-    with connection_loop() as cl:
+    with connection_loop_or_current() as cl:
         return cl.run(spark_cluster.resolved(admin_db, org_id, own)).address
 
 
