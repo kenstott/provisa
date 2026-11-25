@@ -10,10 +10,11 @@
 
 // REQ-2138: a sparql source names a reasoner and its OWL axioms in its mapping; the form shows
 // the axioms only once a reasoner is chosen, and changing the auth mode keeps both.
+// REQ-1984: the axioms are edited in the code editor, highlighted as Turtle.
 
-import { fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderInForm, screen } from "../../../test-utils/render";
+import { editorOf, languageOf, typeInto } from "../../../test-utils/codeEditor";
 import { SparqlFormSection } from "../SparqlFormSection";
 import {
   sparqlCredentialFromSource,
@@ -104,7 +105,14 @@ describe("SparqlFormSection", () => {
   it("edits the axioms of a chosen reasoner", () => {
     const set = vi.fn();
     show({ reasoner: "hermit", axioms: "" }, set);
-    fireEvent.change(screen.getByTestId("sparql-axioms-input"), { target: { value: AXIOMS } });
+    typeInto(editorOf("sparql-axioms-input"), AXIOMS);
     expect(set).toHaveBeenCalledWith({ reasoner: "hermit", axioms: AXIOMS });
+  });
+
+  it("shows the axioms in the code editor, highlighted as Turtle", () => {
+    show({ reasoner: "hermit", axioms: AXIOMS });
+    const view = editorOf("sparql-axioms-input");
+    expect(view.state.doc.toString()).toBe(AXIOMS);
+    expect(languageOf(view)).toBe("turtle");
   });
 });

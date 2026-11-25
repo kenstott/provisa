@@ -18,12 +18,24 @@ import { useMemo } from "react";
 import { Input, useMantineColorScheme } from "@mantine/core";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { StreamLanguage } from "@codemirror/language";
+import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
+import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
+import { turtle } from "@codemirror/legacy-modes/mode/turtle";
 
-/** The languages a code field highlights: a connector's script (Python) and a code host's
- * Compose file (YAML). */
-const LANGUAGES = { python, yaml } as const;
+const turtleLanguage = StreamLanguage.define(turtle);
+
+/** The languages a code field highlights: a connector's script (Python), a code host's Compose
+ * file and an OpenAPI spec (YAML or JSON), a command's SQL, and a reasoner's axioms (Turtle). */
+const LANGUAGES = {
+  python,
+  yaml,
+  json,
+  sql: () => sql({ dialect: PostgreSQL }),
+  turtle: () => turtleLanguage,
+} as const;
 export type CodeLanguage = keyof typeof LANGUAGES;
 
 interface EditorProps {
@@ -32,23 +44,32 @@ interface EditorProps {
   label: string;
   /** Absent, the code is shown and not edited. */
   onChange?: (value: string) => void;
+  placeholder?: string;
   "data-testid"?: string;
 }
 
 /** The editor itself: CodeMirror in the app's theme, with line numbers and highlighting. */
-function CodeEditor({ value, language, label, onChange, "data-testid": testId }: EditorProps) {
+function CodeEditor({
+  value,
+  language,
+  label,
+  onChange,
+  placeholder,
+  "data-testid": testId,
+}: EditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const extensions = useMemo(() => [LANGUAGES[language](), EditorView.lineWrapping], [language]);
   const readOnly = onChange === undefined;
   return (
     <CodeMirror
       value={value}
-      onChange={onChange}
+      onChange={readOnly ? undefined : (text) => onChange(text)}
       extensions={extensions}
       // The toggle only ever writes "light"/"dark" (theme/ColorSchemeToggle.tsx), as in
       // LineagePage: CodeMirror's own theme is the light one.
       theme={colorScheme === "light" ? undefined : oneDark}
       readOnly={readOnly}
+      placeholder={placeholder}
       editable={!readOnly}
       minHeight={readOnly ? undefined : "9rem"}
       maxHeight="36rem"
@@ -71,6 +92,7 @@ type Props = {
   value: string;
   language: CodeLanguage;
   required?: boolean;
+  placeholder?: string;
   "data-testid"?: string;
 } & (
   | { readOnly?: false; onChange: (value: string) => void }
@@ -84,6 +106,7 @@ export function CodeEditorField({
   language,
   required,
   readOnly,
+  placeholder,
   "data-testid": testId,
 }: Props) {
   return (
@@ -93,6 +116,7 @@ export function CodeEditorField({
         value={value}
         language={language}
         onChange={readOnly ? undefined : onChange}
+        placeholder={placeholder}
         data-testid={testId}
       />
     </Input.Wrapper>
