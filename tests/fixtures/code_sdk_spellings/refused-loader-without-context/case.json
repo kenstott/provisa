@@ -27,10 +27,12 @@
       "problems": [
         "rows: a @loader is given the join's keys in its read context, and rows takes no ReadContext"
       ]
+    },
+    "sdk": {
+      "problems": [
+        "rows: a @loader is given the join's keys in its read context, and rows takes no ReadContext"
+      ]
     }
-  },
-  "unspelled": {
-    "rust/sdk": "The Rust SDK offers no loader: a Rust source has no read context."
   },
   "go": {
     "doc": {

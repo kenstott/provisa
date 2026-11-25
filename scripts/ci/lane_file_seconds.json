@@ -530,6 +530,7 @@
   "tests/integration/test_row_level_filter_neo4j_e2e.py": 0.0,
   "tests/integration/test_row_level_filter_sql_e2e.py": 46.5,
   "tests/integration/test_row_limit_warning_every_surface.py": 34.1,
+  "tests/integration/test_rust_decorators.py": 80.0,
   "tests/integration/test_rust_worker.py": 69.4,
   "tests/integration/test_sales_steward_domain_scope.py": 1.2,
   "tests/integration/test_salesforce_source_e2e.py": 0.0,
