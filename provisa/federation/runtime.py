@@ -389,9 +389,16 @@ class EngineRuntime:  # REQ-825, REQ-840
         that thread, REQ-1882) — one fetch batch at a time, so a large DIRECT scan never fully
         materializes (streaming-uniformity Defect 1). The connection/transaction is held for the
         stream's life and released when the row iterator drains (``on_close``). Only valid when
-        ``source_pools.supports_stream(source_id)``."""
+        ``source_pools.supports_stream(source_id)``.
+
+        REQ-2194: a source whose driver fetches Arrow (a :class:`DirectArrowStream`) is handed on
+        as an :class:`ArrowStreamResult` of the driver's own record batches, as the ENGINE stream
+        is: an encoder reads them as Arrow, and a row consumer has each batch turned into rows as
+        it pulls it. Any other source is a row stream of its driver's rows, encoded from its rows
+        and never built into Arrow to be encoded (REQ-2195)."""
         from provisa.executor.direct import open_direct_stream
-        from provisa.executor.result import StreamingQueryResult
+        from provisa.executor.drivers.base import DirectArrowStream
+        from provisa.executor.result import ArrowStreamResult, StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
         ds = run(open_direct_stream(source_pools, source_id, sql, params))
@@ -407,6 +414,27 @@ class EngineRuntime:  # REQ-825, REQ-840
                 return
             released[0] = True
             run(ds.close())
+
+        if isinstance(ds, DirectArrowStream):
+            arrow_ds = ds
+
+            def _arrow_batches() -> Any:
+                try:
+                    while True:
+                        batch = run(arrow_ds.fetch_arrow())
+                        if batch is None:
+                            return
+                        yield batch
+                finally:
+                    _release()
+
+            return ArrowStreamResult(
+                arrow_ds.schema,
+                _arrow_batches(),
+                arrow_ds.column_types,
+                to_rows=arrow_ds.to_rows,
+                on_release=_release,
+            )
 
         def _batches() -> Any:
             try:
