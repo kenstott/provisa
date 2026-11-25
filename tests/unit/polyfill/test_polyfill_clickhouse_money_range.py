@@ -59,6 +59,15 @@ ANSWERED = [
     ("SELECT max('$92233720368547758.07'::money) AS v", _HIGHEST),
     ("SELECT min('-$92233720368547758.08'::money) AS v", _LOWEST),
     ("SELECT max(NULL::money) AS v", (None, None)),
+    *[  # an infinite divisor is a zero quotient: no error
+        (
+            f"SELECT pg_catalog.cash_div_flt{4 if kind == 'real' else 8}"
+            f"('12.34'::money, '{special}'::{kind}) AS v",
+            ("$0.00", "00"),
+        )
+        for special in ("Infinity", "-Infinity")
+        for kind in ("real", "double precision")
+    ],
     ("SELECT max(c) AS v FROM (VALUES ('$1.5'::money), ('$1.50'::money)) AS t(c)", ("$1.50", "96")),
     (
         "SELECT min(c) AS v FROM (VALUES ('$0.005'::money), ('$0.01'::money)) AS t(c)",
@@ -76,6 +85,22 @@ RAISED = [
     ("SELECT '-$92233720368547758.08'::money - '$0.01'::money AS v", "22003"),
     ("SELECT '$46116860184273879.04'::money * 2 AS v", "22003"),
     ("SELECT '$1'::money / 0 AS v", "22012"),
+    *[
+        (f"SELECT pg_catalog.{f}", "22003")
+        for special in ("NaN", "Infinity", "-Infinity")
+        for kind in ("real", "double precision")
+        for f in (
+            f"cash_mul_flt{4 if kind == 'real' else 8}('12.34'::money, '{special}'::{kind}) AS v",
+            f"flt{4 if kind == 'real' else 8}_mul_cash('{special}'::{kind}, '12.34'::money) AS v",
+        )
+    ],
+    *[
+        (
+            f"SELECT pg_catalog.cash_div_flt{4 if kind == 'real' else 8}('12.34'::money, 'NaN'::{kind}) AS v",
+            "22003",
+        )
+        for kind in ("real", "double precision")
+    ],
     (
         "SELECT sum(c) AS v FROM (VALUES ('$92233720368547758.07'::money), ('$1'::money)) AS t(c)",
         "22003",
