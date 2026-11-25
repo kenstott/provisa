@@ -730,8 +730,12 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     lanes = yaml.safe_load((workflows / _WAREHOUSE_UI[0]).read_text())
     job = lanes["jobs"][_WAREHOUSE_UI[1]]
     assert "--project=warehouse" in job["with"]["run"]
-    assert job["if"] == lanes["jobs"]["warehouse"]["if"].replace(
-        "needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''"
+    # The warehouse lane's condition, with a targeted warehouse UI run (inputs.ui_specs) as a
+    # second way in and a targeted pytest run as the way out.
+    assert job["if"] == (
+        lanes["jobs"]["warehouse"]["if"]
+        .replace("needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''")
+        .replace("inputs.include_warehouse", "(inputs.include_warehouse || inputs.ui_specs != '')")
     )
     assert "ui-core-after.sh" in job["with"]["after"]
     # The lanes workflow is started by the nightly schedule and on request (a dispatch on a
@@ -743,6 +747,123 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     for name in ("playwright", "provisioning"):
         assert "--project=core" in core_ui["jobs"][name]["with"]["run"], name
         assert "--project=warehouse" not in core_ui["jobs"][name]["with"]["run"], name
+
+
+def _plan_outputs(tmp_path: Path, ui_specs: str, tests: str) -> tuple[int, dict[str, str]]:
+    """Runs the lanes workflow's plan step as the runner would, and reads what it wrote."""
+    step = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["plan"]["steps"][1]
+    assert step["id"] == "plan"
+    out = tmp_path / "github_output"
+    out.write_text("")
+    env = {
+        **os.environ,
+        "LANES": "all",
+        "PROVISA_LANE_TESTS": tests,
+        "PROVISA_UI_SPECS": ui_specs,
+        "PROVISA_INCLUDE_LIVE": ",,,,",
+        "GITHUB_OUTPUT": str(out),
+    }
+    done = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
+        ["bash", "-eo", "pipefail", "-c", step["run"]],  # noqa: S607
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    lines = [line for line in out.read_text().splitlines() if line]
+    return done.returncode, dict(line.split("=", 1) for line in lines)
+
+
+def _warehouse_ui_args(tmp_path: Path, ui_specs: str) -> list[str]:
+    """Runs the warehouse-ui job's command with `npx` standing in, and returns its arguments."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse-ui"]
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    npx = bin_dir / "npx"
+    npx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
+    npx.chmod(0o755)
+    # A glob in a spec name stays the name: the job splits on spaces only.
+    (tmp_path / "x.spec.ts").write_text("")
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "PROVISA_UI_SPECS": ui_specs}
+    done = subprocess.run(  # noqa: S603 — the job's own command
+        ["bash", "-eo", "pipefail", "-c", job["with"]["run"]],  # noqa: S607
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.splitlines()
+
+
+_WAREHOUSE_UI_COMMAND = [
+    "playwright",
+    "test",
+    "--project=warehouse",
+    "--global-timeout=3000000",
+    "--reporter=line,html,json",
+]
+
+
+def test_a_targeted_warehouse_ui_run_runs_only_the_named_specs_in_the_warehouse_project(
+    tmp_path,
+):
+    """REQ-1742, REQ-1989: every test has a CI path that runs it on its own. The google_sheets
+    case of source-to-query-special-cases.spec.ts is collected only by the "warehouse" project,
+    which ran only whole. `ui_specs` names Playwright file filters: the run is the warehouse-ui
+    job alone, on those specs; empty, every job behaves as before."""
+    workflows = REPO / ".github" / "workflows"
+    caller = yaml.safe_load((workflows / "integration-suite.yml").read_text())
+    dispatch = caller[True]["workflow_dispatch"]["inputs"]["ui_specs"]
+    assert dispatch["default"] == "" and dispatch["required"] is False
+    lanes_call = caller["jobs"]["lanes"]
+    assert lanes_call["with"]["ui_specs"] == "${{ inputs.ui_specs || '' }}"
+    # A ui_specs run has no tests named, so it queues in the suite-wide group (same as a full run).
+    assert lanes_call["concurrency"]["group"].startswith(
+        "${{ (inputs.tests || '') == '' && 'integration-suite' ||"
+    )
+    lanes = yaml.safe_load((workflows / "integration-suite-lanes.yml").read_text())
+    declared = lanes[True]["workflow_call"]["inputs"]["ui_specs"]
+    assert declared == {"type": "string", "required": False, "default": ""}
+
+    # The plan: a targeted UI run plans no suite, cluster or live pytest lane, and is refused
+    # beside `tests`; without it the plan is the runner's, as before.
+    code, planned = _plan_outputs(tmp_path, "e2e/source-to-query-special-cases.spec.ts", "")
+    assert code == 0
+    live = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
+    assert planned == {
+        "matrix": '{"include":[]}',
+        "suite": "false",
+        "cluster": "false",
+        **{lane: "false" for lane in live},
+    }
+    code, _ = _plan_outputs(tmp_path, "e2e/x.spec.ts", "tests/integration/test_x.py")
+    assert code == 1
+    code, planned = _plan_outputs(tmp_path, "", "")
+    assert code == 0
+    assert planned["suite"] == "true" and planned["cluster"] == "true"
+    assert json.loads(planned["matrix"])["include"]
+
+    # Every job but the plan, the warehouse UI job and the report is off when the plan is so.
+    jobs = lanes["jobs"]
+    assert jobs["trino-plugins"]["if"] == "inputs.ui_specs == ''"
+    for name, job in jobs.items():
+        if name in ("plan", "trino-plugins", "warehouse-ui", "report"):
+            continue
+        gated = [o for o in planned if f"needs.plan.outputs.{o} == 'true'" in job["if"]]
+        assert gated, name
+    wui = jobs["warehouse-ui"]
+    assert "inputs.ui_specs != ''" in wui["if"] and "inputs.tests == ''" in wui["if"]
+    assert "PROVISA_UI_SPECS=${{ inputs.ui_specs }}" in wui["with"]["env"].splitlines()
+
+    # The command: empty runs the whole project; named specs are passed as they are.
+    assert _warehouse_ui_args(tmp_path / "whole", "") == _WAREHOUSE_UI_COMMAND
+    named = "e2e/source-to-query-special-cases.spec.ts *.spec.ts"
+    assert _warehouse_ui_args(tmp_path / "named", named) == [*_WAREHOUSE_UI_COMMAND, *named.split()]
 
 
 # The calls that stop the live compute every run shares (tests/integration/databricks_warehouse.py,
