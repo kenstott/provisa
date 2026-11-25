@@ -274,3 +274,49 @@ class CursorStream(DirectResultStream):
     def __del__(self) -> None:
         if self._cursor is not None:
             self._release(completed=False)
+
+
+class ArrowCursorStream(DirectArrowStream, CursorStream):  # REQ-2194
+    """A :class:`CursorStream` whose cursor fetches Arrow: its Arrow face hands on the driver's
+    record batches as it fetched them, and its row face builds rows from them only as a row
+    consumer pulls them (:class:`DirectArrowStream`).
+
+    Beside what :class:`CursorStream` asks of the cursor, it has ``schema`` (the result's Arrow
+    schema, known once it has run) and ``fetch_batch()`` (the next record batch, ``None`` once
+    exhausted); ``to_rows(batch)`` builds a batch's rows as the driver's own rows hold them. A
+    statement with no result has no columns: its schema is the empty one."""
+
+    def __init__(
+        self,
+        *,
+        open_cursor: Callable[[], Any],
+        execute: Callable[[Any], None],
+        cancel: Callable[[Any], None],
+        to_rows: Callable[[Any], list[tuple]],
+    ) -> None:
+        import pyarrow as pa
+
+        DirectArrowStream.__init__(self)
+        self._to_rows = to_rows
+        self.schema = pa.schema([])
+        CursorStream.__init__(self, open_cursor=open_cursor, execute=execute, cancel=cancel)
+        if self._cursor is not None:
+            self.schema = self._cursor.schema
+
+    def to_rows(self, batch: Any) -> list[tuple]:
+        return self._to_rows(batch)
+
+    # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
+    async def fetch_arrow(self) -> Any:
+        cursor = self._cursor
+        if cursor is None:
+            return None
+        try:
+            with request_deadline.cancel_on_deadline(lambda: self._cancel(cursor)):
+                batch = cursor.fetch_batch()
+        except BaseException:
+            self._release(completed=False)
+            raise
+        if batch is None:
+            self._release(completed=True)
+        return batch

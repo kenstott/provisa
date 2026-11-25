@@ -1364,6 +1364,7 @@ class DataHubExport(MetadataExport, CatalogReader):  # REQ-1069
         proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         provisa_prefix = glossary_term_urn(snapshot.org_id, "")
+        tables_by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
@@ -1444,6 +1445,15 @@ class DataHubExport(MetadataExport, CatalogReader):  # REQ-1069
                         proposal.urn,
                         proposal.aspect["qualifiedName"],
                     )
+                if proposal.aspect_name == "schemaMetadata" and proposal.kind == "schema":
+                    # REQ-194: each column is a schemaField of the dataset, its URN the
+                    # vendor id, named by the table's qualifiedName and its fieldPath.
+                    table = tables_by_fqn[proposal.asset.fqn()]
+                    for column in table.columns:
+                        result.bindings[column.semantic_uri] = (
+                            f"urn:li:schemaField:({proposal.urn},{column.name})",
+                            f"{table.ref.fqn()}.{column.name}",
+                        )
                 if proposal.aspect_name == "glossaryTermInfo":
                     # REQ-1387/1389: the term URN is the vendor id — captured keyed by the
                     # term's Provisa URI, with the stable term id as the physical key so a

@@ -51,6 +51,8 @@
     "folderAgain": "此浏览器无法保留该文件夹，请重新选择以发送更新的副本。",
     "editor": "编辑器",
     "openInVscode": "在 VS Code 中打开",
+    "reference": "参考",
+    "referenceLink": "{{language}} 参考",
     "secrets": "密钥",
     "secretsHint": "此代码可读取的组织密钥。它在运行时从 $PROVISA_SERVICES/secrets/<name> 逐个获取；保管库中的其他内容均不可读，且每次读取都会被审计。",
     "secretsPlaceholder": "无密钥",

@@ -23,6 +23,7 @@
  */
 
 import "./uiActions.css";
+import { codeFieldOf, readCodeField, replaceCodeFieldText } from "./codeFields";
 
 /** An element by its test id, `within` the one element with another test id when the screen has
  * several (each object's tag chips are inside its own tag control); or by its role and name. */
@@ -201,6 +202,15 @@ function release(el: HTMLElement) {
 
 /** Types `value` into a field as a person's typing would arrive: React reads the input event. */
 function typeInto(el: HTMLElement, value: string): string | null {
+  // A code field takes its text by a CodeMirror transaction, so its onChange fires (REQ-2115).
+  const code = codeFieldOf(el);
+  if (code !== null) {
+    if (readCodeField(code).readOnly) {
+      return `"${accessibleName(code).trim()}" is a read-only code editor`;
+    }
+    replaceCodeFieldText(code, value);
+    return null;
+  }
   if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
     return "it is not a text field";
   }

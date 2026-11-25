@@ -51,7 +51,7 @@
     "firstPage": "第一頁",
     "lastPage": "最後一頁",
     "listedElsewhere": "在其他域中列出",
-    "listedElsewhereHint": "其他域列出的名稱。如需讀取，請向該域申請存取權限。",
+    "listedElsewhereHint": "其他網域列出的名稱。建議一個產品，向該網域索取某個表。",
     "pageOf": "第 {{page}} / {{totalPages}} 頁",
     "loadFailed": "無法載入已註冊資料表：{{message}}",
     "editViewDefinitionTitle": "編輯檢視定義",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "已撤回",
     "withdrawnTitle": "已停止生產使用：在恢復之前，任何角色都無法讀取",
-    "sourceWithdrawnTitle": "其數據來源 {{source}} 已撤回：在數據來源恢復之前，任何角色都無法讀取"
+    "sourceWithdrawnTitle": "其數據來源 {{source}} 已撤回：在數據來源恢復之前，任何角色都無法讀取",
+    "suggestProduct": "建議產品"
   }
 }

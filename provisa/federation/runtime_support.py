@@ -253,6 +253,19 @@ def typed_arrow_array(values: list, target: Any, column: str) -> Any:  # REQ-196
         raise ColumnTypeMismatch(column, target, found.type) from mismatch
 
 
+def cast_arrow_column(column: Any, target: Any, name: str) -> Any:  # REQ-1961
+    """An Arrow column as ``target``, the type its column is registered with, by Arrow's own
+    safe cast: a cast that would change a value (an integer past the registered width, a
+    timestamp finer than the registered unit, a decimal past its scale) is refused naming the
+    column (:class:`ColumnTypeMismatch`), never truncated."""
+    import pyarrow as pa
+
+    try:
+        return column.cast(target)
+    except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as mismatch:
+        raise ColumnTypeMismatch(name, target, column.type) from mismatch
+
+
 def declared_arrow_stream(  # REQ-1961
     schema: Any, batches: Iterator[Any], shape: list[tuple[str, str]] | None
 ) -> tuple[Any, Iterator[Any]]:
@@ -289,12 +302,7 @@ def declared_arrow_stream(  # REQ-1961
             for batch in batches:
                 columns = list(batch.columns)
                 for i in differing:
-                    try:
-                        columns[i] = columns[i].cast(targets[i])
-                    except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as mismatch:
-                        raise ColumnTypeMismatch(
-                            schema.field(i).name, targets[i], schema.field(i).type
-                        ) from mismatch
+                    columns[i] = cast_arrow_column(columns[i], targets[i], schema.field(i).name)
                 yield pa.RecordBatch.from_arrays(columns, schema=declared)
         finally:
             close = getattr(batches, "close", None)

@@ -12,13 +12,26 @@
 // source's username and password, the company's realm id in its database (as a Salesforce
 // source's connected app does); sandbox or production and the refresh token are its mapping.
 
+import { fieldChoices, fieldDefault, mappingKey } from "./descriptor";
+
 export const QUICKBOOKS = "quickbooks";
-export const QUICKBOOKS_ENVIRONMENTS = ["sandbox", "production"] as const;
-export type QuickBooksEnvironment = (typeof QUICKBOOKS_ENVIRONMENTS)[number];
+// REQ-2114: the environments, the default one and the mapping keys are the descriptor's
+// (provisa/api/admin/source_types.py, from provisa/quickbooks/settings.py).
+const MAPPING = "mappingJson";
+const ENVIRONMENT = mappingKey(QUICKBOOKS, "environment");
+const REFRESH_TOKEN = mappingKey(QUICKBOOKS, "refresh_token");
+
+export type QuickBooksEnvironment = "sandbox" | "production";
+export const QUICKBOOKS_ENVIRONMENTS = fieldChoices(
+  QUICKBOOKS,
+  MAPPING,
+  ENVIRONMENT,
+) as readonly QuickBooksEnvironment[];
+const DEFAULT_ENVIRONMENT = fieldDefault(QUICKBOOKS, MAPPING, ENVIRONMENT) as QuickBooksEnvironment;
 
 export function quickbooksEnvironment(fields: Record<string, string>): QuickBooksEnvironment {
-  const value = fields.environment as QuickBooksEnvironment | undefined;
-  return value && QUICKBOOKS_ENVIRONMENTS.includes(value) ? value : "sandbox";
+  const value = fields[ENVIRONMENT] as QuickBooksEnvironment | undefined;
+  return value && QUICKBOOKS_ENVIRONMENTS.includes(value) ? value : DEFAULT_ENVIRONMENT;
 }
 
 /** Whether a realm id is one the server takes: the company's number, or a ${secret:…} /
@@ -29,15 +42,15 @@ export function quickbooksRealmIdValid(realmId: string): boolean {
 }
 
 export function quickbooksMappingJson(fields: Record<string, string>): string {
-  const mapping: Record<string, string> = { environment: quickbooksEnvironment(fields) };
-  if (fields.refresh_token?.trim()) mapping.refresh_token = fields.refresh_token.trim();
+  const mapping: Record<string, string> = { [ENVIRONMENT]: quickbooksEnvironment(fields) };
+  if (fields[REFRESH_TOKEN]?.trim()) mapping[REFRESH_TOKEN] = fields[REFRESH_TOKEN].trim();
   return JSON.stringify(mapping);
 }
 
 export function quickbooksFieldsFromMapping(mappingJson: string): Record<string, string> {
   const mapping = JSON.parse(mappingJson) as Record<string, string>;
   const fields: Record<string, string> = {};
-  for (const key of ["environment", "refresh_token"]) {
+  for (const key of [ENVIRONMENT, REFRESH_TOKEN]) {
     if (mapping[key]) fields[key] = mapping[key];
   }
   return fields;

@@ -17,6 +17,12 @@ vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../../../api/secrets", () => ({
   fetchSecrets: vi.fn(async () => ({ secrets: [{ name: "db_uri" }, { name: "other_dsn" }] })),
 }));
+vi.mock("../../../api/sparkCluster", () => ({
+  fetchSparkSource: vi.fn(async () => ({
+    host: {},
+    default_cluster: { origin: "organisation", label: null, target: "spark.acme.test:15002" },
+  })),
+}));
 
 import type { Connector } from "../../../api/connectors";
 import { ConnectorSetupFields, ConnectorSourceValues } from "../ConnectorSetupFields";
@@ -259,16 +265,31 @@ describe("a value the organisation's default stands in for", () => {
     });
   });
 
-  it("is not a required field, and says the default is used", () => {
+  it("is not a required field, and names the default cluster then used", async () => {
     renderInForm(
       <ConnectorSetupFields connector={SPARK} fields={fields} setFields={() => undefined} />,
     );
-    const cluster = screen.getByTestId("connector-require-cluster") as HTMLInputElement;
-    expect(cluster.required).toBe(false);
-    expect(screen.getByText(/default Spark cluster/)).toBeInTheDocument();
+    // REQ-2225 (amended 2026-11-24): the cluster is entered as structured fields.
+    const host = screen.getByTestId("spark-source-cluster-host") as HTMLInputElement;
+    expect(host.required).toBe(false);
+    expect(await screen.findByTestId("spark-source-cluster-default")).toHaveTextContent(
+      "default Spark cluster (spark.acme.test:15002)",
+    );
     expect((screen.getByTestId("connector-require-script") as HTMLTextAreaElement).required).toBe(
       true,
     );
+  });
+
+  it("is sent as the one address its fields compose", () => {
+    const setFields = vi.fn();
+    renderInForm(<ConnectorSetupFields connector={SPARK} fields={fields} setFields={setFields} />);
+    fireEvent.change(screen.getByTestId("spark-source-cluster-host"), {
+      target: { value: "own.acme.test" },
+    });
+    expect(setFields).toHaveBeenLastCalledWith({
+      ...fields,
+      [requiredField("cluster")]: "sc://own.acme.test:15002",
+    });
   });
 });
 

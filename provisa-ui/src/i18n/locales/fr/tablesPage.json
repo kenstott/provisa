@@ -51,7 +51,7 @@
     "firstPage": "Première page",
     "lastPage": "Dernière page",
     "listedElsewhere": "Listé dans d'autres domaines",
-    "listedElsewhereHint": "Noms que d'autres domaines listent. Demandez l'accès à ce domaine pour les lire.",
+    "listedElsewhereHint": "Noms que listent d'autres domaines. Suggérez un produit pour demander une table à ce domaine.",
     "pageOf": "Page {{page}} / {{totalPages}}",
     "loadFailed": "Impossible de charger les tables enregistrées : {{message}}",
     "editViewDefinitionTitle": "Modifier la définition de la vue",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Retirée",
     "withdrawnTitle": "Hors production : aucun rôle ne la lit tant qu'elle n'est pas remise",
-    "sourceWithdrawnTitle": "Sa source {{source}} est retirée : aucun rôle ne la lit tant que la source n'est pas remise"
+    "sourceWithdrawnTitle": "Sa source {{source}} est retirée : aucun rôle ne la lit tant que la source n'est pas remise",
+    "suggestProduct": "Suggérer un produit"
   }
 }

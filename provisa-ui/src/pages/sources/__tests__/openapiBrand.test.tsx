@@ -14,6 +14,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen } from "../../../test-utils/render";
+
+// SourceFormFieldsExtended calls useAuth() unconditionally; stub it so the form
+// renders without an AuthProvider (the brand setup tests have no connector/script panel).
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ activeOrgId: null }),
+}));
 import {
   BRAND_AUTH,
   BRAND_BASE_URL_FIELD,

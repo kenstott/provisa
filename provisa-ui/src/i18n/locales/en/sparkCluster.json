@@ -12,6 +12,35 @@
     "tested": "Connected to {{target}}: Spark {{version}}",
     "saved": "Saved",
     "removed": "Removed",
-    "remove": "Remove default"
+    "remove": "Remove default",
+    "host": "Spark cluster host",
+    "hostHelp": "The host name or address of the cluster's Spark Connect server, without sc:// or a port.",
+    "port": "Port",
+    "tls": "TLS",
+    "tlsHelp": "Connect over TLS. A token is only sent over TLS, so giving a token turns it on.",
+    "userId": "User ID",
+    "userIdHelp": "The user the cluster runs the script as, when it asks for one. Optional.",
+    "badHost": "A host name or address, without sc://, a port or a path",
+    "badPort": "A port from 1 to 65535",
+    "badToken": "A secret reference, such as ${secret:spark_token}",
+    "extra": "Other parameters, kept as given: {{params}}",
+    "paste": "Paste address",
+    "pasteTitle": "Paste a Spark Connect address",
+    "pasteHelp": "An sc:// address, such as sc://spark.example.com:15002/;use_ssl=true. It is split into the fields; a token in it is kept as a secret.",
+    "pasteApply": "Fill in the fields",
+    "pasteToken": "The address carries a token. It is kept as an organization secret and the cluster names that secret; the token itself is not kept in the address.",
+    "pasteSecretName": "Secret name",
+    "pasteSecretHelp": "The organization secret the token is kept in. A secret of this name is replaced.",
+    "pasteKeep": "Keep the token as a secret",
+    "storedUnread": "The cluster kept for this source cannot be read: {{problem}}",
+    "notAddress": {
+      "scheme": "{{part}} is not a Spark Connect address: it starts with sc://",
+      "host": "{{part}} does not name a host",
+      "port": "{{part}} is not a port from 1 to 65535",
+      "param": "{{part}} is not a name=value parameter"
+    },
+    "blankUsesOrg": "Left blank, this source runs on the organization's default Spark cluster ({{target}}).",
+    "blankUsesLocal": "Left blank, this source runs on the local test cluster ({{target}}).",
+    "blankUsesNone": "Left blank, this source has no cluster to run on: {{detail}}"
   }
 }

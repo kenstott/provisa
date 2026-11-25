@@ -2,7 +2,7 @@
   "connectorSetup": {
     "identity": "コネクタ {{name}}、{{ref}} に追従しています。",
     "missing": "コネクタのホスト、ポート、ペアリングコード、および必要なすべての値を入力してください。",
-    "missingNative": "コネクタが必要とするすべての値を入力してください。",
+    "missingNative": "コネクターが必要とする値をすべて入力してください。",
     "image": "イメージ",
     "imageHint": "デプロイで実行するイメージです。Provisa は接続時にホストをこのイメージと照合します。",
     "native": "このサーバー上で実行され、{{path}} からビルドされます。ホストやペアリングコードは不要です。",
@@ -13,6 +13,7 @@
     "pairingHint": "コンテナが初回起動時に \"pairing code:\" の後に出力した行。一度だけ使用され、保存されません。",
     "secretHint": "使用する組織のシークレットです。その値をここに入力することはありません。",
     "fixedHint": "このコネクターで設定されています。変更できません。",
-    "sparkClusterDefaultHint": "空のままにすると、組織のデフォルトの Spark クラスター（管理 > Spark クラスター）を使用します。"
+    "sparkClusterDefaultHint": "空のままにすると、組織のデフォルトの Spark クラスター（管理 > Spark クラスター）を使用します。",
+    "builtinIdentity": "Spark ホスト（{{ref}} に追従）。"
   }
 }

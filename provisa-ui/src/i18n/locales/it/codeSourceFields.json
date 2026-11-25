@@ -51,6 +51,8 @@
     "folderAgain": "Questo browser non può conservare la cartella, quindi selezionarla di nuovo per inviare una copia più recente.",
     "editor": "Editor",
     "openInVscode": "Apri in VS Code",
+    "reference": "Riferimento",
+    "referenceLink": "Riferimento {{language}}",
     "secrets": "Segreti",
     "secretsHint": "I segreti dell'organizzazione che questo codice può leggere. Li recupera uno per uno durante l'esecuzione, da $PROVISA_SERVICES/secrets/<name>; nient'altro del vault è leggibile e ogni lettura viene registrata.",
     "secretsPlaceholder": "Nessun segreto",

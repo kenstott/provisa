@@ -51,7 +51,7 @@
     "firstPage": "Prima pagina",
     "lastPage": "Ultima pagina",
     "listedElsewhere": "Elencato in altri domini",
-    "listedElsewhereHint": "Nomi che altri domini elencano. Chiedi a quel dominio l'accesso per leggerli.",
+    "listedElsewhereHint": "Nomi che altri domini elencano. Suggerisci un prodotto per chiedere una tabella a quel dominio.",
     "pageOf": "Pagina {{page}} / {{totalPages}}",
     "loadFailed": "Impossibile caricare le tabelle registrate: {{message}}",
     "editViewDefinitionTitle": "Modifica definizione della vista",
@@ -96,6 +96,7 @@
     },
     "withdrawn": "Ritirata",
     "withdrawnTitle": "Fuori produzione: nessun ruolo la legge finché non viene ripristinata",
-    "sourceWithdrawnTitle": "La sua origine {{source}} è ritirata: nessun ruolo la legge finché l'origine non viene ripristinata"
+    "sourceWithdrawnTitle": "La sua origine {{source}} è ritirata: nessun ruolo la legge finché l'origine non viene ripristinata",
+    "suggestProduct": "Suggerisci un prodotto"
   }
 }

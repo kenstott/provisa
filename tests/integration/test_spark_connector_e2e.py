@@ -381,7 +381,7 @@ def joined(host, cluster, monkeypatch):
 async def _started_worker(state: tuple) -> tuple:
     mapping, identity = state
     await remote_sources.join_connector(
-        SimpleNamespace(admin_db=None), "spark_prod", "python", mapping
+        SimpleNamespace(admin_db=None), "spark_prod", "spark", mapping
     )
     manifest = manifest_from_json(mapping["remote"]["manifest"])
     worker = remote_sources.worker_for(
@@ -596,7 +596,11 @@ def provisa_server(tmp_path_factory, spark_host, flight_tls):
         "digest": "sha256:" + "b" * 64,
         "code_hash": spark_host.hashed,
         "arch": "amd64",
-        "requires": [{"name": "script", "multiline": True, "script": True}, {"name": "cluster"}],
+        # As connectors/spark/connector.yaml states them: the cluster left unset is the org's default.
+        "requires": [
+            {"name": "script", "multiline": True, "script": True},
+            {"name": "cluster", "org_default": "spark_cluster"},
+        ],
     }
     labels = {
         "code_hash": spark_host.hashed,
@@ -673,7 +677,7 @@ def clips_command(provisa_server, spark_host, cluster):
     }
     _admin(
         srv,
-        f'createSource(input: {{id: "spark_jobs", type: "python", host: "", port: 0, '
+        f'createSource(input: {{id: "spark_jobs", type: "spark", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
     )
     response = httpx.post(

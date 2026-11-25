@@ -221,7 +221,7 @@ def views(provisa_server, spark_host, cluster, source_pg):  # noqa: F811  (the f
     }
     _admin(
         srv,
-        f'createSource(input: {{id: "spark_jobs", type: "python", host: "", port: 0, '
+        f'createSource(input: {{id: "spark_jobs", type: "spark", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
     )
     response = httpx.post(

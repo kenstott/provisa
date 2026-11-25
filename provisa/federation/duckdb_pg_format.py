@@ -10,7 +10,12 @@
 
 """PostgreSQL's format() on DuckDB (varlena.c's text_format), whose own format of the name reads
 fmt's {} and answers NULL of any NULL value. format is not strict in its values: %s of a NULL is
-the empty text, %L of one is NULL unquoted, and %I of one raises 22004 (REQ-2236)."""
+the empty text, %L of one is NULL unquoted, and %I of one raises 22004 (REQ-2236).
+
+Each value reaches format as its type's output function writes it (format reads every argument so):
+the translation (provisa.transpiler.pg_functions) writes a boolean, a bytea and a character(n) by
+their rows' forms, and an interval or an array by :func:`interval_out` and :func:`array_out`, which
+read DuckDB's text of the value and write PostgreSQL's."""
 
 # Requirements: REQ-2236
 
@@ -18,7 +23,11 @@ from __future__ import annotations
 
 import re
 
+from collections.abc import Callable
+
 from provisa.core.pg_error import END, MARK
+from provisa.transpiler.interval_input import interval_read
+from provisa.transpiler.pg_type_literals import interval_text
 
 #: An identifier quote_ident leaves bare.
 _BARE = re.compile(r"[a-z_][a-z0-9_$]*")
@@ -35,6 +44,59 @@ def _quote_ident(text: str) -> str:
 def _quote_literal(text: str) -> str:
     quoted = "'" + text.replace("'", "''").replace("\\", "\\\\") + "'"
     return "E" + quoted if "\\" in text else quoted
+
+
+def interval_out(text: str) -> str:
+    """interval_out (IntervalStyle postgres) of an interval DuckDB wrote as ``text``: DuckDB's
+    text ('1 year 2 months', '-1 day 02:00:00') is interval_in's input of the same fields."""
+    fields = interval_read(text)
+    if fields is None:
+        raise _error("XX000", f"interval text {text!r} is no interval interval_in reads")
+    return interval_text(*fields)
+
+
+def _boolean_out(text: str) -> str:
+    """boolout of a boolean DuckDB wrote as ``text``."""
+    return {"true": "t", "false": "f"}[text]
+
+
+def _as_written(text: str) -> str:
+    return text
+
+
+#: An element kind -> PostgreSQL's output of an element DuckDB wrote as text. Each kind's DuckDB
+#: text is PostgreSQL's own but a boolean's and an interval's.
+ELEMENT_OUT: dict[str, Callable[[str], str]] = {
+    "integer": _as_written,
+    "numeric": _as_written,
+    "text": _as_written,
+    "boolean": _boolean_out,
+    "interval": interval_out,
+}
+
+#: What array_out quotes an element for (array_isspace's white space, the braces, the delimiter,
+#: a quote and a backslash).
+_QUOTED = re.compile(r'[{},"\\ \t\n\r\v\f]')
+
+
+def _array_element(text: str | None, kind: str) -> str:
+    if text is None:
+        return "NULL"
+    written = ELEMENT_OUT[kind](text)
+    if written == "" or written.upper() == "NULL" or _QUOTED.search(written):
+        return '"' + written.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return written
+
+
+def array_out(elements: list[str | None], kind: str) -> str:
+    """array_out of a one-dimensional array of ``kind`` whose elements DuckDB wrote as texts."""
+    return "{" + ",".join(_array_element(e, kind) for e in elements) + "}"
+
+
+def elements_out(elements: list[str | None], kind: str) -> list[str | None]:
+    """Each element of ``kind`` as its output function writes it, a NULL as NULL: a VARIADIC
+    array's values, which format reads one by one."""
+    return [None if e is None else ELEMENT_OUT[kind](e) for e in elements]
 
 
 class _Template:

@@ -2987,7 +2987,7 @@
   - architecture.md
   - configuration.md
 - id: REQ-194
-  status: in-progress
+  status: complete
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -18615,7 +18615,7 @@
   type: infrastructure
   description: 'AF2 is delivered in OS phases. AF2a (immediate): macOS arm64/x86 signed + notarized `.dmg`.
     AF2b (follow-on): Linux `.AppImage`. AF2c (follow-on): Windows signed `.exe`. Each phase bundles the
-    container runtime for its platform, with no Docker, OrbStack, or Colima prerequisite visible to the user.'
+    container runtime for its platform, with no Docker, OrbStack, or Colima prerequisite visible to the user. (Amended 2026-11-25 by the maintainer, from the next release on, macOS ships one installer, Provisa.dmg. The Provisa-Container, Provisa-Obs and Provisa-Demo DMGs are no longer built. First launch downloads from the release what the DMG does not carry, when the user selects it, namely the Docker tier''s compose tree and config as a release asset, and the core, Trino, observability and demo image tarballs as today.)'
   use_case: OS-native signed bundles (DMG/AppImage/EXE) let users install Provisa like any desktop app
     without Docker.
   code:
@@ -34674,7 +34674,8 @@
   superseded_by: REQ-1240
 - id: REQ-1058
   value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 1. Access Governance & Security
   category: Public Data Publishing
   feature: public-data-publishing-anonymous-access
@@ -38306,7 +38307,7 @@
     upload --clobber (never flipping draft/prerelease). Only build-dmg's publish-release job undrafts
     the release after verifying the complete installer manifest (macOS core/runtime/obs/demo DMGs, Linux
     AppImage, Windows native + container installers, JDBC jar) is present via fail_on_unmatched_files;
-    missing assets cause immediate failure leaving the release draft.
+    missing assets cause immediate failure leaving the release draft. (Amended 2026-11-25 by the maintainer, from the next release on, the macOS part of the manifest is the one Provisa.dmg plus the release assets first launch downloads, including the compose-tree asset; the container, obs and demo DMGs are no longer in it.)
   use_case: Prevents /dl redirector from serving incomplete builds. In alpha.257/258, a partial release
     was published when build-dmg failed while sibling workflows succeeded, causing end users to download
     missing installers.
@@ -64092,7 +64093,7 @@
 
     '
 - id: REQ-1742
-  status: in-progress
+  status: complete
   since: 2026-09
   group: 3. Source Registration & Data Modeling
   category: Correctness
@@ -70704,7 +70705,7 @@
     direct loader. The captive instance is kept for a system with neither. Each system is investigated
     on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3`
     SourceType stub named above is removed. S3 objects are already reached by csv and parquet (s3://
-    paths) and by files (mapping.storage_type "s3"). (Amended 2026-11-24 by the maintainer. Stripe and Shopify are brands, not wrapper types: the names belong to the brands the add-source picker offers (Stripe over OpenAPI, Shopify over GraphQL), and the stripe and shopify wrapper stubs are removed from the source types.)'
+    paths) and by files (mapping.storage_type "s3"). (Amended 2026-11-24 by the maintainer. Stripe and Shopify are brands, not wrapper types: the names belong to the brands the add-source picker offers (Stripe over OpenAPI, Shopify over GraphQL), and the stripe and shopify wrapper stubs are removed from the source types.) (Amended 2026-11-25 by the maintainer. The captive Postgres runs Provisa''s own small image, namely the official postgres 16 image with the pinned wrappers release installed, built from a Dockerfile in this repository and published to GHCR by CI for amd64 and arm64. A node with no reachable container runtime refuses wrapper sources by name, and the SaaS node mounts no container runtime, so cloud.provisa.dev refuses them.) (Amended 2026-11-25 by the maintainer, supersedes the captive Postgres build above. The remaining wrapper-listed services (HubSpot, Airtable, Notion, Auth0, Slack and the rest of the stubbed types) are offered as brands over OpenAPI or GraphQL, the way Stripe is, so each has its source dialog, live reads and generated configuration, and works on every tier including SaaS. A service with no usable OpenAPI or GraphQL description gets a verdict naming why; the captive Postgres path is parked and is used only if such a service is chosen to be served. The captive lifecycle work is kept on feat/captive-pg-lifecycle.) (Amended 2026-11-25 by the maintainer. A brand over OpenAPI is usable only with typed GETs, namely every GET endpoint it offers as a table is read into typed columns from the response schema, never a single untyped JSON column. A service whose description cannot give typed GETs is not offered as a brand until it can, and its verdict names why.) (Amended 2026-11-25 by the maintainer, refines the typed-GET rule above, which governs tables. A GET whose response has no usable schema is not offered as a table, and it may be offered as a command that returns its JSON, so a brand serves its typed GETs as tables and its untyped GETs as commands.) (Amended 2026-11-25 by the maintainer, corrects the two amendments above on untyped GETs. A table needs typed columns, from the GET''s response schema or declared by the operator when registering it (REQ-1924), so an untyped GET may still be a table once the operator declares its types. Every untyped GET is also offered as a command that returns its JSON. A service is a brand when it offers usable operations as tables or commands, including a commands-only brand.) (Amended 2026-11-25 by the maintainer, verdicts per service. Brands over OpenAPI are Auth0, Logflare, Cal.com, Calendly, Clerk, Cloudflare D1, Gravatar, HubSpot, Orb, Paddle, Slack (on Slack''s archived 2024 description) and Notion, whose GETs are typed by an overlay taken from Notion''s official client types. Airtable, Firebase, AWS Cognito, DynamoDB, S3 Vectors and Infura publish no OpenAPI or GraphQL description and stay unserved for now. The list is in ~/provisa-agent-logs/wrapper-brands-inventory.md.)'
   use_case: Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter per
     source, and without needing the pg ENGINE itself to carry `wrappers`-specific connector code or link
@@ -73330,7 +73331,7 @@
     \ a restart applying the config again.] A restart is a new launch: it reissues the engine catalogs from\
     \ the model store, since an engine does not keep them, and never applies the configuration file to the model again. The file seeds the model once, at first start (REQ-1919). (Amended 2026-10-13, POSTGRESQL\
     \ ONLY -- REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL\
-    \ is given, an external server otherwise. The boot lock is PostgreSQL's advisory lock everywhere."
+    \ is given, an external server otherwise. The boot lock is PostgreSQL's advisory lock everywhere. (Amended 2026-11-25 by the maintainer. The repository root has a flake.nix: it re-exports the NixOS module (nixosModules.provisa) so a host flake imports it as inputs.provisa.nixosModules.provisa; it offers packages.<system>.default and apps.<system>.default wrapping the released binaries the module already runs, so nix run github:kenstott/provisa starts Provisa; and a devShells.default with the toolchain for working on Provisa. The NixOS workflow tests nix run and the module import.) (Amended 2026-11-25 by the maintainer, supersedes the re-export of the CI host module above. nixosModules.provisa is a module for users' hosts: the libraries the release binaries need and a systemd service that runs the flake's package as an unprivileged service user. It creates no sudo user and needs no source checkout. The CI host configuration stays in packaging/nixos for CI only.)"
   use_case: 'Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required checking
     whether the app''s own auxiliary protocol servers could survive running as multiple processes at all. That was verified empirically per-protocol rather than assumed, since getting this wrong would silently serve
@@ -88624,7 +88625,8 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   - tests/unit/test_named_demo_tour.py
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
 - id: REQ-2112
-  status: in-progress
+  status: complete
+  since: 2026-11
   group: 4. Source Connectors
   category: Source Connectors
   feature: connector-catalog-streams-logs-and-public-data
@@ -97046,7 +97048,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty
     value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error
     when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values.
-    The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.) (Amended 2026-11-21 by the maintainer for the SAP HANA engine. Integer division gives pg''s truncated integer by writing a truncating form when the compiler supplies the operand types; until then it is refused by name. These HANA behaviours are stated grid limitations rather than refusals: text and unbounded varchar are bounded at 5000 characters (NVARCHAR(5000)); text sorts and compares in binary order, not the locale collation; SUM over bigint can overflow where pg widens to numeric; and, unverified until a live HANA leg, timestamps keep 7 fractional digits and LENGTH may count characters outside the BMP differently. A cast to an integer type of a value not known to be integral is refused by name on HANA and on Db2, where both truncate and pg rounds.) (Amended 2026-11-22 by the maintainer. The polyfill check credits a stated limit per feature and engine, held when any overload of that feature on that engine raised it, and a limit excuses only the errors matching its own values and SQLSTATE. The edge set covers what a limit names, such as NaN and infinite shapes and empty-matching patterns. A limit no edge call can reach, such as an aggregate past 2^40 values, stands as a statement of record the check exempts. A form that raises PostgreSQL''s own error where PostgreSQL raises it, or raises on a value PostgreSQL never holds, is not a limit and its row does not say it raises. The measured rows are regenerated from each full functions run) (Amended 2026-11-23 by the maintainer. An edge value where an engine''s polyfill answers wrong is guarded when the edge is recognisable from the input values alone and PostgreSQL''s answer there is fixed: the form tests for the edge and returns PostgreSQL''s constant answer, or raises PostgreSQL''s SQLSTATE where PostgreSQL raises, and otherwise runs the engine form. An edge that cannot be so recognised, such as a wrong answer over a range of values, a value the engine cannot represent, or an answer that depends on session settings, is a documented limitation of that feature on that engine.) (Amended 2026-11-24 by the maintainer. openGauss matches bytea LIKE (like, notlike, bytealike, byteanlike and the ~~ and !~~ operators on bytea) as multibyte text on a UTF-8 database, reading past the end of the value, so its answer varies from run to run. Provisa rewrites those calls on openGauss to its byte-wise rawlike and rawnlike, which answer as PostgreSQL does, through an openGauss-only rewrite step that keeps the postgres dialect.) (Amended 2026-11-24 by the maintainer. A function is refused by name only when no polyfill can answer any of its input overloads correctly. Where a form answers most inputs and some edge values fail, the form handles those values with CASE expressions that return PostgreSQL''s answer. Only where neither is possible are the differences documented as the feature''s stated Limitation, and the documented difference is enforced.) (Amended 2026-11-24 by the maintainer. Once the polyfill work is complete, the docs publish the safe PostgreSQL functions, operators, language constructs and types: those answered exactly on base and edge calls with no Limitation and no refusal. They are listed in three tiers: core (PostgreSQL, DuckDB, Trino, ClickHouse), cloud (Snowflake, Databricks, BigQuery), and other (each remaining engine on its own page), so an unusual engine''s gaps never qualify the core or cloud lists. The lists are generated from the functions conformance results, never written by hand; the cloud tier requires the cloud engines to be measured there.) (Amended 2026-11-24 by the maintainer. The cloud tier also holds Azure Synapse, and the functions conformance run measures every cloud engine (Snowflake, Databricks, BigQuery, Azure Synapse) like the others, each on a resource created and destroyed by its run.)'
+    The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.) (Amended 2026-11-21 by the maintainer for the SAP HANA engine. Integer division gives pg''s truncated integer by writing a truncating form when the compiler supplies the operand types; until then it is refused by name. These HANA behaviours are stated grid limitations rather than refusals: text and unbounded varchar are bounded at 5000 characters (NVARCHAR(5000)); text sorts and compares in binary order, not the locale collation; SUM over bigint can overflow where pg widens to numeric; and, unverified until a live HANA leg, timestamps keep 7 fractional digits and LENGTH may count characters outside the BMP differently. A cast to an integer type of a value not known to be integral is refused by name on HANA and on Db2, where both truncate and pg rounds.) (Amended 2026-11-22 by the maintainer. The polyfill check credits a stated limit per feature and engine, held when any overload of that feature on that engine raised it, and a limit excuses only the errors matching its own values and SQLSTATE. The edge set covers what a limit names, such as NaN and infinite shapes and empty-matching patterns. A limit no edge call can reach, such as an aggregate past 2^40 values, stands as a statement of record the check exempts. A form that raises PostgreSQL''s own error where PostgreSQL raises it, or raises on a value PostgreSQL never holds, is not a limit and its row does not say it raises. The measured rows are regenerated from each full functions run) (Amended 2026-11-23 by the maintainer. An edge value where an engine''s polyfill answers wrong is guarded when the edge is recognisable from the input values alone and PostgreSQL''s answer there is fixed: the form tests for the edge and returns PostgreSQL''s constant answer, or raises PostgreSQL''s SQLSTATE where PostgreSQL raises, and otherwise runs the engine form. An edge that cannot be so recognised, such as a wrong answer over a range of values, a value the engine cannot represent, or an answer that depends on session settings, is a documented limitation of that feature on that engine.) (Amended 2026-11-24 by the maintainer. openGauss matches bytea LIKE (like, notlike, bytealike, byteanlike and the ~~ and !~~ operators on bytea) as multibyte text on a UTF-8 database, reading past the end of the value, so its answer varies from run to run. Provisa rewrites those calls on openGauss to its byte-wise rawlike and rawnlike, which answer as PostgreSQL does, through an openGauss-only rewrite step that keeps the postgres dialect.) (Amended 2026-11-24 by the maintainer. A function is refused by name only when no polyfill can answer any of its input overloads correctly. Where a form answers most inputs and some edge values fail, the form handles those values with CASE expressions that return PostgreSQL''s answer. Only where neither is possible are the differences documented as the feature''s stated Limitation, and the documented difference is enforced.) (Amended 2026-11-24 by the maintainer. Once the polyfill work is complete, the docs publish the safe PostgreSQL functions, operators, language constructs and types: those answered exactly on base and edge calls with no Limitation and no refusal. They are listed in three tiers: core (PostgreSQL, DuckDB, Trino, ClickHouse), cloud (Snowflake, Databricks, BigQuery), and other (each remaining engine on its own page), so an unusual engine''s gaps never qualify the core or cloud lists. The lists are generated from the functions conformance results, never written by hand; the cloud tier requires the cloud engines to be measured there.) (Amended 2026-11-24 by the maintainer. The cloud tier also holds Azure Synapse, and the functions conformance run measures every cloud engine (Snowflake, Databricks, BigQuery, Azure Synapse) like the others, each on a resource created and destroyed by its run.) (Amended 2026-11-25 by the maintainer. The cloud conformance legs follow the paid-cloud rule of 2026-11-10, namely a warehouse that bills nothing while idle (an auto-suspending Snowflake or Databricks warehouse, BigQuery) may stand between runs, and anything billed by the hour is created and destroyed in each run, tagged with the run and read back after teardown.) (Amended 2026-11-25 by the maintainer, conformance targets. Per function and engine a call is a pass, a wrong response, an error, a refusal, or a documented difference. Wrong responses converge to zero, and so do errors, an error being a call Provisa passes to the engine that the engine fails where PostgreSQL answers. Where PostgreSQL raises, the same error is a pass and a different error is a wrong response. A refusal is never superficial, so it is made only after every other form (a direct mapping, a rewrite, a CASE over the failing values, a bound raised with PostgreSQL''s error) has been tried, and each refusal states why the function cannot be supported on that engine. An identical SQLSTATE, not only its class, is the goal at lower priority.)'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -98246,7 +98248,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is recorded with who made it, when and why. The scheduled review is exported to the operator''s chosen
     destination. (Amended 2026-11-21 by the maintainer. The operator chooses a signed webhook as the destination of a scheduled review, a URL and a secret, posted after each scheduled review and signed as the offer hook signs its requests. Roles a member holds only through the identity provider claims or a role mapping are listed read-only with their source, since Provisa holds no grant of them to revoke.)'
 - id: REQ-2267
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: OpenAPI Auto-Registration Connector
@@ -98267,6 +98269,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     OpenAPI and graphql_remote code rather than rewriting it. (3) Code sources are then read live by every
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
     launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory) (Amended 2026-11-24 by the maintainer. Creating an OpenAPI or remote GraphQL source makes it a built-in code source: the save path writes the built-in''s code into a server-owned code directory for that source, records the code as a built-in kind, and declares the built-in''s secrets as the source''s secret references, and the code-source runtime serves it. The in-process OpenAPI and remote GraphQL serving paths are retired for these sources; there is one serving path per type.)'
+  scenario: 'Given an OpenAPI or remote GraphQL source saved in the Sources form
+
+    When it is saved
+
+    Then Provisa writes it as a built-in code source and serves it through that code source''s worker
+
+    And no in-process path serves it'
   tests:
   - tests/unit/test_code_discover.py
   - tests/unit/test_openapi_code_source.py
@@ -98299,7 +98308,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'
 
 - id: REQ-2269
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Installer & Packaging
@@ -98331,7 +98341,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_cli_engine_config_wins.py
 
 - id: REQ-2270
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors

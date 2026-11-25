@@ -11,32 +11,37 @@
 // REQ-1934: a Data Profiler source's mapping (provisa/profiler/source.py profiler_settings) and the
 // form fields it is edited through.
 
+import { descriptorFields, fieldChoices, mappingKey } from "./descriptor";
+
+// REQ-2114: the keys, the run defaults and the drift seasons are the descriptor's
+// (provisa/api/admin/source_types.py, from provisa/profiler/source.py).
+const PROFILER = "data_profiler";
+const CRON = mappingKey(PROFILER, "cron");
+const SAMPLE_ABOVE = mappingKey(PROFILER, "sample_above_cells");
+const DEFAULTED = descriptorFields(PROFILER, "mappingJson").filter((f) => f.default !== undefined);
+
 /** The run defaults a new profiler starts from (REQ-1934), each stored in its mapping. The form is
  * where they are defaulted: the low-cardinality threshold (a column with no more distinct values has
  * its full value-frequency table recorded) and the drift window, season and thresholds. */
-export const PROFILER_DEFAULTS: Record<string, string> = {
-  low_cardinality_max: "100",
-  drift_window: "7",
-  drift_season: "none",
-  drift_distance: "3",
-  drift_slope: "3",
-  drift_ks: "0.2",
-  drift_psi: "0.25",
-  correlation_max_columns: "20",
-  joint_max_distinct: "20",
-  category_max_columns: "10",
-  classification_sample: "500", // REQ-2147
-};
+export const PROFILER_DEFAULTS: Record<string, string> = Object.fromEntries(
+  DEFAULTED.map((f) => [f.name, String(f.default)]),
+);
 
 /** The drift seasons a profiler's baseline can follow (provisa/profiler/source.py DRIFT_SEASONS). */
-export const DRIFT_SEASONS = ["none", "daily", "weekly", "monthly"] as const;
+export const DRIFT_SEASONS: readonly string[] = fieldChoices(
+  PROFILER,
+  "mappingJson",
+  "drift_season",
+);
 
 // The run defaults stored as text; every other one is a number.
-const TEXT_SETTINGS = new Set(["drift_season"]);
+const TEXT_SETTINGS = new Set(
+  DEFAULTED.filter((f) => typeof f.default === "string").map((f) => f.name),
+);
 
 /** The profiler's mapping as the source stores it, from the form's fields. */
 export function profilerMappingJson(authFields: Record<string, string>): string {
-  const sample = (authFields.sample_above_cells ?? "").trim();
+  const sample = (authFields[SAMPLE_ABOVE] ?? "").trim();
   const defaults = Object.fromEntries(
     Object.keys(PROFILER_DEFAULTS).map((k) => {
       const v = (authFields[k] ?? "").trim();
@@ -44,8 +49,8 @@ export function profilerMappingJson(authFields: Record<string, string>): string 
     }),
   );
   return JSON.stringify({
-    cron: (authFields.cron ?? "").trim(),
-    ...(sample === "" ? {} : { sample_above_cells: Number(sample) }),
+    [CRON]: (authFields[CRON] ?? "").trim(),
+    ...(sample === "" ? {} : { [SAMPLE_ABOVE]: Number(sample) }),
     ...defaults,
   });
 }
@@ -54,8 +59,8 @@ export function profilerMappingJson(authFields: Record<string, string>): string 
 export function profilerFieldsFromMapping(mappingJson: string): Record<string, string> {
   const m = JSON.parse(mappingJson) as Record<string, string | number | null | undefined>;
   return {
-    cron: m.cron == null ? "" : String(m.cron),
-    sample_above_cells: m.sample_above_cells == null ? "" : String(m.sample_above_cells),
+    [CRON]: m[CRON] == null ? "" : String(m[CRON]),
+    [SAMPLE_ABOVE]: m[SAMPLE_ABOVE] == null ? "" : String(m[SAMPLE_ABOVE]),
     ...Object.fromEntries(Object.keys(PROFILER_DEFAULTS).map((k) => [k, String(m[k])])),
   };
 }

@@ -45,6 +45,7 @@ from starlette.background import BackgroundTask
 
 from provisa import sandbox_wake
 from provisa.api.query_gate import QueryUiGate
+from provisa.docs_site_path import DOCS_SITE
 
 # REQ-1127: the pip wheel embeds the precompiled React UI at provisa/_ui/ so the delivery is
 # self-contained (no npm/Node at runtime). Prefer that packaged directory; fall back to the
@@ -423,7 +424,15 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
 
     # ── Static asset — serve from disk ───────────────────────────────────────
     if any(request.url.path.startswith(p) for p in _STATIC_PREFIXES):
-        candidate = STATIC_DIR / full_path
+        if request.url.path.startswith("/docs-site/"):
+            # REQ-2114: use the mode-specific directory (provisa.docs_site_path). In the dev tree,
+            # Vite serves provisa-ui/public/docs-site; in the image, static/docs-site; in the
+            # wheel, provisa/_ui/docs-site. STATIC_DIR is static/ in the dev tree, which holds a
+            # stale gitignored copy that must not be served instead.
+            rel = full_path[len("docs-site/") :]
+            candidate = DOCS_SITE / rel
+        else:
+            candidate = STATIC_DIR / full_path
         if candidate.is_file():
             return FileResponse(candidate)
         # MkDocs uses directory URLs (/docs-site/security/ -> .../security/index.html);

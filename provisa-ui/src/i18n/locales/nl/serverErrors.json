@@ -993,6 +993,15 @@
       "steward_not_eligible": "{{steward}} heeft geen rol met de capability domain_steward en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef eerst zo'n rol.",
       "steward_role_not_eligible": "Rol {{role}} heeft de capability domain_steward niet en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef de rol eerst die capability.",
       "stewards_change_refused": "Alleen een organisatiebeheerder of een huidige steward van domein {{domain}} kan de stewards ervan wijzigen."
+    },
+    "product_suggestion": {
+      "database_not_connected": "Database niet verbonden",
+      "sign_in_required": "Meld u aan om een product voor te stellen.",
+      "tables_required": "Een voorstel noemt ten minste één tabel.",
+      "table_not_listed": "Tabel {{tables}} is niet aan u vermeld; een product wordt voorgesteld vanuit een tabel die de catalogus vermeldt.",
+      "reason_required": "Een voorstel vermeldt de reden.",
+      "no_recipient": "Domein {{domain}} heeft geen dataproducteigenaar of data steward om een voorstel te ontvangen.",
+      "not_a_recipient": "De suggesties van domein {{domain}} worden gelezen door de data stewards en eigenaren van dataproducten."
     }
   }
 }

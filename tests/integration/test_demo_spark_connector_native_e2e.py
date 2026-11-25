@@ -141,19 +141,25 @@ def _is_code_resolver(f: dict) -> bool:
 
 @pytest.fixture(scope="module")
 def spark_source(instance: Instance) -> Instance:
-    """The Spark source, made from the offered connector by name, its table registered."""
+    """The Spark source, a built-in source type (REQ-2225, amended 2026-11-24), joined to the
+    native host its form names, its table registered."""
     offered = httpx.get(
         f"{instance.url}/admin/orgs/default/connectors", headers=_HEADERS, timeout=120
     )
     assert offered.status_code == 200, f"{offered.text}\n{_log_tail(instance)}"
-    (spark,) = [c for c in offered.json()["connectors"] if c["name"] == "spark"]
+    assert [c for c in offered.json()["connectors"] if c["name"] == "spark"] == []
+    builtin = httpx.get(
+        f"{instance.url}/admin/orgs/default/builtin-sources/spark", headers=_HEADERS, timeout=120
+    )
+    assert builtin.status_code == 200, f"{builtin.text}\n{_log_tail(instance)}"
+    spark = builtin.json()["host"]
     assert spark["native"] is True and spark["image"] == ""
 
     _mutation(instance, f'createDomain(input: {{id: "{_DOMAIN}"}})')
     joining = {"connector_join": {"connector": "spark"}, "settings": {"script": _SCRIPT}}
     _mutation(
         instance,
-        f'createSource(input: {{id: "{_SOURCE}", type: "python", host: "", port: 0, '
+        f'createSource(input: {{id: "{_SOURCE}", type: "spark", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
         timeout=_CREATE_TIMEOUT_S,
     )
