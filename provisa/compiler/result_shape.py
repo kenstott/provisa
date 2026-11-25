@@ -249,9 +249,14 @@ _PG_CALL_HEAD = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:[([]|$)")
 def _pg_function_name(node: exp.Func) -> tuple[str, int]:
     """A parsed call named as PostgreSQL spells it, not by sqlglot's node for it (REQ-2204):
     string_agg parses as GroupConcat, bool_and as LogicalAnd, date_trunc as TimestampTrunc. A call
-    PostgreSQL writes as an operator is named as PostgreSQL names an operator, ?column?."""
-    head = _PG_CALL_HEAD.match(node.sql(dialect="postgres"))
-    if head is None:
+    PostgreSQL writes as an operator is named as PostgreSQL names an operator, ?column?: also one
+    whose text starts with its operand's call (``ARRAY[1] @> ARRAY[2]``, ``lower(a) ~ b``)."""
+    written = node.sql(dialect="postgres")
+    operand = node.this if isinstance(node.this, exp.Expr) else None
+    head = _PG_CALL_HEAD.match(written)
+    if head is None or (
+        operand is not None and written.startswith(operand.sql(dialect="postgres"))
+    ):
         return "?column?", 0
     return head.group(1).lower(), 2
 
