@@ -412,6 +412,52 @@ class TestPaginate:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_cursor_three_properties_down_is_read_to_the_end(self):
+        # REQ-1874: HubSpot answers {results, paging: {next: {after, link}}}; the last page has
+        # no paging at all.
+        pagination = PaginationConfig(
+            type=PaginationType.cursor,
+            cursor_param="after",
+            cursor_field="paging.next.after",
+            page_size_param="limit",
+            page_size=2,
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"results": [1, 2], "paging": {"next": {"after": "2", "link": "x"}}}),
+                _resp(200, {"results": [3]}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/crm/v3/objects/contacts", {}, {}, None, 30.0)
+        assert [p["results"] for p in pages] == [[1, 2], [3]]
+        assert [c.kwargs["params"] for c in client.request.await_args_list] == [
+            {"limit": 2},
+            {"limit": 2, "after": "2"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_empty_nested_cursor_ends_the_paging(self):
+        # REQ-1874: Slack's last page answers response_metadata.next_cursor as "".
+        pagination = PaginationConfig(
+            type=PaginationType.cursor,
+            cursor_param="cursor",
+            cursor_field="response_metadata.next_cursor",
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"members": [1], "response_metadata": {"next_cursor": "dXNl"}}),
+                _resp(200, {"members": [2], "response_metadata": {"next_cursor": ""}}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/api/users.list", {}, {}, None, 30.0)
+        assert [p["members"] for p in pages] == [[1], [2]]
+        assert client.request.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_a_nested_cursor_whose_holder_is_absent_ends_the_paging(self):
         pagination = PaginationConfig(
             type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
