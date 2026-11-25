@@ -20,7 +20,8 @@ export interface SuggestedTable {
   tableName: string;
 }
 
-export const keyOf = (domainId: string, tableName: string) => `${domainId}.${tableName}`;
+// REQ-471: the domain.table key is built here, the one place for this composition.
+export const keyOf = (domain: string, table: string) => `${domain}.${table}`;
 
 export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);

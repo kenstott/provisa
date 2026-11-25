@@ -10,6 +10,13 @@
 import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen, waitFor } from "../../../test-utils/render";
+
+// SourceFormFields renders SourceFormFieldsExtended, which calls useAuth() unconditionally;
+// stub it so the form renders without an AuthProvider.
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ activeOrgId: null }),
+}));
 import {
   SourceFormFields,
   type SourceFormFieldsProps,

@@ -20,6 +20,9 @@ configuration in its ``mapping`` (the source model's type-specific slot):
                    "filename": <the name of the file it was uploaded from, when known>}
                   {"kind": "directory", "path": <a directory on this server>} (REQ-2121): read
                    where it is, under the operator's allowed directories, single-tenant only
+                  {"kind": "builtin"} (REQ-2267): an openapi or graphql_remote source's code,
+                   Provisa's own, written by its save into a server-owned directory
+                   (provisa/codesource/builtin.py)
     lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside code that carries none
     entry         where the code is entered, for a language whose source names it: a python
                   source's entry module, a go source's package directory
@@ -44,7 +47,7 @@ from provisa.codesource import remote_sources, services
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.bundle import content_hash as hash_of
 from provisa.codesource.install import DIRECTORY_SKIPPED, DirectoryCode, GitCode, Lockfile
-from provisa.codesource.languages import CODE_SOURCE_TYPES, LANGUAGES
+from provisa.codesource.languages import BUILTIN_KIND, BUILTIN_TYPES, CODE_SOURCE_TYPES, LANGUAGES
 from provisa.codesource.manifest import Manifest
 from provisa.codesource.worker import HostCommand, Worker, pool
 
@@ -103,6 +106,8 @@ def _workers(mapping: dict) -> int:
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
     """The source's configuration, refused by name when it cannot be used."""
+    if source_type in BUILTIN_TYPES:
+        return _builtin_config(source_type, mapping)
     language = LANGUAGES.get(source_type)
     if language is None:
         raise BundleRefused("not_code", f"{source_type!r} is not a code source type")
@@ -148,6 +153,29 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         remote=remote_sources.remote_of(mapping)
         if remote_sources.mode_of(mapping) == remote_sources.BUILT
         else None,
+        settings=services.declared_settings(mapping.get("settings")),
+        workers=_workers(mapping),
+    )
+
+
+def _builtin_config(source_type: str, mapping: dict) -> CodeConfig:
+    """REQ-2267: a built-in code source's configuration: its code the built-in kind its save
+    wrote, run under Provisa's own Python."""
+    kind = (mapping.get("code") or {}).get("kind")
+    if kind != BUILTIN_KIND:
+        raise BundleRefused(
+            "code_kind",
+            f"a {source_type} source's code is {BUILTIN_KIND}, written when it is saved, "
+            f"not {kind!r}",
+        )
+    return CodeConfig(
+        language=source_type,
+        runtime="python",
+        code={"kind": BUILTIN_KIND},
+        lockfile=None,
+        entry=None,
+        content_hash=mapping.get("content_hash") or None,
+        secrets=services.declared(mapping.get("secrets")),
         settings=services.declared_settings(mapping.get("settings")),
         workers=_workers(mapping),
     )
@@ -332,6 +360,14 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
         )
         with _lock:
             _prepared[(ctx.org_id, source_id, config.content_hash)] = ready
+        return ready
+    if config.code["kind"] == BUILTIN_KIND:
+        from provisa.codesource import builtin
+
+        # REQ-2267: the code the source's save wrote; reading it blocks, off the event loop.
+        ready = await asyncio.to_thread(builtin.prepare, source_id, config, ctx)
+        with _lock:
+            _prepared[(ctx.org_id, source_id, ready.content_hash)] = ready
         return ready
     code = await _code_reference(config, ctx)
     lock = await _lockfile(config, ctx)
