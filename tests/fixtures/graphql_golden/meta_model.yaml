@@ -346,11 +346,11 @@ tables:
   table: catalog_pg_aggregate
   columns:
   - name: aggcombinefn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggdeserialfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggfinalextra
@@ -358,7 +358,7 @@ tables:
     visible_to:
     - viewer
   - name: aggfinalfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggfinalmodify
@@ -366,7 +366,7 @@ tables:
     visible_to:
     - viewer
   - name: aggfnoid
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: agginitval
@@ -382,7 +382,7 @@ tables:
     visible_to:
     - viewer
   - name: aggmfinalfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggmfinalmodify
@@ -394,11 +394,11 @@ tables:
     visible_to:
     - viewer
   - name: aggminvtransfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggmtransfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggmtransspace
@@ -414,7 +414,7 @@ tables:
     visible_to:
     - viewer
   - name: aggserialfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggsortop
@@ -422,7 +422,7 @@ tables:
     visible_to:
     - viewer
   - name: aggtransfn
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: aggtransspace
@@ -439,7 +439,7 @@ tables:
   table: catalog_pg_am
   columns:
   - name: amhandler
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: amname
@@ -501,7 +501,7 @@ tables:
   table: catalog_pg_amproc
   columns:
   - name: amproc
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: amprocfamily
@@ -1210,7 +1210,7 @@ tables:
     visible_to:
     - viewer
   - name: conproc
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: contoencoding
@@ -2154,7 +2154,7 @@ tables:
     visible_to:
     - viewer
   - name: oprcode
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: oprcom
@@ -2162,7 +2162,7 @@ tables:
     visible_to:
     - viewer
   - name: oprjoin
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: oprkind
@@ -2190,7 +2190,7 @@ tables:
     visible_to:
     - viewer
   - name: oprrest
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: oprresult
@@ -2376,7 +2376,7 @@ tables:
     visible_to:
     - viewer
   - name: parameter_types
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: prepare_time
@@ -2384,7 +2384,7 @@ tables:
     visible_to:
     - viewer
   - name: result_types
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: statement
@@ -2526,7 +2526,7 @@ tables:
     visible_to:
     - viewer
   - name: prosupport
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: protrftypes
@@ -2659,7 +2659,7 @@ tables:
   table: catalog_pg_range
   columns:
   - name: rngcanonical
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: rngcollation
@@ -2671,7 +2671,7 @@ tables:
     visible_to:
     - viewer
   - name: rngsubdiff
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: rngsubopc
@@ -3033,7 +3033,7 @@ tables:
     visible_to:
     - viewer
   - name: data_type
-    data_type: 'null'
+    data_type: regtype
     visible_to:
     - viewer
   - name: increment_by
@@ -6079,7 +6079,7 @@ tables:
     visible_to:
     - viewer
   - name: trffromsql
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: trflang
@@ -6087,7 +6087,7 @@ tables:
     visible_to:
     - viewer
   - name: trftosql
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: trftype
@@ -6260,15 +6260,15 @@ tables:
     visible_to:
     - viewer
   - name: prsend
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: prsheadline
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: prslextype
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: prsname
@@ -6280,11 +6280,11 @@ tables:
     visible_to:
     - viewer
   - name: prsstart
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: prstoken
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -6297,11 +6297,11 @@ tables:
     visible_to:
     - viewer
   - name: tmplinit
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: tmpllexize
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: tmplname
@@ -6330,7 +6330,7 @@ tables:
     visible_to:
     - viewer
   - name: typanalyze
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typarray
@@ -6370,7 +6370,7 @@ tables:
     visible_to:
     - viewer
   - name: typinput
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typisdefined
@@ -6386,11 +6386,11 @@ tables:
     visible_to:
     - viewer
   - name: typmodin
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typmodout
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typname
@@ -6410,7 +6410,7 @@ tables:
     visible_to:
     - viewer
   - name: typoutput
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typowner
@@ -6418,7 +6418,7 @@ tables:
     visible_to:
     - viewer
   - name: typreceive
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typrelid
@@ -6426,7 +6426,7 @@ tables:
     visible_to:
     - viewer
   - name: typsend
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typstorage
@@ -6434,7 +6434,7 @@ tables:
     visible_to:
     - viewer
   - name: typsubscript
-    data_type: 'null'
+    data_type: regproc
     visible_to:
     - viewer
   - name: typtype
