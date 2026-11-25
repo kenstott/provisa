@@ -2608,8 +2608,9 @@ GROUPS = {
     "sequences (amended 2026-11-04, Server state, internal types and the check's own call shapes "
     "(2)).",
     # REQ-2167, amended 2026-11-02, Six-argument regexp_replace is not supported.
-    REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
-    "refused by name.",
+    REGEXP_GROUP: "The PostgreSQL 16 form with a start position, an occurrence number and flags "
+    "is answered where an engine has an exact form (ClickHouse) and refused by name where it has "
+    "none yet: only a refusal is skipped by design under this decision.",
     # REQ-2167, amended 2026-11-03, Privileges, visibility and notifications (1).
     SYSTEM_CATALOG_WRITE_GROUP: "has_table_privilege and the column variants answer false for a "
     "write on PostgreSQL's own system catalogs, for every role: nobody writes a system catalog "
