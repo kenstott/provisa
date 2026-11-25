@@ -448,17 +448,21 @@ def _is_json_list_literal(node: exp.Expression) -> bool:  # pyright: ignore[repo
 
 def _is_json_text_aggregate(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
     """A list field's aggregate as Trino holds it: json_format(...) text
-    (_rewrite_json_arrayagg_for_trino), inline as a subquery or as the value column of the joined
-    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val)."""
+    (_rewrite_json_arrayagg_for_trino), inline as a subquery, as the value column of the joined
+    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val), or as the value column of
+    the compiler's grouped read of the field (sql_selection.rel_read: <alias>_read._value)."""
+    from provisa.compiler.sql_selection import READ_VALUE
+
     value = node
     if isinstance(node, exp.Subquery) and isinstance(node.this, exp.Select):
         selects = node.this.selects
         value = selects[0].unalias() if len(selects) == 1 else node
     if isinstance(value, exp.JSONFormat):
         return True
-    return (
-        isinstance(value, exp.Column) and value.name == "_val" and value.table.startswith("_grel_")
-    )
+    if not isinstance(value, exp.Column):
+        return False
+    hoisted = value.name == "_val" and value.table.startswith("_grel_")
+    return hoisted or (value.name == READ_VALUE and value.table.endswith("_read"))
 
 
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:

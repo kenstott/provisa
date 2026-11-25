@@ -524,7 +524,6 @@ def _register_meta_synthetic_joins(
             cypher_alias="HAS_TABLE",
             source_expr=pair,
             target_expr=target_expr,
-            child_src_val=pair,
         )
     return meta_rt
 

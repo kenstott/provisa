@@ -50,6 +50,7 @@ from provisa.compiler.sql_where import (
     _joins_row_level_to_one,
     JunctionHop,
     RelationshipConditions,
+    join_exprs,
     junction_hop,
     where_names_relationship,
 )
@@ -172,7 +173,7 @@ def _build_rel_json_kv(
     alias_counter: int,
     sources: StatementSources,
     variables: dict | None,
-    parent_src_val: str | None = None,
+    joins: list[str],
     json_text: set[str] | None = None,
     key_prefix: str = "",
 ) -> tuple[list[str], int]:
@@ -180,7 +181,8 @@ def _build_rel_json_kv(
 
     Returns (kv_pairs_list, alias_counter) where each element is
     "KEY 'key' VALUE expr" — suitable for joining with commas inside json_object.
-    Nested relationships produce correlated subqueries at value positions.
+    A nested relationship is its own grouped read (``rel_read``), left-joined to
+    ``table_alias``'s rows by appending to ``joins``; its value is the read's column.
     Uses SQL-standard json_object syntax so sqlglot transpiles correctly to the engine.
     ``json_text`` collects the key paths (under ``key_prefix``) whose value is JSON an engine
     may embed as text: a nested relationship, a declared object -- each always an object, an
@@ -203,87 +205,28 @@ def _build_rel_json_kv(
             sub_alias = f"t{alias_counter}"
             alias_counter += 1
             sources.add_table(sub_join_meta.target)
-
-            if sub_join_meta.source_expr is not None:
-                if parent_src_val is not None:
-                    # the engine rejects doubly-nested correlated subqueries. When the parent
-                    # join resolved to a constant (e.g. 'pet-store.pets'), use that value
-                    # here so the child subquery's WHERE clause contains no outer reference.
-                    sub_src = parent_src_val
-                else:
-                    sub_src = sub_join_meta.source_expr.replace("{alias}", _q(table_alias))
-            elif sub_join_meta.source_constant is not None:
-                sub_src = (
-                    _sql_str_literal(sub_join_meta.source_constant)
-                    if isinstance(sub_join_meta.source_constant, str)
-                    else str(sub_join_meta.source_constant)
-                )
-            elif sub_join_meta.source_json_key:
-                sub_src = (
-                    f"CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)"
-                    f">>'{sub_join_meta.source_json_key}'"
-                )
-            else:
-                sub_src = _join_column_expr(
-                    table_alias,
-                    sub_join_meta.source_column,
-                    sub_join_meta.source_column_type,
-                    sub_join_meta.target_column_type,
-                )
-            if sub_join_meta.target_expr is not None:
-                sub_tgt = sub_join_meta.target_expr.replace("{alias}", _q(sub_alias))
-            elif sub_join_meta.target_column in _VIRTUAL_COLS:
-                _tvc = (ctx.virtual_columns.get(sub_join_meta.target.table_id) or {}).get(
-                    sub_join_meta.target_column, ""
-                )
-                sub_tgt = _sql_str_literal(_tvc)
-            else:
-                sub_tgt = _join_column_expr(
-                    sub_alias,
-                    sub_join_meta.target_column,
-                    sub_join_meta.target_column_type,
-                    sub_join_meta.source_column_type,
-                )
-            sub_from = (
-                f"{travel_ref(_table_ref(sub_join_meta.target, use_catalog), sel, variables)}"
-                f" {_q(sub_alias)}"
+            sub_src, sub_tgt = join_exprs(
+                sub_join_meta, table_alias, sub_alias, ctx, table_meta.table_id
             )
-            sub_where = f"{sub_tgt} = {sub_src}"
-            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
-            sub_hop = junction_hop(sub_join_meta, table_alias, sub_alias, use_catalog, sources)
-            if sub_hop is not None:
-                sub_from = sub_hop.from_clause(sub_from)
-                sub_where = sub_hop.to_source
-            sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
-            # Prefer child_src_val (explicit varchar constant) over sub_src. Fall back to
-            # sub_src for non-integer joins; block propagation for integer joins to avoid
-            # type mismatches in child varchar source_expr comparisons.
-            _next_parent_src = (
-                sub_join_meta.child_src_val
-                if sub_join_meta.child_src_val is not None
-                else (sub_src if sub_join_meta.source_column_type != "integer" else None)
-            )
-            sub_expr, alias_counter = _build_rel_json_expr(
-                sel.selection_set.selections,
+            sub_value, sub_join, alias_counter = rel_read(
+                sel,
+                sub_join_meta,
                 ctx,
-                sub_join_meta.target.type_name,
-                sub_join_meta.target,
                 sub_alias,
-                sub_from,
-                sub_where,
-                sub_join_meta.cardinality,
-                sub_limit,
+                sub_src,
+                sub_tgt,
+                junction_hop(sub_join_meta, table_alias, sub_alias, use_catalog, sources),
                 use_catalog,
                 alias_counter,
                 sources,
                 variables,
-                parent_src_val=_next_parent_src,
                 json_text=json_text,
                 key_prefix=f"{key_prefix}{key}.",
             )
+            joins.append(sub_join)
             if json_text is not None:
                 json_text.add(f"{key_prefix}{key}")
-            kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
+            kv_pairs.append(f"KEY '{key}' VALUE {sub_value}")
         else:
             if sel.selection_set and (table_meta.table_id, name) in ctx.gql_json_columns:
                 blob_base = f"{_q(table_alias)}.{_q(name)}"
@@ -306,6 +249,13 @@ def _build_rel_json_kv(
 #: transpile reads this literal as an empty JSON array (Trino: transpile.py).
 EMPTY_JSON_LIST = "CAST('[]' AS JSON)"
 
+#: The columns of a relationship's grouped read (``rel_read``): its join key, one per key column
+#: (_key0, _key1, ...), and the field's JSON value.
+READ_KEY = "_key"
+READ_VALUE = "_value"
+#: A row's place among its key's rows, in a read that keeps the head of each key's rows.
+READ_ROW = "_row"
+
 
 def _empty_list_if_none(subquery: str) -> str:
     return f"COALESCE({subquery}, {EMPTY_JSON_LIST})"
@@ -318,70 +268,97 @@ def _when_joined(expr: str, joined: str | None) -> str:
     return expr if joined is None else f"CASE WHEN {joined} THEN {expr} END"
 
 
-def _build_rel_json_expr(
-    selections,
+def rel_read(
+    sel: FieldNode,
+    join_meta: JoinMeta,
     ctx: CompilationContext,
-    type_name: str,
-    table_meta: TableMeta,
-    table_alias: str,
-    from_clause: str,
-    where_expr: str,
-    cardinality: str | None,
-    agg_limit: int | None,
+    target_alias: str,
+    src_expr: str,
+    tgt_expr: str,
+    hop: JunctionHop | None,
     use_catalog: bool,
     alias_counter: int,
     sources: StatementSources,
-    variables: dict | None = None,
-    parent_src_val: str | None = None,
+    variables: dict | None,
     json_text: set[str] | None = None,
     key_prefix: str = "",
-) -> tuple[str, int]:
-    """Build one correlated JSON subquery for a relationship.
+) -> tuple[str, str, int]:
+    """A relationship field as one grouped read of its target, joined back by key: every engine
+    reads it so, none correlates a subquery with the outer row (#362).
 
-    many-to-one  → (SELECT json_object(...) FROM ... WHERE ... LIMIT 1)
-    one-to-one   → same as many-to-one: the physical join is still a lookup against the
-        target's join key (which may itself match many physical rows on the target side
-        of the join, e.g. a reverse-FK lookup), so this takes the head of the matched rows
-        via LIMIT 1 and emits a single json_object, never a list.
-    one-to-many  → (SELECT json_agg(json_object(...)) FROM ... WHERE ...)
-    one-to-many with agg_limit →
-        (SELECT json_agg(_t) FROM (SELECT json_object(...) AS _t FROM ... WHERE ... LIMIT n) _sub)
-    Returns (sql_expr, alias_counter).
-    """
+    The read holds one row per join key -- the key and the field's JSON value -- so the LEFT
+    JOIN that brings it to the source's rows repeats none of them, and a source row with no
+    match reads NULL, as the subquery it replaces did:
+
+    many-to-one, one-to-one → the head of each key's matched rows (ROW_NUMBER, as LIMIT 1
+        took one), its json_object.
+    one-to-many → json_agg(json_object(...)) of each key's rows; with a list cap (an explicit
+        limit or the relationship's default), the first ``n`` of each key's rows (ROW_NUMBER),
+        as LIMIT n took them. A key with no rows is no row of the read: the field is [].
+
+    The governed WHERE of the target moves with the read, as it governs every table reference.
+    A junction-backed relationship (REQ-1586) reads its target beside its junction, keyed by the
+    junction's source columns. Nested relationships are reads of their own, joined inside this
+    one. Returns (the field's value, the LEFT JOIN that reads it, alias_counter)."""
+    assert sel.selection_set is not None
+    target_from = (
+        f"{travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
+        f" {_q(target_alias)}"
+    )
+    if hop is not None:
+        target_from = hop.from_clause(target_from)
+        keys = list(hop.source_keys)
+    else:
+        keys = [(tgt_expr, src_expr)]
+    inner_joins: list[str] = []
     kv_pairs, alias_counter = _build_rel_json_kv(
-        selections,
+        sel.selection_set.selections,
         ctx,
-        type_name,
-        table_meta,
-        table_alias,
+        join_meta.target.type_name,
+        join_meta.target,
+        target_alias,
         use_catalog,
         alias_counter,
         sources,
         variables,
-        parent_src_val=parent_src_val,
+        inner_joins,
         json_text=json_text,
         key_prefix=key_prefix,
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
-
+    rows_from = " ".join([target_from, *inner_joins])
+    key_names = [_q(f"{READ_KEY}{i}") for i in range(len(keys))]
+    keyed = ", ".join(f"{inner} AS {name}" for (inner, _), name in zip(keys, key_names))
+    partition = ", ".join(inner for inner, _ in keys)
+    value, row = _q(READ_VALUE), _q(READ_ROW)
+    numbered = (
+        f"SELECT {keyed}, {jbo} AS {value}, ROW_NUMBER() OVER (PARTITION BY {partition}) AS {row}"
+        f" FROM {rows_from}"
+    )
+    rows = _q("_rows")
+    cardinality = join_meta.cardinality
     if cardinality in ("many-to-one", "one-to-one"):
-        expr = f"(SELECT {jbo} FROM {from_clause} WHERE {where_expr} LIMIT 1)"
-    elif cardinality == "one-to-many" and agg_limit is not None:
-        expr = _empty_list_if_none(
-            f"(SELECT json_agg(_t)"
-            f" FROM (SELECT {jbo} AS _t"
-            f" FROM {from_clause}"
-            f" WHERE {where_expr}"
-            f" LIMIT {agg_limit}) _sub)"
-        )
+        read = f"SELECT {', '.join(key_names)}, {value} FROM ({numbered}) {rows} WHERE {row} = 1"
     elif cardinality == "one-to-many":
-        expr = _empty_list_if_none(
-            f"(SELECT json_agg({jbo}) FROM {from_clause} WHERE {where_expr})"
-        )
+        limit = _explicit_limit(sel, variables) or join_meta.default_limit
+        if limit is None:
+            read = (
+                f"SELECT {keyed}, json_agg({jbo}) AS {value} FROM {rows_from} GROUP BY {partition}"
+            )
+        else:
+            read = (
+                f"SELECT {', '.join(key_names)}, json_agg({value}) AS {value}"
+                f" FROM ({numbered}) {rows} WHERE {row} <= {limit}"
+                f" GROUP BY {', '.join(key_names)}"
+            )
     else:
         raise ValueError(f"unhandled relationship cardinality {cardinality!r}")
-
-    return expr, alias_counter
+    read_alias = _q(f"{target_alias}_read")
+    on = " AND ".join(f"{read_alias}.{name} = {outer}" for (_, outer), name in zip(keys, key_names))
+    field_value = f"{read_alias}.{value}"
+    if cardinality == "one-to-many":
+        field_value = _empty_list_if_none(field_value)
+    return field_value, f"LEFT JOIN ({read}) {read_alias} ON {on}", alias_counter
 
 
 def _build_gql_selection(field_name: str, selection_set) -> str:
@@ -509,37 +486,26 @@ def _collect_nested_columns(
                     )
                 )
             elif _use_agg and nested_sel.selection_set:
-                # One JSON value for the field, as at the root: a correlated subquery nesting its
-                # own relationships at any depth (#286).
-                _pv = (
-                    nested_join_meta.child_src_val
-                    if nested_join_meta.child_src_val is not None
-                    else (src_expr if nested_join_meta.source_column_type != "integer" else None)
-                )
+                # One JSON value for the field, as at the root: a grouped read nesting its own
+                # relationships at any depth (#286, #362).
                 _json_text: set[str] = set()
-                nested_from = (
-                    f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
-                    f" {_q(nested_alias)}"
-                )
-                json_expr, alias_counter = _build_rel_json_expr(
-                    nested_sel.selection_set.selections,
+                json_expr, read_join, alias_counter = rel_read(
+                    nested_sel,
+                    nested_join_meta,
                     ctx,
-                    nested_join_meta.target.type_name,
-                    nested_join_meta.target,
                     nested_alias,
-                    nested_from if hop is None else hop.from_clause(nested_from),
-                    f"{tgt_expr} = {src_expr}" if hop is None else hop.to_source,
-                    nested_join_meta.cardinality,
-                    _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit,
+                    src_expr,
+                    tgt_expr,
+                    hop,
                     use_catalog,
                     alias_counter,
                     sources,
                     variables,
-                    parent_src_val=_pv,
                     json_text=_json_text,
                 )
+                join_clauses.append(read_join)
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")
-                # A to-one's subquery is null with its row; a list is [] for none, never null.
+                # A to-one's read is null with its row; a list is [] for none, never null.
                 if nested_join_meta.cardinality == "one-to-many":
                     json_expr = _when_joined(json_expr, joined)
                 select_parts.append(f"{json_expr} AS {_q(json_alias)}")

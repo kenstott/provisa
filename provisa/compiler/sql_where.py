@@ -392,6 +392,9 @@ class JunctionHop:  # REQ-1586
     to_target: str
     to_source: str
     joined: str
+    #: Each junction column the source's row is matched on, with the source's value it equals
+    #: (``to_source``'s pairs): the key a grouped read of the target is joined back by.
+    source_keys: tuple[tuple[str, str], ...]
     #: The junction's own rows of this relationship's type; None where it carries one type.
     type_filter: str | None = None
 
@@ -440,15 +443,17 @@ def junction_hop(  # REQ-1586
                 "but the relationship names no type value"
             )
         type_filter = f"{va}.{_q(via.type_column)} = {_sql_str_literal(via.type_value)}"
-    to_source = [
-        f"{va}.{_q(v)} = {sa}.{_q(s)}"
+    source_keys = tuple(
+        (f"{va}.{_q(v)}", f"{sa}.{_q(s)}")
         for v, s in zip(via.source_columns, key_list(join_meta.source_column), strict=True)
-    ]
+    )
+    to_source = [f"{v} = {s}" for v, s in source_keys]
     return JunctionHop(
         via_ref=f"{_table_ref(via.table, use_catalog)} {va}",
         to_target=" AND ".join(to_target),
         to_source=" AND ".join(to_source),
         joined=f"{ta}.{_q(key_list(join_meta.target_column)[0])} IS NOT NULL",
+        source_keys=source_keys,
         type_filter=type_filter,
     )
 

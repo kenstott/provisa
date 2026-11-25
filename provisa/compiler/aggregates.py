@@ -234,9 +234,10 @@ def _nodes_column(
 ) -> tuple[str, ColumnRef, str | None, StatementSources] | None:
     """An _aggregate / _group_by field's ``nodes`` as one column of its own statement: the rows it
     aggregates (a group's, under group-by), each a JSON object of its selected fields --
-    ``json_agg(json_object(...)) AS nodes`` -- with each relationship field the correlated JSON
-    subquery a root field's is. Returns (the column's SQL, its ColumnRef, the alias the table is
-    read under, the tables it reads), or None when ``nodes`` is not selected. One statement: the
+    ``json_agg(json_object(...)) AS nodes`` -- with each relationship field the grouped read a
+    root field's is (``sql_selection.rel_read``), joined by key. Returns (the column's SQL, its
+    ColumnRef, what follows the table's name in FROM -- its alias and the reads joined to it --,
+    the tables it reads), or None when ``nodes`` is not selected. One statement: the
     rows are never read again beside it, nor joined back to the groups (REQ-196)."""
     from provisa.compiler.sql_selection import _empty_list_if_none
 
@@ -261,6 +262,7 @@ def _nodes_column(
         return f"{_q(root_alias)}.{_q(phys)}" if root_alias else _q(phys)
 
     pairs: list[str] = []
+    joins: list[str] = []
     json_text: set[str] = set()
     for node_sel in nodes_sel.selection_set.selections:
         if not isinstance(node_sel, FieldNode):
@@ -277,36 +279,23 @@ def _nodes_column(
             src_expr, tgt_expr = _resolve_join_src_tgt(
                 join_meta, root_alias, join_alias, ctx, table
             )
-            _agg_limit = _sw._explicit_limit(node_sel, variables) or join_meta.default_limit
-            _pv = (
-                join_meta.child_src_val
-                if join_meta.child_src_val is not None
-                else (src_expr if join_meta.source_column_type != "integer" else None)
-            )
-            _from = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
-            _where = f"{tgt_expr} = {src_expr}"
-            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
-            hop = _sw.junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
-            if hop is not None:
-                _from, _where = hop.from_clause(_from), hop.to_source
-            json_expr, alias_counter = _ssel._build_rel_json_expr(
-                node_sel.selection_set.selections,
+            json_expr, read_join, alias_counter = _ssel.rel_read(
+                node_sel,
+                join_meta,
                 ctx,
-                join_meta.target.type_name,
-                join_meta.target,
                 join_alias,
-                _from,
-                _where,
-                join_meta.cardinality,
-                _agg_limit,
+                src_expr,
+                tgt_expr,
+                # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+                _sw.junction_hop(join_meta, root_alias, join_alias, use_catalog, sources),
                 use_catalog,
                 alias_counter,
                 sources,
                 variables,
-                parent_src_val=_pv,
                 json_text=json_text,
                 key_prefix=f"{key}.",
             )
+            joins.append(read_join)
             json_text.add(key)
             pairs.append(f"KEY '{key}' VALUE {json_expr}")
         else:
@@ -327,7 +316,8 @@ def _nodes_column(
         json=True,
         json_text=frozenset(json_text),
     )
-    return sql, column, root_alias, sources
+    read_as = " ".join([_q(root_alias), *joins]) if root_alias else None
+    return sql, column, read_as, sources
 
 
 def _compile_having(
@@ -573,7 +563,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         select_parts = [_q(phys_by_cols[0])] if phys_by_cols else ["1"]
 
     ref = _table_ref(table, use_catalog)
-    read_as = f"{ref} {_q(nodes[2])}" if nodes is not None and nodes[2] else ref
+    read_as = f"{ref} {nodes[2]}" if nodes is not None and nodes[2] else ref
     sql = f"SELECT {', '.join(select_parts)} FROM {read_as}"
 
     _vvals = ctx.virtual_columns.get(table.table_id)
@@ -716,7 +706,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         select_parts.append("1")
 
     ref = _table_ref(table, use_catalog)
-    read_as = f"{ref} {_q(nodes[2])}" if nodes is not None and nodes[2] else ref
+    read_as = f"{ref} {nodes[2]}" if nodes is not None and nodes[2] else ref
     sql = f"SELECT {', '.join(select_parts)} FROM {read_as}"
 
     # Process arguments (where)
