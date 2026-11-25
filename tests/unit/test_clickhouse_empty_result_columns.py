@@ -92,10 +92,24 @@ def test_a_stream_with_a_header_asks_nothing_more():
     assert len(client.queries) == 1
 
 
-def test_a_query_with_no_block_names_the_statements_columns():
+def test_a_query_with_no_rows_names_the_statements_columns():
+    """A whole result is read as Arrow (REQ-2194), and ClickHouse's Arrow answer of a SELECT
+    that matches no row still carries the statement's schema: its columns are named from it,
+    with no DESCRIBE."""
+    import pyarrow as pa
+    from clickhouse_connect.driver.query import QueryContext
+
     from provisa.core.sync_pool import BlockingPool
 
-    client = _Client([("event_type", "String"), ("order_id", "UInt64")])
+    class _Arrow(_Client):
+        def create_query_context(self, query=None, parameters=None, **_kw):
+            return QueryContext(query=query or "", parameters=parameters)
+
+        def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
+            self.queries.append((sql, parameters))
+            return pa.schema([("event_type", pa.string()), ("order_id", pa.uint64())]).empty_table()
+
+    client = _Arrow([])
     driver = ClickHouseDriver()
     driver._pool = BlockingPool(
         lambda: client, lambda c: c.close(), minsize=1, maxsize=1, wait_s=5.0, name="ch:test"
@@ -103,6 +117,7 @@ def test_a_query_with_no_block_names_the_statements_columns():
     result = asyncio.run(driver.execute("SELECT event_type, order_id FROM t WHERE 1 = 0"))
     assert result.rows == []
     assert result.column_names == ["event_type", "order_id"]
+    assert [sql for sql, _ in client.queries] == ["SELECT event_type, order_id FROM t WHERE 1 = 0"]
 
 
 def test_the_engine_runtimes_query_with_no_block_names_the_statements_columns(monkeypatch):

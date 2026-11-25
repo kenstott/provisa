@@ -31,7 +31,7 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import PostgresError, raising
+from provisa.core.pg_error import END, MARK, PostgresError, raising
 
 _D, _T, _C = "duckdb", "trino", "clickhouse"
 _ENGINES = (_D, _T, _C)
@@ -81,6 +81,18 @@ def _guard(d: str, answer: str, wanted: str, called: str) -> str:
     return f"CASE WHEN v IS NULL THEN NULL WHEN {_kind(d)} = '{wanted}' THEN {answer} ELSE {fail[d]} END"
 
 
+def _array_length(d: str, called: str) -> str:
+    """json_array_length and jsonb_array_length: an array's length. On ClickHouse another kind
+    raises PostgreSQL's 22023 with its message (jsonfuncs.c: an object's, a scalar's)."""
+    if d != _C:
+        return _guard(d, _LENGTH[d], "array", called)
+    raised = "throwIf(1, '" + MARK + " 22023: cannot get array length of {}" + END + "')"
+    other = (
+        f"if({_kind(d)} = 'object', {raised.format('a non-array')}, {raised.format('a scalar')})"
+    )
+    return f"CASE WHEN v IS NULL THEN NULL WHEN {_kind(d)} = 'array' THEN {_LENGTH[d]} ELSE {other} END"
+
+
 def _read(reader: dict[str, str], place: dict[str, str], d: str, index: str = "") -> str:
     return reader[d].replace("@", place[d].replace("{i}", index or _INDEX[d]))
 
@@ -112,7 +124,7 @@ ROWS: tuple[Row, ...] = (
     *_rows("path_step", "v, k", lambda d, _: _step(_READ, d)),
     *_rows("path_step_text", "v, k", lambda d, _: _step(_READ_TEXT, d)),
     *_rows("typeof", "v", lambda d, _: f"CASE WHEN v IS NOT NULL THEN {_kind(d)} END"),
-    *_rows("array_length", "v", lambda d, name: _guard(d, _LENGTH[d], "array", name)),
+    *_rows("array_length", "v", _array_length),
     ("to_jsonb", ("v",), {_OF[_D]: "to_json(v)", _OF[_T]: "CAST(v AS JSON)"}),
     ("array_to_json", ("v",), {_OF[_D]: "to_json(v)"}),
     ("row_to_json", ("v",), {_OF[_D]: "to_json(v)"}),

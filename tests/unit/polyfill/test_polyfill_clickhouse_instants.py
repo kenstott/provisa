@@ -188,7 +188,7 @@ def test_a_null_beside_a_value_past_the_bound_is_null(runtime):
 
 def test_the_stated_bound_is_the_one_enforced():
     feature = next(f for f in GRID.features if f.name == "timestamptz_lt")
-    (stated,) = feature.read.limitations["clickhouse"]
+    (stated,) = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
     assert instants.BOUND in stated.text
     assert instants.FIRST == datetime.datetime(1900, 1, 1)
     assert instants.LAST == datetime.datetime(2299, 12, 31, 23, 59, 59, 999999)
@@ -352,7 +352,7 @@ def test_each_function_of_one_instant_states_its_bound():
         for stated in bounds:  # date_trunc: and at a zone
             assert instants.BOUND in stated.text and "{" not in stated.text
     isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
-    (stated,) = isfinite.read.limitations["clickhouse"]
+    (stated,) = [lim for lim in isfinite.read.limitations["clickhouse"] if lim.refusal is None]
     assert "{" not in stated.text and "infinity" in stated.text
 
 

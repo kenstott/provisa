@@ -1443,6 +1443,18 @@ def _call(node: exp.Expr, name: str | None = None) -> tuple[str, _Row, list[exp.
     return name, row, args
 
 
+def _past_the_type(argument: exp.Expr) -> None:
+    """PostgreSQL's 22008 of a literal of interval whose months, its years' and its own together,
+    pass int32 ('178956971 years'): interval_in raises it as the statement is read, before any
+    call reads the value (REQ-2236, amended 2026-11-23, as on DuckDB)."""
+    value = argument.unnest()
+    if not isinstance(value, exp.Cast) or _said(value) != "interval":
+        return
+    text = _string(value.this.unnest())
+    if text is not None and past_the_type(text):
+        raise Refused(Refusal("22008", _RANGE), ruling=True)
+
+
 def _written(node: exp.Expr, sql: _Sql) -> str | None:
     """The ClickHouse SQL of ``node``, a call of a row here, its arguments read; None where the row
     does not read them. An interval answer is the held tuple."""
@@ -1463,6 +1475,8 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
     for kind, argument in zip(row.kinds, args):
         if kind == "i":
             value = _interval(argument, sql, untyped=row.untyped)
+            if value is None:
+                _past_the_type(argument)
             if value is None and name not in _SHARED and isinstance(argument.unnest(), exp.Column):
                 # a table's column: ClickHouse holds no interval of it to read (and the call's
                 # name says the column is one, which no other row answers)

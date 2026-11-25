@@ -64,7 +64,7 @@ legs:
   # --- containers the integration tests already start (docker-compose.test.yml) -------------
   - engine: clickhouse-server
     lane: free
-    image: clickhouse/clickhouse-server@sha256:85b97f63dcfff47790d26bb5d5801637aaddb2b93e5e9aee27a686c2fb2b9916  # clickhouse/clickhouse-server:24.3
+    image: clickhouse/clickhouse-server@sha256:15365147d687bb5682ea3d5d02d6c62a625c55846bc907900d255e7f491e6816  # clickhouse/clickhouse-server:26.10.12.13
     service: clickhouse
     engine-url: clickhouse://default:provisa@127.0.0.1:8123/default
     source-host: runner

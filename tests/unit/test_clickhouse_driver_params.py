@@ -21,13 +21,21 @@ from __future__ import annotations
 
 import asyncio
 
+import pyarrow as pa
+
 from provisa.executor.drivers.clickhouse import ClickHouseDriver
 
 
-class _FakeResult:
-    def __init__(self, rows, cols):
-        self.result_rows = rows
-        self.column_names = cols
+def _context(query=None, parameters=None, **_kw):
+    """clickhouse-connect's own query context, as the client makes it for a statement."""
+    from clickhouse_connect.driver.query import QueryContext
+
+    return QueryContext(query=query or "", parameters=parameters)
+
+
+def _arrow(rows, cols) -> pa.Table:
+    """A result as ClickHouse's Arrow output holds it (REQ-2194)."""
+    return pa.table({c: [r[i] for r in rows] for i, c in enumerate(cols)})
 
 
 class _FakeClient:
@@ -37,10 +45,12 @@ class _FakeClient:
         self.last_sql: str | None = None
         self.last_parameters = None
 
-    def query(self, sql, parameters=None, settings=None):
+    create_query_context = staticmethod(_context)
+
+    def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
         self.last_sql = sql
         self.last_parameters = parameters
-        return _FakeResult(self._rows, self._cols)
+        return _arrow(self._rows, self._cols)
 
     def close(self):
         pass
@@ -121,12 +131,16 @@ class TestClickHouseDriverSessions:
         lock = threading.Lock()
 
         class _Session:
+            server_version = "26.10.12.13"
+
             def __init__(self) -> None:
                 self.in_flight = 0
                 self.overlapped = False
                 self.closed = False
 
-            def query(self, sql, parameters=None, settings=None):
+            create_query_context = staticmethod(_context)
+
+            def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
                 import time
 
                 with lock:
@@ -135,7 +149,7 @@ class TestClickHouseDriverSessions:
                 time.sleep(0.05)
                 with lock:
                     self.in_flight -= 1
-                return _FakeResult([(1,)], ["n"])
+                return _arrow([(1,)], ["n"])
 
             def close(self):
                 self.closed = True
@@ -194,6 +208,8 @@ def test_a_pooled_client_names_no_server_session(monkeypatch):
     asked: list[dict] = []
 
     class _Client:
+        server_version = "26.10.12.13"
+
         def command(self, *_a, **_k):
             return None
 
@@ -213,3 +229,82 @@ def test_a_pooled_client_names_no_server_session(monkeypatch):
     for kwargs in asked:
         assert kwargs["autogenerate_session_id"] is False
         assert "session_id" not in kwargs
+
+
+class TestServerVersionAtConnect:
+    """DIRECT results are read as Arrow, and a ClickHouse server before 26 refuses UUID in Arrow
+    output: an older server is refused at connect, by name and with its version (REQ-2194)."""
+
+    @staticmethod
+    def _connect(monkeypatch, version: str | None) -> list:
+        import clickhouse_connect
+
+        opened: list = []
+
+        class _Client:
+            def __init__(self) -> None:
+                self.server_version = version
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        def _get_client(**_kwargs):
+            client = _Client()
+            opened.append(client)
+            return client
+
+        monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+        driver = ClickHouseDriver()
+        asyncio.run(driver.connect("h", 8123, "default", "u", "p", min_pool=1, max_pool=2))
+        return opened
+
+    def test_a_server_older_than_26_is_refused_by_name_with_its_version(self, monkeypatch):
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+
+        with pytest.raises(UnsupportedClickHouseVersion) as refused:
+            self._connect(monkeypatch, "24.3.18.7")
+        message = str(refused.value)
+        assert "ClickHouse 24.3.18.7 is not supported" in message
+        assert "ClickHouse 26 or later" in message
+        assert "UUID" in message
+
+    def test_the_refused_client_is_closed(self, monkeypatch):
+        import clickhouse_connect
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+
+        made: list = []
+
+        class _Client:
+            server_version = "25.12.1.1"
+
+            def __init__(self) -> None:
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        def _get_client(**_kwargs):
+            made.append(_Client())
+            return made[-1]
+
+        monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+        with pytest.raises(UnsupportedClickHouseVersion, match="ClickHouse 25.12.1.1"):
+            asyncio.run(ClickHouseDriver().connect("h", 8123, "default", "u", "p"))
+        assert made and all(c.closed for c in made)
+
+    def test_a_server_without_a_readable_version_is_refused(self, monkeypatch):
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import UnsupportedClickHouseVersion
+
+        with pytest.raises(UnsupportedClickHouseVersion, match="no readable version"):
+            self._connect(monkeypatch, None)
+
+    def test_a_26_server_connects(self, monkeypatch):
+        opened = self._connect(monkeypatch, "26.10.12.13")
+        assert opened and not any(c.closed for c in opened)

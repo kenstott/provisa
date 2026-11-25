@@ -1374,6 +1374,7 @@ _SAME_BOUNDS = "2201G: lower bound cannot equal upper bound"
 _BUCKET_NAN = "2201G: operand, lower bound, and upper bound cannot be NaN"
 #: NaN's text on each engine (nan, NaN): no number's text holds an n.
 _NAN = "[nN][aA][nN]"
+_INFINITE_BOUNDS = "2201G: lower and upper bounds must be finite"
 _OUT_OF_RANGE = "22003: integer out of range"
 
 
@@ -1495,6 +1496,14 @@ def _bucket(e: Engine, kind: str) -> str:
         f"CASE WHEN {numeric} THEN {_bucket_numeric(e, numeric)} "
         f"ELSE {_bucket_float(e, f'NOT {numeric}')} END"
     )
+    if e.name == "clickhouse":
+        answer = _bucket_float_checked(e, texts, numeric, answer)
+        counted = _let(e, "_n", e.bigint.format("n"), e.raises.format("_n <= 0", _NO_COUNT, answer))
+        # A float8's infinite operand is answered (below or above every bucket), and a NaN or an
+        # infinite bound raises PostgreSQL's error (_bucket_float_checked); a numeric's is read
+        # from its digits, which an infinity has none of.
+        refused = f"({numeric}) AND (({finite}) OR ({spelled}))"
+        return e.raises.format(refused, f"0A000: width_bucket {REFUSED}", counted)
     refused = e.raises.format(
         f"({finite}) OR (({numeric}) AND ({spelled}))",
         f"0A000: width_bucket {REFUSED}",
@@ -1506,6 +1515,19 @@ def _bucket(e: Engine, kind: str) -> str:
         f"{e.bigint.format('n')} <= 0",
         _NO_COUNT,
         e.raises.format(nan, _BUCKET_NAN, refused),
+    )
+
+
+def _bucket_float_checked(e: Engine, texts: list[str], numeric: str, answer: str) -> str:
+    """width_bucket_float8's checks of its values, past its count's (float.c): a NaN of the three
+    raises 2201G, then an infinite bound; an infinite operand is allowed."""
+    held = f"NOT ({numeric}) AND n > 0"
+    nan = " OR ".join(e.matches.format(t, "(?i)nan") for t in texts)
+    infinite = " OR ".join(e.matches.format(t, _NOT_FINITE) for t in texts[1:])
+    return e.raises.format(
+        f"({held}) AND ({nan})",
+        _BUCKET_NAN,
+        e.raises.format(f"({held}) AND NOT ({nan}) AND ({infinite})", _INFINITE_BOUNDS, answer),
     )
 
 

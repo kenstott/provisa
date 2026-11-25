@@ -110,8 +110,8 @@ async def execute_direct(  # REQ-027, REQ-031
                 log.info("[EXEC DIRECT] source=%s | sql=%s", source_id, sql[:200])
                 run = pool.execute_reporting_generated if reports_generated else pool.execute
                 result = await run(source_id, sql, effective_params)
-                span.set_attribute("db.row_count", len(result.rows))
-                log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, len(result.rows))
+                span.set_attribute("db.row_count", result.stats.row_count)
+                log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, result.stats.row_count)
                 return result
             except ConnectionError as exc:
                 remaining = deadline - asyncio.get_event_loop().time()
