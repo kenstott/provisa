@@ -133,6 +133,36 @@ def _first_match(value: exp.Expr, pattern: exp.Expr, replacement: exp.Expr, dial
     )
 
 
+def _is_empty_text(value: exp.Expr) -> bool:
+    return isinstance(value, exp.Literal) and value.is_string and value.this == ""
+
+
+#: The empty pattern on ClickHouse (REQ-2236): it matches before each character and at the end, so
+#: PostgreSQL's first match puts the replacement before the text, and every match puts it before
+#: each character and after the last. ClickHouse's replaceRegexpOne and replaceRegexpAll answer the
+#: text unchanged (or raise, before 26.x), so the answer is written here. $v is the text, $r the
+#: replacement's literal.
+_CH_EMPTY_FIRST = "concat($r, $v)"
+_CH_EMPTY_EVERY = (
+    "if($v IS NULL, NULL, concat(arrayStringConcat(arrayMap("
+    "_i -> concat($r, substringUTF8(ifNull($v, ''), _i, 1)), "
+    "range(1, toUInt64(lengthUTF8(ifNull($v, ''))) + 1))), $r))"
+)
+
+
+def _ch_empty_pattern(value: exp.Expr, said: exp.Expr, every: bool) -> exp.Expr:
+    """regexp_replace of the empty pattern on ClickHouse (_CH_EMPTY_FIRST, _CH_EMPTY_EVERY). A
+    replacement that is no literal, or that holds a backslash (an escape PostgreSQL reads), is
+    refused by name."""
+    if not (isinstance(said, exp.Literal) and said.is_string) or "\\" in said.this:
+        raise Refused(refusal("clickhouse"))
+    form = _CH_EMPTY_EVERY if every else _CH_EMPTY_FIRST
+    return graft(
+        replacement(form, "clickhouse", "f($v, $r)"),
+        {"v": value, "r": exp.Literal.string(said.this)},
+    )
+
+
 def flagged(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """regexp_replace with PostgreSQL's flags read: the first match or every one, its case."""
     if not isinstance(node, exp.RegexpReplace):
@@ -144,6 +174,8 @@ def flagged(node: exp.Expr, dialect: str) -> exp.Expr | None:
     value = node.this
     pattern = said_text(node.expression)
     replacement = said_text(node.args["replacement"])
+    if dialect == "clickhouse" and _is_empty_text(pattern):
+        return _ch_empty_pattern(value, replacement, every)
     if no_case:
         pattern = _no_case(pattern)
     if every:
@@ -156,7 +188,13 @@ _LIMITATIONS = {
         Limitation(
             "A flag other than g, i, c and t, a flag that is no constant, and a first match whose "
             "pattern or replacement is no constant, whose replacement names the whole match "
-            "(\\0) or whose pattern names a group by number are refused.",
+            "(\\0) or whose pattern names a group by number are refused."
+            + (
+                " The empty pattern's replacement that is no literal or holds a backslash is "
+                "refused."
+                if dialect == "clickhouse"
+                else ""
+            ),
             refusal(dialect),
         ),
     )
@@ -262,10 +300,10 @@ def _with_checks(checks: list[str], answer: str) -> str:
     return f"if({' + '.join(checks)} = 0, {answer}, NULL)"
 
 
-def _ch_form(function: str, count: int, re2: str) -> str:
+def _ch_form(function: str, count: int, re2: str, empty_pattern: bool) -> str:
     """The ClickHouse form of ``function`` of ``count`` arguments, its holes $s (the text), $b (the
     start), $n (the occurrence), $e (the end option) and $x (the subexpression), of the RE2 pattern
-    ``re2``."""
+    ``re2``; ``empty_pattern`` when the statement's pattern is the empty text."""
     pattern = "'" + re2.replace("\\", "\\\\").replace("'", "\\'") + "'"
     whole = "'(" + re2.replace("\\", "\\\\").replace("'", "\\'") + ")'"
     empty = _EMPTY_MATCH.format(condition=f"match('', {pattern})")
@@ -287,9 +325,19 @@ def _ch_form(function: str, count: int, re2: str) -> str:
     matches = f"extractAll({_FROM}, {whole})"
     if function == "regexp_substr":
         subexpression = _invalid("subexpr").format(condition="toInt64($x) < 0")
+        if empty_pattern:
+            # PostgreSQL's empty pattern matches the empty text before each character from the
+            # start and at the end: its nth match is '' where there are n such places. extractAll
+            # skips an empty match, so the answer is written here.
+            found = "if(toInt64($n) <= toInt64(lengthUTF8($s)) - toInt64($b) + 2, '', NULL)"
+            return _with_checks(
+                [start, occurrence, subexpression], f"CAST({found} AS Nullable(String))"
+            )
+        # Any other pattern that matches the empty text: extractAll skips its empty matches, so
+        # it raises 0A000, as where it counts, places or splits.
         found = f"if(length({matches}) >= toInt64($n), {matches}[toInt64($n)], NULL)"
         return _with_checks(
-            [start, occurrence, subexpression], f"CAST({found} AS Nullable(String))"
+            [start, occurrence, subexpression, empty], f"CAST({found} AS Nullable(String))"
         )
     # regexp_instr: the text before the nth match, in characters, past the start
     end = _invalid("endoption").format(condition="toInt64($e) NOT IN (0, 1)")
@@ -357,7 +405,7 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     bindings = {"s": args[0]}
     for hole in holes[1:]:
         bindings[hole] = said.get(hole) or exp.Literal.number(_DEFAULTS[hole])
-    form = _ch_form(function, len(args), re2)
+    form = _ch_form(function, len(args), re2, said_text(args[1]).this == "")
     pattern = "f(" + ", ".join("$" + h for h in holes) + ")"
     return graft(replacement(form, dialect, pattern), bindings)
 
@@ -404,8 +452,8 @@ CH_REGEXPS = Feature(
                     "ordinary character: a pattern of a back reference, a locale's class (\\w, "
                     "\\s, [[:alpha:]]), \\b, lookaround or a director prefix, a flag other than "
                     "i and c, and a subexpression other than 0 are refused by name; a pattern "
-                    "that matches the empty text raises 0A000 where it counts, places or splits, "
-                    "and a NULL text that is no literal raises 0A000 in regexp_split_to_array "
+                    "that matches the empty text raises 0A000 where it counts, places, splits or "
+                    "extracts (the empty pattern itself extracts the empty text), and a NULL text that is no literal raises 0A000 in regexp_split_to_array "
                     "(ClickHouse holds no NULL of an array).",
                 ),
             )

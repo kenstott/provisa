@@ -697,6 +697,36 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT pg_catalog.regexp_substr('foo123bar45'::text, '[0-9]+'::text, 1, 2) AS v", "45"),
     ("SELECT pg_catalog.regexp_substr('foo123bar45'::text, '\\d+'::text, 5) AS v", "23"),
     ("SELECT pg_catalog.regexp_substr('it''s'::text, '''s'::text) AS v", "'s"),
+    # The empty pattern matches the empty text before each character and at the end (REQ-2236).
+    ("SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text) AS v", ""),
+    ("SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text, 3::integer) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, ''::text, 4) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, ''::text, 5) AS v", None),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, ''::text, 1, 4) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, ''::text, 1, 5) AS v", None),
+    ("SELECT pg_catalog.regexp_substr('日本'::text, ''::text, 2, 2) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr('日本'::text, ''::text, 2, 3) AS v", None),
+    ("SELECT pg_catalog.regexp_substr(''::text, ''::text) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr(NULL::text, ''::text) AS v", None),
+    (
+        "SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text, 1::integer, 1::integer, 'i'::text) AS v",
+        "",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text, 1::integer, 1::integer, 'i'::text, 0::integer) AS v",
+        "",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text) AS v", "abcabc"),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text, 'g'::text) AS v",
+        "abcaabcbabccabc",
+    ),
+    ("SELECT pg_catalog.regexp_replace('日本'::text, ''::text, '-'::text, 'g') AS v", "-日-本-"),
+    ("SELECT pg_catalog.regexp_replace(''::text, ''::text, 'x'::text, 'g') AS v", "x"),
+    ("SELECT pg_catalog.regexp_replace(''::text, ''::text, 'x'::text) AS v", "x"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, ''::text, 'x'::text, 'i') AS v", "xabc"),
+    ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text, 'g') AS v", None),
+    ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text) AS v", None),
     ("SELECT pg_catalog.regexp_like('ABC'::text, 'b'::text, 'ic') AS v", "f"),
     ("SELECT pg_catalog.regexp_split_to_array('a1b22c'::text, '[0-9]+'::text) AS v", "{a,b,c}"),
     ("SELECT pg_catalog.regexp_split_to_array('aXbxc'::text, 'x'::text, 'i') AS v", "{a,b,c}"),
@@ -802,6 +832,9 @@ RAISED = [
     # countMatches skips them, so a pattern that matches the empty text is its stated 0A000.
     ("SELECT pg_catalog.regexp_count('abc'::text, ''::text) AS v", "0A000"),
     ("SELECT pg_catalog.regexp_count('abc'::text, 'x*'::text) AS v", "0A000"),
+    # extractAll skips an empty match too: regexp_substr('abc', 'b*') is '' on PostgreSQL.
+    ("SELECT pg_catalog.regexp_substr('abc'::text, 'b*'::text) AS v", "0A000"),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, '^'::text) AS v", "0A000"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 1, 2) AS v", "22023"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 0) AS v", "22023"),
     ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'g') AS v", "22023"),
@@ -820,6 +853,10 @@ REFUSED = [
     "SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'x') AS v",
     "SELECT pg_catalog.regexp_substr('foo'::text, '(o)'::text, 1, 1, '', 1) AS v",
     "SELECT pg_catalog.regexp_count(c, c, 1) AS v FROM (VALUES ('a'::text)) AS t(c)",
+    # The empty pattern's replacement is read here: an escape PostgreSQL reads in it is refused.
+    "SELECT pg_catalog.regexp_replace('abc'::text, ''::text, '\\&x'::text, 'g') AS v",
+    "SELECT pg_catalog.regexp_replace('abc'::text, ''::text, c, 'g') AS v "
+    "FROM (VALUES ('a'::text)) AS t(c)",
 ]
 
 
