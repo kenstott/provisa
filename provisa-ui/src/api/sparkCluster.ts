@@ -87,9 +87,11 @@ export async function testSparkCluster(
 }
 
 /** REQ-2225 (amended 2026-11-24): what a Spark source joins -- Spark is a built-in source type,
- * not a connector an organisation offers -- and the cluster a source naming none runs on. */
+ * not a connector an organisation offers -- and the cluster a source naming none runs on.
+ * ``host`` is null when this installation carries no Spark host (e.g. e2e, CI without a release
+ * package); the UI shows Spark as unavailable in that case. */
 export interface SparkSource {
-  host: Connector;
+  host: Connector | null;
   default_cluster: SparkClusterInUse;
 }
 
