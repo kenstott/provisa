@@ -235,7 +235,22 @@ def test_the_image_is_pushed_after_every_leg_and_before_what_names_it() -> None:
     job = orchestrator["publish-connector-image"]
     # Gated as every publication: only on a publishing run, after every leg has built.
     assert job["if"] == orchestrator["publish"]["with"]["publish"]
+    # Every leg that runs on a release: install-host (REQ-2269) runs on a dry run alone
+    # (`!inputs.publish`), so on a release it is skipped, and a push that needed it would be too.
+    dry_run_only = {
+        name
+        for name, body in orchestrator.items()
+        if "uses" in body
+        and all(
+            job.get("if") == "${{ !inputs.publish }}"
+            for job in yaml.safe_load((_WORKFLOWS / Path(body["uses"]).name).read_text())[
+                "jobs"
+            ].values()
+        )
+    }
+    assert dry_run_only == {"install-host"}
     legs = {name for name, body in orchestrator.items() if "uses" in body} - {"publish"}
+    legs -= dry_run_only
     assert set(job["needs"]) == legs
     assert job["permissions"] == {"contents": "read", "packages": "write"}
     # The provisa wheel and the installers carry the block: the release that attaches them (and
