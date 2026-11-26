@@ -22,17 +22,20 @@ export function EntityLink({
   kind,
   id,
   table,
+  section,
   children,
   testId,
 }: {
   kind: EntityKind;
   id: string | number;
   table?: number;
+  /** A library section's mark (sectionMark), for kind ``section``. */
+  section?: string | null;
   children: ReactNode;
   testId?: string;
 }) {
   const { capabilities } = useAuth();
-  const href = entityLink(capabilities, kind, id, table);
+  const href = entityLink(capabilities, kind, id, table, section);
   if (href === undefined) return <span data-testid={testId}>{children}</span>;
   return (
     <Anchor component={Link} to={href} inherit data-testid={testId} onClick={stopAtLink}>

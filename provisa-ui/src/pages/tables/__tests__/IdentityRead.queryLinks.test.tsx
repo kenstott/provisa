@@ -33,6 +33,7 @@ import {
   reader,
 } from "../../../components/relationships/__tests__/relationshipQueryFixtures";
 import { IdentityRead } from "../TableSectionsRead";
+import { tableGraphql } from "../../../components/relationships/tableQueries";
 
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -52,6 +53,7 @@ const CUSTOMERS = {
   draft: false,
   region: null,
   apiEndpoint: null,
+  columns: [],
 } as unknown as RegisteredTable;
 
 const PG = { id: "pg", type: "postgresql" } as Source;
@@ -195,5 +197,122 @@ describe("a table's Identity section query links", () => {
     routed(<IdentityRead table={CUSTOMERS} source={PG} />);
     expect(screen.queryByTestId("table-identity-query-links")).toBeNull();
     expect(vi.mocked(metaReader)).not.toHaveBeenCalled();
+  });
+});
+
+// REQ-1986: a parameterized table's query carries each parameter, a placeholder to fill in (the
+// model records no parameter default), in the syntax its surface takes parameters; it opens
+// without running.
+describe("a parameterized table's query links", () => {
+  const parameter = (id: number, name: string, required: boolean) => ({
+    id,
+    columnName: `_nf_${name}`,
+    alias: null,
+    dataType: "text",
+    nativeFilterType: required ? "path_param" : "query_param",
+    nativeFilterRequired: required,
+  });
+  const PARAMETERIZED = {
+    ...CUSTOMERS,
+    columns: [
+      { id: 1, columnName: "id", alias: null, dataType: "integer", nativeFilterType: null },
+      parameter(2, "region", true),
+      parameter(3, "since", false),
+    ],
+  } as unknown as RegisteredTable;
+  const PARAM_GRAPH: GraphSchemaDoc = {
+    ...GRAPH,
+    node_labels: GRAPH.node_labels.map((n) =>
+      n.table_id === 2
+        ? {
+            ...n,
+            native_filter_columns: [
+              { name: "region", type: "text" },
+              { name: "since", type: "text" },
+            ],
+          }
+        : n,
+    ),
+  };
+  const PARAMS = { region: "<region>", since: "<since>" };
+  const paramsOf = (url: string) =>
+    JSON.parse(new URLSearchParams(url.split("?")[1]).get("params") ?? "null");
+
+  const open = async (surface: string) => {
+    serve(PARAM_GRAPH);
+    routed(<IdentityRead table={PARAMETERIZED} source={PG} actingRole={role} />);
+    fireEvent.click(await screen.findByTestId(`table-identity-query-${surface}`));
+    return opened();
+  };
+
+  it("Cypher binds each parameter as an _nf_ condition", async () => {
+    expect(await open("cypher")).toEqual({
+      to: "/graph",
+      state: {
+        query:
+          "MATCH (n:Clients) WHERE n._nf_region = '<region>' AND n._nf_since = '<since>' " +
+          "RETURN n LIMIT 25",
+        autoRun: false,
+      },
+    });
+  });
+
+  it("SQL binds each parameter as a condition on its column", async () => {
+    expect(await open("sql")).toEqual({
+      to: "/sql",
+      state: {
+        sql:
+          'select * from "sales"."clients" where "_nf_region" = \'<region>\' and ' +
+          "\"_nf_since\" = '<since>' limit 25",
+        autoRun: false,
+      },
+    });
+  });
+
+  it("GraphQL gives each parameter as a root-field argument", async () => {
+    expect(await open("graphql")).toEqual({
+      to: "/query",
+      state: {
+        query: '{ sales__clients(limit: 25, region: "<region>", since: "<since>") { id name } }',
+        autoRun: false,
+      },
+    });
+  });
+
+  it("REST gives the parameters as one params object", async () => {
+    const got = await open("rest");
+    expect(got.to).toBe("/openapi");
+    expect(got.state.autoRun).toBe(false);
+    expect(got.state.openApiUrl).toMatch(/^GET \/data\/rest\/sales\/customers\?limit=25&params=/);
+    expect(paramsOf(got.state.openApiUrl)).toEqual(PARAMS);
+  });
+
+  it("JSON:API gives the parameters as one params object", async () => {
+    const got = await open("jsonapi");
+    expect(got.to).toBe("/jsonapi");
+    expect(got.state.autoRun).toBe(false);
+    expect(got.state.jsonapiUrl).toMatch(/^\/data\/jsonapi\/sales\/customers\?page%5Bsize%5D=25&/);
+    expect(paramsOf(got.state.jsonapiUrl)).toEqual(PARAMS);
+  });
+
+  it("gRPC gives the parameters as the request's params message", async () => {
+    expect(await open("grpc")).toEqual({
+      to: "/grpc",
+      state: {
+        grpcMethod: "QuerySalesClients()",
+        grpcBody: { limit: 25, params: PARAMS },
+        autoRun: false,
+      },
+    });
+  });
+
+  it("names a GraphQL argument _<name> where the parameter's name is one of the field's own", () => {
+    const named = {
+      ...PARAMETERIZED,
+      columns: [parameter(2, "name", true), parameter(3, "limit", false)],
+    } as unknown as RegisteredTable;
+    expect(tableGraphql(named, reader())).toBe(
+      '{ sales__clients(limit: 25, _name: "<name>", _limit: "<limit>") { id name } }',
+    );
   });
 });

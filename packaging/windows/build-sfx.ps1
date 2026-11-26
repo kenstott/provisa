@@ -112,10 +112,30 @@ if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
 # REQ-2194: installing provisa compiles its Rust encoders (provisa._encoders) with setuptools-rust,
 # with the toolchain every recipe names.
 $env:RUSTUP_TOOLCHAIN = '1.95.0'
-# The vector extra: the default config's embedding model runs on sentence-transformers over torch
-# (PyPI's win_amd64 torch is the CPU-only build).
-& $RuntimePy -m pip install --quiet --find-links $NotebookDir "$RepoRoot[vector]" uvicorn mcp-proxy
+# The runtime is exactly uv.lock's set, the one CI tests, never whatever PyPI has newest at build
+# time. The export is hash-pinned and installed with nothing resolved beyond it (--no-deps), so every
+# package is the locked version for win_amd64; provisa and provisa-notebook go in on top without
+# deps, and pip check proves the set is whole. The vector extra: the default config's embedding
+# model runs on sentence-transformers over torch (PyPI's win_amd64 torch is the CPU-only build).
+# The desktop extra is mcp-proxy.
+$Locked = Join-Path $Tmp 'uv-lock-requirements.txt'
+Push-Location $RepoRoot
+& uv export --frozen --no-dev --no-header --no-annotate `
+  --no-emit-project --no-emit-package provisa-notebook --extra vector --extra desktop `
+  --format requirements-txt -o $Locked | Out-Null
+$Exported = $LASTEXITCODE
+Pop-Location
+if ($Exported -ne 0) { throw "uv export of uv.lock's set failed" }
+& $RuntimePy -m pip install --quiet --require-hashes --no-deps -r $Locked
+if ($LASTEXITCODE -ne 0) { throw "pip install of uv.lock's set failed" }
+$NotebookWheel = (Get-ChildItem (Join-Path $NotebookDir 'provisa_notebook-*.whl')).FullName
+& $RuntimePy -m pip install --quiet --no-deps $RepoRoot $NotebookWheel
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+# `build` is a build-host tool, and so is what it brought that the lock does not hold.
+& $RuntimePy -m pip uninstall --quiet --yes build pyproject_hooks
+if ($LASTEXITCODE -ne 0) { throw "pip uninstall build failed" }
+& $RuntimePy -m pip check
+if ($LASTEXITCODE -ne 0) { throw "the bundled native runtime is not a consistent environment after installing uv.lock's set" }
 & $RuntimePy -I -c "import sentence_transformers, torch; assert torch.version.cuda is None" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "the embedding library (sentence-transformers, CPU torch) missing from the bundled native runtime" }
 # -I: from the repository root, -c would import the checkout's provisa (no compiled module)

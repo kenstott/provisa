@@ -48,6 +48,7 @@ import { OffersTab } from "./offers/OffersTab";
 import type { OfferDataset } from "./offers/AddOfferForm";
 import { QualityTab } from "./tabs/QualityTab";
 import { ProfileTab } from "./tabs/ProfileTab";
+import { useProfileRunsParam } from "../tables/useProfileRunsParam";
 import { LineageTab } from "./tabs/LineageTab";
 import { RelatedTab, type SharingProduct } from "./tabs/RelatedTab";
 import { RequestsTab } from "./tabs/RequestsTab";
@@ -162,6 +163,8 @@ export function DataProductDetailPanel({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-shot request, consumed.
     if (reveal) setReveal(null);
   }, [reveal]);
+  // REQ-2277: a link to a dataset's profile runs dialog expands the Profile section it opens in.
+  const profileLink = useProfileRunsParam(true).profile;
   // What each section's summary is computed from, as its content reads it.
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [profiles, setProfiles] = useState<ProductProfile[] | null>(null);
@@ -464,7 +467,7 @@ export function DataProductDetailPanel({
       )}
       <Collapsibles
         id="data-product.sections"
-        reveal={reveal}
+        reveal={reveal ?? (profileLink !== null ? "profile" : null)}
         testId={`data-product-sections-${p.id}`}
       >
         {shown.map((section) => (

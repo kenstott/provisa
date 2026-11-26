@@ -94,6 +94,12 @@ jobs:
         with:
           phase: prime
 
+      # build-appimage.sh's wheelhouse wheels are uv.lock's set, exported by uv.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       - name: Build AppImage
         run: |
           chmod +x packaging/linux/build-appimage.sh

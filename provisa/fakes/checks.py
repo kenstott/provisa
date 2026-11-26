@@ -48,6 +48,7 @@ from provisa.fakes.kinds import (
     Profile,
     Sequence,
     Sql,
+    Template,
     Triangular,
     Truncate,
     Uniform,
@@ -179,7 +180,9 @@ def _check_column(
 ) -> frozenset[str]:
     """Check one column's fake against its type and the table; return the columns it reads."""
     fam = family(c.data_type)
-    if isinstance(kind, Categories):
+    if isinstance(kind, Template):
+        check_template(kind, c.data_type)
+    elif isinstance(kind, Categories):
         for v in kind.values or ():
             _value_fits(v, fam)
     elif isinstance(kind, Bool):
@@ -312,10 +315,66 @@ def model_cycle(reads: dict[tuple[str, str], frozenset[tuple[str, str]]]) -> lis
     return _cycle(reads)
 
 
+#: The kinds a field of a JSON template may declare (REQ-2279): each computed from the column's
+#: digest and its own declaration alone. A field has no measurement of its own and no real value
+#: to transform, and names no other column.
+TEMPLATE_FIELD_KINDS = (
+    Method,
+    Categories,
+    Bool,
+    Percentiles,
+    Normal,
+    LogNormal,
+    Uniform,
+    Triangular,
+    Poisson,
+    Hash,
+)
+
+
+def check_template(kind: Template, data_type: str) -> None:
+    """A template fakes a JSON column; each field's fake is one a field may declare, checked
+    against the field's type as a column's fake is against the column's (REQ-2279)."""
+    from provisa.fakes.template import FIELD_TYPES, fields, is_json
+
+    if not is_json(data_type):
+        raise FakeRefused(f"a JSON template fakes a json column, not a {data_type} one")
+    for path, f in fields(kind.root):
+        try:
+            k = f.kind
+            if not isinstance(k, TEMPLATE_FIELD_KINDS) or (
+                (isinstance(k, Categories) and k.values is None)
+                or (isinstance(k, Bool) and k.share is None)
+            ):
+                raise FakeRefused(
+                    f"{kind_name(k)}() cannot fake a field: a field's fake is computed from the "
+                    f"column's value and its own declaration alone -- a method, categories or "
+                    f"bool with what they would measure declared, a distribution, or hash()"
+                )
+            if family(f.data_type) not in FIELD_TYPES:
+                raise FakeRefused(
+                    f"a field is written as one of {', '.join(sorted(FIELD_TYPES))}, not "
+                    f"{f.data_type}"
+                )
+            _check_column(k, DeclaredColumn(path, f.data_type), {}, {})
+        except FakeRefused as exc:
+            raise FakeRefused(f"field {path!r}: {exc}") from exc
+
+
 def check_stable(kind: FakeKind) -> None:
     """A stable fake is the same on every engine and in every region (REQ-1494, A STABLE FAKE):
     the portable definition's methods, with no arguments it does not take, and the kinds that are
-    pure functions of their declaration -- never one that reads what is measured where it is read."""
+    pure functions of their declaration -- never one that reads what is measured where it is read.
+    A stable template's fields are each stable (REQ-2279)."""
+    if isinstance(kind, Template):
+        from provisa.fakes.template import fields
+
+        for path, f in fields(kind.root):
+            try:
+                check_stable(f.kind)
+            except FakeRefused as exc:
+                raise FakeRefused(f"field {path!r}: {exc}") from exc
+        return
     if isinstance(kind, Method):
         if kind.name not in STABLE_METHODS:
             raise FakeRefused(

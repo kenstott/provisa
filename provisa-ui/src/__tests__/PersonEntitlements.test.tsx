@@ -213,8 +213,15 @@ describe("a person's entitlement lists", () => {
     mockEnd.mockResolvedValue({ ...MIXED, lists: [MIXED.lists[0]] });
     render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
     await userEvent.click(await screen.findByTestId("person-list-tables-end"));
+    // REQ-1968: End is never disabled by the empty reason; pressing it marks the reason.
     const submit = screen.getByTestId("person-entitlements-end-submit");
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    await userEvent.click(submit);
+    expect(mockEnd).not.toHaveBeenCalled();
+    expect(screen.getByTestId("person-entitlements-end-reason")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
     await userEvent.type(screen.getByTestId("person-entitlements-end-reason"), "left the team");
     await userEvent.click(submit);
     await waitFor(() =>

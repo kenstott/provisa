@@ -42,6 +42,7 @@ import { QueryLinkRow } from "../../components/relationships/RelationshipQueryLi
 import { useRelationshipSurfaces } from "../../components/relationships/useRelationshipSurfaces";
 import { tableAggregateLinks, tableQueryLinks } from "../../components/relationships/tableQueries";
 import { checkersField, uniquesField, useContractFields } from "./qualityReadFields";
+import { IdentityParameters } from "./IdentityParameters";
 
 // A table's sections read-only: the read view shows them, and so does the edit form to a caller
 // who may change only how columns are hidden. Each lists the fields its edit tab has, in the same
@@ -204,6 +205,8 @@ export function IdentityRead({
         heading={t("relationshipRow.queryLinks.heading")}
         testIdPrefix="table-identity"
       />
+      {/* REQ-1986: a parameterized table's parameters, under the links whose queries carry them. */}
+      <IdentityParameters columns={table.columns} />
       <DetailFields fields={fields} testId="table-identity" />
     </>
   );

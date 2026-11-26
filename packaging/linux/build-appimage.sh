@@ -116,6 +116,11 @@ check_prereqs() {
     err "Required tool not found: readelf (binutils) -- it checks the AppImage's runtime is static"
     exit 1
   fi
+  # The wheelhouse is uv.lock's set (bundle_native_payload), exported by uv.
+  if ! command -v uv &>/dev/null; then
+    err "Required tool not found: uv"
+    exit 1
+  fi
   ok "Prerequisites satisfied."
 }
 
@@ -328,9 +333,20 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
-  # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
-  # Linux torch is the CUDA build, so torch is fetched first from PyPI's CPU-only index at the
-  # version uv.lock pins; the wheelhouse's +cpu wheel then satisfies the extra's torch.
+  # The wheelhouse is exactly uv.lock's set, the one CI tests, never whatever PyPI has newest at
+  # build time (an unconstrained `pip download` shipped platformdirs 4.14 against the lock's 4.10).
+  # The export is hash-pinned: each locked package is fetched at its locked version for this
+  # interpreter (python-base, the target's) with nothing resolved beyond it, and a locked package
+  # with no file for the target fails the build. Its sdist-only packages are built into wheels here,
+  # so first launch installs wheels alone. The embedded extra carries the vector extra (the
+  # default config's embedding model); desktop is mcp-proxy.
+  local locked="${NATIVE_PAYLOAD_DIR}/uv-lock-requirements.txt"
+  ( cd "$REPO_ROOT" && uv export --frozen --no-dev --no-header --no-annotate \
+      --no-emit-project --no-emit-package provisa-notebook --extra embedded --extra desktop \
+      --format requirements-txt -o "$locked" ) >/dev/null
+  # PyPI's Linux torch is the CUDA build, so the lock takes Linux torch from PyTorch's CPU-only
+  # index ([tool.uv.sources]); it is fetched from there first, and the hash-checked step below
+  # takes it from the wheelhouse.
   local torch_cpu
   torch_cpu="$(sed -n '/^name = "torch"$/{n;s/^version = "\(.*+cpu\)"$/\1/p;}' "${REPO_ROOT}/uv.lock")"
   if [ -z "$torch_cpu" ]; then
@@ -339,8 +355,18 @@ bundle_native_payload() {
   fi
   "${base}/bin/python3" -m pip download --dest "$wheels" --no-deps \
     --index-url https://download.pytorch.org/whl/cpu "torch==${torch_cpu}"
-  "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$wheels" \
-    --find-links "$notebook_dir" "${built_wheel}[embedded]" "torch==${torch_cpu}" uvicorn mcp-proxy
+  "${base}/bin/python3" -m pip wheel --wheel-dir "$wheels" --find-links "$wheels" \
+    --require-hashes --no-deps -r "$locked"
+  rm -f "$locked"
+  cp "$built_wheel" "$notebook_dir"/provisa_notebook-*.whl "$wheels/"
+  # The wheelhouse is complete: provisa[embedded], uvicorn and mcp-proxy resolve from it alone.
+  local provisa_wheel
+  provisa_wheel="$(ls "$wheels"/provisa-*.whl)"
+  "${base}/bin/python3" -m pip install --dry-run --quiet --ignore-installed --no-index \
+    --find-links "$wheels" "${provisa_wheel}[embedded]" uvicorn mcp-proxy || {
+    err "the wheelhouse does not hold everything provisa[embedded], uvicorn and mcp-proxy need."
+    exit 1
+  }
   # Never a CUDA build in the wheelhouse: no GPU runtime wheel, and torch only as the +cpu wheel.
   if ls "$wheels" | grep -qE '^(nvidia_|triton-|cuda_)'; then
     err "the wheelhouse holds CUDA wheels: $(ls "$wheels" | grep -E '^(nvidia_|triton-|cuda_)' | tr '\n' ' ')"
