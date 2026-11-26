@@ -22,7 +22,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PROBE = "from provisa.api.app import state\nprint(state.federation_engine.engine.selected_key)\n"
+_PROBE = (
+    "from provisa.api.app import state\nprint(state.shared_federation_engine.engine.selected_key)\n"
+)
 
 
 def _engine_on_import(tmp_path: Path, config_body: str) -> str:
