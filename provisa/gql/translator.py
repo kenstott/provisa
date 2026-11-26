@@ -1718,6 +1718,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         if isinstance(expr, Variable):
             return self._element_vars.get(expr.name)
+        if self._endpoint_of(expr) is not None:
+            return "node"
         if isinstance(expr, Index):
             return self._element_list_kind(expr.obj)
         if (
@@ -1738,6 +1740,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if name in self._rel_var_types or name in self._all_rels_rel_vars:
             return "rel"
         return "node"
+
+    def _endpoint_of(self, expr: CypherExpr) -> tuple[str, bool] | None:
+        """(the relationship, whether its start) of startNode(r) or endNode(r); None for any
+        other expression."""
+        if not (
+            isinstance(expr, FunctionCall)
+            and expr.name.lower() in ("startnode", "endnode")
+            and len(expr.args) == 1
+            and isinstance(expr.args[0], Variable)
+            and self._element_kind(expr.args[0].name) == "rel"
+        ):
+            return None
+        return expr.args[0].name, expr.name.lower() == "startnode"
+
+    def _endpoint_types(self, expr: CypherExpr) -> list[str]:
+        """The node type of the end startNode(r) or endNode(r) reads, where r joins two
+        labelled nodes; else none."""
+        found = self._endpoint_of(expr)
+        endpoints = self._rel_var_endpoints.get(found[0]) if found is not None else None
+        if found is None or endpoints is None:
+            return []
+        _, src_nm, _, tgt_nm, is_reversed = endpoints
+        return [(src_nm if found[1] != is_reversed else tgt_nm).type_name]
 
     def _element_list_types(self, expr: CypherExpr) -> list[str]:
         """The node types the nodes of the list ``expr`` collects are drawn from, which a
@@ -2510,6 +2535,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             one_kind = self._element_item_kind(expr)
             if one_kind is not None:
                 element_vars[key] = one_kind
+                if self._endpoint_of(expr) is not None:
+                    # What a property read of it takes its type from.
+                    element_types[key] = self._endpoint_types(expr)
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
             if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
