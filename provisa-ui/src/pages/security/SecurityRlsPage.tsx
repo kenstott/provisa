@@ -58,6 +58,7 @@ import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { matchesQuery } from "../../lib/searchItems";
+import { RoutePageHelp } from "../../components/RoutePageHelp";
 
 const EMPTY_RULE = {
   tableId: "",
@@ -680,6 +681,7 @@ export function SecurityRlsPage() {
             ariaLabel={t("securityPage.purposeAria")}
             testId="security-purpose-help"
           />
+          <RoutePageHelp placement="own" />
         </Group>
       </Group>
 

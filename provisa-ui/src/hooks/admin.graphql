@@ -144,6 +144,12 @@ query SourcesQuery {
     rowFetchByKeys
     isSystem
     withdrawn
+    setupOutcomes {
+      tables
+      relationships
+      query
+      decidedAt
+    }
     cdc {
       bootstrapServers
       topicPrefix
@@ -1610,6 +1616,24 @@ mutation PutBackTable($tableId: Int!, $region: String) {
 
 mutation WithdrawSource($sourceId: String!) {
   withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-2262: what became of each step of a source's setup, replacing what was held; all null is
+# Run setup again.
+mutation SetSourceSetupOutcomes(
+  $sourceId: String!
+  $tables: SetupTablesOutcome
+  $relationships: SetupRelationshipsOutcome
+  $query: SetupQueryOutcome
+) {
+  setSourceSetupOutcomes(
+    sourceId: $sourceId
+    tables: $tables
+    relationships: $relationships
+    query: $query
+  ) {
     ...MutationResult
   }
 }

@@ -103,8 +103,8 @@ async def test_a_table_the_caller_is_served_nothing_of_is_answered_as_unregister
 
 async def test_a_proposal_names_only_the_columns_the_caller_is_served(monkeypatch):
     facts = [
-        ProfiledColumnFacts("email", "text", 40, "varchar", 1.0, ()),
-        ProfiledColumnFacts("ssn", "text", 11, "varchar", 1.0, ()),
+        ProfiledColumnFacts("email", "text", 40, "varchar", 1.0, (), "varchar", ()),
+        ProfiledColumnFacts("ssn", "text", 11, "varchar", 1.0, (), "varchar", ()),
     ]
 
     async def _latest(conn, *, org_id, env, reg):
@@ -126,7 +126,7 @@ async def test_a_proposal_names_only_the_columns_the_caller_is_served(monkeypatc
 
 
 async def test_a_named_column_the_caller_is_not_served_is_refused_as_unprofiled(monkeypatch):
-    facts = [ProfiledColumnFacts("ssn", "text", 11, "varchar", 1.0, ())]
+    facts = [ProfiledColumnFacts("ssn", "text", 11, "varchar", 1.0, (), "varchar", ())]
 
     async def _latest(conn, *, org_id, env, reg):
         return "run-1", facts

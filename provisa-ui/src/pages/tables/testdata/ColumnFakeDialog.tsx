@@ -13,10 +13,11 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { checkColumnFake, proposeFakes, type FakeCatalog } from "../../../api/fakes";
 import { Tip } from "../../../components/Tip";
-import { stableBlock, stableReasonKey } from "./declaration";
+import { holdsJson, stableBlock, stableReasonKey } from "./declaration";
 import type { RegisteredTable, TableColumn } from "../../../types/admin";
 import { FakePicker } from "./FakePicker";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
+import { CodeEditorField } from "../../../components/CodeEditorField";
 
 const CHECK_DELAY_MS = 400;
 
@@ -85,6 +86,28 @@ export function ColumnFakeDialog({
     }, CHECK_DELAY_MS);
     return () => clearTimeout(timer);
   }, [fake, rule, stableNow, table.id, table.tableName, column.columnName, column.dataType]);
+  // What Stable means, or why this fake cannot be: a disabled switch takes no pointer, so the
+  // tip is on what holds it.
+  const stableControl = (
+    <FormChecks>
+      <FormField size="short">
+        <Tip
+          text={blocked ? t(...stableReasonKey(blocked)) : t("testData.stableHint")}
+          testId="testdata-dialog-stable-reason"
+        >
+          <span data-testid="testdata-dialog-stable-tip">
+            <Switch
+              label={t("testData.stable")}
+              checked={stableNow}
+              disabled={blocked !== null}
+              onChange={(e) => setStable(e.currentTarget.checked)}
+              data-testid="testdata-dialog-stable"
+            />
+          </span>
+        </Tip>
+      </FormField>
+    </FormChecks>
+  );
   return (
     <Modal
       opened
@@ -93,37 +116,34 @@ export function ColumnFakeDialog({
       title={t("testData.dialogTitle", { column: column.columnName })}
     >
       <FormLayout data-testid="testdata-dialog">
-        <FakePicker
-          catalog={catalog}
-          family={family}
-          label={t("testData.fake")}
-          value={fake}
-          onChange={setFake}
-          rule={false}
-          testId="testdata-dialog-fake"
-        >
-          {/* About the fake above it, so it stays in its section, before the synthetic rule. */}
-          <FormChecks>
-            <FormField size="short">
-              {/* What Stable means, or why this fake cannot be: a disabled switch takes no
-                  pointer, so the tip is on what holds it. */}
-              <Tip
-                text={blocked ? t(...stableReasonKey(blocked)) : t("testData.stableHint")}
-                testId="testdata-dialog-stable-reason"
-              >
-                <span data-testid="testdata-dialog-stable-tip">
-                  <Switch
-                    label={t("testData.stable")}
-                    checked={stableNow}
-                    disabled={blocked !== null}
-                    onChange={(e) => setStable(e.currentTarget.checked)}
-                    data-testid="testdata-dialog-stable"
-                  />
-                </span>
-              </Tip>
+        {holdsJson(column.dataType) ? (
+          <FormLayout data-testid="testdata-dialog-fake-section">
+            <FormField size="full" help={t("testData.templateHint")}>
+              <CodeEditorField
+                label={t("testData.template")}
+                value={fake}
+                onChange={setFake}
+                language="json"
+                placeholder={t("testData.templatePlaceholder")}
+                data-testid="testdata-dialog-template"
+              />
             </FormField>
-          </FormChecks>
-        </FakePicker>
+            {stableControl}
+          </FormLayout>
+        ) : (
+          <FakePicker
+            catalog={catalog}
+            family={family}
+            label={t("testData.fake")}
+            value={fake}
+            onChange={setFake}
+            rule={false}
+            testId="testdata-dialog-fake"
+          >
+            {/* About the fake above it, so it stays in its section, before the synthetic rule. */}
+            {stableControl}
+          </FakePicker>
+        )}
         {stableNow &&
           column.fakeStable &&
           column.fakeStableVersion != null &&

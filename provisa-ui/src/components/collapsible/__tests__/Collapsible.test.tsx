@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
-import { CollapsibleItem, Collapsibles } from "../Collapsible";
+import { CollapseAllIcons, CollapsibleItem, CollapsibleScope, Collapsibles } from "../Collapsible";
 import { storageKey as scopedKey } from "../../../lib/browserStorage";
 
 function panels(reveal?: string) {
@@ -87,5 +87,54 @@ describe("Collapsibles", () => {
     expect([expanded("a"), expanded("b")]).toEqual(["true", "false"]);
     fireEvent.click(screen.getByTestId("b-toggle"));
     expect(expanded("b")).toBe("true");
+  });
+});
+
+describe("expand all and collapse all", () => {
+  it("a group of three or more has both icon buttons, which open and close every item", () => {
+    panels();
+    fireEvent.click(screen.getByTestId("test.page-collapse-all"));
+    expect([expanded("a"), expanded("b"), expanded("c")]).toEqual(["false", "false", "true"]);
+    fireEvent.click(screen.getByTestId("test.page-expand-all"));
+    expect([expanded("a"), expanded("b"), expanded("c")]).toEqual(["true", "true", "true"]);
+    expect(
+      JSON.parse(window.localStorage.getItem(scopedKey("provisa.collapsibles")) ?? "{}")[
+        "test.page"
+      ],
+    ).toEqual({ a: true, b: true, c: true });
+  });
+
+  it("a group of two has neither", () => {
+    render(
+      <Collapsibles id="two">
+        <CollapsibleItem value="a" title="A">
+          x
+        </CollapsibleItem>
+        <CollapsibleItem value="b" title="B">
+          y
+        </CollapsibleItem>
+      </Collapsibles>,
+    );
+    expect(screen.queryByTestId("two-expand-all")).toBeNull();
+    expect(screen.queryByTestId("two-collapse-all")).toBeNull();
+  });
+
+  it("a scope's icons open and close the groups inside it", () => {
+    render(
+      <CollapsibleScope id="scope">
+        <CollapseAllIcons />
+        {["a", "b"].map((v) => (
+          <Collapsibles key={v} id={`scope.${v}`}>
+            <CollapsibleItem value={v} title={v}>
+              x
+            </CollapsibleItem>
+          </Collapsibles>
+        ))}
+      </CollapsibleScope>,
+    );
+    fireEvent.click(screen.getByTestId("scope-collapse-all"));
+    expect([expanded("a"), expanded("b")]).toEqual(["false", "false"]);
+    fireEvent.click(screen.getByTestId("scope-expand-all"));
+    expect([expanded("a"), expanded("b")]).toEqual(["true", "true"]);
   });
 });

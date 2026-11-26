@@ -27,6 +27,7 @@ import {
 } from "@mantine/core";
 import { Check, Pencil, Trash2, X } from "lucide-react";
 import { FieldGroup, FormField, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import {
   deleteMemberAttribute,
   fetchMemberAttributes,
@@ -41,6 +42,8 @@ export function MemberAttributes({ userId }: { userId: string }) {
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState<{ name: string; value: string } | null>(null);
+  // REQ-1968: an attribute needs a name, checked when Add is pressed.
+  const required = useRequiredFields({ name });
 
   const report = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -67,9 +70,11 @@ export function MemberAttributes({ userId }: { userId: string }) {
   };
 
   const add = async () => {
+    if (!required.validate()) return;
     if (await save(name, value)) {
       setName("");
       setValue("");
+      required.reset();
     }
   };
 
@@ -212,6 +217,7 @@ export function MemberAttributes({ userId }: { userId: string }) {
             <TextInput
               label={t("teamPage.attributes.nameLabel")}
               placeholder="region"
+              {...required.field("name")}
               value={name}
               onChange={(e) => setName(e.currentTarget.value)}
               data-testid="member-attr-name"
@@ -226,11 +232,7 @@ export function MemberAttributes({ userId }: { userId: string }) {
               data-testid="member-attr-value"
             />
           </FormField>
-          <Button
-            onClick={() => void add()}
-            disabled={name.trim() === ""}
-            data-testid="member-attr-add"
-          >
+          <Button onClick={() => void add()} data-testid="member-attr-add">
             {t("teamPage.attributes.add")}
           </Button>
         </FieldGroup>

@@ -58,6 +58,7 @@ import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
@@ -204,6 +205,9 @@ export function DataProductsPage() {
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
+    // REQ-2277: a dataset's profile runs dialog, as the URL names it, once a product is open.
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
+    table: expanded !== null ? searchParams.get("table") : null,
     search,
     toReviewOnly,
     tags: tagFilter,

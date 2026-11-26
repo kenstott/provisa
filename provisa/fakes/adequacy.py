@@ -220,11 +220,15 @@ def fake_pairs(
             )
         },
     )
-    statement = (
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    # As a faked read sends it: the governed statement's text, transpiled for the engine.
+    governed = (
         exp.select(ref("__real__"), ref(column))
         .from_(exp.Subquery(this=projection, alias=exp.TableAlias(this=exp.to_identifier("t"))))
-        .sql(dialect="duckdb")
+        .sql(dialect="postgres")
     )
+    statement = transpile_to_duckdb(governed, generated=False)
     con = engine_memory.connect()
     try:
         duckdb_functions.register(con)

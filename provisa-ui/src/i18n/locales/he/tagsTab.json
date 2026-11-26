@@ -40,8 +40,6 @@
     "policy_required": "חובה",
     "requiredLabel": "חובה",
     "requiredDesc": "כל אובייקט מהסוגים המופיעים ב״חלה על״ חייב לשאת תגית זו. אובייקט בלעדיה מופיע כחסר בדוח התגיות.",
-    "reasonPolicyBadge": "סיבה: {{policy}}",
-    "expiresPolicyBadge": "תפוגה: {{policy}}",
     "createButton": "יצירת תגית",
     "saveButton": "שמירת תגית",
     "colId": "מזהה",
@@ -66,6 +64,7 @@
     "purposeAria": "אודות תגים",
     "outsideTitle": "שיוכים מחוץ לדומיינים המורשים",
     "outsideBody": "השמירה השאירה את השיוכים האלה. הסירו את התגית מאובייקט שהיא כבר לא שייכת אליו.",
-    "outsideItem": "{{kind}} {{name}}, ב-{{domains}}"
+    "outsideItem": "{{kind}} {{name}}, ב-{{domains}}",
+    "templateSection": "תבנית"
   }
 }

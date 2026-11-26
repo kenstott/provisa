@@ -889,7 +889,7 @@ def org_runtime(monkeypatch):
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
 
-        async def _unread(_conn) -> None:
+        async def _unread(_conn, _principal: str | None = None) -> None:
             # Recomputing the member's rows rewrites object_owners from the org's model tables,
             # which this stand-in, holding role rows only, does not have; who owns what is
             # tested over a real store (test_owner_roles).

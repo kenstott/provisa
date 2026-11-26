@@ -40,8 +40,6 @@
     "policy_required": "必須",
     "requiredLabel": "必須",
     "requiredDesc": "「適用対象」に挙げた種類のすべてのオブジェクトに、このタグが必要です。付いていないオブジェクトは、タグレポートで欠落として表示されます。",
-    "reasonPolicyBadge": "理由: {{policy}}",
-    "expiresPolicyBadge": "期限: {{policy}}",
     "createButton": "タグを作成",
     "saveButton": "タグを保存",
     "colId": "ID",
@@ -66,6 +64,7 @@
     "purposeAria": "タグについて",
     "outsideTitle": "許可ドメイン外の割り当て",
     "outsideBody": "保存後もこれらの割り当ては残っています。不要になったオブジェクトからはタグを外してください。",
-    "outsideItem": "{{kind}} {{name}}（{{domains}}）"
+    "outsideItem": "{{kind}} {{name}}（{{domains}}）",
+    "templateSection": "テンプレート"
   }
 }

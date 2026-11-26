@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "建立關係需要建立關係的權限。請直接查詢這些表格。",
     "queryHint": "在查詢瀏覽器中開啟針對 {{table}} 的入門查詢。",
     "queryAction": "開啟入門查詢",
-    "complete": "設定完成"
+    "complete": "設定完成",
+    "skip": "略過",
+    "skipped": "已略過",
+    "done": "完成",
+    "finish": "完成設定",
+    "runAgain": "重新執行設定",
+    "nothingToQueryHint": "沒有可查詢的已註冊表格。",
+    "newTablesHint_one": "設定後註冊的 {{count}} 個表格沒有關係。",
+    "newTablesHint_other": "設定後註冊的 {{count}} 個表格沒有關係。"
   }
 }

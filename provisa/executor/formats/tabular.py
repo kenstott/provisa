@@ -20,7 +20,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from provisa.compiler.sql_gen import ColumnRef
-from provisa.core.numeric_type import decimal_text, numeric_size
+from provisa.core.numeric_type import (
+    decimal_text,
+    numeric_arrow_type,
+    numeric_size,
+    numeric_type,
+)
 
 # Requirements: REQ-049, REQ-050, REQ-1961
 
@@ -110,6 +115,27 @@ def rows_to_csv(  # REQ-049, REQ-050, REQ-1961
     return buf.getvalue()
 
 
+def _decimal_digits(val: Decimal, name: str) -> tuple[int, int]:
+    """The (integer digits, scale) a finite Decimal carries (REQ-1961)."""
+    sign_digits_exp = val.as_tuple()
+    exponent = sign_digits_exp.exponent
+    if not isinstance(exponent, int):
+        raise ValueError(f"column {name!r}: {val} is not a finite decimal and has no Parquet form")
+    scale = max(0, -exponent)
+    return max(0, len(sign_digits_exp.digits) + exponent), scale
+
+
+def _values_type(values: list, name: str) -> pa.DataType | None:
+    """REQ-1961: the exact decimal type of a column with no declared type whose values are
+    Decimals: the widest precision and scale its values carry. None when it holds no Decimal."""
+    sizes = [_decimal_digits(v, name) for v in values if isinstance(v, Decimal)]
+    if not sizes:
+        return None
+    scale = max(s for _, s in sizes)
+    precision = max(1, max(i for i, _ in sizes) + scale)
+    return numeric_arrow_type(numeric_type(precision, scale))
+
+
 def rows_to_parquet(  # REQ-049, REQ-050, REQ-1961
     rows: list[tuple],
     columns: list[ColumnRef],
@@ -117,40 +143,30 @@ def rows_to_parquet(  # REQ-049, REQ-050, REQ-1961
     """Serialize rows to Parquet (denormalized/flat).
 
     REQ-1961: a column whose ColumnRef carries a declared numeric type (e.g. ``numeric(18,2)``)
-    is written as a ``decimal128(p,s)`` Parquet column.  A column with no declared type whose
-    values happen to be Decimal is converted to float64 — the same rule as every other read path.
+    is written as that exact decimal. A column with no declared size whose values are Decimals
+    is written as the exact decimal its values need: the widest precision and scale among them.
+    A Decimal is never written as a float.
     """
     names, flat_rows = _resolve_columns(rows, columns)
 
-    # Build a name→declared_size map for columns that carry a numeric type (REQ-1961).
-    # _resolve_columns may expand dict-cells into new dot-notation names with no ColumnRef, so
-    # any name not in the original set gets no size (None → float64 fallback).
-    _orig_names = _column_names(columns)
-    _decimal_sizes: dict[str, tuple[int, int] | None] = {}
-    for col, name in zip(columns, _orig_names):
-        _decimal_sizes[name] = numeric_size(col.data_type) if col.data_type else None
+    # _resolve_columns may expand dict-cells into new dot-notation names with no ColumnRef: such
+    # a name declares no type, as a ColumnRef with data_type None does.
+    declared = {
+        name: col.data_type for col, name in zip(columns, _column_names(columns), strict=True)
+    }
 
-    col_data: dict[str, list] = {name: [] for name in names}
-    for row in flat_rows:
-        for i, name in enumerate(names):
-            val = row[i]
-            size = _decimal_sizes.get(name)
-            if size is not None and isinstance(val, Decimal):
-                col_data[name].append(val)  # kept as Decimal; typed below
-            else:
-                col_data[name].append(val if not isinstance(val, Decimal) else float(val))
-
-    # Build the Arrow table, overriding the type for declared numeric columns.
     arrays: list[pa.Array] = []
-    for name in names:
-        size = _decimal_sizes.get(name)
-        if size is not None:
-            p, s = size
-            arrays.append(pa.array(col_data[name], type=pa.decimal128(p, s)))
-        else:
-            arrays.append(pa.array(col_data[name]))
+    for i, name in enumerate(names):
+        values = [row[i] for row in flat_rows]
+        data_type = declared.get(name)
+        arrow_type = (
+            numeric_arrow_type(data_type)
+            if numeric_size(data_type) is not None
+            else _values_type(values, name)
+        )
+        arrays.append(pa.array(values, type=arrow_type))
 
-    table = pa.table(dict(zip(names, arrays)))
+    table = pa.table(dict(zip(names, arrays, strict=True)))
     buf = io.BytesIO()
     pq.write_table(table, buf)
     return buf.getvalue()

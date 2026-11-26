@@ -73,6 +73,8 @@ _SOURCE = {
     "replicate": None,
     "region": None,
     "withdrawn": False,  # REQ-1921
+    # REQ-2262: the column is NOT NULL DEFAULT '{}', so a stored source always carries it.
+    "setup_outcomes": {"tables": "registered", "relationships": None, "query": None},
     "path": "/data",
     "mapping": {"k": "v"},
     "federation_hints": {"warehouse": "w"},
@@ -116,6 +118,7 @@ async def test_connection_details_go_to_a_source_registration_holder(monkeypatch
         )
         assert src.path == "/data" and src.password_ref == "${secret:PG}"
         assert src.mapping_json and src.federation_hints_json and src.cdc is not None
+        assert src.setup_outcomes.tables.value == "registered"  # REQ-2262
 
 
 async def test_everyone_else_reads_the_source_without_them(monkeypatch):
@@ -133,6 +136,8 @@ async def test_everyone_else_reads_the_source_without_them(monkeypatch):
         assert src.path is None and src.mapping_json is None
         assert src.federation_hints_json is None and src.password_ref is None
         assert src.cdc is None
+        # REQ-2262: setup outcomes are shared state, not a connection detail: everyone reads them.
+        assert src.setup_outcomes.tables.value == "registered"
 
 
 _ROLE_ROWS = [

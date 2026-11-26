@@ -40,8 +40,6 @@
     "policy_required": "Obligatorio",
     "requiredLabel": "Obligatoria",
     "requiredDesc": "Todo objeto de los tipos indicados en «Se aplica a» debe llevar esta etiqueta. Si falta, aparece como ausente en el informe de etiquetas.",
-    "reasonPolicyBadge": "Motivo: {{policy}}",
-    "expiresPolicyBadge": "Expiración: {{policy}}",
     "createButton": "Crear etiqueta",
     "saveButton": "Guardar etiqueta",
     "colId": "ID",
@@ -66,6 +64,7 @@
     "purposeAria": "Acerca de las etiquetas",
     "outsideTitle": "Asignaciones fuera de los dominios permitidos",
     "outsideBody": "Al guardar se conservaron estas asignaciones. Quite la etiqueta de un objeto al que ya no corresponda.",
-    "outsideItem": "{{kind}} {{name}}, en {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, en {{domains}}",
+    "templateSection": "Plantilla"
   }
 }
