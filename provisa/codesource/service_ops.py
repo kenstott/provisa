@@ -30,6 +30,11 @@ for the worker holding the token, as JSON:
 - ``audit`` POST ``{event, fields}``: a structured event the code writes to the org's trail, with
   the trace of the request the call serves. Its fields are redacted as every record Provisa writes
   is; a secret the code read through ``secrets`` is matched by value, in a key as in a value.
+- ``spark/<source>`` GET (REQ-2225, amended 2026-11-25): the Spark Connect address of the
+  organisation's Spark source ``<source>``, its token resolved: the source's own cluster, else the
+  organisation's default (core/spark_cluster.resolved), as ``{address}``. A Python code source opens
+  its session with it (``provisa_services.spark.session``). Each answer is recorded in the org's
+  trail, and the token is matched by value wherever Provisa writes from then on.
 """
 
 # Requirements: REQ-2106
@@ -60,6 +65,7 @@ HTTP_TIMEOUT_S = 60.0
 HTTP_CALL = "code_source.http"
 #: The audit trail's action for one event the code wrote.
 CODE_AUDIT = "code_source.audit"
+SPARK_SESSION = "code_source.spark.session"
 MAX_AUDIT_FIELDS = 64 * 1024
 _LEVELS = {
     "debug": logging.DEBUG,
@@ -602,3 +608,42 @@ async def audit(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byt
     request_event("codesource.audit", source=grant.source_id, event=event)
     span.set_attribute("codesource.audit", event)
     return _answer({})
+
+
+async def spark(grant: ServiceGrant, method: str, name: str, span: Any) -> bytes:
+    """REQ-2225 (amended 2026-11-25): the address a Python code source opens the Spark source
+    ``name``'s session on. Refused by name when the organisation has no Spark source of that name,
+    or its cluster cannot be resolved."""
+    from provisa.codesource.llm_service import org_bound
+    from provisa.core import spark_cluster
+    from provisa.core.org_membership import record_admin_action
+    from provisa.core.repositories import source as source_repo
+    from provisa.security.redaction import note_secret_value
+
+    _method(method, "GET")
+    name = unquote(name)
+    if not name:
+        raise ServiceRefused(400, "a Spark session is opened by its Spark source: spark/<source>")
+    span.set_attribute("codesource.spark_source", name)
+    async with org_bound(grant) as (model_db, _cfg):
+        async with model_db.acquire() as conn:
+            row = await source_repo.get(conn, name)
+        if row is None or row["type"] != "spark":
+            raise ServiceRefused(404, f"the organization has no Spark source {name!r}")
+        own = (row["mapping"].get("settings") or {}).get("cluster")
+        try:
+            found = await spark_cluster.resolved(grant.admin_db, grant.org_id, own)
+        except spark_cluster.SparkClusterRefused as refused:
+            raise ServiceRefused(refused.status, f"the Spark source {name!r}: {refused}") from None
+        token = spark_cluster.parse(found.address).token
+        if token is not None:
+            note_secret_value(f"spark:{name}", token)
+        await record_admin_action(
+            model_db,
+            org_id=grant.org_id,
+            action=SPARK_SESSION,
+            actor_id=f"source:{grant.source_id}",
+            subject_id=name,
+            detail={"source": grant.source_id, "origin": found.origin},
+        )
+    return _answer({"address": found.address})

@@ -29,6 +29,7 @@
     "cacheOn": "activada",
     "cacheOff": "desactivada",
     "empty": "No se encontraron orígenes.",
+    "noMatch": "Ningún origen coincide con el filtro.",
     "discover": "Descubrir",
     "mapTable": "Asignar tabla",
     "refreshSchema": "Actualizar esquema",

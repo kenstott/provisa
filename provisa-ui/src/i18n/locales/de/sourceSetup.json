@@ -4,7 +4,7 @@
     "connect": "Quelle verbinden",
     "register": "Tabellen registrieren",
     "relate": "Beziehungen erkennen",
-    "query": "Abfragen",
+    "yourData": "Ihre Daten",
     "tablesCount_one": "{{count}} Tabelle",
     "tablesCount_other": "{{count}} Tabellen",
     "registerHint": "Registrieren Sie die Tabellen dieser Quelle, um sie abzufragen.",
@@ -25,6 +25,8 @@
     "runAgain": "Einrichtung erneut ausführen",
     "nothingToQueryHint": "Es sind keine Tabellen zum Abfragen registriert.",
     "newTablesHint_one": "{{count}} seit der Einrichtung registrierte Tabelle hat keine Beziehung.",
-    "newTablesHint_other": "{{count}} seit der Einrichtung registrierte Tabellen haben keine Beziehung."
+    "newTablesHint_other": "{{count}} seit der Einrichtung registrierte Tabellen haben keine Beziehung.",
+    "yourDataAction": "Ihre Daten anzeigen",
+    "finishLater": "Später abschließen"
   }
 }

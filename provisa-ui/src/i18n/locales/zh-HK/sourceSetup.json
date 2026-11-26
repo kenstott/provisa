@@ -4,7 +4,7 @@
     "connect": "連接資料來源",
     "register": "註冊表格",
     "relate": "探索關係",
-    "query": "查詢",
+    "yourData": "您的資料",
     "tablesCount_one": "{{count}} 個表格",
     "tablesCount_other": "{{count}} 個表格",
     "registerHint": "登錄此資料來源的表格即可查詢它們。",
@@ -25,6 +25,8 @@
     "runAgain": "重新執行設定",
     "nothingToQueryHint": "沒有可查詢的已註冊表格。",
     "newTablesHint_one": "設定後註冊的 {{count}} 個表格沒有關係。",
-    "newTablesHint_other": "設定後註冊的 {{count}} 個表格沒有關係。"
+    "newTablesHint_other": "設定後註冊的 {{count}} 個表格沒有關係。",
+    "yourDataAction": "查看您的資料",
+    "finishLater": "稍後完成"
   }
 }

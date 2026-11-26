@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Nenhuma regra RLS definida.",
     "noRulesMatchFilter": "Nenhuma regra corresponde ao filtro atual.",
+    "noRolesMatch": "Nenhuma função corresponde ao filtro.",
     "purposeTitle": "Para que servem as regras RLS",
     "purposeBody": "Uma regra de segurança em nível de linha é um predicado SQL vinculado a uma função e a um escopo. O servidor o combina com AND na consulta antes da execução, em leituras e gravações e em todas as interfaces, então uma função vê apenas as linhas que sua regra permite, seja qual for o cliente.",
     "purposeAdd": "Restrinja uma regra a uma única tabela, ou a um domínio inteiro para que ela cubra todas as suas tabelas; quando ambas se aplicam, a regra de tabela prevalece para essa tabela. Uma regra sobre uma tag cobre todas as tabelas que têm a tag, agora e no futuro, e é somada à regra própria da tabela, então uma tag só pode restringir o que uma função lê. As regras nomeiam funções, então para mudar o que alguém pode ver, mude a função que essa pessoa tem.",

@@ -72,6 +72,7 @@ const ctx = {
   presentChoice: vi.fn(),
   runAdminMutation: vi.fn(),
   chooseFile: vi.fn(),
+  changed: vi.fn(),
 };
 
 async function sendFromHook(): Promise<void> {

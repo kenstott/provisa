@@ -46,6 +46,7 @@
     "kind_git": "Host Git",
     "add": "Añadir registro",
     "none": "No hay registros de paquetes. Las instalaciones provienen de los registros públicos.",
+    "noMatch": "Ningún registro de paquetes coincide con el filtro.",
     "filterPlaceholder": "Filtrar registros",
     "closeForm": "Cerrar el formulario",
     "edit": "Editar {{name}}",

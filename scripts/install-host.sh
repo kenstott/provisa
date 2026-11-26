@@ -10,12 +10,14 @@
 #   sudo scripts/install-host.sh --version v0.1.0-alpha.511
 #   scripts/install-host.sh --version v0.1.0-alpha.511 --ssh admin@db-host-1
 #
-# Provisa comes from the release's own GitHub assets (its wheel, provisa_notebook and
-# provisa_duckdb_ext); never the provisa package from a public registry. Third-party dependencies
-# come from PyPI. Trino runs in Docker with the release's Trino plugin tarball mounted. A systemd
-# unit runs Provisa. Running the script again with a newer --version upgrades in place: a fresh
-# virtualenv per release, the `current` link swapped, Trino replaced, the service restarted; the
-# config, the control-plane data and the Trino shared secret are kept.
+# Provisa comes from the release's own GitHub assets (its wheel and provisa_notebook); never the
+# provisa package from a public registry. Third-party dependencies come from PyPI. The DuckDB
+# extensions (provisa_duckdb_ext's version parts among them) are fetched by the stage command at
+# first start, as every installer does (REQ-294, provisa.runtime_deps.stage_assets). Trino runs in
+# Docker with the release's Trino plugin tarball mounted. A systemd unit runs Provisa. Running the
+# script again with a newer --version upgrades in place: a fresh virtualenv per release, the
+# `current` link swapped, Trino replaced, the service restarted; the config, the control-plane data
+# and the Trino shared secret are kept.
 #
 # Every function below is callable on its own: tests source this file (main runs only when it is
 # executed) and check the arguments and the rendered files.
@@ -40,6 +42,9 @@ INSTALL_HOST_UV_VERSION="0.11.19"
 INSTALL_HOST_SERVICE="provisa"
 INSTALL_HOST_USER="provisa"
 INSTALL_HOST_TRINO_CONTAINER="provisa-trino"
+# The uid Trino runs as in its image; it writes the fault-tolerant exchange spool, which
+# docker-compose.core.yml's trino-exchange-init gives to the same uid (REQ-836).
+INSTALL_HOST_TRINO_UID=1000
 # Directories Provisa writes Trino catalog side files into (provisa/core/trino_catalog_files.py),
 # each mounted into the engine at /etc/trino/<name>, as docker-compose.core.yml mounts them.
 INSTALL_HOST_TRINO_SIDE_DIRS="kafka kafka-client codehost-client redis"
@@ -200,8 +205,10 @@ plugins_asset_name() {
 
 select_assets() {
   # $1 tag, $2 machine; stdin: the release's asset names, one per line.
-  # Prints the files to install, one per line: the provisa wheel, provisa_notebook,
-  # provisa_duckdb_ext and the Trino plugin tarball. Fails naming each one the release lacks.
+  # Prints the files to install, one per line: the provisa wheel, provisa_notebook and the Trino
+  # plugin tarball. Fails naming each one the release lacks. provisa_duckdb_ext is not one of
+  # them: it is one project split across version parts (REQ-294), which cannot share a virtualenv,
+  # and the stage command fetches every part at first start.
   local tag="$1" plat py names missing="" name
   plat="$(wheel_platform_tag "$2")"
   py="$(pep440_version "$tag")"
@@ -217,14 +224,6 @@ select_assets() {
       missing="${missing} ${name}"
     fi
   done
-  # provisa_duckdb_ext is versioned on its own; the release carries exactly one per platform.
-  local ext
-  ext="$(printf '%s\n' "$names" | grep -E "^provisa_duckdb_ext-[^-]+-py3-none-${plat}\.whl$" || true)"
-  case "$(printf '%s' "$ext" | grep -c . || true)" in
-    1) printf '%s\n' "$ext" ;;
-    0) missing="${missing} provisa_duckdb_ext-<version>-py3-none-${plat}.whl" ;;
-    *) die "release ${tag} carries more than one provisa_duckdb_ext wheel for ${plat}: $(printf '%s' "$ext" | tr '\n' ' ')" ;;
-  esac
   [ -z "$missing" ] || die "release ${tag} is missing asset(s):${missing}"
 }
 
@@ -321,6 +320,13 @@ fault-tolerant-execution-task-memory=1GB
 EOF
 }
 
+ensure_trino_exchange_dir() {
+  # $1 data dir. The engine's fault-tolerant exchange spool (exchange-manager.properties), a host
+  # directory Trino's user owns: a named volume's root is root's, and the first query Provisa runs
+  # at boot failed AccessDeniedException there.
+  install -d -m 0700 -o "$INSTALL_HOST_TRINO_UID" -g "$INSTALL_HOST_TRINO_UID" "$1/trino-exchange"
+}
+
 render_trino_exchange_properties() {
   cat <<'EOF'
 exchange-manager.name=filesystem
@@ -367,7 +373,7 @@ trino_run_args() {
     printf '%s\n' -v "$data/trino/$side:/etc/trino/$side:ro"
   done
   printf '%s\n' -v "$data/fake-key:/etc/provisa/fake-key:ro"
-  printf '%s\n' -v "provisa_trino_exchange:/data/provisa/exchange"
+  printf '%s\n' -v "$data/trino-exchange:/data/provisa/exchange"
   for name in "$@"; do
     printf '%s\n' -v "$plugins/$name:/usr/lib/trino/plugin/$name:ro"
   done
@@ -399,7 +405,9 @@ preflight() {
 }
 
 fetch_assets() {
-  # $1 destination dir. Prints the selected asset names.
+  # $1 destination dir. Sets IH_SELECTED to the selected asset names, one per line. Called
+  # directly, never in a command substitution: bash runs a substitution without errexit, so a
+  # refusal there was printed and the install went on (release 513's dry run).
   local dest="$1" names selected name
   mkdir -p "$dest"
   if [ -n "$IH_ASSETS_DIR" ]; then
@@ -420,7 +428,7 @@ fetch_assets() {
       mv "$dest/$name.part" "$dest/$name"
     fi
   done
-  printf '%s\n' "$selected"
+  IH_SELECTED="$selected"
 }
 
 ensure_user() {
@@ -504,6 +512,7 @@ write_files() {
   for side in $INSTALL_HOST_TRINO_SIDE_DIRS; do
     install -d -m 0755 -o "$INSTALL_HOST_USER" -g "$INSTALL_HOST_USER" "$data/trino/$side"
   done
+  ensure_trino_exchange_dir "$data"
   if [ ! -f "$cfg/provisa.yaml" ]; then
     render_config_yaml "$IH_TRINO_PORT" >"$cfg/provisa.yaml"
   else
@@ -615,9 +624,9 @@ health_check() {
 
 install_local() {
   preflight
-  local assets="$IH_PREFIX/releases/$IH_VERSION" selected names tarball
-  selected="$(fetch_assets "$assets")"
-  mapfile -t names <<<"$selected"
+  local assets="$IH_PREFIX/releases/$IH_VERSION" names tarball
+  fetch_assets "$assets"
+  mapfile -t names <<<"$IH_SELECTED"
   tarball="$assets/$(plugins_asset_name "$IH_VERSION")"
   ensure_user
   ensure_uv

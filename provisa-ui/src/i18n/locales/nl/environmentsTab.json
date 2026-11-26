@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "Omgevingen",
+    "noEnvironments": "Nog geen omgevingen.",
+    "noMatch": "Geen omgevingen komen overeen met het filter.",
     "tabRequests": "Merge requests",
     "tabRepository": "Repository",
     "tabIntegration": "Integratie",

@@ -39,6 +39,8 @@
     "colTimeout": "タイムアウト",
     "noFunctions": "登録された関数はありません",
     "noWebhooks": "登録されたWebhookはありません",
+    "noFunctionsMatch": "フィルターに一致する関数はありません",
+    "noWebhooksMatch": "フィルターに一致するWebhookはありません",
     "customSchema": "データセット",
     "dash": "—",
     "all": "すべて",

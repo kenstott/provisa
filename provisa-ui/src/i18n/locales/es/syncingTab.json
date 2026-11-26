@@ -8,6 +8,7 @@
     "none_data_catalog": "Aún no hay catálogos de datos.",
     "none_ontology": "Aún no hay ontologías.",
     "none_custom": "Aún no hay sistemas personalizados.",
+    "noMatch": "Ninguna entrada coincide con el filtro.",
     "addEntry": "Añadir",
     "newEntry": "Nuevo",
     "duplicateCredentialsNote": "Las credenciales de {{id}} no se copian: introdúzcalas aquí.",

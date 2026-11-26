@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { Metric, RegisteredTable, TableColumn } from "../../types/admin";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 const upsertMetric = vi.fn();
 const deleteMetric = vi.fn();
@@ -321,5 +322,36 @@ describe("MetricsPage fact-sourced builder", () => {
       expect.objectContaining({ name: "custom", expression: "COUNT(DISTINCT orders.id)" }),
       true, // a new metric is created
     );
+  });
+});
+
+describe("MetricsPage filter", () => {
+  const SECOND: Metric = {
+    name: "order_count",
+    expression: "COUNT(*)",
+    datatype: "bigint",
+    description: "Orders placed",
+    aiContext: "Use for volume questions",
+    visibleTo: ["*"],
+    fromFact: null,
+    term: null,
+  } as Metric;
+
+  it("finds each metric by every text its row shows", async () => {
+    METRICS.push(SECOND);
+    try {
+      render(<MetricsPage />);
+      await expectFilterFindsEveryCell(screen.getByTestId("metrics-filter"), () =>
+        screen.getByTestId("metrics-table"),
+      );
+    } finally {
+      METRICS.splice(METRICS.indexOf(SECOND), 1);
+    }
+  });
+
+  it("says nothing matches when the filter empties the list", () => {
+    render(<MetricsPage />);
+    fireEvent.change(screen.getByTestId("metrics-filter"), { target: { value: "no-such-metric" } });
+    expect(screen.getByTestId("metrics-empty")).toHaveTextContent("No metrics match the filter.");
   });
 });

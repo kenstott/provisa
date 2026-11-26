@@ -10,9 +10,9 @@
 
 // REQ-2225 (amended 2026-11-24): Spark is a built-in source type like every other, listed in the
 // Code group beside Python, Node, Go and Rust, never in a separate Connectors section, and made
-// through the same source form: its script in the code editor and its cluster as fields.
+// through the same source form: its cluster as fields. A Spark source has no script (amended
+// 2026-11-25).
 
-import { EditorView } from "@codemirror/view";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
@@ -76,10 +76,9 @@ const SPARK_HOST: Connector = {
   code_hash: "c".repeat(64),
   arch: "amd64",
   requires: [
-    { name: "script", multiline: true, script: true },
     { name: "cluster", org_default: "spark_cluster" },
   ],
-  description: "Tables and commands from one annotated Spark script, run on your cluster.",
+  description: "A connection to your Spark cluster through Spark Connect.",
   icon: "",
   settings: [{ name: "replicate", default_value: 0 }],
   native: true,
@@ -168,12 +167,10 @@ describe("a Spark source", () => {
     await screen.findByTestId("sources-submit");
     expect(screen.getByTestId("sources-type-select")).toHaveValue("spark");
     fireEvent.change(screen.getByTestId("sources-id-input"), { target: { value: "spark_jobs" } });
-    const dom = (await screen.findByTestId("connector-require-script")).querySelector(".cm-editor");
-    const view = EditorView.findFromDOM(dom as HTMLElement) as EditorView;
-    view.dispatch({ changes: { from: 0, insert: "def numbers():\n    '''@table'''\n" } });
     expect(await screen.findByTestId("spark-source-cluster-default")).toHaveTextContent(
       "local test cluster (127.0.0.1)",
     );
+    expect(screen.queryByTestId("connector-require-script")).toBeNull();
     fireEvent.change(screen.getByTestId("spark-source-cluster-host"), {
       target: { value: "spark.acme.test" },
     });
@@ -186,10 +183,7 @@ describe("a Spark source", () => {
     expect(JSON.parse(sent.mappingJson)).toEqual({
       connector_join: { connector: "spark" },
       secrets: {},
-      settings: {
-        script: "def numbers():\n    '''@table'''\n",
-        cluster: "sc://spark.acme.test:15002",
-      },
+      settings: { cluster: "sc://spark.acme.test:15002" },
     });
   });
 });

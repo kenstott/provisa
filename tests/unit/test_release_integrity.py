@@ -589,9 +589,15 @@ def test_the_macos_native_runtime_installs_uv_lock_versions():
     body = script.split("bundle_native_payload() {", 1)[1].split("\n}\n", 1)[0]
     assert "uv export --frozen" in body
     commands = body.replace("\\\n", " ").splitlines()
-    installs = [c for c in commands if '"$py" -m pip install' in c and "[embedded]" in c]
-    assert installs, "the native runtime's provisa[embedded] install is gone"
-    assert all('-c "$constraints"' in line for line in installs)
+    exports = [c for c in commands if "uv export --frozen" in c]
+    assert len(exports) == 1 and "--extra embedded" in exports[0], exports
+    assert "--no-hashes" not in exports[0]
+    # The hash-pinned export is installed with nothing resolved beyond it, so every package is
+    # uv.lock's version.
+    locked = [
+        c.strip() for c in commands if '"$py" -m pip install' in c and "--require-hashes" in c
+    ]
+    assert locked == ['"$py" -m pip install --quiet --require-hashes --no-deps -r "$locked"']
     core = _load("release-macos.yml")["jobs"]["build-macos-core"]["steps"]
     names = [step.get("name") for step in core]
     assert names.index("Install uv") < names.index("Build and sign the app")
@@ -606,7 +612,7 @@ def test_the_macos_native_runtime_prunes_test_payload_before_signing():
     script = (_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
     body = script.split("bundle_native_payload() {", 1)[1].split("\n}\n", 1)[0]
     prune = body.index('"$py" -I "${SCRIPT_DIR}/prune_runtime.py" "$site" || {')
-    install = body.index('"${built_wheel}[embedded]"')
+    install = body.index('pip install --quiet --no-deps "$built_wheel"')
     import_check = body.index("import provisa, sqlite3, mcp_proxy")
     assert install < prune < import_check
     assert (_ROOT / "packaging" / "macos" / "prune_runtime.py").is_file()

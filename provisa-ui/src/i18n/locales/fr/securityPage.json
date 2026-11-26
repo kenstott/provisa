@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Aucune règle RLS définie.",
     "noRulesMatchFilter": "Aucune règle ne correspond au filtre actuel.",
+    "noRolesMatch": "Aucun rôle ne correspond au filtre.",
     "purposeTitle": "À quoi servent les règles RLS",
     "purposeBody": "Une règle de sécurité au niveau des lignes est un prédicat SQL lié à un rôle et à une portée. Le serveur l'ajoute par AND à la requête avant exécution, en lecture comme en écriture et sur chaque surface : un rôle ne voit que les lignes que sa règle autorise, quel que soit le client utilisé.",
     "purposeAdd": "Limitez une règle à une seule table, ou à tout un domaine pour qu'elle couvre chacune de ses tables ; quand les deux s'appliquent, la règle de table l'emporte pour cette table. Une règle sur une étiquette couvre chaque table qui porte l'étiquette, maintenant et à l'avenir, et s'ajoute à la règle propre de la table : une étiquette ne peut donc que restreindre ce qu'un rôle lit. Les règles nomment des rôles : pour changer ce que quelqu'un peut voir, changez le rôle qu'il détient.",

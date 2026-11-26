@@ -122,37 +122,38 @@ def test_the_airgap_mirror_lock_holds_the_vector_extra_on_cpu_torch():
 
 def test_the_dmg_installs_the_embedded_extra_and_checks_the_embedding_library():
     script = _text("packaging/macos/build-dmg.sh")
-    assert '"${built_wheel}[embedded]"' in script
-    install = script.index('"${built_wheel}[embedded]"')
+    install = script.index("--extra embedded --extra desktop")
     check = script.index("import sentence_transformers, torch; assert torch.version.cuda is None")
     assert install < check
 
 
 def test_the_appimage_wheelhouse_takes_cpu_torch_and_refuses_a_cuda_build():
     script = _text("packaging/linux/build-appimage.sh")
+    export = script.index("--extra embedded --extra desktop")
     fetch_torch = script.index(f'--index-url {_CPU_INDEX} "torch==${{torch_cpu}}"')
-    fetch_rest = script.index('"${built_wheel}[embedded]" "torch==${torch_cpu}"')
+    fetch_rest = script.index('--require-hashes --no-deps -r "$locked"')
     guard = script.index("the wheelhouse holds CUDA wheels")
     vector = script.index("the wheelhouse lacks the vector extra")
-    assert fetch_torch < fetch_rest < guard < vector
+    assert export < fetch_torch < fetch_rest < guard < vector
     assert 'version = "\\(.*+cpu\\)"' in script  # the pinned version is uv.lock's +cpu torch
 
 
 def test_the_linux_first_launch_installs_from_its_wheelhouse_and_checks_cpu_torch():
     """The wheelhouse carries the +cpu torch (build-appimage.sh), so first launch takes torch and
-    provisa[embedded] from it alone, then checks the embedding library is on CPU-only torch."""
+    the rest of provisa[embedded] from it alone, then checks the embedding library is on CPU-only
+    torch."""
     script = _text("packaging/linux/first-launch.sh")
     body = script[script.index("setup_native_venv() {") :]
     body = body[: body.index("\n}\n")]
     assert _CPU_INDEX not in body
-    provisa = body.index('--no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy')
+    provisa = body.index('--no-index --no-deps "$wheels"/*.whl')
     check = body.index("import sentence_transformers, torch; assert torch.version.cuda is None")
     assert provisa < check
 
 
 def test_the_windows_installer_installs_the_vector_extra_and_checks_it():
     script = _text("packaging/windows/build-sfx.ps1")
-    install = script.index('"$RepoRoot[vector]"')
+    install = script.index("--extra vector --extra desktop")
     check = script.index("import sentence_transformers, torch; assert torch.version.cuda is None")
     assert install < check
 

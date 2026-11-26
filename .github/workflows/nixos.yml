@@ -255,6 +255,12 @@ jobs:
         with:
           phase: prime
 
+      # build-appimage.sh's wheelhouse wheels are uv.lock's set, exported by uv.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       # Fails if the packed runtime names a loader (require_static_runtime): such a file does not
       # start on NixOS at all.
       - name: Build the AppImage
