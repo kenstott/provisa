@@ -21,7 +21,10 @@ from pathlib import Path
 
 import pytest
 
-from provisa.codesource import wheel_build
+from provisa.codesource import wheel_build, wheel_source
+
+VERSION = "0.1.0a510"
+TAG = "v0.1.0-alpha.510"
 
 TOOLCHAIN = Path("/rustup/toolchains/1.95.0/bin")
 TOOLS = {"rustup": "/bin/rustup", "cargo-zigbuild": "/bin/cargo-zigbuild", "zig": "/bin/zig"}
@@ -170,11 +173,147 @@ def test_a_provisa_without_its_rust_sources_is_refused(tmp_path: Path, targets):
     assert refused.value.code == "codesource.image_wheel_source"
 
 
-def test_the_built_wheel_is_the_one_build_image_takes(tmp_path: Path, crate: Path, targets):
-    """image_build._encoders finds the source-built wheel by its version and tag."""
-    from provisa.codesource import image_build
-
+def test_the_built_wheel_is_the_one_build_image_takes(
+    tmp_path: Path, crate: Path, targets, monkeypatch
+):
+    """The wheelhouse source finds the source-built wheel by its version, tag and source hash."""
+    monkeypatch.setattr(wheel_build, "encoders_crate", lambda: crate)
     house = tmp_path / "wheels"
-    wheel_build.build_wheel("0.1.0", "arm64", house, run=Cargo(), which=_which(), crate=crate)
-    found = sorted(house.glob("provisa-*-manylinux_2_28_aarch64.whl"))
-    assert [w for w in found if image_build._same_version(w, "0.1.0")]  # noqa: SLF001
+    built = wheel_build.build_wheel(
+        "0.1.0", "arm64", house, run=Cargo(), which=_which(), crate=crate
+    )
+    assert wheel_source.cached("0.1.0", "arm64", house) == built
+
+
+# -- The ordered sources: cache, release, build from source (maintainer 2026-11-26) -----------
+
+
+def test_the_sources_are_the_cache_then_the_release_then_the_source_build():
+    cache, release, build = wheel_source.SOURCES
+    assert cache is wheel_source.cached
+    assert release.__qualname__ == "from_release.<locals>.source"
+    assert build is wheel_build.build_wheel
+
+
+class _NoRelease:
+    """The release source with no published release of the version."""
+
+    def __init__(self) -> None:
+        self.listed: list[str] = []
+
+    def list(self, tag: str) -> None:
+        self.listed.append(tag)
+        return None
+
+    def fetch(self, url: str) -> bytes:
+        raise AssertionError(f"fetched {url}")
+
+
+def _sources(crate: Path, run, which=None, release: _NoRelease | None = None):
+    def build(version: str, arch: str, house: Path) -> Path:
+        return wheel_build.build_wheel(
+            version, arch, house, run=run, which=which or _which(), crate=crate
+        )
+
+    release = release or _NoRelease()
+    return (wheel_source.cached, wheel_source.from_release(release.list, release.fetch), build)
+
+
+@pytest.fixture
+def checkout(crate: Path, monkeypatch) -> Path:
+    """This Provisa runs from the checkout whose rust/encoders is ``crate``."""
+    (crate / "src").mkdir()
+    (crate / "src" / "lib.rs").write_text("// encoders\n")
+    monkeypatch.setattr(wheel_build, "encoders_crate", lambda: crate)
+    return crate
+
+
+def test_a_version_with_no_release_is_built_from_source(tmp_path: Path, checkout: Path, targets):
+    house = tmp_path / "wheels"
+    cargo = Cargo()
+    release = _NoRelease()
+    found = wheel_source.provisa_wheel(
+        VERSION, "arm64", house, _sources(checkout, cargo, release=release)
+    )
+    assert release.listed == [TAG]
+    assert found == house / f"provisa-{VERSION}-cp312-cp312-manylinux_2_28_aarch64.whl"
+    assert len(cargo.calls) == 1
+    assert wheel_build.built_from(found) == wheel_build.source_hash(checkout.parent)
+
+
+def test_a_source_built_wheel_of_the_current_sources_is_taken_from_the_cache(
+    tmp_path: Path, checkout: Path, targets
+):
+    house = tmp_path / "wheels"
+    cargo = Cargo()
+    first = wheel_source.provisa_wheel(VERSION, "arm64", house, _sources(checkout, cargo))
+    release = _NoRelease()
+
+    def no_build(argv, cwd, env):
+        raise AssertionError(f"rebuilt: {argv}")
+
+    again = wheel_source.provisa_wheel(
+        VERSION, "arm64", house, _sources(checkout, no_build, release=release)
+    )
+    assert again == first
+    assert release.listed == []
+
+
+def test_a_source_built_wheel_of_other_sources_is_rebuilt(
+    tmp_path: Path, checkout: Path, targets, caplog
+):
+    house = tmp_path / "wheels"
+    cargo = Cargo()
+    first = wheel_source.provisa_wheel(VERSION, "arm64", house, _sources(checkout, cargo))
+    assert isinstance(first, Path)
+    old = wheel_build.built_from(first)
+    (checkout / "src" / "lib.rs").write_text("// encoders, changed\n")
+    missed = wheel_source.cached(VERSION, "arm64", house)
+    assert isinstance(missed, wheel_source.Miss)
+    assert "other than this checkout's" in missed.reason
+    with caplog.at_level(logging.INFO, logger=wheel_build.__name__):
+        again = wheel_source.provisa_wheel(VERSION, "arm64", house, _sources(checkout, cargo))
+    assert again == first and len(cargo.calls) == 2
+    new = wheel_build.built_from(again)
+    assert new == wheel_build.source_hash(checkout.parent) and new != old
+    assert f"built from rust/ sources {old}, not the checkout's {new}: rebuilding" in caplog.text
+
+
+def test_a_released_wheel_in_the_cache_is_taken_by_its_version_alone(
+    tmp_path: Path, checkout: Path
+):
+    house = tmp_path / "wheels"
+    house.mkdir()
+    released = house / f"provisa-{VERSION}-cp312-cp312-manylinux_2_28_aarch64.whl"
+    with zipfile.ZipFile(released, "w") as zf:
+        zf.writestr("provisa/_encoders.so", b"released")
+        zf.writestr(f"provisa-{VERSION}.dist-info/METADATA", f"Version: {VERSION}\n")
+
+    def no_build(argv, cwd, env):
+        raise AssertionError(f"built: {argv}")
+
+    assert wheel_source.provisa_wheel(VERSION, "arm64", house, _sources(checkout, no_build)) == (
+        released
+    )
+
+
+def test_a_source_built_wheel_without_a_checkout_is_not_served(
+    tmp_path: Path, checkout: Path, targets, monkeypatch
+):
+    """An installed Provisa has no rust/ to check a source-built wheel against."""
+    house = tmp_path / "wheels"
+    wheel_source.provisa_wheel(VERSION, "arm64", house, _sources(checkout, Cargo()))
+    monkeypatch.setattr(wheel_build, "encoders_crate", lambda: tmp_path / "nowhere")
+    assert isinstance(wheel_source.cached(VERSION, "arm64", house), wheel_source.Miss)
+
+
+def test_the_source_hash_is_of_the_rust_sources_only(tmp_path: Path, checkout: Path):
+    rust = checkout.parent
+    before = wheel_build.source_hash(rust)
+    (checkout / "target" / "release").mkdir(parents=True)
+    (checkout / "target" / "release" / "lib_encoders.so").write_bytes(b"built")
+    (checkout / "README.md").write_text("notes")
+    assert wheel_build.source_hash(rust) == before
+    (rust / "pgwire" / "src").mkdir(parents=True)
+    (rust / "pgwire" / "src" / "lib.rs").write_text("// a path dependency")
+    assert wheel_build.source_hash(rust) != before

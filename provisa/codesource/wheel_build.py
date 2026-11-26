@@ -17,6 +17,11 @@ encoders crate (rust/encoders) cross-compiled with cargo-zigbuild for ``<arch>-u
 against glibc 2.28 (scripts/cargo-zigbuild-manylinux), with the pinned Rust toolchain, for CPython
 3.12, and packed as ``provisa-<version>-cp312-cp312-manylinux_2_28_<arch>.whl`` holding
 ``provisa/_encoders.so``. A build without the toolchain is refused by name, with what to install.
+
+The lead's decision (2026-11-26): a source-built wheel carries the SHA-256 of the rust/ sources it
+was compiled from (SOURCE_HASH_FILE in its dist-info), and a wheel whose hash is not the
+checkout's is stale and rebuilt, so a source checkout never serves encoders older than its rust/.
+A released wheel carries none and is keyed by its version alone.
 """
 
 # Requirements: REQ-2194, REQ-2098
@@ -51,6 +56,13 @@ WHEEL_ARCH = {"amd64": "x86_64", "arm64": "aarch64"}
 CARGO_ZIGBUILD = "cargo-zigbuild==0.24.0"
 ZIGLANG = "ziglang==0.17.0"
 
+#: The dist-info file of a source-built wheel naming the SHA-256 of the rust/ sources it was
+#: compiled from (source_hash).
+SOURCE_HASH_FILE = "PROVISA_SOURCE_SHA256"
+#: The files under rust/ a build compiles, as rust/ensure-local-build.sh selects them.
+_SOURCE_NAMES = ("Cargo.toml", "Cargo.lock", "build.rs")
+_SOURCE_DIRS = ("src", "third_party")
+
 Which = Callable[[str], str | None]
 
 
@@ -70,6 +82,51 @@ def encoders_crate() -> Path:
     import provisa
 
     return Path(provisa.__file__).resolve().parent.parent / "rust" / "encoders"
+
+
+def _is_source(relative: Path) -> bool:
+    parts = relative.parts
+    return (
+        relative.name in _SOURCE_NAMES
+        or any(d in parts[:-1] for d in _SOURCE_DIRS)
+        or parts[-2:] == (".cargo", "config.toml")
+    )
+
+
+def source_hash(rust: Path) -> str:
+    """The SHA-256 of the Rust sources under ``rust`` (the checkout's rust/, whose crates the
+    encoders crate depends on by path): every selected file's path and contents, in path order,
+    with cargo's ``target`` directories left out."""
+    files = sorted(
+        path.relative_to(rust)
+        for path in rust.rglob("*")
+        if path.is_file()
+        and "target" not in path.relative_to(rust).parts
+        and _is_source(path.relative_to(rust))
+    )
+    digest = hashlib.sha256()
+    for relative in files:
+        data = (rust / relative).read_bytes()
+        digest.update(f"{relative.as_posix()}\0{len(data)}\0".encode())
+        digest.update(data)
+    return digest.hexdigest()
+
+
+def built_from(wheel: Path) -> str | None:
+    """The rust/ source hash a source-built wheel carries, or None for a wheel not built from
+    source here (a released one)."""
+    with zipfile.ZipFile(wheel) as archive:
+        names = [n for n in archive.namelist() if n.endswith(f".dist-info/{SOURCE_HASH_FILE}")]
+        if not names:
+            return None
+        return archive.read(names[0]).decode().strip()
+
+
+def checkout_hash() -> str | None:
+    """The source hash of this Provisa's checkout, or None when it runs from no source checkout
+    (an installed Provisa has no rust/)."""
+    crate = encoders_crate()
+    return source_hash(crate.parent) if (crate / "Cargo.toml").is_file() else None
 
 
 def _target(arch: str) -> str:
@@ -178,8 +235,9 @@ def _record_line(name: str, data: bytes) -> str:
     return f"{name},sha256={digest},{len(data)}"
 
 
-def _pack(module: bytes, version: str, arch: str, out: Path) -> None:
-    """A wheel holding provisa/_encoders.so for ``arch``, written whole or not at all."""
+def _pack(module: bytes, version: str, arch: str, sources: str, out: Path) -> None:
+    """A wheel holding provisa/_encoders.so for ``arch`` built from the rust/ sources whose hash
+    is ``sources``, written whole or not at all."""
     from packaging.version import Version
 
     info = f"provisa-{str(Version(version)).replace('-', '_')}.dist-info"
@@ -194,6 +252,7 @@ def _pack(module: bytes, version: str, arch: str, out: Path) -> None:
             f"Wheel-Version: 1.0\nGenerator: provisa.codesource.wheel_build\n"
             f"Root-Is-Purelib: false\nTag: {tag}\n"
         ).encode(),
+        f"{info}/{SOURCE_HASH_FILE}": f"{sources}\n".encode(),
     }
     record = [_record_line(name, data) for name, data in files.items()]
     record.append(f"{info}/RECORD,,")
@@ -217,15 +276,14 @@ def build_wheel(
     which: Which = shutil.which,
     crate: Path | None = None,
 ) -> Path:
-    """The Linux provisa ``version`` wheel for ``arch`` in ``house``: the one already there, else
-    compiled from this checkout's rust/encoders and cached there. Blocking."""
+    """The Linux provisa ``version`` wheel for ``arch`` in ``house``: the one already there when
+    it was built from this checkout's rust/ sources as they are now, else compiled from its
+    rust/encoders and cached there. Blocking."""
     if arch not in WHEEL_ARCH:
         raise WheelBuildRefused(
             "image_arch", f"a wheel is built for {', '.join(WHEEL_ARCH)}, not {arch!r}", arch=arch
         )
     out = house / wheel_name(version, arch)
-    if out.is_file():
-        return out
     crate = crate or encoders_crate()
     if not (crate / "Cargo.toml").is_file():
         raise WheelBuildRefused(
@@ -233,6 +291,17 @@ def build_wheel(
             f"no provisa {version} wheel for linux/{arch} to build: {crate} is not a Provisa "
             "source checkout's rust/encoders",
             arch=arch,
+        )
+    sources = source_hash(crate.parent)
+    if out.is_file():
+        built = built_from(out)
+        if built == sources:
+            return out
+        log.info(
+            "Build image: %s was built from rust/ sources %s, not the checkout's %s: rebuilding",
+            out.name,
+            built,
+            sources,
         )
     toolchain, zigbuild, zig_env = _toolchain(arch, which)
     target = _target(arch)
@@ -272,6 +341,6 @@ def build_wheel(
                 arch=arch,
             )
         house.mkdir(parents=True, exist_ok=True)
-        _pack(module.read_bytes(), version, arch, out)
+        _pack(module.read_bytes(), version, arch, sources, out)
     log.info("Build image: cached the provisa %s wheel for linux/%s at %s", version, arch, out)
     return out

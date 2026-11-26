@@ -34,6 +34,7 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from provisa.codesource import wheel_build
 from provisa.codesource.bundle import BundleRefused
 from provisa.runtime_deps.code_runtimes import Fetcher, RuntimeUnavailable, fetch_https
 
@@ -90,13 +91,25 @@ def _same(found: str | None, version: str) -> bool:
 
 
 def cached(version: str, arch: str, house: Path) -> Path | Miss:
-    """The wheel already in the wheelhouse."""
+    """The wheel already in the wheelhouse: a released one by its version alone, a source-built
+    one only while it carries the source hash of this checkout's rust/ (wheel_build: a stale
+    source-built wheel is handed on, to be rebuilt)."""
     tag = platform_tag(arch)
     found = sorted(house.glob(f"provisa-*-{tag}.whl")) if house.is_dir() else []
     wheels = [w for w in found if _same(wheel_version(w.name), version)]
     if not wheels:
         return Miss("cache", f"no provisa {version} wheel for {tag} in {house}")
-    return wheels[-1]
+    released = [w for w in wheels if wheel_build.built_from(w) is None]
+    if released:
+        return released[-1]
+    current = wheel_build.checkout_hash()
+    fresh = [w for w in wheels if wheel_build.built_from(w) == current]
+    if fresh:
+        return fresh[-1]
+    names = ", ".join(w.name for w in wheels)
+    return Miss(
+        "cache", f"{names} in {house} was built from rust/ sources other than this checkout's"
+    )
 
 
 def release_tag(version: str) -> str | None:
@@ -228,9 +241,10 @@ def from_release(listing: Listing = github_release, fetch: Fetcher = fetch_https
     return source
 
 
-#: The maintainer's order (2026-11-26): cache, then the release; the source build
-#: (IMAGE-WHEEL-SOURCE-BUILD) is appended after the release.
-SOURCES: tuple[Source, ...] = (cached, from_release())
+#: The maintainer's order (2026-11-26): cache, then the release of the running version, then a
+#: build from this checkout's rust/ sources. The only fallbacks are this order; PyPI, when that
+#: channel reopens, becomes the first remote source (before the release).
+SOURCES: tuple[Source, ...] = (cached, from_release(), wheel_build.build_wheel)
 
 
 def provisa_wheel(
