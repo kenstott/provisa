@@ -1346,11 +1346,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     { col: "source" },
                     ...(domainsEnabled ? [{ col: "domain" }] : []),
                     { col: "table" },
-                    translate("tablesPage.colNaming"),
-                    translate("tablesPage.colCacheTtl"),
-                    translate("tablesPage.colEffectiveTtl"),
-                    ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
-                    { col: "cols" },
+                    // The columns of settings give way, first to last, when the detail panel
+                    // leaves the list too little room: the source, domain and table never do.
+                    { label: translate("tablesPage.colNaming"), hide: 1 },
+                    { label: translate("tablesPage.colCacheTtl"), hide: 2 },
+                    { label: translate("tablesPage.colEffectiveTtl"), hide: 5 },
+                    ...(hasRegions
+                      ? [{ label: translate("regionSelector.columnHeader"), hide: 4 }]
+                      : []),
+                    { col: "cols", hide: 3 },
                     "",
                   ]}
                 />

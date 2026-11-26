@@ -912,10 +912,12 @@ export function RelationshipsPage() {
                         />
                       ),
                     },
-                    { label: t("relationshipsPage.gqlCqlAlias") },
-                    { col: "cardinality" },
-                    { col: "materialize" },
-                    { label: t("relationshipsPage.refreshSeconds") },
+                    // The columns of settings give way, first to last, when the detail panel
+                    // leaves the list too little room.
+                    { label: t("relationshipsPage.gqlCqlAlias"), hide: 3 },
+                    { col: "cardinality", hide: 4 },
+                    { col: "materialize", hide: 2 },
+                    { label: t("relationshipsPage.refreshSeconds"), hide: 1 },
                   ]}
                 />
                 <Table.Tbody>
