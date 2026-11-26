@@ -14,6 +14,10 @@
     "defaultHelp": "Ein Build pusht hierhin, sofern er keine andere Registry nennt. Eine Organisation hat eine Standard-Registry.",
     "saved": "Gespeichert",
     "removed": "Entfernt",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "filterPlaceholder": "Registries filtern",
+    "closeForm": "Formular schließen",
+    "edit": "{{name}} bearbeiten",
+    "removeConfirm": "{{name}} entfernen? Builds, die dorthin pushen, können ihr Image nicht mehr pushen."
   }
 }

@@ -25,6 +25,7 @@
 // heavier fixtures.
 
 import { execFileSync } from "node:child_process";
+import { withBody } from "./response-body";
 import * as http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -691,12 +692,14 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       else await page.keyboard.press("Escape");
     }
     await typeSql(page, `SELECT id, value FROM pet_store.${registered}`);
-    const runResp = page.waitForResponse(
-      (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
+    const runResp = withBody(
+      page.waitForResponse(
+        (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
+      ),
     );
     await page.getByTestId("sql-run").click();
-    const resp = await runResp;
-    expect(resp.ok(), await resp.text()).toBeTruthy();
+    const { response: resp, text: respText } = await runResp;
+    expect(resp.ok(), respText).toBeTruthy();
     await expect(page.getByText("No results.")).toBeVisible({ timeout: 30000 });
 
     // 4. REQ-1769: now prove the FULL CDC-landing round trip on a Discover-flow-registered

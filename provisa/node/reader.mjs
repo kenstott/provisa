@@ -37,6 +37,9 @@ const program = ts.createProgram([entry], {
   target: ts.ScriptTarget.ESNext,
   lib: ["lib.esnext.d.ts"],
   noEmit: true,
+  // REQ-1993 (amended 2026-11-25): code entered in the source form is JavaScript with JSDoc types,
+  // read from itself; a bundle's .d.ts entry is read as before.
+  allowJs: true,
   skipLibCheck: true,
   strict: true,
   paths: { "@provisa/services": [SERVICES_TYPES], "@provisa/sdk": [SDK_TYPES] },

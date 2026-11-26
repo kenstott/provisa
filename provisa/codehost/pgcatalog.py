@@ -63,6 +63,22 @@ _BASE_TYPES = [
     (3802, "jsonb", -1, "U", 3807, 0),
 ]
 _ARRAYS = [(t[4], "_" + t[1], -1, "A", 0, t[0]) for t in _BASE_TYPES]
+#: ``format_type``'s name for a base type, where it is not the type's own name: PostgreSQL's
+#: SQL-standard spellings, which a client reading a column's type by its text (ClickHouse's
+#: PostgreSQL engine, REQ-2267) maps to its own types.
+_FORMATTED = {
+    "bool": "boolean",
+    "int8": "bigint",
+    "int2": "smallint",
+    "int4": "integer",
+    "float4": "real",
+    "float8": "double precision",
+    "bpchar": "character",
+    "varchar": "character varying",
+    "time": "time without time zone",
+    "timestamp": "timestamp without time zone",
+    "timestamptz": "timestamp with time zone",
+}
 #: A function's column type, by IR type: its PostgreSQL type's oid and name.
 _IR_TYPES = {
     "text": (25, "text"),
@@ -253,6 +269,8 @@ def build(db: Any, names: dict, schemas: tuple[str, ...]) -> dict[str, list[int]
     _insert(db, "pgc.pg_attribute", attributes)
     _insert(db, "pgc.pg_tables", tables_view)
     _insert(db, "pgc.pg_settings", [(n, v, None, "") for n, v in _SETTINGS])
+    db.execute("CREATE TABLE pgc.formatted (oid BIGINT, name VARCHAR)")
+    _insert(db, "pgc.formatted", [(t[0], _FORMATTED.get(t[1], t[1])) for t in _BASE_TYPES])
     _insert(db, "pgc.pg_database", [(1, DATABASE, 10, 6, "C", "C", False, True)])
     _insert(db, "pgc.pg_roles", [(10, OWNER, False)])
     _insert(db, "pgc.pg_user", [(10, OWNER, False)])
@@ -266,14 +284,18 @@ def build(db: Any, names: dict, schemas: tuple[str, ...]) -> dict[str, list[int]
 def _macros(db: Any) -> None:
     """The PostgreSQL functions catalog statements call, over the catalog's own tables."""
     for definition in (
-        "pgc_format_type(t, m) AS (SELECT CASE WHEN typcategory = 'A' THEN "
-        "substr(typname, 2) || '[]' ELSE typname END FROM pgc.pg_type WHERE oid = t)",
+        # An array's name is its element's with ``[]`` (pgc.formatted: every base type's name).
+        "pgc_format_type(t, m) AS (SELECT CASE WHEN p.typcategory = 'A' THEN e.name || '[]' "
+        "ELSE b.name END FROM pgc.pg_type p LEFT JOIN pgc.formatted e ON e.oid = p.typelem "
+        "LEFT JOIN pgc.formatted b ON b.oid = p.oid WHERE p.oid = t)",
         "pgc_regclass(name) AS (SELECT oid FROM pgc.pg_class WHERE relname = "
         "split_part(replace(name, '\"', ''), '.', -1))",
         "pgc_relname(o) AS (SELECT relname FROM pgc.pg_class WHERE oid = o)",
         "pgc_typname(o) AS (SELECT typname FROM pgc.pg_type WHERE oid = o)",
         # A function's table has no key or index: an array of key columns is only ever bound.
         "pgc_expandarray(a) AS {'x': a[1], 'n': 1}",
+        # REQ-2267: ClickHouse's PostgreSQL engine asks the server's version this way.
+        "pgc_current_setting(n) AS (SELECT setting FROM pgc.pg_settings WHERE name = n)",
     ):
         db.execute(f"CREATE MACRO {definition}")
 
@@ -284,6 +306,7 @@ _FUNCTIONS: dict[str, Any] = {
     "format_type": "pgc_format_type",
     "to_regclass": "pgc_regclass",
     "_pg_expandarray": "pgc_expandarray",
+    "current_setting": "pgc_current_setting",
 }
 #: Functions whose answer is the same whatever they are given: no comments, no definitions (a
 #: function's table has no index, constraint or default), every object visible and permitted.

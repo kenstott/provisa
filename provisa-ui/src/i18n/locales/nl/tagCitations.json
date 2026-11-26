@@ -17,7 +17,7 @@
     "reviewHelp": "Een citaat bij deze tag moet worden beoordeeld: de sectie is gewijzigd of verdwenen.",
     "definitionReviewHelp": "Een sectie die deze tag definieert is gewijzigd of verdwenen. Beoordeel het citaat.",
     "gap": "Geen citaat",
-    "gapHelp": "Deze tag vereist een citaat en deze toewijzing heeft er geen.",
+    "gapHelp": "Deze tag vereist een citaat voor elke toewijzing.",
     "definedBy": "Gedefinieerd door {{title}}",
     "definedByLabel": "Gedefinieerd door",
     "requiresCitationLabel": "Toewijzingen vereisen een citaat",
@@ -28,9 +28,9 @@
     "citedByDefinition": "De definitie ervan",
     "citedByGone": "Verdwenen",
     "citedByWholeDocument": "Heel document",
-    "citationsLabel": "Waarom het op dit object staat",
-    "neededForCoverage": "Nodig voor dekking",
-    "definitionLabel": "Waarom deze tag bestaat",
-    "definitionDesc": "Het document en de sectie die zeggen waarom deze tag bestaat. Waarom hij op een object staat, komt in de eigen citaten van dat object."
+    "citationsLabel": "Citaat",
+    "neededForCoverage": "Vereist",
+    "definitionLabel": "Bron van de definitie",
+    "definitionDesc": "Het bibliotheekdocument en de sectie die deze tag definiëren. Een citaat voor één toewijzing hoort bij die toewijzing."
   }
 }

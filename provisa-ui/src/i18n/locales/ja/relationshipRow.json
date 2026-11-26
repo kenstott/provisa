@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "一対多",
     "materializeCheckbox": "マテリアライズ",
     "excludeFromCypher": "Cypherから除外",
-    "sqlName": "SQL 名",
+    "apiName": "API 名",
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "toggleDetails": "リレーションシップ詳細の表示切替",
     "deleteTitle": "リレーションシップ「{{id}}」を削除しますか？",

@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { renderInForm, screen, waitFor, within } from "../../../../test-utils/render";
 import i18n from "../../../../i18n";
 import type { Domain, ListedTable } from "../../../../types/admin";
@@ -68,6 +69,11 @@ async function pick(testId: string, option: string) {
   await userEvent.click(within(listbox).getByRole("option", { name: option, hidden: true }));
 }
 
+function Where() {
+  const loc = useLocation();
+  return <pre data-testid="where">{loc.search}</pre>;
+}
+
 const next = () => userEvent.click(screen.getByTestId("wizard-next"));
 
 beforeEach(() => {
@@ -80,7 +86,18 @@ describe("the star schema wizard", () => {
   it("asks for the business process, its table and its fact type first", () => {
     renderInForm(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onCancel={vi.fn()} />);
     const head = screen.getByTestId("wizard-step-process");
-    expect(head).toHaveTextContent(t("modelingWizard.stepOf", { index: 1, count: 5 }));
+    const strip = within(head).getByTestId("wizard-steps");
+    expect(strip).toHaveAttribute("data-active", "0");
+    for (const [key, label] of [
+      ["process", "star.process.title"],
+      ["grain", "star.grain.title"],
+      ["dimensions", "star.dimensions.title"],
+      ["measures", "star.measures.title"],
+      ["review", "review.title"],
+    ])
+      expect(within(strip).getByTestId(`wizard-steps-${key}`)).toHaveTextContent(
+        t(`modelingWizard.${label}`),
+      );
     expect(head).toHaveTextContent(t("modelingWizard.star.process.title"));
     expect(screen.getByTestId("star-process")).toBeInTheDocument();
     expect(screen.getByTestId("star-source")).toBeInTheDocument();
@@ -323,5 +340,52 @@ describe("the Data Vault wizard", () => {
     expect(screen.getByTestId(/^wizard-created-rel:sat:/)).toHaveTextContent(
       t("modelingWizard.primitive.relationship"),
     );
+  });
+});
+
+describe("the wizards' step strip (REQ-2277)", () => {
+  it("puts the step in the URL, goes back through a completed step and not forward", async () => {
+    renderInForm(
+      <>
+        <StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onCancel={vi.fn()} />
+        <Where />
+      </>,
+    );
+    await userEvent.type(screen.getByTestId("star-process"), "Sales");
+    await pick("star-domain", "sales");
+    await pick("star-source", "sales.orders");
+    await next();
+    expect(screen.getByTestId("where")).toHaveTextContent("?step=2");
+    expect(screen.getByTestId("wizard-steps")).toHaveAttribute("data-active", "1");
+
+    // A step not yet reached does nothing; the completed first step goes back.
+    await userEvent.click(screen.getByTestId("wizard-steps-dimensions"));
+    expect(screen.getByTestId("wizard-step-grain")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("wizard-steps-process"));
+    expect(screen.getByTestId("wizard-step-process")).toBeInTheDocument();
+    expect(screen.getByTestId("where")).toHaveTextContent("?step=1");
+  });
+
+  it("opens a link to a step past the answered ones at the last answered step", () => {
+    renderInForm(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onCancel={vi.fn()} />, {
+      initialEntries: ["/tables?step=4"],
+    });
+    expect(screen.getByTestId("wizard-step-process")).toBeInTheDocument();
+  });
+
+  it("the data vault wizard shows its five steps and its step in the URL", async () => {
+    renderInForm(
+      <>
+        <DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onCancel={vi.fn()} />
+        <Where />
+      </>,
+    );
+    const strip = screen.getByTestId("wizard-steps");
+    for (const key of ["hubs", "links", "satellites", "rules", "review"])
+      expect(within(strip).getByTestId(`wizard-steps-${key}`)).toBeInTheDocument();
+    expect(strip).toHaveAttribute("data-active", "0");
+    await next();
+    expect(await screen.findByTestId("form-problem")).toBeInTheDocument();
+    expect(screen.getByTestId("where")).toHaveTextContent("");
   });
 });

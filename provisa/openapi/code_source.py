@@ -11,7 +11,8 @@
 """An OpenAPI source as a built-in Python code source (REQ-2267 part 2, v0).
 
 The code is Provisa's own: :func:`write_code` writes a directory holding the source's spec, its
-address, auth and headers -- its credential as the declared secret it is read from at each call,
+address, auth and headers -- its brand's among them, and the version each operation's calls carry
+(REQ-1874) -- its credential as the declared secret it is read from at each call,
 never its value (provisa/codesource/credentials.py) -- and an entry module whose ``@discover`` function wraps the
 existing mapping (:func:`provisa.openapi.mapper.parse_spec`) and its row-type grouping (REQ-1986):
 
@@ -38,7 +39,7 @@ The code runs under Provisa's own Python (:func:`host_command`, :func:`read_code
 Provisa, which no organisation's code environment holds.
 """
 
-# Requirements: REQ-2267, REQ-1986, REQ-2100
+# Requirements: REQ-2267, REQ-1986, REQ-2100, REQ-1874
 from __future__ import annotations
 
 import hashlib
@@ -291,13 +292,15 @@ def _parameter_type(
 class OpenAPICode:
     """One OpenAPI source's code: its spec, and the address, auth and headers it is called with.
     The auth's credential names the source's declared secret (provisa/codesource/credentials.py),
-    read from Provisa's secrets service at each call."""
+    read from Provisa's secrets service at each call. ``operation_headers``: what one operation's
+    calls carry beside ``headers``, by ``operation_key`` (ApiSource.operation_headers, REQ-1874)."""
 
     source_id: str
     spec: dict
     base_url: str
     auth: dict | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    operation_headers: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, directory: Path) -> OpenAPICode:
@@ -309,6 +312,7 @@ class OpenAPICode:
             base_url=source["base_url"],
             auth=source["auth"],
             headers=source["headers"],
+            operation_headers=source["operation_headers"],
         )
 
     @cached_property
@@ -328,6 +332,7 @@ class OpenAPICode:
             base_url=self.base_url,
             auth=api_auth(resolved(self.auth)),  # pyright: ignore[reportArgumentType]
             headers=self.headers,
+            operation_headers=self.operation_headers,
         )
 
     # -- discovery ----------------------------------------------------------------------------------
@@ -397,7 +402,7 @@ class OpenAPICode:
     def endpoint(self, table: str, q: OpenAPIQuery) -> ApiEndpoint:
         """The endpoint ``q`` is read through, as ``register_openapi_endpoint`` writes it for the
         table ``table`` registered with the paging the spec suggests."""
-        from provisa.api_source.models import ApiEndpoint
+        from provisa.api_source.models import ApiEndpoint, operation_key
         from provisa.api_source.openapi_endpoint import (
             default_params_from_spec,
             endpoint_columns,
@@ -405,15 +410,18 @@ class OpenAPICode:
         )
 
         match = openapi_operation(self.spec, self.source_id, q.operation_id, q.pagination)
+        path = match.path if match.server is None else match.server.rstrip("/") + match.path
         return ApiEndpoint(
             source_id=self.source_id,
-            path=match.path if match.server is None else match.server.rstrip("/") + match.path,
+            path=path,
             method="GET",
             table_name=table,
             columns=endpoint_columns(match),  # pyright: ignore[reportArgumentType]
             default_params=default_params_from_spec(self.spec, match.path),
             pagination=q.pagination,
             response_root=match.rows_field,
+            # REQ-1874: the version its operation declares, as api_source.loader sets it.
+            headers=self.operation_headers.get(operation_key("GET", path), {}),
         )
 
     async def _rows(self, endpoint: ApiEndpoint, given: dict) -> list[dict]:
@@ -531,10 +539,12 @@ def write_code(
     base_url: str,
     auth: dict | None = None,
     headers: dict[str, str] | None = None,
+    operation_headers: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Write the source's code into ``directory``; its content hash. Its credential is written as
     the declared secret it is read from (:func:`declared_secrets`), never as a value or a
-    reference."""
+    reference. ``headers``: what every call carries beside its credential; ``operation_headers``:
+    what one operation's calls carry beside them, by ``operation_key`` (REQ-1874)."""
     from provisa.codesource.credentials import held_as_reference
 
     held, _ = held_as_reference(auth, _credential_field(auth), f"source {source_id}")
@@ -544,6 +554,7 @@ def write_code(
         "base_url": base_url,
         "auth": held,
         "headers": dict(headers or {}),
+        "operation_headers": dict(operation_headers or {}),
     }
     files = {
         f"{ENTRY}.py": _ENTRY_TEXT,

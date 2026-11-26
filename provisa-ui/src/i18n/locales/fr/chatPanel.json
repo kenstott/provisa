@@ -35,6 +35,11 @@
     "graphCaption": "Nœuds : {{nodes}} · Relations : {{relationships}}",
     "downloadPng": "Télécharger le PNG",
     "openOnGraphPage": "Ouvrir dans la page Graphe",
-    "choiceClosed": "(fermé sans choisir)"
+    "choiceClosed": "(fermé sans choisir)",
+    "attach": "Joindre un fichier à lire par Polly : un CSV, une spécification d'API, une archive de code ou un document, jusqu'à {{limit}} Mo",
+    "attachTooLarge": "{{name}} dépasse {{limit}} Mo, la taille maximale d'un fichier joint pour Polly.",
+    "attachTooMany": "Une conversation peut contenir {{max}} fichiers joints. Retirez-en un pour en joindre un autre.",
+    "removeAttachment": "Retirer {{name}}",
+    "download": "Télécharger"
   }
 }

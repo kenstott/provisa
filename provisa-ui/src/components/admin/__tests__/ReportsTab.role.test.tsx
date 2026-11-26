@@ -42,7 +42,9 @@ import { ReportsTab } from "../ReportsTab";
 
 describe("ReportsTab", () => {
   it("reads the report as the selected set of roles", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />, {
+      initialEntries: ["/admin/reports?report=slow_queries"],
+    });
     expect(screen.getByTestId("viewer")).toHaveAttribute("data-role", "analyst,steward");
   });
 });

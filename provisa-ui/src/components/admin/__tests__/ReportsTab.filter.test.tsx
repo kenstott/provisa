@@ -63,7 +63,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("ReportsTab filter", () => {
   it("filters by name, case-insensitive, keeping the alphabetical order", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     expect(shown()).toHaveLength(3);
     type("REPORT");
     expect(shown()).toEqual(["report-item-alpha_view", "report-item-mid"]);
@@ -72,7 +72,7 @@ describe("ReportsTab filter", () => {
   });
 
   it("filters by description, case-insensitive", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("revenue by region");
     expect(shown()).toEqual(["report-item-mid"]);
     type("TENANT");
@@ -80,15 +80,19 @@ describe("ReportsTab filter", () => {
   });
 
   it("restores the full list when the filter is cleared", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("tenant");
     expect(shown()).toHaveLength(1);
     fireEvent.click(screen.getByTestId("filter-input-clear"));
-    expect(shown()).toEqual(["report-item-alpha_view", "report-item-mid", "report-item-zeta_usage"]);
+    expect(shown()).toEqual([
+      "report-item-alpha_view",
+      "report-item-mid",
+      "report-item-zeta_usage",
+    ]);
   });
 
   it("shows a No reports match line when nothing matches, and no list rows", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("nothing like this");
     expect(shown()).toEqual([]);
     expect(screen.getByTestId("reports-no-match")).toHaveTextContent("No reports match");

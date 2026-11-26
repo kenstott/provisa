@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "本機使用者",
     "attributesTab": "屬性",
-    "accessTab": "存取"
+    "accessTab": "存取",
+    "filterPlaceholder": "篩選成員",
+    "inviteButton": "邀請",
+    "closeInvite": "關閉邀請表單"
   }
 }

@@ -193,7 +193,6 @@
     "colDescription": "Описание",
     "colGqlAlias": "Псевдоним GQL",
     "colSteward": "Стюард",
-    "colActions": "Действия",
     "noDomains": "Домены не определены",
     "deleteDomain": "Удалить домен {{id}}",
     "resolveSteward": "Показать, кто курирует домен {{id}}",
@@ -225,6 +224,9 @@
     "apolloSubgraphNameHint": "Имя, под которым суперграф знает этот подграф.",
     "apolloSubgraphRole": "Работает от роли",
     "apolloSubgraphRoleHint": "Суперграф не может передать удостоверение вызывающего, поэтому маршрутизатор входит с этой ролью, и правила строк, маски и видимость этой роли определяют каждую сущность, которую он получает.",
-    "stewardsHint": "Люди, отвечающие за домен; каждому нужна роль с domain_steward."
+    "stewardsHint": "Люди, отвечающие за домен; каждому нужна роль с domain_steward.",
+    "domainsFilterPlaceholder": "Фильтр доменов",
+    "closeForm": "Закрыть форму",
+    "domainPanel": "Домен"
   }
 }

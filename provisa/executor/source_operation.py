@@ -30,7 +30,7 @@ around it (the invocation trace every command call records).
 This module knows, per source type, what a source offers and how one operation is called.
 """
 
-# Requirements: REQ-1924, REQ-317, REQ-326
+# Requirements: REQ-1924, REQ-317, REQ-326, REQ-1874
 
 from __future__ import annotations
 
@@ -445,7 +445,7 @@ async def _call_openapi(state, source_id: str, operation: str, args: dict) -> li
     given = dict(args)
     path = _PATH_PARAM.sub(lambda m: str(given.pop(m.group(1))), mutation.path)
     body = given.pop(BODY_ARGUMENT, None)
-    headers: dict[str, str] = dict(source.headers)
+    headers: dict[str, str] = source.headers_for(mutation.method, mutation.path)
     _apply_auth(source.auth, headers, given)
     if mutation.multipart:
         sent: dict[str, Any] = _multipart(mutation, body or {})

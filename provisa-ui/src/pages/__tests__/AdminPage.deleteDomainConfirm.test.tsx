@@ -23,7 +23,14 @@ const hooks = vi.hoisted(() => ({
   domains: {
     loading: false,
     domains: [
-      { id: "sales", description: "Sales", alias: null, stewards: [], stewardField: { people: [], roles: [] }, effectiveStewards: [] },
+      {
+        id: "sales",
+        description: "Sales",
+        alias: null,
+        stewards: [],
+        stewardField: { people: [], roles: [] },
+        effectiveStewards: [],
+      },
     ],
     refetch: undefined as unknown,
   },
@@ -70,12 +77,15 @@ import { AdminPage } from "../AdminPage";
 
 describe("Admin > Domains: deleting a domain", () => {
   beforeEach(() => {
+    localStorage.clear();
     deleteDomain.mockClear();
     refetch.mockClear();
   });
 
   async function openConfirmation() {
     render(<AdminPage />, { initialEntries: ["/admin/domains"] });
+    // REQ-2277: the domain's panel holds its delete; the row opens it.
+    fireEvent.click(await screen.findByTestId("domain-row-sales"));
     fireEvent.click(await screen.findByRole("button", { name: "Delete domain sales" }));
     return screen.findByRole("dialog");
   }
