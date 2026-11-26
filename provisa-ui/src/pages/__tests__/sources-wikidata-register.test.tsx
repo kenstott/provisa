@@ -73,6 +73,7 @@ const source = (over: Partial<Source>): Source =>
     passwordRef: "pw",
     allowedDomains: [],
     ...over,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   }) as unknown as Source;
 
 let SOURCES: Source[] = [];
@@ -221,7 +222,7 @@ async function createWikidataSource(): Promise<void> {
   });
   await userEvent.click(screen.getByTestId("sources-submit"));
   await waitFor(() => expect(createSource).toHaveBeenCalled());
-  await screen.findByTestId("register-tables-skip");
+  await screen.findByTestId("source-setup-finish-later");
 }
 
 const registered = () =>
@@ -251,7 +252,7 @@ describe("a Wikidata source, created", () => {
     });
     expect(inputs[1].columns.map((c) => c.name)).toEqual(["id", "name", "iso_4217"]);
     // The step goes on to what was registered, its rows landing in the replica load.
-    expect(await screen.findByTestId("your-data-back")).toBeInTheDocument();
+    expect(await screen.findByTestId("your-data-step")).toBeInTheDocument();
     expect(screen.queryByTestId("tables-page")).toBeNull();
   });
 
@@ -298,7 +299,7 @@ describe("a Wikidata source, created", () => {
     await userEvent.click(screen.getByTestId("register-table-submit"));
 
     expect(await screen.findByTestId("form-problem")).toBeVisible();
-    expect(screen.getByTestId("register-tables-skip")).toBeInTheDocument();
+    expect(screen.getByTestId("source-setup-finish-later")).toBeInTheDocument();
     expect(registerTables).not.toHaveBeenCalled();
   });
 });

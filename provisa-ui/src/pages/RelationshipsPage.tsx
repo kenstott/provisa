@@ -47,6 +47,7 @@ import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  relationshipRowTexts,
   SHAPE_CODE,
   tableRef,
   type RelForm,
@@ -562,18 +563,21 @@ export function RelationshipsPage() {
 
   const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(domainToSqlName)) : null;
   const matchesFilter = (r: Relationship) => {
-    if (remoteTableIds.has(r.sourceTableId)) return false;
     const srcDomain = r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : undefined;
     const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
     if (!relationshipInCheckedDomains(narrowTo, srcDomain, tgtDomain)) return false;
-    // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
-    return matchesQuery([r.sourceTableName, r.targetTableName, r.alias], relSearch);
+    // Every text its row shows finds it, and its alias too: a tour step names it so (demoTour.ts).
+    return matchesQuery(
+      [...relationshipRowTexts(r, t, tableDomainById, domainsEnabled), r.alias],
+      relSearch,
+    );
   };
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const listedRels = rels.filter(
-    (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && matchesFilter(r),
+  const registeredRels = rels.filter(
+    (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && !remoteTableIds.has(r.sourceTableId),
   );
+  const listedRels = registeredRels.filter(matchesFilter);
   // REQ-1586 (amended 2026-11-22): the Rel type column carries the list's column filter.
   const filteredRels =
     relTypeFilter === null
@@ -962,7 +966,10 @@ export function RelationshipsPage() {
                     if (filtered.length === 0) {
                       return (
                         <ListEmpty colSpan={domainsEnabled ? 8 : 7} testId="relationships-empty">
-                          {t("relationshipsPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {registeredRels.length === 0
+                            ? t("relationshipsPage.empty")
+                            : t("relationshipsPage.noMatch")}
                         </ListEmpty>
                       );
                     }

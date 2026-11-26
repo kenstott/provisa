@@ -70,6 +70,7 @@
     "outsideTitle": "允许的域之外的分配",
     "outsideBody": "保存后保留了这些分配。请从不再适用的对象上移除此标签。",
     "outsideItem": "{{kind}} {{name}}，位于 {{domains}}",
-    "templateSection": "模板"
+    "templateSection": "模板",
+    "noMatch": "没有符合筛选条件的标签"
   }
 }

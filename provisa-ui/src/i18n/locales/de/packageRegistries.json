@@ -46,6 +46,7 @@
     "kind_git": "Git-Host",
     "add": "Registry hinzufügen",
     "none": "Keine Paket-Registries. Installationen kommen aus den öffentlichen Registries.",
+    "noMatch": "Keine Paket-Registries entsprechen dem Filter.",
     "filterPlaceholder": "Registries filtern",
     "closeForm": "Formular schließen",
     "edit": "{{name}} bearbeiten",

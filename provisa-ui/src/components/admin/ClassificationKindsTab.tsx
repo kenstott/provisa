@@ -24,6 +24,7 @@ import {
 } from "../../api/profiler";
 import { fetchContextClassification, type ContextPlace } from "../../api/contextViews";
 import { ContextPlaces } from "../ContextPlaces";
+import { contextPlaceTexts } from "../contextPlaceTexts";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { DetailFields } from "../detail/DetailFields";
@@ -95,9 +96,26 @@ export function ClassificationKindsTab({
   const enabledLabel = (k: KindRow) =>
     t(k.enabled ? "contextViews.enabled" : "contextViews.disabled");
 
+  const detectedTexts = (k: KindRow) => {
+    const { places, hidden } = detectedOn(k);
+    return contextPlaceTexts(places, hidden, t);
+  };
   const open = kinds?.find((k) => k.id === detail.id) ?? null;
   const shown = (kinds ?? []).filter((k) =>
-    matchesQuery([k.id, kindLabel(k), t(`classificationKinds.test.${k.id}`)], search),
+    // Every text a kind's row shows, and its id.
+    matchesQuery(
+      [
+        k.id,
+        kindLabel(k),
+        k.sensitive ? t("classificationKinds.sensitive") : "",
+        t(`classificationKinds.test.${k.id}`),
+        `${Math.round(k.threshold * 100)}%`,
+        maskLabel(k),
+        enabledLabel(k),
+        ...(readOnly ? detectedTexts(k) : []),
+      ],
+      search,
+    ),
   );
 
   const closeForm = () => {
@@ -255,6 +273,8 @@ export function ClassificationKindsTab({
             <div data-testid="classification-kinds">
               <SortGroupTable
                 testPrefix="classification-kinds"
+                testId="classification-kinds-list"
+                emptyTestId="classification-kinds-empty"
                 minWidth={640}
                 rows={shown}
                 columns={[

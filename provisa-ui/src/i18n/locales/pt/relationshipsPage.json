@@ -43,6 +43,7 @@
     "suggestHelpTitle": "Relacionamentos sugeridos",
     "suggestHelpBody": "Percorre as tabelas registadas em todos os domínios à procura de junções prováveis e lista-as como candidatas. Nada é declarado enquanto não aceitar uma, e uma candidata rejeitada fica fora da lista até limpar as rejeições.",
     "empty": "Nenhum relacionamento registrado ainda.",
+    "noMatch": "Nenhum relacionamento corresponde ao filtro.",
     "detailPanel": "Detalhes do relacionamento",
     "panelNewRelationship": "Novo relacionamento",
     "backToRelationship": "Voltar para {{id}}"

@@ -39,6 +39,8 @@
     "colTimeout": "超时",
     "noFunctions": "未注册任何函数",
     "noWebhooks": "未注册任何 Webhook",
+    "noFunctionsMatch": "没有符合筛选条件的函数",
+    "noWebhooksMatch": "没有符合筛选条件的 Webhook",
     "customSchema": "数据集",
     "dash": "—",
     "all": "全部",

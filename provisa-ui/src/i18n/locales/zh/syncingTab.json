@@ -8,6 +8,7 @@
     "none_data_catalog": "尚无数据目录。",
     "none_ontology": "尚无本体。",
     "none_custom": "尚无自定义系统。",
+    "noMatch": "没有符合筛选条件的条目。",
     "addEntry": "添加",
     "newEntry": "新增",
     "duplicateCredentialsNote": "{{id}} 的凭据不会被复制：请在此输入。",

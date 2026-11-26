@@ -398,13 +398,34 @@ export function CommandsPage() {
   const inCheckedDomain = (domainId: string | null | undefined) =>
     !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
 
+  // Every text a command's row shows, which the filter searches; the rows below draw the same.
+  const functionRowTexts = (fn: TrackedFunction) => [
+    fn.name,
+    fn.sourceId,
+    fn.domainId,
+    `${fn.schemaName}.${fn.functionName}`,
+    fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : ""),
+    String(fn.arguments.length),
+    fn.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
+  const webhookRowTexts = (wh: TrackedWebhook) => [
+    wh.name,
+    wh.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
+    wh.domainId,
+    wh.url,
+    wh.method,
+    `${wh.timeoutMs}ms`,
+    wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length }),
+    String(wh.arguments.length),
+    wh.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
   const filteredFunctions = functions.filter(
-    (fn) => inCheckedDomain(fn.domainId) && matchesQuery([fn.name], cmdSearch),
+    (fn) => inCheckedDomain(fn.domainId) && matchesQuery(functionRowTexts(fn), cmdSearch),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
 
   const filteredWebhooks = webhooks.filter(
-    (wh) => inCheckedDomain(wh.domainId) && matchesQuery([wh.name], cmdSearch),
+    (wh) => inCheckedDomain(wh.domainId) && matchesQuery(webhookRowTexts(wh), cmdSearch),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
 
@@ -819,7 +840,7 @@ export function CommandsPage() {
             <Title order={3} mb="sm">
               {t("commandsPage.dbFunctionsHeading")}
             </Title>
-            <ListTable minWidth={720}>
+            <ListTable minWidth={720} testId="commands-functions-list">
               <ListHead
                 sortGroup={fnSortGroup}
                 columns={[
@@ -836,7 +857,12 @@ export function CommandsPage() {
               />
               <Table.Tbody>
                 {filteredFunctions.length === 0 && (
-                  <ListEmpty colSpan={7}>{t("commandsPage.noFunctions")}</ListEmpty>
+                  <ListEmpty colSpan={7} testId="commands-functions-empty">
+                    {/* A list a filter emptied says so, never that nothing is registered. */}
+                    {functions.length === 0
+                      ? t("commandsPage.noFunctions")
+                      : t("commandsPage.noFunctionsMatch")}
+                  </ListEmpty>
                 )}
                 <ListItems
                   state={fnSortGroup}
@@ -892,7 +918,7 @@ export function CommandsPage() {
             <Title order={3} mt="md">
               {t("commandsPage.webhooksHeading")}
             </Title>
-            <ListTable minWidth={720}>
+            <ListTable minWidth={720} testId="commands-webhooks-list">
               <ListHead
                 sortGroup={whSortGroup}
                 columns={[
@@ -909,7 +935,11 @@ export function CommandsPage() {
               />
               <Table.Tbody>
                 {filteredWebhooks.length === 0 && (
-                  <ListEmpty colSpan={9}>{t("commandsPage.noWebhooks")}</ListEmpty>
+                  <ListEmpty colSpan={9} testId="commands-webhooks-empty">
+                    {webhooks.length === 0
+                      ? t("commandsPage.noWebhooks")
+                      : t("commandsPage.noWebhooksMatch")}
+                  </ListEmpty>
                 )}
                 <ListItems
                   state={whSortGroup}
