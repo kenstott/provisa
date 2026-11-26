@@ -519,6 +519,16 @@ main {
 /* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
 :root {
   --page-gutter: 1.5rem;
+  /* REQ-2277 rule 7: the one vertical rhythm of a detail panel body (components/list/PanelBody.tsx).
+   * head: the panel head to the body's first part; strip: a step strip or section tabs to what
+   * follows; title: a section's title to its description; section: a section's head to its first
+   * field; group: one field group (or part) to the next; sections: one section to the next. */
+  --panel-gap-head: 0.75rem;
+  --panel-gap-strip: 1.25rem;
+  --panel-gap-title: 0.25rem;
+  --panel-gap-section: 1rem;
+  --panel-gap-group: 0.75rem;
+  --panel-gap-sections: 1.5rem;
 }
 .page {
   padding: var(--page-gutter);
@@ -926,7 +936,7 @@ main {
   border: 0;
   margin: 0;
   overflow: auto;
-  padding: 0.75rem 1rem;
+  padding: var(--panel-gap-head) 1rem;
   display: flex;
   flex-direction: column;
 }
@@ -2773,7 +2783,7 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.75rem 1rem;
+  gap: var(--panel-gap-group) 1rem;
 }
 .form-field {
   flex: 0 1 var(--form-field-width);
@@ -3187,4 +3197,49 @@ main {
 }
 .multi-select-option-held {
   opacity: 0.35;
+}
+
+/* REQ-2277 rule 7: a panel body's parts, one under the other at the rhythm's spacing. Each part is
+ * set apart from the one before it; what a part is decides the space after it. Last in the sheet,
+ * so a part's own margin elsewhere (a form card's, a form read's) gives way to the rhythm here. */
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.panel-body > * {
+  margin-block: 0;
+}
+.panel-body > * + * {
+  margin-top: var(--panel-gap-group);
+}
+.panel-body > * + .panel-section {
+  margin-top: var(--panel-gap-sections);
+}
+.panel-body > .panel-section__head + * {
+  margin-top: var(--panel-gap-section);
+}
+.panel-body > .panel-strip + * {
+  margin-top: var(--panel-gap-strip);
+}
+.panel-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--panel-gap-title);
+}
+.panel-section__title {
+  font-weight: 600;
+  font-size: var(--mantine-font-size-md);
+  line-height: 1.35;
+}
+.panel-section__description {
+  font-size: var(--mantine-font-size-sm);
+  color: var(--mantine-color-dimmed);
+}
+/* A strip with nothing to show (a source whose setup is complete shows no steps) takes no room. */
+.panel-body > .panel-strip:empty {
+  display: none;
+}
+.panel-body > .panel-strip:empty + * {
+  margin-top: 0;
 }

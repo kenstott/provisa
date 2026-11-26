@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { FieldGroup, FormEntry, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
 import type { Domain } from "../../../types/admin";
 import { AGGS } from "./columns";
 import { ModelReview } from "./ModelReview";
@@ -33,7 +33,7 @@ import {
   type StarDimension,
 } from "./plan";
 import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
-import { AddButton, ListHead, StepHead, WizardFooter } from "./WizardFrame";
+import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["process", "grain", "dimensions", "measures", "review"] as const;
 const FACT_TYPES: FactType[] = ["transaction", "periodic", "accumulating"];
@@ -284,15 +284,14 @@ export function StarSchemaWizard({
 
   const noSource = !a.source;
   return (
-    <FormLayout>
-      <StepHead
-        index={step}
-        steps={steps}
-        onStep={setStep}
-        title={t(`modelingWizard.star.${id}.title`)}
-        intro={t(`modelingWizard.star.${id}.intro`)}
-        testId={`wizard-step-${id}`}
-      />
+    <WizardStep
+      index={step}
+      steps={steps}
+      onStep={setStep}
+      title={t(`modelingWizard.star.${id}.title`)}
+      intro={t(`modelingWizard.star.${id}.intro`)}
+      testId={`wizard-step-${id}`}
+    >
       {id === "process" && (
         <>
           <TextField
@@ -464,6 +463,6 @@ export function StarSchemaWizard({
         onCancel={onCancel}
         problem={problem}
       />
-    </FormLayout>
+    </WizardStep>
   );
 }

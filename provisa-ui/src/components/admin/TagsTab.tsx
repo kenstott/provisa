@@ -63,6 +63,7 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
 import { PanelActions, SplitPane } from "../list/SplitPane";
+import { PanelBody, PanelSection } from "../list/PanelBody";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { DetailFields } from "../detail/DetailFields";
@@ -537,7 +538,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
 
   // The tag read: every value its form sets, under the form's labels, then what it is used by.
   const readView = (tag: Tag) => (
-    <Stack gap="sm" data-testid={`tags-detail-${tag.id}`}>
+    <PanelBody data-testid={`tags-detail-${tag.id}`}>
       {!readOnly && (
         <PanelActions>
           <fieldset className="panel-action-set">
@@ -637,10 +638,10 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
       {/* REQ-1467: the value list is editable even on a system tag -- the tag itself is
           code-defined, but which values it admits is the maintainer's call. */}
       {tag.paramPolicy === "required" && (
-        <Stack gap="xs" data-testid={`tags-values-${tag.id}`}>
-          <Text size="sm" fw={500} c="dimmed">
-            {t("tagsTab.editValues", { id: tag.id })}
-          </Text>
+        <PanelSection
+          title={t("tagsTab.editValues", { id: tag.id })}
+          data-testid={`tags-values-${tag.id}`}
+        >
           <Group gap={4}>
             {tag.paramValues.length === 0 && (
               <Text size="xs" c="dimmed">
@@ -703,12 +704,16 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               />
             </FormLayout>
           )}
-        </Stack>
+        </PanelSection>
       )}
-    </Stack>
+    </PanelBody>
   );
 
-  const panelTitle = createOpen ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
+  const panelTitle = createOpen
+    ? t("tagsTab.createButton")
+    : openTag !== undefined
+      ? openTag.id
+      : "";
   const panelBody = createOpen
     ? form
     : openTag !== undefined
