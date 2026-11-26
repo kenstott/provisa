@@ -19,6 +19,14 @@ on:
         description: "Container lanes to run in the guest: comma-separated (core, app, kafka, ...), or none"
         required: false
         default: "core"
+      tests:
+        description: "Run only these tests (space-separated pytest node ids or files), each in the lane that selects it; empty runs the lanes whole"
+        required: false
+        default: ""
+      pytest_args:
+        description: "Extra pytest arguments for the lane jobs (for example -vv)"
+        required: false
+        default: ""
 
 # actions: the unit shards' plan reads the last green Unit Tests run's artifacts.
 permissions:
@@ -493,12 +501,14 @@ jobs:
       - id: plan
         env:
           LANES: ${{ inputs.lanes || 'core' }}
+          PROVISA_LANE_TESTS: ${{ inputs.tests }}
         run: |
           if [ "$LANES" = "none" ]; then
             matrix='{"include":[]}'
           else
-            # Each lane's own bound, plus the guest: its build, its boot, and installs with no cache.
-            matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES" | jq -c '.include[].timeout += 45')
+            # Each lane's own bound plus the guest's, and the core files that run alone each in a
+            # job of their own (scripts/ci/nixos_lane_plan.py).
+            matrix=$(python3 scripts/ci/nixos_lane_plan.py "$(python3 scripts/ci/run_lane.py --matrix "$LANES")")
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           any=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
@@ -532,7 +542,7 @@ jobs:
           phase: prime
 
   lane:
-    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}${{ matrix.alone && ' alone' || '' }}
     needs: [plan, trino-plugins, duckdb-ext-wheels]
     if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
@@ -546,7 +556,7 @@ jobs:
       - name: Lane name
         id: key
         run: |
-          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
+          name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}${{ matrix.alone && '-alone' || '' }}"
           echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
 
       # Before the VM boots: the guest copies the checkout (/mnt/src) to ~/provisa, jars included.
@@ -611,7 +621,9 @@ jobs:
             export PROVISA_TEST_SERVER_LOG_DIR="$HOME/provisa/results/server-logs"
             export PROVISA_NOTEBOOK_DOWNLOADS="$HOME/.cache/provisa-notebook-downloads"
             export PROVISA_DUCKDB_EXT_WHEELS="$HOME/duckdb-ext-wheels"
-            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --junitxml results/junit.xml
+            # A file that runs alone is its job's one named test; a targeted dispatch names its own.
+            export PROVISA_LANE_TESTS="${{ matrix.alone || inputs.tests }}"
+            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} ${{ matrix.deselect }} ${{ inputs.pytest_args }} --junitxml results/junit.xml
           '
 
       - name: Containers that were not healthy

@@ -20,7 +20,6 @@ job's 45-minute limit, so each submit attempt is bounded and a stalled one is se
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -30,9 +29,11 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 _LIB = _REPO / "packaging/macos/notary-lib.sh"
 _SCRIPTS = ("packaging/macos/notarize-dmg.sh",)
-#: The real sleep, by its resolved path: a fake that execs /bin/sleep on a host whose /bin is served
-#: from the caller's PATH (NixOS's envfs) would exec the fake itself, forever.
-_SLEEP = os.path.realpath(shutil.which("sleep", path="/usr/bin:/bin"))
+#: The real sleep, found on this process's PATH (which holds no fake): a fake that execs /bin/sleep
+#: on a host whose /bin is served from the caller's PATH (NixOS's envfs) would exec the fake itself,
+#: forever. Not resolved further: on Nix the link's target is coreutils' multi-call binary, which
+#: picks its tool by the name it is run as.
+_SLEEP = shutil.which("sleep")
 
 
 def _run(
