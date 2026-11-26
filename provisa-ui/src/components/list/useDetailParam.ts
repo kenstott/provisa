@@ -523,5 +523,5 @@ export function useRememberedDetail(page: DetailPage, list: DetailList): Remembe
     out === null || urlId === null
       ? null
       : { ...out, dismiss: () => close({ only: urlId, replace: true }) };
-  return { ...detail, id, tab: id === null ? null : detail.tab, close, outOfList };
+  return { ...detail, id, close, outOfList };
 }

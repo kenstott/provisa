@@ -11321,5 +11321,17 @@
   "zh-HK/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/detailInList.json::detailInList.title": "{{name}} is not in the list",
+  "zh-HK/detailInList.json::detailInList.why": "The link names it, but {{reasons}}.",
+  "zh-HK/detailInList.json::detailInList.bySearch": "the search “{{search}}” leaves it out",
+  "zh-HK/detailInList.json::detailInList.byFilter": "the {{filter}} filter leaves it out",
+  "zh-HK/detailInList.json::detailInList.byDomain": "its domain ({{domains}}) is not in view",
+  "zh-HK/detailInList.json::detailInList.clearSearch": "Clear the search",
+  "zh-HK/detailInList.json::detailInList.clearFilter": "Clear the {{filter}} filter",
+  "zh-HK/detailInList.json::detailInList.addDomain": "Add {{domains}} to the view",
+  "zh-HK/detailInList.json::detailInList.showAll": "Show it in the list",
+  "zh-HK/detailInList.json::detailInList.dismiss": "Dismiss",
+  "zh-HK/detailInList.json::detailInList.byTab": "the {{tab}} tab does not list it",
+  "zh-HK/detailInList.json::detailInList.openTab": "Show the {{tab}} tab"
 }

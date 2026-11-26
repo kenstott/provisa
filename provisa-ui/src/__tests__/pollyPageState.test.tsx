@@ -18,8 +18,11 @@ import { useGlossaryPanel } from "../components/admin/useGlossaryPanel";
 import { readScreen } from "../mcp/screenState";
 import { ONTOLOGY_SETTINGS, savedGraphSettings } from "../pages/tables/profile3d/graphSettings";
 
+// The terms the list shows: a term is open only while it is one of them (REQ-2277 rule 9).
+const LISTED = { shown: ["3", "7"], leftOut: () => null };
+
 function Page() {
-  const { ontology, selectedId } = useGlossaryPanel(false, { shown: null, leftOut: () => null });
+  const { ontology, selectedId } = useGlossaryPanel(false, LISTED);
   return <div data-testid="page">{`${ontology ? "graph" : "terms"}:${selectedId}`}</div>;
 }
 

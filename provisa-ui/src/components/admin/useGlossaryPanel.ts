@@ -109,6 +109,9 @@ export function useGlossaryPanel(canEdit: boolean, list: DetailList) {
     ontology ? { shown: null, leftOut: list.leftOut } : list,
   );
   const { open: openTerm, close: closeTerm } = detail;
+  // The term the address names on arrival, whether or not the list shows it yet (useRememberedDetail
+  // opens it once the list does).
+  const [linked] = useState(() => namedIn("ontology", searchParams.toString()));
   // The term the page reopens: it is the page's term once the terms read hold it, while the URL is
   // given it.
   const [reopened] = useState(() =>
@@ -141,7 +144,7 @@ export function useGlossaryPanel(canEdit: boolean, list: DetailList) {
   // The term open as one form (TermEditForm), or read. A URL's ?term= naming the remembered term
   // is that term reloaded, so its form reopens too.
   const [editing, setEditingState] = useState(() => {
-    const opening = detail.id ?? reopened;
+    const opening = linked ?? reopened;
     return (
       canEdit &&
       opening !== null &&
@@ -162,7 +165,8 @@ export function useGlossaryPanel(canEdit: boolean, list: DetailList) {
     setSeededPanel(panelParam);
     if (panelParam !== null) setOntologyState(panelParam === "graph");
   }
-  const termParam = detail.id;
+  // The address naming a term, shown or not yet: the list is what opens, not the graph.
+  const termParam = namedIn("ontology", searchParams.toString());
   const [seededTerm, setSeededTerm] = useState(termParam);
   if (termParam !== seededTerm) {
     setSeededTerm(termParam);
@@ -210,7 +214,9 @@ export function useGlossaryPanel(canEdit: boolean, list: DetailList) {
   // Each term opens read, not in the form the previous term was left in; the term the page opened
   // on keeps its remembered form. Deferred for the same set-state-in-effect rule as the list
   // refresh in GlossaryTab.
-  const termOpened = useRef(selectedId ?? (reopened === null ? null : Number(reopened)));
+  const termOpened = useRef(
+    linked !== null ? Number(linked) : reopened === null ? null : Number(reopened),
+  );
   useEffect(() => {
     // Waiting for the terms read to reopen the remembered term is no change of term; closing is.
     if (selectedId === null) {

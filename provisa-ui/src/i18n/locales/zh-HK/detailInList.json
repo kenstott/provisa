@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} 不在清單中",
+    "why": "連結指向它，但{{reasons}}。",
+    "bySearch": "搜尋「{{search}}」將其排除",
+    "byFilter": "{{filter}} 篩選器將其排除",
+    "byDomain": "其網域（{{domains}}）不在檢視中",
+    "clearSearch": "清除搜尋",
+    "clearFilter": "清除 {{filter}} 篩選器",
+    "addDomain": "將 {{domains}} 加入檢視",
+    "showAll": "在清單中顯示",
+    "dismiss": "關閉",
+    "byTab": "{{tab}} 分頁未列出它",
+    "openTab": "顯示 {{tab}} 分頁"
+  }
+}

@@ -11321,5 +11321,17 @@
   "hi/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "hi/yourData.json::yourData.rest": "REST",
   "hi/yourData.json::yourData.sql": "SQL",
-  "hi/yourData.json::yourData.title": "Your data"
+  "hi/yourData.json::yourData.title": "Your data",
+  "hi/detailInList.json::detailInList.title": "{{name}} is not in the list",
+  "hi/detailInList.json::detailInList.why": "The link names it, but {{reasons}}.",
+  "hi/detailInList.json::detailInList.bySearch": "the search “{{search}}” leaves it out",
+  "hi/detailInList.json::detailInList.byFilter": "the {{filter}} filter leaves it out",
+  "hi/detailInList.json::detailInList.byDomain": "its domain ({{domains}}) is not in view",
+  "hi/detailInList.json::detailInList.clearSearch": "Clear the search",
+  "hi/detailInList.json::detailInList.clearFilter": "Clear the {{filter}} filter",
+  "hi/detailInList.json::detailInList.addDomain": "Add {{domains}} to the view",
+  "hi/detailInList.json::detailInList.showAll": "Show it in the list",
+  "hi/detailInList.json::detailInList.dismiss": "Dismiss",
+  "hi/detailInList.json::detailInList.byTab": "the {{tab}} tab does not list it",
+  "hi/detailInList.json::detailInList.openTab": "Show the {{tab}} tab"
 }
