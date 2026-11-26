@@ -213,7 +213,10 @@ async def classification_in_context(request: Request) -> dict:
         }
         for r in rows
     ]
-    return {"kinds": kind_detections(settings.kinds, settings.disabled, accepted, reader.column)}
+    return {
+        "kinds": kind_detections(settings.kinds, settings.disabled, accepted, reader.column),
+        **classifications.kind_choices(),
+    }
 
 
 def awaiting_by_table(

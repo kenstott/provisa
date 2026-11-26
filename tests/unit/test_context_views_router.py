@@ -137,7 +137,8 @@ def test_kind_detections_hide_unreadable_and_report_enabled():
     assert out[0]["detections"] == [{"tableId": 2, "tableRef": "s.public.t2", "column": "email"}]
     assert out[0]["hiddenDetections"] == 1
     assert out[0]["enabled"] is True
-    assert out[0]["custom"] is False and out[0]["pattern"] is None  # a shipped test is coded
+    # A shipped pattern kind states its test as a custom kind would, to be copied into one.
+    assert out[0]["custom"] is False and out[0]["pattern"] == kind_of("email_address").pattern
     assert out[1] == {
         "id": "custom.zip",
         "label": "Zip",

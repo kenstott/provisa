@@ -144,6 +144,29 @@ def test_a_shipped_kind_keeps_its_test_and_takes_the_orgs_share_sensitivity_and_
         org_catalogue({"us_ssn": {"pattern": r"\d+"}}, ())
 
 
+def test_a_shipped_pattern_kind_reads_as_a_custom_kind_would_copy_it():
+    iban = classifications.kind_doc(kind_of("iban"), True)
+    assert iban["pattern"] == f"(?i:{kind_of('iban').pattern})"  # it matches either case
+    copy = custom_kind(
+        _custom(
+            label="IBAN copy",
+            pattern=iban["pattern"],
+            check=iban["check"],
+            ignore=iban["ignore"],
+            sensitive=True,
+            mask_preset=iban["maskPreset"],
+        )
+    )
+    values = ["gb82 west 1234 5698 7654 32"] * 10
+    # The copy passes what the shipped kind passes.
+    (copied,) = judge("text", values, (copy,)).matches
+    (shipped,) = judge("text", values, (kind_of("iban"),)).matches
+    assert copied.passed == shipped.passed == 10
+    assert classifications.kind_doc(kind_of("city"), True)["pattern"] is None
+    choices = classifications.kind_choices()
+    assert "payment_card" in choices["checks"] and "ssn_last4" in choices["masks"]
+
+
 def test_the_setting_holds_only_what_the_org_changed_and_travels_with_the_model():
     settings = classifications.with_shipped_change(
         classifications.SHIPPED, "city", {"threshold": 0.5}

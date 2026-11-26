@@ -142,23 +142,37 @@ async def enabled_kinds(model_db: Any) -> tuple[Kind, ...]:
 
 
 def kind_doc(kind: Kind, enabled: bool) -> dict[str, Any]:
-    """A kind as the kinds' page and Polly read it (REQ-2147): a shipped kind's test is its
-    catalogue name, a custom kind's its pattern, check and ignored characters."""
+    """A kind as the kinds' page and Polly read it (REQ-2147). ``pattern``, ``check`` and
+    ``ignore`` are the kind's test as a custom kind states it, so a shipped pattern kind can be
+    copied into one: a pattern matching either case is written scoped, ``(?i:...)``. A reference
+    kind (a shipped list) has none."""
+    pattern = kind.pattern
+    if pattern is not None and kind.ignore_case:
+        pattern = f"(?i:{pattern})"
     return {
         "id": kind.id,
         "label": kind.label,
         "custom": kind.custom,
         "sensitive": kind.sensitive,
         "test": kind.test,
-        "pattern": kind.pattern if kind.custom else None,
-        "check": kind.check if kind.custom else None,
-        "ignore": kind.ignore if kind.custom else None,
+        "pattern": pattern,
+        "check": kind.check,
+        "ignore": kind.ignore,
         "families": list(kind.families),
         "threshold": kind.threshold,
         "term": kind.term,
         "maskPreset": kind.mask_preset,
         "enabled": enabled,
     }
+
+
+def kind_choices() -> dict[str, list[str]]:
+    """What a custom kind's form offers: the shipped checks by name (each named after the shipped
+    kind whose rule it is) and the mask presets."""
+    from provisa.profiler.classify import CHECKS
+    from provisa.security.mask_presets import PRESETS
+
+    return {"checks": sorted(CHECKS), "masks": [p["id"] for p in PRESETS]}
 
 
 # -- changing the org's kinds ----------------------------------------------------------------------

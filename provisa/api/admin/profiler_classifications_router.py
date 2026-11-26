@@ -299,7 +299,8 @@ async def _kinds_doc() -> dict:
     return {
         "kinds": [
             classifications.kind_doc(k, k.id not in settings.disabled) for k in settings.kinds
-        ]
+        ],
+        **classifications.kind_choices(),
     }
 
 
