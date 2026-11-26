@@ -59,6 +59,7 @@ const source = (over: Partial<Source>): Source =>
     description: "The sales warehouse",
     allowedDomains: [],
     ...over,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   }) as unknown as Source;
 
 let SOURCES: Source[] = [];

@@ -430,6 +430,7 @@ const saved = (type: string, settings: Partial<Source>): Source => ({
   dialect: null,
   isSystem: false,
   withdrawn: false,
+  setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   cacheEnabled: true,
   cacheTtl: null,
   replicate: null,
