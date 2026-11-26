@@ -150,7 +150,8 @@ services:
       retries: 30
       start_period: 60s
   clickhouse:
-    image: clickhouse/clickhouse-server:24.3
+    # REQ-2194: a ClickHouse source is read as Arrow, which needs ClickHouse 26 or later.
+    image: clickhouse/clickhouse-server:26.8.46.6
     restart: unless-stopped
     labels:
       <<: *demo-labels
