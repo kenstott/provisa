@@ -34,6 +34,7 @@ import {
   trackEdgeLabelRoom,
 } from "./graph-stylesheet";
 import { graphTokens } from "../provisa-graph/tokens";
+import { followResize, keepView, type Size } from "../provisa-graph/viewport";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -586,6 +587,9 @@ export function GraphCanvas({
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
+    // A wheel zoom, a pinch or a drag of the canvas makes the view the reader's own, which a
+    // resize keeps (REQ-2277).
+    cy.on("scrollzoom pinchzoom dragpan", () => keepView(cy));
     // Track manually dragged nodes as anchored, then auto-nudge
     // "free" fires on every click too — only nudge if position actually changed
     const grabPositions = new Map<string, { x: number; y: number }>();
@@ -671,7 +675,25 @@ export function GraphCanvas({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => cyRef.current?.resize());
+    // The canvas narrows beside the inspector and widens when it closes: the graph follows,
+    // keeping its view's mode (REQ-2277): fitted whole it is fitted whole again, zoomed or moved by
+    // the reader it keeps its zoom and centre.
+    const sizeOf = (): Size | null =>
+      el.clientWidth === 0 ? null : { width: el.clientWidth, height: el.clientHeight };
+    let size = sizeOf();
+    const observer = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.resize();
+      // A canvas hidden (a collapsed frame) has no size to follow from, or to follow later.
+      const now = sizeOf();
+      if (now === null) return;
+      const was = size;
+      size = now;
+      // A layout running fits the graph when it ends.
+      if (was === null || !laidOutRef.current) return;
+      followResize(cy, was);
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);

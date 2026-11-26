@@ -50,12 +50,14 @@ PAGES: dict[str, PollyPage] = {
     ),
     "/tables": PollyPage(
         "the registered tables, as a list or the ERD",
-        "query parameters: view=erd, table=<id> (its panel), domains=<a,b> (only these shown), "
-        "objects=<domain.table,...> (highlighted), collapsed=<a,b> or collapsed=all, "
+        "query parameters: view=erd, table=<id> (its panel), section=<section> (tab within the "
+        "panel: quality opens the Quality tab with profiler results), domains=<a,b> (only these "
+        "shown), objects=<domain.table,...> (highlighted), collapsed=<a,b> or collapsed=all, "
         "layout=<saved layout name>. + Model (tables-model-toggle) opens the entity/fact form; "
         "its drop down (tables-model-menu) offers tables-model-entity-fact, tables-model-star "
         "and tables-model-vault, the Star Schema and Data Vault wizards, stepped with wizard-next "
-        "and wizard-back and ended with wizard-create",
+        "and wizard-back and ended with wizard-create. + Quality tab: "
+        "table-read-view-profile-runs opens the Profile Runs modal with the profile terrain",
         "inputs: view, table, domains, objects, modeling (entityFact, star, vault or null), "
         "wizardStep (number, count, title), collapsed, layout, layoutUnsaved",
         tags=True,
@@ -63,8 +65,9 @@ PAGES: dict[str, PollyPage] = {
     "/relationships": PollyPage(
         "relationships, as a list or the same ERD",
         "query parameters: view=erd, relationship=<id>, domains, objects, collapsed, layout, "
-        "as /tables",
-        "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved",
+        "as /tables; discover=new (the Discover relationships dialog setting up a run) or "
+        "discover=<run id> (the dialog showing that run)",
+        "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved, discover",
         tags=True,
     ),
     "/team": PollyPage("the org's members"),
@@ -195,7 +198,7 @@ PAGES: dict[str, PollyPage] = {
         'row\'s edit button, named "Edit tag <tag id>", opens its form, and tags-delete-<tag id> '
         "deletes it. The form's reason, expiry and parameter policies are tags-reason-policy, "
         'tags-expires-policy and tags-param-policy; "Assignments require a citation" is '
-        'tags-requires-citation; "Why this tag exists" is the citation list tags-defined-by, '
+        'tags-requires-citation; "Definition source" is the citation list tags-defined-by, '
         "added to with tags-defined-by-picker-document, tags-defined-by-picker-section and "
         "tags-defined-by-picker-add; tags-save saves the form. "
         "The form's Required switch (tags-required) makes every object of the kinds "

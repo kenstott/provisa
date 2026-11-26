@@ -87,6 +87,9 @@
     "editAria": "Изменить {{name}}",
     "enableAria": "Включить {{name}}",
     "disableAria": "Отключить {{name}}",
-    "deleteAria": "Удалить {{name}}"
+    "deleteAria": "Удалить {{name}}",
+    "filterPlaceholder": "Фильтр триггеров",
+    "closeForm": "Закрыть форму",
+    "noMatch": "Нет подходящих триггеров"
   }
 }

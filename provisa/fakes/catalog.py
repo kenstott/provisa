@@ -221,6 +221,12 @@ def _kind_entry(kind: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=None)
+def kinds_for(fam: str) -> tuple[str, ...]:
+    """The names of the kinds a column of family ``fam`` can declare."""
+    return tuple(k["name"] for k in KINDS if fam in _kind_entry(k)["families"])
+
+
 def _method_families(name: str) -> list[str]:
     calls = [Method(name, ())] + [parse(d) for d in METHOD_CHOICES.get(name, ())]
     return [

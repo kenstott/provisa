@@ -188,7 +188,10 @@ export function SchemaBrowser({
             insetInlineEnd: -13,
             top: "50%",
             transform: "translateY(-50%)",
-            zIndex: 30,
+            // Under the splitter (z-index 2, explore.css): the splitter's grab area reaches 5px past
+            // the pane's edge, over the tab's inner edge, and must win there so the divider drags
+            // at its middle; the rest of the tab still toggles (REQ-2277).
+            zIndex: 1,
             width: 13,
             height: 40,
             // ActionIcon's own min-width/min-height (28px) would pull the tab back over the tree

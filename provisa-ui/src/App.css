@@ -645,6 +645,15 @@ main {
   line-clamp: var(--list-row-lines);
   overflow-wrap: anywhere;
 }
+/* A lower-priority column the list had no room for (ListTable's useHiddenColumns): neither its
+ * header nor its cells are drawn. */
+.data-table .list-col-hidden {
+  display: none;
+}
+/* A parenthesised group in wrapped text is kept whole: the text wraps around it, never inside it. */
+.list-cell__group {
+  white-space: nowrap;
+}
 /* Words longer than a wrapped column's minimum keep that minimum; a short phrase wraps down to its
  * longest word. */
 .list-cell--wide {

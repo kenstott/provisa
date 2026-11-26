@@ -57,6 +57,11 @@ class OpenAPIQuery:  # REQ-316
     # schema in place, which names no type. Two operations return the same type when this is
     # the same name.
     returns_type: str | None = None
+    # REQ-1874: where the response is either the rows or a page wrapping them (``oneOf`` an
+    # array of X and an object holding X[] -- Auth0's and Clerk's user lists), the wrapper's
+    # property holding them. ``rows_field`` records which of the two the table reads: None for
+    # the array, this property for the wrapper. None where the response has one shape.
+    wrapped_rows_field: str | None = None
 
 
 @dataclass
@@ -271,17 +276,83 @@ class NoRowsField(LookupError):
         super().__init__(f"the response has no property {rows_field!r} to read rows from")
 
 
+@dataclass(frozen=True)
+class _ListOrPage:
+    """A response declared as one of the rows and a page wrapping them (REQ-1874)."""
+
+    rows: SchemaPath  # the array member
+    page: SchemaPath  # the wrapper member
+    field: str  # the wrapper's property holding the rows
+    held: SchemaPath  # that property's schema: an array of the same rows
+
+
+def _list_or_page(schema: SchemaPath) -> _ListOrPage | None:
+    """The two shapes of a response that is ``oneOf`` (or ``anyOf``) an array of rows and an
+    object whose one array property holds the same rows (:func:`_wrapped_rows`); None where it
+    is not. Where the two name different row types no columns are read, and why is logged: which
+    one a call answers is not in the spec."""
+    for keyword in ("oneOf", "anyOf"):
+        members = list(_at(schema, keyword) or ())
+        if len(members) != 2:
+            continue
+        arrays = [m for m in members if m.read_value().get("type") == "array" and "items" in m]
+        if len(arrays) != 1:
+            continue
+        rows = arrays[0]
+        page = members[1 - members.index(rows)]
+        field = _wrapped_rows(page)
+        if field is None:
+            continue
+        wrapped = _property(page, field)
+        if wrapped is None or not _holds_objects(rows) or "items" not in wrapped:
+            continue
+        listed, held = _reference_name(rows / "items"), _reference_name(wrapped / "items")
+        if listed != held or _schema(rows / "items") != _schema(wrapped / "items"):
+            log.warning(
+                "%s: no columns read: its response is %s an array of %s and a page holding %s "
+                "under %r, which are different rows",
+                "/".join(str(part) for part in schema.parts),
+                keyword,
+                listed or "an unnamed row",
+                held or "an unnamed row",
+                field,
+            )
+            return None
+        return _ListOrPage(rows=rows, page=page, field=field, held=wrapped)
+    return None
+
+
+def _answer(schema: SchemaPath, rows_field: str | None) -> SchemaPath:
+    """The response schema as the table reads it: where it is either the rows or a page
+    wrapping them (:func:`_list_or_page`), the array when ``rows_field`` is None, else the
+    wrapper; otherwise the schema itself."""
+    shapes = _list_or_page(schema)
+    if shapes is None:
+        return schema
+    return shapes.rows if rows_field is None else shapes.page
+
+
 def _extract_response_schema(
-    operation: SchemaPath, rows_field: object = _PROPOSED
+    operation: SchemaPath,
+    rows_field: object = _PROPOSED,  # object-ok: a str, None, or the _PROPOSED sentinel
 ) -> tuple[dict | None, bool, str | None]:
     """(row schema, is_list, rows_field) of the success response. Only that response is read:
     one declared beside it (``default``) is the error the remote answers with. The rows are at
     ``rows_field`` -- a property of the response, None for the response itself -- which is the
-    one the spec suggests (:func:`_wrapped_rows`) unless the caller names it."""
+    one the spec suggests (:func:`_wrapped_rows`) unless the caller names it. A response that is
+    either the rows or a page wrapping them (:func:`_list_or_page`) is read as the rows unless
+    the caller names the wrapper's property (REQ-1874)."""
     response = _success_response(operation)
     schema = None if response is None else _json_schema(response)
     if schema is None:
         return None, False, None
+    shapes = _list_or_page(schema)
+    if shapes is not None:
+        if rows_field is _PROPOSED or rows_field is None:
+            return (*_row_schema(shapes.rows), None)
+        if rows_field != shapes.field:
+            raise NoRowsField(str(rows_field))
+        return (*_row_schema(shapes.held), shapes.field)
     is_array = schema.read_value().get("type") == "array"
     if rows_field is _PROPOSED:
         field = None if is_array else _wrapped_rows(schema)
@@ -293,6 +364,15 @@ def _extract_response_schema(
     if rows is None:
         raise NoRowsField(field)
     return (*_row_schema(rows), field)
+
+
+def _wrapped_rows_field(operation: SchemaPath) -> str | None:  # REQ-1874
+    """The wrapper's rows property of a response that is either the rows or a page wrapping
+    them (:func:`_list_or_page`); None for a response of one shape."""
+    response = _success_response(operation)
+    schema = None if response is None else _json_schema(response)
+    shapes = None if schema is None else _list_or_page(schema)
+    return None if shapes is None else shapes.field
 
 
 def _reference_name(node: SchemaPath) -> str | None:
@@ -313,6 +393,7 @@ def _row_type(operation: SchemaPath, rows_field: str | None) -> str | None:  # R
     schema = None if response is None else _json_schema(response)
     if schema is None:
         return None
+    schema = _answer(schema, rows_field)
     rows = schema if rows_field is None else _property(schema, rows_field)
     if rows is None:
         return None
@@ -511,6 +592,7 @@ def _answered_cursors(
     answer = None if response is None else _json_schema(response)
     if answer is None:
         return []
+    answer = _answer(answer, rows_field)
     names = [p["name"] for p in query_params]
     named = _named_next(_schema(answer, _CURSOR_DEPTH).get("properties") or {}, names, rows_field)
     if named:
@@ -670,6 +752,7 @@ def _map_operations(
                         is_list=is_list,
                         rows_field=rows_field,
                         returns_type=_row_type(operation, rows_field),
+                        wrapped_rows_field=_wrapped_rows_field(operation),
                         server=_own_server(path_item, operation),
                         pagination=propose_paging(
                             operation,

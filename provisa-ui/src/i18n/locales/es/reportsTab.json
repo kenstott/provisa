@@ -16,7 +16,6 @@
     "empty": "No hay informes registrados en el dominio ops.",
     "filterPlaceholder": "Filtrar informes…",
     "noMatch": "Ningún informe coincide",
-    "resize": "Cambiar el tamaño de la lista de informes",
     "drift": {
       "title": "Deriva desde el período anterior",
       "baseline": "Comparado con el modelo del {{date}}, la última versión hasta el {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Ganado",
         "new": "Nuevo"
       }
-    }
+    },
+    "kindColumn": "Tipo",
+    "kindBuiltIn": "Integrado",
+    "kindCustom": "Personalizado",
+    "panelLabel": "Informe",
+    "closeForm": "Cerrar el formulario",
+    "loading": "Cargando informes…"
   }
 }

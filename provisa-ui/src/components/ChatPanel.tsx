@@ -21,11 +21,13 @@ import {
   CloseButton,
   Code,
   CopyButton,
+  FileButton,
   FileInput,
   Group,
   Loader,
   Modal,
   Paper,
+  Pill,
   TextInput,
   Radio,
   ScrollArea,
@@ -43,6 +45,7 @@ import {
   MessageCircle,
   Mic,
   MicOff,
+  Paperclip,
   Play,
   Square,
   X,
@@ -50,7 +53,12 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
-import { useMcpChat } from "../hooks/useMcpChat";
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+  useMcpChat,
+} from "../hooks/useMcpChat";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { RefreshMv } from "../hooks/admin.graphql";
 import { usePolly } from "../context/pollyState";
@@ -326,7 +334,19 @@ export function ChatPanel() {
     }
   };
 
-  const { messages, tools, busy, error, send, cancel, clear, pushMessage } = useMcpChat(
+  const {
+    messages,
+    tools,
+    busy,
+    error,
+    send,
+    cancel,
+    clear,
+    pushMessage,
+    attachments,
+    attach,
+    detach,
+  } = useMcpChat(
     roleId,
     { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile },
     location.pathname,
@@ -349,6 +369,24 @@ export function ChatPanel() {
     push({ role: "user", text: question });
     push({ role: "assistant", text: answer });
   }, [shownExchange]);
+
+  // REQ-2114: a file the person attaches is read into this browser session and sent with every
+  // turn; one over the stated limit is refused here at once (the server refuses it as well).
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const attachLimitMb = MAX_ATTACHMENT_BYTES / (1024 * 1024);
+  const onAttach = async (file: File | null) => {
+    if (!file) return;
+    if (attachments.length >= MAX_ATTACHMENTS) {
+      setAttachError(t("chatPanel.attachTooMany", { max: MAX_ATTACHMENTS }));
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachError(t("chatPanel.attachTooLarge", { name: file.name, limit: attachLimitMb }));
+      return;
+    }
+    setAttachError(null);
+    await attach(file);
+  };
 
   const onSend = () => {
     // REQ-1806: while the suggestions are showing, typing just the number of one ("1", "2", …)
@@ -664,23 +702,63 @@ export function ChatPanel() {
           minRows={2}
           maxRows={6}
           rightSectionPointerEvents="auto"
+          rightSectionWidth={speech.supported ? 56 : 32}
           rightSection={
-            speech.supported && (
-              <Tip text={speech.listening ? t("chatPanel.stopListening") : t("chatPanel.speak")}>
-                <ActionIcon
-                  variant={speech.listening ? "filled" : "subtle"}
-                  color={speech.listening ? "red" : undefined}
-                  size="sm"
-                  data-testid="chat-panel-mic"
-                  disabled={busy}
-                  onClick={() => (speech.listening ? speech.stop() : speech.start())}
-                >
-                  {speech.listening ? <MicOff size={14} /> : <Mic size={14} />}
-                </ActionIcon>
-              </Tip>
-            )
+            <Group gap={2} wrap="nowrap">
+              <FileButton onChange={(f) => void onAttach(f)} accept={ATTACHMENT_ACCEPT}>
+                {(props) => (
+                  <Tip text={t("chatPanel.attach", { limit: attachLimitMb })}>
+                    <ActionIcon
+                      {...props}
+                      variant="subtle"
+                      size="sm"
+                      data-testid="chat-panel-attach"
+                      aria-label={t("chatPanel.attach", { limit: attachLimitMb })}
+                      disabled={busy}
+                    >
+                      <Paperclip size={14} />
+                    </ActionIcon>
+                  </Tip>
+                )}
+              </FileButton>
+              {speech.supported && (
+                <Tip text={speech.listening ? t("chatPanel.stopListening") : t("chatPanel.speak")}>
+                  <ActionIcon
+                    variant={speech.listening ? "filled" : "subtle"}
+                    color={speech.listening ? "red" : undefined}
+                    size="sm"
+                    data-testid="chat-panel-mic"
+                    disabled={busy}
+                    onClick={() => (speech.listening ? speech.stop() : speech.start())}
+                  >
+                    {speech.listening ? <MicOff size={14} /> : <Mic size={14} />}
+                  </ActionIcon>
+                </Tip>
+              )}
+            </Group>
           }
         />
+        {attachError && (
+          <Text size="xs" c="red" mt={4} data-testid="chat-panel-attach-error">
+            {attachError}
+          </Text>
+        )}
+        {attachments.length > 0 && (
+          <Group gap={4} mt={4} data-testid="chat-panel-attachments">
+            {attachments.map((a) => (
+              <Pill
+                key={a.id}
+                withRemoveButton
+                disabled={busy}
+                onRemove={() => detach(a.id)}
+                removeButtonProps={{ "aria-label": t("chatPanel.removeAttachment", { name: a.name }) }}
+                data-testid="chat-panel-attachment"
+              >
+                {a.name}
+              </Pill>
+            ))}
+          </Group>
+        )}
         {/* REQ-1815: a media-style stop/go control, not a spinner — while busy this IS a red
             "stop" square (pulsing to show the request is still running) whose click aborts the
             in-flight fetch and refocuses + flashes the prompt box so the user can immediately

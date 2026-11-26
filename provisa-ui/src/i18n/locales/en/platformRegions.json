@@ -38,6 +38,8 @@
     "org": "Organization",
     "pickOrg": "Choose an organization",
     "orgGranted": "{{id}} (granted {{regions}})",
-    "orgNone": "{{id}} (no regions)"
+    "orgNone": "{{id}} (no regions)",
+    "filterPlaceholder": "Filter regions",
+    "closeForm": "Close the form"
   }
 }

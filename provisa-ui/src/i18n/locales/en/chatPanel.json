@@ -35,6 +35,11 @@
     "graphCaption": "Nodes: {{nodes}} · Relationships: {{relationships}}",
     "downloadPng": "Download PNG",
     "openOnGraphPage": "Open on Graph page",
+    "attach": "Attach a file for Polly to read: a CSV, an API spec, a code archive or a document, up to {{limit}} MB",
+    "attachTooLarge": "{{name}} is larger than {{limit}} MB, the most a file attached for Polly may be.",
+    "attachTooMany": "A conversation can hold {{max}} attached files. Remove one to attach another.",
+    "removeAttachment": "Remove {{name}}",
+    "download": "Download",
     "choiceClosed": "(closed without choosing)"
   }
 }

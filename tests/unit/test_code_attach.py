@@ -11,9 +11,10 @@
 """A built code host attached by the engine (REQ-2100): which code tables are attached rather
 than landed; the organisation's identity written where each engine reads it, readable by that
 engine alone; and each engine's attach of the host, which names those files and the schemas the
-source's tables are registered under."""
+source's tables are registered under. A dev-mode source's tables are attached through its pgwire
+sidecar (REQ-2267 part 3, tests/unit/test_code_sidecar_attach.py)."""
 
-# Requirements: REQ-2100
+# Requirements: REQ-2100, REQ-2267
 from __future__ import annotations
 
 import stat
@@ -46,6 +47,7 @@ def nothing_prepared(monkeypatch):
     from provisa.federation import codehost_connectors
 
     monkeypatch.setattr(codehost_connectors, "_PREPARED", {})
+    monkeypatch.setattr(codehost_connectors, "_DEV", {})
 
 
 _TABLE = {
@@ -103,10 +105,21 @@ def test_a_built_sources_table_is_attached_where_the_engine_attaches_a_host():
     assert attach.parameters(state, [4]) == {"_nf_n"}
 
 
+def test_a_dev_mode_sources_table_is_attached_through_its_sidecar():
+    # REQ-2267: its code on the server, read live by the engine through its pgwire sidecar.
+    state = _state(mode="dev")
+    assert attach.attached(state, {**_TABLE, "cache_ttl": None})
+    assert attach.parameters(state, [4]) == {"_nf_n"}
+    # Its sidecar serves the code as it is now: no kept manifest decides which tables it has.
+    assert attach.attached(state, {**_TABLE, "table_name": "added_since"})
+
+
 @pytest.mark.parametrize(
     "state, table",
     [
-        (_state(mode="dev"), _TABLE),  # its code on the server: landed
+        (_state(mode="dev", engine_connector=False), _TABLE),  # dev, on an engine with no attach
+        (_state(mode="dev", floored=True), _TABLE),  # dev, put on its replica by the operator
+        (_state(mode="dev"), {**_TABLE, "cache_ttl": 300}),  # dev, with a landing TTL above 0
         (_state(engine_connector=False), _TABLE),  # an engine with no attach for code hosts
         (_state(floored=True), _TABLE),  # the operator's settings put it on its replica
         (_state(), {**_TABLE, "cache_ttl": 300}),  # it declares a landing TTL above 0
@@ -326,7 +339,11 @@ def test_trino_attaches_the_host_through_its_postgresql_connector(registered, tm
     assert details["statistics.enabled"] == "true"
 
 
-def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(registered, tmp_path):
+def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(
+    registered, tmp_path, monkeypatch
+):
+    monkeypatch.setenv(PG_FILES_ENV, str(tmp_path / "app-side"))
+    monkeypatch.setenv(PG_FILES_AT_ENV, "/etc/provisa/codehost-client")
     connector = PgCodeHostConnector("python")
     _files(connector, tmp_path)
     details = connector.details(_source())
@@ -343,14 +360,52 @@ def test_a_postgres_engine_attaches_the_host_through_postgres_fdw(registered, tm
     )
 
 
-async def test_a_postgres_engine_sharing_no_directory_cannot_attach_a_host(monkeypatch):
+async def test_a_postgres_engine_sharing_no_directory_still_offers_the_attach(monkeypatch):
+    # REQ-2267: the directory is a built host's need alone; a dev-mode source's sidecar has none.
     monkeypatch.delenv(PG_FILES_ENV, raising=False)
 
     async def _fetch(_sql):
         return [(1,)]
 
     probed = await PgCodeHostConnector("python").probe(_fetch)
-    assert not probed.available and "shares no directory" in probed.reason
+    assert probed.available
+
+
+def test_a_postgres_engine_sharing_no_directory_refuses_a_built_host_by_name(
+    registered, tmp_path, monkeypatch
+):
+    monkeypatch.delenv(PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(PG_FILES_AT_ENV, raising=False)
+    connector = PgCodeHostConnector("python")
+    _files(connector, tmp_path)
+    with pytest.raises(RuntimeError, match=f"is built.*shares no directory.*{PG_FILES_ENV}"):
+        connector.details(_source())
+
+
+async def test_the_schema_build_writes_no_identity_for_a_postgres_engine_sharing_none(
+    monkeypatch,
+):
+    # A built source on it is refused at its attach; the build itself goes on (REQ-2267).
+    from provisa.codesource import remote_sources
+
+    monkeypatch.delenv(PG_FILES_ENV, raising=False)
+    monkeypatch.delenv(PG_FILES_AT_ENV, raising=False)
+
+    async def _identity(org_id):
+        raise AssertionError("no identity is written for an engine that cannot be given it")
+
+    monkeypatch.setattr(remote_sources, "identity", _identity)
+    monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
+    connector = PgCodeHostConnector("python")
+    state = SimpleNamespace(
+        runtime_sources={"scores-src": {"type": "python", "mapping": _BUILT}},
+        tables=[_TABLE],
+        federation_engine=SimpleNamespace(
+            engine=SimpleNamespace(scan_connectors={"python": connector})
+        ),
+    )
+    await attach.prepare(state)
+    assert not connector.ready()
 
 
 async def test_the_schema_build_writes_the_identity_and_names_each_sources_schemas(monkeypatch):
@@ -379,27 +434,29 @@ async def test_the_schema_build_writes_the_identity_and_names_each_sources_schem
     assert Path(prepared.certificate).read_text() == identity.certificate
 
 
-def test_trino_gets_no_catalog_for_a_dev_source_or_before_its_identity_is_written(
-    registered, tmp_path
-):
+def test_trino_gets_no_catalog_before_the_schema_build_names_the_source(registered, tmp_path):
     connector = TrinoCodeHostConnector("python")
     assert connector.details(_source()) == {}  # built, but the schema build has not written it
     _files(connector, tmp_path)
     dev = _source()
     dev.mapping = {"mode": "dev"}
-    assert connector.details(dev) == {}  # landed, never attached
+    # REQ-2267: dev, attached through its sidecar once the schema build names it (its own test).
+    assert connector.details(dev) == {}
     assert connector.details(_source())["connection-user"] == "provisa"
 
 
-def test_a_dev_source_keeps_its_types_reach_and_a_built_one_asks_for_the_hosts():
+def test_every_code_source_asks_for_the_code_host_attach_on_an_engine_that_has_one():
     from provisa.federation.engine import build_duckdb_engine
 
     engine = build_duckdb_engine()
     dev = SimpleNamespace(id="s", type=SimpleNamespace(value="python"), mapping={"mode": "dev"})
+    unnamed = SimpleNamespace(id="s", type=SimpleNamespace(value="python"), mapping={})
     built = SimpleNamespace(id="s", type=SimpleNamespace(value="python"), mapping=_BUILT)
-    # Its own reach lands it: the code-host attach is an opt-in reach, never the type's.
+    # The code-host attach is an opt-in reach, never the type's: a code source asks for it, a
+    # built one of its host (REQ-2100), a dev-mode one of its sidecar (REQ-2267).
     assert not isinstance(engine.connectors.get("python"), DuckDBCodeHostConnector)
-    assert not isinstance(engine.connector_for_source(dev), DuckDBCodeHostConnector)
+    assert isinstance(engine.connector_for_source(dev), DuckDBCodeHostConnector)
+    assert isinstance(engine.connector_for_source(unnamed), DuckDBCodeHostConnector)
     assert isinstance(engine.connector_for_source(built), DuckDBCodeHostConnector)
 
 

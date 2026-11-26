@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "Шаг {{index}} из {{count}}",
+    "stepsLabel": "Шаги мастера",
     "next": "Далее",
     "toReview": "Проверить",
     "back": "Назад",

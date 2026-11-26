@@ -87,6 +87,9 @@
     "editAria": "{{name}} bewerken",
     "enableAria": "{{name}} inschakelen",
     "disableAria": "{{name}} uitschakelen",
-    "deleteAria": "{{name}} verwijderen"
+    "deleteAria": "{{name}} verwijderen",
+    "filterPlaceholder": "Triggers filteren",
+    "closeForm": "Formulier sluiten",
+    "noMatch": "Geen triggers gevonden"
   }
 }
