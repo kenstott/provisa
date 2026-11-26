@@ -107,13 +107,13 @@ def _poke(srv) -> None:
 
 
 def _store_ids(store: Path):
-    """The id -> amount map the replica holds in the store, or None until the replica table exists."""
+    """The id -> amount map the replica holds in the store, or None until the replica table exists.
+    Raises duckdb.IOException while the server holds the store's lock."""
     import duckdb
 
-    try:
-        con = duckdb.connect(str(store), read_only=True)
-    except duckdb.IOException:
+    if not store.exists():
         return None
+    con = duckdb.connect(str(store), read_only=True)
     try:
         hit = con.execute(
             "SELECT schema_name, table_name FROM duckdb_tables() "
@@ -158,10 +158,15 @@ def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
         # one requested has completed: a poke while a build is running, or after the build that
         # produced ``want``, starts another (an empty delta once the cursor has caught up), and the
         # record read below is the table's latest build, so it would report that one's 0 rows.
+        # The server holds the store's lock while it builds or serves from the replica. A locked
+        # store is read again, never answered by a poke: that poke started a build after the one
+        # that produced ``want``, an empty delta reported as 0 rows (NixOS run 45903556292).
         try:
             got = _store_ids(store)
         except duckdb.IOException:
-            got = None
+            assert time.monotonic() < deadline, f"timed out: the store stayed locked, want {want}"
+            time.sleep(0.2)
+            continue
         if got == want:
             return _last_build(srv) or {}
         assert time.monotonic() < deadline, (

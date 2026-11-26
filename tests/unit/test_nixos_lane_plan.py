@@ -117,3 +117,22 @@ def test_no_vm_run_script_has_a_single_quote_outside_an_expression():
     for script in scripts:
         bare = re.sub(r"\$\{\{.*?\}\}", "", script)
         assert "'" not in bare, script
+
+
+def test_each_lane_loads_the_primed_zaychik_image_into_its_guest():
+    """The guest never builds zaychik: its Maven plugin fetch got 429 from Maven Central."""
+    jobs = _lane_job()
+    prime = jobs["zaychik-image"]["steps"]
+    assert {"uses": "./.github/actions/zaychik-image", "with": {"phase": "prime"}} in prime
+    lane = jobs["lane"]
+    assert "zaychik-image" in lane["needs"]
+    uses = [s.get("uses") for s in lane["steps"]]
+    restore = uses.index("./.github/actions/zaychik-image")
+    assert lane["steps"][restore]["with"] == {"phase": "restore"}
+    load = next(
+        s["run"] for s in lane["steps"] if s.get("name") == "The zaychik image into the guest"
+    )
+    assert "docker load < ~/zaychik-image/zaychik.tar" in load
+    assert uses.index("./.github/actions/nixos-vm") < [s.get("name") for s in lane["steps"]].index(
+        "The zaychik image into the guest"
+    )
