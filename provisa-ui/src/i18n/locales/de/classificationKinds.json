@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Jeder Profilierungslauf prüft eine Stichprobe der Werte jeder Spalte gegen diese Arten. Bestehen genug Werte, erhält die Spalte einen Vorschlag, den ein Data Steward annimmt oder ablehnt. Eine deaktivierte Art wird nicht geprüft.",
+    "filterPlaceholder": "Arten filtern…",
+    "empty": "Keine Arten entsprechen dem Filter",
     "kindHeader": "Art",
     "testHeader": "Prüfung",
     "thresholdHeader": "Anteil, der bestehen muss",

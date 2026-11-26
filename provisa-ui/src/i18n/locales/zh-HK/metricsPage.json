@@ -1,6 +1,7 @@
 {
   "metricsPage": {
     "title": "指標",
+    "filterPlaceholder": "篩選指標…",
     "newMetric": "+ 指標",
     "loading": "正在載入…",
     "empty": "尚未註冊任何指標。",

@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Chaque exécution du profil teste un échantillon des valeurs de chaque colonne par rapport à ces types. Quand assez de valeurs réussissent, la colonne reçoit une suggestion qu'un data steward accepte ou rejette. Un type désactivé n'est pas testé.",
+    "filterPlaceholder": "Filtrer les types…",
+    "empty": "Aucun type ne correspond au filtre",
     "kindHeader": "Type",
     "testHeader": "Test",
     "thresholdHeader": "Part qui doit réussir",

@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Cada ejecución del perfil comprueba una muestra de los valores de cada columna con estos tipos. Cuando pasan suficientes valores, la columna recibe una sugerencia que un steward de datos acepta o rechaza. Un tipo desactivado no se comprueba.",
+    "filterPlaceholder": "Filtrar tipos…",
+    "empty": "Ningún tipo coincide con el filtro",
     "kindHeader": "Tipo",
     "testHeader": "Prueba",
     "thresholdHeader": "Proporción que debe pasar",
