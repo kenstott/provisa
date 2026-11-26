@@ -213,3 +213,48 @@ def test_a_stream_hands_on_the_servers_record_batches_and_kills_one_closed_early
     assert batches_read == [1, 2]  # the third batch was never asked for
     assert _StreamClient.settings is not None and _StreamClient.settings["use_strings"] is True
     assert len(killed) == 1
+
+
+class _DescribingClient(_Client):
+    """A client whose server writes ``DateTime`` and ``Date`` as Arrow integers (uint32 epoch
+    seconds, uint16 epoch days) and answers ``DESCRIBE (query)`` with each column's type."""
+
+    def __init__(self, table: pa.Table, described: list[tuple[str, str]]) -> None:
+        super().__init__(table)
+        self._described = described
+        self.described: list[str] = []
+
+    def query(self, sql, parameters=None, **_k):
+        assert sql.startswith("DESCRIBE ("), sql
+        self.described.append(sql)
+        return SimpleNamespace(result_rows=[(n, t) for n, t in self._described])
+
+
+def test_a_datetime_and_a_date_read_as_the_temporals_their_integers_encode():
+    """REQ-2194: ClickHouse writes DateTime as uint32 epoch seconds and Date as uint16 epoch days;
+    the server's DESCRIBE names them, and the result holds an Arrow timestamp and date. A uint32
+    that is a number stays a number."""
+    table = pa.table(
+        {
+            "at": pa.array([1_700_000_000, None], type=pa.uint32()),
+            "day": pa.array([19_675, 1], type=pa.uint16()),
+            "n": pa.array([7, 8], type=pa.uint32()),
+        }
+    )
+    client = _DescribingClient(
+        table, [("at", "Nullable(DateTime('UTC'))"), ("day", "Date"), ("n", "UInt32")]
+    )
+    result = asyncio.run(_driver(client).execute("SELECT at, day, n FROM t"))
+
+    assert result.table.schema.field("at").type == pa.timestamp("s")
+    assert result.table.schema.field("day").type == pa.date32()
+    assert result.table.schema.field("n").type == pa.uint32()
+    assert result.rows[0] == (datetime(2023, 11, 14, 22, 13, 20), datetime(2023, 11, 14).date(), 7)
+    assert result.rows[1][0] is None
+    assert client.described == ["DESCRIBE (SELECT at, day, n FROM t)"]
+
+
+def test_a_result_with_no_integer_that_could_be_a_temporal_asks_no_describe():
+    client = _DescribingClient(pa.table({"name": pa.array(["x"])}), [])
+    asyncio.run(_driver(client).execute("SELECT name FROM t"))
+    assert client.described == []

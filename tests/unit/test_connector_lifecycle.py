@@ -728,3 +728,27 @@ def test_a_dev_mode_source_with_lifecycle_tags_is_refused_by_name():
     assert caught.value.code == "codesource.lifecycle_needs_host"
     assert "go" in str(caught.value)
     refuse_in_dev("crm", Manifest(exports=(), types={}))
+
+
+def test_a_stood_in_value_is_read_on_the_loop_a_request_already_runs_on(monkeypatch):
+    """REQ-2225, REQ-1882: a request (a script's validation) reads the setup values on its own
+    connection loop; it binds no second loop on its thread."""
+    from provisa.codesource.lifecycle import setup_values
+    from provisa.core import spark_cluster
+    from provisa.core.connection_loop import connection_loop
+
+    async def resolved(admin_db, org_id, own):
+        return spark_cluster.Resolved("sc://default.acme.test:15002", spark_cluster.ORIGIN_ORG)
+
+    monkeypatch.setattr(spark_cluster, "resolved", resolved)
+    manifest = Manifest(
+        exports=(Export("go", ON_START, "", (), None),),
+        types={},
+        requires=(Requirement("cluster", False),),
+    )
+    mapping = {"settings": {}, "org_defaults": {"cluster": "spark_cluster"}}
+    setup = setup_values("acme", "spark_jobs", manifest, mapping, admin_db=None)
+    assert setup is not None
+    with connection_loop() as cl:
+        assert cl.run(setup.read()) == {"cluster": "sc://default.acme.test:15002"}
+    assert setup() == {"cluster": "sc://default.acme.test:15002"}
