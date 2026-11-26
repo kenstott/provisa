@@ -281,3 +281,135 @@ def test_an_undirected_self_referential_exists_reads_both_ways(meta, cypher, exp
 )
 def test_a_free_end_is_the_table_the_named_end_s_relationship_reaches(meta, cypher, expected):
     assert _rows(meta, cypher) == expected
+
+
+# --- OPTIONAL MATCH over an undirected self-referential type: one outer join, either way --------
+# REQ-348 (amended 2026-11-26): answered, not refused as reaching several relationships. FK: 11
+# CHECKS 10 (checked_table_id). Junction: 1 KIND_OF 2 (_term_edges). Terms 1 and 2 are referenced
+# by columns 'c1' and 'c2' (_term_refs), which a hop after the self-referential one reaches.
+
+
+@pytest.fixture(scope="module")
+def selfrel(meta):
+    lm, con = meta
+    for term in (1, 2):
+        _insert(con, "table_columns", id=900 + term, name=f"c{term}", column_key=f"c{term}")
+        _insert(con, "_term_refs", term_id=term, column_key=f"c{term}")
+    return lm, con
+
+
+_SELFREL_NODES = {
+    "fk": ("Meta:RegisteredTables", "CHECKS"),
+    "junction": ("Ontology:Terms", "KIND_OF"),
+}
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        # a=10 reaches 11 against the arrow, a=11 reaches 10 along it, a=12 reaches none.
+        ("fk", [(10, 11), (11, 10), (12, None)]),
+        ("junction", [(1, 2), (2, 1), (3, None)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_matches_either_direction(
+    selfrel, shape, expected
+):
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[:{rel}]-(b:{label}) RETURN a.id, b.id",
+    )
+    assert rows == expected
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_self_referential_hop_is_one_outer_join(selfrel, shape):
+    lm, _con = selfrel
+    label, rel = _SELFREL_NODES[shape]
+    sql = _sql(lm, f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, b.id")
+    assert "UNION" not in sql.upper()
+    assert " OR " in sql
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        # Each edge object is the relationship as stored: its start the source, whichever end
+        # the pattern named first.
+        ("fk", [(10, 11, 10, False), (11, 11, 10, False), (12, None, None, True)]),
+        ("junction", [(1, 1, 2, False), (2, 1, 2, False), (3, None, None, True)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_returns_r_as_stored(selfrel, shape, expected):
+    import json
+
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, r, r IS NULL",
+    )
+
+    def key(node: dict) -> int:
+        # A node's graph identity, "Label|key".
+        return int(node["id"].rsplit("|", 1)[1])
+
+    got = []
+    for a_id, r, absent in rows:
+        edge = None if r is None else (json.loads(r) if isinstance(r, str) else r)
+        got.append(
+            (
+                a_id,
+                None if edge is None else key(edge["startNode"]),
+                None if edge is None else key(edge["endNode"]),
+                absent,
+            )
+        )
+    assert sorted(got, key=repr) == expected
+
+
+@pytest.mark.parametrize(
+    ("cypher", "expected"),
+    [
+        (
+            "MATCH (a:Meta:RegisteredTables) "
+            "OPTIONAL MATCH (a)-[r:CHECKS]-(b:Meta:RegisteredTables)-[:SOURCE]-(s:Meta:Sources) "
+            "RETURN a.id, b.id, s.name",
+            [(10, 11, "pg"), (11, 10, "pg"), (12, None, None)],
+        ),
+        (
+            "MATCH (a:Ontology:Terms) "
+            "OPTIONAL MATCH (a)-[:KIND_OF]-(b:Ontology:Terms)-[:REFERENCED_BY]-(c) "
+            "RETURN a.id, b.id, c.name",
+            [(1, 2, "c2"), (2, 1, "c1"), (3, None, None)],
+        ),
+    ],
+    ids=["fk", "junction"],
+)
+def test_an_optional_undirected_self_referential_hop_then_a_following_hop(
+    selfrel, cypher, expected
+):
+    assert _rows(selfrel, cypher) == expected
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("fk", [(10, 11, 10), (11, 11, 10), (12, None, None)]),
+        ("junction", [(1, 1, 2), (2, 1, 2), (3, None, None)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_s_ends_are_as_stored(selfrel, shape, expected):
+    import json
+
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) "
+        "RETURN a.id, startNode(r), endNode(r)",
+    )
+    got = [
+        (a_id, *(None if n is None else json.loads(n)["properties"]["id"] for n in (s, e)))
+        for a_id, s, e in rows
+    ]
+    assert sorted(got, key=repr) == expected

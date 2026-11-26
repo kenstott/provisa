@@ -91,7 +91,9 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    RelEndpoints,
     edge_properties_column,
+    oriented_rel,
     via_column,
 )
 from provisa.gql.mistakes import unknown_label
@@ -989,6 +991,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         self._optional_rel_vars: set[str] = set()
         self._rel_var_matched: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: a relationship one outer join matched either way → where it matched forward.
+        self._rel_var_forward_when: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
@@ -2243,23 +2247,32 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         its edge object, its ``id`` the union's (its own row's id, else its ends' keys)."""
         from provisa.gql.select_builder import node_key_text
 
-        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = self._rel_var_endpoints[name]
-        if is_reversed:
-            src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
         via = self._rel_var_via.get(name)
-        edge_id: exp.Expression = exp.DPipe(
-            this=exp.DPipe(
-                this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
-            ),
-            expression=node_key_text(tgt_alias, tgt_nm),
-        )
-        if via is not None and via[1].identity_column is not None:
-            edge_id = via_column(via[0], via[1].identity_column)
-        edge = self._temporal_context().resolve_graph_element(name)
-        assert isinstance(edge, exp.Anonymous)
-        return exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[exp.Literal.string("id"), edge_id, *(e.copy() for e in edge.expressions)],
+
+        def value(ends: RelEndpoints) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+            if is_reversed:
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+            edge_id: exp.Expression = exp.DPipe(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                this=exp.DPipe(
+                    this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
+                ),
+                expression=node_key_text(tgt_alias, tgt_nm),
+            )
+            if via is not None and via[1].identity_column is not None:
+                edge_id = via_column(via[0], via[1].identity_column)
+            edge = self._temporal_context().edge_object(name, ends)
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("id"),
+                    edge_id,
+                    *(e.copy() for e in edge.expressions),
+                ],
+            )
+
+        return oriented_rel(
+            self._rel_var_endpoints[name], self._rel_var_forward_when.get(name), value
         )
 
     def _is_graph_element(self, name: str) -> bool:
@@ -2567,6 +2580,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if name in typed_carried or name not in new_var_table:
                 self._rel_var_types.pop(name, None)
                 self._rel_var_endpoints.pop(name, None)
+                self._rel_var_forward_when.pop(name, None)
         for path in carried_paths:
             self._path_vars.pop(path, None)
         for key in new_var_table:
