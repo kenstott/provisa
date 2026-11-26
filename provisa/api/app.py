@@ -1396,30 +1396,11 @@ class AppState:
         self.deployment_cache_default_ttl = int(value)
 
 
-state = AppState()
-
-
-def _stop_retired_runtime_listeners(runtime: OrgRuntime) -> None:
-    """REQ-1733: a retired runtime's push listeners stop with it; its org's next build wires
-    them again (``push_wiring.stop_runtime_listeners``)."""
-    from provisa.events.push_wiring import stop_runtime_listeners
-
-    stop_runtime_listeners(state, runtime.org_id, runtime.env)
-
-
-retire_hooks.append(_stop_retired_runtime_listeners)
-
-# REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
-# platform config through core.request_context, never by importing this module.
-from provisa.core import model_row_rules  # noqa: E402
-from provisa.core.request_context import (  # noqa: E402
-    register_active_engine_url_provider,
-    register_org_overrides_provider,
-    register_org_store_provider,
-    register_platform_config_provider,
-)
-from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
-
+# REQ-2269: the engine layer reads the persisted platform config through core.request_context
+# (REQ-1678). Registered before ``state = AppState()`` below, which builds the deployment's engine:
+# registered after it, the config's ``federation_engine`` was never read for that engine, so an
+# install whose config names its engine (install-host.sh: trino) ran the embedded default.
+from provisa.core.request_context import register_platform_config_provider  # noqa: E402
 
 # The platform config as last read, with the config generation it was read under. Asked on request
 # paths (engine selection, the materialize-store URL), so it is answered from memory and replaced
@@ -1440,6 +1421,33 @@ def _read_platform_config() -> dict:
     config = _config_io.read_config() or {}
     _platform_config_held = (generation, config)
     return config
+
+
+register_platform_config_provider(_read_platform_config)
+
+
+state = AppState()
+
+
+def _stop_retired_runtime_listeners(runtime: OrgRuntime) -> None:
+    """REQ-1733: a retired runtime's push listeners stop with it; its org's next build wires
+    them again (``push_wiring.stop_runtime_listeners``)."""
+    from provisa.events.push_wiring import stop_runtime_listeners
+
+    stop_runtime_listeners(state, runtime.org_id, runtime.env)
+
+
+retire_hooks.append(_stop_retired_runtime_listeners)
+
+# REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
+# platform config through core.request_context, never by importing this module.
+from provisa.core import model_row_rules  # noqa: E402
+from provisa.core.request_context import (  # noqa: E402
+    register_active_engine_url_provider,
+    register_org_overrides_provider,
+    register_org_store_provider,
+)
+from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
 
 
 register_active_engine_url_provider(lambda: state.active_engine_url)
@@ -1465,7 +1473,6 @@ def _acting_org_overrides() -> dict:
 
 register_org_overrides_provider(_acting_org_overrides)
 register_org_store_provider(_org_store_of)
-register_platform_config_provider(_read_platform_config)
 
 
 def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188

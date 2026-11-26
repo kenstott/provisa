@@ -34,14 +34,17 @@ _X86_ASSETS = [
     "provisa-0.1.0a511-cp312-cp312-manylinux_2_28_x86_64.whl",
     "provisa_notebook-0.1.0a511-py3-none-any.whl",
     "provisa-trino-plugins-v0.1.0-alpha.511.tar.gz",
-    "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_x86_64.whl",
 ]
-# A release's listing, trimmed: the other platforms and unrelated assets are present too.
+# A release's listing, trimmed: the other platforms and unrelated assets are present too. Every
+# version part of provisa_duckdb_ext (REQ-294) is there, one wheel per part and platform.
 _RELEASE_LISTING = _X86_ASSETS + [
+    "provisa_duckdb_ext-0.3.0.1-py3-none-manylinux_2_28_x86_64.whl",
+    "provisa_duckdb_ext-0.3.0.2-py3-none-manylinux_2_28_x86_64.whl",
     "provisa-0.1.0a511-cp312-cp312-manylinux_2_28_aarch64.whl",
     "provisa-0.1.0a511-cp312-cp312-macosx_11_0_arm64.whl",
-    "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_aarch64.whl",
-    "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_x86_64.whl.publish.attestation",
+    "provisa_duckdb_ext-0.3.0.1-py3-none-manylinux_2_28_aarch64.whl",
+    "provisa_duckdb_ext-0.3.0.2-py3-none-manylinux_2_28_aarch64.whl",
+    "provisa_duckdb_ext-0.3.0.1-py3-none-manylinux_2_28_x86_64.whl.publish.attestation",
     "provisa_client-0.1.0a511-py3-none-any.whl",
     "Provisa-v0.1.0-alpha.511-linux-x86_64.AppImage",
 ]
@@ -241,7 +244,6 @@ def test_x86_64_selects_the_release_wheels_and_plugins():
 def test_aarch64_selects_the_arm_wheels():
     got = _ok(f"select_assets {_TAG} aarch64", "\n".join(_RELEASE_LISTING) + "\n").split()
     assert "provisa-0.1.0a511-cp312-cp312-manylinux_2_28_aarch64.whl" in got
-    assert "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_aarch64.whl" in got
     assert not [n for n in got if "x86_64" in n]
 
 
@@ -251,16 +253,45 @@ def test_a_missing_asset_is_named():
     assert f"release {_TAG} is missing asset(s): provisa-trino-plugins-{_TAG}.tar.gz" in err
 
 
-def test_a_missing_duckdb_ext_wheel_is_named():
+def test_duckdb_ext_parts_are_left_to_the_stage_command():
+    # provisa_duckdb_ext is one project split across version parts (REQ-294): two versions of one
+    # project cannot share a virtualenv, and the stage command fetches every part at first start
+    # (provisa.runtime_deps.stage_assets), as every installer does. Release 513's dry run refused
+    # its two parts here.
+    got = _ok(f"select_assets {_TAG} x86_64", "\n".join(_RELEASE_LISTING) + "\n").split()
+    assert not [n for n in got if n.startswith("provisa_duckdb_ext")]
+
+
+def test_a_release_without_duckdb_ext_wheels_still_installs():
     listing = [n for n in _RELEASE_LISTING if not n.startswith("provisa_duckdb_ext")]
-    err = _refused(f"select_assets {_TAG} x86_64", "\n".join(listing) + "\n")
-    assert "provisa_duckdb_ext-<version>-py3-none-manylinux_2_28_x86_64.whl" in err
+    got = _ok(f"select_assets {_TAG} x86_64", "\n".join(listing) + "\n").split()
+    assert sorted(got) == sorted(_X86_ASSETS)
 
 
-def test_two_duckdb_ext_wheels_for_one_platform_are_refused():
-    listing = _RELEASE_LISTING + ["provisa_duckdb_ext-0.2.3-py3-none-manylinux_2_28_x86_64.whl"]
-    err = _refused(f"select_assets {_TAG} x86_64", "\n".join(listing) + "\n")
-    assert "more than one provisa_duckdb_ext wheel" in err
+def test_a_refused_selection_stops_the_install(tmp_path):
+    # Release 513's dry run (--assets-dir) printed select_assets' refusal and installed anyway:
+    # install_local read the selection through a command substitution, which bash runs without
+    # errexit, so fetch_assets copied what it had selected and returned success.
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    listing = [n for n in _RELEASE_LISTING if not n.startswith("provisa-trino-plugins")]
+    for name in listing:
+        (assets / name).write_bytes(b"")
+    done = _bash(
+        f"IH_PREFIX={shlex.quote(str(tmp_path / 'prefix'))} IH_VERSION={_TAG} IH_REPO=o/r "
+        f"IH_ASSETS_DIR={shlex.quote(str(assets))}\n"
+        "uname() { echo x86_64; }\n"
+        "preflight() { :; }\n"
+        # macOS's find has no -printf, and its bash 3.2 no mapfile: stand-ins keep the test about
+        # the selection on every machine.
+        f"find() {{ printf '%s\\n' {' '.join(listing)}; }}\n"
+        "mapfile() { cat >/dev/null; }\n"
+        "ensure_user() { echo installing anyway; }\n"
+        "install_local"
+    )
+    assert done.returncode != 0
+    assert "installing anyway" not in done.stdout
+    assert f"is missing asset(s): provisa-trino-plugins-{_TAG}.tar.gz" in done.stderr
 
 
 def test_an_unsupported_machine_is_refused():
@@ -409,6 +440,32 @@ def test_trino_runs_on_the_host_network_with_every_plugin_mounted():
     for side in ("kafka", "kafka-client", "codehost-client", "redis"):
         assert f"/srv/data/trino/{side}:/etc/trino/{side}:ro" in mounts
     assert "/srv/data/fake-key:/etc/provisa/fake-key:ro" in mounts
+
+
+def test_the_exchange_spool_is_a_host_directory_trino_owns(tmp_path):
+    # Release 513's dry run: a named volume's root is root's, Trino runs as uid 1000, and the first
+    # query Provisa ran at boot failed "AccessDeniedException: /data/provisa/exchange/...".
+    args = _ok(
+        "trino_run_args /srv/etc /srv/data /srv/provisa/trino/plugins trinodb/trino:481 trino-file"
+    ).splitlines()
+    mounts = [args[i + 1] for i, a in enumerate(args) if a == "-v"]
+    assert [m for m in mounts if m.split(":")[1] == "/data/provisa/exchange"] == [
+        "/srv/data/trino-exchange:/data/provisa/exchange"
+    ]
+    calls = tmp_path / "install.calls"
+    _ok(
+        f'install() {{ printf "%s\\n" "$*" >> {shlex.quote(str(calls))}; }}\n'
+        "ensure_trino_exchange_dir /srv/data"
+    )
+    assert calls.read_text().splitlines() == ["-d -m 0700 -o 1000 -g 1000 /srv/data/trino-exchange"]
+
+
+def test_the_exchange_owner_is_the_uid_the_stack_gives_trino():
+    compose = (_ROOT / "docker-compose.core.yml").read_text()
+    uid = _ok('printf "%s" "$INSTALL_HOST_TRINO_UID"')
+    assert f"chown -R {uid}:{uid} /data/provisa/exchange" in compose
+    exchange = _ok("render_trino_exchange_properties")
+    assert "exchange.base-directories=/data/provisa/exchange" in exchange
 
 
 def test_trino_side_dirs_are_the_ones_the_stack_mounts():
