@@ -106,6 +106,8 @@
     "derivedReason": "Rol en Ontwerp volgen uit de kolommen, tabellen, definitie en relaties van de term en worden hier dus niet ingesteld. De status verandert via Als verouderd markeren, Buiten gebruik stellen en Herstellen.",
     "claimColumns": "Kolommen opeisen",
     "claimHint": "Elke kolom hoort bij één term; opeisen verplaatst hem hierheen.",
+    "commandColumns": "Uitvoerkolommen van opdrachten",
+    "commandColumnsHint": "De uitvoerkolommen van opdrachten waarvan deze term de betekenis is. Elke kolom heeft één term.",
     "groundDisabled": "Deze term benoemt kolommen (een eigenschap); hij kan niet ook tabellen benoemen",
     "claimFrom": "van: {{term}}",
     "claimFromDraft": "van: {{term}} (concept)",

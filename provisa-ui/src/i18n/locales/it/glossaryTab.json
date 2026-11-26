@@ -106,6 +106,8 @@
     "derivedReason": "Ruolo e Bozza derivano da colonne, tabelle, definizione e relazioni del termine, quindi non si impostano qui. Il suo stato cambia con Deprecare, Ritirare e Ripristinare.",
     "claimColumns": "Rivendica colonne",
     "claimHint": "Ogni colonna appartiene a un termine; rivendicarla la sposta qui.",
+    "commandColumns": "Colonne di output dei comandi",
+    "commandColumnsHint": "Le colonne di output dei comandi di cui questo termine è il significato. Ognuna ha un solo termine.",
     "groundDisabled": "Questo termine nomina colonne (una proprietà); non può nominare anche tabelle",
     "claimFrom": "da: {{term}}",
     "claimFromDraft": "da: {{term}} (bozza)",

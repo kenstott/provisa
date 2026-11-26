@@ -106,6 +106,8 @@
     "derivedReason": "Le rôle et Brouillon découlent des colonnes, tables, définition et relations du terme : ils ne se règlent pas ici. Son statut change par Marquer obsolète, Retirer et Restaurer.",
     "claimColumns": "Revendiquer des colonnes",
     "claimHint": "Chaque colonne appartient à un terme ; la revendiquer la déplace ici.",
+    "commandColumns": "Colonnes de sortie des commandes",
+    "commandColumnsHint": "Les colonnes de sortie des commandes dont ce terme est le sens. Chacune a un seul terme.",
     "groundDisabled": "Ce terme nomme des colonnes (une propriété) ; il ne peut pas aussi nommer des tables",
     "claimFrom": "de : {{term}}",
     "claimFromDraft": "de : {{term}} (brouillon)",

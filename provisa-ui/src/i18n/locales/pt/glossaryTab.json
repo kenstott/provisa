@@ -106,6 +106,8 @@
     "derivedReason": "O papel e Rascunho decorrem das colunas, tabelas, definição e relacionamentos do termo, por isso não se definem aqui. O estado muda com Marcar obsoleto, Retirar e Restaurar.",
     "claimColumns": "Reivindicar colunas",
     "claimHint": "Cada coluna pertence a um termo; reivindicá-la a move para cá.",
+    "commandColumns": "Colunas de saída dos comandos",
+    "commandColumnsHint": "As colunas de saída dos comandos cujo significado é este termo. Cada uma tem um único termo.",
     "groundDisabled": "Este termo nomeia colunas (uma propriedade); não pode nomear também tabelas",
     "claimFrom": "de: {{term}}",
     "claimFromDraft": "de: {{term}} (rascunho)",

@@ -106,6 +106,8 @@
     "derivedReason": "Rolle und Entwurf ergeben sich aus den Spalten, Tabellen, der Definition und den Beziehungen des Begriffs und werden daher hier nicht gesetzt. Sein Status ändert sich über Als veraltet markieren, Außer Dienst stellen und Wiederherstellen.",
     "claimColumns": "Spalten übernehmen",
     "claimHint": "Jede Spalte gehört zu einem Begriff; beim Übernehmen wird sie hierher verschoben.",
+    "commandColumns": "Ausgabespalten von Befehlen",
+    "commandColumnsHint": "Die Ausgabespalten von Befehlen, deren Bedeutung dieser Begriff ist. Jede Spalte hat genau einen Begriff.",
     "groundDisabled": "Dieser Begriff benennt Spalten (eine Eigenschaft); er kann nicht auch Tabellen benennen",
     "claimFrom": "von: {{term}}",
     "claimFromDraft": "von: {{term}} (Entwurf)",

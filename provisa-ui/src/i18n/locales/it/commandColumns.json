@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "Questo comando non dichiara colonne di output.",
+    "hint": "Una colonna senza ruolo elencato è letta dai ruoli a cui è assegnato il comando.",
+    "governanceTitle": "Tag, termini e classificazione",
+    "editTags": "Modifica i tag nella pagina Tag",
+    "editTerms": "Modifica i termini nel glossario",
+    "colColumn": "Colonna",
+    "colTags": "Tag",
+    "colTerm": "Termine del glossario",
+    "colClassification": "Classificazione"
+  }
+}

@@ -106,6 +106,8 @@
     "derivedReason": "角色和草稿由术语的列、表、定义和关系决定，因此不在此设置。其状态通过弃用、停用和恢复来更改。",
     "claimColumns": "认领列",
     "claimHint": "每列只属于一个术语；认领后会移到此处。",
+    "commandColumns": "命令的输出列",
+    "commandColumnsHint": "此术语为其含义的命令输出列。每列只有一个术语。",
     "groundDisabled": "此术语指代列（属性）；不能同时指代表",
     "claimFrom": "来自：{{term}}",
     "claimFromDraft": "来自：{{term}}（草稿）",
