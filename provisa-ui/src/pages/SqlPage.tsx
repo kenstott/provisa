@@ -9,6 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { hasNoStatement } from "../lib/noStatement";
 import { useRegionChoice, useRegionChoices } from "../hooks/useRegionQueries";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
@@ -185,6 +186,8 @@ export function SqlPage() {
   const [running, setRunning] = useState(false);
   // The run still out, which Stop aborts; and whether the last run was stopped before it answered.
   const runRef = useRef<AbortController | null>(null);
+  // The tab whose last run had no statement in its editor: its results say so.
+  const [noQueryTab, setNoQueryTab] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
@@ -744,7 +747,13 @@ export function SqlPage() {
   );
 
   const handleRun = useCallback(async () => {
-    if (!sqlText.trim()) return;
+    // No statement in the editor (blank, or comments alone): said in the results, and nothing sent.
+    if (hasNoStatement(sqlText, "sql")) {
+      setNoQueryTab(activeTabId);
+      setResultTab("results");
+      return;
+    }
+    setNoQueryTab(null);
     const aliased = autoAliasConflicts(sqlText);
     if (aliased !== sqlText) setSqlText(aliased);
     // The run's results go to the tab that started it, whichever is active when they arrive.
@@ -1075,6 +1084,7 @@ export function SqlPage() {
               running={running}
               stopped={stopped}
               resultError={resultError}
+              noQuery={noQueryTab === activeTabId}
               resultRedirect={resultRedirect}
               resultRows={resultRows}
               resultColumns={resultColumns}

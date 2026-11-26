@@ -11,6 +11,7 @@
   "nl.json::common.discardTitle": "Discard your changes?",
   "nl.json::common.identity": "Identity",
   "nl.json::common.loading": "Loading...",
+  "nl.json::common.noQuery": "There is no query to run.",
   "nl.json::common.processing": "Processing...",
   "nl.json::common.required": "Required",
   "nl.json::common.save": "Save",

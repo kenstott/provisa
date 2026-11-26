@@ -4,6 +4,7 @@
     "cancel": "Annuleren",
     "stop": "Stoppen",
     "stopped": "Gestopt",
+    "noQuery": "Er is geen query om uit te voeren.",
     "stopQuery": "Query stoppen",
     "save": "Opslaan",
     "delete": "Verwijderen",

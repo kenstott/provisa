@@ -11,6 +11,7 @@
   "it.json::common.discardTitle": "Discard your changes?",
   "it.json::common.identity": "Identity",
   "it.json::common.loading": "Loading...",
+  "it.json::common.noQuery": "There is no query to run.",
   "it.json::common.processing": "Processing...",
   "it.json::common.required": "Required",
   "it.json::common.save": "Save",

@@ -11,6 +11,7 @@
   "pt.json::common.discardTitle": "Discard your changes?",
   "pt.json::common.identity": "Identity",
   "pt.json::common.loading": "Loading...",
+  "pt.json::common.noQuery": "There is no query to run.",
   "pt.json::common.processing": "Processing...",
   "pt.json::common.required": "Required",
   "pt.json::common.save": "Save",
