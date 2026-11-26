@@ -91,6 +91,7 @@ export const DETAIL_VIEWS = {
   triggers: { route: "/admin/scheduled-tasks", param: "trigger" },
   requests: { route: "/admin/requests", param: "request" },
   team: { route: "/team", param: "member" },
+  platformRegions: { route: "/admin/platform", param: "region" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;

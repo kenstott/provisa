@@ -93,6 +93,10 @@ const PAGES: Record<DetailPage, { file: string; call: string; marks?: true }> = 
   orgs: { file: "components/admin/OrgsTab.tsx", call: 'useRememberedDetail("orgs",' },
   requests: { file: "pages/RequestsPage.tsx", call: 'useRememberedDetail(\n    "requests",' },
   team: { file: "pages/TeamPage.tsx", call: 'useRememberedDetail(\n    "team",' },
+  platformRegions: {
+    file: "components/admin/PlatformRegionsTab.tsx",
+    call: 'useRememberedDetail(\n    "platformRegions",',
+  },
   triggers: {
     file: "components/admin/ScheduledTasks.tsx",
     call: 'useRememberedDetail("triggers",',

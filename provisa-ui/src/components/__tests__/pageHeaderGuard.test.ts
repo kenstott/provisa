@@ -212,8 +212,6 @@ const ADMIN_OBJECT_PAGES: Readonly<Record<string, ObjectPage>> = {
   "/admin/secrets": { file: "components/admin/SecretsTab.tsx", creates: true },
   "/admin/my-secrets": { file: "components/admin/SecretsTab.tsx", creates: true },
   "/admin/platform": { file: "components/admin/PlatformRegionsTab.tsx", creates: true },
-  "/admin/regions": { file: "components/admin/OrgRegionsTab.tsx", creates: false },
-  "/admin/ai-models": { file: "components/admin/AiModelsTab.tsx", creates: true },
   "/admin/package-registries": { file: "components/admin/PackageRegistriesTab.tsx", creates: true },
   "/admin/container-registries": {
     file: "components/admin/ContainerRegistriesTab.tsx",
@@ -231,6 +229,11 @@ const ADMIN_OBJECT_PAGES: Readonly<Record<string, ObjectPage>> = {
 /** Admin pages that show one object's settings, a dashboard or a one-off tool: no list to manage. */
 const ADMIN_SETTINGS_PAGES: ReadonlySet<string> = new Set([
   "/admin/overview",
+  // The org's AI configuration: its vendors' keys, the model each role uses, its NL, vector and
+  // custom-endpoint settings, saved together.
+  "/admin/ai-models",
+  // The org's one region grant, read-only: the regions and stores the platform granted it.
+  "/admin/regions",
   "/admin/cache",
   "/admin/federation-engine",
   "/admin/org-engine",
