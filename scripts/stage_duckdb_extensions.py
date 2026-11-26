@@ -27,6 +27,12 @@ from provisa.federation.duckdb_extensions import (
 )
 
 
+#: REQ-1177: the core extensions a checkout's custom connectors name in their config (the examples
+#: in config/custom_connectors.yaml, which the custom-connector tests declare). No built-in connector
+#: declares them, and the runtime never installs one (REQ-294), so a checkout stages them here.
+CUSTOM_CONNECTOR_EXTENSIONS = ("ducklake", "excel")
+
+
 def install_statements(extension: str, *, from_community: bool) -> list[str]:
     """The statements that INSTALL ``extension``: from its named repository for an extension of
     EXTENSION_REPOSITORIES (created where the connection does not know it), else from community or
@@ -45,6 +51,7 @@ def wanted() -> dict[str, bool]:
     """name -> from the community registry: the core wheels' extensions, what the connectors declare."""
     extensions = dict.fromkeys(CORE_EXTENSION_WHEELS, False)
     extensions.update(dict.fromkeys(EXTENSION_REPOSITORIES, False))
+    extensions.update(dict.fromkeys(CUSTOM_CONNECTOR_EXTENSIONS, False))
     for connector in duckdb_extension_connectors():
         name = connector.extension or ""
         extensions[name] = extensions.get(name, False) or bool(connector.install_from_community)

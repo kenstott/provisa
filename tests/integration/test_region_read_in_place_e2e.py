@@ -232,7 +232,10 @@ def test_a_table_its_region_reads_in_place_is_read_in_place_by_another_region(st
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         (work / "orders").mkdir()
-        files = work / "orders" / "orders.csv"
+        # A files source's glob table is named apart from the files it merges: the bundled Calcite
+        # file adapter (engine-v0.128.10) refuses a glob table named as one of its directory's own
+        # file tables ("Multiple entries with same key: orders"), a defect reported to Calcite.
+        files = work / "orders" / ("orders.csv" if kind == "csv" else "orders_2026.csv")
         files.write_text("id,amount,region\n1,10,eu\n2,20,us\n3,30,us\n4,40,eu\n")
         config = work / "config.yaml"
         config.write_text(yaml.safe_dump(_config(stack, files, work, kind)))

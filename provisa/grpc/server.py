@@ -112,10 +112,13 @@ def _encoder_service(file):
     return grpc_encoder.Service(files.SerializeToString())
 
 
-def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
-    """An aggregate's DECIMAL as the proto number its field holds: an int when it is whole and
-    written without a point, else a float. Any other value as it is."""
+def _proto_number(value: object, field) -> object:  # object-ok: an aggregate's value
+    """An aggregate's DECIMAL as its proto ``field`` holds it: the string of its exact digits in
+    a string field (a sized numeric's min and max, REQ-1961), else the proto number -- an int
+    when it is whole and written without a point, else a float. Any other value as it is."""
     if isinstance(value, Decimal):
+        if field.type == field.TYPE_STRING:
+            return str(value)
         f = float(value)
         return int(f) if f == int(f) and "." not in str(value) else f
     return value
@@ -1434,17 +1437,15 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _split_agg_columns(self, columns, row) -> tuple[dict, dict]:
         from provisa.grpc.query_ir import split_agg_columns
 
-        top, nested = split_agg_columns(columns, row)
-        return (
-            {k: _proto_number(v) for k, v in top.items()},
-            {f: {k: _proto_number(v) for k, v in vs.items()} for f, vs in nested.items()},
-        )
+        return split_agg_columns(columns, row)
 
     def _build_aggregate_result_message(self, type_name: str, top: dict, nested: dict):
         """Construct a {Type}AggregateResult message from split (top, nested) aggregate values,
-        reusing the same nested-message shape proto_gen emitted (REQ-1359)."""
+        reusing the same nested-message shape proto_gen emitted (REQ-1359); each value as the
+        field it fills holds it (_proto_number)."""
         agg_cls = getattr(self._pb2, f"{type_name}AggregateResult")
-        kwargs = dict(top)
+        fields = agg_cls.DESCRIPTOR.fields_by_name
+        kwargs = {k: _proto_number(v, fields[k]) for k, v in top.items()}
         for func_name, sub_kwargs in nested.items():
             suffix = self._AGG_FUNC_SUFFIX.get(func_name)
             if suffix is None:
@@ -1452,7 +1453,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             sub_cls = getattr(self._pb2, f"{type_name}{suffix}", None)
             if sub_cls is None:
                 continue
-            kwargs[func_name] = sub_cls(**sub_kwargs)
+            sub_fields = sub_cls.DESCRIPTOR.fields_by_name
+            kwargs[func_name] = sub_cls(
+                **{k: _proto_number(v, sub_fields[k]) for k, v in sub_kwargs.items()}
+            )
         return agg_cls(**kwargs)
 
     async def _handle_query_aggregate(self, request, context, type_name: str):

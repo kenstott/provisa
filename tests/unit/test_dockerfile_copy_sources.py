@@ -44,11 +44,11 @@ _RELATIVE_IMPORT = re.compile(
 _TS_CANDIDATES = ("", ".ts", ".tsx", "/index.ts", "/index.tsx")
 
 
-def _instructions() -> list[str]:
-    """The Dockerfile's instructions, continuation lines joined and comments dropped."""
+def _instructions(dockerfile: str = "Dockerfile") -> list[str]:
+    """The named Dockerfile's instructions, continuation lines joined and comments dropped."""
     lines = [
         line
-        for line in (REPO / "Dockerfile").read_text().splitlines()
+        for line in (REPO / dockerfile).read_text().splitlines()
         if not line.lstrip().startswith("#")
     ]
     return [i.strip() for i in re.sub(r"\\\n", " ", "\n".join(lines)).splitlines() if i.strip()]
@@ -69,9 +69,9 @@ def _context_copies(instructions: list[str]) -> list[tuple[list[str], str]]:
     return copies
 
 
-def _stage(name: str) -> tuple[str, list[str]]:
+def _stage(name: str, dockerfile: str = "Dockerfile") -> tuple[str, list[str]]:
     """(WORKDIR, instructions) of the named stage."""
-    instructions = _instructions()
+    instructions = _instructions(dockerfile)
     start = next(
         i
         for i, ins in enumerate(instructions)

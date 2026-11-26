@@ -166,7 +166,8 @@ class TestBuildGraphQLQuery:
 
     async def test_numeric_value_reads_as_its_column_type(self):
         variables = request_variables(_schema(), "orders", {"amount": {"gt": "100"}})
-        assert variables.values == {"where": {"amount": {"gt": 100.0}}}
+        # REQ-1961 (amended 2026-11-23): a sized numeric filter value is its exact digits.
+        assert variables.values == {"where": {"amount": {"gt": "100"}}}
 
     async def test_in_operator_value_is_a_list(self):
         where = {"region": {"in": ["us-east", "eu-west"]}}
