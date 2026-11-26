@@ -39,10 +39,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES, orgs, user_org_membership
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import (
-    data_products,
     domains,
-    glossary_terms,
-    registered_tables,
     roles,
     sources,
     table_columns,
@@ -89,12 +86,9 @@ def _prepare_sync():
         org_metadata.create_all(
             conn,
             tables=[
-                *SIGN_IN_TABLES,  # every authenticated request reads or writes them
-                sources,
-                domains,
-                data_products,  # REQ-1634: registered_tables.product_id FKs it
-                glossary_terms,  # REQ-2130: registered_tables.class_term_id FKs it
-                registered_tables,
+                # Every authenticated request reads or writes them; sources, domains,
+                # data_products, glossary_terms and registered_tables among them.
+                *SIGN_IN_TABLES,
                 table_columns,
             ],
         )

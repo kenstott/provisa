@@ -98567,7 +98567,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     they are read; formats, live and replica modes and governance are the same as every other transport.
     Each transport has its typed connection form and its credentials are secrets. iCloud Drive offers no
     server API, so it is not a transport; a desktop install reads a synced iCloud, OneDrive or Google Drive
-    folder through file://.'
+    folder through file://. (Amended 2026-11-26, maintainer: at query time every engine reads onedrive:// and gdrive:// files live through the Calcite file adapter, which gains OneDrive and Google Drive storage providers; Provisa passes the storage type and its configuration from the same source fields. No synced copy.)'
   scenario: 'Given a OneDrive folder and a Google Drive folder each holding a CSV shared with the source''s
     identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
     install, then each CSV is a table that answers a query the same as the same file read through file://.'
