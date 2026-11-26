@@ -27,16 +27,11 @@ export function ProfileRunsButton({ table }: { table: RegisteredTable }) {
         size="xs"
         variant="light"
         data-testid="table-read-view-profile-runs"
-        onClick={runs.open}
+        onClick={() => runs.open()}
       >
         {t("profilerPanel.viewRuns")}
       </Button>
-      {runs.profile !== null && (
-        <ProfileRunsModal
-          tableId={table.id}
-          tableName={table.tableName}
-        />
-      )}
+      {runs.profile !== null && <ProfileRunsModal tableId={table.id} tableName={table.tableName} />}
     </Box>
   );
 }

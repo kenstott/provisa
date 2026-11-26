@@ -61,8 +61,13 @@ export const DETAIL_VIEWS = {
   ontology: { route: "/context/ontology", param: "term" },
   library: { route: "/context/documents", param: "document" },
   metrics: { route: "/metrics", param: "metric" },
-  // REQ-2158: a linked contract is the linked product's.
-  products: { route: "/data-products", param: "product", alsoClears: ["contract"] },
+  // REQ-2158: a linked contract is the linked product's; REQ-2277: so is a dataset's profile runs
+  // dialog (`table` names the dataset).
+  products: {
+    route: "/data-products",
+    param: "product",
+    alsoClears: ["contract", "table", "profile", "profileView"],
+  },
   // A role and a derived role share the page's list and its one panel: opening one closes the other.
   roles: {
     route: "/security/roles",

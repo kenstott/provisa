@@ -94,9 +94,12 @@ export function ProfileRunsModal({
   tableId,
   tableName,
   onClose,
+  namesTable = false,
 }: {
   tableId: number;
   tableName: string;
+  /** The page names the dialog's table by `?table=` only while it is open (useProfileRunsParam). */
+  namesTable?: boolean;
   /** Called after the dialog's URL parameters are removed; a caller that opens it from the URL needs none. */
   onClose?: () => void;
 }) {
@@ -106,7 +109,7 @@ export function ProfileRunsModal({
   const [runs, setRuns] = useState<ProfileRun[] | null>(null);
   // REQ-2277: the run and the result shown are the URL's. A run that is not named is the latest
   // that succeeded, once the list is in.
-  const link = useProfileRunsParam();
+  const link = useProfileRunsParam(namesTable);
   const selected =
     runs == null
       ? null

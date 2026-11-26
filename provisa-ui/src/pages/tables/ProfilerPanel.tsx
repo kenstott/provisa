@@ -145,7 +145,7 @@ export function ProfilerPanel({
                 variant="light"
                 data-testid="profiler-view-runs"
                 disabled={unsaved}
-                onClick={runs.open}
+                onClick={() => runs.open()}
               >
                 {t("profilerPanel.viewRuns")}
               </Button>
@@ -182,10 +182,7 @@ export function ProfilerPanel({
         )}
       </CollapsibleSection>
       {runs.profile !== null && (
-        <ProfileRunsModal
-          tableId={editingTable.id}
-          tableName={editingTable.tableName}
-        />
+        <ProfileRunsModal tableId={editingTable.id} tableName={editingTable.tableName} />
       )}
       {constraintsOpen && (
         <ProfileConstraintsModal
