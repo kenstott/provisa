@@ -28,6 +28,9 @@ import (
 // A table's rows go in batches of this many.
 const batch = 1000
 
+// REQ-2100: the column a loader call's every row carries its key's hash in.
+const keyColumn = "$key"
+
 var (
 	registry    = map[string]any{}
 	contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
@@ -50,11 +53,13 @@ func exportNames() []string {
 	return names
 }
 
-// argumentSet is one set of a call's arguments: their values, as the wire gives them, and their
-// parameters' names.
+// argumentSet is one set of a call's arguments: their values, as the wire gives them, their
+// parameters' names, and the read context the set is called in (REQ-2100: a loader's batch of
+// keys has its own; any other set the call's).
 type argumentSet struct {
-	args  []any
-	names []string
+	args    []any
+	names   []string
+	context any
 }
 
 type call struct {
@@ -97,16 +102,21 @@ func newCall(conn *connection, message map[string]any) *call {
 		ctx:     ctx,
 		cancel:  cancel,
 	}
+	read := message["context"]
 	if sets, ok := message["calls"].([]any); ok {
 		// REQ-2099: a table called once per argument set, in order, under the one call id.
 		for _, set := range sets {
 			fields, _ := set.(map[string]any)
 			args, _ := fields["args"].([]any)
-			c.sets = append(c.sets, argumentSet{args, texts(fields["names"])})
+			own, given := fields["context"]
+			if !given {
+				own = read
+			}
+			c.sets = append(c.sets, argumentSet{args, texts(fields["names"]), own})
 		}
 	} else {
 		args, _ := message["args"].([]any)
-		c.sets = []argumentSet{{args, texts(message["names"])}}
+		c.sets = []argumentSet{{args, texts(message["names"]), read}}
 	}
 	if takes, ok := message["takes"].([]any); ok {
 		c.takes = texts(takes)
@@ -198,15 +208,17 @@ func (c *call) serve() (err error) {
 	if !ok {
 		return fmt.Errorf("the code has no function %s", c.export)
 	}
-	if c.keyed {
-		return fmt.Errorf("%s: a Go source has no @loader", c.export)
-	}
 	for _, set := range c.sets {
 		result, err := c.invoke(reflect.ValueOf(fn), set)
 		if err != nil {
 			return err
 		}
-		if err := c.answer(result); err != nil {
+		if c.keyed {
+			err = c.answerKeyed(result)
+		} else {
+			err = c.answer(result)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -215,7 +227,8 @@ func (c *call) serve() (err error) {
 
 // invoke calls fn with the call's context (when it takes one first), then its inputs struct (a
 // table's or a stream's, made of the arguments by name, an argument left out leaving its field
-// nil) or its own arguments in order; its result, or the error it returned.
+// nil) and its read context (REQ-2100), each when it takes it, or its own arguments in order; its
+// result, or the error it returned.
 func (c *call) invoke(fn reflect.Value, set argumentSet) (reflect.Value, error) {
 	kind := fn.Type()
 	var in []reflect.Value
@@ -238,6 +251,17 @@ func (c *call) invoke(fn reflect.Value, set argumentSet) (reflect.Value, error) 
 			value, err := decodeInto(given, kind.In(next))
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("%s: its inputs: %w", c.export, err)
+			}
+			in = append(in, value)
+			next++
+		}
+		if len(c.takes) > 0 && c.takes[len(c.takes)-1] == "context" {
+			if next >= kind.NumIn() {
+				return reflect.Value{}, fmt.Errorf("%s takes no read context", c.export)
+			}
+			value, err := decodeInto(fromWire(set.context), kind.In(next))
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("%s: its read context: %w", c.export, err)
 			}
 			in = append(in, value)
 		}
@@ -302,6 +326,15 @@ func (c *call) answer(result reflect.Value) error {
 		return fmt.Errorf("%s returned no rows", c.export)
 	}
 	switch result.Kind() {
+	case reflect.Map:
+		// REQ-2100: a loader read that is not a join's: its rows are every key's, in the order
+		// of the keys.
+		for _, key := range sortedKeys(result) {
+			if err := c.answer(result.MapIndex(key)); err != nil {
+				return err
+			}
+		}
+		return nil
 	case reflect.Slice, reflect.Array:
 		for at := 0; at < result.Len(); at += batch {
 			rows := make([]any, 0, batch)
@@ -321,6 +354,50 @@ func (c *call) answer(result reflect.Value) error {
 		return c.iterate(result)
 	}
 	return fmt.Errorf("a %s is not a collection of rows", result.Type())
+}
+
+func sortedKeys(m reflect.Value) []reflect.Value {
+	keys := m.MapKeys()
+	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+	return keys
+}
+
+// answerKeyed answers a loader call (REQ-2100): the function's map of each key's hash to its
+// rows, every row sent with its key's hash as $key.
+func (c *call) answerKeyed(result reflect.Value) error {
+	if !result.IsValid() || result.Kind() != reflect.Map || result.Type().Key().Kind() != reflect.String {
+		kind := "nothing"
+		if result.IsValid() {
+			kind = "a " + result.Type().String()
+		}
+		return fmt.Errorf("%s: a loader call is answered with a map of each key's hash to its rows, not %s",
+			c.export, kind)
+	}
+	for _, key := range sortedKeys(result) {
+		rows := result.MapIndex(key)
+		if rows.Kind() != reflect.Slice && rows.Kind() != reflect.Array {
+			return fmt.Errorf("%s: key %s: its rows are a slice, not a %s", c.export, key.String(), rows.Type())
+		}
+		for at := 0; at < rows.Len(); at += batch {
+			tagged := make([]any, 0, batch)
+			for i := at; i < min(at+batch, rows.Len()); i++ {
+				row, err := plain(rows.Index(i))
+				if err != nil {
+					return err
+				}
+				fields, ok := row.(map[string]any)
+				if !ok {
+					return fmt.Errorf("%s: key %s: a %s is not a row", c.export, key.String(), rows.Index(i).Type())
+				}
+				fields[keyColumn] = key.String()
+				tagged = append(tagged, fields)
+			}
+			if err := c.send(tagged); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // iterate ranges over an iterator function: a stream's rows are sent each as it is yielded, a

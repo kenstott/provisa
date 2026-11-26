@@ -195,7 +195,8 @@ def test_a_session_object_is_written_to_the_graph_session_and_read_by_cypher(ser
     )
     assert status == 200, doc
     assert doc.get("session_changed") is True, doc
-    assert doc["counters"]["nodes_created"] == 1, doc
+    # The counters are the Bolt summary's stats, as a Cypher write's are (cypher_router._counters).
+    assert doc["counters"]["nodes-created"] == 1, doc
     assert source() == _SEED
     request = urllib.request.Request(
         f"http://127.0.0.1:{server.ports['http']}/data/cypher",

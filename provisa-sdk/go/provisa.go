@@ -71,7 +71,7 @@ type (
 	Json = any
 )
 
-// Option is a tag a registration adds: [Requires].
+// Option is a tag a registration adds: [Requires], or a [Table]'s [Loader].
 type Option interface{ option() }
 
 // CommandOption is a tag a [Command] adds: [Requires], [Insert], [Update] or [Delete].
@@ -106,21 +106,79 @@ func Update(table string) Write { return Write{} }
 // Delete is @delete TABLE.
 func Delete(table string) Write { return Write{} }
 
-// ReadFunc is a @table function: an optional context.Context first, then its inputs struct,
-// either left out; it returns []R, ([]R, error), iter.Seq[R] or iter.Seq2[R, error].
+// Filter is a condition a read puts on a return column (REQ-2100): Column Op Value. Op is one of
+// eq, ne, gt, gte, lt, lte, in (Value a list) and like (a SQL pattern).
+type Filter struct {
+	Column string `json:"column"`
+	Op     string `json:"op"`
+	Value  any    `json:"value"`
+}
+
+// Order is a key a read orders its rows by (REQ-2100).
+type Order struct {
+	Column     string `json:"column"`
+	Descending bool   `json:"descending"`
+	NullsFirst bool   `json:"nulls_first"`
+}
+
+// ReadContext is what a read asks of a @table or @stream function's rows (REQ-2100), the same as
+// provisa_services.ReadContext: Provisa gives either to a function that takes it after its
+// inputs. Every part is a hint Provisa applies again; Limit is nil when every row counts; Keys
+// are a [Loader]'s join keys, each key's hash to its inputs, nil for any other read.
+type ReadContext struct {
+	Filters []Filter                  `json:"filters"`
+	OrderBy []Order                   `json:"order_by"`
+	Limit   *int64                    `json:"limit"`
+	Columns []string                  `json:"columns"`
+	Keys    map[string]map[string]any `json:"keys"`
+}
+
+// Loading is the @loader tag a [Table] adds: [Loader].
+type Loading struct{}
+
+func (Loading) option() {}
+
+// Loader is @loader (REQ-2100): the table is called with a join's keys in its [ReadContext], all
+// in one batch, or with Loader(N) at most N in each (@loader N).
+func Loader(batch ...int) Loading { return Loading{} }
+
+// ReadFunc is a @table function: an optional context.Context first, then its inputs struct and
+// its [ReadContext], each left out or not; it returns []R, ([]R, error), iter.Seq[R] or
+// iter.Seq2[R, error]. A [Loader] takes the ReadContext and returns map[string][]R, each key's
+// hash to its rows, with or without an error.
 type ReadFunc[I, R any] interface {
 	~func() []R | ~func() ([]R, error) | ~func() iter.Seq[R] | ~func() iter.Seq2[R, error] |
 		~func(I) []R | ~func(I) ([]R, error) | ~func(I) iter.Seq[R] | ~func(I) iter.Seq2[R, error] |
 		~func(context.Context) []R | ~func(context.Context) ([]R, error) |
 		~func(context.Context) iter.Seq[R] | ~func(context.Context) iter.Seq2[R, error] |
 		~func(context.Context, I) []R | ~func(context.Context, I) ([]R, error) |
-		~func(context.Context, I) iter.Seq[R] | ~func(context.Context, I) iter.Seq2[R, error]
+		~func(context.Context, I) iter.Seq[R] | ~func(context.Context, I) iter.Seq2[R, error] |
+		~func(ReadContext) []R | ~func(ReadContext) ([]R, error) | ~func(ReadContext) iter.Seq[R] |
+		~func(ReadContext) iter.Seq2[R, error] | ~func(I, ReadContext) []R |
+		~func(I, ReadContext) ([]R, error) | ~func(I, ReadContext) iter.Seq[R] |
+		~func(I, ReadContext) iter.Seq2[R, error] | ~func(context.Context, ReadContext) []R |
+		~func(context.Context, ReadContext) ([]R, error) |
+		~func(context.Context, ReadContext) iter.Seq[R] |
+		~func(context.Context, ReadContext) iter.Seq2[R, error] |
+		~func(context.Context, I, ReadContext) []R |
+		~func(context.Context, I, ReadContext) ([]R, error) |
+		~func(context.Context, I, ReadContext) iter.Seq[R] |
+		~func(context.Context, I, ReadContext) iter.Seq2[R, error] |
+		~func(ReadContext) map[string][]R | ~func(ReadContext) (map[string][]R, error) |
+		~func(I, ReadContext) map[string][]R | ~func(I, ReadContext) (map[string][]R, error) |
+		~func(context.Context, ReadContext) map[string][]R |
+		~func(context.Context, ReadContext) (map[string][]R, error) |
+		~func(context.Context, I, ReadContext) map[string][]R |
+		~func(context.Context, I, ReadContext) (map[string][]R, error)
 }
 
 // StreamFunc is a @stream function: the parameters of a [ReadFunc], returning iter.Seq2[R, error].
 type StreamFunc[I, R any] interface {
 	~func() iter.Seq2[R, error] | ~func(I) iter.Seq2[R, error] |
-		~func(context.Context) iter.Seq2[R, error] | ~func(context.Context, I) iter.Seq2[R, error]
+		~func(context.Context) iter.Seq2[R, error] | ~func(context.Context, I) iter.Seq2[R, error] |
+		~func(ReadContext) iter.Seq2[R, error] | ~func(I, ReadContext) iter.Seq2[R, error] |
+		~func(context.Context, ReadContext) iter.Seq2[R, error] |
+		~func(context.Context, I, ReadContext) iter.Seq2[R, error]
 }
 
 // StartFunc is an @on-start function: it takes nothing, or the setup values as one map.

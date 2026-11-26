@@ -105,6 +105,8 @@ def _build(shared_data):
         contexts={},
         # REQ-2219: the relationship's owners are people holding relationship_owner rows.
         relationship_owners={"orders-to-customers": ("join-steward",)},
+        # REQ-2219: a domain's stewards are people holding domain_steward rows; lab has none.
+        domain_stewards={"sales": ("data-steward",)},
     )
 
 

@@ -52,6 +52,8 @@ const JSON_FRAME: u8 = b'J';
 const ARROW_FRAME: u8 = b'A';
 /// A table's rows go in batches of this many.
 const BATCH: usize = 1000;
+/// REQ-2100: the column a loader call's every row carries its key's hash in.
+const KEY_COLUMN: &str = "$key";
 
 fn registry() -> &'static HashMap<&'static str, Export> {
     static REGISTRY: OnceLock<HashMap<&'static str, Export>> = OnceLock::new();
@@ -145,10 +147,12 @@ fn texts(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// One set of a call's arguments: their values and their parameters' names.
+/// One set of a call's arguments: their values, their parameters' names, and the read context it
+/// is called in (REQ-2100: a loader's batch of keys has its own; any other set the call's).
 struct ArgumentSet {
     args: Vec<Value>,
     names: Vec<String>,
+    context: Value,
 }
 
 /// How a host ends: Provisa refused it, or a connection failed.
@@ -263,12 +267,10 @@ fn call(conn: &Connection, id: u64, message: &Value, running: &Running) -> Resul
         ),
     };
     let function = registry().get(export).ok_or_else(|| format!("the code has no function {export}"))?;
-    if message.get("keyed") == Some(&Value::Bool(true)) {
-        return Err(format!("{export}: a Rust source has no @loader"));
-    }
-    if texts(message.get("takes")).iter().any(|t| t == "context") {
-        return Err(format!("{export}: a Rust source has no read context"));
-    }
+    // REQ-2100: a loader call, answered with each key's rows, each with its key's hash as $key.
+    let keyed = message.get("keyed") == Some(&Value::Bool(true));
+    // The read's context; a call that gives none (a command's) leaves it null.
+    let read = message.get("context").cloned().unwrap_or(Value::Null);
     let sets: Vec<ArgumentSet> = match message.get("calls").and_then(Value::as_array) {
         // REQ-2099: a table called once per argument set, in order, under the one call id.
         Some(sets) => sets
@@ -276,18 +278,21 @@ fn call(conn: &Connection, id: u64, message: &Value, running: &Running) -> Resul
             .map(|set| ArgumentSet {
                 args: set.get("args").and_then(Value::as_array).cloned().unwrap_or_default(),
                 names: texts(set.get("names")),
+                context: set.get("context").cloned().unwrap_or_else(|| read.clone()),
             })
             .collect(),
         None => vec![ArgumentSet {
             args: message.get("args").and_then(Value::as_array).cloned().unwrap_or_default(),
             names: texts(message.get("names")),
+            context: read.clone(),
         }],
     };
     for set in &sets {
-        let given = Args { export, args: &set.args, names: &set.names };
+        let given = Args { export, args: &set.args, names: &set.names, context: &set.context };
         let answer = function(&given)?;
         match &schema {
             None => answer_value(conn, id, answer)?,
+            Some(schema) if keyed => answer_keyed(conn, id, export, schema, answer, running)?,
             Some(schema) => answer_rows(conn, id, kind, export, schema, answer, running)?,
         }
         if running.cancelled() {
@@ -303,6 +308,13 @@ fn answer_value(conn: &Connection, id: u64, answer: Answer) -> Result<(), String
         Answer::Nothing => Value::Null,
         Answer::Value(value) => value,
         Answer::Rows(rows) => Value::Array(rows.collect::<Result<Vec<Value>, String>>()?),
+        Answer::Keyed(keyed) => {
+            let mut out = serde_json::Map::new();
+            for (hash, rows) in keyed {
+                out.insert(hash, Value::Array(rows.collect::<Result<Vec<Value>, String>>()?));
+            }
+            Value::Object(out)
+        }
     };
     conn.send(json!({"op": "value", "id": id, "value": wire::to_wire(value)})).map_err(|e| e.to_string())
 }
@@ -321,10 +333,51 @@ fn answer_rows(
     let source: glue::Rows = match answer {
         Answer::Rows(rows) => rows,
         Answer::Value(Value::Array(items)) => Box::new(items.into_iter().map(Ok)),
+        // REQ-2100: a loader read that is not a join's: its rows are every key's, in the order of
+        // the keys.
+        Answer::Keyed(keyed) => Box::new(keyed.into_iter().flat_map(|(_, rows)| rows)),
         Answer::Value(_) => return Err(format!("{export} returned a value, not a collection of rows")),
         Answer::Nothing => return Err(format!("{export} returned no rows")),
     };
-    let size = if kind == "stream" { 1 } else { BATCH };
+    send_rows(conn, id, if kind == "stream" { 1 } else { BATCH }, schema, source, running)
+}
+
+/// REQ-2100: a loader call's answer, the function's map of each key's hash to its rows: every row
+/// sent with its key's hash as $key.
+fn answer_keyed(
+    conn: &Connection,
+    id: u64,
+    export: &str,
+    schema: &arrow_schema::SchemaRef,
+    answer: Answer,
+    running: &Running,
+) -> Result<(), String> {
+    let Answer::Keyed(keyed) = answer else {
+        return Err(format!(
+            "{export}: a loader call is answered with a map of each key's hash to its rows"
+        ));
+    };
+    let tagged = keyed.into_iter().flat_map(|(hash, rows)| {
+        rows.map(move |row| match row? {
+            Value::Object(mut fields) => {
+                fields.insert(KEY_COLUMN.to_string(), Value::String(hash.clone()));
+                Ok(Value::Object(fields))
+            }
+            other => Err(format!("key {hash}: a {other} is not a row")),
+        })
+    });
+    send_rows(conn, id, BATCH, schema, Box::new(tagged), running)
+}
+
+/// Rows, as Arrow frames of `size` rows, each sent once the call has a credit for it.
+fn send_rows(
+    conn: &Connection,
+    id: u64,
+    size: usize,
+    schema: &arrow_schema::SchemaRef,
+    source: glue::Rows,
+    running: &Running,
+) -> Result<(), String> {
     let send = |batch: &[Value]| -> Result<bool, String> {
         let ipc = rows::ipc(schema, batch)?;
         if !running.take() {
