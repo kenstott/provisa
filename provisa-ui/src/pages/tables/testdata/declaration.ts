@@ -137,3 +137,10 @@ export function stableReasonKey(block: StableBlock): [string, Record<string, str
 export function offeredFor(entry: FakeFit & { ruleOnly?: boolean }, family: string, rule: boolean) {
   return entry.families.includes(family) && (rule || !entry.ruleOnly);
 }
+
+// REQ-2279: a JSON column's fake is a template -- the object itself, each field its own fake --
+// written in the code editor rather than picked from the list.
+export function holdsJson(dataType: string | null | undefined): boolean {
+  const base = (dataType ?? "").toLowerCase().split("(")[0].trim();
+  return base === "json" || base === "jsonb";
+}

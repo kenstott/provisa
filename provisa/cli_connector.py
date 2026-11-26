@@ -196,10 +196,9 @@ class _RequireValues:
         multiline: bool,
         default: Any,
         fixed: Any,
-        script: bool = False,
         org_default: Literal["spark_cluster"] | None = None,
     ) -> None:
-        self.multiline, self.default, self.fixed, self.script = multiline, default, fixed, script
+        self.multiline, self.default, self.fixed = multiline, default, fixed
         self.org_default: Literal["spark_cluster"] | None = org_default
 
 
@@ -262,7 +261,6 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         multiline: bool = False
         default: Any = None
         fixed: Any = None
-        script: bool = False  # REQ-2225: its tags are the source's tables and commands
         # REQ-2225: the organisation setting used when a source leaves the value unset.
         org_default: Literal["spark_cluster"] | None = None
 
@@ -302,14 +300,11 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         for kind, value in (("default", given.default), ("fixed", given.fixed)):
             if value is not None and not isinstance(value, str):
                 raise _Refused(f"{_STANDARD_FILE}: requires.{name}.{kind} is text; quote it")
-    scripts = [name for name, given in read.requires.items() if given.script]
-    if len(scripts) > 1:
-        raise _Refused(f"{_STANDARD_FILE}: one value is the script, not {', '.join(scripts)}")
     return _StandardFile(
         read.description.strip(),
         _icon_uri(root, read.icon) if read.icon else "",
         {
-            n: _RequireValues(g.multiline, g.default, g.fixed, g.script, g.org_default)
+            n: _RequireValues(g.multiline, g.default, g.fixed, g.org_default)
             for n, g in read.requires.items()
         },
         settings,
@@ -345,7 +340,6 @@ def _with_file_values(
                     multiline=given.multiline,
                     default_value=given.default,
                     fixed_value=given.fixed,
-                    script=given.script,
                     org_default=given.org_default,
                 )
             )
@@ -393,9 +387,6 @@ def _build_and_push(
     ]
     if standard is not None:
         requires = _with_file_values(requires, standard)
-    script = next((r.name for r in requires if r.script), None)
-    if script is not None and language != "python":
-        raise _Refused(f"{_STANDARD_FILE}: a script connector is a Python project, not {language}")
     plan = image_build.Plan(
         source_id=entry.name,
         language=language,
@@ -408,7 +399,6 @@ def _build_and_push(
         registries=list(package_registries),
         cache_root=ctx.cache_root,
         version=running_provisa(),
-        script=script,
     )
     workdir.mkdir(parents=True)
     built = image_build.assemble(plan, code, None, entry.arch, workdir)

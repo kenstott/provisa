@@ -15,6 +15,7 @@ import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const BASE = `${API_BASE}/admin/reference-library/documents`;
+const TERMS = `${API_BASE}/admin/reference-library/terms`;
 
 export type DocumentStatus = "proposed" | "kept";
 export type SourceKind = "file" | "url";
@@ -211,4 +212,60 @@ export interface DocumentReviewsDue {
 
 export async function fetchReviewsDue(): Promise<{ documents: DocumentReviewsDue[] }> {
   return ok(await fetch(`${API_BASE}/admin/reference-library/reviews-due`), "Reviews due");
+}
+
+/** A library document, or a section of it, a glossary term cites (REQ-2208, REQ-2179): a passage a
+ * scan found it in (``scan``: ``proposed`` while its draft awaits review, which accepts it by
+ * merging the draft into the term), or a section picked for it on its panel (``picked``). */
+export interface TermDocumentCitation {
+  key: string;
+  origin: "scan" | "picked";
+  status: "accepted" | "proposed";
+  document_id: number | null;
+  document_title: string;
+  section_heading: string | null;
+  section_page: number | null;
+  state: "current" | "drifted" | "broken";
+  needs_review: boolean;
+  quote: string | null;
+  ordinal: number | null;
+  draft_id: number | null;
+  cite_key: string | null;
+  cited_by: string | null;
+}
+
+/** A document, and a section of it by heading or (with none) by page; neither is the whole. */
+export interface TermCitationPlace {
+  document_id: number;
+  section_heading: string | null;
+  section_page: number | null;
+}
+
+export async function fetchTermCitations(termId: number): Promise<TermDocumentCitation[]> {
+  const body = await ok<{ citations: TermDocumentCitation[] }>(
+    await fetch(`${TERMS}/${termId}/citations`),
+    "Term documents",
+  );
+  return body.citations;
+}
+
+/** The term cites ``place``; citing it again records its text as it reads now. */
+export async function citeForTerm(
+  termId: number,
+  place: TermCitationPlace,
+): Promise<TermDocumentCitation> {
+  return ok(await fetch(`${TERMS}/${termId}/citations`, send("POST", place)), "Cite a document");
+}
+
+/** Take a citation off the term: a picked one by its key, a scan's by its draft and quote. */
+export async function unciteForTerm(termId: number, c: TermDocumentCitation): Promise<void> {
+  const params = new URLSearchParams(
+    c.origin === "picked"
+      ? { cite_key: c.cite_key as string }
+      : { draft_id: String(c.draft_id), quote: c.quote as string },
+  );
+  await ok(
+    await fetch(`${TERMS}/${termId}/citations?${params.toString()}`, send("DELETE")),
+    "Remove a citation",
+  );
 }

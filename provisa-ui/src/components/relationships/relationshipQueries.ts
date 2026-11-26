@@ -67,7 +67,15 @@ export interface RelationshipQueryRef {
 /** The role's graph schema as /data/graph-schema serves it: the parts a query is named by. */
 export interface GraphSchemaDoc {
   /** Each label's table, its key properties and every property it is read by. */
-  node_labels: { label: string; table_id: number; pk_columns: string[]; properties: string[] }[];
+  node_labels: {
+    label: string;
+    table_id: number;
+    pk_columns: string[];
+    properties: string[];
+    /** REQ-1986: the label's parameters, each by the property name a Cypher condition binds it
+     * under (``n._nf_<name>``). */
+    native_filter_columns: { name: string; type: string }[];
+  }[];
   relationship_types: {
     type: string;
     source: string;

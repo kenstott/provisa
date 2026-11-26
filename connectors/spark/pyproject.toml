@@ -1,7 +1,7 @@
 [project]
 name = "provisa-spark-connector"
 version = "0.1.0"
-description = "The Spark connector for Provisa: tables and commands from one annotated Spark script."
+description = "The Spark connector for Provisa: a connection to a Spark cluster through Spark Connect."
 requires-python = ">=3.12,<3.13"
 dependencies = ["pyspark-client>=4.0,<5"]
 

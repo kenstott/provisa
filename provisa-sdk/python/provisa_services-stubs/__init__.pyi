@@ -11,7 +11,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
-__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredRelationship', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'answer_cut', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors', 'warn']
+__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredRelationship', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'answer_cut', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'spark', 'vectors', 'warn']
 
 class ServiceError(Exception):
     """A service refused or failed: ``service`` names it, ``status`` is its HTTP status (0 when
@@ -21,11 +21,6 @@ class ServiceError(Exception):
 
     def __init__(self, service: str, status: int, message: str) -> None:
         ...
-
-def setup_value(name: str) -> Any:
-    """REQ-2225: the setup value ``name`` of a connector that serves a script; KeyError naming it
-    when the host has not been given it."""
-    ...
 
 class secrets:
 
@@ -143,6 +138,23 @@ class dq:
     def product(product_id: str) -> dict:
         """A data product's promises, expectations, partner DQ and orphans, each with its latest
         run (REQ-1443)."""
+        ...
+
+class spark:
+    """A Spark source's cluster, opened from a Python code source (REQ-2225, amended 2026-11-25).
+    The code needs the Spark Connect client (``pyspark-client``) among its own dependencies, and
+    the worker's egress allow-list names the cluster's host, as for any address the code calls."""
+
+    @staticmethod
+    def session(source: str) -> Any:
+        """A Spark Connect session on the cluster of the organisation's Spark source ``source``:
+        its own cluster, else the organisation's default, with its stored credential."""
+        ...
+
+    @staticmethod
+    def dataframe(session: Any, table: TableRef[Any]) -> Any:
+        """REQ-2270: a governed table argument as a DataFrame on ``session``'s cluster, its rows
+        read over Arrow Flight SQL as the calling role (:meth:`TableRef.read`)."""
         ...
 
 def log(message: str, level: str=..., **fields: Any) -> None:

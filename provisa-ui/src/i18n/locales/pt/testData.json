@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "Valor fictício",
+    "template": "Modelo JSON",
+    "templateHint": "O objeto que cada linha mostra: cada campo é um valor fictício como email() ou uniform(min=1, max=9)::integer, um objeto aninhado, uma matriz de comprimento fixo ou um literal entre aspas duplas para um campo que não varia",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "Regra sintética",
     "stable": "Estável",
     "stableHint": "O mesmo valor fictício em cada motor e em cada região",

@@ -888,6 +888,14 @@ main {
   border-color: transparent;
   opacity: 0.45;
 }
+/* A head toggle that is on (PanelToggle): tinted, as a pressed toggle is; off, the head's bare
+ * icon. A toggle shown but changed elsewhere (aria-disabled) is not pressed by the pointer. */
+.split-pane__head .mantine-ActionIcon-root[aria-pressed="true"] {
+  background: var(--mantine-color-default-hover);
+}
+.split-pane__head .mantine-ActionIcon-root[aria-disabled="true"] {
+  cursor: default;
+}
 .split-pane__actions:empty {
   min-height: 1px;
 }

@@ -36,8 +36,8 @@ function sseResponse(events: Record<string, unknown>[]): Response {
 
 function sentBodies(fetchMock: ReturnType<typeof vi.spyOn>) {
   return fetchMock.mock.calls
-    .filter((call: unknown[]) => String(call[0]).endsWith("/admin/mcp/chat"))
-    .map((call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string));
+    .filter(([url]: unknown[]) => String(url).endsWith("/admin/mcp/chat"))
+    .map(([, init]: unknown[]) => JSON.parse((init as RequestInit).body as string));
 }
 
 async function openPanel() {

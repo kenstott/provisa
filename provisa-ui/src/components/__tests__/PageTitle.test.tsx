@@ -10,25 +10,38 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
 import { Database } from "lucide-react";
 import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "../../test-utils/render";
 import { PageTitle } from "../PageTitle";
 
 describe("PageTitle", () => {
   it("renders an aria-hidden icon before the title text", () => {
-    render(
-      <MantineProvider>
-        <PageTitle icon={Database}>Sources</PageTitle>
-      </MantineProvider>,
-    );
+    render(<PageTitle icon={Database}>Sources</PageTitle>, { initialEntries: ["/sources"] });
     const root = screen.getByTestId("page-title");
     const svg = root.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByRole("heading", { name: "Sources" })).toBeTruthy();
     expect(root.firstElementChild).toBe(svg);
+  });
+
+  // REQ-2277 rule 8: the page's (?) help is part of the title, read from the registry by route.
+  it("carries the route's page help after the title, with its purpose and docs link", async () => {
+    render(<PageTitle icon={Database}>Sources</PageTitle>, { initialEntries: ["/sources"] });
+    const help = screen.getByRole("button", { name: "About this page" });
+    expect(screen.getByTestId("page-title").lastElementChild).toBe(help);
+    fireEvent.click(help);
+    const card = await screen.findByTestId("page-help-card");
+    expect(card).toHaveTextContent(
+      "Register the databases, files and services Provisa reads from, and set how each one is reached.",
+    );
+    expect(screen.getByTestId("page-help-docs")).toHaveAttribute("href", "/docs?page=sources/");
+  });
+
+  it("draws no help on a route whose help another header carries", () => {
+    render(<PageTitle icon={Database}>SQL</PageTitle>, { initialEntries: ["/sql"] });
+    expect(screen.queryByTestId("page-help")).toBeNull();
   });
 });
 

@@ -8,14 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A view's table transform run on Spark (REQ-2225, amended 2026-11-23).
+"""A view's table transform run on Spark (REQ-2225, amended 2026-11-23 and 2026-11-25).
 
-The Spark connector's script declares a ``@query`` taking a governed table (``TableRef[Clip]``,
-REQ-2226) and returning rows. Registered, it is a code command like any code source's, so a view
-over its call is landed and read only from its stored table, and its argument table is its input:
-a write to that table marks it stale, and the event graph refreshes it when that table lands.
-tests/integration/test_spark_transform_mv_e2e.py builds it on a one-node Spark, the table read
-over Arrow Flight (REQ-2270)."""
+A Python code source's ``@query`` that runs on a Spark source's session takes a governed table
+(``TableRef[Clip]``, REQ-2226) and returns rows. Registered, it is a code command like any code
+source's, so a view over its call is landed and read only from its stored table, and its argument
+table is its input: a write to that table marks it stale, and the event graph refreshes it when
+that table lands.
+tests/integration/test_spark_connector_e2e.py reads such a @query on a one-node Spark, the table
+read over Arrow Flight (REQ-2270)."""
 
 # Requirements: REQ-2225, REQ-2226, REQ-2270
 
@@ -34,7 +35,7 @@ from provisa.mv.registry import MVRegistry
 from provisa.mv.view_inputs import read_tables
 from provisa.mv.view_read import lands_stored_read
 
-#: What the connector's host reports for the script's
+#: What the reader reports for the Python source's
 #: ``def clips_on_the_cluster(clips: TableRef[Clip]) -> list[Clip]`` tagged ``@query``.
 _CLIP = {
     "name": "Clip",
@@ -189,7 +190,7 @@ def test_a_view_calling_it_with_no_table_is_refused_naming_the_command():
 # the reader, each table argument as the read the call's code is given (minted.read_statement).
 # A table in a domain the reader does not reach is in none of the reader's compiled contexts, so
 # only that read's column grants can refuse it -- as they refuse the call's own read when it runs.
-# Any code command's call: a Python code source's as a Spark script's.
+# Any code command's call, whether or not its code runs on a Spark source's session.
 
 
 def _outside_the_readers_domains(argument: str, columns: list[str] | None = None):

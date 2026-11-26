@@ -19,8 +19,19 @@ from provisa.fakes.kinds import parse
 from provisa.fakes.propose import ProfiledColumnFacts, propose
 
 
-def _col(name, family="text", plausible="unknown", confidence=0.9, freqs=(), length=None):
-    return ProfiledColumnFacts(name, family, length, plausible, confidence, tuple(freqs))
+def _col(
+    name,
+    family="text",
+    plausible="unknown",
+    confidence=0.9,
+    freqs=(),
+    length=None,
+    data_type="varchar",
+    values=(),
+):
+    return ProfiledColumnFacts(
+        name, family, length, plausible, confidence, tuple(freqs), data_type, tuple(values)
+    )
 
 
 _COLUMNS = [
