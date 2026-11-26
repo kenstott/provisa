@@ -557,14 +557,13 @@ def field_column(col: Column, path: str, f: TemplateField) -> Column:
 
 
 #: JSON text's escapes of the characters a fake's text can hold that JSON writes escaped.
-_JSON_ESCAPES = (("\\", "\\\\"), ('"', '\\"'), (10, "\\n"), (13, "\\r"), (9, "\\t"))
+_JSON_ESCAPES = (("\\", "\\\\"), ('"', '\\"'), ("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"))
 
 
 def _json_string(text: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``text`` as a JSON string: quoted, its backslashes, quotes and line breaks escaped."""
     for char, escaped in _JSON_ESCAPES:
-        found = _lit(char) if isinstance(char, str) else _f("CHR", exp.Literal.number(char))
-        text = _f("REPLACE", text, found, _lit(escaped))
+        text = _f("REPLACE", text, _lit(char), _lit(escaped))
     return _p(_concat(_lit('"'), text, _lit('"')))
 
 

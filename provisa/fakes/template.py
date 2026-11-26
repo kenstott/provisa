@@ -97,7 +97,9 @@ class _Reader:
         try:
             value, end = json.JSONDecoder().raw_decode(self.text, self.pos)
         except json.JSONDecodeError as exc:
-            raise FakeRefused(f"cannot read the string at {self.text[self.pos :][:12]!r}") from exc
+            raise FakeRefused(
+                f"expected a double-quoted name or string at {self.text[self.pos :][:12]!r}"
+            ) from exc
         if not isinstance(value, str):
             raise FakeRefused(f"expected a double-quoted name at {self.text[self.pos :][:12]!r}")
         self.pos = end
