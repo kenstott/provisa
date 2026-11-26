@@ -146,7 +146,7 @@ beforeEach(() => {
 describe("Context Tags (read-only TagsTab)", () => {
   it("withholds every control that writes", async () => {
     render(<TagsTab readOnly title="Tags" />);
-    await screen.findByTestId("tags-where-finance");
+    await screen.findByTestId("tags-where-summary-finance");
     expect(screen.queryByTestId("tags-create-button")).toBeNull();
     expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
     expect(screen.queryByLabelText("Edit tag finance")).toBeNull();
@@ -160,33 +160,49 @@ describe("Context Tags (read-only TagsTab)", () => {
 
   it("names the places the viewer reads and only counts the rest", async () => {
     render(<TagsTab readOnly title="Tags" />);
-    const pii = await screen.findByTestId("tags-where-pii");
-    expect(pii).toHaveTextContent("crm.public.customers.email");
+    // REQ-2208: the list holds counts; the panel names the places.
+    expect(await screen.findByTestId("tags-where-summary-pii")).toHaveTextContent(
+      "1 object in 1 source · 3 more you cannot read",
+    );
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    const pii = screen.getByTestId("tags-where-pii");
+    expect(within(pii).getByTestId("tags-where-pii-columns-source-crm")).toHaveTextContent(
+      "public.customers.email",
+    );
     expect(within(pii).getByTestId("tags-where-pii-hidden")).toHaveTextContent(
       "3 more you cannot read",
     );
   });
 
-  it("shows the row filters and the classification that depend on a tag", async () => {
+  it("shows the row rules and the classification that depend on a tag", async () => {
     render(<TagsTab readOnly title="Tags" />);
-    expect(await screen.findByTestId("tags-dependents-finance")).toHaveTextContent("2 row filters");
-    expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
-      "Assigned by classification: US social security number",
+    expect(await screen.findByTestId("tags-dependents-summary-finance")).toHaveTextContent(
+      "2 row rules",
+    );
+    expect(screen.getByTestId("tags-dependents-summary-pii")).toHaveTextContent(
+      "2 classifications",
+    );
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    fireEvent.click(screen.getByTestId("tags-dependents-pii-classification-toggle"));
+    expect(screen.getByTestId("tags-classification-pii-us_ssn")).toHaveTextContent(
+      "US social security number",
     );
     // A custom kind is named by the org's own label (REQ-2147, amended 2026-11-25).
-    expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
-      "Assigned by classification: Employee SSN",
+    expect(screen.getByTestId("tags-classification-pii-custom.employee_ssn")).toHaveTextContent(
+      "Employee SSN",
     );
   });
 
   it("draws links only when the viewer holds the target page's right", async () => {
     render(<TagsTab readOnly title="Tags" />);
-    await screen.findByTestId("tags-where-finance");
+    await screen.findByTestId("tags-where-summary-finance");
     // The tag's name in its panel links to its editor.
     fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).not.toHaveAttribute("href");
-    expect(screen.getByTestId("tags-where-finance-place")).not.toHaveAttribute("href");
+    expect(screen.getByTestId("tags-where-finance-tables-place")).not.toHaveAttribute("href");
     // The classification page is glossary_read's: the viewer may follow that link.
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    fireEvent.click(screen.getByTestId("tags-dependents-pii-classification-toggle"));
     expect(screen.getByTestId("tags-classification-pii-us_ssn")).toHaveAttribute(
       "href",
       "/context/classification?kind=us_ssn",
@@ -196,13 +212,13 @@ describe("Context Tags (read-only TagsTab)", () => {
   it("links the tag and its tables to their editors for a viewer who edits them", async () => {
     auth.capabilities = ["glossary_read", "table_registration"];
     render(<TagsTab readOnly title="Tags" />);
-    await screen.findByTestId("tags-where-finance");
+    await screen.findByTestId("tags-where-summary-finance");
     fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).toHaveAttribute(
       "href",
       "/admin/tags?tag=finance",
     );
-    expect(screen.getByTestId("tags-where-finance-place")).toHaveAttribute(
+    expect(screen.getByTestId("tags-where-finance-tables-place")).toHaveAttribute(
       "href",
       "/tables?table=1",
     );

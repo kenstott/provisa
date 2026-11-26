@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // Polly opens SQL in the SQL explorer by navigating to /sql with the query as router state. The
-// user is often already there; the query must open then too, not only after a refresh.
+// user is often already there; the query must open then too, not only after a refresh. Handed SQL
+// is machine-written, so it arrives formatted (sql-handoff.test.tsx).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, screen, waitFor } from "@testing-library/react";
@@ -34,6 +35,7 @@ vi.mock("../hooks/useAdminQueries", () => ({
 }));
 
 import { SqlPage } from "../pages/SqlPage";
+import { prettifySql } from "../pages/sql/prettifySql";
 import { tabSqlKey } from "../pages/sql/types";
 import { storageKey as scopedKey } from "../lib/browserStorage";
 
@@ -74,7 +76,7 @@ describe("SqlPage — a hand-off while the page is open", () => {
     act(() => screen.getByText("polly").click());
 
     await waitFor(() => expect(screen.getAllByText(/Query 2/).length).toBeGreaterThan(0));
-    await waitFor(() => expect(tabSql()).toContain("SELECT 42 AS answer"));
+    await waitFor(() => expect(tabSql()).toContain(prettifySql("SELECT 42 AS answer")));
   });
 });
 

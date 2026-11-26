@@ -20,13 +20,14 @@ key's hex text -- which cannot be turned back into the key; the engine holds the
 platforms sharing an engine (test stacks, control planes) each reach their own key.
 """
 
-# Requirements: REQ-1494
+# Requirements: REQ-1494, REQ-2279
 
 from __future__ import annotations
 
 import hashlib
 import hmac
 import json
+from decimal import Decimal
 
 
 class FakeKeyMissing(RuntimeError):
@@ -69,6 +70,54 @@ def digest(key: bytes, text: str) -> int:
     """The keyed digest of ``text``: a signed 64-bit integer."""
     mac = hmac.new(key, text.encode("utf-8"), hashlib.sha256).digest()
     return int.from_bytes(mac[:8], "big", signed=True)
+
+
+def _no_constant(name: str) -> object:
+    raise ValueError(f"{name} is not JSON")
+
+
+def _number(value: Decimal) -> str:
+    """A number's exact value in plain digits: no exponent, no trailing zeros, ``0`` for zero
+    (Decimal.normalize rounds to its context's precision, so the digits are worked here)."""
+    if value == 0:
+        return "0"
+    sign, digits, exponent = value.as_tuple()
+    assert isinstance(exponent, int), "json.loads gives no NaN or infinity (parse_constant)"
+    while digits[-1] == 0:
+        digits = digits[:-1]
+        exponent += 1
+    text = "".join(map(str, digits))
+    if exponent >= 0:
+        text += "0" * exponent
+    elif len(text) > -exponent:
+        text = text[:exponent] + "." + text[exponent:]
+    else:
+        text = "0." + "0" * (-exponent - len(text)) + text
+    return ("-" if sign else "") + text
+
+
+def _canonical(value: object) -> str:
+    if isinstance(value, dict):
+        items = sorted(value.items())  # by code point, as every engine's definition sorts
+        return "{" + ",".join(f"{_canonical(k)}:{_canonical(v)}" for k, v in items) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical(v) for v in value) + "]"
+    if isinstance(value, Decimal):
+        return _number(value)
+    # A string, true, false or null, as json writes it unescaped beyond JSON's own escapes.
+    return json.dumps(value, ensure_ascii=False)
+
+
+def canonical_json(text: str) -> str:
+    """A JSON value's canonical text, the one a JSON column is digested as on every engine
+    (REQ-2279): minified; object keys sorted by code point, the last of a repeated key kept; a
+    number as its exact value in plain digits, no exponent and no trailing zeros (``0`` for any
+    zero); a string with only ``"``, ``\\`` and the control characters escaped (``\\b \\f \\n
+    \\r \\t``, any other as ``\\u00xx``), every other character as itself. So stored text that
+    differs only in spacing, key order or number spelling digests alike, whichever engine stores
+    it. The Trino plugin's JsonText.canonical is the same definition."""
+    value = json.loads(text, parse_float=Decimal, parse_int=Decimal, parse_constant=_no_constant)
+    return _canonical(value)
 
 
 _M = (1 << 64) - 1
