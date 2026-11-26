@@ -1464,17 +1464,16 @@ export function SourcesPage() {
   const createdOrigin =
     creating && CODE_SOURCE_TYPES.has(form.type) ? (authFields.code_origin ?? "package") : null;
   useEffect(() => {
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (creating) n.set("new", form.type);
-        else n.delete("new");
-        if (createdOrigin) n.set("origin", createdOrigin);
-        else n.delete("origin");
-        return n.toString() === p.toString() ? p : n;
-      },
-      { replace: true },
-    );
+    // From the URL as it is now, not the render's snapshot: a press that closes the form also
+    // writes its own params (the opened source's ?expanded=), in the same tick.
+    const now = window.location.search.replace(/^\?/, "");
+    const n = new URLSearchParams(now);
+    if (creating) n.set("new", form.type);
+    else n.delete("new");
+    if (createdOrigin) n.set("origin", createdOrigin);
+    else n.delete("origin");
+    if (n.toString() === now) return;
+    navigate({ search: n.toString() ? `?${n}` : "" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the URL follows the create form's type and origin
   }, [creating, form.type, createdOrigin]);
 
