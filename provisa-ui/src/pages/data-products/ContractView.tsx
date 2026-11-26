@@ -162,7 +162,8 @@ function useExamples(
   };
 }
 
-/** The sentence every surface carries: it works once access is granted, and who grants it. */
+/** What is true of every surface: it works once access is granted, and who grants it. Said once,
+ *  above the surfaces (REQ-2277 (2)). */
 function useAccessSentence({ roles, approvers }: Grant): string {
   const { t } = useTranslation();
   const key = "dataProductsTab.contract.howToUse.access";
@@ -215,6 +216,11 @@ function useHowToUseTable(
     testId: `data-contract-how-to-use-${tableId}`,
     rowTestId: rowId,
     rows: servers,
+    lead: (
+      <Text size="xs" c="dimmed" mb={4} data-testid={`data-contract-how-to-use-${tableId}-access`}>
+        {access}
+      </Text>
+    ),
     columns: [
       {
         name: "surface",
@@ -237,18 +243,13 @@ function useHowToUseTable(
         reads: [],
         value: () => true,
         cell: (row) => (
-          <Stack gap={2}>
-            <Text size="sm">
-              {t(`${key}.how.${String(row.server)}`, {
-                database: row.database,
-                schema: row.schema,
-                service: row.serviceName,
-              })}
-            </Text>
-            <Text size="xs" c="dimmed" data-testid={`${rowId(row)}-access`}>
-              {access}
-            </Text>
-          </Stack>
+          <Text size="sm">
+            {t(`${key}.how.${String(row.server)}`, {
+              database: row.database,
+              schema: row.schema,
+              service: row.serviceName,
+            })}
+          </Text>
         ),
       },
       {
