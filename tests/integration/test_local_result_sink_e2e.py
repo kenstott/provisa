@@ -168,14 +168,15 @@ def graphql(server, headers: dict[str, str], query: str) -> dict:
 def landed(server, handle: dict) -> Path:
     """The file a delivery handle names, in the org's folder; it must be there."""
     url = handle["redirect_url"]
-    assert url.startswith("/data/redirect-file/"), handle
+    # REQ-1191: answered at the request's own base URI, absolute.
+    assert url.startswith(f"{server.base_url}/data/redirect-file/"), handle
     path = server.work / "data" / "orgs" / _ORG / "results" / url.rsplit("/", 1)[1]
     assert path.is_file(), path
     return path
 
 
 def assert_served_to_owner_only(server, handle: dict, rows: int) -> None:
-    url = f"{server.base_url}{handle['redirect_url']}"
+    url = handle["redirect_url"]
     owner = httpx.get(url, headers=login(server, "ada"), timeout=60)
     assert owner.status_code == 200, owner.text
     assert owner.headers["content-type"].startswith("text/csv")

@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "סביבות",
+    "noEnvironments": "אין עדיין סביבות.",
+    "noMatch": "אין סביבות התואמות לסינון.",
     "tabRequests": "בקשות מיזוג",
     "tabRepository": "מאגר",
     "tabIntegration": "אינטגרציה",

@@ -70,6 +70,7 @@
     "outsideTitle": "Atribuições fora dos domínios permitidos",
     "outsideBody": "Ao salvar, estas atribuições foram mantidas. Retire a tag de um objeto ao qual ela já não pertence.",
     "outsideItem": "{{kind}} {{name}}, em {{domains}}",
-    "templateSection": "Modelo"
+    "templateSection": "Modelo",
+    "noMatch": "Nenhuma tag corresponde ao filtro"
   }
 }

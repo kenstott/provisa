@@ -78,6 +78,7 @@
     "erdHelpBody": "绘制已注册的表以及它们之间声明的关系，让您在编写查询之前了解存在哪些连接。只读：可按域筛选，并将图导出为 PNG 或 SVG。",
     "purposeModel": "“+ 模型”声明实体或事实，即星型架构和 Data Vault 的构建块。它会注册物化视图、其 Time Travel，以及与其所引用的实体之间的关系。",
     "empty": "尚未注册任何表。",
+    "noMatch": "没有符合筛选条件的表。",
     "resizeDetail": "调整详情面板大小",
     "detailPanel": "表详情",
     "closeDetail": "关闭详情面板",

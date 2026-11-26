@@ -46,7 +46,8 @@ import { documentMark } from "../../lib/documentMark";
 import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadges";
 import { LibraryAddForm } from "./LibraryAddForm";
 import { LibraryDetail } from "./LibraryDetail";
-import { addedOrRefreshed, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { addedOrRefreshed, libraryRowTexts, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { matchesQuery } from "../../lib/searchItems";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
@@ -130,16 +131,15 @@ export function LibraryPage() {
   };
   const stale = (documents ?? []).filter((d) => d.needs_reembedding).length;
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const listed = (documents ?? []).filter(
-      (d) => !reviewsDueOnly || (due !== null && due.has(d.id)),
-    );
-    if (!needle) return listed;
-    return listed.filter((d) =>
-      [d.title, d.source, ...d.domains].some((v) => v.toLowerCase().includes(needle)),
-    );
-  }, [documents, search, reviewsDueOnly, due]);
+  // REQ-2143: the page search reads the web-search syntax, over every text a row shows, after the
+  // reviews-due narrowing.
+  const filtered = useMemo(
+    () =>
+      (documents ?? [])
+        .filter((d) => !reviewsDueOnly || (due !== null && due.has(d.id)))
+        .filter((d) => matchesQuery(libraryRowTexts(d, t, i18n.language), search)),
+    [documents, search, reviewsDueOnly, due, t, i18n.language],
+  );
 
   const columns: ListColumn<LibraryDocument>[] = useMemo(
     () => [
@@ -313,7 +313,10 @@ export function LibraryPage() {
             <Table.Tbody>
               {filtered.length === 0 && (
                 <ListEmpty colSpan={5} testId="reflib-empty">
-                  {t("referenceLibrary.empty")}
+                  {/* A list a filter emptied says so, never that the library is empty. */}
+                  {(documents ?? []).length === 0
+                    ? t("referenceLibrary.empty")
+                    : t("referenceLibrary.noMatch")}
                 </ListEmpty>
               )}
               <ListItems

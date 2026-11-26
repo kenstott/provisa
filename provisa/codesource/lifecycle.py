@@ -87,9 +87,8 @@ def setup_values(
     org_id: str, source_id: str, manifest: Manifest, mapping: dict, admin_db: Any
 ) -> "Setup | None":
     """What gives a host its setup values, read each time it is called; None when the code has no
-    @on-start to give them to and it is not a script connector, whose script reads them at any
-    call (REQ-2225)."""
-    if manifest.lifecycle(ON_START) is None and not mapping.get("script_hash"):
+    @on-start to give them to."""
+    if manifest.lifecycle(ON_START) is None:
         return None
     from provisa.codesource import services
 

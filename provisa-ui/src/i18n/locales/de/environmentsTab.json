@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "Umgebungen",
+    "noEnvironments": "Noch keine Umgebungen.",
+    "noMatch": "Keine Umgebungen entsprechen dem Filter.",
     "tabRequests": "Merge-Requests",
     "tabRepository": "Repository",
     "tabIntegration": "Integration",

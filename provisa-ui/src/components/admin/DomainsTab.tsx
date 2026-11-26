@@ -121,9 +121,24 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
   const shownDomains = useMemo(
     () =>
       userDomains.filter((d) =>
-        matchesQuery([d.id, d.description, aliases[d.id], d.parentDomainId], search),
+        // Every text a domain's row shows.
+        matchesQuery(
+          [
+            d.id,
+            d.description,
+            aliases[d.id],
+            d.parentDomainId,
+            ...shownStewards(d),
+            namedStewards(d).length === 0 &&
+            d.stewards.length === 0 &&
+            d.effectiveStewards.length > 0
+              ? t("adminPage.stewardInherited")
+              : "",
+          ],
+          search,
+        ),
       ),
-    [userDomains, aliases, search],
+    [userDomains, aliases, search, t],
   );
   const columns: ListColumn<Domain>[] = [
     { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
@@ -444,7 +459,12 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
                   />
                   <Table.Tbody>
                     {shownDomains.length === 0 && (
-                      <ListEmpty colSpan={5}>{t("adminPage.noDomains")}</ListEmpty>
+                      <ListEmpty colSpan={5} testId="domains-empty">
+                        {/* A list a filter emptied says so, never that none is defined. */}
+                        {userDomains.length === 0
+                          ? t("adminPage.noDomains")
+                          : t("adminPage.noDomainsMatch")}
+                      </ListEmpty>
                     )}
                     <ListItems
                       state={sortGroup}

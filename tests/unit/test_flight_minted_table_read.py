@@ -11,7 +11,7 @@
 """REQ-2270: a table argument read over Arrow Flight SQL with the token minted for the call.
 
 A real ProvisaFlightServer on a loopback port, read by ``provisa_services.TableRef.read`` (the
-client a Python remote host such as the Spark connector's uses). The token is admitted as the
+client Python code uses, and ``provisa_services.spark.dataframe`` hands to a cluster). The token is admitted as the
 call's role and no other, in the call's org, with its caller's session variables, audited as its
 caller; only a statement reading the call's tables runs, and only while the call is live. The
 governed pipeline itself is stubbed to report what it was asked to run as; that the rows come

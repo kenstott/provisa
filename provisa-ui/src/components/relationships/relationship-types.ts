@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { TFunction } from "i18next";
 import { domainToSqlName } from "../../naming";
 import type {
   RegisteredTable,
@@ -127,3 +128,26 @@ export const SHAPE_CODE: Record<RelationshipShape, "fk" | "jct" | "dim"> = {
   junction: "jct",
   shared_dimension: "dim",
 };
+
+/** Every text a relationship's row shows, which the page's filter searches: kept beside the row
+ * that draws them, so a column added to one is added to the other. */
+export function relationshipRowTexts(
+  r: Relationship,
+  t: TFunction,
+  tableDomainById: Record<string, string>,
+  domainsEnabled: boolean,
+): string[] {
+  return [
+    domainsEnabled ? (r.sourceDomainId ?? "") : "",
+    r.autoSuggested ? t("relationshipRow.fkBadge") : "",
+    r.properties.length > 0 ? t("relShape.prop") : "",
+    `${r.sourceTableName}.${r.sourceColumn}`,
+    relationshipTargetLabel(r, tableDomainById, domainsEnabled),
+    SHAPE_CODE[r.shape],
+    r.graphqlAlias ?? "",
+    (r.viaTableName ? r.cypherType : (r.alias ?? r.computedCypherAlias)) ?? "",
+    r.cardinality,
+    r.materialize ? t("relationshipRow.yes") : t("relationshipRow.no"),
+    r.materialize ? String(r.refreshInterval) : "",
+  ];
+}

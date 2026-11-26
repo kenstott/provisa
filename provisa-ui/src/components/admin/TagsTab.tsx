@@ -210,9 +210,23 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     return counts;
   }, [tagAssignments]);
 
-  const filtered = tags
-    .filter((tag) => tag.appliesTo.includes(scope))
-    .filter((tag) => matchesQuery([tag.id, tag.description], search))
+  // Every text a tag's row shows, which the filter searches; the row below draws the same.
+  const tagRowTexts = (tag: Tag): string[] => {
+    const use = readOnly ? uses?.get(tag.id) : undefined;
+    return [
+      tag.id,
+      tag.required ? t("tagsTab.requiredLabel") : "",
+      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
+      tag.needsReview ? t("tagCitations.needsReview") : "",
+      tag.description,
+      ...tag.appliesTo.map(scopeLabel),
+      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
+      ...(use === undefined ? [] : [whereAppliedSummary(use, t), dependentsSummary(use, t)]),
+    ];
+  };
+  const inScope = tags.filter((tag) => tag.appliesTo.includes(scope));
+  const filtered = inScope
+    .filter((tag) => matchesQuery(tagRowTexts(tag), search))
     .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -833,6 +847,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
             <SortGroupTable
               selection={readOnly ? undefined : selection}
               testPrefix="tags"
+              testId="tags-list"
+              emptyTestId="tags-empty"
               minWidth={640}
               rows={filtered}
               columns={[
@@ -865,7 +881,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               ]}
               colSpan={readOnly ? 6 : 4}
               rowKey={(tag) => tag.id}
-              empty={t("tagsTab.empty")}
+              // A list a filter emptied says so, never that there are no tags.
+              empty={inScope.length === 0 ? t("tagsTab.empty") : t("tagsTab.noMatch")}
               page={{ index: safePage - 1, size: PAGE_SIZE }}
               onGroupedChange={setGrouped}
               render={(tag) => [

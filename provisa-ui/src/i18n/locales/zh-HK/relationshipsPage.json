@@ -43,6 +43,7 @@
     "suggestHelpTitle": "建議的關係",
     "suggestHelpBody": "跨網域掃描已註冊的資料表，找出可能的連接並列為候選。在你接受之前不會宣告任何關係；被拒絕的候選會一直不出現在清單中，直到你清除拒絕紀錄。",
     "empty": "尚未註冊任何關係。",
+    "noMatch": "沒有符合篩選條件的關係。",
     "detailPanel": "關係詳情",
     "panelNewRelationship": "新增關係",
     "backToRelationship": "返回 {{id}}"

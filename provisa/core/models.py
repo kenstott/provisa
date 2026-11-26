@@ -137,8 +137,8 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
-    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
-    # (connectors/spark); a built-in code source type, made by joining that host.
+    # REQ-2225: a connection to a Spark cluster, with no script (amended 2026-11-25); a built-in
+    # code source type, made by joining the Spark host (connectors/spark).
     spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"
@@ -4032,9 +4032,6 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
     # From the project's standard file (connector.yaml). A secret takes none of these: its value is
     # the organization's, and the block is committed with the model.
     multiline: bool = False  # REQ-2225: entered as multi-line text
-    # REQ-2225: this value is the annotated script the host serves: its tags are the source's tables
-    # and commands, read from it at join rather than from the image.
-    script: bool = False
     default_value: str | None = None
     fixed_value: str | None = None
     # REQ-2225: an organisation setting that stands in for this value when a source leaves it
@@ -4053,14 +4050,9 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
                 "is not a secret and has no default or fixed value of its own"
             )
         if self.secret and (
-            self.multiline
-            or self.script
-            or self.default_value is not None
-            or self.fixed_value is not None
+            self.multiline or self.default_value is not None or self.fixed_value is not None
         ):
             raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
-        if self.script and not self.multiline:
-            raise ValueError(f"{self.name} is a script: it is entered as multi-line text")
         return self
 
 

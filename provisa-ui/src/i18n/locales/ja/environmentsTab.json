@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "環境",
+    "noEnvironments": "環境はまだありません。",
+    "noMatch": "フィルターに一致する環境はありません。",
     "tabRequests": "マージリクエスト",
     "tabRepository": "リポジトリ",
     "tabIntegration": "連携",

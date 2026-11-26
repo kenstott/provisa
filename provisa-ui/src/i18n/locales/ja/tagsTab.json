@@ -70,6 +70,7 @@
     "outsideTitle": "許可ドメイン外の割り当て",
     "outsideBody": "保存後もこれらの割り当ては残っています。不要になったオブジェクトからはタグを外してください。",
     "outsideItem": "{{kind}} {{name}}（{{domains}}）",
-    "templateSection": "テンプレート"
+    "templateSection": "テンプレート",
+    "noMatch": "フィルターに一致するタグはありません"
   }
 }

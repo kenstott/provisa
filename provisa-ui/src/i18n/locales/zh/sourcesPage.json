@@ -29,6 +29,7 @@
     "cacheOn": "开",
     "cacheOff": "关",
     "empty": "未找到数据源。",
+    "noMatch": "没有符合筛选条件的数据源。",
     "discover": "发现",
     "mapTable": "映射表",
     "refreshSchema": "刷新架构",

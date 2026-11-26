@@ -4,6 +4,7 @@
     "cancel": "キャンセル",
     "stop": "停止",
     "stopped": "停止済み",
+    "noQuery": "実行するクエリがありません。",
     "stopQuery": "クエリを停止",
     "save": "保存",
     "delete": "削除",

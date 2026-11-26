@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const api = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
@@ -151,6 +152,35 @@ describe("LibraryPage", () => {
     fireEvent.change(screen.getByTestId("reflib-filter"), { target: { value: "sales" } });
     expect(await screen.findByTestId("reflib-row-3")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId("reflib-row-2")).toBeNull());
+  });
+
+  it("finds each document by every text its row shows", async () => {
+    api.fetchLibrary.mockResolvedValue([
+      URL_DOC,
+      {
+        ...PROPOSED,
+        index_status: "indexing",
+        index_done: 3,
+        index_total: 9,
+        needs_reembedding: true,
+      },
+    ]);
+    render(<LibraryPage />);
+    await screen.findByTestId("reflib-row-2");
+    await expectFilterFindsEveryCell(screen.getByTestId("reflib-filter"), () =>
+      screen.getByTestId("reflib-table"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<LibraryPage />);
+    await screen.findByTestId("reflib-row-3");
+    fireEvent.change(screen.getByTestId("reflib-filter"), {
+      target: { value: "no-such-document" },
+    });
+    expect(await screen.findByTestId("reflib-empty")).toHaveTextContent(
+      "No documents match the filter.",
+    );
   });
 
   it("shows only what reading needs to a role without the library-editing right", async () => {

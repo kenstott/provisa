@@ -70,6 +70,7 @@
     "outsideTitle": "Assignments outside the allowed domains",
     "outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Template"
+    "templateSection": "Template",
+    "noMatch": "No tags match the filter"
   }
 }

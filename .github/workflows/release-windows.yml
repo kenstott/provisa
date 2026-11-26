@@ -86,6 +86,12 @@ jobs:
         with:
           python: python
 
+      # build-sfx.ps1's runtime wheels are uv.lock's set, exported by uv.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh
         env:

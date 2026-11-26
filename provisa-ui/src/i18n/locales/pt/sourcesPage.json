@@ -29,6 +29,7 @@
     "cacheOn": "ativado",
     "cacheOff": "desativado",
     "empty": "Nenhuma fonte encontrada.",
+    "noMatch": "Nenhuma fonte corresponde ao filtro.",
     "discover": "Descobrir",
     "mapTable": "Mapear tabela",
     "refreshSchema": "Atualizar esquema",
