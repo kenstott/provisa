@@ -18,6 +18,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { MutationResult, Source } from "../../types/admin";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
@@ -161,6 +162,36 @@ describe("the Sources list's search", () => {
     await waitFor(() => expect(screen.queryByTestId("sources-row-shop-api")).toBeNull());
     expect(screen.getByTestId("sources-row-sales-pg")).toBeInTheDocument();
     expect(screen.getByTestId("sources-row-events")).toBeInTheDocument();
+  });
+
+  it("finds each source by every text its row shows", async () => {
+    SOURCES = [
+      source({ cacheTtl: 120 }),
+      source({
+        id: "events",
+        type: "kafka",
+        host: "broker",
+        port: 9092,
+        database: "stream",
+        cacheEnabled: false,
+        withdrawn: true,
+        gqlNamingConvention: "snake_case",
+      }),
+    ];
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("sources-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-source" } });
+    expect(await screen.findByTestId("sources-empty")).toHaveTextContent(
+      "No sources match the filter.",
+    );
   });
 });
 
