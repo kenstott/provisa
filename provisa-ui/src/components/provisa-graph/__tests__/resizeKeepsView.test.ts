@@ -21,6 +21,7 @@ import {
   fitClear,
   fitWhole,
   followResize,
+  zoomAbout,
   scrollBy,
   viewMode,
   zoomAboutCentre,
@@ -38,8 +39,10 @@ const bb = (x1: number, y1: number, x2: number, y2: number): BB => ({
 
 /** A canvas with no legend, its size changeable, drawing ``model`` as cytoscape renders it at its
  * zoom and pan. */
-function stage(width: number, height: number, model: BB) {
+function stage(width: number, height: number, model: BB, least = 0) {
   const size = { width, height };
+  // The instance's least zoom: like cytoscape, it holds every zoom to it.
+  let minZoom = least;
   const box = document.createElement("div");
   Object.defineProperty(box, "clientWidth", { get: () => size.width });
   Object.defineProperty(box, "clientHeight", { get: () => size.height });
@@ -55,7 +58,12 @@ function stage(width: number, height: number, model: BB) {
     fit: () => {},
     zoom: (z?: number) => {
       if (z === undefined) return zoom;
-      zoom = z;
+      zoom = Math.max(z, minZoom);
+      return undefined;
+    },
+    minZoom: (z?: number) => {
+      if (z === undefined) return minZoom;
+      minZoom = z;
       return undefined;
     },
     pan: (p?: { x: number; y: number }) => {
@@ -145,5 +153,41 @@ describe("a resize keeps the view's mode (REQ-2277)", () => {
     fitWhole(g.cy, PAD);
     expect(g.resize(700, 600)).toBe("whole");
     expect(inside(g.whole(), 700, 600, PAD)).toBe(true);
+  });
+});
+
+// The lead's decision (REQ-2239, FIT MEANS THE WHOLE IMAGE): the least zoom (0.1 on the ERD) bounds
+// the reader's own zooming only. A model too big for its canvas at that zoom was fitted at it,
+// cut off at the canvas's edges, and a resize kept it so.
+describe("a fit shows the whole model below the instance's least zoom", () => {
+  // 20000 model px across: whole in a 900 px canvas only at about 0.044.
+  const HUGE = bb(0, 0, 20000, 4000);
+  const LEAST = 0.1;
+
+  it("the fit control zooms below the least zoom to show the whole model", () => {
+    const g = stage(900, 800, HUGE, LEAST);
+    fitWhole(g.cy, PAD);
+    expect(g.cy.zoom()).toBeLessThan(LEAST);
+    expect(inside(g.whole(), 900, 800, PAD)).toBe(true);
+  });
+
+  it("fitted whole, a narrower canvas fits it whole again, lower still", () => {
+    const g = stage(1900, 800, HUGE, LEAST);
+    fitWhole(g.cy, PAD);
+    expect(g.resize(700, 800)).toBe("whole");
+    expect(inside(g.whole(), 700, 800, PAD)).toBe(true);
+  });
+
+  it("the reader zooms out no further than the least zoom, or the whole fit when that is lower", () => {
+    const g = stage(900, 800, HUGE, LEAST);
+    fitWhole(g.cy, PAD);
+    const fitted = g.cy.zoom();
+    zoomAboutCentre(g.cy, 0.5);
+    expect(g.cy.zoom()).toBeCloseTo(fitted, 9);
+    // A model that fits above the least zoom: the reader is held to it.
+    const small = stage(900, 800, bb(0, 0, 1600, 600), LEAST);
+    fitWhole(small.cy, PAD);
+    zoomAbout(small.cy, 0.001, { x: 0, y: 0 });
+    expect(small.cy.zoom()).toBe(LEAST);
   });
 });

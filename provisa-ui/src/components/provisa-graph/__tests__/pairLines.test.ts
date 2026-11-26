@@ -23,6 +23,9 @@ import { graphElements, type GraphSpec } from "../model";
 import { bendPairs, labelSize, PAIR_BEND } from "../pairs";
 import { graphStylesheet } from "../stylesheet";
 import { applyTaxiLanes } from "../taxi";
+import { runLanes, type LanesOptions } from "../lanes";
+import type { Core } from "../core";
+import type { CyCanvas } from "../cyCanvas";
 import { graphTokens } from "../tokens";
 
 type Pt = { x: number; y: number };
@@ -179,5 +182,67 @@ describe("two lines in opposite directions between one pair of nodes (REQ-2277)"
     const cy = drawn(spec, { a: { x: 0, y: 0 }, b: { x: 0, y: 400 } }, "bezier");
     const [e1] = lines(cy);
     expect(String(e1.style("curve-style"))).toBe("bezier");
+  });
+});
+
+// The lead's decision (identical behaviour on every graph surface): the lanes preset bends the lines
+// of one pair apart and keeps their labels clear, as the ERD does. A table and its column joined
+// both ways ran on one straight line between the lanes, one label on the other.
+describe("the lanes preset: two lines between one pair of nodes (REQ-2277)", () => {
+  const headless: CyCanvas = {
+    container: null as unknown as HTMLDivElement,
+    run(layout, then) {
+      layout.one("layoutstop", () => then?.());
+      layout.run();
+    },
+    end(cy) {
+      cy.destroy();
+    },
+  };
+  const SPEC: GraphSpec = {
+    nodes: [
+      { id: "t", type: "table", name: "orders", lane: "table" },
+      { id: "c", type: "column", name: "customer_id", lane: "column" },
+      { id: "g1", type: "term", name: "Customer", lane: "term" },
+      { id: "g2", type: "term", name: "Buyer", lane: "term" },
+    ],
+    edges: [
+      { id: "has", source: "t", target: "c", label: "HAS_COLUMN" },
+      { id: "of", source: "c", target: "t", label: "COLUMN_OF" },
+      { id: "means", source: "c", target: "g1", label: "MEANS" },
+      { id: "broader", source: "g1", target: "g2", label: "BROADER" },
+      { id: "narrower", source: "g2", target: "g1", label: "NARROWER" },
+    ],
+  };
+  const OPTS: LanesOptions = {
+    lanes: ["table", "column", "term"].map((id) => ({ id, title: id })),
+    beside: "term",
+  };
+
+  async function laid(): Promise<CyInstance> {
+    const cy = cytoscape({
+      headless: true,
+      styleEnabled: true,
+      elements: graphElements(SPEC, (t) => t, "all"),
+      style: graphStylesheet(graphTokens(false)),
+    } as unknown as Parameters<typeof cytoscape>[0]) as unknown as Core;
+    await new Promise<void>((done) => runLanes(cy, headless, OPTS, [], done));
+    return cy as unknown as CyInstance;
+  }
+  const edge = (cy: CyInstance, id: string) => cy.getElementById(id) as unknown as CyElement;
+
+  it("the two lines between the lanes bend apart and both labels are drawn clear", async () => {
+    const cy = await laid();
+    const a = edge(cy, "has");
+    const b = edge(cy, "of");
+    expect(apart(path(a).pts, path(b).pts)).toBeGreaterThanOrEqual(PAIR_BEND - 1e-6);
+    expect(overlaps(labelBox(a), labelBox(b))).toBe(false);
+  });
+
+  it("the lines beside the term lane keep their own tracks; a line alone keeps its curve", async () => {
+    const cy = await laid();
+    expect(String(edge(cy, "broader").style("curve-style"))).toBe("segments");
+    expect(String(edge(cy, "narrower").style("curve-style"))).toBe("segments");
+    expect(String(edge(cy, "means").style("curve-style"))).toBe("bezier");
   });
 });

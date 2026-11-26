@@ -63,6 +63,75 @@ class ClickHouseServerTooOld(RuntimeError):  # REQ-2194
         )
 
 
+def _bare_type(ch_type: str) -> str:
+    """A ClickHouse column type without its Nullable / LowCardinality wrappers."""
+    t = ch_type.strip()
+    for wrapper in ("Nullable(", "LowCardinality("):
+        while t.startswith(wrapper) and t.endswith(")"):
+            t = t[len(wrapper) : -1].strip()
+    return t
+
+
+def _encoded_temporals(
+    client: Any, sql: str, parameters: dict[str, Any] | None, schema: Any
+) -> dict[str, Any]:  # REQ-2194
+    """The result columns ClickHouse's Arrow output writes as integers that are temporals, by
+    name, each with the Arrow temporal it encodes: ``DateTime`` is written as uint32 epoch
+    seconds and ``Date`` as uint16 epoch days (no output setting changes this; ``DateTime64``
+    alone arrives as an Arrow timestamp). Which columns those are is the server's own answer
+    (``DESCRIBE (query)``), asked only when the result holds a uint32 or uint16 column."""
+    import pyarrow as pa
+
+    if not any(pa.types.is_uint32(f.type) or pa.types.is_uint16(f.type) for f in schema):
+        return {}
+    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
+    found: dict[str, Any] = {}
+    for row in described.result_rows:
+        name, ch_type = row[0], _bare_type(row[1])
+        field = schema.field(name) if name in schema.names else None
+        if field is None:
+            continue
+        if (ch_type == "DateTime" or ch_type.startswith("DateTime(")) and pa.types.is_uint32(
+            field.type
+        ):
+            found[name] = pa.timestamp("s")
+        elif ch_type == "Date" and pa.types.is_uint16(field.type):
+            found[name] = pa.date32()
+    return found
+
+
+def _as_temporals(data: Any, temporals: dict[str, Any]) -> Any:  # REQ-2194
+    """``data`` (a record batch or table) with each column of ``temporals`` as the Arrow temporal
+    its integers encode: naive UTC ``timestamp[s]`` from epoch seconds, ``date32`` from epoch
+    days."""
+    import pyarrow as pa
+
+    if not temporals:
+        return data
+    columns = list(data.columns)
+    fields = list(data.schema)
+    for i, field in enumerate(fields):
+        target = temporals.get(field.name)
+        if target is None:
+            continue
+        via = pa.int64() if pa.types.is_timestamp(target) else pa.int32()
+        columns[i] = columns[i].cast(via).cast(target)
+        fields[i] = field.with_type(target)
+    schema = pa.schema(fields, metadata=data.schema.metadata)
+    if isinstance(data, pa.RecordBatch):
+        return pa.RecordBatch.from_arrays(columns, schema=schema)
+    return pa.Table.from_arrays(columns, schema=schema)
+
+
+def _schema_as_temporals(schema: Any, temporals: dict[str, Any]) -> Any:
+    import pyarrow as pa
+
+    return pa.schema(
+        [f.with_type(temporals[f.name]) if f.name in temporals else f for f in schema],
+        metadata=schema.metadata,
+    )
+
+
 def require_arrow_server(client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
     """Refuse ``client`` by name when its server is older than :data:`MINIMUM_SERVER_MAJOR`.
     clickhouse-connect reads the server's version as the client opens (``server_version``)."""
@@ -232,8 +301,11 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
                 table: pa.Table = client.query_arrow(
                     sql, parameters=params, use_strings=True, settings={"query_id": query_id}
                 )
-        batches = [bytes_where_not_text(b) for b in table.to_batches()]
-        return pa.Table.from_batches(batches, schema=batches[0].schema) if batches else table
+                temporals = _encoded_temporals(client, sql, params, table.schema)
+        batches = [bytes_where_not_text(_as_temporals(b, temporals)) for b in table.to_batches()]
+        if batches:
+            return pa.Table.from_batches(batches, schema=batches[0].schema)
+        return _as_temporals(table, temporals)
 
     def iter_arrow_batches(self, sql: str) -> Iterator[Any]:
         """Run fully formed ``sql`` and yield its result as Arrow record batches while the
@@ -250,12 +322,13 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             with client.query_arrow_stream(
                 sql, use_strings=True, settings={"query_id": query_id}
             ) as stream:
+                temporals = _encoded_temporals(client, sql, None, stream.gen.schema)
                 for chunk in stream:
                     if isinstance(chunk, pa.Table):
                         for batch in chunk.to_batches():
-                            yield bytes_where_not_text(batch)
+                            yield bytes_where_not_text(_as_temporals(batch, temporals))
                     else:
-                        yield bytes_where_not_text(chunk)
+                        yield bytes_where_not_text(_as_temporals(chunk, temporals))
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
@@ -289,6 +362,7 @@ class _ArrowStreamCursor:
         self._client = client
         self._context: Any = None
         self._batches: Iterator[Any] | None = None
+        self._temporals: dict[str, Any] = {}
         self.schema: Any = None
         self.description: list[tuple[str]] | None = None
 
@@ -299,7 +373,8 @@ class _ArrowStreamCursor:
         stream = self._context.__enter__()
         # clickhouse-connect's Arrow stream is pyarrow's stream reader over the response
         # (``gen``), which has read the schema message as it opened.
-        self.schema = stream.gen.schema
+        self._temporals = _encoded_temporals(self._client, sql, parameters, stream.gen.schema)
+        self.schema = _schema_as_temporals(stream.gen.schema, self._temporals)
         self.description = [(name,) for name in self.schema.names]
         self._batches = iter(stream)
 
@@ -315,7 +390,7 @@ class _ArrowStreamCursor:
         # Local import: clickhouse_runtime imports result_names from clickhouse.py at module level.
         from provisa.federation.clickhouse_runtime import bytes_where_not_text
 
-        return bytes_where_not_text(batch)
+        return bytes_where_not_text(_as_temporals(batch, self._temporals))
 
     def close(self) -> None:
         context, self._context = self._context, None

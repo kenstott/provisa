@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from provisa.codesource.manifest import ManifestRefused, manifest_json
-from provisa.golang.reader import ensure_reader, go_environment, read_code
+from provisa.golang.reader import ensure_reader, go_environment, read_code, services_go_mod
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
 
 REPO = Path(__file__).resolve().parents[3]
@@ -49,9 +49,14 @@ class GoToolchain:
         return cls(go, ensure_reader(go, RUNTIMES["go"].version, cache, PROXY), cache)
 
     def build(self, module: Path) -> subprocess.CompletedProcess[str]:
-        """``go build ./...`` of the module, offline, as an author's editor or CI would run it."""
+        """``go build ./...`` of the module, offline, as Provisa builds it: with Provisa's services
+        module (provisa_services, whose ReadContext a doc-comment spelling takes) provided."""
+        modfile = services_go_mod(module, module.parent / f".{module.name}-build")
         env = go_environment(
-            self.go, gocache=self.cache / "gocache", gomodcache=self.cache / "gomod"
+            self.go,
+            gocache=self.cache / "gocache",
+            gomodcache=self.cache / "gomod",
+            GOFLAGS=f"-mod=readonly -modfile={modfile}",
         )
         return subprocess.run(  # nosec B603 - the pinned toolchain, no shell
             [str(self.go), "build", "./..."], capture_output=True, text=True, env=env, cwd=module
