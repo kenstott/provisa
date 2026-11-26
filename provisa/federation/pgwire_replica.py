@@ -396,7 +396,8 @@ def _files_operand(source: Any) -> dict:
         operand["glob"] = source_glob
     # REQ-2280: a onedrive:// or gdrive:// directory is read live by the adapter's drive storage
     # provider, signed in with the source's own credentials; its directory is within the drive.
-    from provisa.file_source.cloud_drive import drive_adapter_operand, drive_storage_options
+    from provisa.file_source.cloud_drive import drive_storage_options
+    from provisa.file_source.drive_operand import drive_adapter_operand
 
     drive = drive_adapter_operand(source, directory)
     if drive is not None:

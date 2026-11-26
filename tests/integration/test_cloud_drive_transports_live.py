@@ -76,6 +76,16 @@ def _require(*names: str) -> dict[str, str]:
     return {n: os.environ[n] for n in names}
 
 
+def _ok(resp: httpx.Response) -> None:
+    """Fails with the API's own error body (a Graph 404 names whether the user or the user's
+    drive is missing), which raise_for_status leaves out."""
+    if resp.is_error:
+        pytest.fail(
+            f"{resp.request.method} {resp.request.url}: {resp.status_code} {resp.text}",
+            pytrace=False,
+        )
+
+
 @pytest.fixture(autouse=True)
 def _org():
     token = set_current_org("req2280-live")  # tokens are held per organization
@@ -112,6 +122,9 @@ def _engine_reads_as_the_file_does(source: Source) -> None:
 # --- OneDrive ----------------------------------------------------------------------------------
 
 
+# requires_warehouse keeps it out of the stack lanes (core leaves out only requires_warehouse);
+# requires_microsoft_365 puts it in the microsoft_365 lane, which the warehouse lane leaves out.
+@pytest.mark.requires_warehouse
 @pytest.mark.requires_microsoft_365
 def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
     env = _require("M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_TEST_MAILBOXES")
@@ -130,7 +143,7 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
 
     def call(method: str, url: str, **kw) -> httpx.Response:
         resp = client.request(method, url, headers={"Authorization": f"Bearer {token()}"}, **kw)
-        resp.raise_for_status()
+        _ok(resp)
         return resp
 
     folder = call(
@@ -203,7 +216,7 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
 
     def call(method: str, url: str, **kw) -> httpx.Response:
         resp = client.request(method, url, headers={"Authorization": f"Bearer {token()}"}, **kw)
-        resp.raise_for_status()
+        _ok(resp)
         return resp
 
     folder = call(

@@ -591,17 +591,20 @@ class TrinoFilesConnector(_TrinoConnector):
                 f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
             )
         glob = resolve_secrets(source.path)
-        from provisa.file_source.drive_schemes import scheme_of
+        import json
 
-        drive = scheme_of(glob)
+        from provisa.file_source.drive_operand import drive_adapter_operand
+
+        # REQ-2280: a onedrive:// or gdrive:// glob is read live by the adapter's drive storage
+        # provider. The trino-file plugin (calcite engine-v0.130.0) takes the adapter's
+        # storageConfig as its ``storage-config`` property (the same keys the pgwire bundle is
+        # given) and reads the glob past its scheme within the drive, so the drive's owner (or root
+        # folder id) leaves the glob for the storage config.
+        drive = drive_adapter_operand(source, glob)
+        storage_config = None
         if drive is not None:
-            # REQ-2280: the trino-file plugin derives the adapter's storageType from the glob's
-            # scheme but takes no storageConfig for it (calcite engine-v0.129.0's FileConfig has
-            # aws.* and sftp.* only), so a drive's sign-in cannot reach the adapter on Trino.
-            raise ValueError(
-                f"Source {source.id!r}: Trino cannot read {drive}:// files: its trino-file plugin "
-                f"takes no {drive} sign-in (storageConfig)"
-            )
+            glob = f"{drive['storageType']}://{drive['directory']}"
+            storage_config = json.dumps(drive["storageConfig"], sort_keys=True)
         details = {
             "glob": glob,
             "recursive": "true",
@@ -609,10 +612,10 @@ class TrinoFilesConnector(_TrinoConnector):
             "execution-engine": "DUCKDB",
             "case-insensitive-name-matching": "true",
         }
+        if storage_config is not None:
+            details["storage-config"] = storage_config
         # REQ-1960/REQ-1730: the same crawl operand the pgwire bundle is given, as the catalog's
         # one JSON-valued ``crawl`` property; the glob is then the directory its files land in.
-        import json
-
         from provisa.file_source.crawl import crawl_operand
 
         crawl = crawl_operand(source.id, source.mapping)

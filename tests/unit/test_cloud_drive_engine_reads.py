@@ -26,7 +26,7 @@ import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
-from provisa.file_source.cloud_drive import DriveCredentialsMissing, drive_adapter_operand
+from provisa.file_source.drive_operand import DriveCredentialsMissing, drive_adapter_operand
 
 pytestmark = pytest.mark.unit
 
@@ -188,19 +188,57 @@ def test_a_drive_glob_table_is_a_url_within_the_drive_matched_with_the_sign_in(m
 # --- Trino --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("drive", ["onedrive", "gdrive"])
-def test_trino_refuses_a_drive_path_by_name_its_plugin_takes_no_sign_in(drive):
+def _trino(source: Source) -> dict:
     from provisa.federation.trino_connectors import TrinoFilesConnector
 
+    return TrinoFilesConnector().details(source)
+
+
+def test_trino_reads_onedrive_with_the_same_storage_config_as_the_pgwire_bundle():
+    import json
+
     source = _files(
-        f"{drive}://{OWNER if drive == 'onedrive' else FOLDER}/R/*.csv",
+        f"onedrive://{OWNER}/Reports/2026/*.csv",
         database="tid",
         username="cid",
         password="sec",
-        mapping={"gdrive_auth": "service_account"} if drive == "gdrive" else {},
     )
-    with pytest.raises(ValueError, match=f"Trino cannot read {drive}:// files"):
-        TrinoFilesConnector().details(source)
+    details = _trino(source)
+    # The trino-file plugin (calcite engine-v0.130.0, storage-config) strips the scheme and reads
+    # the rest within the drive, so the owner moves from the path into the storage config.
+    assert details["glob"] == "onedrive://Reports/2026/*.csv"
+    assert json.loads(details["storage-config"]) == _operand(source)["storageConfig"]
+    assert json.loads(details["storage-config"]) == {
+        "userPrincipalName": OWNER,
+        "tenantId": "tid",
+        "clientId": "cid",
+        "clientSecret": "sec",
+    }
+
+
+def test_trino_reads_gdrive_rooted_at_its_folder_id():
+    import json
+
+    source = _files(
+        f"gdrive://{FOLDER}/Sales/*.xlsx",
+        password=KEY,
+        mapping={"gdrive_auth": "service_account"},
+    )
+    details = _trino(source)
+    assert details["glob"] == "gdrive://Sales/*.xlsx"
+    assert json.loads(details["storage-config"]) == {"folderId": FOLDER, "serviceAccountKey": KEY}
+    assert json.loads(details["storage-config"]) == _operand(source)["storageConfig"]
+
+
+def test_trino_drive_source_without_its_sign_in_is_refused_by_name():
+    with pytest.raises(DriveCredentialsMissing, match="needs password"):
+        _trino(_files(f"onedrive://{OWNER}/R/*.csv", database="tid", username="cid"))
+
+
+def test_trino_local_glob_takes_no_storage_config():
+    details = _trino(_files("/data/files/*.csv"))
+    assert details["glob"] == "/data/files/*.csv"
+    assert "storage-config" not in details
 
 
 # --- the callers that list a drive source's files ------------------------------------------------
@@ -356,3 +394,25 @@ def test_the_crawl_preview_signs_in_with_the_fields_given(monkeypatch):
     assert resp.status_code == 200, resp.text
     assert sorted(e["name"] for e in resp.json()["discovered"]) == ["orders_01", "orders_02"]
     assert (seen["source"]["database"], seen["source"]["password"]) == ("tid", "sec")
+
+
+# --- the pins the drive reads need ---------------------------------------------------------------
+
+
+def test_trino_file_plugin_is_the_first_release_that_takes_storage_config():
+    import tests.trino_plugins as pins
+
+    # calcite engine-v0.130.0 (PR #1173) added the trino-file storage-config property.
+    assert pins.plugin_version("trino-file") == "0.130.0"
+
+
+def test_pgwire_bundles_and_govdata_record_are_at_engine_v0_130_0():
+    import json
+    from pathlib import Path
+
+    import provisa.govdata as govdata
+    from provisa.runtime_deps import pgwire_bundles
+
+    assert pgwire_bundles.RELEASE_TAG == "engine-v0.130.0"
+    record = json.loads((Path(govdata.__file__).parent / "bundle_schemas.json").read_text())
+    assert record["release"] == pgwire_bundles.RELEASE_TAG

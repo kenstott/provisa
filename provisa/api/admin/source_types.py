@@ -49,7 +49,7 @@ from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
 from provisa.core.paging import PaginationType
 from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
-from provisa.file_source.cloud_drive import GDRIVE_AUTH_KINDS, GDRIVE_SERVICE_ACCOUNT
+from provisa.file_source.drive_operand import GDRIVE_AUTH_KINDS, GDRIVE_SERVICE_ACCOUNT
 from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
 from provisa.profiler.source import DRIFT_SEASONS
 from provisa.quickbooks.settings import ENVIRONMENTS as QUICKBOOKS_ENVIRONMENTS

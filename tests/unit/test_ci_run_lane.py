@@ -753,6 +753,28 @@ def test_the_microsoft_365_lane_selects_every_live_m365_test_and_the_warehouse_l
     assert not set(_M365_SECRETS) & set(_lanes_workflow()["jobs"]["warehouse"]["env"])
 
 
+def test_the_live_drive_tests_run_only_in_the_lane_holding_their_credentials():
+    """REQ-2280: the OneDrive test signs in to the M365 tenant, so only the microsoft_365 lane
+    selects it; the Google Drive test only the warehouse lane. Run 45862171059: the OneDrive test,
+    marked requires_microsoft_365 alone, was selected by core too, whose job has no M365 secret."""
+    run_lane = _runner()
+    path = "tests/integration/test_cloud_drive_transports_live.py"
+    want = {
+        f"{path}::test_onedrive_folder_csv_reads_as_the_file_does": ["microsoft_365"],
+        f"{path}::test_gdrive_folder_csv_reads_as_the_file_does": ["warehouse"],
+    }
+    tests = run_lane.test_markers(path)
+    assert set(tests) == set(want)
+    for test, variants in tests.items():
+        for marks in variants:
+            lanes = [
+                lane
+                for lane in run_lane.LANES
+                if run_lane._in_lane(lane, path) and run_lane.selects(lane, marks)
+            ]
+            assert lanes == want[test], (test, lanes)
+
+
 def test_a_targeted_m365_run_is_routed_to_its_lane_only_when_the_dispatch_includes_it(
     monkeypatch, capsys
 ):

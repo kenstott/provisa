@@ -25,7 +25,7 @@ other.
 
 What the adapter returns
 ------------------------
-The source's pgwire server is the pinned release's (engine-v0.129.0). The assertions are what the
+The source's pgwire server is the pinned release's (engine-v0.130.0). The assertions are what the
 adapter answers today, to be tightened when a later release fills it in. The last two points were
 seen on engine-v0.108.0's server and are still avoided here:
 

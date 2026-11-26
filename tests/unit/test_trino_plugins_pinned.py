@@ -267,13 +267,13 @@ def test_every_pinned_plugin_has_a_recorded_sum():
 
 
 def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
-    # REQ-1946, REQ-1947, REQ-1960: the Salesforce, cloud inventory and file plugins come from the
-    # first release that has what Provisa needs of them; every other plugin stays at the one pinned
+    # REQ-1946, REQ-1947, REQ-2280: the Salesforce, cloud inventory and file plugins come from the
+    # first release that has what Provisa needs of them (file: storage-config for drive globs); every other plugin stays at the one pinned
     # version.
     assert pins._TRINO_PLUGIN_VERSIONS == {
         "trino-salesforce": "0.108.0",
         "trino-cloudops": "0.108.0",
-        "trino-file": "0.109.0",
+        "trino-file": "0.130.0",
     }
     assert set(pins._TRINO_PLUGIN_VERSIONS) <= set(pins._TRINO_PLUGINS)
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
@@ -298,8 +298,8 @@ def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
         f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar.part",
         f"{base}/trino-cloudops/0.108.0/trino-cloudops-0.108.0.jar"
         f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar.part",
-        f"{base}/trino-file/0.109.0/trino-file-0.109.0.jar"
-        f" -> {tmp_path}/trino-file/trino-file-0.109.0.jar.part",
+        f"{base}/trino-file/0.130.0/trino-file-0.130.0.jar"
+        f" -> {tmp_path}/trino-file/trino-file-0.130.0.jar.part",
     ]
 
 

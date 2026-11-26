@@ -32,7 +32,7 @@ filesystem is built with them for the one call, never cached across sources.
 from __future__ import annotations
 
 import io
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any, cast
 from urllib.parse import quote
@@ -41,6 +41,11 @@ import fsspec
 import httpx
 from fsspec.spec import AbstractFileSystem
 
+from provisa.file_source.drive_operand import (
+    _field,
+    gdrive_sign_in,
+    onedrive_sign_in,
+)
 from provisa.file_source.drive_schemes import GDRIVE, ONEDRIVE, scheme_of
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -50,21 +55,12 @@ DRIVE_API = "https://www.googleapis.com/drive/v3"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 
-#: How a gdrive:// source signs in (its ``mapping.gdrive_auth``).
-GDRIVE_SERVICE_ACCOUNT = "service_account"
-GDRIVE_OAUTH = "oauth"
-GDRIVE_AUTH_KINDS: tuple[str, ...] = (GDRIVE_SERVICE_ACCOUNT, GDRIVE_OAUTH)
-
 _FOLDER_MIME = "application/vnd.google-apps.folder"
 _GOOGLE_NATIVE = "application/vnd.google-apps."
 _DRIVE_FIELDS = "id,name,mimeType,size,modifiedTime"
 _TIMEOUT = 30.0
 
 Token = Callable[[], str]
-
-
-class DriveCredentialsMissing(ValueError):
-    """A drive path whose source carries no credential the transport signs in with."""
 
 
 class DriveNameAmbiguous(ValueError):
@@ -286,63 +282,11 @@ def register() -> None:
 register()
 
 
-def _field(source: Any, name: str) -> Any:
-    """A source's field, from a Source model or a sources row (a dict)."""
-    return source.get(name) if isinstance(source, Mapping) else getattr(source, name, None)
-
-
-def _required(source: Any, field: str, what: str, scheme: str) -> str:
-    from provisa.core.secrets import resolve_secrets
-
-    value = _field(source, field)
-    if not value:
-        raise DriveCredentialsMissing(
-            f"files source {_field(source, 'id')!r}: a {scheme}:// path needs {field} ({what})"
-        )
-    return resolve_secrets(value, credential=field == "password")
-
-
-def _onedrive_sign_in(source: Any) -> dict[str, str]:
-    """A onedrive:// source's app registration: its tenant, client id and client secret."""
-    return {
-        "tenantId": _required(source, "database", "the tenant id", ONEDRIVE),
-        "clientId": _required(source, "username", "the client id", ONEDRIVE),
-        "clientSecret": _required(source, "password", "the client secret", ONEDRIVE),
-    }
-
-
-def _gdrive_sign_in(source: Any) -> dict[str, str]:
-    """A gdrive:// source's sign-in, by its ``mapping.gdrive_auth``: a service account key
-    (``serviceAccountKey``), or an OAuth client and its refresh token."""
-    from provisa.core.secrets import resolve_secrets
-
-    source_id = _field(source, "id")
-    mapping = _field(source, "mapping")
-    if not isinstance(mapping, Mapping) or mapping.get("gdrive_auth") not in GDRIVE_AUTH_KINDS:
-        raise DriveCredentialsMissing(
-            f"files source {source_id!r}: a gdrive:// path needs mapping.gdrive_auth, one of "
-            f"{list(GDRIVE_AUTH_KINDS)}"
-        )
-    if mapping["gdrive_auth"] == GDRIVE_SERVICE_ACCOUNT:
-        key = _required(source, "password", "the service account key, JSON", GDRIVE)
-        return {"serviceAccountKey": key}
-    refresh_token = mapping.get("refresh_token")
-    if not refresh_token:
-        raise DriveCredentialsMissing(
-            f"files source {source_id!r}: gdrive_auth=oauth needs mapping.refresh_token"
-        )
-    return {
-        "clientId": _required(source, "username", "the OAuth client id", GDRIVE),
-        "clientSecret": _required(source, "password", "the OAuth client secret", GDRIVE),
-        "refreshToken": resolve_secrets(str(refresh_token), credential=True),
-    }
-
-
 def _onedrive_token(source: Any) -> Token:
     from provisa.api_source.caller import _fetch_oauth2_token
     from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
 
-    sign_in = _onedrive_sign_in(source)
+    sign_in = onedrive_sign_in(source)
     auth = ApiAuthOAuth2ClientCredentials(
         client_id=sign_in["clientId"],
         client_secret=sign_in["clientSecret"],
@@ -356,7 +300,7 @@ def _gdrive_token(source: Any) -> Token:
     from provisa.api_source.oauth_grants import access_token, service_account_token
     from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
 
-    sign_in = _gdrive_sign_in(source)
+    sign_in = gdrive_sign_in(source)
     if "serviceAccountKey" in sign_in:
         key = sign_in["serviceAccountKey"]
         return lambda: service_account_token(key, [DRIVE_READONLY_SCOPE])
@@ -383,34 +327,3 @@ def drive_storage_options(source: Any) -> dict[str, Any]:
     token = _onedrive_token(source) if scheme == ONEDRIVE else _gdrive_token(source)
     client = httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks())
     return {"token": token, "client": client}
-
-
-def drive_adapter_operand(source: Any, directory: str) -> dict[str, Any] | None:
-    """How the Calcite file adapter reads ``directory`` (a files source's path before its glob,
-    secrets resolved) live from its drive: the adapter's ``storageType``, its ``storageConfig``
-    (the drive and the source's sign-in, secrets resolved) and the ``directory`` within the
-    drive. None for a directory in no drive.
-
-    - ``onedrive://<user>/<folder>``: storage ``onedrive``, the drive of ``userPrincipalName``
-      ``<user>``; ``<folder>`` is relative to the drive's root.
-    - ``gdrive://<folder id>/<folder>``: storage ``gdrive``, rooted at ``folderId``
-      ``<folder id>``; ``<folder>`` is found by name below it.
-    """
-    scheme = scheme_of(directory)
-    if scheme is None:
-        return None
-    root, _, rest = directory.split("://", 1)[1].partition("/")
-    if not root:
-        raise ValueError(
-            f"files source {_field(source, 'id')!r}: {directory!r} names no "
-            + (
-                "drive owner: onedrive://<user>/<folder>"
-                if scheme == ONEDRIVE
-                else "folder: gdrive://<folder id>/<folder>"
-            )
-        )
-    if scheme == ONEDRIVE:
-        config: dict[str, Any] = {"userPrincipalName": root, **_onedrive_sign_in(source)}
-    else:
-        config = {"folderId": root, **_gdrive_sign_in(source)}
-    return {"storageType": scheme, "storageConfig": config, "directory": rest.strip("/")}

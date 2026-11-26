@@ -50,18 +50,19 @@ _TRINO_PLUGINS = (
 # CONNECTOR_RELEASE, for the same reason, and each entry goes when _TRINO_PLUGIN_VERSION moves.
 #   trino-salesforce: 0.108.0 is the first release that has it (REQ-1946).
 #   trino-cloudops: 0.108.0 is the first whose plugin takes the `schema` property (REQ-1947).
-#   trino-file: 0.109.0 is the first whose plugin takes the `crawl` property (REQ-1960).
+#   trino-file: 0.130.0 is the first whose plugin takes the `storage-config` property, which
+#   onedrive:// and gdrive:// globs need (REQ-2280); 0.109.0 was the first with `crawl` (REQ-1960).
 _TRINO_PLUGIN_VERSIONS = {
     "trino-salesforce": "0.108.0",
     "trino-cloudops": "0.108.0",
-    "trino-file": "0.109.0",
+    "trino-file": "0.130.0",
 }
 # The sha256 of each pinned jar, taken from the Maven Central artifact (its published .sha1
 # matched). A repin changes the version and the sum together.
 _TRINO_PLUGIN_SHA256 = {
     "trino-sharepoint": "8c33f0b22a99baceb4b57a6121cc149d82f310c4589b63a516339dd2a2b66974",
     "trino-splunk": "074f0e2818dcb5eff03eca1ad19b02a03312bebb4bf1693122453fbd4b232adf",
-    "trino-file": "20cfe75f88223c698e8c7eeb2cd521c0ceed810d0c8571cb3ddb43479dfcb3a6",
+    "trino-file": "66c4bfae8defbea6b35a1e743d36f9563a59755a0deba57b3849c204402b4d29",
     "trino-salesforce": "f75bbd16ce56c6ff766a34582aa745b99ed44cb150d91bf485cd2d145eb65d65",
     "trino-cloudops": "e4b421d0bacdfbb48cf4c5fc12cac514d1b8fe890f03c14ddc2a58c8190f77d2",
 }

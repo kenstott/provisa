@@ -26,7 +26,6 @@ import pytest
 
 from provisa.file_source import cloud_drive
 from provisa.file_source.cloud_drive import (
-    DriveCredentialsMissing,
     DriveFileNotReadable,
     DriveNameAmbiguous,
     GoogleDriveFileSystem,
@@ -34,6 +33,7 @@ from provisa.file_source.cloud_drive import (
     drive_storage_options,
 )
 from provisa.file_source.crawler import crawl_directory
+from provisa.file_source.drive_operand import DriveCredentialsMissing
 from provisa.file_source.drive_schemes import scheme_of
 from provisa.file_source.files_glob import (
     columns_of_file,
