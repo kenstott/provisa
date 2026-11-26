@@ -13,7 +13,8 @@ import { ActionIcon, Divider, Group, Text } from "@mantine/core";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ZoomInIcon, ZoomOutIcon, FitScreenIcon } from "../GraphIcons";
-import type { LayoutMode } from "./canvas-types";
+import { FIT_MARGIN, type LayoutMode } from "./canvas-types";
+import { fitWhole, zoomAboutCentre } from "../../provisa-graph/viewport";
 import type { CyInstance } from "../cytoscape-types";
 import { Tip } from "../../Tip";
 import { setStored } from "../../../lib/browserStorage";
@@ -44,7 +45,14 @@ export function CanvasControls({
   nudgeTimerRef,
 }: CanvasControlsProps) {
   const { t } = useTranslation();
-  const fitView = () => cyRef.current?.fit(undefined, 40);
+  // REQ-2239: the fit control shows the whole graph; the zoom controls zoom about the centre, as
+  // the wheel does at the pointer, and make the view the reader's own (REQ-2277).
+  const fitView = () => {
+    if (cyRef.current) fitWhole(cyRef.current, FIT_MARGIN);
+  };
+  const zoomBy = (factor: number) => {
+    if (cyRef.current) zoomAboutCentre(cyRef.current, factor);
+  };
 
   const toggleLayoutLabel =
     layoutMode === "force"
@@ -65,7 +73,7 @@ export function CanvasControls({
           size="md"
           aria-label={t("canvasControls.zoomIn")}
           data-testid="canvas-zoom-in"
-          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)}
+          onClick={() => zoomBy(1.3)}
         >
           <ZoomInIcon size={15} />
         </ActionIcon>
@@ -76,7 +84,7 @@ export function CanvasControls({
           size="md"
           aria-label={t("canvasControls.zoomOut")}
           data-testid="canvas-zoom-out"
-          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)}
+          onClick={() => zoomBy(0.77)}
         >
           <ZoomOutIcon size={15} />
         </ActionIcon>

@@ -208,10 +208,12 @@ def test_a_non_literal_option_is_refused_by_name(toolchain, tmp_path):
 
 
 def test_a_key_the_registration_does_not_take_is_refused_by_name(toolchain, tmp_path):
-    body = ROWS + "provisa_sdk::table!(rows, loader = 100);\n"
+    body = (
+        "pub fn ticks() -> impl Iterator<Item = Row> {\n    std::iter::empty()\n}\n\n"
+        "provisa_sdk::stream!(ticks, loader = 100);\n"
+    )
     assert _refused(toolchain, tmp_path / "c", body) == (
-        "the declarations do not type-check: rows: provisa_sdk::table! takes no option loader: "
-        "a Rust source has no read context, so no @loader",
+        "the declarations do not type-check: ticks: provisa_sdk::stream! takes no option loader",
     )
 
 
@@ -264,9 +266,9 @@ def test_unreadable_registration_arguments_are_refused_by_name(toolchain, tmp_pa
 
 BAD_SHAPES = {
     "a table returning one row": "pub fn r() -> Row {\n    Row { id: 0 }\n}\nprovisa_sdk::table!(r);\n",
-    "a table of two inputs": (
-        "pub fn r(a: Inputs, b: Inputs) -> Vec<Row> {\n    let _ = (a, b);\n    Vec::new()\n}\n"
-        "provisa_sdk::table!(r);\n"
+    "a table of three inputs": (
+        "pub fn r(a: Inputs, b: Inputs, c: Inputs) -> Vec<Row> {\n    let _ = (a, b, c);\n"
+        "    Vec::new()\n}\nprovisa_sdk::table!(r);\n"
     ),
     "a table returning an Option": (
         "pub fn r() -> Option<Vec<Row>> {\n    None\n}\nprovisa_sdk::table!(r);\n"
@@ -284,7 +286,13 @@ BAD_SHAPES = {
         "provisa_sdk::table!(r, requires = N);\n"
     ),
     "a number as a name": "pub fn r() -> Vec<Row> {\n    Vec::new()\n}\nprovisa_sdk::table!(r, requires = 5);\n",
-    "a loader": "pub fn r() -> Vec<Row> {\n    Vec::new()\n}\nprovisa_sdk::table!(r, loader = 100);\n",
+    "a loader on a stream": (
+        "pub fn r() -> impl Iterator<Item = Row> {\n    std::iter::empty()\n}\n"
+        "provisa_sdk::stream!(r, loader = 100);\n"
+    ),
+    "a loader of a text size": (
+        'pub fn r() -> Vec<Row> {\n    Vec::new()\n}\nprovisa_sdk::table!(r, loader = "100");\n'
+    ),
     "a write option on a table": (
         'pub fn r() -> Vec<Row> {\n    Vec::new()\n}\nprovisa_sdk::table!(r, insert = "t");\n'
     ),
@@ -302,7 +310,7 @@ def test_cargo_check_rejects_a_bad_shape(toolchain, tmp_path, shape):
 
 def test_cargo_check_passes_every_shape_the_reader_accepts(toolchain, tmp_path):
     body = (
-        "use std::collections::HashMap;\n\nuse provisa_sdk::{Batch, Results, Stream};\n\n"
+        "use std::collections::{BTreeMap, HashMap};\n\nuse provisa_sdk::{Batch, Results, Stream};\n\n"
         "pub fn a() -> Vec<Row> {\n    Vec::new()\n}\n"
         "pub fn b(i: Inputs) -> Result<Vec<Row>, String> {\n    let _ = i;\n    Ok(Vec::new())\n}\n"
         "pub fn c(i: Inputs) -> impl Iterator<Item = Row> {\n    let _ = i;\n    std::iter::empty()\n}\n"
@@ -314,10 +322,18 @@ def test_cargo_check_passes_every_shape_the_reader_accepts(toolchain, tmp_path):
         "pub fn g(v: HashMap<String, String>) -> Result<(), String> {\n    let _ = v;\n    Ok(())\n}\n"
         "pub fn h() {}\n"
         'pub fn i() -> Result<String, std::io::Error> {\n    Ok("ok".into())\n}\n'
+        "pub struct ReadContext {\n    pub limit: Option<i64>,\n}\n"
+        "pub fn j(i: Inputs, c: ReadContext) -> HashMap<String, Vec<Row>> {\n"
+        "    let _ = (i, c);\n    HashMap::new()\n}\n"
+        "pub fn k(c: ReadContext) -> Result<BTreeMap<String, Vec<Row>>, String> {\n"
+        "    let _ = c;\n    Ok(BTreeMap::new())\n}\n"
+        "pub fn l(i: Inputs, c: ReadContext) -> impl Iterator<Item = Row> {\n"
+        "    let _ = (i, c);\n    std::iter::empty()\n}\n"
         "provisa_sdk::table!(a);\nprovisa_sdk::table!(b);\nprovisa_sdk::table!(c);\n"
         'provisa_sdk::stream!(d);\nprovisa_sdk::command!(e, update = "rows");\n'
         "provisa_sdk::columns!(f);\nprovisa_sdk::on_start!(g);\nprovisa_sdk::on_stop!(h);\n"
-        "provisa_sdk::health!(i);\n"
+        "provisa_sdk::health!(i);\nprovisa_sdk::table!(j, loader = true);\n"
+        "provisa_sdk::table!(k, loader = 50);\nprovisa_sdk::stream!(l);\n"
     )
     got = _read(toolchain, tmp_path / "c", body)
     assert isinstance(got, dict), got
@@ -331,4 +347,9 @@ def test_cargo_check_passes_every_shape_the_reader_accepts(toolchain, tmp_path):
         "g": "on-start",
         "h": "on-stop",
         "i": "health",
+        "j": "table",
+        "k": "table",
+        "l": "stream",
     }
+    loaders = {e["name"]: (e["loader"], e["loader_batch"]) for e in got["exports"]}
+    assert (loaders["j"], loaders["k"]) == ((True, None), (True, 50))

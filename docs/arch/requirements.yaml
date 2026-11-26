@@ -3899,7 +3899,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.) (Amended 2026-11-26: a table discovery cannot read is left out of the run, named with the reason in the run''s result and in the dialog, and the run goes on with the other tables; it no longer stops the run.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -98323,7 +98323,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
     engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
     Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
-    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.)'
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.) (Amended 2026-11-26, maintainer: a host install that runs Trino also starts the core services Trino needs, as the compose core set does: PostgreSQL (the control plane, reachable over TCP for Trino''s JDBC catalogs), MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy; each listens only on 127.0.0.1 with its data under the install''s data directory, their secrets are generated once and kept across upgrades, and provisa run uses that PostgreSQL when its URLs are set instead of the embedded one.)'
   scenario: 'Given a clean Linux machine with Docker and the release''s assets
 
     When the install script runs for that release
@@ -98584,9 +98584,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   description: 'Maintainer 2026-11-26 (roadmap, after the feature freeze). Entities: a shared map of which records
     refer to the same thing, across sources, built from tags. ENTITIES DOMAIN: a system domain named Entities
     always exists in every org and is owned like any domain; who may see or act in it is ordinary rights, so an
-    org that does not want entities grants nobody rights there. Entity names are org-wide: creating an entity
-    (its name, description, normalization rules, aliases, exclusions and disclosure setting) is a right in the
-    Entities domain, and each entity''s hub is a governed table of that domain. Provisa does not position this as
+    org that does not want entities grants nobody rights there. Entity names are org-wide: an entity is created from a glossary term and
+    shares its name, description and definition (every entity is a term; not every term is an entity); creating
+    one, with its normalization rules, aliases, exclusions and disclosure setting, is a right in the Entities
+    domain, and each entity''s hub is a governed table of that domain. Provisa does not position this as
     master data management: the hubs and links are ordinary governed tables that an MDM product may read through
     any front door or receive through the metadata exports. DECLARATION: tagging a column entity:<name> declares
     its table a source of that entity and is itself the approval of the generated relationship from that table to
@@ -98601,8 +98602,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     before they are compared. HUB AND LINKS: per entity, a hub with one row per resolved entity (a surrogate key
     that stays stable across refreshes, its canonical value, first and last seen); an entity that disappears is
     retired, never deleted. Each source domain has its own link table, owned and governed by that domain and
-    refreshed from that domain''s sources, mapping each of its tables, columns and raw values to a hub key with a
-    match score (exact matches score 1). Both are built and refreshed like a materialized view on the serving
+    refreshed from that domain''s sources, mapping each of its tables, columns, raw values and text spans to a key
+    with a match score (exact matches score 1): either an entity''s hub key (an instance mention) or a glossary
+    term''s id (a concept mention, REQ-2282; a term needs no hub, it is the key). Both are built and refreshed like a materialized view on the serving
     engine, identical on every engine, incrementally from change signals. A relationship from each source table
     to the hub, through its domain''s link table as a junction, is generated as an ordinary governed relationship
     marked generated, with the score as a property of the edge; none is generated where a registered relationship
@@ -98645,19 +98647,23 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     nothing is searched unless tagged: entity-search on a table searches its varchar columns, on a column only that
     column, on a reference library document or collection its sections; with no parameter it searches for every
     entity, and entity-search:<name>[,<name>...] narrows it. PATTERNS: the custom pattern list is every entity''s
-    canonical values and aliases (REQ-2281) plus a built-in schema entity: every registered table and column name,
-    split from snake and camel case, lowercased, with common abbreviations expanded and prefixes and suffixes such
-    as dim_ and _v2 removed, deduplicated, without generic names (id, created and updated columns, name, type,
-    status, value, code, date and the like) and without names above a frequency cutoff, with a minimum length.
+    canonical values and aliases (REQ-2281) plus every glossary term''s name and synonyms as
+    concept patterns.
     Matching uses spaCy: phrase matching (EntityRuler) of the custom patterns with token boundaries, exact or
     contained in the text, cheap enough for any host; and the statistical model''s standard entity types (person,
     organization, place, product and the like; value types such as dates, money, percentages, quantities and
     numbers are excluded) as detected mentions, which are candidates for creating an entity and, where they
     match an entity''s values or aliases, scored links. Every text link carries a score; exclusions and negative
-    aliases (REQ-2281) apply. A schema-name match in a document links the document to the table or column, and
-    where no glossary term covers that column the steward is offered to create or ground one. COST: the
-    statistical model runs on a remote worker (a GPU host paired like a code-source remote host), never on the
-    serving engines. A rotating scanner works through the tagged tables, columns and documents at a set budget
+    aliases (REQ-2281) apply. Row-level mentions are stored in the source domain''s link table (REQ-2281), keyed by
+    the entity''s hub key or the term''s id. The ontology gains found edges aggregated from them (a column that mentions
+    a term in a share of its rows, a document section that mentions a term), each with a score, a count and a found
+    origin beside curated citations and groundings; found edges enter no review queue, a steward may promote one to
+    curated or exclude it, and each drills down to its rows. This is how a policy reaches the tables it governs:
+    policy section, term, grounded columns. COST: the
+    statistical model runs either on the Provisa server itself (CPU, for development and small orgs, under a small
+    scan budget that keeps it workable) or optionally on a remote worker paired like a code-source remote host, with a GPU
+    for throughput or a cheaper CPU-only host accepting less; never on the serving engines; the scan budget is set
+    per placement. A rotating scanner works through the tagged tables, columns and documents at a set budget
     and starts over; an item is rescanned only when its content, the pattern list or the model changed (its scan
     fingerprint), the pattern list is rebuilt each cycle, progress shows as one status line, and any table or
     document can be scanned on demand. spaCy and its models are an optional install, staged like the other

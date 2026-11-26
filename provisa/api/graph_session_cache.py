@@ -308,6 +308,15 @@ def of(db: Any) -> Sessions:
         return sessions
 
 
+def listen(db: Any) -> None:
+    """Start this worker hearing of the graph sessions in ``db``'s control-plane database as the
+    worker binds it, so no request starts the listening thread (REQ-1882: every stage of a
+    request runs on its own thread, and a request starts none). Graph sessions live only in a
+    PostgreSQL control plane (REQ-2176): any other holds none to hear of."""
+    if db.dialect == "postgresql":
+        of(db)
+
+
 def _disposed(engine: Engine) -> None:
     with _registry_lock:
         sessions = _registry.pop(engine, None)
