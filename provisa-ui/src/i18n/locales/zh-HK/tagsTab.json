@@ -70,6 +70,7 @@
     "outsideTitle": "允許的網域以外的指派",
     "outsideBody": "儲存後保留了這些指派。請從不再適用的物件上移除此標籤。",
     "outsideItem": "{{kind}} {{name}}，位於 {{domains}}",
-    "templateSection": "範本"
+    "templateSection": "範本",
+    "noMatch": "沒有符合篩選條件的標籤"
   }
 }

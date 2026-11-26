@@ -22,6 +22,7 @@
     "colProvider": "登录方式",
     "colOrgAdmin": "组织管理员",
     "noMembers": "暂无成员。",
+    "noMembersMatch": "没有符合筛选条件的成员。",
     "yes": "是",
     "no": "否",
     "promote": "设为组织管理员",

@@ -70,6 +70,7 @@
     "outsideTitle": "Toewijzingen buiten de toegestane domeinen",
     "outsideBody": "Bij het opslaan zijn deze toewijzingen behouden. Haal de tag weg van een object waar hij niet meer bij hoort.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Sjabloon"
+    "templateSection": "Sjabloon",
+    "noMatch": "Geen tags komen overeen met het filter"
   }
 }

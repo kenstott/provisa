@@ -22,6 +22,7 @@
     "colProvider": "כניסה",
     "colOrgAdmin": "מנהל ארגון",
     "noMembers": "אין חברים עדיין.",
+    "noMembersMatch": "אין חברים התואמים לסינון.",
     "yes": "כן",
     "no": "לא",
     "promote": "הפיכה למנהל ארגון",

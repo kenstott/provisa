@@ -70,6 +70,7 @@
     "outsideTitle": "Affectations hors des domaines autorisés",
     "outsideBody": "L'enregistrement a conservé ces affectations. Retirez le tag d'un objet auquel il ne correspond plus.",
     "outsideItem": "{{kind}} {{name}}, dans {{domains}}",
-    "templateSection": "Modèle"
+    "templateSection": "Modèle",
+    "noMatch": "Aucun tag ne correspond au filtre"
   }
 }

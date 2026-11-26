@@ -194,7 +194,13 @@ export function PackageRegistriesTab({ title }: { title: string }) {
 
   const kindLabel = (k: RegistryKind) => t(`packageRegistries.kind_${k}`);
   const open = kept.find((r) => r.id === detail.id) ?? null;
-  const shown = kept.filter((r) => matchesQuery([r.address, r.scope, kindLabel(r.kind)], search));
+  // Whether a registry is its kind's default, as its row says.
+  const isDefault = (r: PackageRegistry) =>
+    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
+  // Every text a registry's row shows.
+  const shown = kept.filter((r) =>
+    matchesQuery([kindLabel(r.kind), r.address, r.scope, isDefault(r)], search),
+  );
 
   const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const openForm = (next: Mode, from: Draft) => {
@@ -379,9 +385,6 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           ? formView
           : readView(open)
         : null;
-  const isDefault = (r: PackageRegistry) =>
-    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
-
   return (
     <>
       <div className="page-header">
@@ -427,6 +430,8 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           list={
             <SortGroupTable
               testPrefix="package-registries"
+              testId="package-registries-list"
+              emptyTestId="package-registries-empty"
               rows={shown}
               columns={[
                 {
@@ -455,7 +460,10 @@ export function PackageRegistriesTab({ title }: { title: string }) {
               headers={[{ col: "kind" }, { col: "address" }, { col: "scope" }, { col: "default" }]}
               colSpan={4}
               rowKey={(r) => r.id}
-              empty={t("packageRegistries.none")}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("packageRegistries.none") : t("packageRegistries.noMatch")
+              }
               render={(r) => (
                 <ListRow
                   key={r.id}

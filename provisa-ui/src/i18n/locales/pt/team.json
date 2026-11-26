@@ -22,6 +22,7 @@
     "colProvider": "Login",
     "colOrgAdmin": "Administrador da organização",
     "noMembers": "Nenhum membro ainda.",
+    "noMembersMatch": "Nenhum membro corresponde ao filtro.",
     "yes": "Sim",
     "no": "Não",
     "promote": "Tornar administrador da organização",

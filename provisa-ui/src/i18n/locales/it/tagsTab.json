@@ -70,6 +70,7 @@
     "outsideTitle": "Assegnazioni fuori dai domini consentiti",
     "outsideBody": "Il salvataggio ha mantenuto queste assegnazioni. Togli il tag da un oggetto a cui non appartiene più.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Modello"
+    "templateSection": "Modello",
+    "noMatch": "Nessun tag corrisponde al filtro"
   }
 }

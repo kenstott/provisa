@@ -29,6 +29,7 @@
     "cacheOn": "オン",
     "cacheOff": "オフ",
     "empty": "ソースが見つかりません。",
+    "noMatch": "フィルターに一致するソースはありません。",
     "discover": "検出",
     "mapTable": "テーブルをマッピング",
     "refreshSchema": "スキーマを更新",

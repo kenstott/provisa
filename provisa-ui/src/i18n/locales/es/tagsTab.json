@@ -70,6 +70,7 @@
     "outsideTitle": "Asignaciones fuera de los dominios permitidos",
     "outsideBody": "Al guardar se conservaron estas asignaciones. Quite la etiqueta de un objeto al que ya no corresponda.",
     "outsideItem": "{{kind}} {{name}}, en {{domains}}",
-    "templateSection": "Plantilla"
+    "templateSection": "Plantilla",
+    "noMatch": "Ninguna etiqueta coincide con el filtro"
   }
 }

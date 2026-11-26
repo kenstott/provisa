@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Geen RLS-regels gedefinieerd.",
     "noRulesMatchFilter": "Geen regels komen overeen met het huidige filter.",
+    "noRolesMatch": "Geen rollen komen overeen met het filter.",
     "purposeTitle": "Waar RLS-regels voor zijn",
     "purposeBody": "Een regel voor beveiliging op rijniveau is een SQL-predicaat dat aan één rol en één bereik is gekoppeld. De server voegt het vóór uitvoering met AND aan de query toe, bij lezen en schrijven en op elke interface, dus een rol ziet alleen de rijen die zijn regel toestaat, welke client hij ook gebruikt.",
     "purposeAdd": "Beperk een regel tot één tabel, of tot een heel domein zodat hij elke tabel daarin dekt; als beide gelden, wint voor die tabel de tabelregel. Een regel op een tag dekt elke tabel met die tag, nu en later, en wordt aan de eigen regel van de tabel toegevoegd, dus een tag kan alleen beperken wat een rol leest. Regels noemen rollen, dus om te wijzigen wat iemand kan zien, wijzig je de rol die die persoon heeft.",

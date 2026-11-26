@@ -4,7 +4,7 @@
     "connect": "连接数据源",
     "register": "注册表",
     "relate": "发现关系",
-    "query": "查询",
+    "yourData": "您的数据",
     "tablesCount_one": "{{count}} 个表",
     "tablesCount_other": "{{count}} 个表",
     "registerHint": "注册此数据源的表即可查询它们。",
@@ -25,6 +25,8 @@
     "runAgain": "重新运行设置",
     "nothingToQueryHint": "没有可查询的已注册表。",
     "newTablesHint_one": "设置后注册的 {{count}} 个表没有关系。",
-    "newTablesHint_other": "设置后注册的 {{count}} 个表没有关系。"
+    "newTablesHint_other": "设置后注册的 {{count}} 个表没有关系。",
+    "yourDataAction": "查看您的数据",
+    "finishLater": "稍后完成"
   }
 }

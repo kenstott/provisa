@@ -46,6 +46,7 @@
     "kind_git": "Git-host",
     "add": "Register toevoegen",
     "none": "Geen pakketregisters. Installaties komen uit de openbare registers.",
+    "noMatch": "Geen pakketregisters komen overeen met het filter.",
     "filterPlaceholder": "Registers filteren",
     "closeForm": "Formulier sluiten",
     "edit": "{{name}} bewerken",

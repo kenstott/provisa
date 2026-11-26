@@ -70,6 +70,7 @@
     "outsideTitle": "Zuweisungen außerhalb der erlaubten Domänen",
     "outsideBody": "Das Speichern hat diese Zuweisungen behalten. Entfernen Sie das Tag von einem Objekt, zu dem es nicht mehr gehört.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Vorlage"
+    "templateSection": "Vorlage",
+    "noMatch": "Keine Tags entsprechen dem Filter"
   }
 }

@@ -5,6 +5,7 @@
     "newMetric": "+ Métrique",
     "loading": "Chargement…",
     "empty": "Aucune métrique enregistrée pour l'instant.",
+    "noMatch": "Aucune métrique ne correspond au filtre.",
     "colName": "Nom",
     "colExpression": "Expression",
     "colDatatype": "Type de données",

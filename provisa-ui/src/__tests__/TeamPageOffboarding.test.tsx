@@ -18,6 +18,7 @@ import { render, screen, fireEvent, waitFor, within } from "../test-utils/render
 import i18n from "../i18n";
 import { TeamPage } from "../pages/TeamPage";
 import type { OrgMember } from "../api/admin";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
 
@@ -104,6 +105,41 @@ async function openMember(userId: string) {
 function renderTeamPage() {
   return render(<TeamPage />);
 }
+
+describe("TeamPage members filter", () => {
+  beforeEach(() => {
+    mockMultitenancy = true;
+    mockCapabilities = ORG_ADMIN_CAPS;
+    mockMembers = [
+      member({
+        user_id: "uid-ann",
+        display_name: "Ann Lee",
+        email: "ann@example.test",
+        is_org_admin: true,
+      }),
+      member({ user_id: "uid-bob", email: "bob@example.test", provider: "okta" }),
+    ];
+  });
+
+  it("finds each member by every text its row shows", async () => {
+    renderTeamPage();
+    await screen.findByTestId("team-member-uid-bob");
+    await expectFilterFindsEveryCell(screen.getByTestId("team-members-filter"), () =>
+      screen.getByTestId("team-members"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    renderTeamPage();
+    await screen.findByTestId("team-member-uid-bob");
+    fireEvent.change(screen.getByTestId("team-members-filter"), {
+      target: { value: "no-such-person" },
+    });
+    expect(await screen.findByTestId("team-members-empty")).toHaveTextContent(
+      "No members match the filter.",
+    );
+  });
+});
 
 describe("TeamPage offboarding", () => {
   beforeEach(() => {

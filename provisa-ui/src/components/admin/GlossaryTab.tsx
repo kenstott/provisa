@@ -225,10 +225,16 @@ export function GlossaryTab() {
   const [imports, setImports] = useState(false);
   // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
-  // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
-  // terms dialog is open.
+  // REQ-2115: the open term (its id is the page's `term`, useGlossaryPanel), once the glossary has
+  // answered for it, and whether the Find terms dialog is open. Two domains may each hold a term of
+  // one name (REQ-1591), so its domains tell it apart; its status and definition are what the panel
+  // shows, for Polly to check a change it made against the term on screen.
+  const shown = detail !== null && detail.id === selectedId ? detail : null;
   useScreenInputs("/context/ontology", {
-    termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
+    termName: shown?.name ?? null,
+    termDomains: shown?.domains ?? null,
+    termStatus: shown?.status ?? null,
+    termDefinition: shown?.definition ?? null,
     findTerms: findTermsOpen,
   });
 
