@@ -26,8 +26,9 @@ test("Context Tags lists each tag with where it is applied and what depends on i
   // REQ-2277: the scope is a tab, named in the URL.
   await page.getByTestId("tags-scope-column").click();
   await expect(page).toHaveURL(/\/context\/tags\?scope=column$/);
-  await expect(page.getByTestId("tags-where-pii")).toBeVisible();
-  await expect(page.getByTestId("tags-dependents-pii")).toBeVisible();
+  // REQ-2208: the list holds one line of counts per tag; the panel names them.
+  await expect(page.getByTestId("tags-where-summary-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-dependents-summary-pii")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Where applied" })).toBeVisible();
   await expect(page.getByTestId("tags-create-button")).toHaveCount(0);
   await expect(page.getByTestId("tags-delete-pii")).toHaveCount(0);
@@ -35,6 +36,8 @@ test("Context Tags lists each tag with where it is applied and what depends on i
   await page.getByTestId("tags-row-pii").click();
   await expect(page).toHaveURL(/[?&]tag=pii\b/);
   await expect(page.getByTestId("tags-detail-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-where-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-dependents-pii")).toBeVisible();
   await expect(page.getByTestId("tags-edit-pii")).toHaveCount(0);
   await expect(page.getByTestId("tags-delete-pii")).toHaveCount(0);
 });

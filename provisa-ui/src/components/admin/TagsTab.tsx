@@ -77,7 +77,9 @@ import { useDomains } from "../../hooks/useAdminQueries";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
-import { ContextPlaces } from "../ContextPlaces";
+import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
+import { TagDependents, TagWhereApplied } from "./TagUses";
+import { dependentsSummary, whereAppliedSummary } from "../../lib/tagUseSummary";
 import { EntityLink } from "../EntityLink";
 
 const PAGE_SIZE = 50;
@@ -616,20 +618,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 },
               ]
             : []),
-          { label: t("tagsTab.reasonPolicyLabel"), value: policyLabel(tag.reasonPolicy) },
-          { label: t("tagsTab.expiresPolicyLabel"), value: policyLabel(tag.expiresPolicy) },
-          {
-            label: t("tagsTab.paramPolicyLabel"),
-            value: t(`tagsTab.paramPolicy_${tag.paramPolicy}`),
-          },
-          {
-            label: t("tagCitations.requiresCitationLabel"),
-            value: tag.requiresCitation ? t("detailFields.yes") : t("detailFields.no"),
-          },
-          {
-            label: t("tagsTab.requiredLabel"),
-            value: tag.required ? t("detailFields.yes") : t("detailFields.no"),
-          },
           {
             label: t("tagCitations.definitionLabel"),
             value: (
@@ -642,6 +630,36 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
           },
         ]}
       />
+      {/* REQ-2208: what the tag asks of each assignment, its template, in a section of its own. */}
+      <Collapsibles id="tags.panel">
+        <CollapsibleItem
+          value="template"
+          title={t("tagsTab.templateSection")}
+          controlTestId={`tags-template-${tag.id}-toggle`}
+          testId={`tags-template-${tag.id}`}
+        >
+          <DetailFields
+            testId={`tags-template-read-${tag.id}`}
+            fields={[
+              { label: t("tagsTab.reasonPolicyLabel"), value: policyLabel(tag.reasonPolicy) },
+              { label: t("tagsTab.expiresPolicyLabel"), value: policyLabel(tag.expiresPolicy) },
+              {
+                label: t("tagsTab.paramPolicyLabel"),
+                value: t(`tagsTab.paramPolicy_${tag.paramPolicy}`),
+              },
+              {
+                label: t("tagCitations.requiresCitationLabel"),
+                value: tag.requiresCitation ? t("detailFields.yes") : t("detailFields.no"),
+              },
+              {
+                label: t("tagsTab.requiredLabel"),
+                value: tag.required ? t("detailFields.yes") : t("detailFields.no"),
+              },
+            ]}
+          />
+        </CollapsibleItem>
+      </Collapsibles>
+      {readOnly && <TagUsesRead tag={tag} uses={uses} />}
       {/* REQ-1467: the value list is editable even on a system tag -- the tag itself is
           code-defined, but which values it admits is the maintainer's call. */}
       {tag.paramPolicy === "required" && (
@@ -857,11 +875,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 >
                   <Table.Td>
                     {tag.id}
-                    {(tag.required ||
-                      tag.reasonPolicy === "required" ||
-                      tag.expiresPolicy === "required" ||
-                      tag.requiresCitation ||
-                      tag.needsReview) && (
+                    {/* REQ-2208: the template's requirements (reason, expiry) are the panel's. */}
+                    {(tag.required || tag.requiresCitation || tag.needsReview) && (
                       <Group gap={4} mt={2}>
                         {tag.required && (
                           <Badge
@@ -889,20 +904,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                               {t("tagCitations.needsReview")}
                             </Badge>
                           </Tip>
-                        )}
-                        {tag.reasonPolicy === "required" && (
-                          <Badge size="xs" variant="light" color="gray">
-                            {t("tagsTab.reasonPolicyBadge", {
-                              policy: policyLabel(tag.reasonPolicy),
-                            })}
-                          </Badge>
-                        )}
-                        {tag.expiresPolicy === "required" && (
-                          <Badge size="xs" variant="light" color="gray">
-                            {t("tagsTab.expiresPolicyBadge", {
-                              policy: policyLabel(tag.expiresPolicy),
-                            })}
-                          </Badge>
                         )}
                       </Group>
                     )}
@@ -953,9 +954,28 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   );
 }
 
-/** REQ-2259: a tag's tables and columns and what depends on it, on the Context Tags page. A derived
- * tag is computed off each table's registration and never assigned, so it is applied nowhere by
- * name. */
+/** The open tag's context read, once loaded: a tag the read does not hold is a defect. */
+function tagUse(tag: Tag, uses: Map<string, ContextTagUse>): ContextTagUse {
+  const use = uses.get(tag.id);
+  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
+  return use;
+}
+
+/** REQ-2259, REQ-2208: the panel's Where applied and Depends on it, on the Context Tags page. */
+function TagUsesRead({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
+  if (uses === null) return null;
+  const use = tagUse(tag, uses);
+  return (
+    <>
+      <TagWhereApplied tagId={tag.id} use={use} />
+      <TagDependents tagId={tag.id} use={use} />
+    </>
+  );
+}
+
+/** REQ-2259, REQ-2208: a tag's tables and columns and what depends on it, on the Context Tags page,
+ * one line each: the counts; the panel names them. A derived tag is computed off each table's
+ * registration and never assigned, so it is applied nowhere by name. */
 function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
   const { t } = useTranslation();
   if (uses === null) {
@@ -966,41 +986,21 @@ function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagU
       </>
     );
   }
-  const use = uses.get(tag.id);
-  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
-  const none = use.rowFilters === 0 && use.classificationKinds.length === 0;
+  const use = tagUse(tag, uses);
   return (
     <>
-      <Table.Td>
-        <ContextPlaces
-          places={use.usages}
-          hidden={use.hiddenUsages}
-          testId={`tags-where-${tag.id}`}
-        />
+      <Table.Td data-testid={`tags-where-summary-${tag.id}`}>
+        <Text size="xs" c={use.usages.length + use.hiddenUsages === 0 ? "dimmed" : undefined}>
+          {whereAppliedSummary(use, t)}
+        </Text>
       </Table.Td>
-      <Table.Td data-testid={`tags-dependents-${tag.id}`}>
-        {none ? (
-          <Text size="xs" c="dimmed">
-            {t("contextViews.noDependents")}
-          </Text>
-        ) : (
-          <Stack gap={2}>
-            {use.rowFilters > 0 && (
-              <Text size="xs">{t("contextViews.rowFilters", { count: use.rowFilters })}</Text>
-            )}
-            {use.classificationKinds.map((k) => (
-              <Text size="xs" key={k}>
-                <EntityLink
-                  kind="classification"
-                  id={k}
-                  testId={`tags-classification-${tag.id}-${k}`}
-                >
-                  {t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) })}
-                </EntityLink>
-              </Text>
-            ))}
-          </Stack>
-        )}
+      <Table.Td data-testid={`tags-dependents-summary-${tag.id}`}>
+        <Text
+          size="xs"
+          c={use.rowFilters + use.classificationKinds.length === 0 ? "dimmed" : undefined}
+        >
+          {dependentsSummary(use, t)}
+        </Text>
       </Table.Td>
     </>
   );

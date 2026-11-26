@@ -6,11 +6,22 @@
     "nowhere": "Нигде",
     "hiddenPlaces_one": "Ещё недоступных для чтения: {{count}}",
     "hiddenPlaces_other": "Ещё недоступных для чтения: {{count}}",
-    "rowFilters_one": "Фильтров строк: {{count}}",
-    "rowFilters_other": "Фильтров строк: {{count}}",
-    "classifiedAs": "Назначен классификацией: {{kind}}",
     "noDependents": "Ничего",
     "enabled": "Включено",
-    "disabled": "Отключено"
+    "disabled": "Отключено",
+    "objectCount_one": "Объектов: {{count}}",
+    "objectCount_other": "Объектов: {{count}}",
+    "sourceCount_one": "источников: {{count}}",
+    "sourceCount_other": "источников: {{count}}",
+    "objectsInSources": "{{objects}}, {{sources}}",
+    "classificationCount_one": "Классификаций: {{count}}",
+    "classificationCount_other": "Классификаций: {{count}}",
+    "rowRuleCount_one": "Правил строк: {{count}}",
+    "rowRuleCount_other": "Правил строк: {{count}}",
+    "groupTables": "Таблицы ({{count}})",
+    "groupColumns": "Столбцы ({{count}})",
+    "groupClassification": "Назначен классификацией ({{count}})",
+    "groupRowRules": "Правила строк ({{count}})",
+    "filterClassifications": "Фильтр классификаций"
   }
 }
