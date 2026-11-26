@@ -27,14 +27,22 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import delete, insert, select
 
-from provisa.core.schema_org import column_rules, roles
+from provisa.core.schema_org import column_rules
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served: which a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
+
 
 PARTIAL = {"type": "regex", "pattern": "^(.).*$", "replace": "$1***"}
 
 RULES: list[dict[str, Any]] = [
-    {"tag_id": "pii", "role_id": "analyst", "action": "mask", "mask": PARTIAL},
+    {"tag_id": "pii", "role_id": "masked_reader", "action": "mask", "mask": PARTIAL},
     {"tag_id": "reviewed", "role_id": "seller", "action": "hide"},
-    {"classification": "email_address", "role_id": "analyst", "action": "mask"},
+    {"classification": "email_address", "role_id": "masked_reader", "action": "mask"},
 ]
 
 
@@ -46,7 +54,7 @@ def _raw(rules: list[dict[str, Any]]) -> dict[str, Any]:
         ],
         "domains": [{"id": "sales"}],
         "roles": [
-            {"id": "analyst", "description": "Reads masked.", **role},
+            {"id": "masked_reader", "description": "Reads masked.", **role},
             {"id": "seller", "description": "Sells.", **role},
         ],
         "tags": [{"id": "reviewed", "applies_to": ["column"]}],
@@ -56,7 +64,9 @@ def _raw(rules: list[dict[str, Any]]) -> dict[str, Any]:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "orders",
-                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["analyst"]}],
+                "columns": [
+                    {"name": "id", "data_type": "integer", "visible_to": ["masked_reader"]}
+                ],
             }
         ],
         "column_rules": rules,
@@ -86,10 +96,10 @@ async def _held(conn) -> set[tuple[Any, ...]]:
     }
 
 
-def _identity(rule: dict[str, Any]) -> str:
-    from provisa.core.store_config import item_identity
+def _in_store_order(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from provisa.core.store_config import _key
 
-    return item_identity("column_rules", rule)
+    return sorted(rules, key=_key)
 
 
 async def test_a_declared_rule_is_applied_and_written_back_as_declared(control_plane, monkeypatch):
@@ -100,7 +110,7 @@ async def test_a_declared_rule_is_applied_and_written_back_as_declared(control_p
     async with _store(control_plane, monkeypatch) as conn:
         await apply_config(parse_config_dict(raw), conn)
         model = await store_model(conn)
-        assert model["column_rules"] == sorted(RULES, key=_identity)
+        assert model["column_rules"] == _in_store_order(RULES)
         # The file the store writes, applied again, holds the same rules.
         held = await _held(conn)
         await apply_config(parse_config_dict(with_store_model(raw, model)), conn)
@@ -112,8 +122,8 @@ async def test_a_rule_naming_what_is_not_there_is_refused_by_name(control_plane,
     from provisa.core.config_loader import apply_config, parse_config_dict
 
     for rule, named in (
-        ({"tag_id": "nope", "role_id": "analyst", "action": "hide"}, "tag 'nope'"),
-        ({"classification": "nope", "role_id": "analyst", "action": "hide"}, "'nope'"),
+        ({"tag_id": "nope", "role_id": "masked_reader", "action": "hide"}, "tag 'nope'"),
+        ({"classification": "nope", "role_id": "masked_reader", "action": "hide"}, "'nope'"),
         ({"tag_id": "pii", "role_id": "nobody", "action": "hide"}, "role 'nobody'"),
     ):
         async with _store(control_plane, monkeypatch) as conn:
@@ -128,10 +138,10 @@ def test_a_rule_keyed_on_both_or_neither_is_refused_at_parse():
         {
             "tag_id": "pii",
             "classification": "email_address",
-            "role_id": "analyst",
+            "role_id": "masked_reader",
             "action": "hide",
         },
-        {"role_id": "analyst", "action": "hide"},
+        {"role_id": "masked_reader", "action": "hide"},
     ):
         with pytest.raises(ValidationError, match="exactly one"):
             parse_config_dict(_raw([rule]))
@@ -148,14 +158,14 @@ async def test_an_environment_tree_carries_the_rules_and_a_deploy_writes_them_ba
         await apply_config(parse_config_dict(_raw(RULES)), conn)
         held = await _held(conn)
         tree = await project(conn, "org_default")
-    assert tree["column-rules/tag/pii/analyst.yaml"] == {
+    assert tree["column-rules/tag/pii/masked_reader.yaml"] == {
         "action": "mask",
         "mask": PARTIAL,
-        "role_id": "analyst",
+        "role_id": "masked_reader",
         "tag_id": "pii",
     }
     assert tree["column-rules/tag/reviewed/seller.yaml"]["action"] == "hide"
-    assert tree["column-rules/classification/email_address/analyst.yaml"]["action"] == "mask"
+    assert tree["column-rules/classification/email_address/masked_reader.yaml"]["action"] == "mask"
 
     db = control_plane.org()
     async with db.acquire() as conn:
@@ -177,12 +187,12 @@ async def test_a_deploy_refuses_a_rule_for_a_role_the_environment_lacks(control_
         await apply_config(parse_config_dict(_raw(RULES)), conn)
         tree = await project(conn, "org_default")
     tree["column-rules/tag/pii/nobody.yaml"] = {"action": "hide"}
-    tree["column-rules/neither/pii/analyst.yaml"] = {"action": "hide"}
+    tree["column-rules/neither/pii/masked_reader.yaml"] = {"action": "hide"}
     with pytest.raises(DeployError) as refused:
         await deploy_tree(control_plane.org(), "default", None, tree, ref="test")
     problems = "\n".join(refused.value.problems)
     assert "role 'nobody'" in problems
-    assert "column-rules/neither/pii/analyst.yaml" in problems
+    assert "column-rules/neither/pii/masked_reader.yaml" in problems
 
 
 # --- a change of a column's term reference -------------------------------------------------------
@@ -204,7 +214,6 @@ async def _ruled_model(control_plane, monkeypatch, *, ruled: bool):
     async with _model(control_plane, monkeypatch) as (db, ids):
         if ruled:
             async with db.acquire() as conn:
-                await conn.execute_core(insert(roles).values(id="analyst", description="analyst"))
                 await conn.execute_core(
                     insert(column_rules).values(tag_id="pii", role_id="analyst", action="mask")
                 )

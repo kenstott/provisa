@@ -553,14 +553,10 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             tag_assignments, key=lambda a: json.dumps(a, sort_keys=True, default=str)
         ),
         "rls_rules": rls_rules,
-        # REQ-2278: ordered by what names a rule, never by its serial.
-        "column_rules": sorted(
-            (
-                _written(ColumnRuleModel.model_validate(_fields(ColumnRuleModel, row)))
-                for row in await column_rule_repo.list_all(conn)
-            ),
-            key=lambda r: item_identity("column_rules", r),
-        ),
+        "column_rules": [  # REQ-2278
+            _written(ColumnRuleModel.model_validate(_fields(ColumnRuleModel, row)))
+            for row in await column_rule_repo.list_all(conn)
+        ],
         "functions": [
             _written(Function.model_validate(_fields(Function, row)))
             for row in await function_repo.list_functions(conn)
