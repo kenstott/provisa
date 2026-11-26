@@ -198,7 +198,7 @@ PAGES: dict[str, PollyPage] = {
         'row\'s edit button, named "Edit tag <tag id>", opens its form, and tags-delete-<tag id> '
         "deletes it. The form's reason, expiry and parameter policies are tags-reason-policy, "
         'tags-expires-policy and tags-param-policy; "Assignments require a citation" is '
-        'tags-requires-citation; "Why this tag exists" is the citation list tags-defined-by, '
+        'tags-requires-citation; "Definition source" is the citation list tags-defined-by, '
         "added to with tags-defined-by-picker-document, tags-defined-by-picker-section and "
         "tags-defined-by-picker-add; tags-save saves the form. "
         "The form's Required switch (tags-required) makes every object of the kinds "
