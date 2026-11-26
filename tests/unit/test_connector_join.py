@@ -481,7 +481,7 @@ async def test_an_edited_spark_cluster_is_held_to_what_a_join_holds_it_to():
         {
             "mode": "built",
             "org_defaults": {"cluster": "spark_cluster"},
-            "settings": {"script": "x = 1\n", "cluster": "spark.acme.test:15002"},
+            "settings": {"cluster": "spark.acme.test:15002"},
         },
     )
     assert refused is not None and refused.code == "codesource.spark_cluster_address"
