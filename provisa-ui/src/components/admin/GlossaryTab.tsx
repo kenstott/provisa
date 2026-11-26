@@ -74,6 +74,7 @@ import {
   type GlossaryFinding,
 } from "../../api/glossary";
 import { useAuth } from "../../context/AuthContext";
+import { useRequiredFields } from "../form/useRequiredFields";
 import {
   ENTERPRISE_DOMAIN,
   onlyRelatedTo,
@@ -221,6 +222,11 @@ export function GlossaryTab() {
   const [addDomains, setAddDomainsRaw] = useState<string[]>([]);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
+  // REQ-1968: the name, and a domain when domains are on, are checked when Create is pressed.
+  const addRequired = useRequiredFields({
+    name: addName,
+    ...(domainsEnabled ? { domains: addDomains } : {}),
+  });
 
   const refreshList = useCallback(async () => {
     setListLoading(true);
@@ -383,7 +389,7 @@ export function GlossaryTab() {
   };
 
   const handleCreate = async () => {
-    if (!addName.trim()) return;
+    if (!addRequired.validate()) return;
     setAddSaving(true);
     setAddError("");
     try {
@@ -400,6 +406,7 @@ export function GlossaryTab() {
       setAddName("");
       setAddDefinition("");
       setAddDomains([]);
+      addRequired.reset();
       await refreshList();
       setSelectedId(id);
     } catch (e) {
@@ -916,10 +923,10 @@ export function GlossaryTab() {
             <FormField size="medium">
               <TextInput
                 label={t("glossaryTab.nameLabel")}
+                {...addRequired.field("name")}
                 value={addName}
                 onChange={(e) => setAddName(e.currentTarget.value)}
                 data-testid="glossary-add-name-input"
-                required
               />
             </FormField>
           </FormIdentifiers>
@@ -941,7 +948,7 @@ export function GlossaryTab() {
                 value={addDomains}
                 onChange={setAddDomains}
                 data-testid="glossary-add-domains-input"
-                required
+                {...addRequired.field("domains")}
               />
             </FormField>
           )}
@@ -959,7 +966,6 @@ export function GlossaryTab() {
               <Button
                 onClick={() => void handleCreate()}
                 loading={addSaving}
-                disabled={!addName.trim() || (domainsEnabled && addDomains.length === 0)}
                 data-testid="glossary-add-save-btn"
               >
                 {t("glossaryTab.create")}

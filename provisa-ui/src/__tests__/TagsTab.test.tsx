@@ -305,6 +305,17 @@ describe("TagsTab", () => {
     );
   });
 
+  // REQ-1968: Save is never disabled by a missing id; pressing it marks the id and saves nothing.
+  it("marks a missing id when Save is pressed, and saves nothing", async () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-create-button"));
+    const save = screen.getByTestId("tags-save");
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(t("tagsTab.idLabel"))).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("saves an edited tag through updateTag, never a create", async () => {
     render(<TagsTab title="Tags" />);
     openEdit("finance");
@@ -613,6 +624,13 @@ describe("TagsTab", () => {
     const editor = await screen.findByTestId("tags-values-entity");
     expect(within(editor).getByText("customer")).toBeTruthy();
     expect(within(editor).getByText("vendor")).toBeTruthy();
+
+    // REQ-1968: Add is never disabled by an empty value; pressing it marks the value instead.
+    const add = screen.getByTestId("tags-add-value-entity");
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(upsertValueSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("tags-new-value-entity")).toHaveAttribute("aria-invalid", "true");
 
     fireEvent.change(screen.getByTestId("tags-new-value-entity"), {
       target: { value: "employee" },

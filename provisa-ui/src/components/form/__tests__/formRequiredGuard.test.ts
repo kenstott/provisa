@@ -26,22 +26,16 @@ const SRC = resolve(__dirname, "../../..");
 const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/ChatPanel.tsx":
     "the primary <Button> disabled by draft; the primary <Button> disabled by otherText",
-  "components/PersonalAccessTokens.tsx": "the primary <Button> disabled by name",
   "components/TagAssignmentForm.tsx": "<FormFooter>'s Save disabled by incomplete",
-  "components/admin/AccessReviews.tsx": "the primary <Button> disabled by reason",
   "components/admin/AuthTab.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/EncryptionTab.tsx": "<FormFooter>'s Save disabled by incomplete",
-  "components/admin/EnvironmentsTab.tsx":
-    "the primary <Button> disabled by name; the primary <Button> disabled by mergeInto, message",
   "components/admin/FederationEngineTab.tsx": "<FormFooter>'s Save disabled by incomplete",
-  "components/admin/GlossaryTab.tsx": "the primary <Button> disabled by addName",
   "components/admin/GrantEditor.tsx":
     "<FormFooter>'s Save disabled by blank; <FormFooter>'s Save disabled by draft.url",
   "components/admin/MailPlatformsSection.tsx": "<FormFooter>'s Save disabled by platformMissing",
   "components/admin/MailTab.tsx":
     "<FormFooter>'s Save disabled by incomplete, choice; the primary <Button> disabled by testTo",
   "components/admin/MemberAccessForm.tsx": "<FormFooter>'s Save disabled by ready",
-  "components/admin/MemberAttributes.tsx": "the primary <Button> disabled by name",
   "components/admin/OrgEncryptionTab.tsx": "the primary <Button> disabled by keyB64",
   "components/admin/OrgEngineTab.tsx": "<FormFooter>'s Save disabled by externalIncomplete",
   "components/admin/OrgFilesTab.tsx": "<FormFooter>'s Save disabled by missing",
@@ -50,8 +44,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/admin/RelatedToDialog.tsx": "<FormFooter>'s Save disabled by name",
   "components/admin/SecretsTab.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/SyntheticDatasetsPanel.tsx": "<FormFooter>'s Save disabled by name",
-  "components/admin/TagsTab.tsx":
-    "<FormFooter>'s Save disabled by formId; the primary <Button> disabled by newValue",
   "components/admin/TermEditForm.tsx": "<FormFooter>'s Save disabled by draft.name",
   "components/admin/TermReviewQueue.tsx": "the primary <Button> disabled by target",
   "components/admin/ontologyImport/ImportOntologyDialog.tsx":
@@ -118,6 +110,26 @@ describe("the required-field rules fail what they are meant to fail", () => {
       rules(`<FormLayout><FormField size="medium"><TextInput required value={form.name} /></FormField>
         <SaveButton disabled={!form.name.trim()} /></FormLayout>`),
     ).toEqual(["primary-disabled-by-field"]);
+  });
+
+  // REQ-2277 rule 2 (maintainer 2026-11-26): a one-field prompt is a form; its button is not
+  // disabled until the value is typed, whether or not it is a form's primary action.
+  it("any button disabled by an empty typed value", () => {
+    const empty = (tag: string, disabled: string) =>
+      rules(
+        `function F() { const [reason, setReason] = useState("");
+          return <Stack><TextInput value={reason} /><${tag} size="compact-xs" variant="default" disabled={${disabled}}>Go</${tag}></Stack>; }`,
+      );
+    expect(empty("Button", `reason.trim() === ""`)).toEqual(["action-disabled-by-empty-value"]);
+    expect(empty("Button", "!reason.trim() || busy")).toEqual(["action-disabled-by-empty-value"]);
+    expect(empty("Button", "!reason")).toEqual(["action-disabled-by-empty-value"]);
+    expect(empty("DestructiveConfirmButton", `reason.trim() === ""`)).toEqual([
+      "action-disabled-by-empty-value",
+    ]);
+    // A value not bound to a control on screen (an editor's text) is caught by its trim test.
+    expect(empty("Button", "!sqlText.trim()")).toEqual(["action-disabled-by-empty-value"]);
+    // Busy, or nothing to act on, is not an empty value.
+    expect(empty("Button", "busy || rows.length === 0")).toEqual([]);
   });
 
   it("allows a primary action disabled when there is nothing to act on, or while it works", () => {
