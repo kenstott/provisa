@@ -25,11 +25,12 @@ import os
 import subprocess
 import uuid
 
-import duckdb
 import pytest
 
+from provisa.core import engine_memory
 from provisa.core.models import Source, SourceType
 from provisa.federation.connector_duckdb import DuckDBFirebirdConnector, DuckDBMssqlConnector
+from provisa.federation.duckdb_extensions import load_extension
 
 pytestmark = [pytest.mark.integration]
 
@@ -137,11 +138,10 @@ def test_a_sql_server_password_and_database_holding_separators_sign_in(mssql_log
         federation_hints={"trust_server_certificate": "true"},
     )
     details = connector.details(source)
-    con = duckdb.connect()
+    con = engine_memory.connect()
     attached = False
     try:
-        for statement in connector._bring_up():
-            con.execute(statement)
+        load_extension(con, connector.extension)
         con.execute(details["attach"])
         attached = True
         rows = con.execute(f'SELECT id FROM "{details["raw_alias"]}".dbo.probe').fetchall()
@@ -211,10 +211,9 @@ def test_a_firebird_password_holding_url_separators_signs_in():
             path=_FB_DB_PATH_IN_CONTAINER,
         )
         details = connector.details(source)
-        con = duckdb.connect()
+        con = engine_memory.connect()
         try:
-            for statement in connector._bring_up():
-                con.execute(statement)
+            load_extension(con, connector.extension)
             con.execute(details["attach"])
             rows = con.execute(f'SELECT id FROM "{details["raw_alias"]}".{table}').fetchall()
         finally:

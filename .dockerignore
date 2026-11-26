@@ -8,8 +8,8 @@ htmlcov/
 .git/
 .idea/
 .vscode/
-node_modules/
-provisa-ui/node_modules/
+# Every node_modules, at any depth: each stage that needs one runs its own `npm ci`
+**/node_modules/
 packaging/
 *.egg-info/
 dist/
@@ -28,3 +28,12 @@ rust/encoders/target/
 rust/encoders/json/target/
 provisa/_encoders*.so
 provisa/_encoders*.pyd
+# The ui-build stage builds the UI from provisa-ui's sources and lockfile; a checkout's own build
+# output, its generated offline docs site and its test output stay out of the context
+provisa-ui/dist/
+provisa-ui/public/docs-site/
+provisa-ui/coverage/
+provisa-ui/test-results/
+provisa-ui/playwright-report/
+provisa-ui/.nyc_output/
+provisa-ui/.nyc_output_flat/

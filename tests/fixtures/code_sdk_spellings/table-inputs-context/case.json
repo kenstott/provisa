@@ -1,6 +1,0 @@
-{
-  "unspelled": {
-    "rust": "A Rust source has no read context (docs/code-sources.md, Rust), so no Rust function takes a ReadContext.",
-    "go": "The read context is not offered for Go yet (docs/code-sources.md, Go), so no Go function takes a ReadContext."
-  }
-}

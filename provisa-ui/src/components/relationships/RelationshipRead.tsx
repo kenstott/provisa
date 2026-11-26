@@ -84,7 +84,7 @@ export function RelationshipRead({
             label: t("relationshipRow.graphqlAliasLabel"),
             value: <code>{or(r.graphqlAlias)}</code>,
           },
-          { label: t("relationshipRow.sqlName"), value: <code>{or(r.physicalName)}</code> },
+          { label: t("relationshipRow.apiName"), value: <code>{or(r.physicalName)}</code> },
         ]}
       />
       <ReadHeading>{t("relationshipRow.source")}</ReadHeading>

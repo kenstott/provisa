@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Elke profielrun toetst een steekproef van de waarden van elke kolom aan deze soorten. Slagen genoeg waarden, dan krijgt de kolom een voorstel dat een data steward aanneemt of afwijst. Een uitgeschakelde soort wordt niet getoetst.",
+    "filterPlaceholder": "Soorten filteren…",
+    "empty": "Geen soorten komen overeen met het filter",
     "kindHeader": "Soort",
     "testHeader": "Toets",
     "thresholdHeader": "Aandeel dat moet slagen",

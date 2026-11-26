@@ -2444,6 +2444,10 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
         schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
         initialise=initialise,
     )
+    from provisa.api import graph_session_cache
+
+    assert state.tenant_db is not None
+    graph_session_cache.listen(state.tenant_db)  # the region's state store (REQ-2176)
     from provisa.api.region_ops_views import RECORD, STATE, lay_out, table_catalogs
 
     if initialise and table_catalogs():

@@ -12,6 +12,7 @@ import type { Metric, Relationship, ListedTable } from "../../types/admin";
 
 import type { MaskEntry } from "../../lib/masks";
 import type { StatementResult } from "./statementResults";
+import type { ResultRedirect } from "../../types/resultRedirect";
 
 export type ResultTab = "results" | "profile" | "errors" | "history" | "stats" | "analyze";
 export type TopTab = "sql" | "canvas";
@@ -89,6 +90,10 @@ export interface SqlTab {
   /** REQ-1937: the rows held are part of a longer answer; absent on a tab that has not run. */
   resultPartial?: boolean;
   resultError: string;
+  /** REQ-1937: the columns' SQL types from the tab's last run; absent on a tab restored from storage. */
+  resultColumnTypes?: Record<string, string | null>;
+  /** The tab's last run's result landed in the results store (not kept: a run tells it). */
+  resultRedirect?: ResultRedirect | null;
   execMs: number | null;
   /** A batch's results, one per statement; the result* fields are the one shown. */
   statements?: StatementResult[];

@@ -40,37 +40,120 @@ export const READABLE_ZOOM = 0.8;
  * that it is drawn at the readable zoom from its top (and, wider than the canvas, its left) and
  * scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
-  fitBelowLegend(cy, padding, READABLE_ZOOM);
+  // A fit that shows the whole diagram is a fit of the whole, which a resize keeps; one held at
+  // the readable zoom is the opening view, which a resize opens again.
+  const whole = fitBelowLegend(cy, padding, READABLE_ZOOM);
+  modes.set(cy, whole ? { kind: "whole", padding } : { kind: "opening" });
 }
 
 /** The fit control: the whole diagram in the canvas, below the legend, however small that makes
  * it (REQ-2239, FIT MEANS THE WHOLE IMAGE). */
 export function fitWhole(cy: CyInstance, padding: number = FIT_PADDING): void {
   fitBelowLegend(cy, padding, 0);
+  modes.set(cy, { kind: "whole", padding });
 }
 
-/** Fit by the drawn extent below the legend, at no less than `floor`. */
-function fitBelowLegend(cy: CyInstance, padding: number, floor: number): void {
+/** What a view is, for a resize to keep (REQ-2277): the whole diagram fitted, the opening view
+ * (fitClear held at the readable zoom, its focus brought in), or a view the reader zoomed or
+ * moved. */
+export type ViewMode =
+  | { kind: "whole"; padding: number }
+  | { kind: "opening" }
+  | { kind: "kept" };
+
+const modes = new WeakMap<CyInstance, ViewMode>();
+
+/** The view ``cy`` shows now; every camera move here sets it. */
+export function viewMode(cy: CyInstance): ViewMode {
+  const mode = modes.get(cy);
+  // Every graph is fitted before it is shown (its opening fit), and a resize follows only a
+  // placed graph.
+  if (!mode) throw new Error("viewMode: the graph was never fitted");
+  return mode;
+}
+
+/** The view became the reader's own (a zoom, a scroll, a drag of the canvas, a node centred). */
+export function keepView(cy: CyInstance): void {
+  modes.set(cy, { kind: "kept" });
+}
+
+/** A new instance drawing what ``mode`` was the view of, at the same zoom and pan (a drawing
+ * rebuilt in place, its view held): it keeps that mode. */
+export function holdViewMode(cy: CyInstance, mode: ViewMode): void {
+  modes.set(cy, mode);
+}
+
+/** The view is the opening view (a focus fitted into view): a resize opens it again. */
+export function openingView(cy: CyInstance): void {
+  modes.set(cy, { kind: "opening" });
+}
+
+/** A canvas's size, in px. */
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/** REQ-2277: the canvas was ``was`` and is resized (cytoscape told already): the view keeps its
+ * mode. The whole diagram fitted is fitted again at the new size; a view the reader zoomed or
+ * moved keeps its zoom and the point of the diagram at the canvas's centre. The opening view is
+ * left to the caller, who opens it again (fitClear, its focus, its marks); its mode is returned. */
+export function followResize(cy: CyInstance, was: Size): ViewMode["kind"] {
+  const mode = viewMode(cy);
+  if (mode.kind === "whole") fitWhole(cy, mode.padding);
+  else if (mode.kind === "kept") {
+    const box = cy.container();
+    const z = cy.zoom();
+    const pan = cy.pan();
+    // The diagram's point at the old centre, in model px, is put at the new centre.
+    const x = (was.width / 2 - pan.x) / z;
+    const y = (was.height / 2 - pan.y) / z;
+    cy.pan({ x: box.clientWidth / 2 - x * z, y: box.clientHeight / 2 - y * z });
+  }
+  return mode.kind;
+}
+
+const readerMins = new WeakMap<CyInstance, number>();
+
+/** The least zoom the instance was made with: the bound on the reader's own zooming. A fit lowers
+ * the instance's limit below it (fitBelowLegend); this is what it was before any fit. */
+function readerMinZoom(cy: CyInstance): number {
+  let least = readerMins.get(cy);
+  if (least === undefined) {
+    least = cy.minZoom();
+    readerMins.set(cy, least);
+  }
+  return least;
+}
+
+/** Fit by the drawn extent below the legend, at no less than `floor`; whether the whole diagram
+ * is in view. */
+function fitBelowLegend(cy: CyInstance, padding: number, floor: number): boolean {
   const box = cy.container();
   if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) {
     // A canvas not on the page (headless, or not yet laid out): cytoscape's own fit.
     cy.fit(undefined, padding);
-    return;
+    return true;
   }
   const bb = cy.elements().boundingBox({});
   if (bb.w <= 0 || bb.h <= 0) {
     // Nothing drawn: nothing to fit to.
     cy.fit(undefined, padding);
-    return;
+    return true;
   }
   const top = Math.max(legendBand(cy), padding);
   const width = box.clientWidth - 2 * padding;
   const height = box.clientHeight - top - padding;
   if (width <= 0 || height <= 0) {
     cy.fit(undefined, padding);
-    return;
+    return true;
   }
-  cy.zoom(Math.max(Math.min(width / bb.w, height / bb.h), floor));
+  const fits = Math.min(width / bb.w, height / bb.h);
+  // The lead's decision (REQ-2239, FIT MEANS THE WHOLE IMAGE): the instance's least zoom bounds
+  // the reader's own zooming only; a fit goes below it when that is what shows the whole diagram,
+  // and the reader may zoom out as far as that fit.
+  cy.minZoom(Math.min(readerMinZoom(cy), fits));
+  cy.zoom(Math.max(fits, floor));
   // The zoom the instance accepted: it holds its own limits.
   const z = cy.zoom();
   const wide = bb.w * z > width;
@@ -79,6 +162,7 @@ function fitBelowLegend(cy: CyInstance, padding: number, floor: number): void {
     x: (wide ? padding : (box.clientWidth - bb.w * z) / 2) - bb.x1 * z,
     y: (tall ? top : top + (height - bb.h * z) / 2) - bb.y1 * z,
   });
+  return !wide && !tall;
 }
 
 /** A box in canvas px. */
@@ -204,6 +288,7 @@ export function scrollBy(
   if (Math.abs(mx) < 0.5 && Math.abs(my) < 0.5) return false;
   const pan = cy.pan();
   cy.pan({ x: pan.x + mx, y: pan.y + my });
+  keepView(cy);
   return true;
 }
 
@@ -226,4 +311,5 @@ export function zoomAbout(cy: CyInstance, factor: number, at: { x: number; y: nu
     x: cx - ((cx - pan.x) * after) / before,
     y: cyMid - ((cyMid - pan.y) * after) / before,
   });
+  keepView(cy);
 }

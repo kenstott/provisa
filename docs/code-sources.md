@@ -290,7 +290,7 @@ A function that declares a `ReadContext` parameter is told what the read asks of
         yield from query
     ```
 
-In TypeScript, `import type { ReadContext } from "@provisa/services"`.
+In TypeScript, `import type { ReadContext } from "@provisa/services"`. In Go, the parameter after the inputs struct is a `provisa_services.ReadContext`, its fields `Filters`, `OrderBy`, `Limit` (nil when every row counts), `Columns` and `Keys`.
 
 Everything in the context is a hint. Provisa applies the whole statement to the rows your function returns, so a function can ignore any part of it, or loosen a filter, and still return the right answer. One rule holds for the limit:
 
@@ -311,7 +311,7 @@ A function tagged `@loader` is called once per batch instead, the pattern GraphQ
 - **Sparse.** A field with no value is left out of the key, so the function's own default applies, as it does on a single call.
 - **What it returns.** A hash from each key it was given to that key's rows: ordinary rows of the table, none or many. Provisa gives each key's rows to every joining row that shared the key.
 - **Matched by hash.** The function fills a sparse key's missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash, and the function only echoes back the keys it was given.
-- **Typed as usual.** The function still declares its row type alone, a list of rows.
+- **Typed as usual.** The function still declares its row type alone, a list of rows. Go has no union of a list and a hash, so a Go loader declares `map[string][]T` (see [Go](#go)).
 - **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `@loader 100` in place of `@loader`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
 - **Refused.** A `@loader` with no `ReadContext` parameter, a size that isn't a positive integer, two sizes on one function, and `@loader` on anything but a `@table`.
 
@@ -985,11 +985,12 @@ The batched `churnScore` in TypeScript:
 
 - Go code runs as one program: Provisa compiles your package into its host once per version of the code, with the pinned Go toolchain (1.27.3). A `go.mod` that asks for a newer Go is refused.
 - Tags go in the doc comment, each on a line of its own, and types come from the function's signature. An exported function is offered; a method or an unexported function is not.
-- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs. A pointer field is an optional input; any other field is required.
+- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs, then the read context, a `provisa_services.ReadContext`. Each of the three may be left out. A pointer field of the inputs is an optional input; any other field is required.
 - A field is named as `encoding/json` names it: its `json` tag, else its Go name.
 - A `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`. A `@stream` returns `iter.Seq2[T, error]`; a row it yields with an error ends the stream with that error.
 - A `string` type with constants of its own is an enum of them; `time.Time` is a timestamp.
-- `@loader` and the read context are not yet offered for Go.
+- A `@loader` takes the read context and returns `map[string][]T`, the hash of each key it was given to that key's rows, with or without an error. Go has no union of a list and a map, so a read that is not a join's gives no keys, and the loader's rows are those of every key it answers.
+- `@discover` is not offered for Go: it is read from a Python code source only.
 
 The scored account in Go:
 
@@ -1054,6 +1055,7 @@ The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module
 | `provisa.OnStart(F)`, `provisa.OnStop(F)`, `provisa.Health(F)` | `@on-start`, `@on-stop`, `@health` |
 | `provisa.Change(F, "t", []string{"k"}, "removed", "seq")` | `@change table=t`, `key=k`, `removed=removed`, `cursor=seq` |
 | option `provisa.Requires("NAME")`, `provisa.Requires("NAME", provisa.Secret)` | `@requires NAME`, `@requires NAME:secret` |
+| table option `provisa.Loader()`, `provisa.Loader(N)` | `@loader`, `@loader N` |
 | command option `provisa.Insert("t")`, `provisa.Update("t")`, `provisa.Delete("t")` | `@insert t`, `@update t`, `@delete t` |
 
 - `I` is the inputs struct, `provisa.NoInputs` when the function takes none, and `R` is the row. Go infers neither through the SDK's constraints, so you write them.
@@ -1061,17 +1063,20 @@ The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module
 - Every option's arguments are constants. A registration naming a closure, a method or a variable, an option that isn't a constant, and an SDK call outside a package-level registration are refused, naming each.
 - `provisa.TableRef[Row]` is a table a command or query takes. A doc-comment source declares its own generic `TableRef` type instead; Provisa knows either by its name.
 - The column aliases `provisa.Text`, `BigInt`, `Double`, `Boolean`, `Timestamp` and `Json` are the Go types they name.
+- `provisa.ReadContext` is the read context an SDK spelling takes, the same as `provisa_services.ReadContext`; Provisa gives a function either.
 
 ### Rust {: #rust }
 
 - Rust code is a library crate. Provisa compiles your crate into its host once per version of the code, with the pinned Rust toolchain. A `rust-version` newer than that toolchain is refused.
 - Tags go in the `///` doc comment, each on a line of its own, and types come from the function's signature. A `pub fn` at the crate's root is offered; a function in a module, or one that is not `pub`, is not.
-- A `@table` or `@stream` function takes nothing, or one struct of its inputs. An `Option` field is an optional input; any other field is required. A command takes its parameters by value, never borrowed.
+- A `@table` or `@stream` function takes nothing, one struct of its inputs, its read context, or its inputs and then its read context. An `Option` field is an optional input; any other field is required. A command takes its parameters by value, never borrowed.
+- The read context is a struct you declare and name `ReadContext`, with the fields of [the read context](#read-context) you read. Provisa knows it by its name and gives it the context serde makes of it.
 - A field is named as serde names it: `rename`, `rename_all`, `skip`, `flatten` and `default` are read.
 - A `@table` returns a `Vec<T>` or an `impl Iterator<Item = T>`. A `@stream` returns an iterator; an item that is a `Result` ends the stream with its error. A trailing `Result<T, E>` is how a function fails.
 - An enum of unit variants is an enum of their names. chrono's `DateTime` is a timestamp, `NaiveDate` a date, rust_decimal's `Decimal` a numeric and serde_json's `Value` json.
 - A function is neither `async` nor generic.
-- `@loader` and the read context are not offered for Rust.
+- A `@loader` returns a map of each key's hash to that key's rows, a `HashMap<String, Vec<T>>` or a `BTreeMap`. A read of the table that is not a join's gives no keys, and Provisa takes the rows of every key the function answers.
+- `@discover` is read from a Python code source only.
 
 The scored account in Rust:
 
@@ -1135,12 +1140,13 @@ The SDK tab registers the function with the `provisa-sdk` crate, an ordinary dep
 | `change!(f, table = "t", key = ["k"], removed = "r", cursor = "c")` | `@change table=t`, `key=k`, `removed=r`, `cursor=c` |
 | option `requires = "NAME"`, `secret = "NAME"` | `@requires NAME`, `@requires NAME:secret` |
 | command option `insert = "t"`, `update = "t"`, `delete = "t"` | `@insert t`, `@update t`, `@delete t` |
+| table option `loader = true`, `loader = N` | `@loader`, `@loader N` |
 
 - Provisa knows a registration by its path: `provisa_sdk::table!`, the name your `Cargo.toml` gives the dependency (`p = { package = "provisa-sdk", ... }` makes it `p::table!`), a `use provisa_sdk as p;` at the root, or a name a root `use provisa_sdk::{table}` or `use provisa_sdk::*` brings in. A module's own `use` is not followed.
-- The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!` function's signature against its tag's rules, and that each option is one its registration takes. A command, query or change function can take any parameters, so Provisa checks those when it reads the code.
+- The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!` function's signature against its tag's rules, and that each option is one its registration takes. Your `ReadContext` is your own type, so Provisa checks that a read function takes it after its inputs when it reads the code. A command, query or change function can take any parameters, so Provisa checks those when it reads the code.
 - Every option's value is a literal. A registration naming anything but a function by its name, an option that isn't a literal, and an SDK macro invoked inside a module or a function are refused, naming each.
 - The aliases `Rows<T>`, `Batch<T>` and `Results<T>` are `Vec<T>`, and `Stream<T>` is `Box<dyn Iterator<Item = T>>`. The column aliases `Text`, `BigInt`, `Double` and `Boolean` are `String`, `i64`, `f64` and `bool`.
-- The SDK has no `TableRef`: the host decodes each argument with serde, and the SDK has no serde dependency. Declare your own generic `TableRef` type, as a doc-comment source does; Provisa knows it by its name.
+- The SDK has no `TableRef` or `ReadContext`: the host decodes each argument and the read context with serde, and the SDK has no serde dependency. Declare your own generic `TableRef` type and your own `ReadContext`, as a doc-comment source does; Provisa knows each by its name.
 
 ## Deployment {: #deployment }
 
@@ -1976,6 +1982,11 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
 === "JSDoc"
 
     ```typescript
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
     /** Sales regions.
      * @table
      */
@@ -1989,6 +2000,12 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import { table } from "@provisa/sdk";
 
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
+    /** Sales regions. */
     export const regions = table(async function regions(): Promise<Region[]> {
       return [{ code: "emea", name: "Europe, Middle East and Africa" }];
     });
@@ -2001,23 +2018,45 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import type { ReadContext } from "@provisa/services";
 
-    /** @table
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch.
+     * @table
      * @loader
      */
-    export async function churnScore(
-      inputs: ScoreInputs,
-      context: ReadContext,
-    ): Promise<Score[] | Record<string, Score[]>> {
-      ...
+    export async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+      return [];
     }
     ```
 
 === "SDK"
 
     ```typescript
-    import { table } from "@provisa/sdk";
+    import { table, type ReadContext } from "@provisa/sdk";
 
-    export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch. */
+    export const churnScore = table(
+      async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+        return [];
+      },
+      { loader: true }, // or { loader: 50 }
+    );
     ```
 
 **`@stream`**
@@ -2027,12 +2066,19 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @stream */
-    export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
-      for await (const event of tailLog()) {
-        yield event;
-      }
+    export interface AuditInputs {
+      actor?: string;
     }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive.
+     * @stream
+     */
+    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {}
     ```
 
 === "SDK"
@@ -2040,7 +2086,19 @@ The function is an async generator.
     ```typescript
     import { stream } from "@provisa/sdk";
 
-    export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
+    export interface AuditInputs {
+      actor?: string;
+    }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive. */
+    export const auditEvents = stream(
+      async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {},
+    );
     ```
 
 **`@command`**
@@ -2048,9 +2106,11 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command */
+    /** Cancel one order.
+     * @command
+     */
     export async function cancelOrder(orderId: number): Promise<boolean> {
-      return api.cancel(orderId);
+      return true;
     }
     ```
 
@@ -2059,8 +2119,9 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
+    /** Cancel one order. */
     export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-      ...
+      return true;
     });
     ```
 
@@ -2069,10 +2130,18 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders.
+     * @command
      * @insert orders
      */
-    export async function addOrders(rows: Order[]): Promise<number> { ... }
+    export async function addOrders(rows: Order[]): Promise<number> {
+      return rows.length;
+    }
     ```
 
 === "SDK"
@@ -2080,7 +2149,18 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
-    export const addOrders = command(addOrdersFn, { insert: "orders" });
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders. */
+    export const addOrders = command(
+      async function addOrders(rows: Order[]): Promise<number> {
+        return rows.length;
+      },
+      { insert: "orders" },
+    );
     ```
 
 **`@query`**
@@ -2090,19 +2170,61 @@ The function is an async generator.
     ```typescript
     import type { TableRef } from "@provisa/services";
 
-    /** @query */
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions.
+     * @query
+     */
     export async function storesInRegions(
       stores: TableRef<Store>,
       regions: TableRef<Region>,
-    ): Promise<Match[]> { ... }
+    ): Promise<Match[]> {
+      return [];
+    }
     ```
 
 === "SDK"
 
     ```typescript
-    import { query } from "@provisa/sdk";
+    import { query, type TableRef } from "@provisa/sdk";
 
-    export const storesInRegions = query(storesInRegionsFn);
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions. */
+    export const storesInRegions = query(
+      async function storesInRegions(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+      ): Promise<Match[]> {
+        return [];
+      },
+    );
     ```
 
 **`@columns`**
@@ -2110,8 +2232,17 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @columns */
-    export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses.
+     * @columns
+     */
+    export function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
+    }
     ```
 
 === "SDK"
@@ -2119,8 +2250,14 @@ The function is an async generator.
     ```typescript
     import { columns } from "@provisa/sdk";
 
-    export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
-      ...
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses. */
+    export const parseAddress = columns(function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
     });
     ```
 
@@ -2147,8 +2284,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-start */
-    export async function setup(values?: Record<string, string>): Promise<void> { ... }
+    /** Called once on start.
+     * @on-start
+     */
+    export async function setup(values: Record<string, string>): Promise<void> {}
     ```
 
 === "SDK"
@@ -2156,7 +2295,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
+    /** Called once on start. */
+    export const setup = onStart(async function setup(values: Record<string, string>): Promise<void> {});
     ```
 
 **`@on-stop`**
@@ -2164,8 +2304,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-stop */
-    export async function teardown(): Promise<void> { ... }
+    /** Called once on stop.
+     * @on-stop
+     */
+    export async function teardown(): Promise<void> {}
     ```
 
 === "SDK"
@@ -2173,7 +2315,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStop } from "@provisa/sdk";
 
-    export const teardown = onStop(async function teardown() { ... });
+    /** Called once on stop. */
+    export const teardown = onStop(async function teardown(): Promise<void> {});
     ```
 
 **`@health`**
@@ -2181,7 +2324,9 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @health */
+    /** Returns the code's status.
+     * @health
+     */
     export function status(): string {
       return "ok";
     }
@@ -2192,7 +2337,10 @@ export async function storeRegionChanges(
     ```typescript
     import { health } from "@provisa/sdk";
 
-    export const status = health(function status(): string { return "ok"; });
+    /** Returns the code's status. */
+    export const status = health(function status(): string {
+      return "ok";
+    });
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
@@ -2200,11 +2348,23 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @table
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows.
+     * @table
      * @requires REGION
      * @requires API_KEY:secret
      */
-    export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
+    export async function fetch(inputs: Inputs): Promise<Row[]> {
+      return [];
+    }
     ```
 
 === "SDK"
@@ -2212,7 +2372,22 @@ export async function storeRegionChanges(
     ```typescript
     import { table } from "@provisa/sdk";
 
-    export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows. */
+    export const fetch = table(
+      async function fetch(inputs: Inputs): Promise<Row[]> {
+        return [];
+      },
+      { requires: ["REGION", "API_KEY:secret"] },
+    );
     ```
 
 #### Parameter types
@@ -2250,13 +2425,13 @@ These are from `@provisa/sdk`; each is an alias of its TypeScript equivalent.
 
 A Go resolver is a package. Tags go in the doc comment; types come from the function's signature. Exported top-level functions are offered; methods and unexported functions are not. The optional `provisa.dev/sdk/go` module registers functions with their tags so the compiler can check signatures at build time.
 
-Go does not offer `@loader` or the read context.
+A function that takes a `provisa_services.ReadContext` (or the SDK's `provisa.ReadContext`) after its inputs struct is given the read context. Go does not offer `@discover`.
 
 #### Tags
 
 **`@table`**
 
-A `@table` function takes an optional `context.Context` first, then its inputs struct; it returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`.
+A `@table` function takes an optional `context.Context` first, then its inputs struct and its read context, each left out or not; it returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`.
 
 === "Doc comment"
 
@@ -2265,14 +2440,19 @@ A `@table` function takes an optional `context.Context` first, then its inputs s
 
     import "context"
 
-    type RiskInputs struct{}
-    type Risk struct{ Score float64 }
+    type Risk struct {
+    	Score float64 `json:"score"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
 
     // ChurnRisk is the churn risk of one account.
     //
     // @table
     func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-        return []Risk{{Score: 0.82}}, nil
+    	return []Risk{{Score: 0.82}}, nil
     }
     ```
 
@@ -2282,19 +2462,88 @@ A `@table` function takes an optional `context.Context` first, then its inputs s
     package scoring
 
     import (
-        "context"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    type RiskInputs struct{}
-    type Risk struct{ Score float64 }
+    type Risk struct {
+    	Score float64 `json:"score"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
 
     // ChurnRisk is the churn risk of one account.
     func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-        return []Risk{{Score: 0.82}}, nil
+    	return []Risk{{Score: 0.82}}, nil
     }
 
     var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
+    ```
+
+**`@loader` / `@loader N`**
+
+A `@loader` is a `@table` that takes the read context, whose `Keys` are the join's keys, each key's hash to its inputs. It returns `map[string][]T`, each hash to that key's rows. With `@loader N`, each batch is at most `N` keys.
+
+=== "Doc comment"
+
+    ```go
+    package scoring
+
+    import ps "provisa_services"
+
+    type Score struct {
+        CustomerID string  `json:"customer_id"`
+        Score      float64 `json:"score"`
+    }
+
+    type ScoreInputs struct {
+        CustomerID *string `json:"customer_id"`
+    }
+
+    // ChurnScore scores every key of a batch at once.
+    //
+    // @table
+    // @loader
+    func ChurnScore(in ScoreInputs, read ps.ReadContext) (map[string][]Score, error) {
+        out := map[string][]Score{}
+        for hash, key := range read.Keys {
+            id, _ := key["customer_id"].(string)
+            out[hash] = []Score{{CustomerID: id, Score: 0.5}}
+        }
+        return out, nil
+    }
+    ```
+
+=== "SDK"
+
+    ```go
+    package scoring
+
+    import provisa "provisa.dev/sdk/go"
+
+    type Score struct {
+        CustomerID string  `json:"customer_id"`
+        Score      float64 `json:"score"`
+    }
+
+    type ScoreInputs struct {
+        CustomerID *string `json:"customer_id"`
+    }
+
+    // ChurnScore scores every key of a batch at once.
+    func ChurnScore(in ScoreInputs, read provisa.ReadContext) (map[string][]Score, error) {
+        out := map[string][]Score{}
+        for hash, key := range read.Keys {
+            id, _ := key["customer_id"].(string)
+            out[hash] = []Score{{CustomerID: id, Score: 0.5}}
+        }
+        return out, nil
+    }
+
+    var _ = provisa.Table[ScoreInputs, Score](ChurnScore, provisa.Loader()) // or provisa.Loader(50)
     ```
 
 **`@stream`**
@@ -2304,40 +2553,58 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package audit
 
     import (
-        "context"
-        "iter"
+    	"context"
+    	"iter"
     )
 
-    type AuditInputs struct{}
-    type AuditEvent struct{}
+    type AuditEvent struct {
+    	ID     int64  `json:"id"`
+    	Action string `json:"action"`
+    }
+
+    type AuditInputs struct {
+    	System string `json:"system"`
+    }
 
     // AuditEvents streams audit events.
     //
     // @stream
     func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
-        return nil
+    	return func(yield func(AuditEvent, error) bool) {
+    		yield(AuditEvent{ID: 1, Action: "login"}, nil)
+    	}
     }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package audit
 
     import (
-        "context"
-        "iter"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+    	"iter"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    type AuditInputs struct{}
-    type AuditEvent struct{}
+    type AuditEvent struct {
+    	ID     int64  `json:"id"`
+    	Action string `json:"action"`
+    }
 
+    type AuditInputs struct {
+    	System string `json:"system"`
+    }
+
+    // AuditEvents streams audit events.
     func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
-        return nil
+    	return func(yield func(AuditEvent, error) bool) {
+    		yield(AuditEvent{ID: 1, Action: "login"}, nil)
+    	}
     }
 
     var _ = provisa.Stream[AuditInputs, AuditEvent](AuditEvents)
@@ -2348,54 +2615,70 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package orders
 
     // CancelOrder cancels one order.
     //
     // @command
     func CancelOrder(orderID int) (bool, error) {
-        return true, nil
+    	return true, nil
     }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package orders
 
     import provisa "provisa.dev/sdk/go"
 
-    func CancelOrder(orderID int) (bool, error) { return true, nil }
+    // CancelOrder cancels one order.
+    func CancelOrder(orderID int) (bool, error) {
+    	return true, nil
+    }
 
     var _ = provisa.Command(CancelOrder)
     ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
+`@update` and `@delete` are written the same way, with `provisa.Update` and `provisa.Delete`.
+
 === "Doc comment"
 
     ```go
-    package scoring
+    package orders
 
-    type Order struct{}
+    type Order struct {
+    	ID    int64   `json:"id"`
+    	Total float64 `json:"total"`
+    }
 
     // AddOrders inserts orders.
     //
     // @command
     // @insert orders
-    func AddOrders(rows []Order) (int, error) { return 0, nil }
+    func AddOrders(rows []Order) (int, error) {
+    	return len(rows), nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package orders
 
     import provisa "provisa.dev/sdk/go"
 
-    type Order struct{}
+    type Order struct {
+    	ID    int64   `json:"id"`
+    	Total float64 `json:"total"`
+    }
 
-    func AddOrders(rows []Order) (int, error) { return 0, nil }
+    // AddOrders inserts orders.
+    func AddOrders(rows []Order) (int, error) {
+    	return len(rows), nil
+    }
 
     var _ = provisa.Command(AddOrders, provisa.Insert("orders"))
     ```
@@ -2405,34 +2688,59 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package stores
 
-    type Store struct{}
-    type Region struct{}
-    type Match struct{}
-    type TableRef[T any] struct{}
+    // TableRef is a governed table the function takes; Provisa knows it by its name.
+    type TableRef[Row any] struct {
+    	Ref string `json:"ref"`
+    }
+
+    type Store struct {
+    	ID     int64  `json:"id"`
+    	Region string `json:"region"`
+    }
+
+    type Region struct {
+    	Code string `json:"code"`
+    }
+
+    type Match struct {
+    	StoreID int64  `json:"store_id"`
+    	Region  string `json:"region"`
+    }
 
     // StoresInRegions matches stores to regions.
     //
     // @query
     func StoresInRegions(stores TableRef[Store], regions TableRef[Region]) ([]Match, error) {
-        return nil, nil
+    	return nil, nil
     }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package stores
 
     import provisa "provisa.dev/sdk/go"
 
-    type Store struct{}
-    type Region struct{}
-    type Match struct{}
+    type Store struct {
+    	ID     int64  `json:"id"`
+    	Region string `json:"region"`
+    }
 
+    type Region struct {
+    	Code string `json:"code"`
+    }
+
+    type Match struct {
+    	StoreID int64  `json:"store_id"`
+    	Region  string `json:"region"`
+    }
+
+    // StoresInRegions matches stores to regions.
     func StoresInRegions(stores provisa.TableRef[Store], regions provisa.TableRef[Region]) ([]Match, error) {
-        return nil, nil
+    	return nil, nil
     }
 
     var _ = provisa.Query(StoresInRegions)
@@ -2443,26 +2751,53 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package addresses
 
-    type Address struct{}
+    import "strings"
+
+    type Address struct {
+    	Street string `json:"street"`
+    	City   string `json:"city"`
+    }
 
     // ParseAddress parses raw addresses.
     //
     // @columns
-    func ParseAddress(raw []string) ([]Address, error) { return nil, nil }
+    func ParseAddress(raw []string) ([]Address, error) {
+    	out := make([]Address, len(raw))
+    	for i, line := range raw {
+    		street, city, _ := strings.Cut(line, ",")
+    		out[i] = Address{Street: street, City: strings.TrimSpace(city)}
+    	}
+    	return out, nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package addresses
 
-    import provisa "provisa.dev/sdk/go"
+    import (
+    	"strings"
 
-    type Address struct{}
+    	provisa "provisa.dev/sdk/go"
+    )
 
-    func ParseAddress(raw []string) ([]Address, error) { return nil, nil }
+    type Address struct {
+    	Street string `json:"street"`
+    	City   string `json:"city"`
+    }
+
+    // ParseAddress parses raw addresses.
+    func ParseAddress(raw []string) ([]Address, error) {
+    	out := make([]Address, len(raw))
+    	for i, line := range raw {
+    		street, city, _ := strings.Cut(line, ",")
+    		out[i] = Address{Street: street, City: strings.TrimSpace(city)}
+    	}
+    	return out, nil
+    }
 
     var _ = provisa.Columns(ParseAddress)
     ```
@@ -2472,12 +2807,27 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package stores
 
-    type Store struct{}
-    type Region struct{}
-    type Changed struct{}
-    type TableRef[T any] struct{}
+    // TableRef is a governed table the function takes; Provisa knows it by its name.
+    type TableRef[Row any] struct {
+    	Ref string `json:"ref"`
+    }
+
+    type Store struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Region struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Changed struct {
+    	StoreID  int64 `json:"store_id"`
+    	RegionID int64 `json:"region_id"`
+    	Removed  bool  `json:"removed"`
+    	Seq      int64 `json:"seq"`
+    }
 
     // StoreRegionChanges returns matches changed since the cursor.
     //
@@ -2485,24 +2835,36 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     // @change key=store_id,region_id
     // @change removed=removed
     // @change cursor=seq
-    func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int) ([]Changed, error) {
-        return nil, nil
+    func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int64) ([]Changed, error) {
+    	return nil, nil
     }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package stores
 
     import provisa "provisa.dev/sdk/go"
 
-    type Store struct{}
-    type Region struct{}
-    type Changed struct{}
+    type Store struct {
+    	ID int64 `json:"id"`
+    }
 
-    func StoreRegionChanges(stores provisa.TableRef[Store], regions provisa.TableRef[Region], since *int) ([]Changed, error) {
-        return nil, nil
+    type Region struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Changed struct {
+    	StoreID  int64 `json:"store_id"`
+    	RegionID int64 `json:"region_id"`
+    	Removed  bool  `json:"removed"`
+    	Seq      int64 `json:"seq"`
+    }
+
+    // StoreRegionChanges returns matches changed since the cursor.
+    func StoreRegionChanges(stores provisa.TableRef[Store], regions provisa.TableRef[Region], since *int64) ([]Changed, error) {
+    	return nil, nil
     }
 
     var _ = provisa.Change(StoreRegionChanges, "store_regions", []string{"store_id", "region_id"}, "removed", "seq")
@@ -2513,27 +2875,39 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package life
 
     import "context"
+
+    var region string
 
     // Setup runs once on start.
     //
     // @on-start
-    func Setup(ctx context.Context, values map[string]string) error { return nil }
+    func Setup(ctx context.Context, values map[string]string) error {
+    	region = values["region"]
+    	return nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package life
 
     import (
-        "context"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    func Setup(ctx context.Context, values map[string]string) error { return nil }
+    var region string
+
+    // Setup runs once on start.
+    func Setup(ctx context.Context, values map[string]string) error {
+    	region = values["region"]
+    	return nil
+    }
 
     var _ = provisa.OnStart(Setup)
     ```
@@ -2543,27 +2917,33 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package life
 
     import "context"
 
     // Teardown runs once on stop.
     //
     // @on-stop
-    func Teardown(ctx context.Context) error { return nil }
+    func Teardown(ctx context.Context) error {
+    	return nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package life
 
     import (
-        "context"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    func Teardown(ctx context.Context) error { return nil }
+    // Teardown runs once on stop.
+    func Teardown(ctx context.Context) error {
+    	return nil
+    }
 
     var _ = provisa.OnStop(Teardown)
     ```
@@ -2573,7 +2953,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package life
 
     import "context"
 
@@ -2581,21 +2961,25 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     //
     // @health
     func Status(ctx context.Context) (string, error) {
-        return "ok", nil
+    	return "ok", nil
     }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package life
 
     import (
-        "context"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    func Status(ctx context.Context) (string, error) { return "ok", nil }
+    // Status returns the code's health.
+    func Status(ctx context.Context) (string, error) {
+    	return "ok", nil
+    }
 
     var _ = provisa.Health(Status)
     ```
@@ -2605,38 +2989,58 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 === "Doc comment"
 
     ```go
-    package scoring
+    package feeds
 
     import "context"
 
-    type Inputs struct{}
-    type Row struct{}
+    type Row struct {
+    	ID int64 `json:"id"`
+    }
+
+    type Inputs struct {
+    	AccountID string `json:"account_id"`
+    }
 
     // Fetch fetches rows.
     //
     // @table
     // @requires REGION
     // @requires API_KEY:secret
-    func Fetch(ctx context.Context, in Inputs) ([]Row, error) { return nil, nil }
+    func Fetch(ctx context.Context, in Inputs) ([]Row, error) {
+    	return []Row{{ID: 1}}, nil
+    }
     ```
 
 === "SDK"
 
     ```go
-    package scoring
+    package feeds
 
     import (
-        "context"
-        provisa "provisa.dev/sdk/go"
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
     )
 
-    type Inputs struct{}
-    type Row struct{}
+    type Row struct {
+    	ID int64 `json:"id"`
+    }
 
-    func Fetch(ctx context.Context, in Inputs) ([]Row, error) { return nil, nil }
+    type Inputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // Fetch fetches rows.
+    func Fetch(ctx context.Context, in Inputs) ([]Row, error) {
+    	return []Row{{ID: 1}}, nil
+    }
 
     var _ = provisa.Table[Inputs, Row](Fetch, provisa.Requires("REGION"), provisa.Requires("API_KEY", provisa.Secret))
     ```
+
+**`@discover`**
+
+Not offered for Go: `@discover` is read from a Python code source only, and a Go function tagged with it is refused by name.
 
 #### Field naming
 
@@ -2657,61 +3061,206 @@ These are from `provisa.dev/sdk/go`.
 
 #### Special types
 
-`provisa.NoInputs` stands for `I` when a `Table` or `Stream` function takes no inputs struct. `provisa.TableRef[Row]` is the type for a governed table argument; a doc-comment source declares its own generic `TableRef` type instead, which Provisa also knows by name.
+`provisa.NoInputs` stands for `I` when a `Table` or `Stream` function takes no inputs struct. `provisa_services.ReadContext`, or `provisa.ReadContext` in an SDK spelling, is the read context. `provisa.TableRef[Row]` is the type for a governed table argument; a doc-comment source declares its own generic `TableRef` type instead, which Provisa also knows by name.
 
 ---
 
 ### Rust reference {: #rust-reference }
 
-A Rust resolver is a library crate. Tags go in `///` doc comments; types come from the function's signature. Only `pub fn` items at the crate's root are offered. The optional `provisa-sdk` crate registers functions with their tags as compile-time constants.
+A Rust resolver is a library crate. Tags go in `///` doc comments; types come from the function's signature. Only `pub fn` items at the crate's root are offered. The optional `provisa-sdk` crate registers functions with their tags as compile-time constants, and the compiler holds each function to its tag's shape.
 
-Rust does not offer `@loader` or the read context. Rust functions are neither `async` nor generic.
+Rust functions are neither `async` nor generic. Rust reads every tag Python does except `@discover`, which is read from a Python code source only.
 
 #### Tags
 
+Write each tag on its own line of the function's doc comment, or register the function with an SDK macro at the crate's root.
+
 **`@table`**
 
-A `@table` function takes nothing or one inputs struct. It returns `Vec<T>`, `impl Iterator<Item = T>`, or either inside `Result<..., E>`.
+The function returns a table's rows: a `Vec<T>`, an `impl Iterator<Item = T>`, or either inside a `Result`. It takes nothing, its inputs struct, its read context, or its inputs struct and then its read context.
 
 === "Doc comment"
 
     ```rust
-    /// The churn risk of one account.
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Region {
+        pub code: String,
+        pub name: String,
+    }
+
+    /// Sales regions.
     ///
     /// @table
-    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
-        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
+    pub fn regions() -> Vec<Region> {
+        vec![Region { code: "emea".into(), name: "Europe, Middle East and Africa".into() }]
     }
     ```
 
 === "SDK"
 
     ```rust
-    provisa_sdk::table!(churn_risk);
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Region {
+        pub code: String,
+        pub name: String,
+    }
+
+    /// Sales regions.
+    pub fn regions() -> Vec<Region> {
+        vec![Region { code: "emea".into(), name: "Europe, Middle East and Africa".into() }]
+    }
+
+    provisa_sdk::table!(regions);
+    ```
+
+**`@loader` / `@loader N`**
+
+Tags a `@table` function as a batch loader. Provisa calls it once per batch of join keys and passes the keys in the read context's `keys`, each key's hash to the key. With `@loader N`, each batch is at most `N` keys.
+
+A Rust loader returns a map of each key's hash to that key's rows, a `HashMap<String, Vec<T>>` or a `BTreeMap`. A read of the table that is not a join's gives no keys; the function answers its own inputs under any one key, and Provisa takes the rows of every key.
+
+=== "Doc comment"
+
+    ```rust
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct ScoreInputs {
+        pub customer_id: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct Score {
+        pub customer_id: String,
+        pub score: f64,
+    }
+
+    /// The read context, as much of it as this code reads.
+    #[derive(Deserialize)]
+    pub struct ReadContext {
+        pub keys: Option<HashMap<String, HashMap<String, String>>>,
+    }
+
+    /// Churn score of each customer in the batch.
+    ///
+    /// @table
+    /// @loader
+    pub fn churn_score(inputs: ScoreInputs, context: ReadContext) -> HashMap<String, Vec<Score>> {
+        let keys = match context.keys {
+            Some(keys) => keys,
+            None => HashMap::from([(String::new(), inputs.customer_id.map(|id| ("customer_id".to_string(), id)).into_iter().collect())]),
+        };
+        keys.into_iter()
+            .filter_map(|(hash, key)| {
+                let id = key.get("customer_id")?.clone();
+                Some((hash, vec![Score { customer_id: id, score: 0.82 }]))
+            })
+            .collect()
+    }
+    ```
+
+=== "SDK"
+
+    ```rust
+    use std::collections::HashMap;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct ScoreInputs {
+        pub customer_id: Option<String>,
+    }
+
+    #[derive(Serialize)]
+    pub struct Score {
+        pub customer_id: String,
+        pub score: f64,
+    }
+
+    /// The read context, as much of it as this code reads.
+    #[derive(Deserialize)]
+    pub struct ReadContext {
+        pub keys: Option<HashMap<String, HashMap<String, String>>>,
+    }
+
+    /// Churn score of each customer in the batch.
+    pub fn churn_score(inputs: ScoreInputs, context: ReadContext) -> HashMap<String, Vec<Score>> {
+        let keys = match context.keys {
+            Some(keys) => keys,
+            None => HashMap::from([(String::new(), inputs.customer_id.map(|id| ("customer_id".to_string(), id)).into_iter().collect())]),
+        };
+        keys.into_iter()
+            .filter_map(|(hash, key)| {
+                let id = key.get("customer_id")?.clone();
+                Some((hash, vec![Score { customer_id: id, score: 0.82 }]))
+            })
+            .collect()
+    }
+
+    provisa_sdk::table!(churn_score, loader = true); // or loader = 50 for a batch of fifty
     ```
 
 **`@stream`**
 
-A `@stream` function returns an iterator. An item of `Result<T, E>` ends the stream on error.
+The function returns an iterator, and each row is delivered as it is yielded, on surfaces that serve subscriptions. An item of `Result<T, E>` ends the stream with its error. It takes what a `@table` function takes.
 
 === "Doc comment"
 
     ```rust
-    /// Audit events.
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct AuditInputs {
+        pub since: i64,
+    }
+
+    #[derive(Serialize)]
+    pub struct AuditEvent {
+        pub seq: i64,
+        pub action: String,
+    }
+
+    /// Audit events, each as it happens.
     ///
     /// @stream
-    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
-        tail_log()
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = Result<AuditEvent, String>> {
+        (inputs.since..).map(|seq| Ok(AuditEvent { seq, action: "login".into() }))
     }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct AuditInputs {
+        pub since: i64,
+    }
+
+    #[derive(Serialize)]
+    pub struct AuditEvent {
+        pub seq: i64,
+        pub action: String,
+    }
+
+    /// Audit events, each as it happens.
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = Result<AuditEvent, String>> {
+        (inputs.since..).map(|seq| Ok(AuditEvent { seq, action: "login".into() }))
+    }
+
     provisa_sdk::stream!(audit_events);
     ```
 
 **`@command`**
+
+A command takes its parameters by value, each decoded with serde. A trailing `Result` is how it fails.
 
 === "Doc comment"
 
@@ -2720,6 +3269,9 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     ///
     /// @command
     pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        if order_id < 0 {
+            return Err(format!("there is no order {order_id}"));
+        }
         Ok(true)
     }
     ```
@@ -2727,78 +3279,307 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "SDK"
 
     ```rust
+    /// Cancel one order.
+    pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        if order_id < 0 {
+            return Err(format!("there is no order {order_id}"));
+        }
+        Ok(true)
+    }
+
     provisa_sdk::command!(cancel_order);
     ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
+Binds a `@command` to a table of the code's as that table's insert, update or delete.
+
 === "Doc comment"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
+    /// Every order.
+    ///
+    /// @table
+    pub fn orders() -> Vec<Order> {
+        Vec::new()
+    }
+
     /// Insert orders.
     ///
     /// @command
     /// @insert orders
-    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> { ... }
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
+    /// Every order.
+    pub fn orders() -> Vec<Order> {
+        Vec::new()
+    }
+
+    /// Insert orders.
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
+
+    provisa_sdk::table!(orders);
     provisa_sdk::command!(add_orders, insert = "orders");
     ```
 
 **`@query`**
 
+A command whose kind is a query. A parameter typed `TableRef<Row>` takes a governed table, its columns the fields of `Row`. Declare `TableRef` in your crate; Provisa knows it by its name.
+
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+        pub region: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Match {
+        pub store_id: i64,
+        pub region: String,
+    }
+
     /// Match stores to regions.
     ///
     /// @query
-    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> { ... }
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores.name, regions.name);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+        pub region: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Match {
+        pub store_id: i64,
+        pub region: String,
+    }
+
+    /// Match stores to regions.
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores.name, regions.name);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::query!(stores_in_regions);
     ```
 
 **`@columns`**
 
+A batch column transform: each parameter is one input column's values, a `Vec`, and the result holds one row per input row.
+
 === "Doc comment"
 
     ```rust
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
     /// Parse raw addresses.
     ///
     /// @columns
-    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> { ... }
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        raw.iter()
+            .map(|line| match line.split_once(',') {
+                Some((street, city)) => Ok(Address { street: street.trim().into(), city: city.trim().into() }),
+                None => Err(format!("{line} has no city")),
+            })
+            .collect()
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
+    /// Parse raw addresses.
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        raw.iter()
+            .map(|line| match line.split_once(',') {
+                Some((street, city)) => Ok(Address { street: street.trim().into(), city: city.trim().into() }),
+                None => Err(format!("{line} has no city")),
+            })
+            .collect()
+    }
+
     provisa_sdk::columns!(parse_address);
     ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
+The function that keeps the landed table `T` fresh, given the cursor of its last run. Each argument goes on a `@change` line of its own.
+
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: String,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
     /// Matches changed since the cursor.
     ///
     /// @change table=store_regions
     /// @change key=store_id,region_id
     /// @change removed=removed
     /// @change cursor=seq
-    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> { ... }
+    pub fn store_region_changes(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+        since: Option<i64>,
+    ) -> Result<Vec<Changed>, String> {
+        let _ = (stores.name, regions.name, since);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    use serde::{Deserialize, Serialize};
+
+    /// A governed table argument, declared by the code; Provisa knows it by its name.
+    #[derive(Deserialize)]
+    pub struct TableRef<T> {
+        pub name: String,
+        #[serde(skip)]
+        pub rows: PhantomData<T>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Store {
+        pub id: i64,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Region {
+        pub code: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: String,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
+    /// Matches changed since the cursor.
+    pub fn store_region_changes(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+        since: Option<i64>,
+    ) -> Result<Vec<Changed>, String> {
+        let _ = (stores.name, regions.name, since);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::change!(
         store_region_changes,
         table = "store_regions",
@@ -2810,22 +3591,43 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 
 **`@on-start`**
 
+Called once when the code starts, with nothing or the setup values as one map of name to value.
+
 === "Doc comment"
 
     ```rust
+    use std::collections::HashMap;
+
     /// Called once on start.
     ///
     /// @on-start
-    pub fn setup(values: HashMap<String, String>) -> Result<(), String> { ... }
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        match values.get("REGION") {
+            Some(_) => Ok(()),
+            None => Err("no REGION is set up".into()),
+        }
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::collections::HashMap;
+
+    /// Called once on start.
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        match values.get("REGION") {
+            Some(_) => Ok(()),
+            None => Err("no REGION is set up".into()),
+        }
+    }
+
     provisa_sdk::on_start!(setup);
     ```
 
 **`@on-stop`**
+
+Called once when the code stops. It takes nothing.
 
 === "Doc comment"
 
@@ -2833,16 +3635,21 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     /// Called once on stop.
     ///
     /// @on-stop
-    pub fn teardown() { ... }
+    pub fn teardown() {}
     ```
 
 === "SDK"
 
     ```rust
+    /// Called once on stop.
+    pub fn teardown() {}
+
     provisa_sdk::on_stop!(teardown);
     ```
 
 **`@health`**
+
+Returns the code's status as text. `ok` or `healthy` is healthy; any other text says what is wrong.
 
 === "Doc comment"
 
@@ -2858,27 +3665,76 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "SDK"
 
     ```rust
+    /// Returns the code's status.
+    pub fn status() -> &'static str {
+        "ok"
+    }
+
     provisa_sdk::health!(status);
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
+Declares a setup value the code needs, or a secret. In the SDK, `requires` and `secret` are options of any registration but `on_stop!` and `health!`.
+
 === "Doc comment"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct Inputs {
+        pub region: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Row {
+        pub id: i64,
+    }
+
     /// Fetch rows.
     ///
     /// @table
     /// @requires REGION
     /// @requires API_KEY:secret
-    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> { ... }
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs.region;
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct Inputs {
+        pub region: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Row {
+        pub id: i64,
+    }
+
+    /// Fetch rows.
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs.region;
+        Ok(Vec::new())
+    }
+
     provisa_sdk::table!(fetch, requires = "REGION", secret = "API_KEY");
     ```
+
+#### Parameter types
+
+| Parameter | Type | Notes |
+|---|---|---|
+| Inputs | A struct that derives `Deserialize` | For `@table` and `@stream`. Each field is a table parameter; an `Option` field is optional. |
+| Read context | A struct the code declares and names `ReadContext` | For `@table` and `@stream`, after the inputs. Declare the fields you read of `filters`, `order_by`, `limit`, `columns` and `keys`. |
+| Table argument | A generic struct the code declares and names `TableRef<Row>` | For `@command` and `@query` only. The row type's fields declare the input columns. |
+| Command parameter | Any type serde decodes, taken by value | Never borrowed. |
 
 #### Field naming
 
@@ -2906,7 +3762,7 @@ For timestamp, date, numeric and json columns: use `chrono::DateTime`, `chrono::
 | `Batch<T>` | `Vec<T>` | `@columns` parameter type |
 | `Results<T>` | `Vec<T>` | `@columns` return type |
 
-The SDK has no `TableRef` type. Declare your own generic `TableRef` struct; Provisa knows it by name.
+The SDK has no serde dependency, so it declares neither `TableRef` nor `ReadContext`. Declare each in your crate; Provisa knows them by name.
 
 ---
 

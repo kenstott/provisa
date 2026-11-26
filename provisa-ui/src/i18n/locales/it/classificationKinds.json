@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Ogni esecuzione del profilo verifica un campione dei valori di ogni colonna rispetto a questi tipi. Quando abbastanza valori superano la verifica, la colonna riceve un suggerimento che un data steward accetta o rifiuta. Un tipo disattivato non viene verificato.",
+    "filterPlaceholder": "Filtra tipi…",
+    "empty": "Nessun tipo corrisponde al filtro",
     "kindHeader": "Tipo",
     "testHeader": "Verifica",
     "thresholdHeader": "Quota che deve superarla",

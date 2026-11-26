@@ -523,7 +523,7 @@ def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
                 derived = offer.contracts.get(member.fqn())
                 if table is None or derived is None:
                     continue
-                served = {column.name for column in table.columns}
+                served = {column.consumer_name for column in table.columns}
                 rows.append(
                     [
                         offer_contract_id(offer, table),

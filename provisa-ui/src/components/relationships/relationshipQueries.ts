@@ -60,7 +60,7 @@ export interface RelationshipQueryRef {
   disableCypher: boolean;
   /** Its GraphQL field as stored (graphql_field), junction-backed edges included. */
   graphqlField: string | null;
-  /** REQ-1417: its name on the SQL plane, which JSON:API's ?include= takes; null when none. */
+  /** REQ-1417: its API name, which REST and JSON:API ?include= take; null when none. */
   physicalName: string | null;
 }
 

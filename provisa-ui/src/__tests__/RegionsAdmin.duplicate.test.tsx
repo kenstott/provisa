@@ -95,6 +95,7 @@ const PLATFORM: PlatformRegions = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(fetchPlatformRegions).mockReset().mockResolvedValue(PLATFORM);
   vi.mocked(savePlatformRegions)
     .mockReset()
@@ -115,7 +116,7 @@ describe("Platform › Regions", () => {
   const panel = () => screen.getByTestId("platform-regions-split-panel");
 
   it("+ Add region opens empty after a region was selected", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
     fireEvent.click(await screen.findByTestId("platform-regions-add"));
     await screen.findByTestId("platform-region-form");
@@ -123,7 +124,7 @@ describe("Platform › Regions", () => {
   });
 
   it("+ Add region opens empty after the region was edited and the edit cancelled", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
     fireEvent.click(await screen.findByTestId("platform-region-edit"));
     fireEvent.click(await screen.findByText("Cancel"));
@@ -133,7 +134,7 @@ describe("Platform › Regions", () => {
   });
 
   it("offers Duplicate beside Edit and Delete, named Duplicate", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
     expect(await screen.findByTestId("platform-region-duplicate")).toHaveAccessibleName(
       "Duplicate",
@@ -141,7 +142,7 @@ describe("Platform › Regions", () => {
   });
 
   it("opens the add form filled from the region, under an id that takes no separator", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
     fireEvent.click(await screen.findByTestId("platform-region-duplicate"));
     expect(await screen.findByTestId("platform-region-id")).toHaveValue("eucopy");
