@@ -3152,3 +3152,83 @@ def test_the_nixos_ci_host_has_what_the_ubuntu_lanes_install_for_the_suites():
     assert "services.envfs" in nix and "enable = true;" in nix.split("services.envfs", 1)[1]
     # A user's host is given preinstall.nix, never the CI host's FHS emulation.
     assert "envfs" not in (REPO / "packaging" / "nixos" / "preinstall.nix").read_text()
+
+
+def test_the_nixos_unit_tests_run_in_shards_that_fit_the_guest():
+    """In one guest tests/unit took over an hour, the deploy job's limit cut it off, and four xdist
+    workers of 3 to 4.5 GB each outgrew the guest's 12 GB, so the kernel killed them (runs
+    45680556710 and 45720472876). They run in unit-tests.yml's shards, two workers each, split by
+    the times unit-tests.yml's plan reads."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    ubuntu = yaml.safe_load((REPO / ".github" / "workflows" / "unit-tests.yml").read_text())["jobs"]
+    assert all("tests/unit" not in (s.get("run") or "") for s in jobs["host"]["steps"])
+    assert (
+        jobs["unit"]["strategy"]["matrix"]["shard"]
+        == ubuntu["shard"]["strategy"]["matrix"]["shard"]
+    )
+    assert "unit-plan" in _needed(jobs, "unit")
+    steps = jobs["unit"]["steps"]
+    names = [s.get("name") for s in steps]
+    run = steps[names.index("Python unit tests")]["run"]
+    assert run.lstrip().startswith(_IN_THE_GUEST)
+    assert "-p unit_shard tests/unit" in run and " -n 2 " in run
+    assert "PROVISA_UNIT_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}" in run
+    plan_runs = "\n".join(s.get("run") or "" for s in jobs["unit-plan"]["steps"])
+    ubuntu_runs = "\n".join(s.get("run") or "" for s in ubuntu["plan"]["steps"])
+    assert "unit_shard.py timings unit-seconds.json" in plan_runs
+    assert "unit_shard.py timings unit-seconds.json" in ubuntu_runs
+    download = next(s for s in steps if s.get("uses") == "actions/download-artifact@v4")
+    boot = next(i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm")
+    assert steps.index(download) < boot
+
+
+def test_the_nixos_lanes_have_what_an_app_image_build_takes():
+    """test_master_key_survives_recreate_compose.py builds the app image, which takes Pyodide's
+    files from PROVISA_NOTEBOOK_DOWNLOADS and this commit's duckdb-ext wheels from
+    PROVISA_DUCKDB_EXT_WHEELS; the guest had neither (run 45720472876: KeyError:
+    'PROVISA_NOTEBOOK_DOWNLOADS'). The lane fetches both on the runner, copies them into the guest
+    and names them for the run."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    steps = jobs["lane"]["steps"]
+    uses = [s.get("uses") for s in steps]
+    names = [s.get("name") for s in steps]
+    boot = uses.index("./.github/actions/nixos-vm")
+    assert uses.index("./.github/actions/pyodide-downloads") < boot
+    wheels = uses.index("./.github/actions/duckdb-ext-wheels")
+    assert wheels < boot and steps[wheels]["with"] == {"phase": "restore"}
+    assert "duckdb-ext-wheels" in _needed(jobs, "lane")
+    prime = jobs["duckdb-ext-wheels"]["steps"]
+    assert any(
+        s.get("uses") == "./.github/actions/duckdb-ext-wheels" and s["with"] == {"phase": "prime"}
+        for s in prime
+    )
+    copy = names.index("Pyodide downloads and duckdb-ext wheels into the guest")
+    assert boot < copy < names.index("Run lane")
+    copied = steps[copy]["run"]
+    assert '"$PROVISA_NOTEBOOK_DOWNLOADS"' in copied and '"$PROVISA_DUCKDB_EXT_WHEELS"' in copied
+    run = steps[names.index("Run lane")]["run"]
+    assert 'export PROVISA_NOTEBOOK_DOWNLOADS="$HOME/.cache/provisa-notebook-downloads"' in run
+    assert 'export PROVISA_DUCKDB_EXT_WHEELS="$HOME/duckdb-ext-wheels"' in run
+
+
+def test_the_nixos_deploy_job_reads_the_services_own_runtime_deps_cache():
+    """The CI host's service runs `provisa run --data-dir /var/lib/provisa`, whose bundles are in
+    /var/lib/provisa/runtime-deps (provisa/cli.py); the job fetched the AskAmerica bundle into the
+    login's ~/.cache/provisa/runtime_deps and looked for its server's log there (run 45720472876:
+    No such file or directory)."""
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "nixos.yml").read_text())["jobs"]
+    runs = {s.get("name"): s.get("run") or "" for s in jobs["host"]["steps"]}
+    assert (
+        "--data-dir /var/lib/provisa"
+        in (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    )
+    assert (
+        "export PROVISA_RUNTIME_DEPS_CACHE=/var/lib/provisa/runtime-deps"
+        in runs["AskAmerica bundle fetched before the spec"]
+    )
+    spec = runs[
+        "AskAmerica through the deployed UI (add a source; its server listens, its JVM is up)"
+    ]
+    assert "/var/lib/provisa/runtime-deps/*/pgwire-govdata/pgwire-server.log" in spec
+    assert "find /var/lib/provisa -name pgwire-server.log" in runs["Adapter server logs"]
+    assert "~/.cache/provisa" not in "\n".join(runs.values())

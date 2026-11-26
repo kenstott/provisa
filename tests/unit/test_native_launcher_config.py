@@ -75,3 +75,14 @@ def test_every_run_of_the_runtime_python_keeps_the_working_directory_off_its_pat
     assert len(runs) == 5, runs
     for run in runs:
         assert re.search(r'"\$(py|\(native_python\))" -P -[mc] ', run), run
+
+
+def test_each_uvicorn_server_takes_its_app_directory_from_the_install_not_the_working_directory():
+    """uvicorn inserts its --app-dir (default: the working directory) first on sys.path, which
+    undoes -P: from a checkout the API imported the checkout's provisa/, which has no compiled
+    provisa._encoders, and died at startup (NixOS download leg, run 45720472876)."""
+    text = _WRAPPER.read_text()
+    starts = re.findall(r"-m uvicorn [^\n]*", text)
+    assert len(starts) == 2, starts
+    for start in starts:
+        assert '--app-dir "${PROVISA_HOME}/native"' in start, start

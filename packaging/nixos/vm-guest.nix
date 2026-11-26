@@ -20,6 +20,10 @@
     # MB, allocated as it is written: the lanes' images and the checkout's environments.
     # A core shard's images and volumes filled 40 GB; the runner has about 100 GB free.
     diskSize = 81920;
+    # What the guest adds to /nix/store goes on that disk. By default it goes to a tmpfs (half the
+    # memory), and `nix run` filled it unpacking the AppImage: "No space left on device"
+    # (run 45720472876, nix run leg).
+    writableStoreUseTmpfs = false;
     graphics = false;
     forwardPorts = [
       {

@@ -36,11 +36,27 @@ appimageTools.wrapType2 {
 
   extraPkgs = _: libraries ++ [ jdk21 ];
 
+  # The sandbox is a user namespace that maps only the caller's uid, so every root-owned directory
+  # (/run, /tmp, /var) reads as owned by uid 65534 inside it. platformdirs takes a runtime
+  # directory only below directories root or the user owns, so it refused XDG_RUNTIME_DIR
+  # (/run/provisa) and its /tmp fallback, and the embedded PostgreSQL did not start (run
+  # 45720472876, module leg). The caller's runtime directory is bound at the sandbox's top level,
+  # whose only parent is the sandbox's own root, and named there. A caller without one is
+  # refused by name: a login session and the module's service both have it.
+  extraPreBwrapCmds = ''
+    if [ -z "''${XDG_RUNTIME_DIR:-}" ] || [ ! -d "$XDG_RUNTIME_DIR" ]; then
+      echo "provisa: XDG_RUNTIME_DIR names no directory; the package runs in a login session or a service that sets it" >&2
+      exit 1
+    fi
+  '';
+  extraBwrapArgs = [ ''--bind "$XDG_RUNTIME_DIR" /xdg-runtime'' ];
+
   # A Python built for other distros finds no CA store of its own here, and an adapter server's
   # Python starts its JVM through JPype, which finds it by JAVA_HOME.
   profile = ''
     export SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt
     export JAVA_HOME=${jdk21.home}
+    export XDG_RUNTIME_DIR=/xdg-runtime
   '';
 
   # `provisa start` starts the API, the UI server and the embedded PostgreSQL in the background

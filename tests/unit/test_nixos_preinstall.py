@@ -37,6 +37,10 @@ _ROOT = Path(__file__).parents[2]
 _PATH = os.environ["PATH"]
 _CHECK = _ROOT / "packaging/nixos/preinstall-check.sh"
 _SETTINGS = _ROOT / "packaging/nixos/preinstall.nix"
+#: The version the settings record: a host that has them carries it in its marker.
+(_VERSION,) = re.findall(
+    r'environment\.etc\."provisa/nixos-preinstall"\.text = "(\d+)\\n";', _SETTINGS.read_text()
+)
 
 # What a script that sources the check provides, and a host described by four values: the
 # marker file's content (empty: no file), the user's groups, whether the Docker daemon answers,
@@ -58,7 +62,7 @@ echo "INSTALL PROCEEDS"
 """
 
 
-def _check(tmp_path, *, marker="1", groups="users", daemon="down", interactive=False, docker):
+def _check(tmp_path, *, marker=_VERSION, groups="users", daemon="down", interactive=False, docker):
     home = tmp_path / "home" / ".provisa"
     home.parent.mkdir()
     done = subprocess.run(

@@ -233,3 +233,29 @@ def test_the_vm_action_builds_a_host_flake_against_this_checkout():
         "path:$GITHUB_WORKSPACE/${{ inputs.flake }}#nixosConfigurations.${{ inputs.system }}"
         in build
     )
+
+
+def test_the_guests_store_writes_go_to_its_disk_not_to_memory():
+    """A NixOS VM's writable store is a tmpfs of half its memory by default; `nix run` filled it
+    unpacking the AppImage and stopped with "No space left on device" (run 45720472876)."""
+    guest = (_NIXOS / "vm-guest.nix").read_text()
+    assert "writableStoreUseTmpfs = false;" in guest
+
+
+def test_the_package_names_a_runtime_directory_its_sandbox_accepts():
+    """Inside the FHS sandbox's user namespace every root-owned directory reads as uid 65534, so
+    platformdirs refused XDG_RUNTIME_DIR under /run and its /tmp fallback, and the embedded
+    PostgreSQL did not start (run 45720472876, module leg). The caller's runtime directory is
+    bound at the sandbox's top level and named there; a caller without one is refused by name."""
+    assert '--bind "$XDG_RUNTIME_DIR" /xdg-runtime' in _PACKAGE
+    assert "export XDG_RUNTIME_DIR=/xdg-runtime" in _PACKAGE
+    pre = _PACKAGE.split("extraPreBwrapCmds = ''", 1)[1].split("'';", 1)[0]
+    assert '[ ! -d "$XDG_RUNTIME_DIR" ]' in pre and "exit 1" in pre
+
+
+def test_the_settings_give_nix_ld_the_embedded_postgresqls_clickhouse_library():
+    """pg_clickhouse.so loads liblz4.so.1, which no library in the settings provided (run
+    45720472876: the PostgreSQL engine's ClickHouse reads)."""
+    settings = (_NIXOS / "preinstall.nix").read_text()
+    libraries = settings.split("libraries = with pkgs; [", 1)[1].split("];", 1)[0]
+    assert re.search(r"^\s*lz4$", libraries, flags=re.M)

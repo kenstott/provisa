@@ -538,12 +538,18 @@ cmd_start_native() {
 
     # Two processes: the API app (packaged factory) and the UI server, which
     # proxies API calls to PROVISA_API_URL and serves the built static UI.
+    # --app-dir: uvicorn puts its app directory first on sys.path, the working directory unless
+    # named, which undoes -P: started from a checkout it imported the checkout's provisa/ (no
+    # compiled provisa._encoders) and the API died at startup (NixOS download leg, run
+    # 45720472876). The native directory holds no Python package.
     nohup env "${env_pairs[@]}" \
-        "$py" -P -m uvicorn provisa.api.app:create_app --factory --host 0.0.0.0 --port "$API_PORT" \
+        "$py" -P -m uvicorn provisa.api.app:create_app --factory --app-dir "${PROVISA_HOME}/native" \
+        --host 0.0.0.0 --port "$API_PORT" \
         >> "${LOG_DIR}/native-api.log" 2>&1 &
     local api_pid=$!
     nohup env "${env_pairs[@]}" PROVISA_API_URL="http://localhost:${API_PORT}" \
-        "$py" -P -m uvicorn provisa.ui_server:app --host 0.0.0.0 --port "$UI_PORT" \
+        "$py" -P -m uvicorn provisa.ui_server:app --app-dir "${PROVISA_HOME}/native" \
+        --host 0.0.0.0 --port "$UI_PORT" \
         >> "${LOG_DIR}/native-ui.log" 2>&1 &
     local ui_pid=$!
     printf '%s %s\n' "$api_pid" "$ui_pid" > "$NATIVE_PID_FILE"
