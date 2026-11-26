@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "Step {{index}} of {{count}}",
+    "stepsLabel": "Wizard steps",
     "next": "Next",
     "toReview": "Review",
     "back": "Back",

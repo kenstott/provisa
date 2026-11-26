@@ -38,7 +38,12 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { Info, Pencil, TriangleAlert } from "lucide-react";
+import { Globe, Info, Pencil, TriangleAlert, X } from "lucide-react";
+import { PageTitle } from "../PageTitle";
+import { FilterInput } from "./FilterInput";
+import { useRememberedDetail, type RememberedDetailParam } from "../list/useDetailParam";
+import { useUrlFilter } from "../list/useUrlFilter";
+import { matchesQuery } from "../../lib/searchItems";
 import {
   fetchOrgGrant,
   fetchOrgGrants,
@@ -88,7 +93,17 @@ interface Affected {
   orgs: string[];
 }
 
-export function PlatformRegionsTab() {
+/** The new-region form, open in the regions' panel: blank, or a copy of a region (Duplicate). */
+interface Creating {
+  seed?: PlatformRegion;
+}
+
+/**
+ * REQ-2277: the object management anatomy -- the header (title, the regions' filter, Add region),
+ * the regions listed beside a region's panel (?region=<id>), and the platform's other settings as
+ * the page's tabs.
+ */
+export function PlatformRegionsTab({ title }: { title: string }) {
   const { t } = useTranslation();
   const [data, setData] = useState<PlatformRegions | null>(null);
   const [error, setError] = useState("");
@@ -97,6 +112,12 @@ export function PlatformRegionsTab() {
   const [section, setSection] = useState<string | null>("regions");
   // REQ-1412: the engine lane is the commercial plugin's route, so it is offered only with it.
   const { billing } = useAuth();
+  const [search, setSearch] = useUrlFilter();
+  const detail = useRememberedDetail(
+    "platformRegions",
+    data === null ? null : data.regions.map((r) => r.id),
+  );
+  const [creating, setCreating] = useState<Creating | null>(null);
 
   useEffect(() => {
     fetchPlatformRegions()
@@ -104,102 +125,147 @@ export function PlatformRegionsTab() {
       .catch((e: unknown) => setError(problemOf(e).text));
   }, []);
 
-  if (error) {
-    return (
-      <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="platform-regions-error">
-        {error}
-      </Alert>
-    );
-  }
-  if (data === null) return <PageLoading message={t("platformRegions.loading")} />;
-
   const saved = (next: PlatformRegions) => {
     setData(next);
     setChanged(true);
   };
+  const onRegions = data !== null && (data.read_only || section === "regions");
+  const regions =
+    data === null ? null : (
+      <RegionsSection
+        data={data}
+        onSaved={saved}
+        search={search}
+        detail={detail}
+        creating={creating}
+        setCreating={setCreating}
+      />
+    );
 
-  if (data.read_only) {
-    return (
+  let body: ReactNode;
+  if (error) {
+    body = (
+      <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="platform-regions-error">
+        {error}
+      </Alert>
+    );
+  } else if (data === null) {
+    body = <PageLoading message={t("platformRegions.loading")} />;
+  } else if (data.read_only) {
+    body = (
       <Stack gap="sm" data-testid="platform-regions">
         <Alert color="blue" icon={<Info size={16} />} data-testid="platform-regions-sandbox-note">
           {t("platformRegions.sandboxNote")}
         </Alert>
-        <RegionsSection data={data} onSaved={saved} />
+        {regions}
+      </Stack>
+    );
+  } else {
+    body = (
+      <Stack gap="sm" data-testid="platform-regions">
+        {/* An engine lane applies at once (the org's runtime is rebuilt), so the note is not for it. */}
+        {section !== "engines" && (
+          <Alert
+            color={changed ? "orange" : "blue"}
+            icon={<Info size={16} />}
+            data-testid="platform-regions-restart"
+          >
+            {changed ? t("platformRegions.restartPending") : t("platformRegions.restartNote")}
+          </Alert>
+        )}
+        <Tabs value={section} onChange={setSection} keepMounted={false}>
+          <Tabs.List mb="md">
+            <Tabs.Tab value="regions" data-testid="platform-section-regions">
+              {t("platformRegions.sectionRegions")}
+            </Tabs.Tab>
+            <Tabs.Tab value="default" data-testid="platform-section-default">
+              {t("platformRegions.sectionDefaultGrant")}
+            </Tabs.Tab>
+            <Tabs.Tab value="orgs" data-testid="platform-section-orgs">
+              {t("platformRegions.sectionOrgs")}
+            </Tabs.Tab>
+            <Tabs.Tab value="stores" data-testid="platform-section-stores">
+              {t("platformRegions.sectionStores")}
+            </Tabs.Tab>
+            {billing && (
+              <Tabs.Tab value="engines" data-testid="platform-section-engines">
+                {t("platformRegions.sectionEngines")}
+              </Tabs.Tab>
+            )}
+          </Tabs.List>
+          <Tabs.Panel value="regions">{regions}</Tabs.Panel>
+          <Tabs.Panel value="default">
+            <Stack gap="sm">
+              <Text c="dimmed" size="sm" maw={820}>
+                {t("platformRegions.defaultGrantIntro")}
+              </Text>
+              <GrantEditor
+                data={{
+                  platform_regions: data.regions,
+                  engine_kinds: data.engine_kinds,
+                  ...data.default_grant,
+                }}
+                storageKey="provisa.platformDefaultGrant.detailWidth"
+                onSave={async (grant: Grant) => {
+                  const next = await savePlatformRegions(data.regions, grant, false);
+                  saved(next);
+                  return next.default_grant;
+                }}
+              />
+            </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="orgs">
+            <OrgsSection onSaved={() => setChanged(true)} />
+          </Tabs.Panel>
+          <Tabs.Panel value="stores">
+            <Stack gap="sm">
+              <HotCacheStoreSettingsPanel />
+              <MaterializedSettingsPanel />
+            </Stack>
+          </Tabs.Panel>
+          {billing && (
+            <Tabs.Panel value="engines">
+              <PlatformOrgEngines />
+            </Tabs.Panel>
+          )}
+        </Tabs>
       </Stack>
     );
   }
 
   return (
-    <Stack gap="sm" data-testid="platform-regions">
-      {/* An engine lane applies at once (the org's runtime is rebuilt), so the note is not for it. */}
-      {section !== "engines" && (
-        <Alert
-          color={changed ? "orange" : "blue"}
-          icon={<Info size={16} />}
-          data-testid="platform-regions-restart"
-        >
-          {changed ? t("platformRegions.restartPending") : t("platformRegions.restartNote")}
-        </Alert>
-      )}
-      <Tabs value={section} onChange={setSection} keepMounted={false}>
-        <Tabs.List mb="md">
-          <Tabs.Tab value="regions" data-testid="platform-section-regions">
-            {t("platformRegions.sectionRegions")}
-          </Tabs.Tab>
-          <Tabs.Tab value="default" data-testid="platform-section-default">
-            {t("platformRegions.sectionDefaultGrant")}
-          </Tabs.Tab>
-          <Tabs.Tab value="orgs" data-testid="platform-section-orgs">
-            {t("platformRegions.sectionOrgs")}
-          </Tabs.Tab>
-          <Tabs.Tab value="stores" data-testid="platform-section-stores">
-            {t("platformRegions.sectionStores")}
-          </Tabs.Tab>
-          {billing && (
-            <Tabs.Tab value="engines" data-testid="platform-section-engines">
-              {t("platformRegions.sectionEngines")}
-            </Tabs.Tab>
-          )}
-        </Tabs.List>
-        <Tabs.Panel value="regions">
-          <RegionsSection data={data} onSaved={saved} />
-        </Tabs.Panel>
-        <Tabs.Panel value="default">
-          <Stack gap="sm">
-            <Text c="dimmed" size="sm" maw={820}>
-              {t("platformRegions.defaultGrantIntro")}
-            </Text>
-            <GrantEditor
-              data={{
-                platform_regions: data.regions,
-                engine_kinds: data.engine_kinds,
-                ...data.default_grant,
-              }}
-              storageKey="provisa.platformDefaultGrant.detailWidth"
-              onSave={async (grant: Grant) => {
-                const next = await savePlatformRegions(data.regions, grant, false);
-                saved(next);
-                return next.default_grant;
-              }}
-            />
-          </Stack>
-        </Tabs.Panel>
-        <Tabs.Panel value="orgs">
-          <OrgsSection onSaved={() => setChanged(true)} />
-        </Tabs.Panel>
-        <Tabs.Panel value="stores">
-          <Stack gap="sm">
-            <HotCacheStoreSettingsPanel />
-            <MaterializedSettingsPanel />
-          </Stack>
-        </Tabs.Panel>
-        {billing && (
-          <Tabs.Panel value="engines">
-            <PlatformOrgEngines />
-          </Tabs.Panel>
+    <>
+      <div className="page-header">
+        <PageTitle icon={Globe}>{title}</PageTitle>
+        {onRegions && (
+          <FilterInput
+            value={search}
+            onChange={setSearch}
+            placeholder={t("platformRegions.filterPlaceholder")}
+            testId="platform-regions-filter"
+          />
         )}
-      </Tabs>
-    </Stack>
+        <div className="page-actions">
+          {onRegions && data !== null && !data.read_only && (
+            <Button
+              variant={creating !== null ? "outline" : "filled"}
+              aria-label={creating !== null ? t("platformRegions.closeForm") : undefined}
+              data-testid="platform-regions-add"
+              onClick={() => {
+                if (creating !== null) setCreating(null);
+                else {
+                  detail.close();
+                  setCreating({});
+                }
+              }}
+            >
+              {creating !== null ? <X size={14} /> : t("platformRegions.add")}
+            </Button>
+          )}
+        </div>
+      </div>
+      {body}
+    </>
   );
 }
 
@@ -207,14 +273,45 @@ export function PlatformRegionsTab() {
 function RegionsSection({
   data,
   onSaved,
+  search,
+  detail,
+  creating,
+  setCreating,
 }: {
   data: PlatformRegions;
   onSaved: (next: PlatformRegions) => void;
+  search: string;
+  detail: RememberedDetailParam;
+  creating: Creating | null;
+  setCreating: (next: Creating | null) => void;
 }) {
   const { t } = useTranslation();
-  const [picked, setPicked] = useState<Picked | null>(null);
+  // What the panel shows: the new-region form, or the open region (?region=), read or edited.
+  const [editing, setEditing] = useState(false);
+  const picked: Picked | null =
+    creating !== null
+      ? { id: null, editing: true, seed: creating.seed }
+      : detail.id !== null
+        ? { id: detail.id, editing }
+        : null;
+  const setPicked = (next: Picked | null) => {
+    if (next === null) {
+      setCreating(null);
+      setEditing(false);
+      detail.close();
+    } else if (next.id === null) {
+      detail.close();
+      setCreating({ seed: next.seed });
+    } else {
+      setCreating(null);
+      setEditing(next.editing);
+      if (detail.id !== next.id) detail.open(next.id);
+    }
+  };
   const [affected, setAffected] = useState<Affected | null>(null);
-  const regions = data.regions;
+  const regions = data.regions.filter((r) =>
+    matchesQuery([r.id, r.description, ...r.purposes], search),
+  );
   const readOnly = data.read_only;
 
   const columns: ListColumn<PlatformRegion>[] = useMemo(
@@ -239,13 +336,13 @@ function RegionsSection({
     onSaved(await savePlatformRegions(next, data.default_grant, confirm));
   };
   const save = async (region: PlatformRegion, was: string | null) => {
-    await commit([...regions.filter((r) => r.id !== (was ?? region.id)), region], false);
+    await commit([...data.regions.filter((r) => r.id !== (was ?? region.id)), region], false);
     setPicked({ id: region.id, editing: false });
   };
   const remove = async (id: string, confirm: boolean) => {
     try {
       await commit(
-        regions.filter((r) => r.id !== id),
+        data.regions.filter((r) => r.id !== id),
         confirm,
       );
     } catch (e) {
@@ -260,7 +357,7 @@ function RegionsSection({
     setPicked(null);
   };
 
-  const region = picked ? regions.find((r) => r.id === picked.id) : undefined;
+  const region = picked ? data.regions.find((r) => r.id === picked.id) : undefined;
   let title = "";
   let panel: ReactNode = null;
   if (!readOnly && picked && (picked.editing || picked.id === null)) {
@@ -273,7 +370,7 @@ function RegionsSection({
         key={picked.id ?? `new:${picked.seed?.id ?? ""}`}
         region={region ?? null}
         seed={picked.id === null ? picked.seed : undefined}
-        taken={regions.map((r) => r.id).filter((id) => id !== picked.id)}
+        taken={data.regions.map((r) => r.id).filter((id) => id !== picked.id)}
         onSave={(r) => save(r, picked.id)}
         onCancel={() =>
           picked.id === null ? setPicked(null) : setPicked({ ...picked, editing: false })
@@ -343,22 +440,9 @@ function RegionsSection({
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between" wrap="nowrap" align="flex-start">
-        <Text c="dimmed" size="sm" maw={820}>
-          {t("platformRegions.intro")}
-        </Text>
-        {!readOnly && (
-          <Group gap="xs" wrap="nowrap" data-toolbar>
-            <Button
-              size="xs"
-              data-testid="platform-regions-add"
-              onClick={() => setPicked({ id: null, editing: true })}
-            >
-              {t("platformRegions.add")}
-            </Button>
-          </Group>
-        )}
-      </Group>
+      <Text c="dimmed" size="sm" maw={820}>
+        {t("platformRegions.intro")}
+      </Text>
       {affected !== null && (
         <AffectedOrgs
           region={affected.id}

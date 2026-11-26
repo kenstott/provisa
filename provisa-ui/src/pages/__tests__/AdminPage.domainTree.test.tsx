@@ -110,6 +110,7 @@ import { AdminPage } from "../AdminPage";
 
 describe("Admin > Domains: the domain tree", () => {
   beforeEach(() => {
+    localStorage.clear();
     createDomain.mockReset();
   });
 

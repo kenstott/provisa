@@ -3732,6 +3732,7 @@ dependencies = [
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
     { name = "websockets" },
+    { name = "xlsxwriter" },
 ]
 
 [package.optional-dependencies]
@@ -4072,6 +4073,7 @@ requires-dist = [
     { name = "uvloop", marker = "sys_platform != 'win32'" },
     { name = "vertica-python", marker = "extra == 'vertica'", specifier = ">=1.4,<2" },
     { name = "websockets", specifier = ">=11.0" },
+    { name = "xlsxwriter", specifier = ">=3.2,<4" },
 ]
 provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "sparql", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 

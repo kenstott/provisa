@@ -19,9 +19,7 @@
     "colWaitingOn": "In attesa di",
     "colStatus": "Stato",
     "colReason": "Motivo",
-    "colActions": "",
     "none": "—",
-    "viewPayload": "visualizza",
     "approve": "Approva",
     "execute": "Esegui",
     "reject": "Rifiuta",
@@ -39,6 +37,8 @@
     "deliveryHelp": "Come i membri dei ruoli a cui è indirizzata una richiesta ne vengono informati. Email: Provisa invia un avviso a ciascuno di loro. Solo eventi: Provisa non invia alcun avviso; il tuo strumento di workflow si iscrive a ops.requests. Entrambi: email ed eventi.",
     "deliveryEmail": "Email",
     "deliveryEvents": "Solo eventi",
-    "deliveryBoth": "Entrambi"
+    "deliveryBoth": "Entrambi",
+    "panelTitle": "Richiesta n. {{id}}",
+    "panelLabel": "Richiesta"
   }
 }

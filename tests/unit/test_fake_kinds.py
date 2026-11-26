@@ -194,7 +194,10 @@ def test_a_fake_method_is_checked_against_the_column():
     assert _table(DeclaredColumn("e", "varchar", "email()")) == {"e": Method("email")}
     with pytest.raises(FakeRefused, match="no fake kind or method 'emial'"):
         _table(DeclaredColumn("e", "varchar", "emial()"))
-    with pytest.raises(FakeRefused, match="email\\(\\) makes str values, which a integer column"):
+    with pytest.raises(
+        FakeRefused,
+        match="email\\(\\) makes text; a whole-number column takes .* or a method that makes whole numbers",
+    ):
         _table(DeclaredColumn("e", "integer", "email()"))
     with pytest.raises(FakeRefused, match="takes no argument 'bogus'"):
         _table(DeclaredColumn("e", "varchar", "email(bogus=1)"))
@@ -440,3 +443,36 @@ def test_a_distribution_fits_its_column_by_the_kind_of_its_points():
         _table(DeclaredColumn("n", "integer", "uniform(min='2024-01-01', max='2024-02-01')"))
     with pytest.raises(FakeRefused, match="uniform\\(\\) fakes a integer or numeric column"):
         _table(DeclaredColumn("d", "date", "uniform(min=1, max=2)"))
+
+
+@pytest.mark.parametrize(
+    ("data_type", "call", "message"),
+    [
+        ("varchar", "random_int()", "random_int() makes whole numbers; a text column takes "),
+        ("integer", "email()", "email() makes text; a whole-number column takes "),
+        ("double", "email()", "email() makes text; a decimal-number column takes "),
+        ("boolean", "email()", "email() makes text; a true/false column takes "),
+        ("date", "email()", "email() makes text; a date column takes "),
+        ("timestamp", "email()", "email() makes text; a timestamp column takes "),
+        ("json", "email()", "email() makes text; a JSON column takes "),
+    ],
+)
+def test_a_refused_fake_names_the_column_type_in_plain_words(data_type, call, message):
+    with pytest.raises(FakeRefused) as exc:
+        _table(DeclaredColumn("c", data_type, call))
+    assert str(exc.value).startswith(f"orders.c: {message}")
+    assert "other" not in str(exc.value)
+    assert "a other" not in str(exc.value)
+
+
+def test_a_json_column_is_told_the_kinds_that_fit_it():
+    with pytest.raises(FakeRefused) as exc:
+        _table(DeclaredColumn("c", "json", "email()"))
+    assert str(exc.value) == (
+        "orders.c: email() makes text; a JSON column takes categories, sql, sql_group or sequence"
+    )
+
+
+def test_a_method_that_fits_a_family_is_offered_for_it():
+    with pytest.raises(FakeRefused, match="takes .* or a method that makes text$"):
+        _table(DeclaredColumn("c", "varchar", "random_int()"))

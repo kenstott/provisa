@@ -27,7 +27,7 @@ instance (whose spec changes between versions) rather than shipped, and how its 
 presented, including OAuth client credentials.
 """
 
-# Requirements: REQ-1923, REQ-2265
+# Requirements: REQ-1923, REQ-2265, REQ-1874
 from __future__ import annotations
 
 import gzip
@@ -39,6 +39,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from provisa.api_source.models import operation_key
 from provisa.graphql_remote.brands import SetupField, SetupInvalid, check_setup
 
 _SPEC_DIR = Path(__file__).parent / "_known_specs"
@@ -76,6 +77,11 @@ class Brand:
     # It carries the shipped spec's version, so an answer has the shape the spec describes
     # whatever version the account itself defaults to.
     version_header: str | None = None
+    # REQ-1874: where that version is read. "info": the spec's info.version, sent with every call
+    # (Stripe). "parameter": the value the spec declares on its own header parameter of that
+    # name, per operation (:func:`declared_versions`), sent with that operation's calls only
+    # (Notion's Notion-Version, Cal.com's cal-api-version).
+    version_from: Literal["info", "parameter"] = "info"
     # REQ-2265: where the source is called. Empty: the spec's first server -- the shipped spec's,
     # or, for a spec read from the instance, the running instance's, a relative one read against
     # where the spec was read from. A brand each customer runs at its own host writes it as a
@@ -105,6 +111,8 @@ class Brand:
     token_params: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if self.version_from == "parameter" and self.version_header is None:
+            raise ValueError(f"{self.label}: a version read from a parameter needs its header")
         if self.instance_spec_url and self.version_header is not None:
             raise ValueError(
                 f"{self.label}: a version header carries the shipped spec's version, and a spec "
@@ -215,9 +223,87 @@ class Brand:
 
     def headers(self) -> dict[str, str]:
         """What every call to the brand carries beside its credential."""
-        if self.version_header is None:
+        if self.version_header is None or self.version_from != "info":
             return {}
         return {self.version_header: self.spec()["info"]["version"]}
+
+    def operation_headers(self) -> dict[str, dict[str, str]]:
+        """What each operation's calls carry beside :meth:`headers`, by :func:`operation_key`:
+        the version its spec declares for it (REQ-1874). Raises :class:`VersionUnset` naming an
+        operation that declares the version header with no value to send."""
+        if self.version_header is None or self.version_from != "parameter":
+            return {}
+        return declared_versions(self.spec(), self.version_header)
+
+    def call_headers(self, method: str, path: str) -> dict[str, str]:
+        """What a call of the operation ``method`` ``path`` carries beside its credential."""
+        return {**self.headers(), **self.operation_headers().get(operation_key(method, path), {})}
+
+
+class VersionUnset(ValueError):
+    """An operation declares a brand's version header with neither a default nor a single enum
+    value, so no version can be sent with it (REQ-1874). ``operation``: which one."""
+
+    def __init__(self, header: str, operation: str):
+        super().__init__(
+            f"operation {operation} declares the {header} header with no default and no single "
+            "enum value, so no version can be sent with it"
+        )
+        self.operation = operation
+
+
+_METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
+
+
+def _resolved(spec: dict, node: dict) -> dict:
+    """``node`` with its local ``$ref`` (``#/components/parameters/X``) followed."""
+    while "$ref" in node:
+        ref = node["$ref"]
+        if not ref.startswith("#/"):
+            raise ValueError(f"a reference outside the spec is not read: {ref}")
+        node = spec
+        for part in ref[2:].split("/"):
+            node = node[part.replace("~1", "/").replace("~0", "~")]
+    return node
+
+
+def declared_versions(spec: dict, header: str) -> dict[str, dict[str, str]]:
+    """The value ``spec`` declares for its ``header`` header parameter, per operation that
+    declares it (on the operation or its path), by :func:`operation_key`; an operation with its
+    own server is also named by its absolute path, as its endpoint records it. The value is the
+    parameter's default, else its enum's one value. Raises :class:`VersionUnset` naming an
+    operation that declares it with neither."""
+    versions: dict[str, dict[str, str]] = {}
+    for path, item in (spec.get("paths") or {}).items():
+        item = _resolved(spec, item)
+        for method in _METHODS:
+            operation = item.get(method)
+            if operation is None:
+                continue
+            declared = None
+            for param in [*item.get("parameters", []), *operation.get("parameters", [])]:
+                param = _resolved(spec, param)
+                if param.get("in") == "header" and param["name"].lower() == header.lower():
+                    declared = param  # the operation's own, listed last, overrides its path's
+            if declared is None:
+                continue
+            # OpenAPI 3 states the value in the parameter's schema, Swagger 2 on the parameter.
+            schema = _resolved(spec, declared["schema"]) if "schema" in declared else declared
+            enum = schema.get("enum") or []
+            if "default" in schema:
+                value = schema["default"]
+            elif len(enum) == 1:
+                value = enum[0]
+            else:
+                raise VersionUnset(
+                    header, operation.get("operationId") or f"{method.upper()} {path}"
+                )
+            sent = {header: str(value)}
+            versions[operation_key(method, path)] = sent
+            servers = operation.get("servers") or item.get("servers")
+            if servers:
+                versions[operation_key(method, servers[0]["url"].rstrip("/") + path)] = sent
+    return versions
 
 
 #: What the client credentials grant itself states (provisa.api_source.caller), so a brand's
@@ -334,3 +420,11 @@ def spec_headers(spec_path: str | None) -> dict[str, str]:
     brand's headers, none for a spec of the steward's own."""
     brand = spec_brand(spec_path or "")
     return {} if brand is None else BRANDS[brand].headers()
+
+
+def spec_operation_headers(spec_path: str | None) -> dict[str, dict[str, str]]:
+    """What each operation's calls to the source of ``spec_path`` carry beside
+    :func:`spec_headers` (REQ-1874), by :func:`operation_key`; none for a spec of the steward's
+    own."""
+    brand = spec_brand(spec_path or "")
+    return {} if brand is None else BRANDS[brand].operation_headers()

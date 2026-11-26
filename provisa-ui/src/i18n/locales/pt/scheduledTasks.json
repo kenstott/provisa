@@ -87,6 +87,9 @@
     "editAria": "Editar {{name}}",
     "enableAria": "Ativar {{name}}",
     "disableAria": "Desativar {{name}}",
-    "deleteAria": "Excluir {{name}}"
+    "deleteAria": "Excluir {{name}}",
+    "filterPlaceholder": "Filtrar gatilhos",
+    "closeForm": "Fechar o formulário",
+    "noMatch": "Nenhum gatilho corresponde"
   }
 }

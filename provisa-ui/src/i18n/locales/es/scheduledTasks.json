@@ -87,6 +87,9 @@
     "editAria": "Editar {{name}}",
     "enableAria": "Activar {{name}}",
     "disableAria": "Desactivar {{name}}",
-    "deleteAria": "Eliminar {{name}}"
+    "deleteAria": "Eliminar {{name}}",
+    "filterPlaceholder": "Filtrar disparadores",
+    "closeForm": "Cerrar el formulario",
+    "noMatch": "Ningún disparador coincide"
   }
 }

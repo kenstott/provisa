@@ -1091,11 +1091,10 @@ def build_mcp_server(state: Any):
         support: str | None = None,
         role: str | None = None,
     ) -> dict:
-        """Create, or fully replace, a data product by id. domain_id must be an existing domain.
-        Status is kept (new: draft); the publish/deprecate/retire/restore tools change it.
-        owners names the people who own it, by user id, and owner_roles the roles (every holder of
-        each an owner); either omitted is kept. Only an org admin or a current owner changes
-        them."""
+        """Create, or fully replace, a data product by id; domain_id must exist. Status is kept
+        (new: draft); the publish/deprecate/retire/restore tools change it. owners: owner user
+        ids; owner_roles: roles whose every holder is an owner; either omitted is kept. Only an
+        org admin or a current owner changes them."""
         resolved = _role(role)
         return await tools.create_data_product(
             state,
@@ -1286,8 +1285,11 @@ def build_mcp_server(state: Any):
     # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
     # property after its own name ("Role", "list_tablesArguments"), which says nothing the names
     # do not. A title is an annotation: arguments are validated by each tool's argument model and
-    # results by the same schema without it.
+    # results by the same schema without it. A description taken from a docstring keeps the
+    # docstring's line breaks and indentation, which say nothing: each run of whitespace is one
+    # space.
     for info in mcp._tool_manager.list_tools():
+        info.description = " ".join(info.description.split())
         _drop_titles(info.parameters)
         _drop_titles(info.output_schema)
     return mcp

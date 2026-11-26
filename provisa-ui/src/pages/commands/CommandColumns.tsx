@@ -128,6 +128,7 @@ export function CommandColumnsRead({
         irTypes={[]}
         sourceType="command"
         readOnly
+        physicalNames
         tabs={COMMAND_COLUMN_TABS}
         tabValue={tab}
         onTabChange={onTabChange}

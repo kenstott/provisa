@@ -826,10 +826,12 @@ export function CommandsPage() {
                   { col: "name" },
                   { col: "source" },
                   { col: "domain" },
-                  { col: "function" },
-                  { col: "returns" },
-                  { col: "args" },
-                  { col: "visibleTo" },
+                  // The columns of detail give way, first to last, when the detail panel leaves
+                  // the list too little room.
+                  { col: "function", hide: 4 },
+                  { col: "returns", hide: 2 },
+                  { col: "args", hide: 1 },
+                  { col: "visibleTo", hide: 3 },
                 ]}
               />
               <Table.Tbody>
@@ -897,12 +899,12 @@ export function CommandsPage() {
                   { col: "name" },
                   { col: "status" },
                   { col: "domain" },
-                  { col: "url" },
-                  { col: "method" },
-                  { col: "timeout" },
-                  { col: "returns" },
-                  { col: "args" },
-                  { col: "visibleTo" },
+                  { col: "url", hide: 6 },
+                  { col: "method", hide: 3 },
+                  { col: "timeout", hide: 4 },
+                  { col: "returns", hide: 2 },
+                  { col: "args", hide: 1 },
+                  { col: "visibleTo", hide: 5 },
                 ]}
               />
               <Table.Tbody>

@@ -38,6 +38,8 @@
     "org": "ארגון",
     "pickOrg": "בחר ארגון",
     "orgGranted": "{{id}} (הוענקו: {{regions}})",
-    "orgNone": "{{id}} (אין אזורים)"
+    "orgNone": "{{id}} (אין אזורים)",
+    "filterPlaceholder": "סינון אזורים",
+    "closeForm": "סגירת הטופס"
   }
 }

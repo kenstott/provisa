@@ -14,6 +14,10 @@
     "defaultHelp": "Una compilación envía aquí salvo que indique otro registro. Una organización tiene un registro predeterminado.",
     "saved": "Guardado",
     "removed": "Eliminado",
-    "remove": "Eliminar"
+    "remove": "Eliminar",
+    "filterPlaceholder": "Filtrar registros",
+    "closeForm": "Cerrar el formulario",
+    "edit": "Editar {{name}}",
+    "removeConfirm": "¿Eliminar {{name}}? Las compilaciones que publican en él ya no podrán publicar su imagen."
   }
 }
