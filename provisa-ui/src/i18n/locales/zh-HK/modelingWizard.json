@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "第 {{index}} 步,共 {{count}} 步",
+    "stepsLabel": "精靈步驟",
     "next": "下一步",
     "toReview": "審閱",
     "back": "上一步",

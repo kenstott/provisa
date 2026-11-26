@@ -14,7 +14,7 @@
 // org, and gates deletion behind the download-then-retype ceremony.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "../test-utils/render";
+import { render, screen, fireEvent, waitFor, within } from "../test-utils/render";
 import i18n from "../i18n";
 import { TeamPage } from "../pages/TeamPage";
 import type { OrgMember } from "../api/admin";
@@ -91,6 +91,15 @@ function member(over: Partial<OrgMember>): OrgMember {
   };
 }
 
+/**
+ * REQ-2277: a member's row only selects; what can be done to the member is in the head of the
+ * panel the row opens.
+ */
+async function openMember(userId: string) {
+  fireEvent.click(await screen.findByTestId(`team-member-${userId}`));
+  await screen.findByTestId("team-members-split-panel");
+}
+
 /** The page reads the ?section= deep link, so it renders under a router as it does in the app. */
 function renderTeamPage() {
   return render(<TeamPage />);
@@ -128,7 +137,8 @@ describe("TeamPage offboarding", () => {
     ];
     renderTeamPage();
 
-    fireEvent.click(await screen.findByTestId("team-toggle-admin-uid-bob"));
+    await openMember("uid-bob");
+    fireEvent.click(await screen.findByTestId("team-panel-toggle-admin-uid-bob"));
     await waitFor(() => expect(grantSpy).toHaveBeenCalledWith("acme", "uid-bob"));
   });
 
@@ -139,7 +149,8 @@ describe("TeamPage offboarding", () => {
     ];
     renderTeamPage();
 
-    fireEvent.click(await screen.findByTestId("team-toggle-admin-uid-bob"));
+    await openMember("uid-bob");
+    fireEvent.click(await screen.findByTestId("team-panel-toggle-admin-uid-bob"));
     await waitFor(() => expect(revokeAdminSpy).toHaveBeenCalledWith("acme", "uid-bob"));
   });
 
@@ -150,8 +161,9 @@ describe("TeamPage offboarding", () => {
     ];
     renderTeamPage();
 
-    expect(await screen.findByTestId("team-toggle-admin-uid-me")).toBeDisabled();
-    expect(screen.getByTestId("team-remove-uid-me")).toBeDisabled();
+    await openMember("uid-me");
+    expect(await screen.findByTestId("team-panel-toggle-admin-uid-me")).toBeDisabled();
+    expect(screen.getByTestId("team-panel-remove-uid-me")).toBeDisabled();
   });
 
   it("removes an ordinary member", async () => {
@@ -161,7 +173,8 @@ describe("TeamPage offboarding", () => {
     ];
     renderTeamPage();
 
-    fireEvent.click(await screen.findByTestId("team-remove-uid-bob"));
+    await openMember("uid-bob");
+    fireEvent.click(await screen.findByTestId("team-panel-remove-uid-bob"));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith("acme", "uid-bob"));
   });
 
@@ -173,7 +186,8 @@ describe("TeamPage offboarding", () => {
     removeSpy.mockRejectedValueOnce(new Error("Cannot remove the last org_admin"));
     renderTeamPage();
 
-    fireEvent.click(await screen.findByTestId("team-remove-uid-bob"));
+    await openMember("uid-bob");
+    fireEvent.click(await screen.findByTestId("team-panel-remove-uid-bob"));
     expect(await screen.findByTestId("team-error")).toHaveTextContent(
       "Cannot remove the last org_admin",
     );
@@ -240,15 +254,21 @@ describe("TeamPage for a holder of user_management alone", () => {
 
   it("offers no promotion or demotion", async () => {
     renderTeamPage();
-    await screen.findByTestId("team-member-uid-bob");
-    expect(screen.queryByTestId("team-toggle-admin-uid-bob")).toBeNull();
-    expect(screen.queryByTestId("team-toggle-admin-uid-ann")).toBeNull();
+    await openMember("uid-bob");
+    expect(await screen.findByTestId("team-panel-remove-uid-bob")).toBeInTheDocument();
+    expect(screen.queryByTestId("team-panel-toggle-admin-uid-bob")).toBeNull();
+    await openMember("uid-ann");
+    await screen.findByTestId("member-attributes");
+    expect(screen.queryByTestId("team-panel-toggle-admin-uid-ann")).toBeNull();
   });
 
   it("offers removal of an ordinary member but not of an org_admin", async () => {
     renderTeamPage();
-    expect(await screen.findByTestId("team-remove-uid-bob")).toBeInTheDocument();
-    expect(screen.queryByTestId("team-remove-uid-ann")).toBeNull();
+    await openMember("uid-bob");
+    expect(await screen.findByTestId("team-panel-remove-uid-bob")).toBeInTheDocument();
+    await openMember("uid-ann");
+    await screen.findByTestId("member-attributes");
+    expect(screen.queryByTestId("team-panel-remove-uid-ann")).toBeNull();
   });
 
   it("offers no deletion of the organization", async () => {
@@ -270,20 +290,26 @@ describe("TeamPage for the platform", () => {
 
   it("offers the appointment of an org admin and the org's deletion", async () => {
     renderTeamPage();
-    expect(await screen.findByTestId("team-toggle-admin-uid-bob")).toBeInTheDocument();
+    await openMember("uid-bob");
+    expect(await screen.findByTestId("team-panel-toggle-admin-uid-bob")).toBeInTheDocument();
     expect(screen.getByTestId("team-delete-org")).toBeInTheDocument();
   });
 });
 
 describe("TeamPage member attributes", () => {
-  it("opens the selected member's attributes beside the list, and a row's own buttons do not", async () => {
+  it("opens the selected member's attributes beside the list; the row holds no actions", async () => {
     mockMembers = [member({ user_id: "uid-a", email: "a@example.test" })];
     mockCapabilities = ORG_ADMIN_CAPS;
     renderTeamPage();
     const row = await screen.findByTestId("team-member-uid-a");
-    fireEvent.click(screen.getByTestId("team-toggle-admin-uid-a"));
-    expect(screen.queryByTestId("member-attributes")).toBeNull();
+    // REQ-2277: the row only selects.
+    expect(within(row).queryAllByRole("button")).toEqual([]);
+    expect(screen.queryByTestId("team-panel-toggle-admin-uid-a")).toBeNull();
     fireEvent.click(row);
     expect(await screen.findByTestId("member-attr-org-region")).toBeInTheDocument();
+    // What can be done to the member is in the panel's head.
+    const actions = screen.getByTestId("team-members-split-actions");
+    expect(within(actions).getByTestId("team-panel-toggle-admin-uid-a")).toBeInTheDocument();
+    expect(within(actions).getByTestId("team-panel-remove-uid-a")).toBeInTheDocument();
   });
 });

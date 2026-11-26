@@ -9,44 +9,23 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useCallback, useState, useEffect, useMemo } from "react";
-import { PeopleMultiPicker } from "../components/entitlements/PeoplePicker";
+import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Settings } from "lucide-react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Card,
-  Group,
-  Pagination,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Settings } from "lucide-react";
+import { Card, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import {
   useDomains,
   useTables,
   useRelationships,
   useSources,
   useRoles,
-  useCreateDomain,
-  useDeleteDomain,
-  useDeleteDomains,
 } from "../hooks/useAdminQueries";
 import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import { domainAliasMap, domainGqlAlias, type Domain } from "../types/admin";
-import { OwnerResolutionIcon } from "../components/OwnerResolution";
-import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DomainsTab } from "../components/admin/DomainsTab";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
@@ -72,23 +51,9 @@ import { EmailTab } from "../components/admin/EmailTab";
 import { OrgRegionsTab } from "../components/admin/OrgRegionsTab"; // REQ-1922
 import { PlatformRegionsTab } from "../components/admin/PlatformRegionsTab"; // REQ-1922
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
-import {
-  ApolloSubgraphCard,
-  DomainModeCard,
-  NameClashPolicyCard,
-  NamingConventionsCard,
-  OrgProcessingCards,
-} from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
-import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
-import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
-import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
-import { assignableDomainIds } from "../lib/internalDomains";
 
-import { useListSelection } from "../components/list/listSelection";
-import { ListBulkBar } from "../components/list/ListBulkBar";
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
   "/admin/overview": "Dashboard",
@@ -135,19 +100,24 @@ const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
   "/admin/auth": "authentication",
 };
 
+// REQ-2277: the tabs that are list pages draw their own header (title, filter, add).
+const OWN_HEADER: ReadonlySet<string> = new Set([
+  "Tags",
+  "Classification",
+  "Org Secrets",
+  "Your Secrets",
+  "Package Registries",
+  "Container Registries",
+  "Reports",
+  "Orgs",
+  "Triggers",
+  "Domains",
+  "Platform",
+  "Environments",
+]);
+
 /** Admin overview page — dashboard, config management, platform settings. */
-/** REQ-2219 (amended 2026-11-24): what a domain's Steward field names, people and roles as
- * entered. */
-const namedStewards = (d: Domain) => [...d.stewardField.people, ...d.stewardField.roles];
-
-/** A domain's stewards as its row shows them: its field as entered, or with none of its own the
- * people it answers to (REQ-1363). */
-const shownStewards = (d: Domain) =>
-  namedStewards(d).length > 0 ? namedStewards(d) : d.effectiveStewards;
-
 export function AdminPage() {
-  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
-  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Dashboard";
@@ -156,46 +126,20 @@ export function AdminPage() {
   // was never a capability — it was a role id folded in as a pseudo-right, which this rule forbids.
   const canAdministerAllOrgs = capabilities.includes("cross_org");
   const [stats, setStats] = useState<Record<string, number>>({});
-  const [addingDomain, setAddingDomain] = useState(false);
-  const [newDomainId, setNewDomainId] = useState("");
-  const [newDomainDesc, setNewDomainDesc] = useState("");
-  const [newDomainAlias, setNewDomainAlias] = useState("");
-  // REQ-1363: the domain the new one sits under; "" = none.
-  const [newDomainParent, setNewDomainParent] = useState("");
-  // REQ-609, REQ-2219 (amended 2026-11-23): the new domain's Steward field names people.
-  const [newDomainStewards, setNewDomainStewards] = useState<string[]>([]);
-  // ...and roles (every holder of each a steward).
-  const [newDomainStewardRoles, setNewDomainStewardRoles] = useState<string[]>([]);
-  // The last domain change's outcome: done (green), or the server's refusal or error (red).
-  const [domainMsg, setDomainMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const onStewardSearchError = useCallback(
-    (e: unknown) => setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false }),
-    [setDomainMsg],
-  );
   const [loading, setLoading] = useState(true);
   // REQ-1349: the settings this page still reads. The cards that EDIT them moved to the tabs whose
   // subject they are (settingsCards.tsx); what is left is the domain mode, which decides whether
   // the Domains tab shows a domain catalog at all.
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
 
-  // Pagination state
-  const [domainPage, setDomainPage] = useState(0);
-  const PAGE_SIZE = 50;
-
   // Apollo hooks for cache-and-network queries and mutations
   const { sources, loading: sourcesLoading } = useSources();
-  const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
+  const { domains, loading: domainsLoading } = useDomains();
   const { tables, loading: tablesLoading } = useTables({ columns: false });
   const { relationships, loading: relsLoading } = useRelationships();
   const { rlsRules, loading: rlsLoading } = useRLSRules();
   const { roles } = useRoles();
-  const { createDomain } = useCreateDomain();
-  const { deleteDomain } = useDeleteDomain();
   const allRoles = roles.map((r) => r.id);
-  // REQ-2219 (amended 2026-11-23): the roles a Steward field may name, those holding domain_steward.
-  const stewardRoleOptions = roles
-    .filter((r) => r.effectiveCapabilities.includes("domain_steward"))
-    .map((r) => r.id);
 
   // Update state and stats when hook data arrives
   useEffect(() => {
@@ -239,112 +183,18 @@ export function AdminPage() {
 
   const domainsEnabled = settings?.naming.use_domains !== false;
 
-  // REQ-1940: sort and group are the shared list mechanism.
-  const assignable = new Set(assignableDomainIds(domains.map((d) => d.id)));
-  // REQ-471: each domain's alias as its root fields are named, every one its own.
-  const aliases = domainAliasMap(domains);
-  const userDomains = domains.filter((d) => assignable.has(d.id));
-  const domainColumns: ListColumn<(typeof domains)[number]>[] = [
-    { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
-    {
-      key: "description",
-      label: t("adminPage.colDescription"),
-      sortValue: (d) => d.description ?? "",
-    },
-    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => aliases[d.id] },
-    {
-      key: "parent",
-      label: t("adminPage.colParentDomain"),
-      sortValue: (d) => d.parentDomainId ?? "",
-      groupValue: (d) => d.parentDomainId ?? "",
-    },
-    {
-      key: "steward",
-      label: t("adminPage.colSteward"),
-      sortValue: (d) => d.effectiveStewards.join(", "),
-      groupValue: (d) => d.effectiveStewards.join(", "),
-    },
-  ];
-  const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
-  // REQ-2240: domains selected and deleted together.
-  const shownDomainIds = useMemo(() => userDomains.map((d) => d.id), [userDomains]);
-  const selection = useListSelection(shownDomainIds);
-  const deleteDomains = useDeleteDomains();
-  // `?domain=<id>` (a graph's or a refused delete's link, detailHref): that domain's row is
-  // marked, on the page that holds it, and brought into view.
-  const linkedDomain = useDetailParam("domains").id;
-  const [seededDomain, setSeededDomain] = useState<string | null>(null);
-  if (linkedDomain !== seededDomain && userDomains.length > 0) {
-    setSeededDomain(linkedDomain);
-    const at = domainSortGroup.items.findIndex(
-      (item) => item.type === "row" && item.row.id === linkedDomain,
-    );
-    if (at >= 0 && domainSortGroup.groupBy.length === 0) setDomainPage(Math.floor(at / PAGE_SIZE));
-  }
-  useEffect(() => {
-    if (linkedDomain === null) return;
-    document
-      .querySelector(`[data-testid="domain-row-${CSS.escape(linkedDomain)}"]`)
-      ?.scrollIntoView({ block: "center" });
-    // Again once the rows are drawn: the list waits on the settings saying domains are on.
-  }, [linkedDomain, domainPage, activeTab, settings, userDomains]);
-
-  const closeAddDomain = () => {
-    setAddingDomain(false);
-    setNewDomainId("");
-    setNewDomainDesc("");
-    setNewDomainAlias("");
-    setNewDomainParent("");
-    setNewDomainStewards([]);
-    setNewDomainStewardRoles([]);
-  };
-
-  const handleAddDomain = async () => {
-    if (!newDomainId.trim()) return;
-    setDomainMsg(null);
-    let result: Awaited<ReturnType<typeof createDomain>>;
-    try {
-      result = await createDomain(
-        newDomainId.trim(),
-        newDomainDesc.trim(),
-        newDomainAlias.trim() || null,
-        newDomainParent || null,
-        newDomainStewards,
-        newDomainStewardRoles,
-      );
-    } catch (e) {
-      setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
-      return;
-    }
-    // A refusal (a reserved word, an id in use) is said, and the form stays open to correct it.
-    if (!result.success) {
-      setDomainMsg({ text: result.message, ok: false });
-      return;
-    }
-    await refetchDomains();
-    closeAddDomain();
-    setDomainMsg({ text: t("adminPage.domainAdded", { id: newDomainId.trim() }), ok: true });
-  };
-
-  const handleDeleteDomain = async (id: string) => {
-    const result = await deleteDomain(id);
-    if (refusal.refused(result, id)) return;
-    await refetchDomains();
-    setDomainMsg(
-      result.success
-        ? { text: t("adminPage.domainDeleted", { id }), ok: true }
-        : { text: result.message, ok: false },
-    );
-  };
-
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
+  const adminTitle = `${t("adminPage.title")} — ${activeTab}`;
 
   return (
     <div className="page">
-      <PageTitle icon={Settings} mb="md">
-        {/* Reads as a breadcrumb: the area, then the section within it. */}
-        {t("adminPage.title")} — {activeTab}
-      </PageTitle>
+      {/* Reads as a breadcrumb: the area, then the section within it. A tab that is a list page
+          draws the header itself, with its filter and its add (REQ-2277). */}
+      {!OWN_HEADER.has(activeTab) && (
+        <div className="page-header">
+          <PageTitle icon={Settings}>{adminTitle}</PageTitle>
+        </div>
+      )}
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
           page has painted, so it gates on the admin content itself. */}
@@ -377,226 +227,17 @@ export function AdminPage() {
           </>
         )}
 
-        {activeTab === "Environments" && <EnvironmentsTab />}
+        {activeTab === "Environments" && <EnvironmentsTab title={adminTitle} />}
 
-        {activeTab === "Platform" && <PlatformRegionsTab />}
+        {activeTab === "Platform" && <PlatformRegionsTab title={adminTitle} />}
 
         {activeTab === "Regions" && <OrgRegionsTab />}
 
         {activeTab === "Domains" && (
-          <>
-            {/* REQ-1349: the org's domain mode is set HERE, not on Overview — this is the tab whose
-                subject is domains, and it is the only place a single-domain org can turn them back
-                on, so the tab renders the card whether or not domains are in use. */}
-            <Collapsibles id="admin.domains.settings" testId="domain-settings-panel">
-              <CollapsibleItem
-                value="settings"
-                defaultOpen={false}
-                title={t("adminPage.settingsPanel")}
-              >
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-                  <DomainModeCard onApplied={() => refetchDomains()} />
-                  <NamingConventionsCard />
-                  <OrgProcessingCards />
-                  <NameClashPolicyCard />
-                  <ApolloSubgraphCard />
-                </SimpleGrid>
-              </CollapsibleItem>
-            </Collapsibles>
-            {domainMsg && (
-              <Alert
-                color={domainMsg.ok ? "green" : "red"}
-                variant="light"
-                data-testid="domain-msg"
-              >
-                {domainMsg.text}
-              </Alert>
-            )}
-            {/* The opener sits above the list it adds to and is hidden while its form is open. */}
-            {domainsEnabled &&
-              (addingDomain ? (
-                <FormLayout data-testid="new-domain-form">
-                  <FormIdentifiers>
-                    <FormField size="medium">
-                      <TextInput
-                        label={t("adminPage.colId")}
-                        data-testid="new-domain-id"
-                        value={newDomainId}
-                        onChange={(e) => setNewDomainId(e.currentTarget.value)}
-                        placeholder={t("adminPage.domainIdPlaceholder")}
-                      />
-                    </FormField>
-                  </FormIdentifiers>
-                  <FormField size="long">
-                    <TextInput
-                      label={t("adminPage.colDescription")}
-                      data-testid="new-domain-desc"
-                      value={newDomainDesc}
-                      onChange={(e) => setNewDomainDesc(e.currentTarget.value)}
-                    />
-                  </FormField>
-                  <FormField size="medium" hint={t("adminPage.parentDomainHint")}>
-                    <Select
-                      label={t("adminPage.colParentDomain")}
-                      data-testid="new-domain-parent"
-                      data={userDomains.map((d) => d.id)}
-                      value={newDomainParent || null}
-                      onChange={(v) => setNewDomainParent(v ?? "")}
-                      placeholder={t("adminPage.noParentDomain")}
-                      clearable
-                      searchable
-                    />
-                  </FormField>
-                  <FormField size="long" hint={t("adminPage.stewardsHint")}>
-                    <PeopleMultiPicker
-                      label={t("adminPage.colSteward")}
-                      value={newDomainStewards}
-                      onChange={setNewDomainStewards}
-                      roleOptions={stewardRoleOptions}
-                      roles={newDomainStewardRoles}
-                      onRolesChange={setNewDomainStewardRoles}
-                      onError={onStewardSearchError}
-                      testId="new-domain-stewards"
-                    />
-                  </FormField>
-                  <FormField size="medium">
-                    <TextInput
-                      label={t("adminPage.colGqlAlias")}
-                      data-testid="new-domain-alias"
-                      value={newDomainAlias}
-                      onChange={(e) => setNewDomainAlias(e.currentTarget.value)}
-                      placeholder={
-                        newDomainId.trim()
-                          ? t("adminPage.domainAliasPlaceholderDefault", {
-                              alias: domainGqlAlias({ id: newDomainId.trim(), graphqlAlias: null }),
-                            })
-                          : undefined
-                      }
-                    />
-                  </FormField>
-                  <FormFooter
-                    onSave={handleAddDomain}
-                    onCancel={closeAddDomain}
-                    saveProps={{ "data-testid": "new-domain-save", disabled: !newDomainId.trim() }}
-                  />
-                </FormLayout>
-              ) : (
-                <FormFooter>
-                  <Button
-                    leftSection={<Plus size={14} />}
-                    onClick={() => setAddingDomain(true)}
-                    data-testid="new-domain-open"
-                  >
-                    {t("adminPage.addDomain")}
-                  </Button>
-                </FormFooter>
-              ))}
-            {domainsEnabled &&
-              (() => {
-                const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
-                return (
-                  <Stack gap="sm">
-                    <ListBulkBar
-                      selection={selection}
-                      nameOf={(id) => id}
-                      onDelete={deleteDomains}
-                      testId="domains-bulk"
-                    />
-                    <ListTable minWidth={480} testId="domains-list" selection={selection}>
-                      <ListHead
-                        sortGroup={domainSortGroup}
-                        columns={[
-                          { col: "id" },
-                          { col: "description" },
-                          { col: "alias" },
-                          { col: "parent" },
-                          { col: "steward" },
-                          t("adminPage.colActions"),
-                        ]}
-                      />
-                      <Table.Tbody>
-                        {userDomains.length === 0 && (
-                          <ListEmpty colSpan={6}>{t("adminPage.noDomains")}</ListEmpty>
-                        )}
-                        <ListItems
-                          state={domainSortGroup}
-                          items={pageItems(domainSortGroup, domainPage, PAGE_SIZE)}
-                          colSpan={6}
-                          rowKey={(d) => d.id}
-                          render={(d) => (
-                            <ListRow selected={d.id === linkedDomain} testId={`domain-row-${d.id}`}>
-                              <Table.Td>{d.id}</Table.Td>
-                              <Table.Td>{d.description || "—"}</Table.Td>
-                              <Table.Td>
-                                <Text c="dimmed" ff="monospace" fz="sm">
-                                  {aliases[d.id]}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>{d.parentDomainId || "—"}</Table.Td>
-                              <Table.Td>
-                                <Group gap={4} wrap="nowrap">
-                                  <Text fz="sm" data-testid={`domain-stewards-${d.id}`}>
-                                    {shownStewards(d).length > 0
-                                      ? shownStewards(d).join(", ")
-                                      : "—"}
-                                  </Text>
-                                  {/* REQ-1363: no steward of its own -- it answers to an ancestor's. */}
-                                  {namedStewards(d).length === 0 &&
-                                    d.stewards.length === 0 &&
-                                    d.effectiveStewards.length > 0 && (
-                                    <Text fz="xs" c="dimmed" data-testid="steward-inherited">
-                                      {t("adminPage.stewardInherited")}
-                                    </Text>
-                                  )}
-                                  {shownStewards(d).length > 0 && (
-                                    <OwnerResolutionIcon
-                                      refs={shownStewards(d)}
-                                      ariaLabel={t("adminPage.resolveSteward", { id: d.id })}
-                                    />
-                                  )}
-                                </Group>
-                              </Table.Td>
-                              <Table.Td>
-                                <ConfirmDialog
-                                  title={t("adminPage.deleteDomainTitle", { id: d.id })}
-                                  consequence={t("adminPage.deleteDomainConsequence")}
-                                  confirmLabel={t("common.delete")}
-                                  onConfirm={() => handleDeleteDomain(d.id)}
-                                >
-                                  {(open) => (
-                                    <ActionIcon
-                                      variant="subtle"
-                                      color="red"
-                                      aria-label={t("adminPage.deleteDomain", { id: d.id })}
-                                      onClick={open}
-                                    >
-                                      <Trash2 size={14} />
-                                    </ActionIcon>
-                                  )}
-                                </ConfirmDialog>
-                              </Table.Td>
-                            </ListRow>
-                          )}
-                        />
-                      </Table.Tbody>
-                    </ListTable>
-                    {totalPages > 1 && domainSortGroup.groupBy.length === 0 && (
-                      <Group justify="flex-end">
-                        <Pagination
-                          total={totalPages}
-                          value={domainPage + 1}
-                          onChange={(p) => setDomainPage(p - 1)}
-                          size="sm"
-                        />
-                      </Group>
-                    )}
-                  </Stack>
-                );
-              })()}
-          </>
+          <DomainsTab title={adminTitle} domainsEnabled={domainsEnabled} />
         )}
         {activeTab === "Cache" && <CacheManager />}
-        {activeTab === "Triggers" && <ScheduledTasks />}
+        {activeTab === "Triggers" && <ScheduledTasks title={adminTitle} />}
         {activeTab === "Federation" && <FederationEngineTab />}
         {activeTab === "Org Engine" && <OrgEngineTab />}
         {activeTab === "Email" && <EmailTab />}
@@ -606,23 +247,22 @@ export function AdminPage() {
         {activeTab === "Security" && (
           <SecurityManager initialTab={SECURITY_SUBTAB[location.pathname]} />
         )}
-        {activeTab === "Org Secrets" && <SecretsTab />}
-        {activeTab === "Your Secrets" && <MySecretsTab />}
+        {activeTab === "Org Secrets" && <SecretsTab title={adminTitle} />}
+        {activeTab === "Your Secrets" && <MySecretsTab title={adminTitle} />}
         {activeTab === "Observability" && <ObservabilityTab />}
         {activeTab === "Platform Observability" && settings && (
           <PlatformObservabilityTab settings={settings} setSettings={setSettings} />
         )}
-        {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
+        {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab title={adminTitle} />}
         {activeTab === "AI Models" && <AiModelsTab />}
-        {activeTab === "Package Registries" && <PackageRegistriesTab />}
-        {activeTab === "Container Registries" && <ContainerRegistriesTab />}
+        {activeTab === "Package Registries" && <PackageRegistriesTab title={adminTitle} />}
+        {activeTab === "Container Registries" && <ContainerRegistriesTab title={adminTitle} />}
         {activeTab === "Spark Cluster" && <SparkClusterTab />}
         {activeTab === "Import" && <ImportTab />}
-        {activeTab === "Tags" && <TagsTab />}
-        {activeTab === "Classification" && <ClassificationKindsTab />}
-        {activeTab === "Reports" && <ReportsTab />}
+        {activeTab === "Tags" && <TagsTab title={adminTitle} />}
+        {activeTab === "Classification" && <ClassificationKindsTab title={adminTitle} />}
+        {activeTab === "Reports" && <ReportsTab title={adminTitle} />}
       </Stack>
-      {refusal.dialog}
     </div>
   );
 }

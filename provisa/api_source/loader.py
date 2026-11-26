@@ -23,13 +23,14 @@ from provisa.api_source.models import (
     ApiSourceType,
     ParamType,
     PromotionConfig,
+    operation_key,
 )
 from provisa.core.paging import PaginationConfig
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-# Requirements: REQ-119, REQ-314, REQ-316, REQ-322
+# Requirements: REQ-119, REQ-314, REQ-316, REQ-322, REQ-1874
 
 
 def _resolve_param_type(c: dict) -> str | None:
@@ -76,7 +77,7 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     """
     # Load API sources
     from provisa.encryption import encryption_service  # REQ-686
-    from provisa.openapi.brands import spec_headers
+    from provisa.openapi.brands import spec_headers, spec_operation_headers
     from provisa.sparql.source import sparql_auth, sparql_headers
 
     _enc = encryption_service()
@@ -118,6 +119,10 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
                 else sparql_headers()  # REQ-2138: who is asking, as public endpoints require
                 if r["type"] == "sparql"
                 else {}
+            ),
+            # REQ-1874: a brand's version as each operation declares it.
+            operation_headers=(
+                spec_operation_headers(r["spec_path"]) if r["type"] == "openapi" else {}
             ),
         )
         api_sources[api_src.id] = api_src
@@ -183,6 +188,10 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             query_template=r.get("query_template"),
             response_normalizer=r.get("response_normalizer"),
         )
+        source = api_sources.get(ep.source_id)
+        if source is not None:  # an endpoint whose source is not loaded is never called
+            # REQ-1874: the version its operation declares, where its source's brand reads one.
+            ep.headers = source.operation_headers.get(operation_key(ep.method, ep.path), {})
         api_endpoints[(ep.source_id, ep.table_name)] = ep
 
     return api_endpoints, api_sources

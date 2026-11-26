@@ -193,7 +193,6 @@
     "colDescription": "תיאור",
     "colGqlAlias": "כינוי GQL",
     "colSteward": "Steward",
-    "colActions": "פעולות",
     "noDomains": "לא הוגדרו דומיינים",
     "deleteDomain": "מחיקת דומיין {{id}}",
     "resolveSteward": "הצגת מי אחראי כ-Steward על התחום {{id}}",
@@ -225,6 +224,9 @@
     "apolloSubgraphNameHint": "השם שבו הסופר-גרף מכיר את תת-הגרף הזה.",
     "apolloSubgraphRole": "פועל בתפקיד",
     "apolloSubgraphRoleHint": "Supergraph לא יכול להעביר את זהות הגורם הקורא, ולכן הנתב נכנס עם התפקיד הזה, וחוקי השורה, המסכות והנראות של התפקיד חלים על כל ישות שהוא מאחזר.",
-    "stewardsHint": "האנשים שאחראים לתחום; לכל אחד נדרש תפקיד עם domain_steward."
+    "stewardsHint": "האנשים שאחראים לתחום; לכל אחד נדרש תפקיד עם domain_steward.",
+    "domainsFilterPlaceholder": "סינון דומיינים",
+    "closeForm": "סגירת הטופס",
+    "domainPanel": "דומיין"
   }
 }

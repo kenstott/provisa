@@ -14,6 +14,10 @@
     "defaultHelp": "除非构建指定其他注册表，否则推送到此处。一个组织只有一个默认注册表。",
     "saved": "已保存",
     "removed": "已删除",
-    "remove": "删除"
+    "remove": "删除",
+    "filterPlaceholder": "筛选注册表",
+    "closeForm": "关闭表单",
+    "edit": "编辑 {{name}}",
+    "removeConfirm": "要删除 {{name}} 吗？推送到这里的构建将无法再推送其镜像。"
   }
 }

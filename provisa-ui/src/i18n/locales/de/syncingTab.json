@@ -121,6 +121,7 @@
     "standingKind": "Art des Unterschieds",
     "compare": "Mit dem Katalog vergleichen",
     "title": "Kontext-Synchronisierung",
+    "filterPlaceholder": "Einträge filtern…",
     "importCron": "Importzeitplan",
     "importCronHelp": "Cron-Ausdruck für einen unbeaufsichtigten Import. Jeder Lauf übernimmt den Wert des Katalogs nur, wo die feste Wahl es vorsieht und nur der Katalog ihn geändert hat; jeden anderen Unterschied hält er für einen Steward zurück. Leer lassen, um nur auf Anforderung zu importieren.",
     "importCronPlaceholder": "0 3 * * *",

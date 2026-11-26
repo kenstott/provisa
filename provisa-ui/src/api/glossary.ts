@@ -188,10 +188,20 @@ export async function fetchGlossaryTermByRef(
   tableId: number,
   columnName: string,
 ): Promise<GlossaryTermDetail | null> {
-  const params = new URLSearchParams({
-    table_id: String(tableId),
-    column_name: columnName,
-  });
+  return fetchTermByRef({ table_id: String(tableId), column_name: columnName });
+}
+
+// REQ-2158 (amended 2026-11-25): a data product's consumer view names a column by the name it is
+// queried by (its SQL alias where one is set); the server resolves that name to its column.
+export async function fetchGlossaryTermByQueryName(
+  tableId: number,
+  queryName: string,
+): Promise<GlossaryTermDetail | null> {
+  return fetchTermByRef({ table_id: String(tableId), query_name: queryName });
+}
+
+async function fetchTermByRef(query: Record<string, string>): Promise<GlossaryTermDetail | null> {
+  const params = new URLSearchParams(query);
   const res = await fetch(`${API_BASE}/admin/glossary/ref?${params.toString()}`);
   if (res.status === 404) return null;
   if (!res.ok) throw await mutationError(res, "fetchGlossaryTermByRef");

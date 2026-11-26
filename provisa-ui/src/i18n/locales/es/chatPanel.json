@@ -35,6 +35,11 @@
     "graphCaption": "Nodos: {{nodes}} · Relaciones: {{relationships}}",
     "downloadPng": "Descargar PNG",
     "openOnGraphPage": "Abrir en la página Grafo",
-    "choiceClosed": "(cerrado sin elegir)"
+    "choiceClosed": "(cerrado sin elegir)",
+    "attach": "Adjunta un archivo para que Polly lo lea: un CSV, una especificación de API, un archivo de código o un documento, de hasta {{limit}} MB",
+    "attachTooLarge": "{{name}} supera los {{limit}} MB, el tamaño máximo de un archivo adjunto para Polly.",
+    "attachTooMany": "Una conversación admite {{max}} archivos adjuntos. Quita uno para adjuntar otro.",
+    "removeAttachment": "Quitar {{name}}",
+    "download": "Descargar"
   }
 }

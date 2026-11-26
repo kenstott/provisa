@@ -121,6 +121,7 @@
     "standingKind": "差異類型",
     "compare": "與目錄比較",
     "title": "上下文同步",
+    "filterPlaceholder": "篩選項目…",
     "importCron": "匯入排程",
     "importCronHelp": "無人值守匯入的 Cron 表達式。每次執行僅在固定選擇如此規定且只有目錄更改了該值時才採用目錄的值；其他差異一律保留待定，由資料管理員處理。留空則僅按需匯入。",
     "importCronPlaceholder": "0 3 * * *",

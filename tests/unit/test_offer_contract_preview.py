@@ -132,3 +132,14 @@ def test_the_contract_offered_to_viewer_still_lists_no_column(demo):
         assert offer_derivation.preview(state, "viewer", by_name[name]) == [], name
         seen = offer_derivation.seen_columns(state, "viewer", by_name[name])
         assert seen and not any(c.read for c in seen), name
+
+
+def test_a_column_is_previewed_by_its_sql_alias_where_one_is_set(demo):
+    # REQ-2158 (amended 2026-11-25): consumers see each column by the name they query it by.
+    state, _, by_name = demo
+    pets = by_name["pets"]
+    aliased, *rest = pets["columns"]
+    aliased["alias"] = "pet_ref"
+    fields = [f.name for f in offer_derivation.preview(state, _META, pets)]
+    assert fields == ["pet_ref", *(c["column_name"] for c in rest)]
+    assert aliased["column_name"] not in fields

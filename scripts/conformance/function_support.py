@@ -3957,10 +3957,32 @@ def _classifier() -> Any:
     return classify
 
 
+def parse_shard(text: str) -> tuple[int, int]:
+    """``k/n``: the k-th of n shards, 1-based."""
+    k, sep, n = text.partition("/")
+    if not sep or not k.isdigit() or not n.isdigit() or not 1 <= int(k) <= int(n):
+        raise argparse.ArgumentTypeError(f"a shard is k/n with 1 <= k <= n, not {text!r}")
+    return int(k), int(n)
+
+
+def shard_of(fns: list[Function], shard: tuple[int, int]) -> list[Function]:
+    """The overloads shard ``k/n`` measures: every n-th, from the k-th. Interleaved, not a block:
+    the slow families sit together in the catalog's order, and a block would give them to one shard."""
+    k, n = shard
+    return fns[k - 1 :: n]
+
+
 def measure(
-    engine: str, pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path, limit: int | None
+    engine: str,
+    pg_dsn: str,
+    provisa_dsn: str,
+    out_json: Path,
+    out_md: Path,
+    limit: int | None,
+    shard: tuple[int, int] | None = None,
 ) -> int:
-    """One leg. Written whatever the leg reaches: what it did not reach is ``not_reached``."""
+    """One leg, or one shard of it. Written whatever the leg reaches: what it did not reach is
+    ``not_reached``."""
     pg = Session(pg_dsn)
     FIXTURE.update(resolve_fixture(pg))
     print(f"fixture: {FIXTURE}")
@@ -3972,6 +3994,8 @@ def measure(
     )
     if limit is not None:
         fns = fns[:: max(1, len(fns) // limit)]
+    if shard is not None:
+        fns = shard_of(fns, shard)
     declared = function_probe.families()
     classify = _classifier()
     provisa = Session(provisa_dsn)
@@ -4021,6 +4045,8 @@ def measure(
         "counts": counts(overloads),
         "overloads": overloads,
     }
+    if shard is not None:
+        report["shard"] = f"{shard[0]}/{shard[1]}"
     out_json.write_text(json.dumps(report, indent=1) + "\n")
     out_md.write_text(engine_markdown(report) + "\n")
     print(engine_markdown(report))
@@ -4460,6 +4486,76 @@ def _one(indir: Path, name: str) -> dict[str, Any] | None:
     return json.loads(found[0].read_text()) if found else None
 
 
+def _shard_files(indir: Path, kind: str, engine: str) -> list[Path]:
+    """The ``kind`` files (``function-support``, ``leg-failure``) of each shard of ``engine``'s leg,
+    by the id function_legs.shard_id gives a shard."""
+    return sorted(indir.rglob(f"{kind}-{engine}.shard-*-of-*.json"))
+
+
+def _shard_number(path: Path) -> tuple[int, int]:
+    k, _of, n = path.name.rsplit(".shard-", 1)[1].removesuffix(".json").split("-")
+    return int(k), int(n)
+
+
+def leg_failure(indir: Path, engine: str) -> dict[str, Any] | None:
+    """Why ``engine``'s leg left no result: its ``leg-failure`` file, or its failed shards' reasons
+    joined."""
+    whole = _one(indir, f"leg-failure-{engine}.json")
+    shards = [json.loads(p.read_text()) for p in _shard_files(indir, "leg-failure", engine)]
+    if whole is not None and shards:
+        raise SystemExit(f"{engine}: a leg-failure file of the whole leg and of shards")
+    if not shards:
+        return whole
+    return {"engine": engine, "reason": "; ".join(f["reason"] for f in shards)}
+
+
+def joined_shards(
+    engine: str, shards: list[dict[str, Any]], failed: dict[int, str]
+) -> dict[str, Any]:
+    """The shard reports of ``engine``'s leg as the one report a leg run whole writes. A shard that
+    left no result stops the leg short, by ``server_gone``: its overloads are absent, so not
+    reached, and the leg is incomplete. ``failed``: a missing shard's reason, by its number."""
+    numbers = {tuple(map(int, r["shard"].split("/"))): r for r in shards}
+    totals = {n for _k, n in numbers}
+    if len(totals) != 1 or len(numbers) != len(shards):
+        raise SystemExit(f"{engine}: shards of different splits or repeated: {sorted(numbers)}")
+    (total,) = totals
+    gone = [
+        f"shard {k}/{total}: {numbers[(k, total)]['server_gone']}"
+        for k in range(1, total + 1)
+        if (k, total) in numbers and numbers[(k, total)]["server_gone"]
+    ] + [
+        f"shard {k}/{total} left no result" + (f": {failed[k]}" if k in failed else "")
+        for k in range(1, total + 1)
+        if (k, total) not in numbers
+    ]
+    overloads = [o for _key, r in sorted(numbers.items()) for o in r["overloads"]]
+    return {
+        "engine": engine,
+        "postgres_version": shards[0]["postgres_version"],
+        "seconds": max(r["seconds"] for r in shards),
+        "server_gone": "; ".join(gone) or None,
+        "counts": counts(overloads),
+        "overloads": overloads,
+    }
+
+
+def leg_report(indir: Path, engine: str) -> dict[str, Any] | None:
+    """``engine``'s leg, anywhere under ``indir``: its ``function-support`` file, or its shards'
+    joined (function_legs.yaml ``shards``); None when it left none."""
+    whole = _one(indir, f"function-support-{engine}.json")
+    paths = _shard_files(indir, "function-support", engine)
+    if whole is not None and paths:
+        raise SystemExit(f"{engine}: a result of the whole leg and of shards")
+    if not paths:
+        return whole
+    failed = {
+        _shard_number(p)[0]: json.loads(p.read_text())["reason"]
+        for p in _shard_files(indir, "leg-failure", engine)
+    }
+    return joined_shards(engine, [json.loads(p.read_text()) for p in paths], failed)
+
+
 def legs_section(
     engines: list[str],
     legs: dict[str, Any],
@@ -4524,7 +4620,8 @@ def merge(
     *,
     refused: dict[str, str] | None = None,
 ) -> int:
-    """``function-support-<engine>.json`` of each engine, anywhere under ``indir``, as one file.
+    """``function-support-<engine>.json`` of each engine, or its shards' (``leg_report``), anywhere
+    under ``indir``, as one file.
     Fails when a leg left no result or stopped short: the list is then not a guarantee. With
     ``legs`` (function_legs.yaml) and ``refused`` (the plan's engines build_engine refuses by name),
     the report also lists each leg's image, why a failed leg left no result
@@ -4532,14 +4629,13 @@ def merge(
     no leg. A refused engine is never judged: it is not one of ``engines``."""
     if legs is None and refused is not None:
         raise ValueError("the refused engines are given with the legs file")
-    reports = {engine: _one(indir, f"function-support-{engine}.json") for engine in engines}
+    reports = {engine: leg_report(indir, engine) for engine in engines}
     doc = merged(reports)
     if legs is not None:
         failures = {
             engine: found
             for engine in engines
-            if (found := _one(indir, f"leg-failure-{engine}.json")) is not None
-            and reports[engine] is None
+            if (found := leg_failure(indir, engine)) is not None and reports[engine] is None
         }
         if refused is None:
             raise ValueError("the legs file is given with the refused engines")
@@ -4572,6 +4668,9 @@ def main(argv: list[str]) -> int:
     m.add_argument("--out-json", required=True, type=Path)
     m.add_argument("--out-md", required=True, type=Path)
     m.add_argument("--limit", type=int, help="an even sample of about this many overloads")
+    m.add_argument(
+        "--shard", type=parse_shard, help="k/n: measure every n-th overload, from the k-th"
+    )
     s = sub.add_parser("seed-columns")
     s.add_argument("--pg", required=True)
     s.add_argument("--out", required=True, type=Path)
@@ -4590,7 +4689,9 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv[1:])
     if args.command == "measure":
-        return measure(args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit)
+        return measure(
+            args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit, args.shard
+        )
     if args.command == "seed-columns":
         seed_columns(args.pg, args.out)
         seed_fixture(args.pg)

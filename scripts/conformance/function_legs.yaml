@@ -55,6 +55,10 @@ legs:
     image: trinodb/trino:481 (docker-compose.core.yml)
     control-plane-url: postgresql+psycopg://provisa:provisa@localhost:5432/provisa
     boot-attempts: "300"
+    # Three jobs, each every third overload: whole, the leg measured in 2047 s on a typical runner
+    # (run 45714637835) and ran out of its 6300 s at overload 1000 of 3319 on one six times slower
+    # in every step, its Python setup included (run 45707974057, 2026-11-25).
+    shards: 3
   # Any SQLAlchemy URL: here the runner's PostgreSQL by its generic dialect, its own database.
   - engine: sqlalchemy
     lane: free

@@ -35,6 +35,11 @@
     "graphCaption": "צמתים: {{nodes}} · קשרים: {{relationships}}",
     "downloadPng": "הורדת PNG",
     "openOnGraphPage": "פתיחה בדף הגרף",
-    "choiceClosed": "(נסגר ללא בחירה)"
+    "choiceClosed": "(נסגר ללא בחירה)",
+    "attach": "צרף קובץ ש-Polly תקרא: קובץ CSV, מפרט API, ארכיון קוד או מסמך, עד {{limit}} MB",
+    "attachTooLarge": "{{name}} גדול מ-{{limit}} MB, הגודל המרבי של קובץ שמצורף ל-Polly.",
+    "attachTooMany": "שיחה יכולה להכיל {{max}} קבצים מצורפים. הסר אחד כדי לצרף קובץ אחר.",
+    "removeAttachment": "הסר את {{name}}",
+    "download": "הורדה"
   }
 }

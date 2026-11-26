@@ -71,9 +71,8 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
     case "metric":
       return detailHref("metrics", id);
     case "classification":
-      // REQ-2259: the Context group's Classification page; it has no panel per kind, so the link
-      // names the page.
-      return "/context/classification";
+      // REQ-2259, REQ-2277: the kind's panel on the Context group's Classification page.
+      return detailHref("classification", id);
     case "document":
       return detailHref("library", id);
   }

@@ -184,6 +184,11 @@ dependencies = [
     # already present transitively (databricks-sql-connector); a first-party surface that writes
     # XLSX cannot depend on another package's dependency graph to keep it there.
     "openpyxl",
+    # REQ-2114: Polly hands back a query result as an XLSX download built in memory -- she has no
+    # file-system access, and openpyxl writes each worksheet through a temporary file. XlsxWriter's
+    # in_memory mode writes none. BSD-2-Clause, pure Python; already present transitively
+    # (python-pptx), named here so the first-party surface does not rest on that.
+    "xlsxwriter>=3.2,<4",
     # The native/desktop control plane (REQ-1535) and the dedicated telemetry store are an
     # EMBEDDED PostgreSQL, so `provisa run` cannot start without pgserver — as an optional extra a
     # plain `pip install provisa` died at startup with ModuleNotFoundError: pgserver. pgserver ships

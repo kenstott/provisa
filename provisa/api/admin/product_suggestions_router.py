@@ -63,21 +63,15 @@ def _state() -> Any:
     return state
 
 
-def _reader(request: Request) -> str:
-    """The caller's user id, or ``_ANONYMOUS`` when no identity is attached; never raises."""
-    return str(getattr(getattr(request.state, "identity", None), "user_id", _ANONYMOUS))
-
-
 def _suggester(request: Request) -> str:
-    """The caller's user id; raises 401 when anonymous (creating a suggestion requires sign-in)."""
-    user_id = _reader(request)
+    user_id = getattr(getattr(request.state, "identity", None), "user_id", _ANONYMOUS)
     if user_id == _ANONYMOUS:
         raise ApiError(
             401,
             "product_suggestion.sign_in_required",
             "a product is suggested by a signed-in reader",
         )
-    return user_id
+    return str(user_id)
 
 
 def _refused(refused: SuggestionRefused) -> ApiError:
@@ -182,23 +176,22 @@ async def suggest(body: SuggestionBody, request: Request) -> dict:
 @router.get("/counts")
 async def suggestion_counts(request: Request) -> list[dict]:
     """How many suggestions name each table of the domains whose suggestions go to the caller,
-    most wanted first. Anonymous callers receive no domains and so an empty list."""
-    reader = _reader(request)
+    most wanted first."""
+    user_id = getattr(getattr(request.state, "identity", None), "user_id", _ANONYMOUS)
     # REQ-2180: anonymous callers own no domains; return [] rather than a 401 that the
     # browser logs as a console error (the Tables page loads this unconditionally).
-    if reader == _ANONYMOUS:
+    if user_id == _ANONYMOUS:
         return []
     state = _state()
     async with state.model_db.acquire() as conn:
-        return await suggestions.counts(conn, await received_domains(conn, reader))
+        return await suggestions.counts(conn, await received_domains(conn, user_id))
 
 
 @router.get("")
 async def table_suggestions(domain_id: str, table_name: str, request: Request) -> list[dict]:
     """The suggestions naming one table, newest first, for its domain's stewards and data
-    product owners; anyone else is refused. Anonymous callers are not recipients of any domain
-    and so are refused with 403."""
-    reader = _reader(request)
+    product owners; anyone else is refused."""
+    reader = _suggester(request)
     state = _state()
     async with state.model_db.acquire() as conn:
         if domain_id not in await received_domains(conn, reader):
