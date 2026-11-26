@@ -67,7 +67,6 @@
     "hoverExpertsLabel": "エキスパート:",
     "hoverRefsLabel": "列:",
     "excludeFromExportLabel": "メタデータエクスポートから除外",
-    "excludeFromExportHelp": "「ETL バッチ識別子」や「行バージョン」のような、内部の仕組みを表す用語向けです。除外された用語はエンジニア向けにここに残り、Provisa が公開するカタログには含まれません。その列は引き続きエクスポートされますが、用語とそのリレーションシップはエクスポートされません。",
     "bulkGenerateDefinitions": "定義",
     "bulkGenerateRelationships": "リレーションシップ",
     "generateMenu": "AI で生成",
@@ -162,8 +161,6 @@
     "tagsLabel": "タグ",
     "piiHelp": "この用語を意味するすべての列 (今後のものも) が PII になります。",
     "piiPropertyOnly": "列をマークするのはプロパティのみです。クラスや概念は何もマークしません。",
-    "piiMarks_one": "{{count}} 列に付く",
-    "piiMarks_other": "{{count}} 列に付く",
     "moveOneUnnamed": "{{column}} を移しますか?",
     "moveManyUnnamed_one": "{{count}} 列を移しますか?",
     "moveManyUnnamed_other": "{{count}} 列を移しますか?",
@@ -257,6 +254,13 @@
     "relatedToDialogAnyway": "それでも「に関連」を追加",
     "newTermPlaceholder": "新しい用語",
     "shapeFormTitle": "新しい用語：{{shape}}",
-    "shapeFormEdges": "一緒に追加される関係"
+    "shapeFormEdges": "一緒に追加される関係",
+    "editTip": "{{name}} を編集",
+    "approvedTip": "承認済み。非推奨にする または 廃止 で用語をサービスから外します。",
+    "piiOnTip_one": "PII: オン。{{count}} 列をマークしています。オフにすると用語のマークを外します。",
+    "piiOnTip_other": "PII: オン。{{count}} 列をマークしています。オフにすると用語のマークを外します。",
+    "piiOffTip": "PII: オフ。オンにすると、この用語を意味するすべての列を理由付きでマークします。",
+    "exportExcludedOnTip": "メタデータエクスポートから除外されています。オフにすると用語をカタログに再び公開します。",
+    "exportExcludedOffTip": "メタデータエクスポートに含まれています。オンにすると、Provisa が公開するカタログから用語を除外します。"
   }
 }

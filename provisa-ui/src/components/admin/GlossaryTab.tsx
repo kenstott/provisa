@@ -37,13 +37,14 @@ import {
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
-import { BadgeCheck, BookOpen, ClipboardList, Pencil, Plus, Sparkles } from "lucide-react";
+import { BadgeCheck, BookOpen, ClipboardList, Plus, Sparkles } from "lucide-react";
 import { useScreenInputs } from "../../mcp/screenState";
 import { OntologyToggle, OntologyView } from "../graph3d/OntologyGraph";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
-import { TermCurationActions } from "./TermCurationActions";
+import { TermHeadActions } from "./TermHeadActions";
+import { TermPanel } from "./TermPanel";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
@@ -91,8 +92,6 @@ import type {
 } from "../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
-import { PanelDeleteLock } from "../list/PanelDelete";
-import { PanelDuplicate } from "../list/PanelDuplicate";
 import { usePanelDeleting } from "../list/panelActions";
 import {
   readStoredBool,
@@ -201,12 +200,11 @@ export function GlossaryTab() {
   const [actionError, setActionError] = useState("");
   // REQ-2198: a term's Delete works like a save. While it runs the detail is locked and the term's
   // item in the list is marked as being deleted; once it is done the detail closes, the list
-  // already read again without the term. What a failed delete says is put at the detail's top.
+  // already read again without the term. What a failed delete says is put under the panel's head.
   const deleting = usePanelDeleting(detail !== null, () => {
     setSelectedId(null);
     setDetail(null);
   });
-  const [deleteNotice, setDeleteNotice] = useState<HTMLDivElement | null>(null);
 
   // REQ-1592: an expert is PICKED from the org's members, not typed. Naming an author decides who
   // may change the term from then on, so a typo would hand it to nobody.
@@ -731,7 +729,10 @@ export function GlossaryTab() {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflow: "auto" }} data-testid="glossary-detail">
+          <div
+            style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
+            data-testid="glossary-detail"
+          >
             {detailLoading ? (
               <Group justify="center" py="md">
                 <Loader size="xs" />
@@ -740,10 +741,8 @@ export function GlossaryTab() {
               // REQ-2259: the stewardship summary (REQ-2144) is on Context Health.
               <GlossaryNoTerm />
             ) : (
-              <PanelDeleteLock host={deleting}>
+              <TermPanel name={detail.name} host={deleting}>
                 <Stack gap="md" pb="md">
-                  {/* Where a failed delete says why: no box of its own until it does. */}
-                  <div ref={setDeleteNotice} style={{ display: "contents" }} />
                   {actionError && (
                     <Alert color="red" data-testid="glossary-error">
                       {actionError}
@@ -756,37 +755,22 @@ export function GlossaryTab() {
                     not ground, so the pair may want a term between. Guidance, never a block. */}
                   {onlyRelatedTo(detail) && <RelatedToHint />}
 
-                  {canEdit && !editing && (
-                    // Edit opens the whole term as one form; Retire and Delete act at once.
-                    <Group gap="xs" data-toolbar>
-                      {canCurate && (
-                        <Button
-                          variant="default"
-                          leftSection={<Pencil size={14} />}
-                          onClick={() => setEditing(true)}
-                          data-testid="glossary-edit-btn"
-                        >
-                          {t("glossaryTab.edit")}
-                        </Button>
-                      )}
-                      <PanelDuplicate
-                        name={detail.name}
-                        onDuplicate={() => openDuplicateTerm(detail)}
-                        testId="glossary-duplicate-btn"
-                        labelled
-                      />
-                      {canCurate && (
-                        <TermCurationActions
-                          detail={detail}
-                          act={act}
-                          onApprove={() => setApproveOpen(true)}
-                          onDeprecate={() => setDeprecateOpen(true)}
-                          onRetire={() => setRetireOpen(true)}
-                          deleteNotice={deleteNotice}
-                          onDelete={() => deleteTerm(detail)}
-                        />
-                      )}
-                    </Group>
+                  {/* The term's actions, icons in the panel's head beside its name; while the
+                    term is edited its form's Save and Cancel sit there instead. */}
+                  {!editing && (
+                    <TermHeadActions
+                      detail={detail}
+                      canEdit={canEdit}
+                      canCurate={canCurate}
+                      act={act}
+                      onEdit={() => setEditing(true)}
+                      onDuplicate={() => openDuplicateTerm(detail)}
+                      onApprove={() => setApproveOpen(true)}
+                      onDeprecate={() => setDeprecateOpen(true)}
+                      onRetire={() => setRetireOpen(true)}
+                      onDelete={() => deleteTerm(detail)}
+                      onTagsChanged={() => void loadDetail(detail.id, true)}
+                    />
                   )}
 
                   {!editing && (
@@ -894,7 +878,7 @@ export function GlossaryTab() {
                     />
                   )}
                 </Stack>
-              </PanelDeleteLock>
+              </TermPanel>
             )}
           </div>
         </div>

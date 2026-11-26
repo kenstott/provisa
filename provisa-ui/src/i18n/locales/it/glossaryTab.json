@@ -67,7 +67,6 @@
     "hoverExpertsLabel": "Esperti:",
     "hoverRefsLabel": "Colonne:",
     "excludeFromExportLabel": "Escludi dall'esportazione metadati",
-    "excludeFromExportHelp": "Per termini che descrivono l'infrastruttura tecnica, come “identificatore di batch ETL” o “versione di riga”. Un termine escluso resta qui per gli ingegneri e fuori dai cataloghi in cui Provisa pubblica. Le sue colonne vengono comunque esportate; il termine e le sue relazioni no.",
     "bulkGenerateDefinitions": "Definizioni",
     "bulkGenerateRelationships": "Relazioni",
     "generateMenu": "Genera con l'IA",
@@ -162,8 +161,6 @@
     "tagsLabel": "Tag",
     "piiHelp": "Ogni colonna con questo significato porta PII, anche le future.",
     "piiPropertyOnly": "Solo una proprietà contrassegna le colonne. Una classe o un concetto non ne contrassegna nessuna.",
-    "piiMarks_one": "Segna {{count}} colonna",
-    "piiMarks_other": "Segna {{count}} colonne",
     "moveOneUnnamed": "Spostare {{column}}?",
     "moveManyUnnamed_one": "Spostare {{count}} colonna?",
     "moveManyUnnamed_other": "Spostare {{count}} colonne?",
@@ -257,6 +254,13 @@
     "relatedToDialogAnyway": "Aggiungi comunque «Correlato a»",
     "newTermPlaceholder": "nuovo termine",
     "shapeFormTitle": "Nuovo termine: {{shape}}",
-    "shapeFormEdges": "Collegamenti aggiunti con esso"
+    "shapeFormEdges": "Collegamenti aggiunti con esso",
+    "editTip": "Modifica {{name}}",
+    "approvedTip": "Approvato. Depreca o Ritira toglie il termine dal servizio.",
+    "piiOnTip_one": "PII: attivo. Marca {{count}} colonna. Disattiva per togliere la marcatura dal termine.",
+    "piiOnTip_other": "PII: attivo. Marca {{count}} colonne. Disattiva per togliere la marcatura dal termine.",
+    "piiOffTip": "PII: disattivo. Attiva per marcare ogni colonna con questo significato, con un motivo.",
+    "exportExcludedOnTip": "Escluso dall'esportazione metadati. Disattiva per pubblicare di nuovo il termine nei cataloghi.",
+    "exportExcludedOffTip": "Incluso nell'esportazione metadati. Attiva per tenere il termine fuori dai cataloghi in cui Provisa pubblica."
   }
 }

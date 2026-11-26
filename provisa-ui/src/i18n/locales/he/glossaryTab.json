@@ -67,7 +67,6 @@
     "hoverExpertsLabel": "מומחים:",
     "hoverRefsLabel": "עמודות:",
     "excludeFromExportLabel": "החרג מייצוא מטא-נתונים",
-    "excludeFromExportHelp": "למונחים שמתארים תשתית טכנית, כמו \"מזהה אצוות ETL\" או \"גרסת שורה\". מונח שהוחרג נשאר כאן עבור מהנדסים ומחוץ לקטלוגים ש-Provisa מפרסמת אליהם. העמודות שלו עדיין מיוצאות; המונח והקשרים שלו לא.",
     "bulkGenerateDefinitions": "הגדרות",
     "bulkGenerateRelationships": "קשרים",
     "generateMenu": "יצירה באמצעות AI",
@@ -162,8 +161,6 @@
     "tagsLabel": "תגיות",
     "piiHelp": "כל עמודה שזו משמעותה נושאת PII, גם עתידיות.",
     "piiPropertyOnly": "רק מאפיין מסמן עמודות. מחלקה או מושג לא מסמנים אף אחת.",
-    "piiMarks_one": "מסמן עמודה {{count}}",
-    "piiMarks_other": "מסמן {{count}} עמודות",
     "moveOneUnnamed": "להעביר את {{column}}?",
     "moveManyUnnamed_one": "להעביר עמודה {{count}}?",
     "moveManyUnnamed_other": "להעביר {{count}} עמודות?",
@@ -257,6 +254,13 @@
     "relatedToDialogAnyway": "להוסיף „קשור אל” בכל זאת",
     "newTermPlaceholder": "מונח חדש",
     "shapeFormTitle": "מונח חדש: {{shape}}",
-    "shapeFormEdges": "קשרים שנוספים איתו"
+    "shapeFormEdges": "קשרים שנוספים איתו",
+    "editTip": "עריכת {{name}}",
+    "approvedTip": "מאושר. סמן כמיושן או הוצא משימוש מוציאים את המונח מהשירות.",
+    "piiOnTip_one": "PII: פעיל. מסמן עמודה {{count}}. כבה כדי להסיר את הסימון מהמונח.",
+    "piiOnTip_other": "PII: פעיל. מסמן {{count}} עמודות. כבה כדי להסיר את הסימון מהמונח.",
+    "piiOffTip": "PII: כבוי. הפעל כדי לסמן כל עמודה שזו משמעותה, עם סיבה.",
+    "exportExcludedOnTip": "מוחרג מייצוא מטא-נתונים. כבה כדי לפרסם את המונח שוב בקטלוגים.",
+    "exportExcludedOffTip": "כלול בייצוא מטא-נתונים. הפעל כדי להשאיר את המונח מחוץ לקטלוגים ש-Provisa מפרסמת אליהם."
   }
 }
