@@ -193,8 +193,13 @@ export function SourceSetupStepper({
   const ownIds = new Set(own.map((tbl) => tbl.id));
   const related = relationships.some((r) => touches(r, ownIds));
 
-  // Each step's outcome: recorded, or produced by its object.
-  const tablesOutcome = outcomes.tables ?? (own.length > 0 ? "registered" : null);
+  // Each step's outcome: recorded, or produced by its object -- the source's tables, or those the
+  // registration here just made, before the list is read again.
+  const tablesOutcome =
+    outcomes.tables ??
+    (own.length > 0 || (registered !== null && registered.tableIds.length > 0)
+      ? "registered"
+      : null);
   // With no table of its own, or no other table in the model, there is nothing to relate; without
   // the create relationship right this person cannot. Either way the step is passed, not decided.
   const nothingToRelate = own.length === 0 || tables.length < 2;
@@ -247,8 +252,15 @@ export function SourceSetupStepper({
     setViewing(null);
     // The source's tables are read again before the step is recorded, so the steps after it
     // count the tables just registered.
-    void Promise.resolve(refetchTables()).then(() =>
-      record({ tables: "registered", relationships: outcomes.relationships, query: outcomes.query }),
+    setError(null);
+    Promise.resolve(refetchTables()).then(
+      () =>
+        record({
+          tables: "registered",
+          relationships: outcomes.relationships,
+          query: outcomes.query,
+        }),
+      (e: Error) => setError(e.message),
     );
   };
   const review = reviewing !== null && (
