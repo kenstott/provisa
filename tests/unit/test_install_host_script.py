@@ -362,6 +362,35 @@ def test_the_config_selects_trino_and_provisa_accepts_it():
     assert "auth" not in raw
 
 
+def test_the_installed_host_smoke_config_loads_and_runs_on_the_installs_engine(
+    tmp_path, monkeypatch
+):
+    # REQ-1989, REQ-2269: the installed-host smoke run gives the service the demo plus the smoke's
+    # own sources, on the engine the install's provisa.yaml names. The demo's file names duckdb, and
+    # an include never overrides a scalar the including file sets, so the two must load as one.
+    from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+    from tests.smoke.installed_config import write_installed_smoke_config
+
+    # What the smoke harness names for its seeded PostgreSQL source.
+    for key, value in {"SMOKE_PG_HOST": "/run/pg", "SMOKE_PG_PORT": "5433"}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SMOKE_PG_PASSWORD", "smoke")
+    installed = yaml.safe_load(_ok("render_config_yaml 9080"))
+    raw = read_config_with_includes(write_installed_smoke_config(tmp_path, installed))
+    config = parse_config_dict(raw)
+    assert (
+        config.federation_engine,
+        config.federation_engine_host,
+        config.federation_engine_port,
+    ) == ("trino", "127.0.0.1", 9080)
+    demo = yaml.safe_load((_ROOT / "config" / "provisa-install.yaml").read_text())
+    assert {s.id for s in config.sources} >= {s["id"] for s in demo["sources"]} | {
+        "smoke-parquet",
+        "smoke-pg",
+    }
+    assert ("smoke-pg", "smoke_accounts") in {(t.source_id, t.table_name) for t in config.tables}
+
+
 def test_the_env_file_names_the_config_and_leaves_the_engine_to_it():
     # REQ-2269: the config's federation_engine wins over the launch profile's default, so the env
     # file sets no PROVISA_ENGINE.

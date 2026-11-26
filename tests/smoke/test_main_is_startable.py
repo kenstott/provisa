@@ -59,6 +59,7 @@ import pytest
 from tests.integration import mcp_pin
 from tests.integration.mcp_pin import principal_env, seat_principal
 from tests.port_lease import lease_ports
+from tests.smoke.installed_config import write_installed_smoke_config
 
 pytestmark = [pytest.mark.isolated]
 
@@ -413,19 +414,14 @@ def _pg_fields(out: str) -> dict[str, str]:
 
 
 def _installed_config(install: _Install, root: Path) -> Path:
-    """The smoke configuration, beside the demo's file it includes, in a copy the service's user
-    reads (the checkout is under the runner's home), with the federation engine the install's own
-    configuration names: the config selects the engine (REQ-2269)."""
+    """The smoke configuration, in a copy the service's user reads (the checkout is under the
+    runner's home), with the federation engine the install's own configuration names: the config
+    selects the engine (REQ-2269)."""
     import yaml
 
     installed = yaml.safe_load(_root(["cat", str(install.config_dir / "provisa.yaml")]))
-    engine = {k: v for k, v in installed.items() if k.startswith("federation_engine")}
-    assert engine.get("federation_engine") == "trino", installed
-    (root / "config").mkdir()
-    shutil.copy(REPO / "config" / "provisa-install.yaml", root / "config")
-    smoke = root / CONFIG
-    smoke.parent.mkdir(parents=True)
-    smoke.write_text((REPO / CONFIG).read_text() + "\n" + yaml.safe_dump(engine))
+    assert installed.get("federation_engine") == "trino", installed
+    smoke = write_installed_smoke_config(root, installed)
     shutil.copytree(REPO / "demo" / "files", root / "demo" / "files")
     return smoke
 
