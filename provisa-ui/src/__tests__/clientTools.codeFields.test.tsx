@@ -23,9 +23,7 @@ import { resetDataAddresses } from "../lib/dataAddress";
 vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ activeOrgId: "acme" }) }));
 vi.mock("../api/secrets", () => ({ fetchSecrets: vi.fn(async () => ({ secrets: [] })) }));
 
-import type { Connector } from "../api/connectors";
-import { ConnectorSetupFields } from "../pages/sources/ConnectorSetupFields";
-import { requiredField } from "../pages/sources/connector";
+import { CodeEditorField } from "../components/CodeEditorField";
 import { OpenApiFormSection } from "../pages/sources/OpenApiFormSection";
 import { CodeSourceFields } from "../pages/sources/CodeSourceFields";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
@@ -50,34 +48,24 @@ function fill(route: string, target: Record<string, string>, value: string) {
   return executeClientTool("navigate", { route, actions: [{ do: "fill", target, value }] }, ctx());
 }
 
-const SPARK: Connector = {
-  name: "spark",
-  git: "https://git.example/spark.git",
-  ref: "main",
-  commit: "a".repeat(40),
-  language: "python",
-  image: "registry.example/data/spark",
-  digest: `sha256:${"b".repeat(64)}`,
-  code_hash: "c".repeat(64),
-  arch: "amd64",
-  requires: [{ name: "script", multiline: true, script: true }],
-  description: "",
-  icon: "",
-  settings: [],
-};
-
-const SCRIPT = requiredField("script");
-
-function SparkForm({ connector = SPARK }: { connector?: Connector }) {
-  const [form, setForm] = useState<Record<string, string>>({
-    connector_host: "spark-host.acme.internal",
-    connector_port: "7443",
-    [SCRIPT]: "df = spark.range(3)\n",
-  });
+// A code field on its own: the editable one keeps its text in form state; a read-only one is a
+// view of code a person cannot change.
+function CodeForm({ readOnly = false }: { readOnly?: boolean }) {
+  const [code, setCode] = useState(readOnly ? "print(1)" : "df = spark.range(3)\n");
   return (
     <>
-      <ConnectorSetupFields connector={connector} fields={form} setFields={setForm} />
-      <pre data-testid="form-state">{form[SCRIPT]}</pre>
+      {readOnly ? (
+        <CodeEditorField label="code" value={code} language="python" readOnly data-testid="code" />
+      ) : (
+        <CodeEditorField
+          label="code"
+          value={code}
+          language="python"
+          onChange={setCode}
+          data-testid="code"
+        />
+      )}
+      <pre data-testid="form-state">{code}</pre>
     </>
   );
 }
@@ -165,48 +153,43 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe("the Spark connector's script field", () => {
+describe("a code field", () => {
   it("is on screen: read_screen reports its label, value, language and read-only state", async () => {
-    renderInForm(<SparkForm />);
+    renderInForm(<CodeForm />);
     expect(codeFields(await fields())).toEqual([
-      { label: "script", value: "df = spark.range(3)\n", language: "python", readOnly: false },
+      { label: "code", value: "df = spark.range(3)\n", language: "python", readOnly: false },
     ]);
   });
 
-  it("takes a fill by its test id, and the form state holds the new script", async () => {
-    renderInForm(<SparkForm />);
-    const script = "df = spark.read.parquet('s3://b/k')\ndf.show()\n";
-    const out = await fill("/sources", { testId: "connector-require-script" }, script);
+  it("takes a fill by its test id, and the form state holds the new code", async () => {
+    renderInForm(<CodeForm />);
+    const code = "df = spark.read.parquet('s3://b/k')\ndf.show()\n";
+    const out = await fill("/sources", { testId: "code" }, code);
     expect(out.success).toBe(true);
-    expect(out.message).toContain('Filled the element with test id "connector-require-script"');
-    expect(screen.getByTestId("form-state").textContent).toBe(script);
-    expect(editorOf("connector-require-script").state.doc.toString()).toBe(script);
-    expect(codeFields(await fields())[0].value).toBe(script);
+    expect(out.message).toContain('Filled the element with test id "code"');
+    expect(screen.getByTestId("form-state").textContent).toBe(code);
+    expect(editorOf("code").state.doc.toString()).toBe(code);
+    expect(codeFields(await fields())[0].value).toBe(code);
   });
 
   it("takes a fill by its role and label", async () => {
-    renderInForm(<SparkForm />);
-    const out = await fill("/sources", { role: "textbox", name: "script" }, "print(2)\n");
+    renderInForm(<CodeForm />);
+    const out = await fill("/sources", { role: "textbox", name: "code" }, "print(2)\n");
     expect(out.success).toBe(true);
     expect(screen.getByTestId("form-state").textContent).toBe("print(2)\n");
   });
 
-  it("is reported read-only when the connector fixes it, and refuses a fill by name", async () => {
-    const fixed: Connector = {
-      ...SPARK,
-      requires: [{ name: "script", multiline: true, script: true, fixed_value: "print(1)" }],
-    };
-    renderInForm(<SparkForm connector={fixed} />);
+  it("is reported read-only when it is a view, and refuses a fill by name", async () => {
+    renderInForm(<CodeForm readOnly />);
     expect(codeFields(await fields())).toEqual([
-      { label: "script", value: "print(1)", language: "python", readOnly: true },
+      { label: "code", value: "print(1)", language: "python", readOnly: true },
     ]);
-    const out = await fill("/sources", { testId: "connector-require-script" }, "print(2)");
+    const out = await fill("/sources", { testId: "code" }, "print(2)");
     expect(out.success).toBe(false);
     expect(out.message).toContain(
-      'Could not fill the element with test id "connector-require-script": ' +
-        '"script" is a read-only code editor.',
+      'Could not fill the element with test id "code": "code" is a read-only code editor.',
     );
-    expect(editorOf("connector-require-script").state.doc.toString()).toBe("print(1)");
+    expect(editorOf("code").state.doc.toString()).toBe("print(1)");
   });
 });
 

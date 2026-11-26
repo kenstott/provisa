@@ -104,7 +104,7 @@ from provisa.gql.translator_types import (
     map_key_column,
 )
 from provisa.gql.translator_every_rel import _EveryRelMixin
-from provisa.gql.translator_rel import _RelJoinMixin
+from provisa.gql.translator_rel import LATERAL_ON, _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
 
 
@@ -1411,6 +1411,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     branch = branch.join(j["table"].copy(), join_type=j["join_type"])
             if where_expr:
                 branch = branch.where(_of_branch(where_expr, rel_types))
+            for tie in extra_from.meta.get(LATERAL_ON, ()):
+                branch = branch.where(tie.copy())
             result = exp.Union(this=result, expression=branch, distinct=distinct)
         return result
 

@@ -118,6 +118,7 @@ function source(overrides: Partial<Source>): Source {
     changeSignal: "ttl",
     mappingJson: JSON.stringify({ resources: ["mail"], mailboxes: { everyone: true } }),
     ...overrides,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   } as unknown as Source;
 }
 

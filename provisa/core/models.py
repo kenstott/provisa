@@ -137,8 +137,8 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
-    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
-    # (connectors/spark); a built-in code source type, made by joining that host.
+    # REQ-2225: a connection to a Spark cluster, with no script (amended 2026-11-25); a built-in
+    # code source type, made by joining the Spark host (connectors/spark).
     spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"
@@ -292,6 +292,24 @@ class SourceCdcConfig(BaseModel):  # REQ-824
     consumer_group_id: str | None = None
 
 
+class SourceSetupOutcomes(BaseModel):  # REQ-2262
+    """What became of each step of a source's setup, shared by every user and environment: its
+    tables registered or skipped; its relationships found, none found, or skipped; the query
+    explorer opened on it, the step marked done, or skipped. None = not decided yet. ``decided_at``
+    (ISO 8601) is when every step was last decided -- tables registered after it, related to
+    nothing, are what the collapsed line hints at -- and None while any step is open."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tables: Literal["registered", "skipped"] | None = None
+    relationships: Literal["found", "none_found", "skipped"] | None = None
+    query: Literal["opened", "done", "skipped"] | None = None
+    decided_at: str | None = None
+
+    def all_decided(self) -> bool:
+        return None not in (self.tables, self.relationships, self.query)
+
+
 class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
     model_config = ConfigDict(populate_by_name=True)
 
@@ -343,6 +361,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # none of its tables serves any role. Carried as the store holds it, so a promotion lands a
     # move in progress with it.
     withdrawn: bool = False
+    # REQ-2262: what became of each step of the source's setup, as the store holds it; set only by
+    # setSourceSetupOutcomes (and carried by a configuration), so a form save keeps it.
+    setup_outcomes: SourceSetupOutcomes = Field(default_factory=SourceSetupOutcomes)
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -4032,9 +4053,6 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
     # From the project's standard file (connector.yaml). A secret takes none of these: its value is
     # the organization's, and the block is committed with the model.
     multiline: bool = False  # REQ-2225: entered as multi-line text
-    # REQ-2225: this value is the annotated script the host serves: its tags are the source's tables
-    # and commands, read from it at join rather than from the image.
-    script: bool = False
     default_value: str | None = None
     fixed_value: str | None = None
     # REQ-2225: an organisation setting that stands in for this value when a source leaves it
@@ -4053,14 +4071,9 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
                 "is not a secret and has no default or fixed value of its own"
             )
         if self.secret and (
-            self.multiline
-            or self.script
-            or self.default_value is not None
-            or self.fixed_value is not None
+            self.multiline or self.default_value is not None or self.fixed_value is not None
         ):
             raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
-        if self.script and not self.multiline:
-            raise ValueError(f"{self.name} is a script: it is entered as multi-line text")
         return self
 
 

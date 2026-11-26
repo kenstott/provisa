@@ -58,6 +58,9 @@ from provisa.api.admin._retired_objects import restore as restore_retired
 from provisa.api.admin._retired_objects import retired_name_result
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
+    SetupQueryOutcome,
+    SetupRelationshipsOutcome,
+    SetupTablesOutcome,
     CalendarInput,
     ColumnAliasType,
     CompileQueryInput,
@@ -6891,6 +6894,41 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if region is strawberry.UNSET:
             return _put_back_needs_region(f"source {source_id}")
         return await _set_source_withdrawn(info, source_id, False, region)
+
+    @strawberry.mutation
+    async def set_source_setup_outcomes(
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        tables: SetupTablesOutcome | None = None,
+        relationships: SetupRelationshipsOutcome | None = None,
+        query: SetupQueryOutcome | None = None,
+    ) -> MutationResult:  # REQ-2262
+        """Record what became of each step of a source's setup, replacing what was held: one
+        record per source, shared by every user and environment. A step left null is open; all
+        null is Run setup again. Needs source_registration."""
+        from provisa.core.models import BUILT_IN_SOURCE_IDS, SourceSetupOutcomes
+        from provisa.core.repositories import source as source_repo
+
+        require_capability(info, "source_registration")
+        if source_id in BUILT_IN_SOURCE_IDS:
+            return _source_not_found(source_id)
+        outcomes = SourceSetupOutcomes(
+            tables=tables.value if tables else None,
+            relationships=relationships.value if relationships else None,
+            query=query.value if query else None,
+        )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            stored = await source_repo.set_setup_outcomes(conn, source_id, outcomes)
+        if stored is None:
+            return _source_not_found(source_id)
+        return MutationResult(
+            success=True,
+            message=f"source {source_id!r} setup recorded",
+            code="schema.source_setup_recorded",
+            params={"source": source_id},
+        )
 
     @strawberry.mutation
     async def set_source_region(

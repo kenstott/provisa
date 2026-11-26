@@ -55,9 +55,6 @@ export interface TermDraft {
   definition: string;
   /** REQ-2243: the term's calculation method. */
   calculationMethod: string;
-  exportExcluded: boolean;
-  /** REQ-2145: pii on the term, which every column it holds carries (a Property's only). */
-  pii: boolean;
   /** Declared domains: a concept's only; a rooted term's come from its columns. */
   domains: string[];
   /** A column of the term moved to another term: its key, and the term it moves to. */
@@ -77,8 +74,6 @@ export function draftOf(term: GlossaryTermDetail, tables: number[]): TermDraft {
     name: term.name,
     definition: term.definition ?? "",
     calculationMethod: term.calculation_method ?? "",
-    exportExcluded: term.export_excluded,
-    pii: term.tags.some((g) => g.tag_id === "pii"),
     domains: [...term.domains],
     moves: {},
     claims: [],
@@ -101,39 +96,20 @@ export interface Change {
 
 const edgeKey = (from: number, to: number, rel: string) => `${from}>${to}:${rel}`;
 
-/** Marking and unmarking a tag on the term (REQ-2145): the tag picker's own mutations. */
-export interface TermTags {
-  mark: (tagId: string) => Promise<void>;
-  unmark: (tagId: string) => Promise<void>;
-}
-
 /** What Save does to make ``term`` (grounded in ``tables``) the draft, in order. */
-export function changes(
-  term: GlossaryTermDetail,
-  tables: number[],
-  draft: TermDraft,
-  termTags: TermTags,
-): Change[] {
+export function changes(term: GlossaryTermDetail, tables: number[], draft: TermDraft): Change[] {
   const out: Change[] = [];
   const patch: Parameters<typeof updateGlossaryTerm>[1] = {};
   if (draft.name.trim() !== term.name) patch.name = draft.name.trim();
   if (draft.definition !== (term.definition ?? "")) patch.definition = draft.definition;
   if (draft.calculationMethod !== (term.calculation_method ?? ""))
     patch.calculation_method = draft.calculationMethod.trim() ? draft.calculationMethod : null;
-  if (draft.exportExcluded !== term.export_excluded) patch.export_excluded = draft.exportExcluded;
   const sameDomains =
     draft.domains.length === term.domains.length &&
     draft.domains.every((d) => term.domains.includes(d));
   if (term.is_abstract && !sameDomains) patch.domains = draft.domains;
   if (Object.keys(patch).length > 0)
     out.push({ field: "fields", run: () => updateGlossaryTerm(term.id, patch) });
-  // After the definition: a term is marked only once it is defined.
-  const pii = term.tags.some((g) => g.tag_id === "pii");
-  if (draft.pii !== pii)
-    out.push({
-      field: "fields",
-      run: () => (draft.pii ? termTags.mark("pii") : termTags.unmark("pii")),
-    });
 
   for (const c of draft.claims)
     out.push({

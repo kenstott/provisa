@@ -196,7 +196,51 @@ class Method:
     args: tuple[tuple[str, Any], ...] = ()
 
 
+@dataclass(frozen=True)
+class TemplateField:
+    """A field of a JSON template computed by a fake (REQ-2279): the field's kind of fake and the
+    type its value is checked against and written as, declared (``::type``) or the type the fake
+    makes (provisa.fakes.template)."""
+
+    kind: "FakeKind"
+    data_type: str
+
+
+@dataclass(frozen=True)
+class TemplateLiteral:
+    """A field of a JSON template that does not vary: its JSON value."""
+
+    value: Any
+
+
+@dataclass(frozen=True)
+class TemplateArray:
+    """A fixed-length JSON array, each item its own field."""
+
+    items: tuple["TemplateNode", ...]
+
+
+@dataclass(frozen=True)
+class TemplateObject:
+    """A JSON object, its fields in the order declared."""
+
+    fields: tuple[tuple[str, "TemplateNode"], ...]
+
+
+TemplateNode = Union[TemplateField, TemplateLiteral, TemplateArray, TemplateObject]
+
+
+@dataclass(frozen=True)
+class Template:
+    """A JSON column's template fake (REQ-2279): the object's shape, each field its own fake, a
+    nested object, a fixed-length array or a literal. Declared as the object itself:
+    ``{"email": email(), "phone": phone_number(), "kind": "contact"}``."""
+
+    root: TemplateObject
+
+
 FakeKind = Union[
+    Template,
     Categories,
     Bool,
     Percentiles,
@@ -247,7 +291,7 @@ def kind_name(kind: FakeKind) -> str:
         return kind.kind
     if isinstance(kind, Sql):
         return "sql_group" if kind.group else "sql"
-    return type(kind).__name__.lower()
+    return type(kind).__name__.lower()  # template, categories, bool ...
 
 
 def references(kind: FakeKind) -> frozenset[str]:
@@ -395,6 +439,10 @@ def parse(declaration: str, *, rule: bool = False) -> FakeKind:
     the declaration is a column's synthetic rule, which may also be a cross-row kind; a column's
     fake may not."""
     text = declaration.strip()
+    if text.startswith("{"):
+        from provisa.fakes.template import parse_template
+
+        return parse_template(text)
     m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(", text)
     if m is None or not text.endswith(")"):
         raise FakeRefused(f"{declaration!r} is not a fake kind: write it as kind(arguments)")

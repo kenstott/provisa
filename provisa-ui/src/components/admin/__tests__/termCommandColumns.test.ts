@@ -42,20 +42,18 @@ const TERM = {
   command_refs: [{ command_name: "lookup", column_name: "ssn" }],
 } as unknown as GlossaryTermDetail;
 
-const tags = { mark: vi.fn(), unmark: vi.fn() };
-
 describe("a term's command output columns", () => {
   it("starts from the columns the term holds and changes nothing unedited", () => {
     const draft = draftOf(TERM, []);
     expect(draft.commandColumns).toEqual([
       commandColumnKey({ command_name: "lookup", column_name: "ssn" }),
     ]);
-    expect(changes(TERM, [], draft, tags)).toEqual([]);
+    expect(changes(TERM, [], draft)).toEqual([]);
   });
 
   it("grounds an added column and ungrounds a removed one", async () => {
     const added = commandColumnKey({ command_name: "enrich", column_name: "tax:id" });
-    const out = changes(TERM, [], { ...draftOf(TERM, []), commandColumns: [added] }, tags);
+    const out = changes(TERM, [], { ...draftOf(TERM, []), commandColumns: [added] });
     expect(out.map((c) => c.field)).toEqual(["columns", "columns"]);
     for (const c of out) await c.run();
     expect(groundCommandColumn).toHaveBeenCalledWith(7, {

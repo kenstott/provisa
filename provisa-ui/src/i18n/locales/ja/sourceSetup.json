@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "リレーションシップの作成にはリレーションシップ作成の権限が必要です。そのままテーブルのクエリに進んでください。",
     "queryHint": "{{table}} に対するスターター クエリでクエリエクスプローラーを開きます。",
     "queryAction": "スターター クエリを開く",
-    "complete": "セットアップ完了"
+    "complete": "セットアップ完了",
+    "skip": "スキップ",
+    "skipped": "スキップ済み",
+    "done": "完了",
+    "finish": "セットアップを完了",
+    "runAgain": "セットアップを再実行",
+    "nothingToQueryHint": "クエリできる登録済みテーブルはありません。",
+    "newTablesHint_one": "セットアップ後に登録された {{count}} 個のテーブルにリレーションシップがありません。",
+    "newTablesHint_other": "セットアップ後に登録された {{count}} 個のテーブルにリレーションシップがありません。"
   }
 }

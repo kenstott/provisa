@@ -254,10 +254,14 @@ async def test_the_expiry_run(db, monkeypatch):
 
 async def _owned_everything(db) -> None:
     async with db.acquire() as conn:
-        await set_domain_stewards(conn, "finance", [ANA], set_by=None)
+        changed = await set_domain_stewards(conn, "finance", [ANA], set_by=None)
         await set_product_owners(conn, "c360", "sales", [ANA], set_by=None)
-        await set_relationship_owners(conn, REL, [BEN], set_by=None)
-        await effective_store.write_person(conn, appmod.state, ANA)
+        changed |= await set_relationship_owners(conn, REL, [BEN], set_by=None)
+        # The fields' save refresh, as every field save runs it: ana's and ben's rows, then the
+        # whole table.
+        from provisa.entitlements.owners import reload_owner_rows
+
+        await reload_owner_rows(conn, appmod.state, changed | {ANA})
     assert len(await _held_to_the_helper(db)) == 3
 
 

@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "La création de relations nécessite le droit de créer des relations. Passez à l'interrogation des tables.",
     "queryHint": "Ouvre l'explorateur de requêtes sur une requête de départ portant sur {{table}}.",
     "queryAction": "Ouvrir une requête de départ",
-    "complete": "Configuration terminée"
+    "complete": "Configuration terminée",
+    "skip": "Ignorer",
+    "skipped": "Ignorée",
+    "done": "Terminé",
+    "finish": "Terminer la configuration",
+    "runAgain": "Relancer la configuration",
+    "nothingToQueryHint": "Aucune table n'est enregistrée pour être interrogée.",
+    "newTablesHint_one": "{{count}} table enregistrée depuis la configuration n'a aucune relation.",
+    "newTablesHint_other": "{{count}} tables enregistrées depuis la configuration n'ont aucune relation."
   }
 }

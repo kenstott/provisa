@@ -37,22 +37,22 @@ const TERM = {
   command_refs: [],
 } as unknown as GlossaryTermDetail;
 
-const tags = { mark: vi.fn(), unmark: vi.fn() };
-
 describe("a term's calculation method", () => {
   it("starts from the term and is saved when changed", async () => {
     const draft = draftOf(TERM, []);
     expect(draft.calculationMethod).toBe("");
-    expect(changes(TERM, [], draft, tags)).toEqual([]);
+    expect(changes(TERM, [], draft)).toEqual([]);
     const edited = { ...draft, calculationMethod: "Gross less refunds." };
-    const [change] = changes(TERM, [], edited, tags);
+    const [change] = changes(TERM, [], edited);
     await change.run();
-    expect(updateGlossaryTerm).toHaveBeenCalledWith(7, { calculation_method: "Gross less refunds." });
+    expect(updateGlossaryTerm).toHaveBeenCalledWith(7, {
+      calculation_method: "Gross less refunds.",
+    });
   });
 
   it("is cleared to null when emptied", async () => {
     const held = { ...TERM, calculation_method: "Gross less refunds." };
-    const [change] = changes(held, [], { ...draftOf(held, []), calculationMethod: "  " }, tags);
+    const [change] = changes(held, [], { ...draftOf(held, []), calculationMethod: "  " });
     await change.run();
     expect(updateGlossaryTerm).toHaveBeenLastCalledWith(7, { calculation_method: null });
   });

@@ -6,11 +6,22 @@
     "nowhere": "Nirgends",
     "hiddenPlaces_one": "{{count}} weiteres, das Sie nicht lesen dürfen",
     "hiddenPlaces_other": "{{count}} weitere, die Sie nicht lesen dürfen",
-    "rowFilters_one": "{{count}} Zeilenfilter",
-    "rowFilters_other": "{{count}} Zeilenfilter",
-    "classifiedAs": "Durch Klassifizierung vergeben: {{kind}}",
     "noDependents": "Nichts",
     "enabled": "Aktiviert",
-    "disabled": "Deaktiviert"
+    "disabled": "Deaktiviert",
+    "objectCount_one": "{{count}} Objekt",
+    "objectCount_other": "{{count}} Objekte",
+    "sourceCount_one": "{{count}} Quelle",
+    "sourceCount_other": "{{count}} Quellen",
+    "objectsInSources": "{{objects}} in {{sources}}",
+    "classificationCount_one": "{{count}} Klassifizierung",
+    "classificationCount_other": "{{count}} Klassifizierungen",
+    "rowRuleCount_one": "{{count}} Zeilenregel",
+    "rowRuleCount_other": "{{count}} Zeilenregeln",
+    "groupTables": "Tabellen ({{count}})",
+    "groupColumns": "Spalten ({{count}})",
+    "groupClassification": "Durch Klassifizierung vergeben ({{count}})",
+    "groupRowRules": "Zeilenregeln ({{count}})",
+    "filterClassifications": "Klassifizierungen filtern"
   }
 }

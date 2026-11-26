@@ -260,8 +260,10 @@ SPECS: list[dict] = [
             "over the fake) and stable flag. An omitted field keeps its value; '' clears a fake "
             "or rule. column is a column of the table: a field inside a json column (contact.email)"
             " is none. The fake must fit the column's family (get_table_fakes): no fake method "
-            "fits an other (json) column. Checked as the table editor checks it; refusals come "
-            "back verbatim, and a missing right is named in them. " + _RIGHT_TABLE
+            'fits an other (json) column, whose fake is a template: {"email": email(), "n": '
+            'pyint()::integer, "tags": [word()], "kind": "x"}. Checked as the table editor '
+            "checks it; refusals come back verbatim, and a missing right is named in them. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {

@@ -50,6 +50,7 @@ from provisa.compiler.sql_types import (
     JoinMeta,  # noqa: F401 — re-exported; many modules import JoinMeta from sql_gen
     StatementSources,
     TableMeta,  # noqa: F401 — re-exported; many modules import TableMeta from sql_gen
+    registered_type,
 )
 from provisa.compiler.sql_rewrite import (
     _q,
@@ -386,6 +387,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     nested_in=None,
                     json=(table.table_id, phys_name.lower()) in ctx.json_columns,
                     integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+                    data_type=registered_type(ctx, table.table_id, phys_name),
                 )
             )
 
@@ -627,6 +629,7 @@ def _compile_connection_field(  # REQ-218
                 None,
                 json=(table.table_id, phys_name.lower()) in ctx.json_columns,
                 integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+                data_type=registered_type(ctx, table.table_id, phys_name),
             )
         )
 
@@ -643,7 +646,12 @@ def _compile_connection_field(  # REQ-218
     for sc in sort_columns:
         if sc not in [c.field_name for c in columns]:
             select_parts.append(_q(sc))
-            columns.append(ColumnRef(None, sc, sc, None))
+            phys_sc = ctx.exposed_to_physical.get((table.table_id, sc), sc)
+            columns.append(
+                ColumnRef(
+                    None, sc, sc, None, data_type=registered_type(ctx, table.table_id, phys_sc)
+                )
+            )
 
     sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
 
