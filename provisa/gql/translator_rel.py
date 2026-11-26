@@ -47,6 +47,38 @@ from provisa.gql.translator_types import CypherTranslateError
 #: (``MATCH (a)-[r*]->(b)``): one no statement can write, so it is never projected or shadowed.
 _WALK_OF = "__walk_of__"
 
+#: The meta key of a UNION branch's FROM holding the conditions that tie the branch to the outer
+#: row it is correlated to (a subpattern's, ``_lateral_bound``): the main query reads them from
+#: ``_lateral_conditions``, which name the main query's own joins; a branch has its own.
+LATERAL_ON = "provisa_lateral_on"
+
+
+def _branch_reads(
+    from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    lateral: bool,
+    held_before: "list[exp.Expression]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    joins_before: "list[dict]",
+    extra_joins: "list[dict]",
+) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The FROM and joins of a UNION branch reading a hop by another of its relationships (an
+    undirected self-referential type's other way, another mapping of the type), and the outer-row
+    conditions it carries (LATERAL_ON). A hop from the outer row reads its own first table as its
+    FROM, tied to that row by its own first condition, as the main query does its own; a later hop
+    keeps the main query's FROM and the conditions the earlier hops tied it with."""
+    if lateral:
+        first, *rest = extra_joins
+        branch_from = first["table"].copy()
+        conditions = [*held_before, first["on"]]
+        branch_joins = joins_before + rest
+    else:
+        if from_expr is None or not held_before:
+            return from_expr, joins_before + extra_joins
+        branch_from = from_expr.copy()
+        conditions = list(held_before)
+        branch_joins = joins_before + extra_joins
+    branch_from.meta[LATERAL_ON] = [c.copy() for c in conditions]
+    return branch_from, branch_joins
+
 
 def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
     return CypherTranslateError(
@@ -244,6 +276,25 @@ class _RelJoinMixin:  # mixin for _Translator
             ),
             [],
         )
+        if src_named is not None or tgt_named is not None:
+            # A type several tables carry (OWNERS of a product and of a relationship): the
+            # mapping is the one whose ends are the tables the pattern names, read the way it
+            # runs, so a free end is the table that mapping reaches, never another mapping's.
+            ways = (False, True) if rel.direction == "none" else (rel.direction == "left",)
+            agreeing = [
+                m
+                for m in _early_matches
+                if any(
+                    src_named in (None, first) and tgt_named in (None, last)
+                    for first, last in (
+                        (m.target_label, m.source_label)
+                        if back
+                        else (m.source_label, m.target_label)
+                        for back in ways
+                    )
+                )
+            ]
+            _early_matches = agreeing or _early_matches
         if any(m.directed for m in _early_matches):
             # REQ-2176: a stored edge is read along its direction, so the end it infers is the
             # one across from a node the pattern names (_is_bwd_for_candidate); an undirected
@@ -651,10 +702,12 @@ class _RelJoinMixin:  # mixin for _Translator
         )
         self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
+        held_before = list(self._lateral_conditions)
 
         # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
         # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
-        if src_var and src_var in self._lateral_bound and from_expr is None:
+        lateral = bool(src_var and src_var in self._lateral_bound and from_expr is None)
+        if lateral:
             from_expr = primary_joins[0]["table"]
             self._lateral_conditions.append(primary_joins[0]["on"])
             joins.extend(primary_joins[1:])
@@ -672,11 +725,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
+            branch_from, branch_joins = _branch_reads(
+                from_expr, lateral, held_before, joins_before, extra_joins
+            )
             # The branch is of its own relationship type, which its type(r) names.
             self._extra_path_branches.append(
                 (
-                    from_expr,
-                    joins_before + extra_joins,
+                    branch_from,
+                    branch_joins,
                     {},
                     {rel.variable: extra_rm.rel_type} if rel.variable else {},
                 )
@@ -754,10 +810,12 @@ class _RelJoinMixin:  # mixin for _Translator
         )
         self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
+        held_before = list(self._lateral_conditions)
 
         # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
         # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
-        if src_var and src_var in self._lateral_bound and from_expr is None:
+        lateral = bool(src_var and src_var in self._lateral_bound and from_expr is None)
+        if lateral:
             from_expr = primary_joins[0]["table"]
             self._lateral_conditions.append(primary_joins[0]["on"])
             joins.extend(primary_joins[1:])
@@ -775,11 +833,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
+            branch_from, branch_joins = _branch_reads(
+                from_expr, lateral, held_before, joins_before, extra_joins
+            )
             # The branch is of its own relationship type, which its type(r) names.
             self._extra_path_branches.append(
                 (
-                    from_expr,
-                    joins_before + extra_joins,
+                    branch_from,
+                    branch_joins,
                     {},
                     {rel.variable: extra_rm.rel_type} if rel.variable else {},
                 )
