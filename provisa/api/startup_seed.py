@@ -960,7 +960,10 @@ async def _init_control_planes(
     )
     from provisa.api import graph_session_cache
 
-    graph_session_cache.listen(state.tenant_db)
+    # REQ-1922: with platform regions the state handle is bound once the model names its store
+    # (app._bind_region_stores, which starts the listening there); without, it is bound here.
+    if state.tenant_db is not None:
+        graph_session_cache.listen(state.tenant_db)
     state.admin_db = await bring_up_platform(
         _plane_engine(
             "platform",
