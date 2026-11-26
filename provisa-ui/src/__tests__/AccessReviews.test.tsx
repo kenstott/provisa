@@ -131,8 +131,13 @@ describe("AccessReviews", () => {
   it("revokes a row only with a reason", async () => {
     render(<AccessReviews />);
     fireEvent.click(await screen.findByTestId("access-review-revoke-1"));
+    // REQ-1968: Revoke is never disabled by the empty reason; pressing it marks the reason.
     const submit = screen.getByTestId("access-review-decide-submit");
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    expect(api.decideAccessReviewRow).not.toHaveBeenCalled();
+    expect(screen.getByTestId("access-review-reason")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("access-review-reason")).toHaveFocus();
     fireEvent.change(screen.getByTestId("access-review-reason"), {
       target: { value: "left the team" },
     });

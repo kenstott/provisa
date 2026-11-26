@@ -40,8 +40,6 @@
     "policy_required": "必填",
     "requiredLabel": "必填",
     "requiredDesc": "「適用於」所列類型的每個物件都必須帶有此標籤。缺少此標籤的物件會在標籤報告中顯示為缺漏。",
-    "reasonPolicyBadge": "原因：{{policy}}",
-    "expiresPolicyBadge": "到期：{{policy}}",
     "createButton": "建立標籤",
     "saveButton": "儲存標籤",
     "colId": "ID",
@@ -65,6 +63,7 @@
     "purposeAria": "關於標籤",
     "outsideTitle": "允許的網域以外的指派",
     "outsideBody": "儲存後保留了這些指派。請從不再適用的物件上移除此標籤。",
-    "outsideItem": "{{kind}} {{name}}，位於 {{domains}}"
+    "outsideItem": "{{kind}} {{name}}，位於 {{domains}}",
+    "templateSection": "範本"
   }
 }

@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { Anchor, Badge, Button, Group, Loader } from "@mantine/core";
 import { ExternalLink, Wifi, WifiOff } from "lucide-react";
+import { RoutePageHelp } from "../components/RoutePageHelp";
 import "./DocsPage.css";
 
 // The full MkDocs Material site is served two ways and the reader is online-first:
@@ -106,6 +107,7 @@ export function DocsPage() {
               {t("docsPage.openInNewTab")}
             </Group>
           </Anchor>
+          <RoutePageHelp placement="own" />
         </Group>
       </Group>
     ),

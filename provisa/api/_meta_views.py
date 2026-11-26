@@ -501,6 +501,7 @@ def _tag_citations_sql() -> str:
           ON c.citer_kind = 'tag_assignment' AND i.via = 'assigned'
          AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
         LEFT JOIN document_domains dd ON dd.document_id = c.document_id
+        WHERE c.citer_kind IN ('tag', 'tag_assignment')
     """
 
 

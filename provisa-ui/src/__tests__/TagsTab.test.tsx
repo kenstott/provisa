@@ -15,6 +15,8 @@ import { TagsTab } from "../components/admin/TagsTab";
 import type { Tag, TagAssignment } from "../types/admin";
 
 const t = i18n.getFixedT("en");
+// The tag id is required (REQ-1968): its label carries the required marker after its text.
+const idInput = () => screen.getByLabelText(new RegExp(`^${t("tagsTab.idLabel")}`));
 
 const upsertSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
 const updateSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
@@ -29,6 +31,10 @@ let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files (see ScheduledTasks.test.tsx).
+// A citation links to its section for a viewer who may open the Library (EntityLink).
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["glossary_read"] }),
+}));
 vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTags: () => ({ tags: mockTags, loading: false, refetch: vi.fn() }),
@@ -280,7 +286,7 @@ describe("TagsTab", () => {
   it("creates a tag through upsertTag with id, description and appliesTo", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     fireEvent.change(screen.getByLabelText(t("tagsTab.descriptionLabel")), {
@@ -305,6 +311,17 @@ describe("TagsTab", () => {
     );
   });
 
+  // REQ-1968: Save is never disabled by a missing id; pressing it marks the id and saves nothing.
+  it("marks a missing id when Save is pressed, and saves nothing", async () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-create-button"));
+    const save = screen.getByTestId("tags-save");
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(idInput()).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("saves an edited tag through updateTag, never a create", async () => {
     render(<TagsTab title="Tags" />);
     openEdit("finance");
@@ -326,7 +343,7 @@ describe("TagsTab", () => {
     it("sends required: true when the switch is on and the tag is saved", async () => {
       render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "owner" },
       });
       fireEvent.click(screen.getByTestId("tags-required"));
@@ -360,7 +377,7 @@ describe("TagsTab", () => {
     it("saves the domains picked with the tag", async () => {
       render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "gdpr" },
       });
       pickDomain("sales");
@@ -553,7 +570,7 @@ describe("TagsTab", () => {
   it("passes the selected reason and expiry policies to upsertTag", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     await pickPolicy("tags-reason-policy", t("tagsTab.policy_required"));
@@ -575,25 +592,25 @@ describe("TagsTab", () => {
     );
   });
 
-  it("shows a policy badge in the row only when the policy is required", () => {
+  // REQ-2208 (amended 2026-11-26): the template's requirements are the panel's, not the row's.
+  it("shows the reason and expiry policies in the panel's template section, not in the row", () => {
     render(<TagsTab title="Tags" />);
     // Default scope "source": finance is reason required, expiry hidden.
     const financeRow = screen.getByTestId("tags-row-finance");
-    expect(
-      within(financeRow).getByText(
-        t("tagsTab.reasonPolicyBadge", { policy: t("tagsTab.policy_required") }),
-      ),
-    ).toBeTruthy();
-    expect(within(financeRow).queryByText(/Expiry:/)).toBeNull();
-    fireEvent.click(screen.getByTestId("tags-scope-table"));
-    // data_quality is hidden/hidden: no policy badges.
-    const dqRow = screen.getByTestId("tags-row-data_quality");
-    expect(within(dqRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(dqRow).queryByText(/Expiry:/)).toBeNull();
-    // pii is optional/optional: no policy badges.
-    const piiRow = screen.getByTestId("tags-row-pii");
-    expect(within(piiRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(piiRow).queryByText(/Expiry:/)).toBeNull();
+    expect(within(financeRow).queryByText(/Reason:/)).toBeNull();
+    expect(within(financeRow).queryByText(t("tagsTab.policy_required"))).toBeNull();
+    fireEvent.click(financeRow);
+    const template = screen.getByTestId("tags-template-read-finance");
+    // Each label reads beside its value: reason required, expiry hidden.
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.reasonPolicyLabel")}${t("tagsTab.policy_required")}`,
+    );
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.expiresPolicyLabel")}${t("tagsTab.policy_hidden")}`,
+    );
+    expect(screen.getByTestId("tags-template-finance-toggle")).toHaveTextContent(
+      t("tagsTab.templateSection"),
+    );
   });
 
   it("edit pre-fills the tag's policies", () => {
@@ -613,6 +630,13 @@ describe("TagsTab", () => {
     const editor = await screen.findByTestId("tags-values-entity");
     expect(within(editor).getByText("customer")).toBeTruthy();
     expect(within(editor).getByText("vendor")).toBeTruthy();
+
+    // REQ-1968: Add is never disabled by an empty value; pressing it marks the value instead.
+    const add = screen.getByTestId("tags-add-value-entity");
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(upsertValueSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("tags-new-value-entity")).toHaveAttribute("aria-invalid", "true");
 
     fireEvent.change(screen.getByTestId("tags-new-value-entity"), {
       target: { value: "employee" },
@@ -649,7 +673,7 @@ describe("TagsTab", () => {
   it("carries the chosen paramPolicy into upsertTag", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "lifecycle" },
     });
     await pickPolicy("tags-param-policy", t("tagsTab.paramPolicy_required"));
@@ -674,8 +698,8 @@ describe("TagsTab", () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-row-finance"));
     fireEvent.click(screen.getByTestId("tags-duplicate-finance"));
-    expect(screen.getByLabelText(t("tagsTab.idLabel"))).toHaveValue("finance-copy");
-    expect(screen.getByLabelText(t("tagsTab.idLabel"))).not.toBeDisabled();
+    expect(idInput()).toHaveValue("finance-copy");
+    expect(idInput()).not.toBeDisabled();
     fireEvent.click(screen.getByTestId("tags-save"));
     await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
     expect(upsertSpy.mock.calls[0][0]).toBe("finance-copy");

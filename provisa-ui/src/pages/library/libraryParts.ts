@@ -17,6 +17,10 @@ import { WHOLE_ORG } from "../../components/admin/referenceScope";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { assignableDomainIds } from "../../lib/internalDomains";
 
+/** REQ-2259: `?reviewsDue=1` narrows the Library to the documents whose citations hold review items,
+ * the ones Context Health's Documents count counts. */
+export const REVIEWS_DUE_PARAM = "reviewsDue";
+
 /** The files the library reads. */
 export const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xlsx,.xml";
 

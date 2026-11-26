@@ -73,6 +73,7 @@ function source(overrides: Partial<Source>): Source {
     allowedDomains: [],
     changeSignal: "ttl",
     ...overrides,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   } as unknown as Source;
 }
 
