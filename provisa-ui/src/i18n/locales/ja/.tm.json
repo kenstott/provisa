@@ -11272,5 +11272,10 @@
   "ja/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "ja/yourData.json::yourData.rest": "REST",
   "ja/yourData.json::yourData.sql": "SQL",
-  "ja/yourData.json::yourData.title": "Your data"
+  "ja/yourData.json::yourData.title": "Your data",
+  "ja/chatPanel.json::chatPanel.attach": "Attach a file for Polly to read: a CSV, an API spec, a code archive or a document, up to {{limit}} MB",
+  "ja/chatPanel.json::chatPanel.attachTooLarge": "{{name}} is larger than {{limit}} MB, the most a file attached for Polly may be.",
+  "ja/chatPanel.json::chatPanel.attachTooMany": "A conversation can hold {{max}} attached files. Remove one to attach another.",
+  "ja/chatPanel.json::chatPanel.removeAttachment": "Remove {{name}}",
+  "ja/chatPanel.json::chatPanel.download": "Download"
 }

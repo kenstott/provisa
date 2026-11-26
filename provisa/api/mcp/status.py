@@ -248,6 +248,16 @@ async def mcp_chat(request: Request):  # REQ-1008
         isinstance(domains, list) and all(isinstance(d, str) for d in domains)
     ):
         raise HTTPException(status_code=400, detail="domains must be a list of domain ids")
+    # REQ-2114: the files the person attached in the chat, held in this request only, never at a
+    # path; one over the stated size limit is refused here, before any model call.
+    from provisa.api.mcp import polly_files
+
+    try:
+        attachments = polly_files.parse_attachments(body.get("attachments"))
+    except polly_files.FileTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except polly_files.FileRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async def _events():
         try:
@@ -258,6 +268,7 @@ async def mcp_chat(request: Request):  # REQ-1008
                 request=request,
                 current_route=current_route,
                 domains=domains,
+                attachments=attachments,
             ):
                 yield f"data: {_json.dumps(event)}\n\n"
         except (PermissionError, ValueError) as exc:

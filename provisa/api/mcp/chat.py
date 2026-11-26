@@ -41,13 +41,14 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from provisa.api.mcp import (
     admin_api,
     docs_tools,
     model_tool_specs,
+    polly_files,
     polly_pages,
     polly_usage,
     tag_edit,
@@ -255,6 +256,61 @@ _TOOLS: list[Any] = [
                 },
             },
             "required": ["address", "language"],
+        },
+    },
+    # REQ-2114 (amended 2026-11-25): files only through the person's browser -- read what they
+    # attach in the chat, hand back what they save. No path on the server is ever read or written.
+    {
+        "name": "read_attachment",
+        "description": (
+            "Read a file the user attached in this chat, by the id the system prompt lists it "
+            "under: a CSV (with its columns and row count), an API spec (OpenAPI, Swagger, "
+            "AsyncAPI, GraphQL SDL or protobuf), a code archive (.zip, .tar, .tar.gz: without "
+            "`member` it lists the archive's files, with `member` it reads one), or a document "
+            "(PDF, Word, Excel, markdown, HTML, text). Returns the text a window at a time: "
+            "pass `offset` = next_offset to read on. You have no other access to files: you "
+            "cannot read a path on the server or anywhere else, so when the user wants you to "
+            "read a file, ask them to attach it. " + polly_files.LIMIT_TEXT
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "attachment": {"type": "string", "description": "The attachment's id."},
+                "member": {
+                    "type": "string",
+                    "description": "A code archive's file, by its name in the archive's list.",
+                },
+                "offset": {"type": "integer"},
+            },
+            "required": ["attachment"],
+        },
+    },
+    {
+        "name": "offer_download",
+        "description": (
+            "Hand the user a file to save, shown in the chat as a download card. kind 'code' "
+            "(code you generated) or 'report' (a report you wrote, markdown or HTML): pass "
+            "`filename` and the whole `content`. kind 'model_export': the model as a "
+            "configuration file, or with `sections` only those model sections, as the "
+            "Settings page exports it and for the same people. kind 'query_result': `sql` run "
+            "under your role and saved as `format` csv or xlsx with every row. A file goes to "
+            "the user only this way: you cannot write a file on the server or anywhere else. A "
+            f"download may be at most {polly_files.MAX_FILE_BYTES // (1024 * 1024)} MB."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": list(polly_files.DOWNLOAD_KINDS)},
+                "filename": {
+                    "type": "string",
+                    "description": "The name it is saved under, with its ending (e.g. orders.py).",
+                },
+                "content": {"type": "string"},
+                "sections": {"type": "array", "items": {"type": "string"}},
+                "sql": {"type": "string"},
+                "format": {"type": "string", "enum": ["csv", "xlsx"]},
+            },
+            "required": ["kind"],
         },
     },
     {
@@ -1644,7 +1700,10 @@ def _in_a_demo() -> bool:
     )
 
 
-def _system_prompt(current_route: str | None) -> str:
+def _system_prompt(
+    current_route: str | None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
+) -> str:
     """_SYSTEM plus the frontend's current route, when it sent one (REQ-1800).
 
     There is no tool for "what page is the user on" — the browser already knows its own route on
@@ -1652,9 +1711,11 @@ def _system_prompt(current_route: str | None) -> str:
     tool round-trip to ask for something the caller could hand over for free. Kept OUT of _SYSTEM
     itself since it changes per turn, not per deployment."""
     system = f"{_SYSTEM}\n\n{_DEMO_ANSWERS}" if _in_a_demo() else _SYSTEM
-    if not current_route:
-        return system
-    return f"{system}\n\nThe user is currently viewing the app at route: {current_route!r}."
+    if current_route:
+        system = f"{system}\n\nThe user is currently viewing the app at route: {current_route!r}."
+    # REQ-2114: the files attached in this chat, named so she reads them with read_attachment.
+    listing = polly_files.prompt_listing(attachments)
+    return system if listing is None else f"{system}\n\n{listing}"
 
 
 async def _effective_config(state: Any) -> dict:
@@ -1866,6 +1927,50 @@ async def _render_graph(state: Any, role: str, cypher: str, layout: str, *, requ
     }
 
 
+def _required(args: dict, kind: str, *names: str) -> list[Any]:
+    missing = [n for n in names if not args.get(n)]
+    if missing:
+        raise ValueError(f"offer_download of kind {kind!r} needs {', '.join(missing)}")
+    return [args[n] for n in names]
+
+
+async def _offer_download(state: Any, role: str, args: dict, *, request: Any) -> dict:
+    """offer_download (REQ-2114): a file for the person to save, built in memory and handed to
+    the chat panel as a download. Code and a report are the content the model wrote; a model
+    export is the Settings page's export, for the people it is for; a query result is the SQL
+    run under the chat's role, every row, as CSV or XLSX. Nothing is written anywhere."""
+    kind = args["kind"]
+    if kind in ("code", "report"):
+        filename, content = _required(args, kind, "filename", "content")
+        return polly_files.download(filename, content.encode("utf-8"))
+    if kind == "model_export":
+        if request is None:
+            raise ValueError("a model export runs as the user, and this chat carries no request")
+        from provisa.api.admin._platform_guard import require_deployment_settings
+        from provisa.api.admin.config_export import build_live_config_yaml
+
+        require_deployment_settings(request)  # as GET /admin/config/live
+        content = await build_live_config_yaml(args.get("sections"))
+        # The name GET /admin/config/live saves the same export under.
+        return polly_files.download("provisa.live.yaml", content.encode("utf-8"))
+    if kind == "query_result":
+        filename, sql, fmt = _required(args, kind, "filename", "sql", "format")
+        if fmt not in ("csv", "xlsx"):
+            raise ValueError(f"format {fmt!r} is not csv or xlsx")
+        quoted, _quote_error = quote_identifiers(sql)
+        result = await mcp_tools.run_sql(state, role, quoted)
+        if result["truncated"]:
+            raise ValueError(
+                f"the result has {result['total_rows']} rows, more than the {result['row_count']} "
+                "a download holds; for every row as CSV, call run_sql with file_format csv"
+            )
+        build = polly_files.csv_bytes if fmt == "csv" else polly_files.xlsx_bytes
+        return polly_files.download(filename, build(result["columns"], result["rows"]))
+    raise ValueError(
+        f"offer_download has no kind {kind!r}; use one of {polly_files.DOWNLOAD_KINDS}"
+    )
+
+
 def _split_artifact(result: Any) -> tuple[Any, dict | None]:
     """A tool result as the model gets it, and the artifact the chat panel shows, when it has one
     (a picture, a download): the artifact goes to the browser alone, never into the model's
@@ -1877,7 +1982,14 @@ def _split_artifact(result: Any) -> tuple[Any, dict | None]:
 
 
 async def _execute_tool(
-    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+    state: Any,
+    role: str,
+    name: str,
+    args: dict,
+    *,
+    scope: Scope,
+    request: Any = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> Any:
     """Run one tool call within ``scope`` (REQ-2253): the domains selected in the domain filter,
     intersected with the role's (``provisa.nl.scope.selected_scope``), or None for no selection.
@@ -1886,7 +1998,9 @@ async def _execute_tool(
     from provisa.security.selected_domains import within
 
     with within(scope):
-        return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
+        return await _dispatch_tool(
+            state, role, name, args, scope=scope, request=request, attachments=attachments
+        )
 
 
 def _source_types(name: str | None) -> dict:
@@ -1908,13 +2022,21 @@ def _source_types(name: str | None) -> dict:
 
 
 async def _dispatch_tool(
-    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+    state: Any,
+    role: str,
+    name: str,
+    args: dict,
+    *,
+    scope: Scope,
+    request: Any = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> Any:
     """Dispatch one tool call to the governed MCP tool, with the role pinned by the endpoint.
 
     `request` is the real, AuthMiddleware-verified HTTP request behind this chat turn -- passed
     to the tools that act as the user through the admin API (REQ-2114). Every other tool ignores
-    it."""
+    it. ``attachments`` are the files the person attached in this chat (REQ-2114), the only
+    files read_attachment reads."""
     if name == "list_schemas":
         return await mcp_tools.list_schemas(state, role)
     if name == "list_tables":
@@ -1939,6 +2061,12 @@ async def _dispatch_tool(
         return docs_tools.search_docs(args["query"], args["language"])
     if name == "read_doc":  # REQ-2114
         return docs_tools.read_doc(args["address"], args["language"])
+    if name == "read_attachment":  # REQ-2114
+        return polly_files.read_attachment(
+            attachments, args["attachment"], args.get("member"), int(args.get("offset", 0))
+        )
+    if name == "offer_download":  # REQ-2114
+        return await _offer_download(state, role, args, request=request)
     if name == "run_sql":
         # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
         # and the result says why it was not quoted.
@@ -2469,6 +2597,7 @@ async def _run_chat_anthropic(
     scope: Scope,
     request: Any = None,
     current_route: str | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """The original REQ-1008/1795/1796 loop: Anthropic's own Messages API, including the
     Anthropic-only hosted web_search/web_fetch tools. Unchanged behavior from before REQ-1797."""
@@ -2486,7 +2615,7 @@ async def _run_chat_anthropic(
         yield refused
         yield {"type": "done"}
         return
-    system = _system_prompt(current_route)
+    system = _system_prompt(current_route, attachments)
     # REQ-1850: rounds that finish entirely server-side (server tool called, result fed back)
     # before a later round pauses on a CLIENT tool must still reach the frontend's resumed
     # `convo` — otherwise the model resumes having "forgotten" every tool call it made earlier
@@ -2601,7 +2730,13 @@ async def _run_chat_anthropic(
             try:
                 result, artifact = _split_artifact(
                     await _execute_tool(
-                        state, role, block.name, dict(block.input), scope=scope, request=request
+                        state,
+                        role,
+                        block.name,
+                        dict(block.input),
+                        scope=scope,
+                        request=request,
+                        attachments=attachments,
                     )
                 )
                 content = json.dumps(result, default=str)
@@ -2781,6 +2916,7 @@ async def _run_chat_aisuite(
     scope: Scope,
     request: Any = None,
     current_route: str | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """REQ-1797: the non-Anthropic path — openai/ollama/google (or any other aisuite-supported
     vendor), via aisuite's OpenAI-normalized tool-calling. No hosted web_search/web_fetch: those
@@ -2823,7 +2959,7 @@ async def _run_chat_aisuite(
     at_endpoint = "base_url" in provider_configs.get(provider_key, {})
     cap = output_cap(provider_key, custom_endpoint=at_endpoint)
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
-    system_text = _system_prompt(current_route)
+    system_text = _system_prompt(current_route, attachments)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a
     # block says so; a breakpoint on the system prompt caches it and the tool definitions ahead of
     # it. Other vendors cache a repeated prefix by themselves.
@@ -2916,7 +3052,13 @@ async def _run_chat_aisuite(
             try:
                 result, artifact = _split_artifact(
                     await _execute_tool(
-                        state, role, call["name"], call["input"], scope=scope, request=request
+                        state,
+                        role,
+                        call["name"],
+                        call["input"],
+                        scope=scope,
+                        request=request,
+                        attachments=attachments,
                     )
                 )
                 content = json.dumps(result, default=str)
@@ -2993,6 +3135,7 @@ async def run_chat(
     request: Any = None,
     current_route: str | None = None,
     domains: list[str] | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """Drive the model's tool-use loop, yielding UI events until it stops calling tools.
 
@@ -3013,6 +3156,9 @@ async def run_chat(
 
     ``domains`` (REQ-2253) is the domain filter's selection: every tool call works within it,
     intersected with the role's domain access. None (no selection) is the role's whole surface.
+
+    ``attachments`` (REQ-2114) are the files the person attached in the chat, sent with the
+    request; read_attachment reads only these.
     """
     mcp_tools.require_role(role, state)  # raises ValueError / PermissionError
     from provisa.nl.scope import selected_scope
@@ -3054,6 +3200,7 @@ async def run_chat(
             scope=scope,
             request=request,
             current_route=current_route,
+            attachments=attachments,
         )
         if vendor == "anthropic"
         else _run_chat_aisuite(
@@ -3066,6 +3213,7 @@ async def run_chat(
             scope=scope,
             request=request,
             current_route=current_route,
+            attachments=attachments,
         )
     )
     async for event in impl:
