@@ -355,6 +355,9 @@ render_env_file() {
   # $7 minio password, $8 zaychik port. Holds the core services' secrets: written root-only.
   local pg_url="postgresql+psycopg://provisa:$5@127.0.0.1:$4/provisa"
   local s3="http://127.0.0.1:$6"
+  # REQ-2269: Trino's materializations land in this PostgreSQL. Named here because `provisa run`
+  # applies the native profile beneath this file, and that profile's store is an embedded DuckDB
+  # file, which Trino refuses at startup.
   cat <<EOF
 # Written by install-host.sh on every run; edit the script's flags, not this file.
 PROVISA_CONFIG=$1/provisa.yaml
@@ -364,6 +367,7 @@ PROVISA_TRINO_ETC_DIR=$2/trino
 PROVISA_FAKE_KEY_DIR=$2/fake-key
 PLATFORM_DATABASE_URL=$pg_url
 TENANT_DATABASE_URL=$pg_url
+PROVISA_MATERIALIZE_URL=postgresql://provisa:$5@127.0.0.1:$4/provisa
 PROVISA_OTEL_S3_ENDPOINT=$s3
 PROVISA_OTEL_S3_ACCESS_KEY=$INSTALL_HOST_MINIO_USER
 PROVISA_OTEL_S3_SECRET_KEY=$7

@@ -380,6 +380,8 @@ def test_the_env_file_names_the_config_and_leaves_the_engine_to_it():
         # catalogs reach it, and `provisa run` uses it instead of the embedded one.
         "PLATFORM_DATABASE_URL": pg_url,
         "TENANT_DATABASE_URL": pg_url,
+        # REQ-2269: Trino's materializations land in that same PostgreSQL.
+        "PROVISA_MATERIALIZE_URL": "postgresql://provisa:pgpw@127.0.0.1:6432/provisa",
         "PROVISA_OTEL_S3_ENDPOINT": "http://127.0.0.1:9100",
         "PROVISA_OTEL_S3_ACCESS_KEY": "provisa",
         "PROVISA_OTEL_S3_SECRET_KEY": "miniopw",
@@ -403,6 +405,39 @@ def test_the_env_file_urls_are_ones_the_control_plane_reads():
     # A host Trino dials, not the embedded server's unix socket.
     assert _pg_parts(url) == ("127.0.0.1", 5432, "provisa", "provisa", "pw")
     assert url.get_backend_name() == "postgresql" and url.get_driver_name() == "psycopg"
+
+
+def test_the_env_file_lands_trinos_materializations_in_the_installs_postgresql(
+    tmp_path, monkeypatch
+):
+    # REQ-2269: Trino's materialize store is the install's own PostgreSQL. `provisa run` applies
+    # the native profile beneath the env file, and that profile names an embedded DuckDB store,
+    # which Trino refuses at startup; the env file names the store so the profile's is not taken.
+    from sqlalchemy import make_url
+
+    from provisa.cli import _apply_embedded_env
+    from provisa.federation.engine import build_trino_engine
+
+    text = _ok(f"render_env_file {tmp_path} /d 8080 5432 pw 9000 mpw 8480")
+    env = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    for key in ("PROVISA_ENGINE", "PROVISA_MATERIALIZE_URL", "PROVISA_ENGINE_URL"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    # Extensions staged already: the launch stages nothing here.
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path / "ext"))
+    _apply_embedded_env(tmp_path / "native")
+
+    store = make_url(os.environ["PROVISA_MATERIALIZE_URL"])
+    tenant = make_url(env["TENANT_DATABASE_URL"])
+    assert store.get_backend_name() in build_trino_engine()._supported_materialize_stores
+    assert (store.host, store.port, store.database, store.username, store.password) == (
+        tenant.host,
+        tenant.port,
+        tenant.database,
+        tenant.username,
+        tenant.password,
+    )
 
 
 def _unit() -> configparser.ConfigParser:
