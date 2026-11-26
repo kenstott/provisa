@@ -1916,12 +1916,14 @@ export function SourcesPage() {
                   { col: "id" },
                   { col: "type" },
                   { col: "host" },
-                  { col: "port" },
+                  // The columns of settings give way, first to last, when the detail panel
+                  // leaves the list too little room.
+                  { col: "port", hide: 3 },
                   { col: "database" },
-                  ...(hasRegions ? [{ col: "region" }] : []),
-                  { col: "naming" },
-                  { col: "cache" },
-                  t("sourcesPage.colEffectiveTtl"),
+                  ...(hasRegions ? [{ col: "region", hide: 4 }] : []),
+                  { col: "naming", hide: 1 },
+                  { col: "cache", hide: 2 },
+                  { label: t("sourcesPage.colEffectiveTtl"), hide: 5 },
                 ]}
               />
               <Table.Tbody>
