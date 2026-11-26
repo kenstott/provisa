@@ -98593,15 +98593,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     query traverses an entity across sources with no hand-registered join; no relationship is generated
     where a registered relationship already joins the same tables on the same columns, and generated ones
     are listed apart from registered ones. Matching is deterministic first: an
-    exact match of normalized values. Fuzzy matching is an opt-in rule (a similarity threshold or a match on
-    several attributes) that records a confidence and whether each link was automatic or reviewed; a candidate
-    below the threshold goes to a steward review queue and is never merged unreviewed. Survivorship rules per
+    exact match of normalized values. Fuzzy matching (similarity of normalized values, or a match on several attributes) never merges anything and needs no review: each candidate link carries its match score in the link table, and whoever queries the hub chooses the score or threshold that counts as a match for their use; exact matches score 1. Survivorship rules per
     attribute (most recent, preferred source, most complete) choose the hub''s attribute values when sources
     disagree. Governance carries through: masks, row rules and column visibility on an input column apply to
     the hub and link rows drawn from it, so a role that cannot read a source column cannot read its links. The
     resolver also searches the reference library: a document section, or a varchar value in any served column, that holds a resolved entity''s
-    canonical value or a declared alias, either exactly or contained within the text, is linked to that hub entity with a confidence, reviewable like a
-    fuzzy match, so an entity lists the documents that mention it and a document lists its entities; the
+    canonical value or a declared alias, either exactly or contained within the text, is linked to that hub entity with its match score, so an entity lists the documents that mention it and a document lists its entities; the
     link obeys the document''s and the source column''s read rights.'
   scenario: 'Given two sources each with an email column tagged entity:customer holding Bob@X.com and
     bob@x.com respectively, when the customer hub is built, then the hub holds one customer for both, the link
