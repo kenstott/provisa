@@ -9589,7 +9589,7 @@
     is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
     answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
     truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
-    max_recursion_depth session property.'
+    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.)'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -38969,7 +38969,7 @@
   type: behavioral
   description: HTTP-addressable local materialization. Extend the existing local_dir file:// materialization
     to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized
-    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths. (Amended 2026-11-26 by the maintainer, a local-disk redirect URL is absolute, the request's base URI followed by /data/redirect-file/<id>.<ext>. A request that arrived without HTTP (pgwire, Flight SQL, Bolt, gRPC, stdio MCP) uses server.public_url as the base; when that is unset the delivery is refused, naming the setting.)
   use_case: HTTP-addressable local materialization generalizes the Trino "engine writes the file, client
     receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote
     consumers to retrieve materialized results.
@@ -39101,7 +39101,7 @@
     back to Provisa's local_dir + HTTP-serve (REQ-1191). For DuckDB, this fallback is a deployment gap
     (no guaranteed bucket), not a capability gap; configuring an object store promotes it to the native
     path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file
-    tier absent an extension.
+    tier absent an extension. (Amended 2026-11-26 by the maintainer, the results store is chosen once per profile and every format uses it. Where an object store is configured, every format goes there, a format the engine writes itself through its own write, any other format written by Provisa and uploaded. A configured store that cannot take the result fails the delivery by name; nothing falls back to local disk. Only where no object store is configured are results kept on local disk.)
   use_case: Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path
     available given the engine and deployment configuration.
   code:
@@ -98323,7 +98323,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
     engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
     Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
-    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.) (Amended 2026-11-26, maintainer: a host install that runs Trino also starts the core services Trino needs, as the compose core set does: PostgreSQL (the control plane, reachable over TCP for Trino''s JDBC catalogs), MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy; each listens only on 127.0.0.1 with its data under the install''s data directory, their secrets are generated once and kept across upgrades, and provisa run uses that PostgreSQL when its URLs are set instead of the embedded one.)'
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.) (Amended 2026-11-26, maintainer: a host install that runs Trino also starts the core services Trino needs, as the compose core set does: PostgreSQL (the control plane, reachable over TCP for Trino''s JDBC catalogs), MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy; each listens only on 127.0.0.1 with its data under the install''s data directory, their secrets are generated once and kept across upgrades, and provisa run uses that PostgreSQL when its URLs are set instead of the embedded one.) (Amended 2026-11-26 by the maintainer: on aarch64 the install loads the Zaychik image from the release''s core-images asset, the same asset that carries the other core images, rather than pulling it from a registry.)'
   scenario: 'Given a clean Linux machine with Docker and the release''s assets
 
     When the install script runs for that release
