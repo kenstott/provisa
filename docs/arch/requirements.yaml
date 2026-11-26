@@ -3899,7 +3899,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.) (Amended 2026-11-26: a table discovery cannot read is left out of the run, named with the reason in the run''s result and in the dialog, and the run goes on with the other tables; it no longer stops the run.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
