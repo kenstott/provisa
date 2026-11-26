@@ -15,7 +15,6 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { format as formatSql } from "sql-formatter";
 import { EditorView } from "@codemirror/view";
 import { Button, Drawer, Group, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -43,6 +42,7 @@ import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
+import { prettifySql } from "./sql/prettifySql";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
@@ -215,7 +215,6 @@ export function SqlPage() {
   const editorViewRef = useRef<EditorView | null>(null);
   // The statement a hand-off asked to run, until the working state holds it and it is run.
   const pendingAutoRunRef = useRef<string | null>(null);
-  const pendingRunAfterFormatRef = useRef(false);
   const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
@@ -565,11 +564,13 @@ export function SqlPage() {
     }
     if (payload.sql == null) return;
     const merged = mergeActive();
-    const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
+    // Handed SQL is machine-written: it arrives formatted, in a fresh tab.
+    const pretty = prettifySql(payload.sql);
+    const tab = emptyTab(newTabId(), nextTabTitle(merged), pretty);
     setTabs([...merged, tab]);
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
-    pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
+    pendingAutoRunRef.current = payload.autoRun === true ? pretty : null;
   });
 
   // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
@@ -586,7 +587,7 @@ export function SqlPage() {
     }
     let pretty = text;
     try {
-      pretty = formatSql(text, { language: "postgresql" });
+      pretty = prettifySql(text);
     } catch {
       /* leave the expansion unchanged if the formatter can't parse it */
     }
@@ -863,21 +864,7 @@ export function SqlPage() {
     // the same commit as the hand-off, still holding the text of the tab that was active.
     if (pendingAutoRunRef.current !== null && sqlText === pendingAutoRunRef.current) {
       pendingAutoRunRef.current = null;
-      // REQ-1359: "Open in SQL" must copy the SQL in, prettify it, then execute.
-      const pretty = formatSql(sqlText, { language: "postgresql" });
-      if (pretty !== sqlText) {
-        pendingRunAfterFormatRef.current = true;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time nav-forwarded format, guarded by pendingAutoRunRef
-        setSqlText(pretty);
-      } else {
-        handleRun();
-      }
-    }
-  }, [sqlText, handleRun]);
-
-  useEffect(() => {
-    if (pendingRunAfterFormatRef.current && sqlText.trim()) {
-      pendingRunAfterFormatRef.current = false;
+      // REQ-1359: "Open in SQL" opens the prettified SQL, then executes it.
       handleRun();
     }
   }, [sqlText, handleRun]);
