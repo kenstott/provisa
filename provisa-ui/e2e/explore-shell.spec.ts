@@ -78,8 +78,18 @@ async function gutter(page: Page, shell: string) {
   });
 }
 
+/** A splitter's place within its shell. The shell's own place on the page is not the surface's:
+ * the app's bar above it takes a second line at 1280 once the Domains selector has loaded, which
+ * may come before or after a reload, and moves the shell down with it. */
+async function placeIn(page: Page, handle: string, shell: string) {
+  const box = (await page.getByTestId(handle).boundingBox())!;
+  const outer = (await page.getByTestId(shell).boundingBox())!;
+  return { x: box.x - outer.x, y: box.y - outer.y };
+}
+
 /** Drags a splitter by (dx, dy) and returns how far the pane beside it moved its edge. */
-async function drag(page: Page, handle: string, dx: number, dy: number) {
+async function drag(page: Page, handle: string, shell: string, dx: number, dy: number) {
+  const before = await placeIn(page, handle, shell);
   const box = (await page.getByTestId(handle).boundingBox())!;
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
@@ -88,13 +98,21 @@ async function drag(page: Page, handle: string, dx: number, dy: number) {
   await page.mouse.move(x + dx / 2, y + dy / 2);
   await page.mouse.move(x + dx, y + dy);
   await page.mouse.up();
-  const after = (await page.getByTestId(handle).boundingBox())!;
-  return { x: Math.round(after.x - box.x), y: Math.round(after.y - box.y) };
+  const after = await placeIn(page, handle, shell);
+  return { x: Math.round(after.x - before.x), y: Math.round(after.y - before.y) };
 }
 
 for (const width of [1280, 1900]) {
   test(`every Explore surface stands in the shared shell at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
+    // The Python and Notebook tabs ask for their runtimes' manifests, which the test instance does
+    // not serve. Each answers as the dev server's page fallback does, which the tab reads as no
+    // runtime, instead of a 404 the browser logs as an error (as polly-read-screen.spec.ts does).
+    for (const manifest of ["**/pyodide/manifest.json", "**/lite/jupyter-lite.json"]) {
+      await page.route(manifest, (route) =>
+        route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" }),
+      );
+    }
     await page.goto("/odata");
     await expect(page.getByTestId("odata-page")).toBeVisible({ timeout: 90_000 });
     const reference = await gutter(page, "odata-page");
@@ -151,12 +169,12 @@ for (const width of [1280, 1900]) {
       ] as const) {
         if (!handle) continue;
         await expect(page.getByTestId(handle), s.route).toBeVisible({ timeout: 90_000 });
-        const moved = await drag(page, handle, dx, dy);
+        const moved = await drag(page, handle, s.shell, dx, dy);
         expect(moved.x + moved.y, `${s.route}: ${handle} follows the pointer`).toBeGreaterThan(40);
-        const at = (await page.getByTestId(handle).boundingBox())!;
+        const at = await placeIn(page, handle, s.shell);
         await page.reload();
         await expect(page.getByTestId(handle)).toBeVisible({ timeout: 90_000 });
-        const kept = (await page.getByTestId(handle).boundingBox())!;
+        const kept = await placeIn(page, handle, s.shell);
         expect(
           Math.abs(kept.x - at.x) + Math.abs(kept.y - at.y),
           `${s.route}: ${handle} kept`,
