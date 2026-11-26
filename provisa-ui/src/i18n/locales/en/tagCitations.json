@@ -9,6 +9,10 @@
     "add": "Add citation",
     "remove": "Remove citation",
     "confirm": "Confirm",
+    "accept": "Accept",
+    "reject": "Reject",
+    "proposed": "Proposed",
+    "proposedHelp": "A document scan proposes merging this passage's draft into the term. Accept merges the draft; Reject declines it.",
     "drifted": "Text changed",
     "driftedHelp": "The cited section's text has changed since it was cited. Read it again, then confirm the citation.",
     "broken": "Gone",
@@ -17,7 +21,7 @@
     "reviewHelp": "A citation on this tag needs review: its section changed or is gone.",
     "definitionReviewHelp": "A section that defines this tag changed or is gone. Review its citation.",
     "gap": "No citation",
-    "gapHelp": "This tag requires a citation, and this assignment has none.",
+    "gapHelp": "This tag requires a citation for each assignment.",
     "definedBy": "Defined by {{title}}",
     "definedByLabel": "Defined by",
     "requiresCitationLabel": "Assignments require a citation",
@@ -28,9 +32,9 @@
     "citedByDefinition": "Its definition",
     "citedByGone": "Gone",
     "citedByWholeDocument": "Whole document",
-    "citationsLabel": "Why it is on this object",
-    "neededForCoverage": "Needed for coverage",
-    "definitionLabel": "Why this tag exists",
-    "definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations."
+    "citationsLabel": "Citation",
+    "neededForCoverage": "Required",
+    "definitionLabel": "Definition source",
+    "definitionDesc": "The library document and section that define this tag. A citation for one assignment goes on that assignment."
   }
 }

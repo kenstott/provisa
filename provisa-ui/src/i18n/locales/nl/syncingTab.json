@@ -121,6 +121,7 @@
     "standingKind": "Soort verschil",
     "compare": "Vergelijken met de catalogus",
     "title": "Contextsynchronisatie",
+    "filterPlaceholder": "Items filteren…",
     "importCron": "Importschema",
     "importCronHelp": "Cron-expressie voor een onbewaakte import. Elke run neemt de waarde van de catalogus alleen over waar de vaste keuze dat zegt en alleen de catalogus haar wijzigde; elk ander verschil wordt aangehouden voor een steward. Laat leeg om alleen op verzoek te importeren.",
     "importCronPlaceholder": "0 3 * * *",

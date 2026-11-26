@@ -11,6 +11,8 @@
 """Polly page parity: every route of the app has a row in the one table, every row is a route,
 and what the UI publishes to read_screen is what the table says."""
 
+# Requirements: REQ-2277
+
 from __future__ import annotations
 
 import json
@@ -126,7 +128,7 @@ def _reads(route: str) -> set[str]:
     ("route", "keys"),
     [
         ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
-        ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
+        ("/relationships", {"layout", "layoutUnsaved", "collapsed", "discover"}),
         ("/context/ontology", {"findTerms"}),
     ],
 )
@@ -143,6 +145,7 @@ def test_the_new_screens_inputs_are_named(route, keys):
         ("pages/TablesPage.tsx", "modeling: showModeling || null"),
         ("pages/tables/modeling/WizardFrame.tsx", 'useScreenInputs("/tables", { wizardStep:'),
         ("components/admin/GlossaryTab.tsx", "findTerms: findTermsOpen"),
+        ("pages/RelationshipsPage.tsx", "discover: discoverAsk ? shownInDialog : null"),
     ],
 )
 def test_the_page_publishes_what_the_table_names(source, published):
@@ -154,6 +157,20 @@ def test_she_is_told_read_screen_reports_the_data_node():
     assert "dataNode" in chat._SYSTEM
     tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
     assert "dataNode" in tool["description"]
+
+
+def test_she_reaches_profile_terrain_via_tables_quality_section():
+    """REQ-2277 rule (5): Polly reaches the profile terrain through section=quality and the
+    View Profile Runs button on /tables. The table documents both so she knows to use them."""
+    tables_page = polly_pages.PAGES["/tables"]
+    # The quality section is reachable by URL (section=quality).
+    assert "section=quality" in tables_page.sets or "section=" in tables_page.sets, (
+        "/tables must document section= so Polly can navigate to the Quality tab"
+    )
+    # The View Profile Runs button's testId is documented so she can click it.
+    assert "table-read-view-profile-runs" in tables_page.sets or (
+        "table-read-view-profile-runs" in tables_page.what
+    ), "/tables must document the table-read-view-profile-runs testId"
 
 
 # -- tags on screen ------------------------------------------------------------------------------
@@ -261,7 +278,7 @@ def test_the_tag_editors_controls_named_are_in_the_code(test_id):
 def test_the_tag_editor_names_its_citation_fields_as_the_form_labels_them():
     tags = polly_pages.PAGES["/admin/tags"].what
     locale = json.loads((UI / "i18n/locales/en/tagCitations.json").read_text())["tagCitations"]
-    assert f'"{locale["definitionLabel"]}"' in tags  # Why this tag exists
+    assert f'"{locale["definitionLabel"]}"' in tags  # Definition source
     assert f'"{locale["requiresCitationLabel"]}"' in tags  # Assignments require a citation
     _a_citation_list("tags-defined-by")
     edit = json.loads((UI / "i18n/locales/en/tagsTab.json").read_text())["tagsTab"]["editTag"]

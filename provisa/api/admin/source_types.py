@@ -446,8 +446,9 @@ def _lake_storage(required_region: bool) -> tuple[Field, ...]:
 
 _CODE_NOTE = (
     "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', "
-    "repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} "
-    "(an archive uploaded with admin_request); runtime is the language's; secrets lists the "
+    "repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} "
+    "(an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the "
+    "code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the "
     "organization secrets the code reads, by name; settings holds its non-secret settings."
 )
 
@@ -492,10 +493,7 @@ _SPARK_NOTE = (
 #: What a built-in source type's host requires, as its connector file states it
 #: (connectors/spark/connector.yaml ``requires``): name, required, note.
 BUILTIN_HOST_REQUIRES: dict[str, tuple[tuple[str, bool, str], ...]] = {
-    "spark": (
-        ("script", True, "the annotated PySpark script, as text"),
-        ("cluster", False, "the Spark cluster; left out, the organization's default"),
-    ),
+    "spark": (("cluster", False, "the Spark cluster; left out, the organization's default"),),
 }
 
 

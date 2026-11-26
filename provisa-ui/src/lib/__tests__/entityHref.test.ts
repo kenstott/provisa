@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import { detailHref } from "../../components/list/useDetailParam";
-import { entityHref, entityLink, pageLink, pageRequirement } from "../entityHref";
+import { entityHref, entityLink, pageLink, pageRequirement, sectionMark } from "../entityHref";
 
 describe("entityHref is detailHref for each thing with a panel", () => {
   it.each([
@@ -47,7 +47,23 @@ describe("the context layer's kinds (REQ-2259)", () => {
   });
 
   it("links a classification kind to the Context group's Classification page", () => {
-    expect(entityHref("classification", "email")).toBe("/context/classification");
+    expect(entityHref("classification", "email")).toBe("/context/classification?kind=email");
+  });
+
+  it("links a library section to its document's Sections tab, at the section", () => {
+    expect(sectionMark("Scope", 2)).toBe("h:Scope");
+    expect(sectionMark(null, 2)).toBe("p:2");
+    expect(sectionMark(null, null)).toBeNull();
+    expect(entityHref("section", 4, undefined, "h:Scope")).toBe(
+      "/context/documents?document=4&tab=sections&at=h%3AScope",
+    );
+    expect(entityHref("section", 4, undefined, null)).toBe(
+      "/context/documents?document=4&tab=sections",
+    );
+    expect(entityLink(["glossary_read"], "section", 4, undefined, "p:2")).toBe(
+      "/context/documents?document=4&tab=sections&at=p%3A2",
+    );
+    expect(entityLink([], "section", 4, undefined, "p:2")).toBeUndefined();
   });
 
   it("links a library document to its panel on the Documents page", () => {

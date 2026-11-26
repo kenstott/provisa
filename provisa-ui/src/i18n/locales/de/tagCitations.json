@@ -9,6 +9,10 @@
     "add": "Zitat hinzufügen",
     "remove": "Zitat entfernen",
     "confirm": "Bestätigen",
+    "accept": "Annehmen",
+    "reject": "Ablehnen",
+    "proposed": "Vorgeschlagen",
+    "proposedHelp": "Ein Dokumentscan schlägt vor, den Entwurf dieser Passage mit dem Begriff zusammenzuführen. Annehmen führt den Entwurf zusammen; Ablehnen weist ihn zurück.",
     "drifted": "Text geändert",
     "driftedHelp": "Der Text des zitierten Abschnitts hat sich seit dem Zitieren geändert. Lesen Sie ihn erneut und bestätigen Sie dann das Zitat.",
     "broken": "Entfallen",
@@ -17,7 +21,7 @@
     "reviewHelp": "Ein Zitat an diesem Tag muss geprüft werden: Sein Abschnitt hat sich geändert oder ist entfallen.",
     "definitionReviewHelp": "Ein Abschnitt, der diesen Tag definiert, hat sich geändert oder ist entfallen. Prüfen Sie sein Zitat.",
     "gap": "Kein Zitat",
-    "gapHelp": "Dieser Tag erfordert ein Zitat, und diese Zuweisung hat keines.",
+    "gapHelp": "Dieser Tag erfordert für jede Zuweisung ein Zitat.",
     "definedBy": "Definiert durch {{title}}",
     "definedByLabel": "Definiert durch",
     "requiresCitationLabel": "Zuweisungen erfordern ein Zitat",
@@ -28,9 +32,9 @@
     "citedByDefinition": "Seine Definition",
     "citedByGone": "Entfallen",
     "citedByWholeDocument": "Gesamtes Dokument",
-    "citationsLabel": "Warum es an diesem Objekt ist",
-    "neededForCoverage": "Für die Abdeckung nötig",
-    "definitionLabel": "Warum dieser Tag existiert",
-    "definitionDesc": "Das Dokument und der Abschnitt, die sagen, warum dieser Tag existiert. Warum er an einem Objekt hängt, steht in den Zitaten dieses Objekts."
+    "citationsLabel": "Zitat",
+    "neededForCoverage": "Erforderlich",
+    "definitionLabel": "Definitionsquelle",
+    "definitionDesc": "Das Bibliotheksdokument und der Abschnitt, die diesen Tag definieren. Ein Zitat für eine einzelne Zuweisung gehört zu dieser Zuweisung."
   }
 }

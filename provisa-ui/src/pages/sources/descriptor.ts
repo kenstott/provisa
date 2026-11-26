@@ -80,7 +80,7 @@ export const hintKeys = (type: string): string[] => typeDescriptor(type).federat
 export const mappingKey = (type: string, name: string): string =>
   descriptorField(type, "mappingJson", name).name;
 
-/** A mapping key of `type` the descriptor lists by its parts (`settings.script` lists `settings`),
+/** A mapping key of `type` the descriptor lists by its parts (`settings.cluster` lists `settings`),
  * refused by name when it lists neither the key nor a part of it. */
 export function mappingParentKey(type: string, name: string): string {
   const fields = descriptorFields(type, "mappingJson");

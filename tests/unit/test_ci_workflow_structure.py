@@ -107,6 +107,62 @@ def test_each_owned_setup_is_in_exactly_its_own_action():
         assert holders == [action], f"`{pattern}` is in {holders}, expected only {action}"
 
 
+def _locked_uv_version() -> str:
+    lock = (REPO / "uv.lock").read_text()
+    match = re.search(r'^\[\[package\]\]\nname = "uv"\nversion = "([^"]+)"', lock, re.M)
+    assert match, "uv.lock locks no uv package"
+    return match.group(1)
+
+
+def _setup_uv_steps() -> list[tuple[str, dict]]:
+    found = []
+    for path in [*WORKFLOWS, *ACTIONS]:
+        body = yaml.safe_load(path.read_text())
+        if "runs" in body:
+            step_lists = [body["runs"].get("steps") or []]
+        else:
+            step_lists = [job.get("steps") or [] for job in (body.get("jobs") or {}).values()]
+        for steps in step_lists:
+            for step in steps:
+                if (step.get("uses") or "").startswith("astral-sh/setup-uv@"):
+                    found.append((path.name if "runs" not in body else path.parent.name, step))
+    return found
+
+
+def test_every_uv_install_pins_the_exact_locked_version():
+    """setup-uv given a range (or none, which reads pyproject's `uv>=0.11`) lists every uv release
+    through the GitHub API at run time; that lookup failed in conformance-functions run
+    45698279072 and the mariadb leg ran no test. An exact version makes no API call, and it is
+    the version uv.lock locks, so the CI's uv and the runtime dependency are one version."""
+    locked = _locked_uv_version()
+    steps = _setup_uv_steps()
+    assert steps, "no astral-sh/setup-uv step found"
+    for where, step in steps:
+        version = str((step.get("with") or {}).get("version", ""))
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (
+            f"{where}: {step.get('name')} installs uv without an exact version ({version!r})"
+        )
+        assert version == locked, f"{where}: {step.get('name')} pins uv {version}, uv.lock {locked}"
+
+
+def test_a_failed_uv_install_is_named():
+    """setup-uv's own failure printed no error in run 45698279072; the action names it."""
+    steps = yaml.safe_load((REPO / ".github/actions/setup-python/action.yml").read_text())
+    steps = steps["runs"]["steps"]
+    uv_ids = [s["id"] for s in steps if (s.get("uses") or "").startswith("astral-sh/setup-uv@")]
+    assert len(uv_ids) == len(
+        [s for s in steps if (s.get("uses") or "").startswith("astral-sh/setup-uv@")]
+    ), "every setup-uv step has an id"
+    namers = [s for s in steps if "::error" in (s.get("run") or "") and "uv" in s["run"]]
+    assert len(namers) == 1, "one step names a failed uv install"
+    condition = namers[0]["if"]
+    assert condition.startswith("failure()")
+    for uv_id in uv_ids:
+        assert f"steps.{uv_id}.outcome == 'failure'" in condition
+    assert _locked_uv_version() in namers[0]["run"]
+    assert "exit 1" in namers[0]["run"]
+
+
 @pytest.mark.parametrize("action", ACTIONS, ids=lambda p: p.parent.name)
 def test_a_composite_action_names_its_shell_and_hides_no_failing_command(action):
     """A composite step has no default shell, and `bash` there is not `bash -eo pipefail`: a step
@@ -304,6 +360,24 @@ def test_every_ci_image_build_is_given_this_commits_duckdb_extension_wheels():
         'duckdb_ext=(--build-context "duckdb-ext-wheels=${PROVISA_DUCKDB_EXT_WHEELS}")' in appimage
     )
     assert '${duckdb_ext[@]+"${duckdb_ext[@]}"} \\\n' in appimage
+
+
+def test_every_appimage_build_fetch_is_bounded_and_names_what_failed():
+    """Release 513's packaging dry run (45843520492) died on a bare `curl` of appimagetool that
+    stalled 134 s connecting to github.com and exited 28 with no retry. Every download in the
+    AppImage build goes through curl_retry: a connect timeout, a total timeout, a fixed number of
+    attempts, and a failure that names the asset and its URL."""
+    appimage = (REPO / "packaging/linux/build-appimage.sh").read_text()
+    body = appimage[appimage.index("curl_retry() {") :]
+    body = body[: body.index("\n}\n")]
+    assert "--connect-timeout" in body and "--max-time" in body
+    assert re.search(r"for attempt in 1 2 3 4 5; do", body)
+    assert 'err "Failed to download ${asset} from ${url} after 5 attempts"' in body
+    # Outside curl_retry no line runs curl: each fetch is a call to it.
+    rest = appimage.replace(body, "")
+    bare = [line for line in rest.splitlines() if re.search(r"\bcurl -", line)]
+    assert bare == [], bare
+    assert 'curl_retry "appimagetool" "$APPIMAGETOOL_URL" "$APPIMAGETOOL"' in appimage
 
 
 def test_the_duckdb_ext_wheels_action_builds_only_on_a_priming_miss():
@@ -1942,9 +2016,12 @@ def test_no_workflow_or_action_names_a_node_version_anywhere():
             assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
 
 
-def test_the_images_node_is_the_nvmrc():
-    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
-    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+@pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.dev"])
+def test_the_images_node_is_the_nvmrc(dockerfile):
+    """Every node stage (graph-render, ui-build) runs the .nvmrc's Node."""
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / dockerfile).read_text(), flags=re.M)
+    assert tags, f"{dockerfile} has no node stage"
+    assert set(tags) == {_node_pin()}, f"{dockerfile} node images {tags}, .nvmrc {_node_pin()}"
 
 
 def test_the_nixos_guests_node_is_the_nvmrc_major():

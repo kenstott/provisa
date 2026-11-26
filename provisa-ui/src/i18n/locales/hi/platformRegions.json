@@ -38,6 +38,8 @@
     "org": "संगठन",
     "pickOrg": "कोई संगठन चुनें",
     "orgGranted": "{{id}} (दिए गए: {{regions}})",
-    "orgNone": "{{id}} (कोई रीजन नहीं)"
+    "orgNone": "{{id}} (कोई रीजन नहीं)",
+    "filterPlaceholder": "क्षेत्र फ़िल्टर करें",
+    "closeForm": "फ़ॉर्म बंद करें"
   }
 }

@@ -58,6 +58,7 @@ import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
@@ -204,6 +205,9 @@ export function DataProductsPage() {
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
+    // REQ-2277: a dataset's profile runs dialog, as the URL names it, once a product is open.
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
+    table: expanded !== null ? searchParams.get("table") : null,
     search,
     toReviewOnly,
     tags: tagFilter,
@@ -592,20 +596,36 @@ export function DataProductsPage() {
 
   return (
     // The list and its panel share the height the heading leaves; each scrolls by itself.
-    <div
-      className="page-sticky-head"
-      style={{ padding: "1rem 1.25rem" }}
-      data-tour="data-products-content"
-    >
-      <Group justify="space-between" mb="md">
-        <PageTitle icon={Package} order={3}>
-          {t("dataProductsTab.title")}
-        </PageTitle>
+    <div className="page page-sticky-head" data-tour="data-products-content">
+      <div className="page-header">
+        <PageTitle icon={Package}>{t("dataProductsTab.title")}</PageTitle>
         <FilterInput
           value={search}
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
+        <div className="page-actions">
+          {/* Hidden while its form is open: the form ends with Save and Cancel. */}
+          {canEdit && !creating && (
+            <Button
+              leftSection={<Plus size={13} />}
+              onClick={openCreate}
+              data-testid="data-products-new-button"
+            >
+              {t("dataProductsTab.newDataProduct")}
+            </Button>
+          )}
+          <ProductMapButton />
+          <HelpBubble
+            title={t("dataProductsTab.purposeTitle")}
+            paragraphs={[t("dataProductsTab.purposeBody")]}
+            ariaLabel={t("dataProductsTab.purposeAria")}
+            testId="data-products-purpose-help"
+          />
+        </div>
+      </div>
+      {/* The list's facets, under the header's filter. */}
+      <Group gap="sm" mb="sm" wrap="wrap">
         <div data-testid="data-products-tag-facet" style={{ minWidth: 180, maxWidth: 360 }}>
           <MultiSelect
             options={tagOptions}
@@ -632,26 +652,6 @@ export function DataProductsPage() {
           styles={{ label: { whiteSpace: "nowrap" } }}
           data-testid="data-products-to-review-only"
         />
-        <Group gap="xs">
-          <ProductMapButton />
-          {/* Hidden while its form is open: the form ends with Save and Cancel. */}
-          {canEdit && !creating && (
-            <Button
-              size="xs"
-              leftSection={<Plus size={13} />}
-              onClick={openCreate}
-              data-testid="data-products-new-button"
-            >
-              {t("dataProductsTab.newDataProduct")}
-            </Button>
-          )}
-          <HelpBubble
-            title={t("dataProductsTab.purposeTitle")}
-            paragraphs={[t("dataProductsTab.purposeBody")]}
-            ariaLabel={t("dataProductsTab.purposeAria")}
-            testId="data-products-purpose-help"
-          />
-        </Group>
       </Group>
 
       {error && (

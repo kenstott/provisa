@@ -23,11 +23,22 @@ test("Context Tags lists each tag with where it is applied and what depends on i
   await page.getByTestId("nav-group-context").click();
   await page.locator(".subnav").getByRole("link", { name: "Tags", exact: true }).click();
   await expect(page).toHaveURL(/\/context\/tags$/);
-  await page.getByTestId("tags-scope-bar").getByText("Column", { exact: true }).click();
-  await expect(page.getByTestId("tags-where-pii")).toBeVisible();
-  await expect(page.getByTestId("tags-dependents-pii")).toBeVisible();
+  // REQ-2277: the scope is a tab, named in the URL.
+  await page.getByTestId("tags-scope-column").click();
+  await expect(page).toHaveURL(/\/context\/tags\?scope=column$/);
+  // REQ-2208: the list holds one line of counts per tag; the panel names them.
+  await expect(page.getByTestId("tags-where-summary-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-dependents-summary-pii")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Where applied" })).toBeVisible();
   await expect(page.getByTestId("tags-create-button")).toHaveCount(0);
+  await expect(page.getByTestId("tags-delete-pii")).toHaveCount(0);
+  // A row opens the tag's panel, read, in the URL; it offers no Edit or Delete.
+  await page.getByTestId("tags-row-pii").click();
+  await expect(page).toHaveURL(/[?&]tag=pii\b/);
+  await expect(page.getByTestId("tags-detail-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-where-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-dependents-pii")).toBeVisible();
+  await expect(page.getByTestId("tags-edit-pii")).toHaveCount(0);
   await expect(page.getByTestId("tags-delete-pii")).toHaveCount(0);
 });
 
@@ -45,6 +56,11 @@ test("Context Classification lists the kinds and where each was detected, withou
   await expect(row.getByTestId("classification-kind-detected-us_ssn")).toBeVisible();
   await expect(page.getByTestId("classification-kind-enabled-us_ssn")).toHaveCount(0);
   await expect(page.getByRole("switch")).toHaveCount(0);
+  // A row opens the kind's panel, in the URL, read with no Edit.
+  await row.click();
+  await expect(page).toHaveURL(/[?&]kind=us_ssn\b/);
+  await expect(page.getByTestId("classification-kind-detail-us_ssn")).toBeVisible();
+  await expect(page.getByTestId("classification-kind-edit-us_ssn")).toHaveCount(0);
 });
 
 test("Context Metrics shows the metrics with no control that writes", async ({ page }) => {

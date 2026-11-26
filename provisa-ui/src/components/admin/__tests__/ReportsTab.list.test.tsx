@@ -11,7 +11,7 @@
 // The report list: sorted by name, each description clamped to two lines and unfolded by a click
 // that does not select the report.
 
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({
@@ -61,12 +61,13 @@ function laidOut(lines: number) {
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(Math.min(lines, 2) * 20);
 }
 
+beforeEach(() => window.localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe("ReportsTab list", () => {
   it("lists the ops reports alphabetically by the name shown, case ignored", () => {
     laidOut(1);
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     const list = screen.getByTestId("reports-list");
     const names = within(list)
       .getAllByTestId(/^report-item-/)
@@ -76,7 +77,7 @@ describe("ReportsTab list", () => {
 
   it("clamps a long description to two lines and expands it on click, then folds it", () => {
     laidOut(6);
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     const text = screen.getByTestId("report-description-mid-text");
     expect(text.style.webkitLineClamp).toBe("2");
     expect(text.style.overflow).toBe("hidden");
@@ -96,15 +97,17 @@ describe("ReportsTab list", () => {
 
   it("shows a description that fits in two lines as it is, with nothing to expand", () => {
     laidOut(2);
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     expect(screen.queryByTestId("report-description-alpha_view")).toBeNull();
     expect(screen.getByTestId("report-description-alpha_view-text")).toHaveTextContent("short");
   });
 
-  it("does not select the report when its description is clicked; the row still does", () => {
+  it("does not open the report when its description is clicked; the row still does", () => {
     laidOut(6);
-    render(<ReportsTab />);
-    // The first report in order is the fallback selection.
+    render(<ReportsTab title="Admin — Reports" />);
+    // REQ-2277: the list stands alone until a row opens its report in the panel.
+    expect(screen.queryByTestId("report-pane")).toBeNull();
+    fireEvent.click(screen.getByTestId("report-item-alpha_view"));
     expect(screen.getByTestId("report-pane")).toHaveAttribute("data-report", "alpha_view");
 
     fireEvent.click(screen.getByTestId("report-description-mid"));

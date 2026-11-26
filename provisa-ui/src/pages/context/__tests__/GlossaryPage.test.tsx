@@ -173,12 +173,12 @@ describe("GlossaryPage", () => {
 
   it("sorts by recent change, newest first, without the letter bar", async () => {
     await page();
-    fireEvent.click(screen.getByRole("radio", { name: "Recently changed", hidden: true }));
+    fireEvent.click(screen.getByTestId("glossary-sort-recent"));
     await waitFor(() =>
       expect(entryNames()).toEqual(["account", "zone", "savings account", "client", "patron"]),
     );
     expect(screen.queryByTestId("glossary-letters")).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "A–Z", hidden: true }));
+    fireEvent.click(screen.getByTestId("glossary-sort-name"));
     await waitFor(() =>
       expect(entryNames()).toEqual(["account", "client", "patron", "savings account", "zone"]),
     );
@@ -192,7 +192,7 @@ describe("GlossaryPage", () => {
     };
     fetchMock.mockImplementation(async () => new Response(JSON.stringify(tied), { status: 200 }));
     await page();
-    fireEvent.click(screen.getByRole("radio", { name: "Recently changed", hidden: true }));
+    fireEvent.click(screen.getByTestId("glossary-sort-recent"));
     await waitFor(() =>
       expect(entryNames()).toEqual(["account", "client", "zone", "savings account", "patron"]),
     );

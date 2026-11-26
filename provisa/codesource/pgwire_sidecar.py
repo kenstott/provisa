@@ -29,6 +29,21 @@ the source's code has changed) and returns where it listens; :func:`stop_sidecar
 ``source.forget`` does when the source is edited, switched to built, or deleted;
 :func:`stop_all_sidecars` stops every one at shutdown. A built source has no sidecar: its host is
 its PostgreSQL face.
+
+THE ENGINES. Each federation engine attaches a dev-mode source's sidecar as a PostgreSQL catalog
+(provisa/federation/codehost_connectors.py), which starts it through :func:`ensure_sidecar` --
+registered there at import, since that module keeps out of this one's imports. An engine keeps
+what it read of a catalog (its tables, their columns) while the catalog stands, so when a sidecar
+stops for good -- its source forgotten (:func:`stop_sidecar`), or its code changed, which keeps
+its port (:func:`retire_changed`, the schema build's) -- each engine's catalog of it is dropped
+through the listeners given to :func:`on_stop`, and the next attach reads the new code's catalog.
+A sidecar that ended on its own and is started again, the same code on the same port, keeps the
+engines' catalogs. The listeners are never called from :func:`ensure_sidecar`, which an engine's
+attach calls while it holds the engine's own locks.
+
+BOUNDS. The operator's bounds on the sidecar's DuckDB (``codesource.duckdb_*``) are given with its
+start, and the sidecar asks for them again before each statement it answers, as they are then
+(:class:`_Bridge`), as Provisa gives a built host's with every call.
 """
 
 # Requirements: REQ-2267
@@ -99,10 +114,16 @@ class _Bridge:
     each call run on the source's worker."""
 
     def __init__(
-        self, conn: socket.socket, worker: Callable[[], Worker], hello: dict, name: str
+        self,
+        conn: socket.socket,
+        worker: Callable[[], Worker],
+        hello: dict,
+        name: str,
+        bounds: Callable[[], dict[str, int]],
     ) -> None:
         self._conn = conn
         self._worker = worker
+        self._bounds = bounds
         self._send_lock = threading.Lock()
         self._calls: dict[int, _Call] = {}
         self._lock = threading.Lock()
@@ -142,10 +163,22 @@ class _Bridge:
                         call.credits.release()
             elif op == "cancel":
                 self._cancel(message["id"])
+            elif op == "bounds":
+                self._give_bounds(message["id"])
             elif op == "ping":
                 self._send(front.frame({"op": "pong", "id": message["id"]}))
             else:
                 raise ValueError(f"the pgwire sidecar sent an unknown message {op!r}")
+
+    def _give_bounds(self, call_id: int) -> None:
+        """The operator's bounds on the sidecar's DuckDB as they are now, which it asks for
+        before each statement (sidecar.py); the settings' failure is the statement's error."""
+        try:
+            bounds = self._bounds()
+        except Exception as exc:  # noqa: BLE001 -- sent to the sidecar, whose statement fails
+            self._failed(call_id, exc)
+            return
+        self._send(front.frame({"op": "end", "id": call_id, "bounds": bounds}))
 
     def _cancel(self, call_id: int) -> None:
         with self._lock:
@@ -313,7 +346,13 @@ class Sidecar:
             "exports": sorted(self._names),
         }
         self._bridges = [
-            _Bridge(mine, self._worker, hello, f"pgwire-sidecar-{self.source_id}-{i}")
+            _Bridge(
+                mine,
+                self._worker,
+                hello,
+                f"pgwire-sidecar-{self.source_id}-{i}",
+                lambda: _bounds(),  # the operator's, read at each call
+            )
             for i, (mine, _) in enumerate(pairs)
         ]
         until = time.monotonic() + timeout
@@ -392,6 +431,10 @@ _PORTS = PortAllocator()
 _sidecars: dict[tuple[str, str], Sidecar] = {}  # org, source
 _lock = threading.Lock()
 _atexit_registered = False
+#: What is told, with (org, source), that a source's sidecar stopped for good: each engine's
+#: catalog of it is dropped (:func:`on_stop`). By key, so a schema build that names its listener
+#: again replaces it.
+_listeners: dict[str, Callable[[str, str], None]] = {}
 
 
 def _bounds() -> dict[str, int]:
@@ -437,12 +480,49 @@ def ensure_sidecar(prepared: Prepared) -> Endpoint:
         return sidecar.endpoint
 
 
-def stop_sidecar(source_id: str) -> None:
-    """Stop the sidecar of ``source_id``, in every org: its source was edited or deleted."""
+def on_stop(key: str, listener: Callable[[str, str], None]) -> None:
+    """``listener(org_id, source_id)`` is called once a source's sidecar has stopped for good: its
+    source forgotten, or its code changed (:func:`retire_changed`). ``key`` names the listener: a
+    second one under it replaces the first."""
     with _lock:
-        ending = [_sidecars.pop(k) for k in [k for k in _sidecars if k[1] == source_id]]
+        _listeners[key] = listener
+
+
+def _stopped(keys: list[tuple[str, str]]) -> None:
+    """Tell every listener each (org, source) whose sidecar stopped for good. Outside :data:`_lock`:
+    a listener drops an engine's catalog, which takes the engine's own locks."""
+    with _lock:
+        listeners = list(_listeners.values())
+    for org_id, source_id in keys:
+        for listener in listeners:
+            listener(org_id, source_id)
+
+
+def retire_changed(prepared: Prepared) -> bool:
+    """Stop the source's sidecar when it serves other code than ``prepared``'s, and tell the
+    listeners (the engines' catalogs of it go): the schema build, before it names the new code to
+    the engines. Whether one was stopped. The next :func:`ensure_sidecar` starts the new code's on
+    the same port."""
+    key = (prepared.org_id, prepared.source_id)
+    with _lock:
+        held = _sidecars.get(key)
+        if held is None or held.content_hash == prepared.content_hash:
+            return False
+        del _sidecars[key]
+    held.stop()
+    _stopped([key])
+    return True
+
+
+def stop_sidecar(source_id: str) -> None:
+    """Stop the sidecar of ``source_id``, in every org: its source was edited or deleted. The
+    listeners are told of each one stopped."""
+    with _lock:
+        keys = [k for k in _sidecars if k[1] == source_id]
+        ending = [_sidecars.pop(k) for k in keys]
     for sidecar in ending:
         sidecar.stop()
+    _stopped(keys)
 
 
 def stop_all_sidecars() -> None:
@@ -466,10 +546,27 @@ def _reap_on_exit() -> None:
     _atexit_registered = True
 
 
+def _engine_endpoint(prepared: Prepared) -> tuple[str, int]:
+    """The (host, port) an engine's catalog dials for the source's sidecar (codehost_connectors)."""
+    endpoint = ensure_sidecar(prepared)
+    return endpoint.engine_host, endpoint.port
+
+
+def _register_engine_endpoint() -> None:
+    from provisa.federation import codehost_connectors
+
+    codehost_connectors.register_sidecar(_engine_endpoint)
+
+
+_register_engine_endpoint()
+
+
 __all__ = [
     "Endpoint",
     "Sidecar",
     "ensure_sidecar",
+    "on_stop",
+    "retire_changed",
     "stop_all_sidecars",
     "stop_sidecar",
 ]

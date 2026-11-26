@@ -31,7 +31,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -86,11 +85,10 @@ def refuse_in_dev(source_id: str, manifest: Manifest) -> None:
 
 def setup_values(
     org_id: str, source_id: str, manifest: Manifest, mapping: dict, admin_db: Any
-) -> Callable[[], dict[str, Any]] | None:
+) -> "Setup | None":
     """What gives a host its setup values, read each time it is called; None when the code has no
-    @on-start to give them to and it is not a script connector, whose script reads them at any
-    call (REQ-2225)."""
-    if manifest.lifecycle(ON_START) is None and not mapping.get("script_hash"):
+    @on-start to give them to."""
+    if manifest.lifecycle(ON_START) is None:
         return None
     from provisa.codesource import services
 
@@ -101,42 +99,72 @@ def setup_values(
         settings=services.declared_settings(mapping.get("settings")),
         admin_db=admin_db,
     )
-    requires = manifest.requires
-    stood_in: dict[str, str] = mapping.get("org_defaults") or {}
+    return Setup(org_id, admin_db, grant, manifest.requires, mapping.get("org_defaults") or {})
 
-    def values() -> dict[str, Any]:
+
+class Setup:
+    """A source's setup values. Called on a thread with no connection loop bound (a host's): it
+    binds one for the organisation setting a value stands in for. :meth:`read` is the same values
+    on the loop a request already runs on (REQ-1882: a request's work stays on its own thread)."""
+
+    def __init__(
+        self, org_id: str, admin_db: Any, grant: Any, requires: Any, stood_in: dict[str, str]
+    ) -> None:
+        self._org_id = org_id
+        self._admin_db = admin_db
+        self._grant = grant
+        self._requires = requires
+        self._stood_in = stood_in
+
+    def __call__(self) -> dict[str, Any]:
+        from provisa.core.connection_loop import connection_loop
+
+        if not self._stood_names():
+            return self._values({})
+        with connection_loop() as cl:
+            return self._values(cl.run(self._resolved()))
+
+    async def read(self) -> dict[str, Any]:
+        return self._values(await self._resolved())
+
+    def _stood_names(self) -> list[str]:
+        return [r.name for r in self._requires if not r.secret and r.name in self._stood_in]
+
+    async def _resolved(self) -> dict[str, str]:
+        """Each value an organisation setting stands in for, by requirement name."""
+        return {
+            name: await _stood_in(
+                self._org_id, self._admin_db, self._stood_in[name], self._grant.settings.get(name)
+            )
+            for name in self._stood_names()
+        }
+
+    def _values(self, stood: dict[str, str]) -> dict[str, Any]:
+        from provisa.codesource import services
+
         out: dict[str, Any] = {}
-        for requirement in requires:
+        for requirement in self._requires:
             if requirement.secret:
-                out[requirement.name] = services.read_secret(grant, requirement.name)
-            elif requirement.name in stood_in:
-                out[requirement.name] = _stood_in(
-                    org_id,
-                    admin_db,
-                    stood_in[requirement.name],
-                    grant.settings.get(requirement.name),
-                )
-            elif requirement.name in grant.settings:
-                out[requirement.name] = grant.settings[requirement.name]
+                out[requirement.name] = services.read_secret(self._grant, requirement.name)
+            elif requirement.name in stood:
+                out[requirement.name] = stood[requirement.name]
+            elif requirement.name in self._grant.settings:
+                out[requirement.name] = self._grant.settings[requirement.name]
             else:
                 raise ValueError(
                     f"the source has no value for {requirement.name!r}, which its code requires"
                 )
         return out
 
-    return values
 
-
-def _stood_in(org_id: str, admin_db: Any, setting: str, own: Any) -> str:
+async def _stood_in(org_id: str, admin_db: Any, setting: str, own: Any) -> str:
     """REQ-2225: the value of a requirement an organisation setting stands in for: the source's
     own when it is set, else the setting's. ``spark_cluster`` is the only such setting."""
     from provisa.core import spark_cluster
-    from provisa.core.connection_loop import connection_loop
 
     if setting != "spark_cluster":
         raise ValueError(f"no organisation setting {setting!r} stands in for a connector value")
-    with connection_loop() as cl:
-        return cl.run(spark_cluster.resolved(admin_db, org_id, own)).address
+    return (await spark_cluster.resolved(admin_db, org_id, own)).address
 
 
 # -- kept -------------------------------------------------------------------------------------------

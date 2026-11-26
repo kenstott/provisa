@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2225: the organisation's default Spark cluster -- where a Spark script runs and is validated
-// when its source names no cluster of its own -- set by an organisation administrator, with a
+// REQ-2225: the organisation's default Spark cluster -- the cluster a Spark source connects to
+// when it names no cluster of its own -- set by an organisation administrator, with a
 // connection test.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
@@ -87,9 +87,11 @@ export async function testSparkCluster(
 }
 
 /** REQ-2225 (amended 2026-11-24): what a Spark source joins -- Spark is a built-in source type,
- * not a connector an organisation offers -- and the cluster a source naming none runs on. */
+ * not a connector an organisation offers -- and the cluster a source naming none runs on.
+ * ``host`` is null when this installation carries no Spark host (e.g. e2e, CI without a release
+ * package); the UI shows Spark as unavailable in that case. */
 export interface SparkSource {
-  host: Connector;
+  host: Connector | null;
   default_cluster: SparkClusterInUse;
 }
 

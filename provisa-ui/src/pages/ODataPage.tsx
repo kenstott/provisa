@@ -173,11 +173,9 @@ export function ODataPage() {
 
   return (
     <div className="page-sticky-head odata-page">
-      <Group justify="space-between" mb="sm">
-        <PageTitle icon={Sheet} order={3}>
-          {t("odataPage.title")}
-        </PageTitle>
-      </Group>
+      <div className="page-header">
+        <PageTitle icon={Sheet}>{t("odataPage.title")}</PageTitle>
+      </div>
       <Text size="sm" mb="sm">
         {t("odataPage.description")}
       </Text>

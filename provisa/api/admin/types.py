@@ -94,6 +94,40 @@ class SourceCdcConfigType:  # REQ-824
     )
 
 
+# REQ-2262: what became of each step of a source's setup. Lowercase members: the GraphQL values
+# are the outcomes as the store and a configuration write them.
+@strawberry.enum
+class SetupTablesOutcome(enum.Enum):  # REQ-2262
+    registered = "registered"
+    skipped = "skipped"
+
+
+@strawberry.enum
+class SetupRelationshipsOutcome(enum.Enum):  # REQ-2262
+    found = "found"
+    none_found = "none_found"
+    skipped = "skipped"
+
+
+@strawberry.enum
+class SetupQueryOutcome(enum.Enum):  # REQ-2262
+    opened = "opened"
+    done = "done"
+    skipped = "skipped"
+
+
+@strawberry.type
+class SourceSetupOutcomesType:  # REQ-2262
+    """What became of each step of the source's setup, shared by every user and environment;
+    null = not decided yet. ``decided_at`` (ISO 8601): when every step was last decided, null
+    while any step is open."""
+
+    tables: SetupTablesOutcome | None = None
+    relationships: SetupRelationshipsOutcome | None = None
+    query: SetupQueryOutcome | None = None
+    decided_at: str | None = None
+
+
 @strawberry.type
 class SourceType:  # REQ-012
     id: str
@@ -148,6 +182,10 @@ class SourceType:  # REQ-012
     # REQ-1921: out of production until put back (withdrawSource / putBackSource).
     withdrawn: bool = False
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
+    # REQ-2262: the setup stepper's record (setSourceSetupOutcomes).
+    setup_outcomes: SourceSetupOutcomesType = strawberry.field(
+        default_factory=SourceSetupOutcomesType
+    )
 
 
 @strawberry.type
@@ -1033,7 +1071,7 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
     @strawberry.field
     def physical_name(self) -> str | None:  # REQ-471, REQ-1417
-        """The relationship's name on the SQL plane — what ?include= and gRPC's include take.
+        """The relationship's API name — what ?include= and gRPC's include take.
 
         Derived by the naming authority, never by a client transliterating the GraphQL alias's
         casing: the convention is server configuration, so only the server can answer this.

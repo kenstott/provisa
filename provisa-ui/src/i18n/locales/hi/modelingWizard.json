@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "चरण {{index}} / {{count}}",
+    "stepsLabel": "विज़ार्ड के चरण",
     "next": "आगे",
     "toReview": "समीक्षा करें",
     "back": "पीछे",

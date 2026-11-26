@@ -23,12 +23,14 @@
   computed by.
 * ``provisa_stable_fake(method, version, digest, def_hash) -> VARCHAR``: the portable definition
   (``provisa.fakes.portable``), the same on every engine.
+* ``provisa_json_text(json) -> VARCHAR``: a JSON value's canonical text
+  (``digest.canonical_json``), the text a JSON column is digested as on every engine (REQ-2279).
 
 The platform key is read inside the function from the process (``digest.platform_key``); no
 statement carries it.
 """
 
-# Requirements: REQ-1494
+# Requirements: REQ-1494, REQ-2279
 
 from __future__ import annotations
 
@@ -37,7 +39,15 @@ import json
 import threading
 from typing import Any
 
-from provisa.fakes.digest import FakeKeyMissing, digest, fingerprint, platform_key, seed, tag
+from provisa.fakes.digest import (
+    FakeKeyMissing,
+    canonical_json,
+    digest,
+    fingerprint,
+    platform_key,
+    seed,
+    tag,
+)
 from provisa.fakes.methods import column_value, new_generator
 from provisa.fakes.portable import stable_fake
 
@@ -126,5 +136,12 @@ def register(con: Any) -> None:
         ["VARCHAR", "INTEGER", "BIGINT", "BIGINT"],
         "VARCHAR",
         null_handling="special",
+        side_effects=False,
+    )
+    con.create_function(
+        "provisa_json_text",
+        canonical_json,
+        ["VARCHAR"],
+        "VARCHAR",
         side_effects=False,
     )

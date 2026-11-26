@@ -87,6 +87,9 @@
     "editAria": "עריכת {{name}}",
     "enableAria": "הפעלת {{name}}",
     "disableAria": "השבתת {{name}}",
-    "deleteAria": "מחיקת {{name}}"
+    "deleteAria": "מחיקת {{name}}",
+    "filterPlaceholder": "סינון טריגרים",
+    "closeForm": "סגירת הטופס",
+    "noMatch": "אין טריגרים תואמים"
   }
 }

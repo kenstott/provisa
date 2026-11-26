@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "Per creare relazioni serve il diritto di creare relazioni. Passa a interrogare le tabelle.",
     "queryHint": "Apre Query Explorer con una query iniziale su {{table}}.",
     "queryAction": "Apri una query iniziale",
-    "complete": "Configurazione completata"
+    "complete": "Configurazione completata",
+    "skip": "Salta",
+    "skipped": "Saltato",
+    "done": "Fatto",
+    "finish": "Completa configurazione",
+    "runAgain": "Esegui di nuovo la configurazione",
+    "nothingToQueryHint": "Nessuna tabella registrata da interrogare.",
+    "newTablesHint_one": "{{count}} tabella registrata dopo la configurazione non ha relazioni.",
+    "newTablesHint_other": "{{count}} tabelle registrate dopo la configurazione non hanno relazioni."
   }
 }

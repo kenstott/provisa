@@ -60,14 +60,22 @@ export interface RelationshipQueryRef {
   disableCypher: boolean;
   /** Its GraphQL field as stored (graphql_field), junction-backed edges included. */
   graphqlField: string | null;
-  /** REQ-1417: its name on the SQL plane, which JSON:API's ?include= takes; null when none. */
+  /** REQ-1417: its API name, which REST and JSON:API ?include= take; null when none. */
   physicalName: string | null;
 }
 
 /** The role's graph schema as /data/graph-schema serves it: the parts a query is named by. */
 export interface GraphSchemaDoc {
   /** Each label's table, its key properties and every property it is read by. */
-  node_labels: { label: string; table_id: number; pk_columns: string[]; properties: string[] }[];
+  node_labels: {
+    label: string;
+    table_id: number;
+    pk_columns: string[];
+    properties: string[];
+    /** REQ-1986: the label's parameters, each by the property name a Cypher condition binds it
+     * under (``n._nf_<name>``). */
+    native_filter_columns: { name: string; type: string }[];
+  }[];
   relationship_types: {
     type: string;
     source: string;

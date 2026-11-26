@@ -71,6 +71,8 @@ _SYNTAX: dict[str, ExplainSyntax] = {
     "mysql": ExplainSyntax(
         "EXPLAIN FORMAT=JSON ", "EXPLAIN ANALYZE ", "mysql_json", analyze_fmt="text_indent"
     ),
+    # REQ-2267: ClickHouse returns one plan line per row; ``parse_explain`` joins them (below).
+    "clickhouse": ExplainSyntax("EXPLAIN ", None, "text_indent"),
 }
 
 
@@ -323,10 +325,12 @@ def parse_explain(rows: list[tuple], column_names: list[str], fmt: str) -> list[
         return _from_sqlite(rows)
     if not rows:
         return []
+    # REQ-2267: ClickHouse returns one plan line per row; join all rows for text_indent.
+    if fmt == "text_indent":
+        text = "\n".join(str(r[0]) for r in rows)
+        return _from_text_indent(text)
     # Every JSON/text format returns the plan in one cell; DuckDB puts it in the second column.
     cell = rows[0][-1] if len(column_names) > 1 else rows[0][0]
-    if fmt == "text_indent":
-        return _from_text_indent(str(cell))
     payload = json.loads(cell) if isinstance(cell, str) else cell
     if fmt == "postgres_json":
         plans = payload if isinstance(payload, list) else [payload]

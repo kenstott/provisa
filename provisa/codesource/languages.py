@@ -35,14 +35,15 @@ class CodeLanguage:
     #: The runtimes a source may name; with only one, a source that names none runs on it.
     runtimes: tuple[str, ...]
     #: The kind of package reference its code may be (npm, pypi, gomod, cargo), beside the Git,
-    #: upload and directory references every language shares.
+    #: upload, directory and entered references every language shares.
     package_kind: str
     #: Whether a source names where its code is entered (Python's module, Go's package), when the
     #: code has more than one.
     named_entry: bool
     #: The language's module of how a source of it is prepared (provisa/codesource/source.py):
-    #: its ``prepare(source_id, config, code, lockfile, ctx)`` and its ``package_code(package,
-    #: version)``, the reference of one of its packages.
+    #: its ``prepare(source_id, config, code, lockfile, ctx)``, its ``package_code(package,
+    #: version)``, the reference of one of its packages, and its ``entered_files(source,
+    #: dependencies)``, the bundle code entered in the source form is laid out as.
     module: str
     #: The language's module of what it puts in a source's remote host image (REQ-2098,
     #: provisa/codesource/image_build.py): its ``fetch``, ``LOCKFILES`` and ``layers``.
@@ -53,6 +54,11 @@ class CodeLanguage:
 
     def package_code(self, package: str, version: str) -> Any:  # the language's package reference
         return importlib.import_module(self.module).package_code(package, version)
+
+    def entered_files(self, source: str, dependencies: list[str]) -> dict[str, str]:
+        """REQ-1993 (amended 2026-11-25): code entered in the source form, and its dependency
+        list, laid out as the files of a bundle of this language (path: text)."""
+        return importlib.import_module(self.module).entered_files(source, dependencies)
 
 
 LANGUAGES: dict[str, CodeLanguage] = {
@@ -79,7 +85,7 @@ LANGUAGES: dict[str, CodeLanguage] = {
         CodeLanguage(
             "rust", ("rust",), "cargo", True, "provisa.rustlang.prepare", "provisa.rustlang.image"
         ),
-        # REQ-2225: Spark, one annotated PySpark script run by the Spark host (connectors/spark)
+        # REQ-2225: Spark, a connection to a cluster, joined to the Spark host (connectors/spark)
         # on the pinned CPython; a source of it is made by joining that host, never in dev mode.
         CodeLanguage(
             "spark", ("python",), "pypi", True, "provisa.python.prepare", "provisa.python.image"

@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, waitFor } from "../test-utils/render";
+import { fireEvent, render, screen, waitFor } from "../test-utils/render";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
@@ -128,6 +128,8 @@ describe("inviting someone by email", () => {
       delivery: "sent",
     });
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
 
     await user.type(await screen.findByTestId("team-invite-email"), "dana@acme.com");
     await user.click(screen.getByTestId("team-invite-role"));
@@ -167,6 +169,8 @@ describe("inviting someone by email", () => {
       delivery: "failed: no SMTP host is configured",
     });
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
 
     await user.type(await screen.findByTestId("team-invite-email"), "dana@acme.com");
     await user.click(screen.getByTestId("team-invite-role"));
@@ -193,6 +197,8 @@ describe("inviting someone by email", () => {
       delivery: "not_addressed",
     });
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
 
     await user.click(await screen.findByTestId("team-invite-role"));
     await user.click(await screen.findByText("analyst"));

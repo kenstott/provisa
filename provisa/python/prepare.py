@@ -79,3 +79,18 @@ def prepare(
         ctx.org_id,
         workers=config.workers,
     )
+
+
+def entered_files(source: str, dependencies: list[str]) -> dict[str, str]:
+    """REQ-1993 (amended 2026-11-25): entered code is the single module ``main``; a dependency
+    list, each line a PEP 508 requirement, is its project's dependencies, installed from the
+    lockfile given beside it as any project's are."""
+    import json
+
+    files = {"main.py": source}
+    if dependencies:
+        listed = "".join(f"    {json.dumps(d)},\n" for d in dependencies)
+        files["pyproject.toml"] = (
+            f'[project]\nname = "entered"\nversion = "0.0.0"\ndependencies = [\n{listed}]\n'
+        )
+    return files

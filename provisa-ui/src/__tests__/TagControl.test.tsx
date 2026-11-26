@@ -509,8 +509,12 @@ describe("TagControl: pii on a column", () => {
   it("marks this column alone, with the reason it needs", async () => {
     await openPii();
     fireEvent.click(await screen.findByTestId("pii-just-this"));
+    // REQ-1968: Apply is never disabled by the empty reason; pressing it marks the reason.
     const apply = screen.getByTestId("pii-apply");
-    expect(apply).toBeDisabled();
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("pii-reason")).toHaveAttribute("aria-invalid", "true");
     fireEvent.change(screen.getByTestId("pii-reason"), { target: { value: "holds a phone too" } });
     fireEvent.click(apply);
     await waitFor(() =>

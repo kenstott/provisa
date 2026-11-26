@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "虛構值",
+    "template": "JSON 範本",
+    "templateHint": "每一列顯示的物件：每個欄位可以是 email() 或 uniform(min=1, max=9)::integer 這類虛構值、巢狀物件、固定長度的陣列，或以雙引號括起、不會變動的欄位字面值",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "合成規則",
     "stable": "穩定",
     "stableHint": "在每個引擎和每個區域中都是相同的虛構值",

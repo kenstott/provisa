@@ -35,6 +35,7 @@ import {
   type PlannedTable,
 } from "./plan";
 import { TextField } from "./pickers";
+import type { Step } from "../../../components/StepStrip";
 import { StepHead, WizardFooter } from "./WizardFrame";
 
 /** The plan's tables under their final names, ready to create. */
@@ -174,7 +175,8 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
 export function ModelReview({
   plan,
   index,
-  count,
+  steps,
+  onStep,
   onBack,
   onCancel,
   onDone,
@@ -182,7 +184,8 @@ export function ModelReview({
 }: {
   plan: ModelPlan;
   index: number;
-  count: number;
+  steps: readonly Step[];
+  onStep: (index: number) => void;
   onBack: () => void;
   onCancel: () => void;
   onDone: () => void;
@@ -245,7 +248,8 @@ export function ModelReview({
     <FormLayout>
       <StepHead
         index={index}
-        count={count}
+        steps={steps}
+        onStep={onStep}
         title={t("modelingWizard.review.title")}
         intro={t("modelingWizard.review.intro")}
         testId="wizard-step-review"

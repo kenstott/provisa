@@ -75,8 +75,10 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
+import { ParameterizedBadge } from "./tables/ParameterizedBadge";
 import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
 import { DataVaultWizard } from "./tables/modeling/DataVaultWizard";
@@ -191,6 +193,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     : undefined;
   const expanded: number | null =
     detail.id !== null ? Number(detail.id) : opened ? opened.id : null;
+  // REQ-2277 rule 4: the table `?open=` resolved to is named by `?table=<id>` -- the open table's
+  // deep link -- in place of `?open=`, replacing the entry; `section`, `tab` and `column` stay.
+  const openedId = detail.id === null && opened ? String(opened.id) : null;
+  const resolveOpened = detail.resolve;
+  useEffect(() => {
+    if (openedId !== null) resolveOpened(openedId);
+  }, [openedId, resolveOpened]);
   const setExpanded = (id: number | null) =>
     id === null ? detail.close() : detail.open(String(id));
   // One request for every row; asked for often only while a build runs or a detail is open.
@@ -213,6 +222,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     domains: erd.focus.domains,
     objects: erd.focus.objects,
     modeling: showModeling || null,
+    // REQ-2277: the profile runs dialog, as the URL names it, once a table is open.
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
   });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
@@ -1346,11 +1357,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     { col: "source" },
                     ...(domainsEnabled ? [{ col: "domain" }] : []),
                     { col: "table" },
-                    translate("tablesPage.colNaming"),
-                    translate("tablesPage.colCacheTtl"),
-                    translate("tablesPage.colEffectiveTtl"),
-                    ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
-                    { col: "cols" },
+                    // The columns of settings give way, first to last, when the detail panel
+                    // leaves the list too little room: the source, domain and table never do.
+                    { label: translate("tablesPage.colNaming"), hide: 1 },
+                    { label: translate("tablesPage.colCacheTtl"), hide: 2 },
+                    { label: translate("tablesPage.colEffectiveTtl"), hide: 5 },
+                    ...(hasRegions
+                      ? [{ label: translate("regionSelector.columnHeader"), hide: 4 }]
+                      : []),
+                    { col: "cols", hide: 3 },
                     "",
                   ]}
                 />
@@ -1428,6 +1443,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1986: a parameterized table, and whether a read must give
+                                any of its parameters. */}
+                                <ParameterizedBadge tableName={t.tableName} columns={t.columns} />
                                 <SuggestionsBadge
                                   count={countOf(suggestionCounts, t)}
                                   table={t}
@@ -1651,10 +1669,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
               {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
-              <TableSuggestionsModal
-                table={suggestionsOf}
-                onClose={() => setSuggestionsOf(null)}
-              />
+              <TableSuggestionsModal table={suggestionsOf} onClose={() => setSuggestionsOf(null)} />
             </>
           )
         }

@@ -18,6 +18,7 @@ import { Alert, Loader, Text } from "@mantine/core";
 import { fetchProductProfiles, type ProductProfile } from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { SanitizedProfilePanel } from "../../tables/LatestProfilePanel";
+import { useProfileRunsParam } from "../../tables/useProfileRunsParam";
 
 export function ProfileTab({
   productId,
@@ -33,6 +34,9 @@ export function ProfileTab({
   onLoaded?: (profiles: ProductProfile[]) => void;
 }) {
   const { t } = useTranslation();
+  // REQ-2277: a link to a dataset's profile runs dialog opens the dataset it names.
+  const runs = useProfileRunsParam(true);
+  const linked = runs.profile !== null && runs.tableId !== null ? String(runs.tableId) : null;
   const [read, setRead] = useState<{ profiles: ProductProfile[] | null; error: string | null }>({
     profiles: null,
     error: null,
@@ -72,7 +76,7 @@ export function ProfileTab({
     );
   }
   return (
-    <Collapsibles id={`data-product.profile.${productId}`}>
+    <Collapsibles id={`data-product.profile.${productId}`} reveal={linked}>
       {read.profiles.map((p) => (
         <CollapsibleItem
           key={p.table_id}

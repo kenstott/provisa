@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1431: the rule between the report list and the report is a grab handle — dragging it sets the
-// list width, clamped so neither pane can be dragged away.
+// REQ-1431: the rule between the report list and the report is a grab handle -- dragging it sets
+// how the row is shared, clamped so neither side can be dragged away, and the width is kept.
+// REQ-2277: the rule is the standard split panel's (SplitPane), as on every object page.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
@@ -24,7 +25,11 @@ vi.mock("../../../context/AuthContext", () => ({
   }),
 }));
 vi.mock("../../../hooks/useAdminQueries", () => ({
-  useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
+  useTables: () => ({
+    tables: [{ id: 1, domainId: "ops", tableName: "slow_queries", alias: null, sourceId: "ops" }],
+    loading: false,
+    refetch: vi.fn(),
+  }),
   useRegisterTable: () => ({ registerTable: vi.fn() }),
   useDeleteTable: () => ({ deleteTable: vi.fn() }),
 }));
@@ -35,56 +40,60 @@ vi.mock("../../GovernedTableViewer", () => ({
 
 import { ReportsTab } from "../ReportsTab";
 
-function drag(dx: number) {
-  fireEvent.mouseDown(screen.getByTestId("reports-resize-handle"), { clientX: 500 });
-  fireEvent.mouseMove(window, { clientX: 500 + dx });
-  fireEvent.mouseUp(window);
+const KEY = "provisa.reportsTab.detailWidth";
+
+/** jsdom lays nothing out: give an element the size a browser would report. */
+function size(el: Element, props: Record<string, number>) {
+  for (const [name, value] of Object.entries(props)) {
+    Object.defineProperty(el, name, { configurable: true, value });
+  }
 }
 
-const KEY = storageKey("provisa.reportsTab.listWidth");
+function openReport() {
+  render(<ReportsTab title="Admin — Reports" />);
+  fireEvent.click(screen.getByTestId("report-item-slow_queries"));
+  const panel = screen.getByTestId("reports-split-panel");
+  size(screen.getByTestId("reports-split"), { clientWidth: 1452 });
+  panel.getBoundingClientRect = vi.fn(() => ({ right: 1476 }) as DOMRect);
+  return panel;
+}
 
-describe("ReportsTab resize handle", () => {
-  beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1500 });
+});
+
+describe("ReportsTab resize", () => {
+  it("has no list-resize handle of its own: the split panel's rule is the one", () => {
+    openReport();
+    expect(screen.queryByTestId("reports-resize-handle")).toBeNull();
+    expect(screen.getByTestId("reports-split-handle")).toHaveAttribute("role", "separator");
+  });
 
   it("writes the dragged width to storage and restores it on the next mount", () => {
-    const first = render(<ReportsTab />);
-    expect(localStorage.getItem(KEY)).toBeNull();
-    drag(80);
-    expect(localStorage.getItem(KEY)).toBe("320");
-    first.unmount();
-
-    render(<ReportsTab />);
-    expect(screen.getByTestId("reports-list").style.width).toBe("320px");
+    const panel = openReport();
+    fireEvent.pointerDown(screen.getByTestId("reports-split-handle"), { clientX: 576 });
+    fireEvent.pointerMove(window, { clientX: 776 });
+    fireEvent.pointerUp(window);
+    expect(panel.style.width).toBe("700px");
+    expect(localStorage.getItem(storageKey(KEY))).toBe("700");
   });
 
-  it("reads a width kept earlier", () => {
-    localStorage.setItem(KEY, "400");
-    render(<ReportsTab />);
-    expect(screen.getByTestId("reports-list").style.width).toBe("400px");
+  it("moves the edge with the arrow keys", () => {
+    localStorage.setItem(storageKey(KEY), "700");
+    const panel = openReport();
+    size(panel, { offsetWidth: 700 });
+    fireEvent.keyDown(screen.getByTestId("reports-split-handle"), { key: "ArrowLeft" });
+    expect(panel.style.width).toBe("732px");
   });
 
-  it("moves the edge with the arrow keys and keeps that too", () => {
-    render(<ReportsTab />);
-    fireEvent.keyDown(screen.getByTestId("reports-resize-handle"), { key: "ArrowRight" });
-    expect(screen.getByTestId("reports-list").style.width).toBe("272px");
-    expect(localStorage.getItem(KEY)).toBe("272");
-  });
-
-  it("widens the list as the handle is dragged right", () => {
-    render(<ReportsTab />);
-    expect(screen.getByTestId("reports-list").style.width).toBe("240px");
-
-    drag(80);
-    expect(screen.getByTestId("reports-list").style.width).toBe("320px");
-  });
-
-  it("clamps the list between its minimum and maximum width", () => {
-    render(<ReportsTab />);
-
-    drag(-900);
-    expect(screen.getByTestId("reports-list").style.width).toBe("160px");
-
-    drag(900);
-    expect(screen.getByTestId("reports-list").style.width).toBe("560px");
+  it("clamps so neither the list nor the report can be dragged away", () => {
+    const panel = openReport();
+    fireEvent.pointerDown(screen.getByTestId("reports-split-handle"), { clientX: 576 });
+    fireEvent.pointerMove(window, { clientX: -4000 });
+    expect(panel.style.width).toBe("1172px");
+    fireEvent.pointerMove(window, { clientX: 4000 });
+    expect(panel.style.width).toBe("360px");
+    fireEvent.pointerUp(window);
   });
 });

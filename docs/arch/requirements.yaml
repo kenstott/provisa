@@ -3899,7 +3899,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.) (Amended 2026-11-26: a table discovery cannot read is left out of the run, named with the reason in the run''s result and in the dialog, and the run goes on with the other tables; it no longer stops the run.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -9589,7 +9589,7 @@
     is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
     answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
     truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
-    max_recursion_depth session property.'
+    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.)'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -37486,7 +37486,7 @@
     rows in/out against the command''s declared input/output dataset schema (fail-loud). Prerequisite: a canonical per-dataset contract: one or more scalar (column_value) args plus one or more TYPED input
     datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one
     TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary),
-    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth.'
+    with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth. (Amended 2026-11-25 by the maintainer. A command''''s output dataset columns carry the same governance properties as a table''''s columns, namely visibility, masking, tags, glossary terms and classification, a description, and the SQL alias consumers query by, so a policy keyed on a tag or a classification reaches them. They carry none of the stored-data settings, so no fake or synthetic data (a command''''s output comes from calling its service, and a test environment calls that environment''''s service), no physical name and no column cache setting. The command page shows them on a Columns tab of their own beside Command and Bindings.) (Amended 2026-11-25 by the maintainer, second. A command output column''''s tags, glossary terms and classification are assigned like a table column''''s, in the same stores under a command-column kind named by the command and the column, and are edited on the Tags and Glossary pages; the Columns tab shows them with a link there. The tag-keyed column rule of REQ-2278 applies to them. The SQL alias is the name consumers see and query the result column by.)'
   use_case: A steward composes a governed external transform directly in ordinary SQL joined against federated
     tables, on any surface. Because the command declares and validates its input/output dataset columns, column-level lineage can close across the opaque RPC boundary via taint-closure splicing
     at the function node.
@@ -38969,7 +38969,7 @@
   type: behavioral
   description: HTTP-addressable local materialization. Extend the existing local_dir file:// materialization
     to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized
-    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths. (Amended 2026-11-26 by the maintainer, a local-disk redirect URL is absolute, the request's base URI followed by /data/redirect-file/<id>.<ext>. A request that arrived without HTTP (pgwire, Flight SQL, Bolt, gRPC, stdio MCP) uses server.public_url as the base; when that is unset the delivery is refused, naming the setting.)
   use_case: HTTP-addressable local materialization generalizes the Trino "engine writes the file, client
     receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote
     consumers to retrieve materialized results.
@@ -39101,7 +39101,7 @@
     back to Provisa's local_dir + HTTP-serve (REQ-1191). For DuckDB, this fallback is a deployment gap
     (no guaranteed bucket), not a capability gap; configuring an object store promotes it to the native
     path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file
-    tier absent an extension.
+    tier absent an extension. (Amended 2026-11-26 by the maintainer, the results store is chosen once per profile and every format uses it. Where an object store is configured, every format goes there, a format the engine writes itself through its own write, any other format written by Provisa and uploaded. A configured store that cannot take the result fails the delivery by name; nothing falls back to local disk. Only where no object store is configured are results kept on local disk.)
   use_case: Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path
     available given the engine and deployment configuration.
   code:
@@ -82273,7 +82273,7 @@
     code that imports nothing of Provisa''s keeps working, tagged as today. A decorator and the docstring
     tag produce the same manifest through the one reader; at runtime the SDK does nothing. The SDK has a
     local check command that runs the server''s own reader. It is published from this repository with each
-    release, has no dependencies, and is allowed by default in the build sandbox. (Amended 2026-11-21 by the maintainer, deciding the open questions of the optional SDK design. The SDK types ReadContext only and adds no pushdown parameters. The docs show the docstring tag first and the SDK as the second tab everywhere, and the docstring form is never deprecated. The Python decorator appends the tag line to __doc__, so the reader is unchanged and it works on every server. The check command is provisa code check in the full CLI, run as uvx provisa==V. provisa-sdk is an ordinary runtime dependency, so a code source that adds it needs a lockfile. Go takes the SDK as an ordinary module pinned by go.sum, and Rust as macro_rules! registrations with no proc-macro crate. The SDK has no test helpers, and authors mock as REQ-2106 says. Its column types are aliases of the type mapping and nothing more. The Go path is the vanity path provisa.dev/sdk/go when the site can serve go-import. A tag enters the SDK only in the change that adds it to the manifest and the binding corpus. A loader alone may return a list of rows or a mapping of names to lists of rows. The SDK is built TypeScript and Python first, then Go and Rust.) (Amended 2026-11-24 by the maintainer. Every code source dialog that lets a person enter or view code (a code source''s inline code in any language, a connector''s script such as the Spark script, and any read-only view of a source''s code) uses the app''s code editor, with that language''s highlighting and line numbers, never a plain text box.) (Amended 2026-11-24 by the maintainer. The Spark script is a code source''s script: Spark is a built-in source type, not a connector (REQ-2225); the amendment above that names it a connector''s script is corrected by this one.) (Amended 2026-11-24 by the maintainer. The code resolver source dialog carries, for the language chosen (Python, Node, Go, Rust, Spark), a link to that language''s reference in the docs: every annotation, decorator and type the language''s resolvers can use (in Python, for example, @table, @loader, @columns and commands; the parameter and column types each maps to), with an example of each. Each language has one such reference section; the link opens it in the in-app Docs page at that section, and changes with the language chosen.) (Amended 2026-11-24 by the maintainer. The code-editor rule covers every field in the app that enters or shows code, not only code source dialogs: the OpenAPI source''s inline spec (YAML or JSON), the SPARQL source''s reasoner axioms (Turtle), a command''s binding SQL, native SQL and template, and the admin repository browser''s file view, each with its language''s highlighting and line numbers. Code sources take code from a package, git, an upload or a directory; there is no inline-code origin, and none is added.)'
+    release, has no dependencies, and is allowed by default in the build sandbox. (Amended 2026-11-21 by the maintainer, deciding the open questions of the optional SDK design. The SDK types ReadContext only and adds no pushdown parameters. The docs show the docstring tag first and the SDK as the second tab everywhere, and the docstring form is never deprecated. The Python decorator appends the tag line to __doc__, so the reader is unchanged and it works on every server. The check command is provisa code check in the full CLI, run as uvx provisa==V. provisa-sdk is an ordinary runtime dependency, so a code source that adds it needs a lockfile. Go takes the SDK as an ordinary module pinned by go.sum, and Rust as macro_rules! registrations with no proc-macro crate. The SDK has no test helpers, and authors mock as REQ-2106 says. Its column types are aliases of the type mapping and nothing more. The Go path is the vanity path provisa.dev/sdk/go when the site can serve go-import. A tag enters the SDK only in the change that adds it to the manifest and the binding corpus. A loader alone may return a list of rows or a mapping of names to lists of rows. The SDK is built TypeScript and Python first, then Go and Rust.) (Amended 2026-11-24 by the maintainer. Every code source dialog that lets a person enter or view code (a code source''s inline code in any language, a connector''s script such as the Spark script, and any read-only view of a source''s code) uses the app''s code editor, with that language''s highlighting and line numbers, never a plain text box.) (Amended 2026-11-24 by the maintainer. The Spark script is a code source''s script: Spark is a built-in source type, not a connector (REQ-2225); the amendment above that names it a connector''s script is corrected by this one.) (Amended 2026-11-24 by the maintainer. The code resolver source dialog carries, for the language chosen (Python, Node, Go, Rust, Spark), a link to that language''s reference in the docs: every annotation, decorator and type the language''s resolvers can use (in Python, for example, @table, @loader, @columns and commands; the parameter and column types each maps to), with an example of each. Each language has one such reference section; the link opens it in the in-app Docs page at that section, and changes with the language chosen.) (Amended 2026-11-24 by the maintainer. The code-editor rule covers every field in the app that enters or shows code, not only code source dialogs: the OpenAPI source''s inline spec (YAML or JSON), the SPARQL source''s reasoner axioms (Turtle), a command''s binding SQL, native SQL and template, and the admin repository browser''s file view, each with its language''s highlighting and line numbers. Code sources take code from a package, git, an upload or a directory; there is no inline-code origin, and none is added.) (Amended 2026-11-25 by the maintainer. The sentence that there is no inline-code origin and none is added is superseded by REQ-1993''''s amendment of 2026-11-25: code entered in the source form is an origin for every code source language, Node included, loaded as uploaded code is.)'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -82762,7 +82762,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.)'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.) (Amended 2026-11-26 by the maintainer, a split batch relands without a rerun. Pulling a branch only removes code, so the rest of the batch keeps the first run''s verdicts and goes to the lander without another Smoke or unit run. The split runs only the failing tests, locally and in parallel, not through CI.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -82861,7 +82861,7 @@
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: 'Python is a source type, the Python counterpart of the Node connector (REQ-1984), on the same language-neutral worker protocol. A source holds Python code; each module-level function whose docstring carries the tag @table is offered as a table, @command as a command and @stream (a generator or async generator) as a live table; untagged functions are ignored. Parameters, columns and the types that reach every surface come from the function''s type hints (a dataclass, TypedDict or annotated class becomes a named type); the docstring text is the description; a type that cannot be mapped, an unknown tag, or a @table that does not return a collection is refused by name when the code is loaded. No Provisa package or SDK is imported by the code. A source names its code as a PyPI package at an exact version (public or a private index), a Git repository at a commit or tag with a subdirectory, or an uploaded archive; the reference is pinned and the content''s hash recorded. Dependencies install from the code''s lockfile when the code is loaded, not per call, cached by content hash, through the org''s package indexes (an organization setting with its own admin page, like REQ-1984''s registries; every field resolved with the standard resolution, so it can be a secret reference). The Python runtime is fetched on demand, pinned and hashed. The code runs in its own sandboxed worker process, never inside Provisa''s process: no file access beyond its code, network only to the egress allow-list. Each subscription to a @stream table starts its own generator with that subscriber''s arguments. (Amended 2026-11-22 by the maintainer, pip path. A Python source runs on the base CPython of the interpreter Provisa runs on: the one pip installed Provisa into, or the installer''s bundled python-build-standalone. uv is a declared PyPI dependency of Provisa. Neither is fetched, so a pip-installed Provisa gets nothing for Python from GitHub. Every source has its own virtual environment made by uv from that interpreter, even with no dependencies, so its code sees none of the interpreter''s packages. Only an image built for a remote host takes the pinned python-build-standalone for that host''s platform. This supersedes the earlier text that the runtime is fetched on demand, pinned and hashed.)'
+  description: 'Python is a source type, the Python counterpart of the Node connector (REQ-1984), on the same language-neutral worker protocol. A source holds Python code; each module-level function whose docstring carries the tag @table is offered as a table, @command as a command and @stream (a generator or async generator) as a live table; untagged functions are ignored. Parameters, columns and the types that reach every surface come from the function''s type hints (a dataclass, TypedDict or annotated class becomes a named type); the docstring text is the description; a type that cannot be mapped, an unknown tag, or a @table that does not return a collection is refused by name when the code is loaded. No Provisa package or SDK is imported by the code. A source names its code as a PyPI package at an exact version (public or a private index), a Git repository at a commit or tag with a subdirectory, or an uploaded archive; the reference is pinned and the content''s hash recorded. Dependencies install from the code''s lockfile when the code is loaded, not per call, cached by content hash, through the org''s package indexes (an organization setting with its own admin page, like REQ-1984''s registries; every field resolved with the standard resolution, so it can be a secret reference). The Python runtime is fetched on demand, pinned and hashed. The code runs in its own sandboxed worker process, never inside Provisa''s process: no file access beyond its code, network only to the egress allow-list. Each subscription to a @stream table starts its own generator with that subscriber''s arguments. (Amended 2026-11-22 by the maintainer, pip path. A Python source runs on the base CPython of the interpreter Provisa runs on: the one pip installed Provisa into, or the installer''s bundled python-build-standalone. uv is a declared PyPI dependency of Provisa. Neither is fetched, so a pip-installed Provisa gets nothing for Python from GitHub. Every source has its own virtual environment made by uv from that interpreter, even with no dependencies, so its code sees none of the interpreter''s packages. Only an image built for a remote host takes the pinned python-build-standalone for that host''s platform. This supersedes the earlier text that the runtime is fetched on demand, pinned and hashed.) (Amended 2026-11-25 by the maintainer, code entered here. A fourth way to name the code: entered here. The source form''''s Code from offers Enter it here beside PyPI package, Git repository, Upload and Directory on the server, and shows a code editor for the source''''s language with syntax highlighting, where the code and its dependency list are written and saved with the source. Entered code is part of the model, so it moves with the model across environments, its content hash is recorded like any other origin''''s, and it is loaded, checked and run exactly as uploaded code is. Polly can draft code into it; nothing is saved until the person saves the form or confirms Polly''''s change. The same choice is offered for every code source language.)'
   use_case: 'A data team''s scoring function, def churn_risk(account_id: str) -> list[RiskRow] with @table in its docstring, is registered from their private index and joined to Salesforce accounts in SQL, under the same governance as any table, without the team adding any Provisa dependency.'
   scenario: 'Given a Python source whose package exports churn_risk with @table in its docstring and a RiskRow dataclass return type
 
@@ -88697,7 +88697,7 @@ Then it is refused by name and nothing is copied"
   feature: chat-assistant-panel
   priority: SHOULD
   type: behavioral
-  description: "Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of one tool per action: one reads the admin GraphQL schema and runs its queries, so she finds what exists as the UI does; the other proposes an admin mutation, shows it in the chat, and runs it as the user once the user confirms in the conversation, so it meets the same capability checks the UI meets. Every admin mutation is hers, createRelationship included, and a mutation added later is hers with no Polly change. propose_source/create_source_now and propose_table/register_table_now become cases of the general pair. A UI action that is a REST route and not an admin mutation (a file upload, a settings change, the org folder's encryption, a code archive upload and the like) is listed and reached as well, route by route. Given 'Create any relationships to the new table', she runs the existing relationship discovery (provisa/discovery) for that table, lists its candidates, and accepts the ones the user confirms through the path the admin UI uses. generate_explore_queries covers every query surface: GraphQL, Cypher, SQL, gRPC, JSON:API, OpenAPI, Natural Language, Python and Notebook. (Amended 2026-10-21, BUILD:) Her tools: admin_schema reads the schema's queries and mutations and any named type; admin_query runs a query through the admin schema with the chat's own request, as the user, and refuses a mutation; admin_mutation shows the mutation and a one-sentence summary in the chat and is sent by the user's own browser session (the UI's GraphQL client) only when the user confirms, the exchange recorded in the conversation; admin_rest_routes lists the UI's admin REST routes with their bodies, and admin_request calls one from the user's session, a change confirmed first and an upload's file chosen by the user in the chat. discover_relationships runs the Relationships page's own discovery for one table as the user and returns what it found. Where the UI refuses a user, so does she: a createSource or registerTable by a user without the capability is refused, as on its page, and is no longer queued as a request for approval in her chat (the external MCP server keeps that queue). generate_explore_queries answers nl, python and notebook from the same pipeline's question and SQL. (Amended 2026-11-24 by the maintainer. Polly knows every source type the product offers, including brands, aliases, code sources and Spark, from the product's own source-type registry (never a hand-kept list in her prompt), and can create a source of each type with that type's required fields, register its tables by each kind of registration the type uses, and create relationships with their cardinality, join columns, junction table and code resolver. A credential is never typed into the chat: Polly sets a secret reference and the user enters the value in the form or the vault. Every one of these actions runs as the chatting user and is refused where the user lacks the capability.) (Amended 2026-11-24 by the maintainer. Polly reads the product documentation herself: she searches the same built docs the in-app Docs page serves (every page, in the user's language where translated) and reads a page or section by its address, and grounds answers about the product (code resolver annotations and types, source setup, registration, relationships) on what she read, citing the section. She never tells the user to read the docs and paste them to her, and never guesses a syntax the docs state.)"
+  description: "Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of one tool per action: one reads the admin GraphQL schema and runs its queries, so she finds what exists as the UI does; the other proposes an admin mutation, shows it in the chat, and runs it as the user once the user confirms in the conversation, so it meets the same capability checks the UI meets. Every admin mutation is hers, createRelationship included, and a mutation added later is hers with no Polly change. propose_source/create_source_now and propose_table/register_table_now become cases of the general pair. A UI action that is a REST route and not an admin mutation (a file upload, a settings change, the org folder's encryption, a code archive upload and the like) is listed and reached as well, route by route. Given 'Create any relationships to the new table', she runs the existing relationship discovery (provisa/discovery) for that table, lists its candidates, and accepts the ones the user confirms through the path the admin UI uses. generate_explore_queries covers every query surface: GraphQL, Cypher, SQL, gRPC, JSON:API, OpenAPI, Natural Language, Python and Notebook. (Amended 2026-10-21, BUILD:) Her tools: admin_schema reads the schema's queries and mutations and any named type; admin_query runs a query through the admin schema with the chat's own request, as the user, and refuses a mutation; admin_mutation shows the mutation and a one-sentence summary in the chat and is sent by the user's own browser session (the UI's GraphQL client) only when the user confirms, the exchange recorded in the conversation; admin_rest_routes lists the UI's admin REST routes with their bodies, and admin_request calls one from the user's session, a change confirmed first and an upload's file chosen by the user in the chat. discover_relationships runs the Relationships page's own discovery for one table as the user and returns what it found. Where the UI refuses a user, so does she: a createSource or registerTable by a user without the capability is refused, as on its page, and is no longer queued as a request for approval in her chat (the external MCP server keeps that queue). generate_explore_queries answers nl, python and notebook from the same pipeline's question and SQL. (Amended 2026-11-24 by the maintainer. Polly knows every source type the product offers, including brands, aliases, code sources and Spark, from the product's own source-type registry (never a hand-kept list in her prompt), and can create a source of each type with that type's required fields, register its tables by each kind of registration the type uses, and create relationships with their cardinality, join columns, junction table and code resolver. A credential is never typed into the chat: Polly sets a secret reference and the user enters the value in the form or the vault. Every one of these actions runs as the chatting user and is refused where the user lacks the capability.) (Amended 2026-11-24 by the maintainer. Polly reads the product documentation herself: she searches the same built docs the in-app Docs page serves (every page, in the user's language where translated) and reads a page or section by its address, and grounds answers about the product (code resolver annotations and types, source setup, registration, relationships) on what she read, citing the section. She never tells the user to read the docs and paste them to her, and never guesses a syntax the docs state.) (Amended 2026-11-25 by the maintainer, files. Polly works with files only through the person''s browser: she reads a file the person attaches in the chat (a CSV, an API spec, a code archive, a document) and hands back a file for the person to save (generated code, an export of the model, a query result as CSV or XLSX, a report). She has no read or write access to the server''s file system or any other path, so a file reaches her only when the person chooses it and leaves only as a download; changes to code, documents and the model go through their own objects and the person''s confirmation as before.)"
   use_case: "A presenter asks Polly to add a Parquet file, create any relationships to the new table, and write a query with a join on every query surface, and each step is done live as the presenter, with a confirmation in the chat for each change."
   scenario: "Given a user who holds relationship registration and two registered tables that share a key
 
@@ -88730,8 +88730,8 @@ Then the mutation is refused as it is in the UI"
   - provisa-ui/src/components/ChatPanel.tsx
 
 - id: REQ-2115
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 10. UI & Admin Surfaces
   category: Catalog Explore
   feature: chat-assistant-panel
@@ -90817,7 +90817,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     results show; it is not reported as matching no kind. (Amended 2026-11-15, A MASKED COLUMN SHOWS ITS
     TOO-FEW STATE:) Maintainer 2026-11-15. A masked or pii column shows the ''too few values to classify''
     state and the count of non-null values its sample held, as any column does: the state says how many
-    values there were, never what they were.'
+    values there were, never what they were. (Amended 2026-11-25 by the maintainer. The kinds are not only the shipped ones. An org admin adds a custom kind: its name, its test as a regular expression with an optional named check from the shipped set (Luhn, mod 97, mod 11 and the like), the share of sampled values that must pass, whether it is sensitive, the mask it offers and the glossary term a confirmed column takes; and edits or deletes it. A shipped kind keeps its coded test, but the org may change its share that must pass, its sensitive flag and its mask, and may copy it into a custom kind to change the test. Custom kinds and changed settings are tested and suggested exactly like shipped kinds, and are part of the model, so they move with the model across environments.)'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -92212,7 +92212,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     xid and xid8 functions, and an aggregate''s state functions, whatever text the refusal carries. A function
     a person calls that takes or returns one of these types (row_to_json of a record, a comparison of two
     rows, ts_headline with a configuration, min and max of an xid8, the transaction-status functions) stays
-    under refused by name: it is a gap. (Amended 2026-11-23 by the maintainer. Every conformance report counts each case in one of four categories: passed, skipped by design, documented limit, or failed. A documented limit is a case that fails in exactly the way a stated limitation of that feature on that engine says it will (REQ-2236); it is counted and listed apart from failures, as skipped by design is. The pass rate stays passed over passed and failed. This supersedes the three-category rule of the 2026-10-28 amendment.) (Amended 2026-11-23, maintainer:) MCP conformance: the public suite''s scenarios that call its own reference fixtures (test_* tools and prompts, test:// resources) are skipped by design, since Provisa''s MCP tools, prompts and resources are fixed by the model (REQ-1008); the suite''s other scenarios and Provisa''s own MCP-spec checks on the model''s tools are measured. REST/OpenAPI, JSON:API and gRPC have no public server suite; their scenarios are derived from the specs.'
+    under refused by name: it is a gap. (Amended 2026-11-23 by the maintainer. Every conformance report counts each case in one of four categories: passed, skipped by design, documented limit, or failed. A documented limit is a case that fails in exactly the way a stated limitation of that feature on that engine says it will (REQ-2236); it is counted and listed apart from failures, as skipped by design is. The pass rate stays passed over passed and failed. This supersedes the three-category rule of the 2026-10-28 amendment.) (Amended 2026-11-23, maintainer:) MCP conformance: the public suite''s scenarios that call its own reference fixtures (test_* tools and prompts, test:// resources) are skipped by design, since Provisa''s MCP tools, prompts and resources are fixed by the model (REQ-1008); the suite''s other scenarios and Provisa''s own MCP-spec checks on the model''s tools are measured. REST/OpenAPI, JSON:API and gRPC have no public server suite; their scenarios are derived from the specs. (Amended 2026-11-25 by the maintainer. Six-argument regexp_replace (start, N and flags) is answered on every engine where an exact form exists, starting with ClickHouse, and refused by name only on an engine with no such form, per REQ-2236; this supersedes the 2026-11-02 text that refuses it by name on every engine.)'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -94548,7 +94548,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2194
   value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -95301,7 +95302,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
     with no domain (a role) is checked against the assigner''s acting domains when it is made and records
     no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
-    missing a domain-limited required tag.'
+    missing a domain-limited required tag. (Amended 2026-11-26, maintainer: governance is a tag''s prime use. Every tag has one category from a short fixed list: governance (a classification asserted with evidence, such as pii), policy (the product acts on it: masking, column and row rules; the shipped system tags), quality (certified, trusted source, known issue), lifecycle (draft, experimental; never a state the model already holds such as retired, approved or a suggestion''s outcome, which is refused by name), business (domain-facing labels) and workflow. One tag template serves every category; a category sets the template''s defaults (governance requires a citation per assignment, workflow requires an assignee), and a tag may still carry any section. A workflow is an ordered set of tags: each step names its next step or steps, one or more steps are terminal, each step carries an assignee who completes it and an optional due date or expiry; an object holds one step of a workflow at a time, completing a step replaces it with the next and records who, when and a note, so the assignment history is the workflow''s audit; a terminal step ends the workflow and may expire or remain as the outcome; moving an object to a step is a right on that step''s tag; a workflow never drives a built-in state (the steward still performs the real action). A person sees the steps assigned to them in one place, and Polly reads and moves them under the same rights. Relationships between objects are the ontology''s, not tags''. The Tags list shows one line per tag with counts (where applied: objects and sources; depends on it: classifications and rules) and its category; the detail panel lists them grouped and collapsible, each name a link.)'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -98114,7 +98115,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     catalog can tell production assets from others; the environment switcher shows the stage beside each
     environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
-  status: complete
+  status: in-progress
   tests:
   - tests/unit/test_relationship_review.py
   - tests/integration/test_relationship_review_e2e.py
@@ -98136,7 +98137,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     types among the new tables, and from joins between the new tables and tables already in the model,
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
-    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)'
+    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.) (Amended 2026-11-26, maintainer: the source setup stepper records each step''s outcome per source on the server, shared by every user and environment: tables registered or skipped; relationships found, none found, or skipped; query opened or done. A step is done once it has an outcome, not only once it produces an object. Each step offers one way past it on the step itself: Register tables beside Skip; Discover relationships finishes either way after a run (found: Review; none found: Continue) and offers Skip before a run; Query finishes on opening the explorer or Done. A Finish setup control at the strip''s end is always visible while the strip is active and closes every remaining step as skipped. With every step decided the strip collapses to one Setup complete line with Run setup again; it never reopens on its own, except that newly registered tables with no relationship show as a one-line hint on the collapsed line. There is no separate do-not-show-again control.)'
 - id: REQ-2263
   status: proposed
   target: 2026-Q4
@@ -98322,7 +98323,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
     engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
     Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
-    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.)'
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.) (Amended 2026-11-26, maintainer: a host install that runs Trino also starts the core services Trino needs, as the compose core set does: PostgreSQL (the control plane, reachable over TCP for Trino''s JDBC catalogs), MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy; each listens only on 127.0.0.1 with its data under the install''s data directory, their secrets are generated once and kept across upgrades, and provisa run uses that PostgreSQL when its URLs are set instead of the embedded one.) (Amended 2026-11-26 by the maintainer: on aarch64 the install loads the Zaychik image from the release''s core-images asset, the same asset that carries the other core images, rather than pulling it from a registry.)'
   scenario: 'Given a clean Linux machine with Docker and the release''s assets
 
     When the install script runs for that release
@@ -98513,5 +98514,163 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
     confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
     tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
-    link or by clicking through from a screen she reaches.'
+    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.) (Amended 2026-11-26 by the maintainer, rule 9: on every object management page and the ontology, a detail panel shows an object only while that object is a row of the list the page shows. A remembered selection or a deep link to an object the list leaves out (outside the domains in view, or narrowed out by the search or a filter) opens no detail; the page says once, above the list, which object the link named and why it is not listed, with an action that brings it into view (adds its domain, clears the filter). When a filter, the search or the domains in view remove the selected object from the list, its detail closes.)'
+- id: REQ-2278
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: row-security-and-masking-masking
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-25. A column rule keyed on a tag or a classification: for each role it hides
+    the column or applies a mask to every column that carries the tag or classification, wherever it is,
+    without naming the columns. One shared column rule applies it to table columns and to command output
+    columns alike. A column''s own visibility and masks still apply; where both apply, the stricter result
+    holds (hidden over masked, masked over plain). Tagging or classifying a column brings it under the rule at
+    once, and removing the tag releases it.'
+  scenario: 'Given a rule that masks columns tagged pii for role analyst, when a table column and a command
+    output column are both tagged pii, then analyst sees both masked, and an untagged column stays plain.'
+- id: REQ-2279
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Column-Level Masking
+  feature: row-security-and-masking-masking
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-25. Extends REQ-1494. A JSON column can declare a template fake: the
+    object''s shape, each field with its own fake from the existing kinds and methods (for example email for
+    contact.email and phone_number for contact.phone), nested objects and fixed-length arrays of fields allowed,
+    and a literal for a field that should not vary. Every engine that computes fakes builds the object from the
+    field fakes, so the result is the same JSON on every engine and stable fields stay stable. Each field''s fake
+    is checked as a column''s would be against the field''s type. Propose fakes offers a template for a JSON
+    column from the keys and value types its latest profile run found, and Polly declares one when asked for
+    fakes on fields inside a JSON column. Structured Faker methods (pydict, profile and the like) stay refused. (Amended 2026-11-25 by the lead, the existing per-engine rule applied: the identical-object guarantee holds for a stable template; a template''''s fields follow the column''''s stable flag, and an unstable field, like an unstable column fake, may differ between engines.)'
+  scenario: 'Given a JSON column contact with a template fake {"email": email(), "phone": phone_number()},
+    when the column is read in the fake environment on DuckDB and on Trino, then each row holds an object with
+    an email-shaped email and a phone-shaped phone, and the same row gives the same object on both engines.'
+- id: REQ-2280
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Registration & Governance
+  feature: connector-catalog-files-and-lake
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-25. The File Crawler reads files from OneDrive and Google Drive as two more
+    transports beside file, ftp, sftp, s3, s3a and http(s), so a server or hosted install, where no desktop
+    sync client runs, reaches files kept there. onedrive:// lists and reads through the Microsoft Graph drive
+    API under the same Microsoft sign-in the SharePoint source uses (OneDrive for Business is a SharePoint
+    drive), and gdrive:// through the Google Drive API under a Google service account or OAuth, as the Google
+    Sheets source signs in (files must be shared with a service account, which owns no storage). A path or
+    glob names the folder and files as for the other transports; only the files a glob names are read, when
+    they are read; formats, live and replica modes and governance are the same as every other transport.
+    Each transport has its typed connection form and its credentials are secrets. iCloud Drive offers no
+    server API, so it is not a transport; a desktop install reads a synced iCloud, OneDrive or Google Drive
+    folder through file://. (Amended 2026-11-26, maintainer: at query time every engine reads onedrive:// and gdrive:// files live through the Calcite file adapter, which gains OneDrive and Google Drive storage providers; Provisa passes the storage type and its configuration from the same source fields. No synced copy.) (Amended 2026-11-26 by the maintainer, drives are read with admin access. OneDrive is read app-only, an app registration with the Files.Read.All or Files.ReadWrite.All application permission reading any user''s drive with no user signed in. Google Drive is read by a service account with domain-wide delegation, acting as the user it names, so a Workspace admin can read any user''s Drive. Neither needs a user to sign in or a shared drive.)'
+  scenario: 'Given a OneDrive folder and a Google Drive folder each holding a CSV shared with the source''s
+    identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
+    install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
+- id: REQ-2281
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Entity Resolution
+  feature: glossary-tags-ontology-tags
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-26 (roadmap, after the feature freeze). Entities: a shared map of which records
+    refer to the same thing, across sources, built from tags. ENTITIES DOMAIN: a system domain named Entities
+    always exists in every org and is owned like any domain; who may see or act in it is ordinary rights, so an
+    org that does not want entities grants nobody rights there. Entity names are org-wide: an entity is created from a glossary term and
+    shares its name, description and definition (every entity is a term; not every term is an entity); creating
+    one, with its normalization rules, aliases, exclusions and disclosure setting, is a right in the Entities
+    domain, and each entity''s hub is a governed table of that domain. Provisa does not position this as
+    master data management: the hubs and links are ordinary governed tables that an MDM product may read through
+    any front door or receive through the metadata exports. DECLARATION: tagging a column entity:<name> declares
+    its table a source of that entity and is itself the approval of the generated relationship from that table to
+    the hub; applying an entity tag requires the right to create relationships in the column''s own domain (no
+    cross-domain entity tagging), and a person without that right applies it through an ordinary request to that
+    domain''s stewards, whose approval applies the tag and the relationship together; removing the tag retires the
+    relationship. Tagging shows the entity''s definition, and joining an entity means accepting that meaning (a
+    domain meaning something else creates another entity). An entity column is a varchar; the tag is refused by
+    name on any other type. Nothing upstream needs to be unique or a key: the hub mints the key. NORMALIZATION:
+    each entity declares its rules once (for example lowercase and trim an email, E.164 a phone, strip
+    punctuation from a tax id), a column may override formatting but not meaning, and values are normalized
+    before they are compared. HUB AND LINKS: per entity, a hub with one row per resolved entity (a surrogate key
+    that stays stable across refreshes, its canonical value, first and last seen); an entity that disappears is
+    retired, never deleted. Each source domain has its own link table, owned and governed by that domain and
+    refreshed from that domain''s sources, mapping each of its tables, columns, raw values and text spans to a key
+    with a match score (exact matches score 1): either an entity''s hub key (an instance mention) or a glossary
+    term''s id (a concept mention, REQ-2282; a term needs no hub, it is the key). Both are built and refreshed like a materialized view on the serving
+    engine, identical on every engine, incrementally from change signals. A relationship from each source table
+    to the hub, through its domain''s link table as a junction, is generated as an ordinary governed relationship
+    marked generated, with the score as a property of the edge; none is generated where a registered relationship
+    already joins the same tables on the same columns. MATCHING: deterministic first, exact match of normalized
+    values; fuzzy matching (similarity, or a match on several attributes) never merges and needs no review: each
+    candidate link carries its score and whoever queries chooses the score or threshold that counts as a match.
+    Survivorship rules per attribute (most recent, preferred source, most complete) choose the hub''s attribute
+    values; a table where the tagged column is unique, detected from the data, is a record of the entity and the
+    preferred source. EXCLUSION: a person who finds a match wrong raises it with a steward through the ordinary
+    request flow; a steward of the entity may exclude a link (or a whole hub entity), with a reason, recorded and
+    reversible, never hard-deleted; an excluded link is shown to no reader at any threshold and is never
+    recreated by a refresh or scan; when excluding, the steward may also add a negative alias so the value never
+    matches that entity anywhere. CROSS-DOMAIN REFERENCES: an entity''s panel lists every reference grouped by
+    domain, table and column (and, through REQ-2282, documents and text), each a link with its score; a governed
+    view of each entity''s references returns the hub joined to every domain link table the reader may read.
+    GOVERNANCE: the reader sees a domain''s links only by reading that domain''s link table; masks, row rules and
+    column visibility on an input column apply to the links drawn from it; references in domains the reader
+    cannot read are shown as a count with no names or values, unless the entity''s disclosure setting hides even
+    the count. UI: a Context > Entities tab, a standard object management page: one line per entity (name,
+    description, owner, feeding domains and tables, scan status), + Entity for people with rights in the Entities
+    domain, and a deep-linked detail panel with the definition, rules, aliases, references grouped by domain,
+    exclusions and scan progress; a tagged column shows the entity it feeds, a document lists the entities it
+    mentions, and the ontology graph may show entities as nodes linked to the tables that feed them.'
+  scenario: 'Given an Entities steward who created entity party, and two domains each tagging an email column
+    entity:party whose values are Bob@X.com and bob@x.com, when the party hub is built, then the hub holds one
+    party with a stable key, each domain''s own link table maps its row to that key with score 1, a query reaches
+    both sources through the hub with no registered relationship, a role that can read only the first domain sees
+    one reference and a count of one more, and a link a steward excluded is shown to nobody after the next refresh.'
+
+- id: REQ-2282
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Entity Resolution
+  feature: glossary-tags-ontology-tags
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-26 (roadmap, after the feature freeze). Entities are also found in text, so
+    for example sales notes link to the products they mention and a policy links to the tables it governs. SCOPE:
+    nothing is searched unless tagged: entity-search on a table searches its varchar columns, on a column only that
+    column, on a reference library document or collection its sections; with no parameter it searches for every
+    entity, and entity-search:<name>[,<name>...] narrows it. PATTERNS: the custom pattern list is every entity''s
+    canonical values and aliases (REQ-2281) plus every glossary term''s name and synonyms as
+    concept patterns.
+    Matching uses spaCy: phrase matching (EntityRuler) of the custom patterns with token boundaries, exact or
+    contained in the text, cheap enough for any host; and the statistical model''s standard entity types (person,
+    organization, place, product and the like; value types such as dates, money, percentages, quantities and
+    numbers are excluded) as detected mentions, which are candidates for creating an entity and, where they
+    match an entity''s values or aliases, scored links. Every text link carries a score; exclusions and negative
+    aliases (REQ-2281) apply. Row-level mentions are stored in the source domain''s link table (REQ-2281), keyed by
+    the entity''s hub key or the term''s id. The ontology gains found edges aggregated from them (a column that mentions
+    a term in a share of its rows, a document section that mentions a term), each with a score, a count and a found
+    origin beside curated citations and groundings; found edges enter no review queue, a steward may promote one to
+    curated or exclude it, and each drills down to its rows. This is how a policy reaches the tables it governs:
+    policy section, term, grounded columns. COST: the
+    statistical model runs either on the Provisa server itself (CPU, for development and small orgs, under a small
+    scan budget that keeps it workable) or optionally on a remote worker paired like a code-source remote host, with a GPU
+    for throughput or a cheaper CPU-only host accepting less; never on the serving engines; the scan budget is set
+    per placement. A rotating scanner works through the tagged tables, columns and documents at a set budget
+    and starts over; an item is rescanned only when its content, the pattern list or the model changed (its scan
+    fingerprint), the pattern list is rebuilt each cycle, progress shows as one status line, and any table or
+    document can be scanned on demand. spaCy and its models are an optional install, staged like the other
+    runtime assets. GOVERNANCE: a text link is visible only to a reader of both the text and the entity''s link
+    table, and a document never reveals a table or column name its reader cannot see.'
+  scenario: 'Given a product entity with value Widget Pro and a sales_notes table tagged entity-search:product
+    whose body reads ordered two widget pro units, when the scanner reaches that row, then a scored link from the
+    note to the Widget Pro product exists, a policy document tagged entity-search that mentions customer email
+    links to the customer_email column, a date in the note produces no link, and a reader who cannot read
+    sales_notes sees no link from it.'

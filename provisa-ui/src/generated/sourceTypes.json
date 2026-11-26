@@ -2068,7 +2068,7 @@
           "name": "code",
           "at": "mappingJson",
           "required": true,
-          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} (an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
         },
         {
           "name": "secrets",
@@ -2171,7 +2171,7 @@
           "name": "code",
           "at": "mappingJson",
           "required": true,
-          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} (an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
         },
         {
           "name": "entry",
@@ -2280,7 +2280,7 @@
           "name": "code",
           "at": "mappingJson",
           "required": true,
-          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} (an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
         },
         {
           "name": "entry",
@@ -2389,7 +2389,7 @@
           "name": "code",
           "at": "mappingJson",
           "required": true,
-          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} (an archive uploaded with admin_request); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
+          "note": "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} (an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the organization secrets the code reads, by name; settings holds its non-secret settings."
         },
         {
           "name": "entry",
@@ -2497,12 +2497,6 @@
           }
         },
         {
-          "name": "settings.script",
-          "at": "mappingJson",
-          "required": true,
-          "note": "the annotated PySpark script, as text"
-        },
-        {
           "name": "settings.cluster",
           "at": "mappingJson",
           "note": "the Spark cluster; left out, the organization's default"
@@ -2516,7 +2510,6 @@
       "note": "A Spark source joins the Spark host this installation carries (no host, port or pairing code): admin_request GET /admin/orgs/{org}/builtin-sources/spark returns the host and the cluster a source that names none runs on.",
       "mapping_json": [
         "connector_join",
-        "settings.script",
         "settings.cluster",
         "secrets"
       ],

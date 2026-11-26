@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, waitFor } from "../test-utils/render";
+import { fireEvent, render, screen, waitFor } from "../test-utils/render";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
@@ -99,6 +99,8 @@ describe("choosing how long an invitation stays redeemable", () => {
   it("opens on a week and sends what the org_admin types instead", async () => {
     const user = userEvent.setup();
     render(<TeamPage />);
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
     await pickAnalyst(user);
 
     const days = screen.getByTestId("team-invite-expires-days");
@@ -114,6 +116,8 @@ describe("choosing how long an invitation stays redeemable", () => {
   it("will not mint a link that expires before it is made", async () => {
     const user = userEvent.setup();
     render(<TeamPage />);
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
     await pickAnalyst(user);
 
     const days = screen.getByTestId("team-invite-expires-days");
