@@ -56,6 +56,7 @@ import { CandidatesPanel } from "./sql-modeling/CandidatesPanel";
 import { ErrorsPanel } from "./sql-modeling/ErrorsPanel";
 import { HistoryPanel } from "./sql-modeling/HistoryPanel";
 import { Tip } from "./Tip";
+import { useRequiredFields } from "./form/useRequiredFields";
 import { CanvasControls, CanvasButton, CONTROL_ICON } from "./provisa-graph/CanvasControls";
 import "./editor-hover-controls.css";
 
@@ -108,6 +109,9 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   // REQ-2253: NL-to-SQL works only within the navbar's selected domains.
   const viewDomains = useViewDomains();
   const [nlCypher, setNlCypher] = useState("");
+  // REQ-1968: Generate needs a question and Run / Extract joins need SQL, each checked when it is
+  // pressed rather than by disabling the button.
+  const required = useRequiredFields({ nl: nlText, sql: sqlText });
   const [page, setPage] = useState(0);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -625,6 +629,13 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                 >
                   <Tip text={nlError || undefined}>
                     <TextInput
+                      // Needed only by Generate: marked when Generate (or Enter) finds it empty,
+                      // never on leaving it (no marker, no blur). Red also on the server's
+                      // refusal, whose words are in the Tip.
+                      {...required.field("nl")}
+                      required={false}
+                      onBlur={undefined}
+                      error={required.errorOf("nl") || nlError !== ""}
                       value={nlText}
                       placeholder={t("sqlModelingModal.nlPlaceholder")}
                       aria-label={t("sqlModelingModal.nlPlaceholder")}
@@ -633,11 +644,11 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                         setNlError("");
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && nlText.trim() && !nlLoading) void generateSql();
+                        if (e.key !== "Enter" || nlLoading || !required.validate(["nl"])) return;
+                        void generateSql();
                       }}
                       rightSection={nlLoading ? <Loader size="xs" /> : null}
                       disabled={nlLoading}
-                      error={!!nlError}
                       aria-busy={nlLoading}
                       size="xs"
                       style={{ flex: 1 }}
@@ -656,10 +667,9 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                   </Tip>
                   <Button
                     size="xs"
-                    disabled={!nlText.trim() || nlLoading}
                     loading={nlLoading}
                     onClick={() => {
-                      if (!nlText.trim() || nlLoading) return;
+                      if (nlLoading || !required.validate(["nl"])) return;
                       void generateSql();
                     }}
                     data-testid="sql-modeling-generate-sql"
@@ -701,6 +711,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     onChange={(v) => setSqlText(v)}
                     onCreateEditor={(view) => {
                       editorViewRef.current = view;
+                      required.field("sql").ref(view.contentDOM);
                     }}
                     style={{ fontSize: "0.8rem" }}
                   />
@@ -714,6 +725,17 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     />
                   </CanvasControls>
                 </div>
+                {required.errorOf("sql") !== undefined && (
+                  <Text
+                    size="xs"
+                    c="red"
+                    px="0.75rem"
+                    pt="0.25rem"
+                    data-testid="sql-modeling-sql-required"
+                  >
+                    {required.errorOf("sql")}
+                  </Text>
+                )}
 
                 {/* Toolbar */}
                 <Group
@@ -729,9 +751,11 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                   <Button
                     size="xs"
                     leftSection={<Play size={11} />}
-                    onClick={handleRun}
+                    onClick={() => {
+                      if (!required.validate(["sql"])) return;
+                      void handleRun();
+                    }}
                     loading={running}
-                    disabled={running || !sqlText.trim()}
                     data-testid="sql-modeling-run"
                   >
                     {running ? t("sqlModelingModal.runningLabel") : t("sqlModelingModal.run")}
@@ -783,8 +807,10 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                   <Button
                     size="xs"
                     variant="default"
-                    onClick={handleExtractJoins}
-                    disabled={!sqlText.trim()}
+                    onClick={() => {
+                      if (!required.validate(["sql"])) return;
+                      handleExtractJoins();
+                    }}
                     data-testid="sql-modeling-extract-joins"
                   >
                     {t("sqlModelingModal.extractJoins")}

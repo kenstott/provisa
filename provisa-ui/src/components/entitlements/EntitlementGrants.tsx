@@ -20,6 +20,7 @@ import { notifications } from "@mantine/notifications";
 import { Plus } from "lucide-react";
 import { endList, fetchPending, type AccessView, type PendingGrant } from "../../api/entitlements";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../list/ListTable";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { EntitlementListForm } from "./EntitlementListForm";
@@ -32,6 +33,8 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
   const [granting, setGranting] = useState(false);
   const [ending, setEnding] = useState<PendingGrant | null>(null);
   const [endReason, setEndReason] = useState("");
+  // REQ-1968: ending a grant needs its reason, checked when End is pressed.
+  const endRequired = useRequiredFields({ reason: endReason });
   const [error, setError] = useState<string | null>(null);
 
   const report = useCallback(
@@ -58,6 +61,7 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
   };
 
   const end = async (g: PendingGrant) => {
+    if (!endRequired.validate()) return;
     try {
       await endList({
         grantee: { email: g.email },
@@ -150,7 +154,7 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
           <FormField size="long" hint={t("entitlements.form.reasonHint")}>
             <TextInput
               label={t("entitlements.form.reasonLabel")}
-              required
+              {...endRequired.field("reason")}
               value={endReason}
               onChange={(e) => setEndReason(e.currentTarget.value)}
               data-testid="entitlement-pending-end-reason"
@@ -161,7 +165,6 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
             cancelProps={{ "data-testid": "entitlement-pending-end-cancel" }}
             action={
               <DestructiveConfirmButton
-                disabled={endReason.trim() === ""}
                 onClick={() => end(ending)}
                 testId="entitlement-pending-end-submit"
               >
@@ -221,6 +224,7 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
                       variant="light"
                       onClick={() => {
                         setEndReason("");
+                        endRequired.reset();
                         setEnding(g);
                       }}
                       data-testid={`entitlement-pending-end-${pendingKey(g)}`}

@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "创建关系需要创建关系的权限。请直接查询这些表。",
     "queryHint": "在查询浏览器中打开针对 {{table}} 的入门查询。",
     "queryAction": "打开入门查询",
-    "complete": "设置完成"
+    "complete": "设置完成",
+    "skip": "跳过",
+    "skipped": "已跳过",
+    "done": "完成",
+    "finish": "完成设置",
+    "runAgain": "重新运行设置",
+    "nothingToQueryHint": "没有可查询的已注册表。",
+    "newTablesHint_one": "设置后注册的 {{count}} 个表没有关系。",
+    "newTablesHint_other": "设置后注册的 {{count}} 个表没有关系。"
   }
 }

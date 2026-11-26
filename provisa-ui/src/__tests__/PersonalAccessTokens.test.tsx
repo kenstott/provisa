@@ -110,19 +110,39 @@ describe("PersonalAccessTokens", () => {
     await waitFor(() => expect(screen.queryByTestId("profile-pat-secret")).not.toBeInTheDocument());
   });
 
-  it("refuses to issue an unnamed token", async () => {
+  // REQ-1968: Issue is never disabled by a missing field; pressing it marks what is missing.
+  it("refuses to issue an unnamed token, marking the name when Issue is pressed", async () => {
     render(<PersonalAccessTokens />);
-    expect(await screen.findByTestId("profile-pat-issue")).toBeDisabled();
+    const issue = await screen.findByTestId("profile-pat-issue");
+    expect(issue).toBeEnabled();
+    fireEvent.click(issue);
+    expect(issueSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("profile-pat-name")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("profile-pat-name")).toHaveFocus();
   });
 
   it("requires a role: a named token with none picked is not issued", async () => {
+    issueSpy.mockResolvedValue({ token: "provisa_pat_secret" });
     render(<PersonalAccessTokens />);
     fireEvent.change(await screen.findByTestId("profile-pat-name"), { target: { value: "ci" } });
     // The standard picker marks a required field on its label.
     expect(screen.getByText("Roles", { selector: "label" })).toHaveTextContent("Roles *");
-    expect(screen.getByTestId("profile-pat-issue")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("profile-pat-issue"));
+    expect(issueSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Roles" })).toHaveAttribute("aria-invalid", "true");
     await pickRole("steward");
-    expect(screen.getByTestId("profile-pat-issue")).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Roles" })).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    fireEvent.click(screen.getByTestId("profile-pat-issue"));
+    await waitFor(() =>
+      expect(issueSpy).toHaveBeenCalledWith({
+        name: "ci",
+        scopes: ["steward"],
+        expires_in_days: null,
+      }),
+    );
   });
 
   it("offers the roles the user holds, and no other", async () => {
@@ -135,7 +155,12 @@ describe("PersonalAccessTokens", () => {
   });
 
   it("issues a token for every role picked, in the order picked", async () => {
-    issueSpy.mockResolvedValue({ token: "provisa_pat_S", prefix: "p", name: "ci", expires_at: null });
+    issueSpy.mockResolvedValue({
+      token: "provisa_pat_S",
+      prefix: "p",
+      name: "ci",
+      expires_at: null,
+    });
     render(<PersonalAccessTokens />);
     fireEvent.change(await screen.findByTestId("profile-pat-name"), { target: { value: "ci" } });
     await pickRole("steward");

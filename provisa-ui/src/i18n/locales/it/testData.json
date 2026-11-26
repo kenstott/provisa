@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "Valore fittizio",
+    "template": "Modello JSON",
+    "templateHint": "L'oggetto mostrato da ogni riga: ogni campo è un valore fittizio come email() o uniform(min=1, max=9)::integer, un oggetto annidato, un array a lunghezza fissa o un letterale tra virgolette doppie per un campo che non varia",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "Regola sintetica",
     "stable": "Stabile",
     "stableHint": "Lo stesso valore fittizio su ogni motore e in ogni regione",

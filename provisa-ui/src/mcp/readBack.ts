@@ -161,6 +161,8 @@ const LINK_PARAMS = [
   "product",
   "panel",
   "term",
+  "profile",
+  "profileView",
   "discover",
 ];
 

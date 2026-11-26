@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext";
 import { landingPath } from "../components/navGroups";
 import { OrgAddressModal } from "../components/OrgAddressModal";
 import { isOrgSubdomainHost, orgFromHost, orgOrigin } from "../lib/authHost";
+import { RoutePageHelp } from "../components/RoutePageHelp";
 
 // REQ-1276: where the org create lands. Onboarding runs on the control plane, but the org it built
 // lives at its own host, so the last step of the create is a document load to that host — and this
@@ -70,6 +71,7 @@ export function OrgWelcomePage() {
               {t("onboardOrg.welcomeAdmin")}
             </Text>
           </div>
+          <RoutePageHelp placement="own" />
         </Group>
 
         <Divider />

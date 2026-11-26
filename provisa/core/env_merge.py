@@ -49,7 +49,14 @@ from provisa.core import model_change
 from provisa.core.env_classes import IDENTITY_ONLY, SEEDED_AT_CREATION
 from provisa.core.env_conflicts import Conflict
 from provisa.core.env_copy import TableDelta, _copy_settings
-from provisa.core.env_deploy import PROJECTED, DeployDelta, in_scope, land, table_of
+from provisa.core.env_deploy import (
+    PROJECTED,
+    DeployDelta,
+    _domain_id_of,
+    in_scope,
+    land,
+    table_of,
+)
 from provisa.core.env_files import domain_path, kind_path
 from provisa.core.env_project import COMMANDS_DIR, KIND_DIRS, project
 from provisa.core.environments import PROD, org_schema
@@ -249,11 +256,23 @@ def _rebased(path: str, body: dict[str, Any], src_schema: str, dst_schema: str) 
 
 #: REQ-2248: the kinds whose objects are retired, never removed: a merge that removes one of them
 #: retires it in the target instead. Columns and relationships are parts of a table's file and are
-#: retired inside it (:func:`_keeping_retired`).
-RETIRED_NOT_REMOVED: frozenset[str] = frozenset({"registered_tables", "tags", "metrics"})
+#: retired inside it (:func:`_keeping_retired`); a domain is retired by :func:`_retire_domains`, as
+#: its delete retires it. A source is identity-only and no merge removes it (REQ-1491).
+RETIRED_NOT_REMOVED: frozenset[str] = frozenset(
+    {"registered_tables", "tags", "metrics", "glossary_terms"}
+)
 
 #: A table file's parts that are model objects in their own right, by the key that addresses each.
 _RETIRED_PARTS: dict[str, str] = {"columns": "column_name", "relationships": "id"}
+
+#: What a term's retirement clears beside the stamp, as its delete does (``glossary._mark_retired``):
+#: a retired term is neither approved nor deprecated, and has no planned retirement.
+_TERM_RETIRED: dict[str, Any] = {"approved": False, "deprecation_asserted": False}
+
+#: The keys under which a file names a domain by its id, as one value or as a list of them: the
+#: columns :func:`provisa.core.repositories.integrity.rekey` re-points when a domain is retired.
+_DOMAIN_KEYS: frozenset[str] = frozenset({"domain_id", "parent_domain_id"})
+_DOMAIN_LISTS: frozenset[str] = frozenset({"allowed_domains", "domain_access"})
 
 
 def merged_tree(
@@ -271,46 +290,169 @@ def merged_tree(
     An identity-only object is never removed (REQ-1491): its binding is a fact the target
     established, and the source not naming it is no evidence that it should go.
 
-    Nothing in the model is removed (REQ-2248): a table, tag or metric the merge would remove is
-    kept in the target RETIRED, ``by`` the person merging, for ``why``; a column or relationship
-    the target holds in a table the source carries without it is kept in that table, retired. A
-    retirement the source holds travels as any other change to its file.
+    Nothing in the model is removed (REQ-2248): a table, tag, metric or glossary term the merge
+    would remove is kept in the target RETIRED, ``by`` the person merging, for ``why``; a column or
+    relationship the target holds in a table the source carries without it is kept in that table,
+    retired; and a domain the merge would remove is retired as its delete retires it, only when no
+    live object holds it (:func:`_retire_domains`). A retirement the source holds travels as any
+    other change to its file.
     """
     stamp = retirement.stamped(why, by)
     merged = dict(target)
-    kept: list[str] = []
+    domains: list[str] = []
     for path in chosen:
         if path in source:
             merged[path] = _keeping_retired(path, source[path], target.get(path), stamp)
         elif removals and path in merged and table_of(path) not in IDENTITY_ONLY:
-            if table_of(path) in RETIRED_NOT_REMOVED:
-                merged[path] = _retired(merged[path], stamp)
-                kept.append(path)
+            kind = table_of(path)
+            if kind in RETIRED_NOT_REMOVED:
+                merged[path] = _retired(merged[path], stamp, kind)
+            elif kind == "domains":
+                domains.append(path)
             else:
                 del merged[path]
-    _keep_what_the_retired_stand_on(merged, target, kept)
+    _retire_domains(merged, source, domains, stamp)
     return merged
 
 
-def _keep_what_the_retired_stand_on(merged: Tree, target: Tree, kept: list[str]) -> None:
-    """Put back in ``merged`` each object of the target that one the merge ``kept`` retired cannot
-    stand without (:func:`requirements`), and what that one needs in turn.
+def _retire_domains(merged: Tree, source: Tree, paths: list[str], stamp: dict[str, Any]) -> None:
+    """Retire in ``merged`` each domain at ``paths`` that no live object holds, as its delete does
+    (REQ-2248, amended 2026-11-15: DELETING A SOURCE OR A DOMAIN RETIRES IT).
 
-    A retired table keeps its row, and its row names its domain, its terms and its edges: removing
-    the domain under it leaves a tree naming a domain it does not hold, refused whole by the apply
-    (REQ-2248: the merge retires the table; nothing of the model under it is removed with it)."""
-    queue = sorted(kept)
-    while queue:
-        path = queue.pop()
-        for needed in sorted(requirements(path, merged[path], target)):
-            if needed not in merged and needed in target:
-                merged[needed] = target[needed]
-                queue.append(needed)
+    A domain a live object holds -- a live table in it, or a live object naming it: a domain under
+    it, a product, command, term or source placed in it -- is kept unchanged, as its delete is
+    refused; so is a domain the deployment keeps. Any other is moved, with the retired tables in
+    it, to a key of its own (:func:`retirement.retired_key`) holding its id in ``retired_id``, and
+    every reference to it or to those tables is re-pointed (``integrity.rekey``): its id is free.
+    One retired already keeps its own key and retirement. A domain held only by another that is
+    retired here is retired after it.
+
+    When the source carries this domain's own retirement -- the delete that retired it there, at a
+    key the target does not hold -- the target's domain joins it at that key rather than being
+    retired a second time: one retirement, the one that travelled."""
+    from provisa.core import domain_policy
+
+    keep = set(domain_policy.system_domain_ids())
+    pending = [p for p in sorted(paths) if not merged[p].get("retired")]
+    while True:
+        free = [p for p in pending if _domain_id_of(p) not in keep and not _held(merged, p)]
+        if not free:
+            return
+        for path in free:
+            pending.remove(path)
+            _move_retired_domain(merged, path, stamp, _travelled(source, merged, path))
 
 
-def _retired(body: dict[str, Any], stamp: dict[str, Any]) -> dict[str, Any]:
+def _tables_in(merged: Tree, path: str) -> list[str]:
+    """The table files sitting directly in the domain whose ``domain.yaml`` is at ``path``."""
+    prefix = _directory(path) + "tables/"
+    return [
+        p
+        for p in merged
+        if p.startswith(prefix)
+        and "/" not in p[len(prefix) :]
+        and table_of(p) == "registered_tables"
+    ]
+
+
+def _directory(path: str) -> str:
+    """The directory a domain's ``domain.yaml`` at ``path`` describes, with its trailing slash."""
+    return path[: path.rindex("/") + 1] if "/" in path else ""
+
+
+def _held(merged: Tree, path: str) -> bool:
+    """Whether a live object in ``merged`` holds the domain at ``path``."""
+    domain = _domain_id_of(path)
+    if any(not merged[t].get("retired") for t in _tables_in(merged, path)):
+        return True
+    return any(
+        other != path and not body.get("retired") and _names_domain(body, domain)
+        for other, body in merged.items()
+    )
+
+
+def _names_domain(value: Any, domain: str) -> bool:
+    if isinstance(value, dict):
+        return any(
+            (k in _DOMAIN_KEYS and v == domain)
+            or (k in _DOMAIN_LISTS and isinstance(v, list) and domain in v)
+            or _names_domain(v, domain)
+            for k, v in value.items()
+        )
+    if isinstance(value, list):
+        return any(_names_domain(v, domain) for v in value)
+    return False
+
+
+def _travelled(source: Tree, merged: Tree, path: str) -> str | None:
+    """The path of the source's retirement of the domain at ``path`` that the merge carried in --
+    the latest, when it was retired there more than once -- or None when it carries none."""
+    domain = _domain_id_of(path)
+    carried = [
+        p
+        for p, body in source.items()
+        if table_of(p) == "domains"
+        and body.get("retired")
+        and body.get("retired_id") == domain
+        and merged.get(p) == body
+    ]
+    if not carried:
+        return None
+    return max(carried, key=lambda p: (str(source[p].get("status_at")), p))
+
+
+def _move_retired_domain(
+    merged: Tree, path: str, stamp: dict[str, Any], joined: str | None
+) -> None:
+    """Move the domain at ``path`` and the tables in it to the key it is retired under -- the one
+    at ``joined`` when the merge carried one in, else a new one -- and re-point every reference to
+    either. A table the joined retirement already holds is the one that stands."""
+    domain = _domain_id_of(path)
+    if joined is None:
+        new_path = domain_path(retirement.retired_key(domain))
+        merged[new_path] = {**merged.pop(path), **stamp, "retired_id": domain}
+    else:
+        new_path = joined
+        del merged[path]
+    key = _domain_id_of(new_path)
+    old_dir, new_dir = _directory(path), _directory(new_path)
+    moved = {t: new_dir + t[len(old_dir) :] for t in _tables_in(merged, path)}
+    for old, new in moved.items():
+        body = merged.pop(old)
+        merged.setdefault(new, body)
+    for p, body in merged.items():
+        merged[p] = _repointed(body, moved, domain, key)
+
+
+def _repointed(value: Any, moved: dict[str, str], domain: str, key: str) -> Any:
+    """``value`` with each moved table path and each reference to ``domain`` by id re-pointed."""
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            if k in _DOMAIN_KEYS and v == domain:
+                out[k] = key
+            elif k in _DOMAIN_LISTS and isinstance(v, list):
+                out[k] = [key if m == domain else m for m in v]
+            else:
+                out[k] = _repointed(v, moved, domain, key)
+        return out
+    if isinstance(value, list):
+        return [_repointed(v, moved, domain, key) for v in value]
+    if isinstance(value, str):
+        return moved.get(value, value)
+    return value
+
+
+def _retired(
+    body: dict[str, Any], stamp: dict[str, Any], kind: str | None = None
+) -> dict[str, Any]:
     """``body`` retired with ``stamp``; one retired already keeps its own who, when and why."""
-    return body if body.get("retired") else {**body, **stamp}
+    if body.get("retired"):
+        return body
+    if kind == "glossary_terms":
+        held = {k: v for k, v in body.items() if k != "retire_on"}
+        return {**held, **_TERM_RETIRED, **stamp}
+    return {**body, **stamp}
 
 
 def _keeping_retired(

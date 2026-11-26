@@ -6,11 +6,22 @@
     "nowhere": "無",
     "hiddenPlaces_one": "另有 {{count}} 項您無權讀取",
     "hiddenPlaces_other": "另有 {{count}} 項您無權讀取",
-    "rowFilters_one": "{{count}} 個資料列篩選器",
-    "rowFilters_other": "{{count}} 個資料列篩選器",
-    "classifiedAs": "由分類指定：{{kind}}",
     "noDependents": "無",
     "enabled": "已啟用",
-    "disabled": "已停用"
+    "disabled": "已停用",
+    "objectCount_one": "{{count}} 個物件",
+    "objectCount_other": "{{count}} 個物件",
+    "sourceCount_one": "{{count}} 個資料來源",
+    "sourceCount_other": "{{count}} 個資料來源",
+    "objectsInSources": "{{sources}}中的{{objects}}",
+    "classificationCount_one": "{{count}} 個分類",
+    "classificationCount_other": "{{count}} 個分類",
+    "rowRuleCount_one": "{{count}} 條行規則",
+    "rowRuleCount_other": "{{count}} 條行規則",
+    "groupTables": "資料表 ({{count}})",
+    "groupColumns": "欄位 ({{count}})",
+    "groupClassification": "由分類指定 ({{count}})",
+    "groupRowRules": "行規則 ({{count}})",
+    "filterClassifications": "篩選分類"
   }
 }

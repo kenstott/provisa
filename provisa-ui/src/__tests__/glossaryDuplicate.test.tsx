@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // Creating a term: "+ New term" opens an empty form whatever term was open or duplicated and
-// cancelled before it, and Duplicate (beside Edit and Delete in the term's panel) opens the same
+// cancelled before it, and Duplicate (beside Edit and Delete in the term's panel head) opens the same
 // create form filled from the open term under a new name: its definition and domains, not its
 // links (columns, tables, relationships) or its reviews (rule:
 // components/list/__tests__/panelDuplicateGuard.test.ts).
@@ -118,14 +118,15 @@ describe("Duplicate, in a term's panel", () => {
     expect(await screen.findByTestId("glossary-duplicate-btn")).toHaveAccessibleName("Duplicate");
   });
 
-  it("is a bordered, labelled button like Edit beside it", async () => {
+  it("is an icon in the panel's head like Edit beside it (maintainer 2026-11-26)", async () => {
     await openTerm();
     const duplicate = await screen.findByTestId("glossary-duplicate-btn");
     const edit = screen.getByTestId("glossary-edit-btn");
-    expect(duplicate).toHaveTextContent("Duplicate");
+    expect(duplicate).toHaveTextContent("");
     expect(duplicate.querySelector("svg.lucide-copy")).not.toBeNull();
-    expect(duplicate).toHaveAttribute("data-variant", "default");
+    expect(duplicate).toHaveAttribute("data-variant", "subtle");
     expect(duplicate).toHaveAttribute("data-variant", edit.getAttribute("data-variant") ?? "");
+    expect(screen.getByTestId("glossary-panel-actions")).toContainElement(duplicate);
   });
 
   it("is not offered to a caller who may not write the glossary", async () => {
