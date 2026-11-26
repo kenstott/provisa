@@ -213,3 +213,86 @@ def test_a_stream_hands_on_the_servers_record_batches_and_kills_one_closed_early
     assert batches_read == [1, 2]  # the third batch was never asked for
     assert _StreamClient.settings is not None and _StreamClient.settings["use_strings"] is True
     assert len(killed) == 1
+
+
+# -- non-UTF-8 bytes in a String column (REQ-2194) -------------------------
+
+
+def _nonutf8_table() -> pa.Table:
+    """A table with one UTF-8 String column and one non-UTF-8 String column, as ClickHouse's
+    Arrow output writes them: the arrow type is utf8 for both (use_strings=True), but the bytes
+    of the second column are not valid UTF-8."""
+    # craft utf8 arrays whose buffers hold arbitrary bytes (like bytes_where_not_text's test does)
+    good = pa.array([b"hello", b"world"], type=pa.binary())
+    bad = pa.array([b"\x00\x00\x00\xff", b"\xfe\xfd"], type=pa.binary())
+
+    def _as_utf8(arr: pa.Array) -> pa.Array:
+        return pa.Array.from_buffers(pa.string(), len(arr), arr.buffers(), arr.null_count)
+
+    return pa.table({"name": _as_utf8(good), "raw": _as_utf8(bad)})
+
+
+def test_execute_direct_with_nonutf8_string_returns_bytes_not_text():
+    """REQ-2194: DIRECT execute — a String column whose bytes are not UTF-8 is read as binary,
+    not as text that would corrupt or raise on the caller (matches what the ENGINE path does via
+    bytes_where_not_text in run_sync)."""
+    client = _Client(_nonutf8_table())
+    result = asyncio.run(_driver(client).execute("SELECT name, raw FROM t"))
+    rows = result.rows
+    assert rows == [("hello", b"\x00\x00\x00\xff"), ("world", b"\xfe\xfd")]
+    # the UTF-8 column stays as text
+    assert isinstance(rows[0][0], str)
+    # the non-UTF-8 column arrives as bytes
+    assert isinstance(rows[0][1], bytes)
+
+
+def test_iter_arrow_batches_direct_with_nonutf8_string_returns_bytes_column():
+    """REQ-2194: DIRECT iter_arrow_batches — non-UTF-8 String batches are binary, not text."""
+    import pyarrow as pa
+
+    source = _nonutf8_table()
+    batches: list[pa.RecordBatch] = []
+
+    # We need to call iter_arrow_batches but it uses self._require_pool().connection(...)
+    # Test it directly on a driver with the pool injected.
+    # iter_arrow_batches calls client.query_arrow_stream (not query_arrow), so use a stream client.
+    class _StreamClient2:
+        server_version = "26.8.46.6"
+
+        def query_arrow_stream(self, sql, use_strings=None, settings=None):
+            del sql
+            # Return a context manager whose iterator yields one batch per table batch.
+            source_batches = source.to_batches()
+
+            class _Ctx:
+                def __enter__(self_):
+                    return self_
+
+                def __exit__(self_, *exc):
+                    pass
+
+                def __iter__(self_):
+                    yield from source_batches
+
+            return _Ctx()
+
+        def close(self):
+            pass
+
+    from provisa.core.sync_pool import BlockingPool
+
+    driver2 = ClickHouseDriver()
+    client2 = _StreamClient2()
+    driver2._pool = BlockingPool(  # noqa: SLF001
+        lambda: client2, lambda c: c.close(), minsize=1, maxsize=1, wait_s=5.0, name="ch:test2"
+    )
+    for batch in driver2.iter_arrow_batches("SELECT name, raw FROM t"):
+        batches.append(batch)
+
+    assert len(batches) >= 1
+    # Collect all column arrays across batches
+    all_name = pa.concat_arrays([b.column("name") for b in batches])
+    all_raw = pa.concat_arrays([b.column("raw") for b in batches])
+    # UTF-8 column stays as string; non-UTF-8 becomes binary
+    assert pa.types.is_string(all_name.type) or all_name.to_pylist() == ["hello", "world"]
+    assert all_raw.to_pylist() == [b"\x00\x00\x00\xff", b"\xfe\xfd"]

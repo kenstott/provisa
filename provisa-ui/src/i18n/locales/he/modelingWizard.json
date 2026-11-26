@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "שלב {{index}} מתוך {{count}}",
+    "stepsLabel": "שלבי האשף",
     "next": "הבא",
     "toReview": "סקירה",
     "back": "הקודם",

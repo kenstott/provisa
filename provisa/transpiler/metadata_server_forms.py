@@ -170,6 +170,10 @@ def _held_by_predefined(name: str) -> str:
 _ITS_TYPE = "@TYPE@"
 
 SERVER_FORM_RAISE = "provisa_raise"
+#: The dialects that write ``SERVER_FORM_RAISE`` as their own error function (DuckDB's error,
+#: Trino's fail, ClickHouse's throwIf: provisa.transpiler.rows.system's provisa_raise). On any
+#: other dialect it is refused by name, or, on PostgreSQL's, passed to an engine that may not have it.
+RAISE_DIALECTS = frozenset({"duckdb", "trino", "presto", "athena", "clickhouse"})
 #: The functions a form raises with, on a PostgreSQL that runs forms: the control plane, and a
 #: PostgreSQL engine, which reads a statement with no table. One statement each, for a driver that
 #: prepares what it sends. The second takes the refusal an engine that cannot write the message

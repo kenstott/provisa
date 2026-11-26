@@ -76,16 +76,19 @@ const panel = () => screen.getByTestId("scheduled-tasks-split-panel");
 
 beforeEach(() => vi.clearAllMocks());
 
+// A panel opened in one test is remembered (REQ-2260); each test starts from none.
+beforeEach(() => localStorage.clear());
+
 describe("+ Trigger opens an empty form", () => {
   it("holds none of the values of the trigger selected before it", () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow();
     fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
     expectHoldsNoneOf(panel(), VALUES);
   });
 
   it("holds none of them after the trigger was edited and the edit cancelled", async () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow();
     fireEvent.click(screen.getByTestId("scheduled-task-edit"));
     fireEvent.click(await screen.findByText("Cancel"));
@@ -96,13 +99,13 @@ describe("+ Trigger opens an empty form", () => {
 
 describe("Duplicate, in a trigger's panel head", () => {
   it("is beside Edit and Delete, named Duplicate", () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow();
     expect(screen.getByTestId("scheduled-task-duplicate")).toHaveAccessibleName("Duplicate");
   });
 
   it("opens the create form filled from the trigger, under a new id and name", () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow();
     fireEvent.click(screen.getByTestId("scheduled-task-duplicate"));
     expect(screen.getByDisplayValue("nightly-copy")).toBeInTheDocument();
@@ -112,7 +115,7 @@ describe("Duplicate, in a trigger's panel head", () => {
   });
 
   it("creates the copy as a create, with what the trigger runs, never as an update", async () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow();
     fireEvent.click(screen.getByTestId("scheduled-task-duplicate"));
     fireEvent.click(screen.getByTestId("scheduled-tasks-submit"));

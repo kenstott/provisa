@@ -19,9 +19,7 @@
     "colWaitingOn": "承認待ち",
     "colStatus": "ステータス",
     "colReason": "理由",
-    "colActions": "",
     "none": "—",
-    "viewPayload": "表示",
     "approve": "承認",
     "execute": "実行",
     "reject": "却下",
@@ -39,6 +37,8 @@
     "deliveryHelp": "リクエストの宛先ロールのメンバーにリクエストを知らせる方法。メール: Provisa が各メンバーに通知を送信します。イベントのみ: Provisa は通知を送信せず、ワークフローツールが ops.requests をサブスクライブします。両方: メールとイベント。",
     "deliveryEmail": "メール",
     "deliveryEvents": "イベントのみ",
-    "deliveryBoth": "両方"
+    "deliveryBoth": "両方",
+    "panelTitle": "リクエスト #{{id}}",
+    "panelLabel": "リクエスト"
   }
 }

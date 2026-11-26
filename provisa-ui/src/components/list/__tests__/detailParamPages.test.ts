@@ -60,8 +60,55 @@ const PAGES: Record<DetailPage, { file: string; call: string; marks?: true }> = 
   derived: { file: "pages/SecurityPage.tsx", call: 'useRememberedDetail(\n    "derived",' },
   rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useRememberedDetail("rls",' },
   commands: { file: "pages/CommandsPage.tsx", call: 'useRememberedDetail(\n    "commands",' },
-  domains: { file: "pages/AdminPage.tsx", call: 'useDetailParam("domains").id', marks: true },
-  tags: { file: "components/admin/TagsTab.tsx", call: 'useDetailParam("tags").id', marks: true },
+  domains: {
+    file: "components/admin/DomainsTab.tsx",
+    call: 'useRememberedDetail(\n    "domains",',
+  },
+  tags: { file: "components/admin/TagsTab.tsx", call: 'useRememberedDetail(\n    "tags",' },
+  classification: {
+    file: "components/admin/ClassificationKindsTab.tsx",
+    call: 'useRememberedDetail(\n    "classification",',
+  },
+  sync: { file: "components/admin/syncing/SyncingTab.tsx", call: 'useRememberedDetail("sync",' },
+  secrets: {
+    file: "components/admin/SecretsTab.tsx",
+    call: 'useRememberedDetail(vault === "org" ? "secrets" : "mySecrets",',
+  },
+  mySecrets: {
+    file: "components/admin/SecretsTab.tsx",
+    call: 'useRememberedDetail(vault === "org" ? "secrets" : "mySecrets",',
+  },
+  packageRegistries: {
+    file: "components/admin/PackageRegistriesTab.tsx",
+    call: 'useRememberedDetail("packageRegistries",',
+  },
+  containerRegistries: {
+    file: "components/admin/ContainerRegistriesTab.tsx",
+    call: 'useRememberedDetail("containerRegistries",',
+  },
+  reports: {
+    file: "components/admin/ReportsTab.tsx",
+    call: 'useRememberedDetail(\n    "reports",',
+  },
+  orgs: { file: "components/admin/OrgsTab.tsx", call: 'useRememberedDetail("orgs",' },
+  requests: { file: "pages/RequestsPage.tsx", call: 'useRememberedDetail(\n    "requests",' },
+  team: { file: "pages/TeamPage.tsx", call: 'useRememberedDetail(\n    "team",' },
+  platformRegions: {
+    file: "components/admin/PlatformRegionsTab.tsx",
+    call: 'useRememberedDetail(\n    "platformRegions",',
+  },
+  environments: {
+    file: "components/admin/EnvironmentsTab.tsx",
+    call: 'useRememberedDetail(\n    "environments",',
+  },
+  triggers: {
+    file: "components/admin/ScheduledTasks.tsx",
+    call: 'useRememberedDetail("triggers",',
+  },
+  orgInvites: {
+    file: "components/admin/OrgsTab.tsx",
+    call: 'useRememberedDetail(\n    "orgInvites",',
+  },
 };
 
 describe("every list page's detail panel is in the URL through useDetailParam (REQ-2241)", () => {

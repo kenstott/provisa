@@ -16,7 +16,6 @@
     "empty": "Geen rapporten geregistreerd in het ops-domein.",
     "filterPlaceholder": "Rapporten filteren…",
     "noMatch": "Geen rapporten komen overeen",
-    "resize": "Grootte van de rapportlijst aanpassen",
     "drift": {
       "title": "Drift sinds de vorige periode",
       "baseline": "Vergeleken met het model van {{date}}, de laatste versie tot en met {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Gekregen",
         "new": "Nieuw"
       }
-    }
+    },
+    "kindColumn": "Soort",
+    "kindBuiltIn": "Ingebouwd",
+    "kindCustom": "Aangepast",
+    "panelLabel": "Rapport",
+    "closeForm": "Formulier sluiten",
+    "loading": "Rapporten laden…"
   }
 }

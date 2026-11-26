@@ -16,7 +16,6 @@
     "empty": "Nenhum relatório registrado no domínio ops.",
     "filterPlaceholder": "Filtrar relatórios…",
     "noMatch": "Nenhum relatório corresponde",
-    "resize": "Redimensionar a lista de relatórios",
     "drift": {
       "title": "Desvio desde o período anterior",
       "baseline": "Comparado com o modelo de {{date}}, a versão mais recente até {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Ganho",
         "new": "Novo"
       }
-    }
+    },
+    "kindColumn": "Tipo",
+    "kindBuiltIn": "Integrado",
+    "kindCustom": "Personalizado",
+    "panelLabel": "Relatório",
+    "closeForm": "Fechar o formulário",
+    "loading": "Carregando relatórios…"
   }
 }

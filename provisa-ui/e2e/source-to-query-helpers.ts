@@ -12,6 +12,7 @@
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
 import type { Locator } from "@playwright/test";
+import { withBody } from "./response-body";
 import { BACKEND_URL, expect, type Page } from "./coverage";
 import { retireSourceTables, type AdminGql } from "./retire-source-tables";
 
@@ -795,12 +796,13 @@ export async function runSqlOnPage(
   // query, and a single run left the page on that message with no grid to wait for.
   const deadline = Date.now() + SOURCE_SERVING_BUDGET_MS;
   for (;;) {
-    const runResp = page.waitForResponse(
-      (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
+    const runResp = withBody(
+      page.waitForResponse(
+        (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
+      ),
     );
     await page.getByTestId("sql-run").click();
-    const resp = await runResp;
-    const text = await resp.text();
+    const { response: resp, text } = await runResp;
     expect(resp.ok(), text).toBeTruthy();
     const starting = sourceStarting(text);
     if (starting === undefined) break;

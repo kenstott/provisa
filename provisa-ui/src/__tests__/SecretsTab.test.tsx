@@ -133,7 +133,7 @@ beforeEach(() => {
 
 describe("SecretsTab", () => {
   it("lists the name and the reference to paste, and no value", async () => {
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
     expect(screen.getByText("${secret:GIT_TOKEN}")).toBeInTheDocument();
     expect(screen.getByText("Push access")).toBeInTheDocument();
@@ -145,13 +145,15 @@ describe("SecretsTab", () => {
 
   it("stores a new secret under the name that was typed", async () => {
     mockPut.mockResolvedValue({ ...SECRET, name: "SLACK_WEBHOOK" });
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("secrets-add"));
-    fireEvent.change(await screen.findByLabelText("Name"), {
+    fireEvent.change(within(await screen.findByTestId("secret-form")).getByLabelText(/^Name/), {
       target: { value: "SLACK_WEBHOOK" },
     });
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "https://hooks" } });
+    fireEvent.change(within(screen.getByTestId("secret-form")).getByLabelText(/^Value/), {
+      target: { value: "https://hooks" },
+    });
     fireEvent.click(screen.getByTestId("secret-submit"));
     await waitFor(() =>
       expect(mockPut).toHaveBeenCalledWith("acme", "org", "SLACK_WEBHOOK", {
@@ -163,13 +165,16 @@ describe("SecretsTab", () => {
 
   it("replacing keeps the name, because the name is the identity", async () => {
     mockPut.mockResolvedValue(SECRET);
-    render(<SecretsTab />);
-    await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("secret-replace-GIT_TOKEN"));
-    const nameField = await screen.findByLabelText("Name");
+    render(<SecretsTab title="Org Secrets" />);
+    // REQ-2277: the row opens the secret's panel, where it is replaced.
+    fireEvent.click(await screen.findByTestId("secret-row-GIT_TOKEN"));
+    fireEvent.click(await screen.findByTestId("secret-replace-GIT_TOKEN"));
+    const nameField = within(await screen.findByTestId("secret-form")).getByLabelText(/^Name/);
     expect(nameField).toHaveValue("GIT_TOKEN");
     expect(nameField).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "ghp_rotated" } });
+    fireEvent.change(within(screen.getByTestId("secret-form")).getByLabelText(/^Value/), {
+      target: { value: "ghp_rotated" },
+    });
     fireEvent.click(screen.getByTestId("secret-submit"));
     await waitFor(() =>
       expect(mockPut).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN", {
@@ -179,22 +184,29 @@ describe("SecretsTab", () => {
     );
   });
 
-  it("will not save a secret with no value", async () => {
-    render(<SecretsTab />);
+  it("will not save a secret with no value, and says so at the field", async () => {
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("secrets-add"));
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "EMPTY" } });
-    expect(screen.getByTestId("secret-submit")).toBeDisabled();
+    fireEvent.change(within(await screen.findByTestId("secret-form")).getByLabelText(/^Name/), {
+      target: { value: "EMPTY" },
+    });
+    // REQ-2277: Save is offered and checks the required fields on submit.
+    expect(screen.getByTestId("secret-submit")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("secret-submit"));
+    expect(await screen.findByText("Required")).toBeInTheDocument();
     expect(mockPut).not.toHaveBeenCalled();
   });
 
   it("deletes only after the consequence is confirmed", async () => {
     mockDelete.mockResolvedValue({ deleted: "GIT_TOKEN" });
-    render(<SecretsTab />);
-    await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("secret-delete-GIT_TOKEN"));
+    render(<SecretsTab title="Org Secrets" />);
+    fireEvent.click(await screen.findByTestId("secret-row-GIT_TOKEN"));
+    fireEvent.click(await screen.findByTestId("secret-delete-GIT_TOKEN"));
     expect(mockDelete).not.toHaveBeenCalled();
-    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN"));
   });
 
@@ -228,9 +240,12 @@ describe("SecretsTab", () => {
         },
       ]),
     );
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
+    fireEvent.click(await screen.findByTestId("secret-row-GIT_TOKEN"));
     fireEvent.click(await screen.findByTestId("secret-delete-GIT_TOKEN"));
-    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
 
     const listed = await screen.findByTestId("secret-references");
     expect(listed).toHaveTextContent("sources warehouse (password_ref), in environment dev");
@@ -249,14 +264,14 @@ describe("SecretsTab", () => {
       provider: { key: "hashicorp_vault", label: "HashiCorp Vault (KV v2)", writable: false },
       secrets: [],
     });
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("secrets-add")).toBeNull();
     expect(screen.getAllByText(/HashiCorp Vault/).length).toBeGreaterThan(0);
   });
 
   it("shows an org admin the names and not the deployment's choice of service", async () => {
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("secrets-service")).toBeNull();
     expect(mockService).not.toHaveBeenCalled();
@@ -296,7 +311,7 @@ describe("SecretsServicePanel (the Security page's secrets-service tab)", () => 
 
   it("is not on the Org Secrets page, whoever is looking", async () => {
     auth.capabilities = ["platform_settings", "cross_org", "org_settings"];
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("secrets-service-toggle")).toBeNull();
     expect(screen.queryByTestId("secrets-service")).toBeNull();
@@ -381,7 +396,7 @@ describe("MySecretsTab", () => {
   });
 
   it("reads the caller's own vault, with no user id to name anybody else's", async () => {
-    render(<MySecretsTab />);
+    render(<MySecretsTab title="Your Secrets" />);
     await waitFor(() => expect(screen.getByTestId("secret-row-MY_GIT_TOKEN")).toBeInTheDocument());
     expect(mockFetch).toHaveBeenCalledWith("acme", "user");
     expect(mockFetch.mock.calls[0]).toHaveLength(2);
@@ -390,11 +405,15 @@ describe("MySecretsTab", () => {
 
   it("stores into the personal vault", async () => {
     mockPut.mockResolvedValue({ ...MINE.secrets[0], name: "MY_PAT" });
-    render(<MySecretsTab />);
+    render(<MySecretsTab title="Your Secrets" />);
     await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("secrets-add"));
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "MY_PAT" } });
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "ghp_mine" } });
+    fireEvent.change(within(await screen.findByTestId("secret-form")).getByLabelText(/^Name/), {
+      target: { value: "MY_PAT" },
+    });
+    fireEvent.change(within(screen.getByTestId("secret-form")).getByLabelText(/^Value/), {
+      target: { value: "ghp_mine" },
+    });
     fireEvent.click(screen.getByTestId("secret-submit"));
     await waitFor(() =>
       expect(mockPut).toHaveBeenCalledWith("acme", "user", "MY_PAT", {
@@ -405,7 +424,7 @@ describe("MySecretsTab", () => {
   });
 
   it("never offers the deployment's choice of secrets service", async () => {
-    render(<MySecretsTab />);
+    render(<MySecretsTab title="Your Secrets" />);
     await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("secrets-service-toggle")).toBeNull();
     expect(mockService).not.toHaveBeenCalled();
@@ -429,21 +448,21 @@ describe("SecretsServicePanel and the platform administrator", () => {
 // entry of its own. Same right, same page, one panel above the names.
 describe("SecretsTab org-key panel", () => {
   it("offers the key panel collapsed, and reads nothing while it is", async () => {
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     expect(await screen.findByTestId("org-key-toggle")).toBeInTheDocument();
     expect(screen.queryByTestId("org-encryption")).toBeNull();
     expect(mockOrgKey).not.toHaveBeenCalled();
   });
 
   it("mounts the key panel when it is opened", async () => {
-    render(<SecretsTab />);
+    render(<SecretsTab title="Org Secrets" />);
     fireEvent.click(await screen.findByTestId("org-key-toggle"));
     expect(await screen.findByTestId("org-encryption-fingerprint")).toHaveTextContent("ab12cd34");
   });
 
   it("never offers it on a personal vault", async () => {
     auth.capabilities = ["usage"];
-    render(<MySecretsTab />);
+    render(<MySecretsTab title="Your Secrets" />);
     await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("org-key-toggle")).toBeNull();
   });

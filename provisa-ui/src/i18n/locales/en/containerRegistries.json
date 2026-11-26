@@ -14,6 +14,10 @@
     "defaultHelp": "A build pushes here unless it names another registry. An organization has one default registry.",
     "saved": "Saved",
     "removed": "Removed",
-    "remove": "Remove"
+    "remove": "Remove",
+    "filterPlaceholder": "Filter registries",
+    "closeForm": "Close the form",
+    "edit": "Edit {{name}}",
+    "removeConfirm": "Remove {{name}}? Builds that push to it can no longer push their image."
   }
 }

@@ -17,8 +17,10 @@ import type { GlossaryTermDetail } from "../../api/glossary";
 
 export const columnGlossaryCache = new Map<string, GlossaryTermDetail | null>();
 
-export function columnGlossaryKey(tableId: number, columnName: string): string {
-  return `${tableId}:${columnName}`;
+/** A consumer's query name (``queried``) is keyed apart from a physical name: one table's alias
+ *  may be another of its columns' physical name. */
+export function columnGlossaryKey(tableId: number, columnName: string, queried = false): string {
+  return queried ? `${tableId}:query:${columnName}` : `${tableId}:${columnName}`;
 }
 
 // Test seam: tests clear the cache so cases don't leak into each other.

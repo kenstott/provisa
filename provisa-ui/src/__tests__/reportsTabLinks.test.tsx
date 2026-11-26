@@ -11,8 +11,8 @@
 // REQ-1386: the Reports viewer hands its grid the report links, so a seeded report's term cells
 // open the term.
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../test-utils/render";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import { fireEvent, render, screen } from "../test-utils/render";
 
 // The rights the viewer holds: reading reports is the ops domain's right (observability), which
 // opened the page; adding and removing one is registering a table in the ops domain.
@@ -30,7 +30,13 @@ vi.mock("../hooks/useAdminQueries", () => ({
   useTables: () => ({
     tables: [
       { id: 1, domainId: "ops", tableName: "ontology_quality", alias: null, sourceId: "x" },
-      { id: 2, domainId: "ops", tableName: "sensitive_column_coverage", alias: null, sourceId: "x" },
+      {
+        id: 2,
+        domainId: "ops",
+        tableName: "sensitive_column_coverage",
+        alias: null,
+        sourceId: "x",
+      },
       { id: 3, domainId: "ops", tableName: "zz_my_report", alias: null, sourceId: "__derived__" },
     ],
     loading: false,
@@ -54,42 +60,52 @@ vi.mock("../components/admin/OntologyDriftPanel", () => ({
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 
+const QUALITY = { initialEntries: ["/admin/reports?report=ontology_quality"] };
+
+beforeEach(() => localStorage.clear());
+
 describe("ReportsTab", () => {
   it("links a report's term cells to the term", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />, QUALITY);
     expect(screen.getByTestId("viewer")).toHaveAttribute("data-href", "/context/ontology?term=7");
   });
 
   it("shows drift with the Ontology quality report", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />, QUALITY);
     expect(screen.getByTestId("ontology-drift")).toBeInTheDocument();
   });
 
   it("offers adding and removing a report to a table registrar only", () => {
     expect(DERIVED_SOURCE_ID).toBe("__derived__");
     held.capabilities = ["observability", "table_registration"];
-    const { unmount } = render(<ReportsTab />);
+    const { unmount } = render(<ReportsTab title="Admin — Reports" />);
     expect(screen.getByTestId("add-report-btn")).toBeInTheDocument();
+    // A custom report's panel offers its delete; a built-in report's does not.
+    fireEvent.click(screen.getByTestId("report-item-sensitive_column_coverage"));
+    expect(screen.queryByRole("button", { name: "Delete report" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("report-item-zz_my_report"));
     expect(screen.getByRole("button", { name: "Delete report" })).toBeInTheDocument();
     unmount();
+    localStorage.clear();
 
     held.capabilities = ["observability"];
-    render(<ReportsTab />);
-    expect(screen.getByTestId("report-item-zz_my_report")).toBeInTheDocument();
+    render(<ReportsTab title="Admin — Reports" />);
+    fireEvent.click(screen.getByTestId("report-item-zz_my_report"));
+    expect(screen.getByTestId("report-pane")).toHaveAttribute("data-report", "zz_my_report");
     expect(screen.queryByTestId("add-report-btn")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete report" })).not.toBeInTheDocument();
     held.capabilities = ["observability", "table_registration"];
   });
 
   it("opens the report its deep link names", () => {
-    render(<ReportsTab />, { initialEntries: ["/admin/reports?report=sensitive_column_coverage"] });
+    render(<ReportsTab title="Admin — Reports" />, {
+      initialEntries: ["/admin/reports?report=sensitive_column_coverage"],
+    });
     expect(screen.getByTestId("report-pane")).toHaveAttribute(
       "data-report",
       "sensitive_column_coverage",
     );
     expect(screen.queryByTestId("ontology-drift")).not.toBeInTheDocument();
-    expect(screen.getByTestId("report-item-sensitive_column_coverage")).toHaveAttribute(
-      "data-active",
-    );
+    expect(screen.getByTestId("report-item-sensitive_column_coverage")).toHaveClass("row-selected");
   });
 });

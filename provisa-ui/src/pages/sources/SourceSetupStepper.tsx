@@ -19,11 +19,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Button, Group, Stack, Stepper, Text } from "@mantine/core";
+import { Button, Group, Stack, Text } from "@mantine/core";
 import { Check } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useRelationships, useTableAccess, useTables } from "../../hooks/useAdminQueries";
 import { useCapability } from "../../hooks/useCapability";
+import { StepStrip } from "../../components/StepStrip";
 import { RelationshipReview } from "../../components/relationships/RelationshipReview";
 import type { Relationship, TableRow } from "../../types/admin";
 
@@ -109,35 +110,32 @@ export function SourceSetupStepper({
 
   return (
     <Stack gap="xs" data-testid="source-setup-stepper" data-active={active}>
-      <Stepper
+      <StepStrip
+        steps={[
+          { key: "connect", label: t("sourceSetup.connect") },
+          {
+            key: "register",
+            label: t("sourceSetup.register"),
+            description:
+              own.length > 0 ? t("sourceSetup.tablesCount", { count: own.length }) : undefined,
+          },
+          {
+            key: "relate",
+            label: t("sourceSetup.relate"),
+            description:
+              active === QUERY
+                ? nothingToRelate
+                  ? t("sourceSetup.nothingToRelate")
+                  : t("sourceSetup.relateNotAllowed")
+                : undefined,
+          },
+          { key: "query", label: t("sourceSetup.query") },
+        ]}
         active={active}
         onStepClick={goBack}
-        allowNextStepsSelect={false}
-        size="xs"
-        iconSize={22}
-        aria-label={t("sourceSetup.label")}
-      >
-        <Stepper.Step label={t("sourceSetup.connect")} data-testid="source-setup-step-connect" />
-        <Stepper.Step
-          label={t("sourceSetup.register")}
-          description={
-            own.length > 0 ? t("sourceSetup.tablesCount", { count: own.length }) : undefined
-          }
-          data-testid="source-setup-step-register"
-        />
-        <Stepper.Step
-          label={t("sourceSetup.relate")}
-          description={
-            active === QUERY
-              ? nothingToRelate
-                ? t("sourceSetup.nothingToRelate")
-                : t("sourceSetup.relateNotAllowed")
-              : undefined
-          }
-          data-testid="source-setup-step-relate"
-        />
-        <Stepper.Step label={t("sourceSetup.query")} data-testid="source-setup-step-query" />
-      </Stepper>
+        label={t("sourceSetup.label")}
+        testId="source-setup-step"
+      />
       {active === REGISTER && (
         <Group gap="sm" wrap="nowrap">
           <Text size="sm" c="dimmed">

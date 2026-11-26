@@ -86,6 +86,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/McpExplorePage.tsx": "the address bar of the MCP explorer",
   "pages/LineagePage.tsx": "the role filter above the lineage graph",
   "pages/DataProductsPage.tsx": "the To review filter tick above the list of data products",
+  "pages/context/GlossaryPage.tsx": "the domain filter in the Glossary's page header",
   "plugins/provisa-tools.tsx": "controls of the GraphiQL tools plugin",
   "pages/tables/ProfileChecksBar.tsx": "the action bar above the profile results",
   "pages/tables/profile3d/terrain/ProfileTerrain.tsx":
