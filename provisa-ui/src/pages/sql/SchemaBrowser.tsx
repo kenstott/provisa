@@ -191,6 +191,10 @@ export function SchemaBrowser({
             zIndex: 30,
             width: 13,
             height: 40,
+            // ActionIcon's own min-width/min-height (28px) would pull the tab back over the tree
+            // and cover the splitter's middle (REQ-2277).
+            minWidth: 0,
+            minHeight: 0,
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderInlineStart: "none",
