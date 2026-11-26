@@ -117,16 +117,30 @@ async function adminRequest(
       ? (input.body as Record<string, unknown>)
       : undefined;
   const upload = input.upload === true;
+  // REQ-1984: code Polly wrote (upload_code), handed as its files, for the user to read before
+  // confirming, and their zip archive (base64), which is the body.
+  const archive = typeof input.archive === "string" ? input.archive : null;
+  const files =
+    input.files && typeof input.files === "object"
+      ? Object.entries(input.files as Record<string, unknown>).map(
+          ([name, text]) => `--- ${name} ---\n${String(text)}`,
+        )
+      : [];
   const init: RequestInit = { method };
   if (method !== "GET") {
     const ok = await ctx.confirm({
       title: "Make this change?",
       message: summary,
-      detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : ""]
+      detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : "", ...files]
         .filter(Boolean)
         .join("\n"),
     });
     if (!ok) return { success: false, message: "Cancelled by the user." };
+    if (archive !== null) {
+      init.headers = { "Content-Type": "application/zip" };
+      init.body = Uint8Array.from(atob(archive), (c) => c.charCodeAt(0));
+      return send(path, init);
+    }
     if (upload) {
       // The app's upload routes take the file's own bytes as the body, as the UI's uploads send
       // them; a route that names the file takes it in the path, where {filename} stands for it.
