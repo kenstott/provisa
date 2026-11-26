@@ -15,6 +15,8 @@ import { TagsTab } from "../components/admin/TagsTab";
 import type { Tag, TagAssignment } from "../types/admin";
 
 const t = i18n.getFixedT("en");
+// The tag id is required (REQ-1968): its label carries the required marker after its text.
+const idInput = () => screen.getByLabelText(new RegExp(`^${t("tagsTab.idLabel")}`));
 
 const upsertSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
 const updateSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
@@ -280,7 +282,7 @@ describe("TagsTab", () => {
   it("creates a tag through upsertTag with id, description and appliesTo", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     fireEvent.change(screen.getByLabelText(t("tagsTab.descriptionLabel")), {
@@ -313,7 +315,7 @@ describe("TagsTab", () => {
     expect(save).toBeEnabled();
     fireEvent.click(save);
     expect(upsertSpy).not.toHaveBeenCalled();
-    expect(screen.getByLabelText(t("tagsTab.idLabel"))).toHaveAttribute("aria-invalid", "true");
+    expect(idInput()).toHaveAttribute("aria-invalid", "true");
   });
 
   it("saves an edited tag through updateTag, never a create", async () => {
@@ -337,7 +339,7 @@ describe("TagsTab", () => {
     it("sends required: true when the switch is on and the tag is saved", async () => {
       render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "owner" },
       });
       fireEvent.click(screen.getByTestId("tags-required"));
@@ -371,7 +373,7 @@ describe("TagsTab", () => {
     it("saves the domains picked with the tag", async () => {
       render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "gdpr" },
       });
       pickDomain("sales");
@@ -564,7 +566,7 @@ describe("TagsTab", () => {
   it("passes the selected reason and expiry policies to upsertTag", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     await pickPolicy("tags-reason-policy", t("tagsTab.policy_required"));
@@ -667,7 +669,7 @@ describe("TagsTab", () => {
   it("carries the chosen paramPolicy into upsertTag", async () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "lifecycle" },
     });
     await pickPolicy("tags-param-policy", t("tagsTab.paramPolicy_required"));
@@ -692,8 +694,8 @@ describe("TagsTab", () => {
     render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-row-finance"));
     fireEvent.click(screen.getByTestId("tags-duplicate-finance"));
-    expect(screen.getByLabelText(t("tagsTab.idLabel"))).toHaveValue("finance-copy");
-    expect(screen.getByLabelText(t("tagsTab.idLabel"))).not.toBeDisabled();
+    expect(idInput()).toHaveValue("finance-copy");
+    expect(idInput()).not.toBeDisabled();
     fireEvent.click(screen.getByTestId("tags-save"));
     await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
     expect(upsertSpy.mock.calls[0][0]).toBe("finance-copy");

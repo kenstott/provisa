@@ -42,6 +42,7 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/admin/PlatformRegionsTab.tsx": "<FormFooter>'s Save disabled by id, description",
   "components/admin/RegionEngineTabs.tsx": "<FormFooter>'s Save disabled by kind, url",
   "components/admin/RelatedToDialog.tsx": "<FormFooter>'s Save disabled by name",
+  "components/admin/RepoIntegrationPanel.tsx": "<Button> disabled by empty remote",
   "components/admin/SecretsTab.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/SyntheticDatasetsPanel.tsx": "<FormFooter>'s Save disabled by name",
   "components/admin/TermEditForm.tsx": "<FormFooter>'s Save disabled by draft.name",
@@ -56,17 +57,28 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/lifecycle/RetireDialog.tsx": "the primary <Button> disabled by reason, successor",
   "components/relationships/JoinThroughAction.tsx": "<FormFooter>'s Save disabled by name",
   "pages/MetricsPage.tsx": "<FormFooter>'s Save disabled by form.name, form.expression",
+  "pages/NlPage.tsx": "<Button> disabled by empty question",
   "pages/SecurityPage.tsx": "<FormFooter>'s Save disabled by roleForm.description",
   "pages/TablesPage.tsx": "the primary <Button> disabled by regenReason",
   "pages/TeamPage.tsx": "the primary <Button> disabled by roleId",
   "pages/data-products/offers/AddOfferForm.tsx": "<FormFooter>'s Save disabled by ready",
   "pages/data-products/offers/OfferCard.tsx": "the primary <Button> disabled by ready",
+  "pages/data-products/tabs/RequestsTab.tsx": "<DestructiveConfirmButton> disabled by empty reason",
   "pages/library/LibraryAddForm.tsx":
     "<TextInput value={url}> blocks submit (line 39) without required",
   "pages/security/DerivedRoles.tsx":
     "<FormFooter>'s Save disabled by attribute, description; <FormFooter>'s Save disabled by description",
+  "pages/sources/CodeHostPanel.tsx": "<Button> disabled by empty host, port, pairing",
+  "pages/sources/KaggleFormSection.tsx": "<Button> disabled by empty token",
+  "pages/sources/OpenApiFormSection.tsx": "<Button> disabled by empty openapiSpecPath",
+  "pages/sources/ScriptValidationPanel.tsx": "<Button> disabled by empty script",
+  "pages/sources/ServiceNowApisSection.tsx": "<Button> disabled by empty importSet",
+  "pages/sql/SqlEditorPanel.tsx":
+    "<Button> disabled by empty nlText; <Button> disabled by empty sqlText",
+  "pages/sql/ViewModal.tsx": "<Button> disabled by empty viewId, viewDomainId",
   "pages/tables/CalendarCreateModal.tsx":
     "<FormFooter>'s Save disabled by name, version, retailAnchorMissing; the primary <Button> disabled by name, version, retailAnchorMissing",
+  "pages/tables/DataQualityPanel.tsx": "<Button> disabled by empty contractText",
 };
 
 function componentFiles(dir: string, found: string[] = []): string[] {
