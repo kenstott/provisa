@@ -39,12 +39,19 @@
 //! | `on_start!(f)`, `on_stop!(f)`, `health!(f)` | `@on-start`, `@on-stop`, `@health` |
 //! | `change!(f, table = "t", key = ["k"], removed = "r", cursor = "c")` | `@change table=t`, `key=k`, `removed=r`, `cursor=c` |
 //! | option `requires = "NAME"`, `secret = "NAME"` | `@requires NAME`, `@requires NAME:secret` |
+//! | table option `loader = true`, `loader = N` | `@loader`, `@loader N` |
 //! | command option `insert = "t"`, `update = "t"`, `delete = "t"` | `@insert t`, `@update t`, `@delete t` |
 //!
 //! The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!`
 //! function's signature against its tag's rules. A command, query or change function takes any
 //! parameters, so its shape is checked when Provisa reads the code, as it is for the doc-comment
-//! form. A Rust source has no read context, so there is no `@loader` here.
+//! form.
+//!
+//! A `@table` or `@stream` function may take a read context after its inputs (REQ-2100): a
+//! parameter of a type the code declares and names `ReadContext`, as it declares `TableRef`. The
+//! SDK has no serde dependency, so it declares neither. `table!(f, loader = true)` is `@loader`
+//! and `table!(f, loader = N)` is `@loader N`: a loader returns a map of each key's hash to its
+//! rows, `HashMap<String, Vec<Row>>`.
 
 /// The version of the registrations this SDK spells. A server refuses, by name, a registration
 /// it does not read.
@@ -83,6 +90,7 @@ pub mod check {
 
     pub struct Collection;
     pub struct Iteration;
+    pub struct Keyed;
     pub struct Fallible<M>(PhantomData<M>);
 
     /// What a `@table` returns: a collection or an iterator of rows, optionally in a `Result`.
@@ -97,6 +105,11 @@ pub mod check {
     collections!(Vec<R>, VecDeque<R>, LinkedList<R>, BTreeSet<R>, HashSet<R, S>);
     impl<I: Iterator> Collected<Iteration> for I {}
     impl<I: Iterator, E> Collected<Fallible<Iteration>> for Result<I, E> {}
+    // REQ-2100: a @loader's map of each key's hash to its rows.
+    impl<R, S> Collected<Keyed> for HashMap<String, Vec<R>, S> {}
+    impl<R, S, E> Collected<Fallible<Keyed>> for Result<HashMap<String, Vec<R>, S>, E> {}
+    impl<R> Collected<Keyed> for BTreeMap<String, Vec<R>> {}
+    impl<R, E> Collected<Fallible<Keyed>> for Result<BTreeMap<String, Vec<R>>, E> {}
 
     /// What a `@stream` returns: an iterator of rows (each item a row, or a row in a `Result`),
     /// optionally in a `Result`.
@@ -104,8 +117,15 @@ pub mod check {
     impl<I: Iterator> Streamed<Iteration> for I {}
     impl<I: Iterator, E> Streamed<Fallible<Iteration>> for Result<I, E> {}
 
-    /// A `@table` function: it takes nothing, or its inputs struct.
+    /// A `@table` function: it takes nothing, its inputs struct or its read context, or its
+    /// inputs struct and then its read context.
     pub trait ReadFn<Marker> {}
+    impl<F, I, C, O, M> ReadFn<(I, C, O, M)> for F
+    where
+        F: Fn(I, C) -> O,
+        O: Collected<M>,
+    {
+    }
     impl<F, O, M> ReadFn<(O, M)> for F
     where
         F: Fn() -> O,
@@ -121,6 +141,12 @@ pub mod check {
 
     /// A `@stream` function: the parameters of a [`ReadFn`], returning an iterator.
     pub trait StreamFn<Marker> {}
+    impl<F, I, C, O, M> StreamFn<(I, C, O, M)> for F
+    where
+        F: Fn(I, C) -> O,
+        O: Streamed<M>,
+    {
+    }
     impl<F, O, M> StreamFn<(O, M)> for F
     where
         F: Fn() -> O,
@@ -230,6 +256,16 @@ pub mod check {
     pub fn on_stop<F: StopFn<Marker>, Marker>(_: F) {}
     pub fn health<F: HealthFn<Marker>, Marker>(_: F) {}
     pub fn text(_: &str) {}
+
+    /// A `loader` option's value (REQ-2100): `true`, or the largest batch, a whole number.
+    pub trait LoaderOption {}
+    impl LoaderOption for bool {}
+    impl LoaderOption for i32 {}
+    impl LoaderOption for i64 {}
+    impl LoaderOption for u32 {}
+    impl LoaderOption for u64 {}
+    impl LoaderOption for usize {}
+    pub fn loader<V: LoaderOption>(_: V) {}
 }
 
 /// The options of a registration, each `key = literal`: which keys each registration takes, and
@@ -238,6 +274,15 @@ pub mod check {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __provisa_option {
+    (table, requires = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (table, secret = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (table, loader = $v:literal) => {
+        $crate::check::loader($v)
+    };
     (read, requires = $v:literal) => {
         $crate::check::text($v)
     };
@@ -276,11 +321,12 @@ macro_rules! __provisa_register {
     };
 }
 
-/// `@table`: a table whose rows the function returns. Options: `requires`, `secret`.
+/// `@table`: a table whose rows the function returns. Options: `requires`, `secret`, and
+/// `loader` (`true` for `@loader`, a whole number for `@loader N`).
 #[macro_export]
 macro_rules! table {
     ($f:ident $(, $key:ident = $value:tt)* $(,)?) => {
-        $crate::__provisa_register!(table, read, $f $(, $key = $value)*);
+        $crate::__provisa_register!(table, table, $f $(, $key = $value)*);
     };
 }
 
