@@ -1118,6 +1118,33 @@ async def _fetch_gql_remote_rows(
     return rows, answer.cut
 
 
+def _with_registered_columns(columns: list[dict], registration: dict) -> list[dict]:
+    """A remote GraphQL table's ``columns`` as the process holds them (the endpoint's schema, when
+    the source was read from its endpoint), with every column the model registers for the table:
+    the relation a statement reads answers each registered column, and a statement may name any
+    of them. A registered column's ``gql_selection`` is how it is read
+    (``employee_id: employee { id }`` reads the id of the one ``employee`` the remote type holds);
+    a registered column the endpoint's schema does not list is selected as registered. A
+    parameter column is an argument of the call, never a selected field (REQ-1986)."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.core.parameters import is_parameter
+
+    out = list(columns)
+    held = {apply_sql_name(c["name"]): i for i, c in enumerate(out)}
+    for registered in registration["columns"]:
+        if is_parameter(registered):
+            continue
+        name = registered["column_name"]
+        selection = registered.get("gql_selection")
+        at = held.get(apply_sql_name(name))
+        if at is None:
+            column = {"name": name, "type": registered["data_type"]}
+            out.append({**column, "gql_selection": selection} if selection else column)
+        elif selection:
+            out[at] = {**out[at], "gql_selection": selection}
+    return out
+
+
 async def _mat_gql_remote_table(
     tn: str,
     gql_reg: dict,
@@ -1160,7 +1187,7 @@ async def _mat_gql_remote_table(
         "boolean": "boolean",
         "jsonb": "jsonb",
     }
-    col_dicts = list(gql_tbl.get("columns", []))
+    col_dicts = _with_registered_columns(list(gql_tbl.get("columns", [])), registration)
     if extra_selections:
         _existing_names = {c["name"] for c in col_dicts}
         for _fname, _gql_sel in extra_selections.items():

@@ -1276,6 +1276,7 @@ tables:
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - pet_analyst
     - data_steward
@@ -1326,6 +1327,7 @@ tables:
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - pet_analyst
     - data_steward

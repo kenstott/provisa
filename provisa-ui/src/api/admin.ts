@@ -918,6 +918,17 @@ export interface DiscoveryReport {
   // Tables chosen by name that the run left out; absent from a run recorded before it said so.
   source_left_out?: number;
   target_left_out?: number;
+  /** Tables whose read failed: left out of the run, each named with why. Absent from a run
+   *  recorded before a run said so. */
+  tables_unread?: DiscoveryUnreadTable[];
+}
+
+/** A table of a run's sets that could not be read, so took no part in the run. */
+export interface DiscoveryUnreadTable {
+  table_id: number;
+  /** ``domain.table`` */
+  table: string;
+  reason: string;
 }
 
 /** A run's report while it still reads its tables. */

@@ -11321,5 +11321,8 @@
   "zh-HK/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/discoverDialog.json::discoverDialog.unreadTitle_one": "{{count}} table could not be read and took no part in the run",
+  "zh-HK/discoverDialog.json::discoverDialog.unreadTitle_other": "{{count}} tables could not be read and took no part in the run",
+  "zh-HK/discoverDialog.json::discoverDialog.unreadTable": "{{table}}: {{reason}}"
 }

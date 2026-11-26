@@ -11321,5 +11321,8 @@
   "it/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "it/yourData.json::yourData.rest": "REST",
   "it/yourData.json::yourData.sql": "SQL",
-  "it/yourData.json::yourData.title": "Your data"
+  "it/yourData.json::yourData.title": "Your data",
+  "it/discoverDialog.json::discoverDialog.unreadTitle_one": "{{count}} table could not be read and took no part in the run",
+  "it/discoverDialog.json::discoverDialog.unreadTitle_other": "{{count}} tables could not be read and took no part in the run",
+  "it/discoverDialog.json::discoverDialog.unreadTable": "{{table}}: {{reason}}"
 }
