@@ -36,6 +36,7 @@ import type { Core, ElementDefinition } from "./core";
 import { edgeElement, textWidth, type GraphEdgeSpec } from "./model";
 import { SIZE, groupHue } from "./tokens";
 import type { At } from "./tipPlacement";
+import { bendPair, linePairs } from "./pairs";
 import { segmentCoords } from "./taxi";
 import { fitClear } from "./viewport";
 
@@ -739,16 +740,27 @@ export function runLanes(
     );
     const where = placeLanes(lanes, lines, opts.beside, gap, laid);
     cy.batch(() => where.forEach((p, id) => cy.getElementById(id).position(p)));
-    if (opts.beside !== undefined) routeBeside(cy, opts.beside);
+    const routed = opts.beside === undefined ? new Set<string>() : routeBeside(cy, opts.beside);
+    bendLanePairs(cy as unknown as CyInstance, routed);
     boxLanes(cy, opts);
     fitClear(cy as unknown as CyInstance, 24);
     done();
   });
 }
 
+/** REQ-2277, as on every graph (pairs.ts): the lines between one pair of nodes bend apart and
+ * their labels are drawn clear of each other. The lines ``routed`` beside their lane each have a
+ * track and a name of their own (besideRoutes, besideNames) and are left as they are. */
+function bendLanePairs(cy: CyInstance, routed: Set<string>): void {
+  for (const [key, lines] of linePairs(cy)) {
+    const free = lines.filter((e) => !routed.has(e.id()));
+    if (free.length > 1) bendPair(cy, key, free);
+  }
+}
+
 /** The lines inside ``lane`` drawn on their routes beside it (besideRoutes), as right-angled
- * segments from each node's right side. */
-function routeBeside(cy: Core, lane: string): void {
+ * segments from each node's right side; their ids. */
+function routeBeside(cy: Core, lane: string): Set<string> {
   const routes = besideRoutes(cy, lane);
   const names = besideNames(routes, drawnLines(cy));
   routes.forEach((path, id) => {
@@ -774,6 +786,7 @@ function routeBeside(cy: Core, lane: string): void {
         "text-margin-y": (b.y1 + b.y2) / 2 - (p1.y + p2.y) / 2,
       });
   });
+  return new Set(routes.keys());
 }
 
 /** The nodes laid out (not a lane's box): each one's lane, size and place. */
