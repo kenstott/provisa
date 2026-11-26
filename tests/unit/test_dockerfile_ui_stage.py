@@ -17,6 +17,9 @@ the release runs, and the runtime image takes static/ from that stage.
 - It installs the docs-site packages the release installs (the prebuild renders the offline docs).
 - It copies every file outside provisa-ui the build reads, at its checkout path under /build.
 - The runtime image takes static/ from the stage's dist/, never from the build context.
+- Dockerfile.dev builds the UI with the same ui-build stage and takes static/ from it too.
+- No workflow job builds the UI into static/ before it builds the app image: the image never reads
+  it, so the step only costs the job its time.
 - .dockerignore keeps provisa-ui's sources and lockfile in the context and node_modules and a
   checkout's own build output out of it."""
 
@@ -120,8 +123,9 @@ def test_the_ui_build_stage_copies_every_file_outside_provisa_ui_the_build_reads
     assert not uncopied, f"the UI build reads files its Docker stage never copies: {uncopied}"
 
 
-def test_the_runtime_image_serves_static_from_the_ui_build_stage():
-    instructions = _instructions()
+@pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.dev"])
+def test_the_runtime_image_serves_static_from_the_ui_build_stage(dockerfile):
+    instructions = _instructions(dockerfile)
     froms = [i for i, ins in enumerate(instructions) if ins.upper().startswith("FROM ")]
     runtime = instructions[froms[-1] :]
     copies = [ins.split() for ins in runtime if ins.upper().startswith("COPY ")]
@@ -130,6 +134,45 @@ def test_the_runtime_image_serves_static_from_the_ui_build_stage():
     assert not [s for s in from_context if s.rstrip("/") == "static"], (
         "the runtime image copies the checkout's static/, which nothing builds"
     )
+
+
+def test_dockerfile_dev_builds_the_ui_with_the_dockerfile_ui_build_stage():
+    assert _stage(STAGE, "Dockerfile.dev") == _stage(STAGE), (
+        "Dockerfile.dev's ui-build stage drifted from Dockerfile's"
+    )
+
+
+def _workflow_jobs() -> list[tuple[str, str, list[dict]]]:
+    jobs = []
+    for path in sorted((REPO / ".github/workflows").glob("*.yml")):
+        workflow = yaml.safe_load(path.read_text())
+        for name, job in (workflow.get("jobs") or {}).items():
+            jobs.append((path.name, name, job.get("steps") or []))
+    return jobs
+
+
+def test_no_job_builds_the_ui_into_static_for_the_app_image():
+    image_jobs = 0
+    for workflow, name, steps in _workflow_jobs():
+        runs = [step.get("run") or "" for step in steps]
+        if not any(
+            re.search(r"docker build\b[^\n]*(?:\\\n[^\n]*)*-t provisa/provisa:", run)
+            for run in runs
+        ):
+            continue
+        image_jobs += 1
+        where = f"{workflow}:{name}"
+        assert not [run for run in runs if "static/" in run], (
+            f"{where} copies a UI build into static/, which the image builds itself"
+        )
+        assert not [run for run in runs if "npm run build" in run], (
+            f"{where} builds the UI, which the image builds itself"
+        )
+        uses = [step.get("uses") or "" for step in steps]
+        assert "./.github/actions/docs-site-deps" not in uses, (
+            f"{where} installs the docs-site packages, which only the image's UI build uses"
+        )
+    assert image_jobs >= 2, "no workflow job builds provisa/provisa: the parse is stale"
 
 
 def _ignored(path: str, patterns: list[str]) -> bool:
