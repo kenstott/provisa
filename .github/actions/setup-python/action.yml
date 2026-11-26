@@ -19,16 +19,32 @@ inputs:
 runs:
   using: composite
   steps:
+    # uv is pinned to the exact version uv.lock locks (tests/unit/test_ci_workflow_structure.py
+    # holds the two equal). Given a range, setup-uv resolves it against the GitHub releases API
+    # at run time; that lookup failed silently in 5 s in conformance-functions run 45698279072
+    # (functions on mariadb) and the leg ran no test. An exact version makes no API call.
     - name: Install uv
+      id: uv
       if: inputs.cache != 'true'
       uses: astral-sh/setup-uv@v6
+      with:
+        version: "0.13.9"
 
     - name: Install uv (cached)
+      id: uv-cached
       if: inputs.cache == 'true'
       uses: astral-sh/setup-uv@v6
       with:
+        version: "0.13.9"
         enable-cache: true
         cache-dependency-glob: uv.lock
+
+    - name: Name the uv install failure
+      if: failure() && (steps.uv.outcome == 'failure' || steps.uv-cached.outcome == 'failure')
+      shell: bash
+      run: |
+        echo "::error title=uv install failed::astral-sh/setup-uv could not install uv 0.13.9 from https://github.com/astral-sh/uv/releases/download/0.13.9/ (release download or runner tool cache); no test ran"
+        exit 1
 
     - name: Install dependencies
       if: inputs.sync == 'true'

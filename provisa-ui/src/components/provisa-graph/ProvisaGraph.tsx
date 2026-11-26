@@ -53,10 +53,21 @@ import { graphElements, typesDrawn, type Detail, type GraphSpec } from "./model"
 import { readPlaces, standPlaces, type GraphPlaces, type Pt, type StandPlaces } from "./places";
 import { ERD_ELK_LAYOUT } from "./presets";
 import { graphStylesheet } from "./stylesheet";
+import { bendPairs } from "./pairs";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
 import { tipPlacement, type DrawnGraph } from "./tipPlacement";
 import { graphTokens, type NodeType } from "./tokens";
-import { FIT_PADDING, fitClear, scrollBy, showFocus, zoomAbout } from "./viewport";
+import {
+  FIT_PADDING,
+  fitClear,
+  followResize,
+  keepView,
+  openingView,
+  scrollBy,
+  showFocus,
+  zoomAbout,
+  type Size,
+} from "./viewport";
 
 /** How far a wheel step (or a pinch) zooms, per pixel of its delta. */
 const WHEEL_ZOOM = 0.002;
@@ -314,6 +325,8 @@ export function ProvisaGraph({
     if (ids.length === 0 && !marked.current.focus) return;
     marked.current.focus = ids.length > 0;
     latest.current.onFocused?.(markFocused(cy as unknown as CyInstance, ids));
+    // A focus fitted into view is the opening view: a resize fits it again.
+    if (ids.length > 0) openingView(cy as unknown as CyInstance);
   }, []);
   /** Marks the filter, or clears the one marked before. */
   const applyFilter = useCallback((cy: Core, filter: GraphFilter | null) => {
@@ -421,6 +434,8 @@ export function ProvisaGraph({
       },
       { passive: false },
     );
+    // A drag of the canvas makes the view the reader's own, which a resize keeps.
+    cy.on("dragpan", () => keepView(c));
 
     cy.on("tap", 'node[kind = "node"]', (evt: EventObject) =>
       latest.current.onNodeClick?.(evt.target.id(), (k) => evt.target.data(k)),
@@ -517,11 +532,15 @@ export function ProvisaGraph({
           finish,
         );
       } else if (preset === "force") {
+        // A move turns the line between a pair of nodes, which decides which way its lines bend.
+        cy.on("dragfree", 'node[kind = "node"]', () => bendPairs(c));
         laying.run(
           cy.layout({ name: "fcose", animate: false, padding: 24 } as Parameters<
             typeof cy.layout
           >[0]),
           () => {
+            // The lines between one pair of nodes bend apart, their labels clear of each other.
+            bendPairs(c);
             fitClear(cy as unknown as CyInstance);
             finish();
           },
@@ -539,8 +558,10 @@ export function ProvisaGraph({
           const at = g > 0 ? { x: Math.round(raw.x / g) * g, y: Math.round(raw.y / g) * g } : raw;
           if (g > 0) target.position(at);
           movedRef.current.set(target.id(), at);
-          // A move can swap a line's dominant axis, which decides which way its lanes spread.
+          // A move can swap a line's dominant axis, which decides which way its lanes spread, and
+          // turns the line between a pair of nodes, which decides which way its lines bend apart.
           if (latest.current.options?.routing === "taxi") applyTaxiLanes(c);
+          else bendPairs(c);
         });
         // Nodes with no lines are hidden while ELK places the rest; the arrangement after it puts
         // them in a grid under their group.
@@ -564,6 +585,7 @@ export function ProvisaGraph({
           const routing = opts?.routing ?? "bezier";
           cy.$(".pg-edge").style("curve-style", routing);
           if (routing === "taxi") applyTaxiLanes(c);
+          else bendPairs(c);
           finish();
         });
       }
@@ -572,14 +594,20 @@ export function ProvisaGraph({
       frame = requestAnimationFrame(layOut);
     });
 
-    // The canvas narrows beside a detail panel and widens when it closes: the graph follows.
+    // The canvas narrows beside a detail panel and widens when it closes: the graph follows,
+    // keeping its view's mode (REQ-2277): fitted whole it is fitted whole again, zoomed or moved by
+    // the reader it keeps its zoom and centre, and the opening view is opened again.
+    let size: Size = { width: canvas.container.clientWidth, height: canvas.container.clientHeight };
     const observer = new ResizeObserver(() => {
       if (box.clientWidth === 0) return;
+      const was = size;
+      size = { width: canvas.container.clientWidth, height: canvas.container.clientHeight };
       cy.resize();
       // A layout running fits the diagram when it ends.
       if (placedRef.current !== cy) return;
-      fitClear(cy as unknown as CyInstance, padding);
-      showFocus(cy as unknown as CyInstance, latest.current.opensOn, padding);
+      if (followResize(c, was) !== "opening") return;
+      fitClear(c, padding);
+      showFocus(c, latest.current.opensOn, padding);
       if (preset !== "lanes") applyMarks(cy);
     });
     observer.observe(box);
@@ -682,7 +710,10 @@ export function ProvisaGraph({
     cy.batch(() => {
       cy.$(".pg-edge").style("curve-style", routing);
       if (routing === "taxi") applyTaxiLanes(c);
-      else clearTaxiLanes(c);
+      else {
+        clearTaxiLanes(c);
+        bendPairs(c);
+      }
     });
   }, [routing]);
 
@@ -698,6 +729,7 @@ export function ProvisaGraph({
       if (at.empty()) return;
       cy.zoom(Math.max(cy.zoom(), 1.2));
       cy.center(cy.elements().filter((e) => e.id() === command.target));
+      keepView(cy as unknown as CyInstance);
     }
   }, [command]);
 

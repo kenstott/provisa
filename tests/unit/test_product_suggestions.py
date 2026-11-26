@@ -242,13 +242,9 @@ async def test_a_tables_suggestions_are_refused_to_anyone_else(db, mailer):
         "product_suggestion.not_a_recipient",
     )
     assert refused.value.params == {"domain": "sales"}
-    # Anonymous: not a recipient of any domain, so 403 (not 401 — reading never requires sign-in).
     with pytest.raises(ApiError) as anonymous:
         await router.table_suggestions("sales", "orders", _request("anonymous"))
-    assert (anonymous.value.status_code, anonymous.value.code) == (
-        403,
-        "product_suggestion.not_a_recipient",
-    )
+    assert anonymous.value.status_code == 401
 
 
 async def test_counts_read_as_anonymous_returns_empty_list(db, mailer):

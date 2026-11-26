@@ -95,7 +95,7 @@ describe("a relationship's read view", () => {
       // The type a Cypher pattern matches: the discriminator value it is nominated by.
       ["CQL Alias (UPPER_SNAKE)", "BONDED_PAIR"],
       ["GQL Alias (camelCase)", "bondedPairs"],
-      ["SQL Name", "bonded_pairs"],
+      ["API name", "bonded_pairs"],
     ]);
     expect(fields("relationship-read-source")).toEqual([
       ["Domain", "zoo"],
@@ -145,7 +145,7 @@ describe("a relationship's read view", () => {
     expect(names["CQL Alias (UPPER_SNAKE)"]).toBe("HAS_BONDED_PAIRS");
     expect(screen.getByText("HAS_BONDED_PAIRS")).toHaveStyle({ fontStyle: "italic" });
     expect(names["GQL Alias (camelCase)"]).toBe("—");
-    expect(names["SQL Name"]).toBe("—");
+    expect(names["API name"]).toBe("—");
     expect(Object.fromEntries(fields("relationship-read-target"))["Refresh Interval (s)"]).toBe(
       "—",
     );

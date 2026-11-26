@@ -121,6 +121,7 @@
     "standingKind": "Kind of difference",
     "compare": "Compare with the catalog",
     "title": "Context Sync",
+    "filterPlaceholder": "Filter entries…",
     "importCron": "Import schedule",
     "importCronHelp": "Cron expression for an unattended Import. Each run takes the catalog's value only where the standing choice says so and the catalog alone changed; it holds every other difference for a steward. Leave empty to import only on demand.",
     "importCronPlaceholder": "0 3 * * *",

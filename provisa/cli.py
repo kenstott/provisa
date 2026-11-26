@@ -80,6 +80,22 @@ def _apply_demo_config() -> Path:
     return cfg
 
 
+def _install_config_path() -> Path:
+    """The install's own config: ``provisa.yaml`` in PROVISA_HOME, the same location and rule as
+    scripts/provisa (``~/.provisa_home`` names the home, else ``~/.provisa``)."""
+    pointer = Path.home() / ".provisa_home"
+    home = Path(pointer.read_text().strip()) if pointer.is_file() else Path.home() / ".provisa"
+    return home / "provisa.yaml"
+
+
+def _apply_install_config() -> Path:
+    """Name the non-demo install's config (REQ-528: the app has no default config path). The file
+    is absent on the first start, where the setup wizard writes it (REQ-164). An operator-set
+    PROVISA_CONFIG wins."""
+    os.environ.setdefault("PROVISA_CONFIG", str(_install_config_path()))
+    return Path(os.environ["PROVISA_CONFIG"])
+
+
 def _config_names_engine() -> bool:
     """Whether the config file this process loads names a federation engine (REQ-2269).
 
@@ -638,6 +654,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         except FileNotFoundError as exc:
             print(str(exc), file=sys.stderr)
             return 1
+    else:
+        _apply_install_config()
     # The launch environment starts the embedded plane and publishes its URLs, so drift is read
     # after it and not before: the check needs the socket the resolver has just chosen (REQ-1535).
     notes = _apply_embedded_env(data_dir)

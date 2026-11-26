@@ -55,7 +55,7 @@ beforeEach(() => {
 describe("ClassificationKindsTab", () => {
   it("lists each kind with its test, threshold and mask", async () => {
     api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
-    render(<ClassificationKindsTab />);
+    render(<ClassificationKindsTab title="Classification" />);
     const ssn = await screen.findByTestId("classification-kind-us_ssn");
     expect(ssn).toHaveTextContent("US social security number");
     expect(ssn).toHaveTextContent("Sensitive");
@@ -70,23 +70,30 @@ describe("ClassificationKindsTab", () => {
     api.setEnabledClassificationKinds.mockResolvedValue({
       kinds: [KINDS[0], { ...KINDS[1], enabled: false }],
     });
-    render(<ClassificationKindsTab />);
-    fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
+    render(<ClassificationKindsTab title="Classification" />);
+    // REQ-2277: the row opens the kind's panel; its Edit opens the form with the switch.
+    fireEvent.click(await screen.findByTestId("classification-kind-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-edit-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-enabled-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-save"));
     await waitFor(() => expect(api.setEnabledClassificationKinds).toHaveBeenCalledWith(["us_ssn"]));
     await waitFor(() =>
-      expect(screen.getByTestId("classification-kind-enabled-city")).not.toBeChecked(),
+      expect(screen.getByTestId("classification-kind-state-city")).toHaveTextContent("Disabled"),
     );
   });
 
-  it("holds every switch while one change is saving", async () => {
+  it("holds the switch while its change is saving", async () => {
     // The page is reached only with the right the switch needs (sensitive_data), so a switch is
     // never shown read-only; it waits only for the change already on its way.
     api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
     api.setEnabledClassificationKinds.mockReturnValue(new Promise(() => {}));
-    render(<ClassificationKindsTab />);
-    fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
+    render(<ClassificationKindsTab title="Classification" />);
+    fireEvent.click(await screen.findByTestId("classification-kind-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-edit-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-enabled-city"));
+    fireEvent.click(screen.getByTestId("classification-kind-save"));
     await waitFor(() =>
-      expect(screen.getByTestId("classification-kind-enabled-us_ssn")).toBeDisabled(),
+      expect(screen.getByTestId("classification-kind-enabled-city")).toBeDisabled(),
     );
   });
 });

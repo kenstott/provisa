@@ -17,7 +17,7 @@
     "reviewHelp": "此標籤的某則引用需要審閱：其章節已更改或已不存在。",
     "definitionReviewHelp": "定義此標籤的章節已更改或已不存在。請審閱其引用。",
     "gap": "無引用",
-    "gapHelp": "此標籤要求引用，而此指派沒有。",
+    "gapHelp": "此標籤的每個指派都需要引用。",
     "definedBy": "定義於 {{title}}",
     "definedByLabel": "定義於",
     "requiresCitationLabel": "指派須附引用",
@@ -28,9 +28,9 @@
     "citedByDefinition": "其定義",
     "citedByGone": "已不存在",
     "citedByWholeDocument": "整份文件",
-    "citationsLabel": "為何用於此物件",
-    "neededForCoverage": "覆蓋所需",
-    "definitionLabel": "此標籤為何存在",
-    "definitionDesc": "說明此標籤為何存在的文件和章節。它為何用於某個物件,請寫在該物件自己的引用中。"
+    "citationsLabel": "引用",
+    "neededForCoverage": "必填",
+    "definitionLabel": "定義來源",
+    "definitionDesc": "定義此標籤的庫文件和章節。某個指派的引用應加到該指派上。"
   }
 }

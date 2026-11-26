@@ -163,12 +163,14 @@ const LINK_PARAMS = [
   "term",
   "profile",
   "profileView",
+  "discover",
 ];
 
 const checkPage: Check = (state, { inputs }, query) => {
   if (!inputs) return "the page has published nothing";
   for (const key of LINK_PARAMS) {
-    const handed = query.get(key) ?? (typeof state[key] === "undefined" ? null : String(state[key]));
+    const handed =
+      query.get(key) ?? (typeof state[key] === "undefined" ? null : String(state[key]));
     if (handed === null) continue;
     const shown = String(inputs[key] ?? "");
     if (!sameList(handed, shown)) return `the page shows ${key} ${shown || "none"}, not ${handed}`;
@@ -220,9 +222,7 @@ export async function readBack(route: string, state: Handed, waitMs: number): Pr
     const screen = await readScreen(left);
     if (typeof screen === "string") return { shown: false, difference: screen, screen: null };
     const onRoute = screen.route.split("?")[0] === path;
-    const difference = onRoute
-      ? check(state, screen, params)
-      : `the browser is on ${screen.route}`;
+    const difference = onRoute ? check(state, screen, params) : `the browser is on ${screen.route}`;
     if (difference === null) return { shown: true, screen };
     if (Date.now() >= deadline) return { shown: false, difference, screen };
     await new Promise((resolve) => setTimeout(resolve, READ_EVERY_MS));

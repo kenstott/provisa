@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "Each profile run tests a sample of every column's values against these kinds. Where enough values pass, the column gets a suggestion a data steward accepts or rejects. A disabled kind is not tested.",
+    "filterPlaceholder": "Filter kinds…",
+    "empty": "No kinds match the filter",
     "kindHeader": "Kind",
     "testHeader": "Test",
     "thresholdHeader": "Share that must pass",

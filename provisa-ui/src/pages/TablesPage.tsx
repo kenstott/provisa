@@ -135,7 +135,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const refusal = useDependentsDialog();
   const { t: translate, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     tables,
     loading: tablesLoading,
@@ -191,6 +191,21 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     : undefined;
   const expanded: number | null =
     detail.id !== null ? Number(detail.id) : opened ? opened.id : null;
+  // REQ-2277 rule 4: the table `?open=` resolved to is named by `?table=<id>` -- the open table's
+  // deep link -- in place of `?open=`, replacing the entry; `section`, `tab` and `column` stay.
+  const openedId = detail.id === null && opened ? String(opened.id) : null;
+  useEffect(() => {
+    if (openedId === null) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("open");
+        next.set("table", openedId);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [openedId, setSearchParams]);
   const setExpanded = (id: number | null) =>
     id === null ? detail.close() : detail.open(String(id));
   // One request for every row; asked for often only while a build runs or a detail is open.
@@ -1352,11 +1367,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     { col: "source" },
                     ...(domainsEnabled ? [{ col: "domain" }] : []),
                     { col: "table" },
-                    translate("tablesPage.colNaming"),
-                    translate("tablesPage.colCacheTtl"),
-                    translate("tablesPage.colEffectiveTtl"),
-                    ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
-                    { col: "cols" },
+                    // The columns of settings give way, first to last, when the detail panel
+                    // leaves the list too little room: the source, domain and table never do.
+                    { label: translate("tablesPage.colNaming"), hide: 1 },
+                    { label: translate("tablesPage.colCacheTtl"), hide: 2 },
+                    { label: translate("tablesPage.colEffectiveTtl"), hide: 5 },
+                    ...(hasRegions
+                      ? [{ label: translate("regionSelector.columnHeader"), hide: 4 }]
+                      : []),
+                    { col: "cols", hide: 3 },
                     "",
                   ]}
                 />

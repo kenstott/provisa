@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "Passo {{index}} di {{count}}",
+    "stepsLabel": "Passaggi della procedura guidata",
     "next": "Avanti",
     "toReview": "Rivedi",
     "back": "Indietro",
