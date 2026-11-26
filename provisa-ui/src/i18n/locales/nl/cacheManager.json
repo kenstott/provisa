@@ -21,6 +21,7 @@
       "clients": "Clients",
       "opsPerSec": "Ops/sec",
       "filterPlaceholder": "Filteren op tabel of domein…",
+      "noMatch": "Geen tabellen komen overeen met het filter.",
       "purgeAll": "Volledige cache wissen",
       "purging": "Wissen...",
       "table": "Tabel",

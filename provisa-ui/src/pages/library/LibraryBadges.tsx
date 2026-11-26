@@ -14,6 +14,7 @@ import { Badge, Group } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { LibraryDocument } from "../../api/referenceLibrary";
 import { WHOLE_ORG } from "../../components/admin/referenceScope";
+import { indexLabel, readerLabel } from "./libraryParts";
 import { Tip } from "../../components/Tip";
 
 export function ReaderBadges({ domains }: { domains: string[] }) {
@@ -22,7 +23,7 @@ export function ReaderBadges({ domains }: { domains: string[] }) {
     <Group gap={4} wrap="wrap">
       {domains.map((d) => (
         <Badge key={d} size="xs" variant="light" color={d === WHOLE_ORG ? "grape" : "blue"}>
-          {d === WHOLE_ORG ? t("referenceLibrary.wholeOrg") : d}
+          {readerLabel(d, t)}
         </Badge>
       ))}
     </Group>
@@ -58,7 +59,7 @@ export function IndexBadge({ doc, testId }: { doc: LibraryDocument; testId?: str
   if (doc.index_status === "ready") {
     return (
       <Badge size="xs" variant="light" color="green" data-testid={testId}>
-        {t("referenceLibrary.indexReady")}
+        {indexLabel(doc, t)}
       </Badge>
     );
   }
@@ -66,17 +67,14 @@ export function IndexBadge({ doc, testId }: { doc: LibraryDocument; testId?: str
     return (
       <Tip text={doc.index_error ?? ""}>
         <Badge size="xs" variant="light" color="red" data-testid={testId}>
-          {t("referenceLibrary.indexFailed")}
+          {indexLabel(doc, t)}
         </Badge>
       </Tip>
     );
   }
-  const known = doc.index_done !== null && doc.index_total !== null;
   return (
     <Badge size="xs" variant="light" color="blue" data-testid={testId}>
-      {known
-        ? t("referenceLibrary.indexProgress", { done: doc.index_done, total: doc.index_total })
-        : t("referenceLibrary.indexIndexing")}
+      {indexLabel(doc, t)}
     </Badge>
   );
 }

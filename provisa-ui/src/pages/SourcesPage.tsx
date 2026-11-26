@@ -257,14 +257,34 @@ export function SourcesPage() {
   const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const getEffectiveTtl = (source: Source): string => {
+    if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
+    if (settings) return `${settings.cache.default_ttl}s (global)`;
+    return "default";
+  };
+  // Every text a source's row shows, which the filter searches; the row below draws the same.
+  const sourceRowTexts = (s: Source) => [
+    s.id,
+    s.withdrawn ? t("sourcesPage.withdrawn") : "",
+    s.type,
+    sourceTypeLabel(s.type, s.federationHintsJson),
+    s.host,
+    s.port ? String(s.port) : "",
+    s.database,
+    hasRegions ? (s.region ?? t("regionSelector.noRegion")) : "",
+    s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+    s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff"),
+    getEffectiveTtl(s),
+    s.description,
+  ];
+  // The sources the list holds before any filter: none of them is the system's own.
+  const listableSources = sources.filter(
+    (s) => ![DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id),
+  );
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredSources = useMemo(
-    () =>
-      sources.filter((s) => {
-        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        return matchesQuery([s.id, s.type, s.description], sourceSearch);
-      }),
-    [sources, sourceSearch],
+  const filteredSources = listableSources.filter((s) =>
+    matchesQuery(sourceRowTexts(s), sourceSearch),
   );
   const listColumns = useMemo<ListColumn<Source>[]>(
     () => [
@@ -333,7 +353,6 @@ export function SourcesPage() {
       ? sparkHost
       : (connectors.find((c) => c.name === authFields.code_connector) ?? null);
   const heldForm = heldBy ? { ...form, ...fixedFormValues(heldBy) } : form;
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [sourceReach, setSourceReach] = useState<SourceReach | null>(null);
   const domainsEnabled = settings?.naming.use_domains !== false;
   const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
@@ -472,12 +491,6 @@ export function SourcesPage() {
   // delete) keeps the page mounted, so an open Schema Discovery panel keeps what is typed and
   // discovered in it (REQ-150); the refetched rows replace the old ones in place.
   const loading = sourcesLoading || (settingsLoading && settings === null);
-
-  const getEffectiveTtl = (source: Source): string => {
-    if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
-    if (settings) return `${settings.cache.default_ttl}s (global)`;
-    return "default";
-  };
 
   // Type dropdown annotated + gated by the current engine's reach (REQ-947): each option shows
   // LIVE / REPLICA, and a type the engine cannot reach is disabled with the engine(s) that can.
@@ -1962,8 +1975,13 @@ export function SourcesPage() {
               <Table.Tbody>
                 {(() => {
                   if (regionSources.length === 0) {
+                    // A list a filter emptied says so, never that there are no sources.
                     return (
-                      <ListEmpty colSpan={hasRegions ? 9 : 8}>{t("sourcesPage.empty")}</ListEmpty>
+                      <ListEmpty colSpan={hasRegions ? 9 : 8} testId="sources-empty">
+                        {listableSources.length === 0
+                          ? t("sourcesPage.empty")
+                          : t("sourcesPage.noMatch")}
+                      </ListEmpty>
                     );
                   }
                   return (

@@ -202,17 +202,19 @@ export function ScheduledTasks({ title }: { title: string }) {
   const targetOf = (task: ScheduledTask) =>
     task.kind === "sql" ? task.sql : task.kind === "command" ? task.command : task.webhookUrl;
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
+  const outcomeLabel = (outcome: string) =>
+    outcome === "succeeded"
+      ? t("scheduledTasks.outcomeSucceeded")
+      : outcome === "refused"
+        ? t("scheduledTasks.outcomeRefused")
+        : t("scheduledTasks.outcomeFailed");
   const outcomeBadge = (outcome: string | null) =>
     outcome === null ? null : (
       <Badge
         variant="light"
         color={outcome === "succeeded" ? "green" : outcome === "refused" ? "yellow" : "red"}
       >
-        {outcome === "succeeded"
-          ? t("scheduledTasks.outcomeSucceeded")
-          : outcome === "refused"
-            ? t("scheduledTasks.outcomeRefused")
-            : t("scheduledTasks.outcomeFailed")}
+        {outcomeLabel(outcome)}
       </Badge>
     );
 
@@ -250,12 +252,23 @@ export function ScheduledTasks({ title }: { title: string }) {
     { key: "lastRun", label: t("scheduledTasks.colLastRun"), sortValue: (k) => k.lastRunAt ?? "" },
     { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
   ];
-  const shownTasks = useMemo(
-    () =>
-      tasks.filter((task) =>
-        matchesQuery([task.name, task.id, task.cronExpression, task.onTable, task.role], search),
-      ),
-    [tasks, search],
+  const shownTasks = tasks.filter((task) =>
+    // Every text a task's row shows, and its id.
+    matchesQuery(
+      [
+        task.name,
+        task.id,
+        firesLabel(task),
+        kindLabel(task.kind),
+        targetOf(task) || t("scheduledTasks.noTarget"),
+        task.role ?? t("scheduledTasks.noTarget"),
+        task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled"),
+        when(task.lastRunAt) ?? t("scheduledTasks.never"),
+        task.lastOutcome === null ? "" : outcomeLabel(task.lastOutcome),
+        when(task.nextRunAt) ?? t("scheduledTasks.noNextRun"),
+      ],
+      search,
+    ),
   );
   const sortGroup = useListSortGroup(shownTasks, columns, "scheduled-tasks");
   // REQ-2240: scheduled tasks selected and deleted together, each named by its name.
@@ -721,7 +734,7 @@ export function ScheduledTasks({ title }: { title: string }) {
                 onDelete={deleteScheduledTasks}
                 testId="scheduled-tasks-bulk"
               />
-              <ListTable minWidth={720} selection={selection}>
+              <ListTable minWidth={720} selection={selection} testId="scheduled-tasks-list">
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[
@@ -736,7 +749,7 @@ export function ScheduledTasks({ title }: { title: string }) {
                 />
                 <Table.Tbody>
                   {shownTasks.length === 0 && (
-                    <ListEmpty colSpan={7}>
+                    <ListEmpty colSpan={7} testId="scheduled-tasks-empty">
                       {tasks.length === 0 ? t("scheduledTasks.empty") : t("scheduledTasks.noMatch")}
                     </ListEmpty>
                   )}

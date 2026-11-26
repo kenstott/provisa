@@ -48,6 +48,7 @@
     "colAssignments": "Assignments",
     "colActions": "Actions",
     "empty": "No tags for this scope",
+    "noMatch": "No tags match the filter",
     "systemTag": "System tag (read only)",
     "editTag": "Edit tag {{id}}",
     "deleteTag": "Delete tag {{id}}",

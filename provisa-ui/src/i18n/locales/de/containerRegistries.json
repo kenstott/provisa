@@ -3,6 +3,7 @@
     "help": "Die Registries, in die das gebaute Image einer Code-Quelle gepusht werden kann, um es auf einem Remote-Host auszuführen. Jedes Feld kann einen Wert oder eine Secret-Referenz wie ${secret:registry_token} enthalten. Ohne Registry wird ein gebautes Image stattdessen heruntergeladen.",
     "add": "Container-Registry hinzufügen",
     "none": "Keine Container-Registries. Gebaute Images können weiterhin heruntergeladen werden.",
+    "noMatch": "Keine Container-Registries entsprechen dem Filter.",
     "address": "Registry und Namespace",
     "addressHelp": "Die Registry, mit ihrem Port, falls sie einen hat, und der Repository-Namespace, unter dem Images gepusht werden, zum Beispiel ghcr.io/example oder registry.example.com:5000/data.",
     "username": "Benutzername",

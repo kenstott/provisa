@@ -56,7 +56,7 @@ import { CapabilityNames } from "./security/CapabilityNames";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
 import { parentRights, reachable, withParents } from "./security/roleParents";
 import { useRegionChoices } from "../hooks/useRegionQueries";
-import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListItems, ListEmpty } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { derivedId, readDerivedId, useRememberedDetail } from "../components/list/useDetailParam";
@@ -66,6 +66,7 @@ import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
+import { derivedRoleMatches, roleRowTexts } from "./security/roleRowTexts";
 import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
@@ -294,7 +295,7 @@ export function SecurityRolesPage() {
   const chooseParents = (parents: string[]) => setRoleForm((f) => withParents(f, parents, roles));
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredRoles = roles.filter((r) => matchesQuery([r.id, r.description], roleSearch));
+  const filteredRoles = roles.filter((r) => matchesQuery(roleRowTexts(r, t), roleSearch));
   const roleColumns: ListColumn<Role>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {
@@ -782,6 +783,13 @@ export function SecurityRolesPage() {
                     </React.Fragment>
                   )}
                 />
+                {/* A list a filter emptied says so. */}
+                {filteredRoles.length === 0 &&
+                  !(derived?.roles ?? []).some((d) => derivedRoleMatches(d, roleSearch, t)) && (
+                    <ListEmpty colSpan={4} testId="roles-empty">
+                      {t("securityPage.noRolesMatch")}
+                    </ListEmpty>
+                  )}
                 {derived && (
                   <DerivedRoleRows
                     roles={derived.roles}
