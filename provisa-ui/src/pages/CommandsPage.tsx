@@ -55,6 +55,12 @@ import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { commandId, readCommandId, useRememberedDetail } from "../components/list/useDetailParam";
+import {
+  detailListOf,
+  domainNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -76,7 +82,14 @@ import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
-import { matchesQuery } from "../lib/searchItems";
+
+/** A function's or a webhook's row, as the list's narrowings read it. */
+interface CommandRow {
+  /** Its `commands` id (commandId). */
+  id: string;
+  name: string;
+  domainId: string | null | undefined;
+}
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -84,7 +97,7 @@ export function CommandsPage() {
   const { tables } = useTables();
   const { domains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634: command <-> data product picker
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, ensureDomainChecked } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
   const { activeOrgId } = useAuth();
   // REQ-1327: authoring a command asks table_registration; a role holding only command_execution
@@ -111,14 +124,46 @@ export function CommandsPage() {
   // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
   // REQ-2260: and the one left open is open again on coming back.
+  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
+  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
+  // REQ-2277 rule 9: a command is open only while the list -- the domains in view, the search --
+  // shows its row.
+  const commandRows: CommandRow[] = [
+    ...functions.map((f) => ({
+      id: commandId("function", f.name),
+      name: f.name,
+      domainId: f.domainId,
+    })),
+    ...webhooks.map((w) => ({
+      id: commandId("webhook", w.name),
+      name: w.name,
+      domainId: w.domainId,
+    })),
+  ];
+  const commandNarrowings = [
+    domainNarrowing<CommandRow>(
+      t,
+      checkedDomains.size > 0 ? checkedDomains : null,
+      ensureDomainChecked,
+      (c) => (c.domainId ? [c.domainId] : []),
+    ),
+    searchNarrowing<CommandRow>(
+      t,
+      cmdSearch,
+      () => setCmdSearch(""),
+      (c) => [c.name],
+    ),
+  ];
+  const shownCommands = new Set(shownBy(commandRows, commandNarrowings).map((c) => c.id));
   const detail = useRememberedDetail(
     "commands",
-    loading
-      ? null
-      : [
-          ...functions.map((f) => commandId("function", f.name)),
-          ...webhooks.map((w) => commandId("webhook", w.name)),
-        ],
+    detailListOf(
+      t,
+      loading ? null : commandRows,
+      (c) => c.id,
+      (c) => c.name,
+      commandNarrowings,
+    ),
   );
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
@@ -392,18 +437,13 @@ export function CommandsPage() {
     roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
-  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
-  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
-  const inCheckedDomain = (domainId: string | null | undefined) =>
-    !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
-
-  const filteredFunctions = functions.filter(
-    (fn) => inCheckedDomain(fn.domainId) && matchesQuery([fn.name], cmdSearch),
+  const filteredFunctions = functions.filter((fn) =>
+    shownCommands.has(commandId("function", fn.name)),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
 
-  const filteredWebhooks = webhooks.filter(
-    (wh) => inCheckedDomain(wh.domainId) && matchesQuery([wh.name], cmdSearch),
+  const filteredWebhooks = webhooks.filter((wh) =>
+    shownCommands.has(commandId("webhook", wh.name)),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
 
@@ -789,6 +829,7 @@ export function CommandsPage() {
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="commands-split"
         storageKey="provisa.commands.detailWidth"
         title={panelTitle}

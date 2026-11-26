@@ -121,10 +121,15 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
-import { useRememberedDetail } from "../components/list/useDetailParam";
+import { DETAIL_VIEWS, useRememberedDetail } from "../components/list/useDetailParam";
+import {
+  detailListOf,
+  domainNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
-import { matchesQuery } from "../lib/searchItems";
 import { assignableDomainIds } from "../lib/internalDomains";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
@@ -135,7 +140,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const refusal = useDependentsDialog();
   const { t: translate, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const {
     tables,
     loading: tablesLoading,
@@ -150,22 +155,80 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { dataProducts } = useDataProducts(); // REQ-1634
   const listedNames = useListedNames(); // REQ-2153
   const { relationships } = useAllRelationships();
+  // REQ-2187: the ERD in the list's place, its state in the URL.
+  const erd = useErdView();
+  // `?source=` seeds the filter box, and seeds it again whenever it changes while the page stays
+  // mounted (the tour moves /tables?source=dq-checker -> /tables?source=pet-store-sqlite in place).
+  const sourceParam = searchParams.get("source");
+  const [tableSearch, setTableSearch] = useState(sourceParam ?? "");
+  const [seededSource, setSeededSource] = useState(sourceParam);
+  if (sourceParam !== seededSource) {
+    setSeededSource(sourceParam);
+    setTableSearch(sourceParam ?? "");
+  }
+  const { checkedDomains, domainsEnabled, ensureDomainChecked } = useDomainFilter();
+  // REQ-1944: without table_registration the page is a governance surface -- the tables of the
+  // domains the caller's hiding rights reach, editable only in how their columns are hidden.
+  // REQ-1327: the views surface asks create_view, never table_registration.
+  const tableEditor = useCapability(viewsOnly ? "create_view" : "table_registration");
+  const hidingOnly = !tableEditor;
+  const { selectedRoles, actingRoles } = useAuth();
+  const governedDomains = useMemo(
+    () => (hidingOnly ? hidingDomains(selectedRoles) : null),
+    [hidingOnly, selectedRoles],
+  );
   // REQ-2241: the open table and its section are the URL (`?table=<id>&section=<section>`): a link
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
   // Back returns to the panel and section before. The section is the same in the read view and the
   // edit form, so opening the editor keeps the tab that was being read.
   // REQ-2260: and the one left open is open again on coming back.
+  // The tables the list holds: not the admin or telemetry sources', on Views only views, and for a
+  // governance surface only its domains'.
+  const listableTables = useMemo(
+    () =>
+      tables.filter(
+        (t) =>
+          t.sourceId !== "provisa-admin" &&
+          t.sourceId !== "provisa-otel" &&
+          (!viewsOnly || t.viewSql) &&
+          (governedDomains === null || governedDomains.has(t.domainId ?? "")),
+      ),
+    [tables, viewsOnly, governedDomains],
+  );
+  // REQ-2277 rule 9: a table is open only while the list -- the domains in view, the search --
+  // shows its row. The ERD in the list's place shows every table the list holds.
+  const tableNarrowings = useMemo(
+    () => [
+      domainNarrowing<RegisteredTable>(
+        translate,
+        checkedDomains.size > 0 ? checkedDomains : null,
+        ensureDomainChecked,
+        (t) => (t.domainId ? [t.domainId] : []),
+      ),
+      searchNarrowing<RegisteredTable>(
+        translate,
+        tableSearch,
+        () => setTableSearch(""),
+        (t) => [t.sourceId, t.tableName, t.domainId],
+      ),
+    ],
+    [translate, checkedDomains, ensureDomainChecked, tableSearch],
+  );
   const detail = useRememberedDetail(
     viewsOnly ? "views" : "tables",
-    tablesLoading ? null : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+    detailListOf(
+      translate,
+      tablesLoading ? null : listableTables,
+      (t) => String(t.id),
+      (t) => `${t.sourceId}.${t.tableName}`,
+      erd.on ? [] : tableNarrowings,
+    ),
   );
   const section: TableSection =
     detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
       ? (detail.tab as TableSection)
       : "identity";
   const setSection = detail.setTab;
-  // REQ-2187: the ERD in the list's place, its state in the URL.
-  const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
   const { fetchColumns: getAvailableColumnsMetadata, late: lateColumns } =
@@ -189,23 +252,20 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
       )
     : undefined;
-  const expanded: number | null =
-    detail.id !== null ? Number(detail.id) : opened ? opened.id : null;
+  const expanded: number | null = detail.id !== null ? Number(detail.id) : null;
   // REQ-2277 rule 4: the table `?open=` resolved to is named by `?table=<id>` -- the open table's
   // deep link -- in place of `?open=`, replacing the entry; `section`, `tab` and `column` stay.
-  const openedId = detail.id === null && opened ? String(opened.id) : null;
+  // A table the list leaves out is named by `?table=` already: the page says why it is not shown.
+  const openedId =
+    detail.id === null && detail.outOfList === null && opened ? String(opened.id) : null;
+  // Written through the detail's own parameters (one entry, replaced), so `section`, `tab` and
+  // `column` stay as an open of another table would drop them.
+  const { setParam: setDetailParam } = detail;
   useEffect(() => {
     if (openedId === null) return;
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("open");
-        next.set("table", openedId);
-        return next;
-      },
-      { replace: true },
-    );
-  }, [openedId, setSearchParams]);
+    setDetailParam("open", null, { replace: true });
+    setDetailParam(DETAIL_VIEWS[viewsOnly ? "views" : "tables"].param, openedId, { replace: true });
+  }, [openedId, setDetailParam, viewsOnly]);
   const setExpanded = (id: number | null) =>
     id === null ? detail.close() : detail.open(String(id));
   // One request for every row; asked for often only while a build runs or a detail is open.
@@ -237,15 +297,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // and owners, and the table whose suggestions are open.
   const suggestionCounts = useSuggestionCounts(setError);
   const [suggestionsOf, setSuggestionsOf] = useState<SuggestedTable | null>(null);
-  // `?source=` seeds the filter box, and seeds it again whenever it changes while the page stays
-  // mounted (the tour moves /tables?source=dq-checker -> /tables?source=pet-store-sqlite in place).
-  const sourceParam = searchParams.get("source");
-  const [tableSearch, setTableSearch] = useState(sourceParam ?? "");
-  const [seededSource, setSeededSource] = useState(sourceParam);
-  if (sourceParam !== seededSource) {
-    setSeededSource(sourceParam);
-    setTableSearch(sourceParam ?? "");
-  }
   // `?column=<name>` with `?table=`: that column's row is marked and brought into view.
   const columnParam = searchParams.get("column");
   // `?tab=<tab>`: the Columns section's tab.
@@ -254,28 +305,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     tabParam && (COLUMN_TABS as string[]).includes(tabParam) ? (tabParam as ColumnTab) : undefined;
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  const { checkedDomains, domainsEnabled, ensureDomainChecked } = useDomainFilter();
-  // REQ-1944: without table_registration the page is a governance surface -- the tables of the
-  // domains the caller's hiding rights reach, editable only in how their columns are hidden.
-  // REQ-1327: the views surface asks create_view, never table_registration.
-  const tableEditor = useCapability(viewsOnly ? "create_view" : "table_registration");
-  const hidingOnly = !tableEditor;
-  const { selectedRoles, actingRoles } = useAuth();
-  const governedDomains = useMemo(
-    () => (hidingOnly ? hidingDomains(selectedRoles) : null),
-    [hidingOnly, selectedRoles],
-  );
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredTables = useMemo(
-    () =>
-      tables.filter((t) => {
-        if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-        if (viewsOnly && !t.viewSql) return false;
-        if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
-        if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
-        return matchesQuery([t.sourceId, t.tableName, t.domainId], tableSearch);
-      }),
-    [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
+    () => shownBy(listableTables, tableNarrowings),
+    [listableTables, tableNarrowings],
   );
   const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
     () => [
@@ -1305,6 +1338,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="tables-split"
         storageKey="provisa.tables.detailWidth"
         title={panelTitle}
@@ -1670,10 +1704,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
               {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
-              <TableSuggestionsModal
-                table={suggestionsOf}
-                onClose={() => setSuggestionsOf(null)}
-              />
+              <TableSuggestionsModal table={suggestionsOf} onClose={() => setSuggestionsOf(null)} />
             </>
           )
         }

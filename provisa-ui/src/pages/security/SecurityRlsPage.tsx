@@ -52,12 +52,18 @@ import {
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
+import {
+  detailListOf,
+  domainNarrowing,
+  searchNarrowing,
+  shownBy,
+  type Narrowing,
+} from "../../components/list/leftOut";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
-import { matchesQuery } from "../../lib/searchItems";
 
 const EMPTY_RULE = {
   tableId: "",
@@ -83,6 +89,7 @@ export function SecurityRlsPage() {
     checkedDomains,
     setDomains: setContextDomains,
     setSelectedDomain,
+    ensureDomainChecked,
   } = useDomainFilter();
   // The navbar's multi-select; none or every domain checked is no narrowing (as on Tables).
   const narrowTo =
@@ -112,12 +119,6 @@ export function SecurityRlsPage() {
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
   // REQ-1679: the tracked functions and webhooks a rule may target, with their domains.
   const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
-  // REQ-2241: `?rule=<id>` is the open rule's panel.
-  // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail("rls", loading ? null : rules.map((r) => String(r.id)));
-  const expandedRule = detail.id === null ? null : Number(detail.id);
-  const setExpandedRule = (id: number | null) =>
-    id === null ? detail.close() : detail.open(String(id));
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
   const [ruleSearch, setRuleSearch] = useState("");
   // A table handed to the page ("rules for this table") filters the rules list, whether the page
@@ -302,28 +303,62 @@ export function SecurityRlsPage() {
     setShowRuleForm(true);
   };
 
-  const filtered = rules.filter((r) => {
-    if (narrowTo && r.tagId) {
-      // A tag rule belongs to every domain that holds a table carrying the tag.
+  // The domains a rule is in: a tag rule is in every domain that holds a table carrying the tag;
+  // another, its action's, its own, or its table's.
+  const ruleDomains = (r: RLSRule): string[] => {
+    if (r.tagId) {
       const carrying = tablesCarrying(r.tagId);
-      if (!tables.some((tb) => carrying.includes(tb.id) && narrowTo.has(tb.domainId))) return false;
-    } else if (narrowTo) {
-      const ruleDomain = r.actionName
-        ? actions.find((a) => a.name === r.actionName)?.domainId
-        : r.domainId
-          ? r.domainId
-          : tables.find((t) => t.id === r.tableId)?.domainId;
-      if (ruleDomain && !narrowTo.has(ruleDomain)) return false;
+      return [...new Set(tables.filter((tb) => carrying.includes(tb.id)).map((tb) => tb.domainId))];
     }
-    const scope = r.tagId
+    const ruleDomain = r.actionName
+      ? actions.find((a) => a.name === r.actionName)?.domainId
+      : r.domainId
+        ? r.domainId
+        : tables.find((t) => t.id === r.tableId)?.domainId;
+    return ruleDomain ? [ruleDomain] : [];
+  };
+  const scopeText = (r: RLSRule) =>
+    r.tagId
       ? `tag:${r.tagId}`
       : r.actionName
         ? `action:${r.actionName}`
         : r.domainId
           ? `domain:${r.domainId}`
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return matchesQuery([r.roleId, scope, r.description], ruleSearch);
-  });
+  // REQ-2277 rule 9: a rule is open only while the list -- the domains in view, the search --
+  // shows its row. A tag rule no table carries is in no domain, so a narrowing leaves it out.
+  const domainNarrowed = domainNarrowing<RLSRule>(t, narrowTo, ensureDomainChecked, ruleDomains);
+  const narrowings: (Narrowing<RLSRule> | null)[] = [
+    domainNarrowed === null
+      ? null
+      : {
+          ...domainNarrowed,
+          hides: (r) =>
+            r.tagId ? !ruleDomains(r).some((d) => narrowTo!.has(d)) : domainNarrowed.hides(r),
+        },
+    searchNarrowing<RLSRule>(
+      t,
+      ruleSearch,
+      () => setRuleSearch(""),
+      (r) => [r.roleId, scopeText(r), r.description],
+    ),
+  ];
+  const filtered = shownBy(rules, narrowings);
+  // REQ-2241: `?rule=<id>` is the open rule's panel.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "rls",
+    detailListOf(
+      t,
+      loading ? null : rules,
+      (r) => String(r.id),
+      (r) => `${r.roleId} · ${scopeText(r)}`,
+      narrowings,
+    ),
+  );
+  const expandedRule = detail.id === null ? null : Number(detail.id);
+  const setExpandedRule = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
 
   // REQ-1940: sort and group are the shared list mechanism.
   const ruleScope = (r: RLSRule) =>
@@ -680,6 +715,7 @@ export function SecurityRlsPage() {
       </Group>
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="rules-split"
         storageKey="provisa.rls.detailWidth"
         title={rulePanelTitle}

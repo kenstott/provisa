@@ -35,6 +35,7 @@ import {
 } from "../../components/list/ListTable";
 import { SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../../components/list/leftOut";
 import { useUrlFilter } from "../../components/list/useUrlFilter";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PageHelp } from "../../components/PageHelp";
@@ -59,9 +60,26 @@ export function LibraryPage() {
   const [search, setSearch] = useUrlFilter();
   // REQ-2241: `?document=<id>` is the open document's panel.
   // REQ-2260: and the one left open is open again on coming back.
+  // REQ-2277 rule 9: a document is open only while the list, under the search, shows its row.
+  const searchNarrowed = useMemo(
+    () =>
+      searchNarrowing<LibraryDocument>(
+        t,
+        search,
+        () => setSearch(""),
+        (d) => [d.title, d.source, ...d.domains],
+      ),
+    [t, search, setSearch],
+  );
   const detail = useRememberedDetail(
     "library",
-    documents === null ? null : documents.map((d) => String(d.id)),
+    detailListOf(
+      t,
+      documents,
+      (d) => String(d.id),
+      (d) => d.title,
+      [searchNarrowed],
+    ),
   );
   const selected = detail.id === null ? null : Number(detail.id);
   const setSelected = (id: number | null) =>
@@ -103,13 +121,10 @@ export function LibraryPage() {
   };
   const stale = (documents ?? []).filter((d) => d.needs_reembedding).length;
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return documents ?? [];
-    return (documents ?? []).filter((d) =>
-      [d.title, d.source, ...d.domains].some((v) => v.toLowerCase().includes(needle)),
-    );
-  }, [documents, search]);
+  const filtered = useMemo(
+    () => shownBy(documents ?? [], [searchNarrowed]),
+    [documents, searchNarrowed],
+  );
 
   const columns: ListColumn<LibraryDocument>[] = useMemo(
     () => [
@@ -253,6 +268,7 @@ export function LibraryPage() {
         </Alert>
       )}
       <SplitPane
+        outOfList={detail.outOfList}
         testId="reflib-split"
         storageKey="provisa.referenceLibrary.detailWidth"
         title={adding ? t("referenceLibrary.addTitle") : (doc?.title ?? "")}

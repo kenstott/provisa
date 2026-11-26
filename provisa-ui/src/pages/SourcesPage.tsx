@@ -162,6 +162,7 @@ import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { SourceSetupStepper } from "./sources/SourceSetupStepper";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -171,7 +172,6 @@ import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
 import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePicker";
 import { athenaHints } from "./sources/athena";
-import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
@@ -194,7 +194,35 @@ export function SourcesPage() {
   // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
   // The section is the same in its read view and its edit form.
   // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail("sources", sourcesLoading ? null : sources.map((s) => s.id));
+  const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
+  // The sources the list holds: not the derived, admin or telemetry ones. REQ-2277 rule 9: a source
+  // is open only while the list, under the search, shows its row.
+  const listableSources = useMemo(
+    () =>
+      sources.filter((s) => ![DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)),
+    [sources],
+  );
+  const searchNarrowed = useMemo(
+    () =>
+      searchNarrowing<Source>(
+        t,
+        sourceSearch,
+        () => updateSearch(""),
+        (s) => [s.id, s.type, s.description],
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateSearch is redefined each render and acts alike
+    [t, sourceSearch],
+  );
+  const detail = useRememberedDetail(
+    "sources",
+    detailListOf(
+      t,
+      sourcesLoading ? null : listableSources,
+      (s) => s.id,
+      (s) => s.id,
+      [searchNarrowed],
+    ),
+  );
   const section = (detail.tab ?? "connection") as SourceSection;
   const setSection = detail.setTab;
   const expanded = detail.id;
@@ -251,7 +279,6 @@ export function SourcesPage() {
     credentialsLeft: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const { regions, connected, error: regionError } = useRegionChoices();
@@ -259,12 +286,8 @@ export function SourcesPage() {
   const hasRegions = regions.length > 0;
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredSources = useMemo(
-    () =>
-      sources.filter((s) => {
-        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        return matchesQuery([s.id, s.type, s.description], sourceSearch);
-      }),
-    [sources, sourceSearch],
+    () => shownBy(listableSources, [searchNarrowed]),
+    [listableSources, searchNarrowed],
   );
   const listColumns = useMemo<ListColumn<Source>[]>(
     () => [
@@ -1912,6 +1935,7 @@ export function SourcesPage() {
       <KeptTablesNotice kept={keptTables} onClose={() => setKeptTables([])} />
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="sources-split"
         storageKey="provisa.sources.detailWidth"
         title={panelTitle}

@@ -60,13 +60,14 @@ import { ListTable, ListHead, ListRow, ListItems } from "../components/list/List
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { derivedId, readDerivedId, useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
+import { derivedItems, derivedRoleTexts, type DerivedItem } from "./security/derivedItems";
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
-import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
@@ -125,11 +126,30 @@ export function SecurityRolesPage() {
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
   // REQ-2241: `?role=<id>&section=<tab>` is the open role's panel and its tab.
   // REQ-2260: and the one left open (a role or a derived role) is open again on coming back.
-  const detail = useRememberedDetail("roles", loading ? null : roles.map((r) => r.id));
+  const [roleSearch, setRoleSearch] = useState("");
+  // REQ-2277 rule 9: a role (or a derived role) is open only while the list, under the search,
+  // shows its row.
+  const roleNarrowings = [
+    searchNarrowing<Role>(
+      t,
+      roleSearch,
+      () => setRoleSearch(""),
+      (r) => [r.id, r.description],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "roles",
+    detailListOf(
+      t,
+      loading ? null : roles,
+      (r) => r.id,
+      (r) => r.id,
+      roleNarrowings,
+    ),
+  );
   const expandedRole = detail.id;
   const setExpandedRole = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
-  const [roleSearch, setRoleSearch] = useState("");
   // REQ-2078: derived roles share the list. The panel declares one, or shows the one picked.
   const { derived, problem: derivedProblem, reload: reloadDerived } = useDerivedRoles();
   const [showDerivedForm, setShowDerivedForm] = useState(false);
@@ -141,12 +161,20 @@ export function SecurityRolesPage() {
   // REQ-2241: `?derived=<attribute>:<value>` is the open derived role's panel (derivedId).
   const derivedDetail = useRememberedDetail(
     "derived",
-    derived === null
-      ? null
-      : derived.roles.flatMap((d) => [
-          derivedId(d.attribute, null),
-          ...d.values.map((v) => derivedId(d.attribute, v)),
-        ]),
+    detailListOf(
+      t,
+      derived === null ? null : derivedItems(derived.roles),
+      (item) => item.id,
+      (item) => item.name,
+      [
+        searchNarrowing<DerivedItem>(
+          t,
+          roleSearch,
+          () => setRoleSearch(""),
+          (item) => derivedRoleTexts(item.role),
+        ),
+      ],
+    ),
   );
   const derivedPick: DerivedPick | null =
     derivedDetail.id === null ? null : readDerivedId(derivedDetail.id);
@@ -294,7 +322,7 @@ export function SecurityRolesPage() {
   const chooseParents = (parents: string[]) => setRoleForm((f) => withParents(f, parents, roles));
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredRoles = roles.filter((r) => matchesQuery([r.id, r.description], roleSearch));
+  const filteredRoles = shownBy(roles, roleNarrowings);
   const roleColumns: ListColumn<Role>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {
@@ -687,6 +715,7 @@ export function SecurityRolesPage() {
       </div>
 
       <SplitPane
+        outOfList={detail.outOfList !== null ? detail.outOfList : derivedDetail.outOfList}
         testId="roles-split"
         storageKey="provisa.roles.detailWidth"
         title={

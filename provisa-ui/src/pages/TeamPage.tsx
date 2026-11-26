@@ -12,8 +12,8 @@ import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmB
 import { UserMinus, Users, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
 import { useUrlFilter } from "../components/list/useUrlFilter";
-import { matchesQuery } from "../lib/searchItems";
 import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -91,9 +91,27 @@ export function TeamPage() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
   // REQ-2277: the member whose attributes and access the panel beside the list shows (?member=).
-  const detail = useRememberedDetail("team", membersLoaded ? members.map((m) => m.user_id) : null);
-  const selectedMemberId = detail.id;
   const [search, setSearch] = useUrlFilter();
+  // REQ-2277 rule 9: a member is open only while the list, under the search, shows their row.
+  const narrowings = [
+    searchNarrowing<OrgMember>(
+      t,
+      search,
+      () => setSearch(""),
+      (m) => [m.display_name, m.email, m.user_id, m.provider],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "team",
+    detailListOf(
+      t,
+      membersLoaded ? members : null,
+      (m) => m.user_id,
+      (m) => m.display_name || m.email || m.user_id,
+      narrowings,
+    ),
+  );
+  const selectedMemberId = detail.id;
   // The invite form, open in the members' panel from the header's Invite.
   const [inviting, setInviting] = useState(false);
   const [roleId, setRoleId] = useState<string | null>(null);
@@ -335,9 +353,7 @@ export function TeamPage() {
       groupValue: (i) => inviteStatus(i),
     },
   ];
-  const shownMembers = members.filter((m) =>
-    matchesQuery([m.display_name, m.email, m.user_id, m.provider], search),
-  );
+  const shownMembers = shownBy(members, narrowings);
   const memberSortGroup = useListSortGroup(shownMembers, memberColumns, "team-members");
   const inviteSortGroup = useListSortGroup(invites, inviteColumns, "team-invites");
 
@@ -520,11 +536,12 @@ export function TeamPage() {
       <Collapsibles id="team.sections" reveal={requestedSection} testId="team-sections">
         <CollapsibleItem
           value="members"
-          forceOpen={inviting || selectedMemberId !== null}
+          forceOpen={inviting || selectedMemberId !== null || detail.outOfList !== null}
           controlTestId="team-section-members"
           title={t("teamPage.membersHeading")}
         >
           <SplitPane
+            outOfList={detail.outOfList}
             testId="team-members-split"
             storageKey="provisa.team.detailWidth"
             title={(() => {
