@@ -256,20 +256,21 @@ def test_each_engine_s_form_reads_the_text_as_json_and_digests_json_as_text():
     governed = _governed(CONTACT, stable=True)
     trino = transpile_to_trino(governed, generated=True)
     # Read as JSON by json_parse (a cast of text to JSON is a JSON string there); digested as
-    # its JSON text, the only cast to JSON in the statement.
+    # its canonical text (REQ-2279), with no cast to JSON in the statement.
     assert "JSON_PARSE((" in trino
-    assert 'JSON_FORMAT(CAST("t"."contact" AS JSON))' in trino and trino.count("AS JSON)") == 1
+    assert 'PROVISA_JSON_TEXT("t"."contact")' in trino and "AS JSON)" not in trino
     duck = transpile_to_duckdb(governed, generated=True)
     assert "ELSE CAST((" in duck and "JSON_PARSE" not in duck
     pg = transpile(governed, "postgres", generated=True)
-    assert "CAST((" in pg and "AS JSON)" in pg and 'JSON_FORMAT("t"."contact")' in pg
+    assert "CAST((" in pg and "AS JSON)" in pg and 'PROVISA_JSON_TEXT("t"."contact")' in pg
 
 
-def test_the_pg_engine_holds_json_format_for_the_digest():
+def test_the_pg_engine_holds_provisa_json_text_for_the_digest():
     from provisa.fakes.pg_functions import FUNCTIONS_SQL
 
-    assert "FUNCTION json_format(value json) RETURNS text" in FUNCTIONS_SQL
-    assert "FUNCTION json_format(value jsonb) RETURNS text" in FUNCTIONS_SQL
+    for arg in ("text", "json", "jsonb"):
+        assert f"FUNCTION provisa_json_text(value {arg}) RETURNS text" in FUNCTIONS_SQL
+    assert "json_format" not in FUNCTIONS_SQL
 
 
 # -- proposals -----------------------------------------------------------------------------------
