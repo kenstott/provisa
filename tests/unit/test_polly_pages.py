@@ -128,7 +128,7 @@ def _reads(route: str) -> set[str]:
     ("route", "keys"),
     [
         ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
-        ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
+        ("/relationships", {"layout", "layoutUnsaved", "collapsed", "discover"}),
         ("/context/ontology", {"findTerms"}),
     ],
 )
@@ -145,6 +145,7 @@ def test_the_new_screens_inputs_are_named(route, keys):
         ("pages/TablesPage.tsx", "modeling: showModeling || null"),
         ("pages/tables/modeling/WizardFrame.tsx", 'useScreenInputs("/tables", { wizardStep:'),
         ("components/admin/GlossaryTab.tsx", "findTerms: findTermsOpen"),
+        ("pages/RelationshipsPage.tsx", "discover: discoverAsk ? shownInDialog : null"),
     ],
 )
 def test_the_page_publishes_what_the_table_names(source, published):

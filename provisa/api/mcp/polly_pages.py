@@ -65,8 +65,9 @@ PAGES: dict[str, PollyPage] = {
     "/relationships": PollyPage(
         "relationships, as a list or the same ERD",
         "query parameters: view=erd, relationship=<id>, domains, objects, collapsed, layout, "
-        "as /tables",
-        "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved",
+        "as /tables; discover=new (the Discover relationships dialog setting up a run) or "
+        "discover=<run id> (the dialog showing that run)",
+        "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved, discover",
         tags=True,
     ),
     "/team": PollyPage("the org's members"),
