@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
-import { Users, X } from "lucide-react";
+import { UserMinus, Users, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useUrlFilter } from "../components/list/useUrlFilter";
@@ -18,6 +18,7 @@ import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ActionIcon,
   Alert,
   Button,
   Group,
@@ -57,7 +58,7 @@ import { inviteUrl } from "../lib/authHost";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { Tip } from "../components/Tip";
-import { SplitPane } from "../components/list/SplitPane";
+import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
 import { SuspendedAccess } from "../components/admin/SuspendedAccess";
 import { AccessReviews } from "../components/admin/AccessReviews";
@@ -203,6 +204,53 @@ export function TeamPage() {
       reportError(e);
     }
   };
+
+  // REQ-2277: what can be done to the member the panel shows, in its head; the row only selects.
+  // REQ-1302: the last org_admin is neither demoted nor removed, and nobody removes themselves.
+  const memberActions = (m: OrgMember) => {
+    const lastAdmin = m.is_org_admin && adminCount <= 1;
+    if (!isOrgAdmin && m.is_org_admin) return null;
+    return (
+      <PanelActions>
+        <fieldset className="panel-action-set">
+          <Group gap="xs">
+            {isOrgAdmin && (
+              <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
+                <Button
+                  disabled={lastAdmin}
+                  onClick={() => handleToggleAdmin(m)}
+                  data-testid={`team-panel-toggle-admin-${m.user_id}`}
+                >
+                  {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
+                </Button>
+              </Tip>
+            )}
+            {/* Disabled where the server would refuse it (REQ-1302). */}
+            <Tip
+              text={
+                m.user_id === userId
+                  ? t("teamPage.selfRemoveHint")
+                  : lastAdmin
+                    ? t("teamPage.lastAdminHint")
+                    : t("teamPage.removeButton")
+              }
+            >
+              <ActionIcon
+                color="red"
+                disabled={lastAdmin || m.user_id === userId}
+                onClick={() => handleRemoveMember(m)}
+                aria-label={t("teamPage.removeButton")}
+                data-testid={`team-panel-remove-${m.user_id}`}
+              >
+                <UserMinus size={14} aria-hidden />
+              </ActionIcon>
+            </Tip>
+          </Group>
+        </fieldset>
+      </PanelActions>
+    );
+  };
+  const selectedMember = members.find((m) => m.user_id === selectedMemberId) ?? null;
 
   // REQ-1327 (amended 2026-11-16): an invitation offers only the roles the caller may confer.
   const roleOptions = conferrableRoles(roles, capabilities).map((r) => ({
@@ -501,23 +549,17 @@ export function TeamPage() {
               <ListTable minWidth={640} testId="team-members">
                 <ListHead
                   sortGroup={memberSortGroup}
-                  columns={[
-                    { col: "person" },
-                    { col: "provider" },
-                    { col: "orgAdmin" },
-                    t("teamPage.colActions"),
-                  ]}
+                  columns={[{ col: "person" }, { col: "provider" }, { col: "orgAdmin" }]}
                 />
                 <Table.Tbody>
                   {shownMembers.length === 0 && (
-                    <ListEmpty colSpan={4}>{t("teamPage.noMembers")}</ListEmpty>
+                    <ListEmpty colSpan={3}>{t("teamPage.noMembers")}</ListEmpty>
                   )}
                   <ListItems
                     state={memberSortGroup}
-                    colSpan={4}
+                    colSpan={3}
                     rowKey={(m) => m.user_id}
                     render={(m) => {
-                      const lastAdmin = m.is_org_admin && adminCount <= 1;
                       return (
                         <ListRow
                           testId={`team-member-${m.user_id}`}
@@ -540,45 +582,6 @@ export function TeamPage() {
                           <Table.Td>
                             {m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}
                           </Table.Td>
-                          <Table.Td onClick={(e) => e.stopPropagation()}>
-                            <Group gap="xs">
-                              {isOrgAdmin && (
-                                <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
-                                  <Button
-                                    size="compact-xs"
-                                    variant="default"
-                                    disabled={lastAdmin}
-                                    onClick={() => handleToggleAdmin(m)}
-                                    data-testid={`team-toggle-admin-${m.user_id}`}
-                                  >
-                                    {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
-                                  </Button>
-                                </Tip>
-                              )}
-                              {(isOrgAdmin || !m.is_org_admin) && (
-                                <Tip
-                                  text={
-                                    m.user_id === userId
-                                      ? t("teamPage.selfRemoveHint")
-                                      : lastAdmin
-                                        ? t("teamPage.lastAdminHint")
-                                        : undefined
-                                  }
-                                >
-                                  <Button
-                                    size="compact-xs"
-                                    color="red"
-                                    variant="light"
-                                    disabled={lastAdmin || m.user_id === userId}
-                                    onClick={() => handleRemoveMember(m)}
-                                    data-testid={`team-remove-${m.user_id}`}
-                                  >
-                                    {t("teamPage.removeButton")}
-                                  </Button>
-                                </Tip>
-                              )}
-                            </Group>
-                          </Table.Td>
                         </ListRow>
                       );
                     }}
@@ -589,29 +592,38 @@ export function TeamPage() {
           >
             {inviting ? (
               inviteForm
-            ) : selectedMemberId === null ? null : canAssign ? (
-              <Tabs defaultValue="attributes" keepMounted={false} data-testid="team-member-tabs">
-                <Tabs.List>
-                  <Tabs.Tab value="attributes" data-testid="team-member-tab-attributes">
-                    {t("teamPage.attributesTab")}
-                  </Tabs.Tab>
-                  <Tabs.Tab value="access" data-testid="team-member-tab-access">
-                    {t("teamPage.accessTab")}
-                  </Tabs.Tab>
-                </Tabs.List>
-                <Tabs.Panel value="attributes" pt="sm">
+            ) : selectedMemberId === null ? null : (
+              <>
+                {selectedMember !== null && memberActions(selectedMember)}
+                {canAssign ? (
+                  <Tabs
+                    defaultValue="attributes"
+                    keepMounted={false}
+                    data-testid="team-member-tabs"
+                  >
+                    <Tabs.List>
+                      <Tabs.Tab value="attributes" data-testid="team-member-tab-attributes">
+                        {t("teamPage.attributesTab")}
+                      </Tabs.Tab>
+                      <Tabs.Tab value="access" data-testid="team-member-tab-access">
+                        {t("teamPage.accessTab")}
+                      </Tabs.Tab>
+                    </Tabs.List>
+                    <Tabs.Panel value="attributes" pt="sm">
+                      <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
+                    </Tabs.Panel>
+                    <Tabs.Panel value="access" pt="sm">
+                      <PersonEntitlements
+                        key={selectedMemberId}
+                        principal={selectedMemberId}
+                        roleIds={roles.map((r) => r.id)}
+                      />
+                    </Tabs.Panel>
+                  </Tabs>
+                ) : (
                   <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
-                </Tabs.Panel>
-                <Tabs.Panel value="access" pt="sm">
-                  <PersonEntitlements
-                    key={selectedMemberId}
-                    principal={selectedMemberId}
-                    roleIds={roles.map((r) => r.id)}
-                  />
-                </Tabs.Panel>
-              </Tabs>
-            ) : (
-              <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
+                )}
+              </>
             )}
           </SplitPane>
         </CollapsibleItem>

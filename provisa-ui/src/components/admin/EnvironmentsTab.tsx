@@ -68,6 +68,7 @@ import { MergeRequestsPanel } from "./MergeRequestsPanel";
 import { RepoBrowser } from "./RepoBrowser";
 import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
 import { SyntheticDatasetsPanel } from "./SyntheticDatasetsPanel";
+import { EnvironmentActions } from "./EnvironmentActions";
 import { EnvironmentRow } from "./EnvironmentRow";
 import { SyntheticSeedFields, SyntheticSeedTick } from "./SyntheticSeedFields";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
@@ -589,26 +590,41 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const envView = (e: Environment) => {
     const badge = syncBadge(e.name);
     return (
-      <DetailFields
-        testId={`env-read-${e.name}`}
-        fields={[
-          { label: t("environmentsTab.colName"), value: e.name },
-          {
-            label: t("environmentsTab.colKind"),
-            value: isBase(e)
-              ? t("environmentsTab.ownConnections")
-              : t("environmentsTab.branchOf", { env: e.parent }),
-          },
-          { label: t("environmentsTab.colStage"), value: t(`environmentStage.${e.stage}`) },
-          { label: t("environmentsTab.colRepo"), value: badge === null ? null : badge.label },
-          { label: t("environmentsTab.colCreatedBy"), value: e.created_by },
-          { label: t("environmentsTab.colExpires"), value: e.expires_at },
-          {
-            label: t("environmentsTab.colProtected"),
-            value: e.protected ? t("detailFields.yes") : t("detailFields.no"),
-          },
-        ]}
-      />
+      <>
+        <EnvironmentActions
+          e={e}
+          busy={busy === e.name}
+          manageable={canManage(e)}
+          canAdminister={canAdminister}
+          onRebuild={() => rebuild(e)}
+          onStage={(stage) => changeStage(e, stage)}
+          onToggleProtected={() => toggleProtected(e)}
+          onMerge={() => openMerge(e)}
+          onPush={() => push(e)}
+          onPull={() => pull(e)}
+          onDelete={() => openDelete(e)}
+        />
+        <DetailFields
+          testId={`env-read-${e.name}`}
+          fields={[
+            { label: t("environmentsTab.colName"), value: e.name },
+            {
+              label: t("environmentsTab.colKind"),
+              value: isBase(e)
+                ? t("environmentsTab.ownConnections")
+                : t("environmentsTab.branchOf", { env: e.parent }),
+            },
+            { label: t("environmentsTab.colStage"), value: t(`environmentStage.${e.stage}`) },
+            { label: t("environmentsTab.colRepo"), value: badge === null ? null : badge.label },
+            { label: t("environmentsTab.colCreatedBy"), value: e.created_by },
+            { label: t("environmentsTab.colExpires"), value: e.expires_at },
+            {
+              label: t("environmentsTab.colProtected"),
+              value: e.protected ? t("detailFields.yes") : t("detailFields.no"),
+            },
+          ]}
+        />
+      </>
     );
   };
 
@@ -770,9 +786,8 @@ export function EnvironmentsTab({ title }: { title: string }) {
                           testId="env-protected-help"
                         />
                       </Group>,
-                      t("environmentsTab.colActions"),
                     ]}
-                    colSpan={8}
+                    colSpan={7}
                     rowKey={(e) => e.name}
                     render={(e) => (
                       <EnvironmentRow
@@ -784,17 +799,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
                           if (detail.id === e.name) detail.close();
                           else detail.open(e.name);
                         }}
-                        busy={busy === e.name}
-                        manageable={canManage(e)}
-                        canAdminister={canAdminister}
                         badge={syncBadge(e.name)}
-                        onRebuild={() => rebuild(e)}
-                        onStage={(stage) => changeStage(e, stage)}
-                        onToggleProtected={() => toggleProtected(e)}
-                        onMerge={() => openMerge(e)}
-                        onPush={() => push(e)}
-                        onPull={() => pull(e)}
-                        onDelete={() => openDelete(e)}
                       />
                     )}
                   />
