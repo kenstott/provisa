@@ -235,6 +235,11 @@
     "qbSignIn": "QuickBooks でサインイン",
     "qbSignedIn": "会社 {{realm}} にサインインしました。保持するにはソースを保存してください。",
     "qbSignInFailed": "ログインを完了できませんでした。",
-    "wikidataEndpointHint": "Wikidata クエリサービス。認証情報は不要で、テーブルは毎日更新されます。"
+    "wikidataEndpointHint": "Wikidata クエリサービス。認証情報は不要で、テーブルは毎日更新されます。",
+    "gdriveAuth_service_account": "サービス アカウント",
+    "gdriveAuth_oauth": "OAuth（リフレッシュ トークン）",
+    "gdriveServiceAccountKey": "サービス アカウント キー（JSON）",
+    "gdriveServiceAccountKeyHint": "フォルダーをサービス アカウントのメールアドレスと共有してください。サービス アカウントには独自のストレージがありません。",
+    "gdriveRefreshToken": "リフレッシュ トークン"
   }
 }

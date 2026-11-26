@@ -235,6 +235,11 @@
     "qbSignIn": "QuickBooks से साइन इन करें",
     "qbSignedIn": "कंपनी {{realm}} में साइन इन किया गया। इसे रखने के लिए स्रोत सहेजें।",
     "qbSignInFailed": "साइन इन पूरा नहीं हो सका।",
-    "wikidataEndpointHint": "विकिडेटा क्वेरी सेवा। कोई क्रेडेंशियल नहीं; तालिकाएँ इससे रोज़ ताज़ा होती हैं।"
+    "wikidataEndpointHint": "विकिडेटा क्वेरी सेवा। कोई क्रेडेंशियल नहीं; तालिकाएँ इससे रोज़ ताज़ा होती हैं।",
+    "gdriveAuth_service_account": "सेवा खाता",
+    "gdriveAuth_oauth": "OAuth (रीफ़्रेश टोकन)",
+    "gdriveServiceAccountKey": "सेवा खाता कुंजी (JSON)",
+    "gdriveServiceAccountKeyHint": "फ़ोल्डर को सेवा खाते के ईमेल पते के साथ साझा करें: सेवा खाते का अपना कोई संग्रहण नहीं होता।",
+    "gdriveRefreshToken": "रीफ़्रेश टोकन"
   }
 }

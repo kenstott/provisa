@@ -235,6 +235,11 @@
     "qbSignIn": "Entrar com o QuickBooks",
     "qbSignedIn": "Conectado à empresa {{realm}}. Salve a fonte para mantê-la.",
     "qbSignInFailed": "Não foi possível concluir o login.",
-    "wikidataEndpointHint": "O serviço de consultas do Wikidata. Sem credencial; as tabelas são atualizadas diariamente."
+    "wikidataEndpointHint": "O serviço de consultas do Wikidata. Sem credencial; as tabelas são atualizadas diariamente.",
+    "gdriveAuth_service_account": "Conta de serviço",
+    "gdriveAuth_oauth": "OAuth (token de atualização)",
+    "gdriveServiceAccountKey": "Chave da conta de serviço (JSON)",
+    "gdriveServiceAccountKeyHint": "Compartilhe a pasta com o endereço de e-mail da conta de serviço: uma conta de serviço não tem armazenamento próprio.",
+    "gdriveRefreshToken": "Token de atualização"
   }
 }

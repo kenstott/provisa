@@ -2896,18 +2896,45 @@
           "name": "path",
           "at": "input",
           "required": true,
-          "note": "a directory or glob, or an ftp/sftp/s3/https/sharepoint:// address"
+          "note": "a directory or glob, or an ftp/sftp/s3/https/sharepoint/onedrive/gdrive:// address"
+        },
+        {
+          "name": "database",
+          "at": "input",
+          "required": true,
+          "when": "path=onedrive",
+          "note": "the tenant id"
         },
         {
           "name": "username",
           "at": "input",
-          "when": "path=ftp|sftp|http|https|sharepoint"
+          "when": "path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+          "note": "the client id for onedrive:// and for gdrive:// with gdrive_auth=oauth"
         },
         {
           "name": "password",
           "at": "input",
           "secret": true,
-          "when": "path=ftp|sftp|http|https|sharepoint"
+          "when": "path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+          "note": "the client secret; for gdrive:// with gdrive_auth=service_account, the key"
+        },
+        {
+          "name": "gdrive_auth",
+          "at": "mappingJson",
+          "required": true,
+          "when": "path=gdrive",
+          "default": "service_account",
+          "choices": [
+            "service_account",
+            "oauth"
+          ]
+        },
+        {
+          "name": "refresh_token",
+          "at": "mappingJson",
+          "required": true,
+          "secret": true,
+          "when": "gdrive_auth=oauth"
         },
         {
           "name": "excel_hints",
@@ -2917,6 +2944,8 @@
       ],
       "note": "",
       "mapping_json": [
+        "gdrive_auth",
+        "refresh_token",
         "excel_hints"
       ],
       "federation_hints": []

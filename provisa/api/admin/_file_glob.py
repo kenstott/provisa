@@ -56,8 +56,13 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
             params={"table": model.table_name, "source": model.source_id},
         )
     try:
-        files = matched_files(resolve_secrets(source["path"] or ""), glob)
-        validate_glob_table(glob, files, columns_of_file)
+        from provisa.file_source.cloud_drive import drive_storage_options
+
+        options = drive_storage_options(source)  # REQ-2280: a onedrive:// or gdrive:// sign-in
+        files = matched_files(resolve_secrets(source["path"] or ""), glob, options)
+        validate_glob_table(
+            glob, files, lambda path: columns_of_file(path, storage_options=options)
+        )
     except (FileColumnsDiffer, FileOutsideSourceGlob, FileTypesDiffer) as exc:
         return MutationResult(
             success=False, message=str(exc), code=exc.code, params=dict(exc.params)

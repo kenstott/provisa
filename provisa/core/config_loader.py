@@ -2047,8 +2047,13 @@ def _validate_file_globs(config) -> None:  # REQ-788
             )
         from provisa.core.secrets import resolve_secrets
 
-        files = matched_files(resolve_secrets(source.path or ""), glob)
-        validate_glob_table(glob, files, columns_of_file)
+        from provisa.file_source.cloud_drive import drive_storage_options
+
+        options = drive_storage_options(source)  # REQ-2280: a onedrive:// or gdrive:// sign-in
+        files = matched_files(resolve_secrets(source.path or ""), glob, options)
+        validate_glob_table(
+            glob, files, lambda path: columns_of_file(path, storage_options=options)
+        )
 
 
 #: REQ-1915: source types a table cannot be replicated row by row from, and why. An API source is

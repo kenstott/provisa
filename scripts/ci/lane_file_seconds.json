@@ -782,6 +782,7 @@
   "tests/integration/test_spark_script_validation_e2e.py": 200.0,
   "tests/integration/test_opengauss_bytea_like.py": 120.0,
   "tests/integration/test_demo_spark_cluster_e2e.py": 240.0,
-  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0
+  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0,
+  "tests/integration/test_cloud_drive_transports_live.py": 30.0
  }
 }

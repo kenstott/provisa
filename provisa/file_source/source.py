@@ -10,7 +10,7 @@
 
 """File-based source adapter: SQLite, CSV, Parquet (Issue #27).
 
-Supports local paths and fsspec transports (s3://, ftp://, sftp://).
+Supports local paths and fsspec transports (s3://, ftp://, sftp://, onedrive://, gdrive://).
 Each adapter exposes:
   - FileSourceConfig: dataclass with connection params
   - discover_schema(config) -> list[dict]  — infer columns from file
@@ -156,11 +156,27 @@ def _sqlite_type_to_sql(sqlite_type: str) -> str:
     return "VARCHAR"
 
 
+def _readable(config: FileSourceConfig) -> Any:
+    """What pyarrow reads ``config.path`` from: the path itself, or for a onedrive:// or
+    gdrive:// path, which pyarrow has no filesystem for, the file's bytes read through the
+    transport with the source's sign-in (``options["storage_options"]``, REQ-2280)."""
+    from provisa.file_source.cloud_drive import scheme_of
+
+    if scheme_of(config.path) is None:
+        return config.path
+    import pyarrow as pa
+
+    from provisa.file_source.files_glob import remote_fs
+
+    fs, path = remote_fs(config.path, config.options["storage_options"])
+    return pa.BufferReader(fs.cat_file(path))
+
+
 def _discover_csv(config: FileSourceConfig) -> list[dict]:
     """Infer columns from a CSV file using pyarrow."""
     import pyarrow.csv as pac
 
-    table = pac.read_csv(config.path)  # type: ignore[attr-defined]
+    table = pac.read_csv(_readable(config))  # type: ignore[attr-defined]
     return _arrow_schema_to_columns(table.schema)
 
 
@@ -168,7 +184,7 @@ def _discover_parquet(config: FileSourceConfig) -> list[dict]:
     """Infer columns from a Parquet file using pyarrow."""
     import pyarrow.parquet as pq
 
-    schema = pq.read_schema(config.path)
+    schema = pq.read_schema(_readable(config))
     return _arrow_schema_to_columns(schema)
 
 

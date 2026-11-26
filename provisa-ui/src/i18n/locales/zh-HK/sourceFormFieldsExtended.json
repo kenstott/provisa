@@ -235,6 +235,11 @@
     "qbSignIn": "使用 QuickBooks 登入",
     "qbSignedIn": "已登入公司 {{realm}}。儲存資料來源以保留此登入。",
     "qbSignInFailed": "無法完成登入。",
-    "wikidataEndpointHint": "Wikidata 查詢服務。毋須憑證；表格每日由此重新整理。"
+    "wikidataEndpointHint": "Wikidata 查詢服務。毋須憑證；表格每日由此重新整理。",
+    "gdriveAuth_service_account": "服務帳戶",
+    "gdriveAuth_oauth": "OAuth（重新整理權杖）",
+    "gdriveServiceAccountKey": "服務帳戶金鑰（JSON）",
+    "gdriveServiceAccountKeyHint": "請將資料夾共用給服務帳戶的電郵地址：服務帳戶沒有自己的儲存空間。",
+    "gdriveRefreshToken": "重新整理權杖"
   }
 }

@@ -235,6 +235,11 @@
     "qbSignIn": "使用 QuickBooks 登录",
     "qbSignedIn": "已登录公司 {{realm}}。保存数据源以保留此登录。",
     "qbSignInFailed": "无法完成登录。",
-    "wikidataEndpointHint": "Wikidata 查询服务。无需凭据；表每天从中刷新。"
+    "wikidataEndpointHint": "Wikidata 查询服务。无需凭据；表每天从中刷新。",
+    "gdriveAuth_service_account": "服务账号",
+    "gdriveAuth_oauth": "OAuth（刷新令牌）",
+    "gdriveServiceAccountKey": "服务账号密钥（JSON）",
+    "gdriveServiceAccountKeyHint": "请将文件夹共享给服务账号的电子邮件地址：服务账号没有自己的存储空间。",
+    "gdriveRefreshToken": "刷新令牌"
   }
 }

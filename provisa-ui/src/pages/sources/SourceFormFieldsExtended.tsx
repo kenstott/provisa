@@ -25,7 +25,13 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable } from "../../liveCapability";
 import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
-import { API_AUTH_TYPES, BRAND_CARRIER, FILE_TRANSPORTS } from "./constants";
+import { CloudDriveFields } from "./CloudDriveFields";
+import {
+  API_AUTH_TYPES,
+  BRAND_CARRIER,
+  FILE_TRANSPORTS,
+  FILES_PATH_PLACEHOLDER,
+} from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
@@ -772,7 +778,7 @@ export function SourceFormFieldsExtended({
                   label={t("sourceFormFieldsExtended.pathGlob")}
                   value={form.path}
                   onChange={(e) => setForm({ ...form, path: e.target.value })}
-                  placeholder={filesTransport === "file://" ? "/data/files/**" : "bucket/prefix/**"}
+                  placeholder={FILES_PATH_PLACEHOLDER[filesTransport] ?? "bucket/prefix/**"}
                   data-testid="files-path-input"
                 />
               </FormField>
@@ -891,6 +897,7 @@ export function SourceFormFieldsExtended({
                   )}
                 </>
               )}
+              <CloudDriveFields needsAuth={transportMeta.needsAuth} {...typed} />
               <ExcelHintsFields fields={authFields} setFields={setAuthFields} />
             </>
           );

@@ -235,6 +235,11 @@
     "qbSignIn": "Sign in with QuickBooks",
     "qbSignedIn": "Signed in to company {{realm}}. Save the source to keep it.",
     "qbSignInFailed": "The sign-in could not be completed.",
-    "wikidataEndpointHint": "The Wikidata query service. No credential; tables refresh from it daily."
+    "wikidataEndpointHint": "The Wikidata query service. No credential; tables refresh from it daily.",
+    "gdriveAuth_service_account": "Service account",
+    "gdriveAuth_oauth": "OAuth (refresh token)",
+    "gdriveServiceAccountKey": "Service account key (JSON)",
+    "gdriveServiceAccountKeyHint": "Share the folder with the service account's email address: a service account has no storage of its own.",
+    "gdriveRefreshToken": "Refresh token"
   }
 }
