@@ -259,10 +259,8 @@ SPECS: list[dict] = [
             "Set or clear one column's fake, synthetic rule (used only by synthetic generation, "
             "over the fake) and stable flag. An omitted field keeps its value; '' clears a fake "
             "or rule. Checked as the table editor checks it; refusals come back verbatim. "
-            "A json column's fake may be a template: the object itself, each field a fake, a "
-            "nested object, a fixed-length array or a literal, a field typed by ::type, e.g. "
-            '{"email": email(), "age": uniform(min=18, max=90)::integer, "kind": "contact"}. '
-            + _RIGHT_TABLE
+            'A json column\'s fake may be a template: {"email": email(), "n": pyint()::integer, '
+            '"tags": [word()], "kind": "x"}. ' + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
