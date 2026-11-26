@@ -177,10 +177,14 @@ async def suggest(body: SuggestionBody, request: Request) -> dict:
 async def suggestion_counts(request: Request) -> list[dict]:
     """How many suggestions name each table of the domains whose suggestions go to the caller,
     most wanted first."""
-    reader = _suggester(request)
+    user_id = getattr(getattr(request.state, "identity", None), "user_id", _ANONYMOUS)
+    # REQ-2180: anonymous callers own no domains; return [] rather than a 401 that the
+    # browser logs as a console error (the Tables page loads this unconditionally).
+    if user_id == _ANONYMOUS:
+        return []
     state = _state()
     async with state.model_db.acquire() as conn:
-        return await suggestions.counts(conn, await received_domains(conn, reader))
+        return await suggestions.counts(conn, await received_domains(conn, user_id))
 
 
 @router.get("")

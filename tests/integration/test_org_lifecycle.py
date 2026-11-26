@@ -54,11 +54,8 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.schema_org import (
     admin_audit_log,
-    data_products,
     domains,
-    glossary_terms,
     query_audit_log,
-    registered_tables,
     sources,
     table_columns,
     user_attributes,
@@ -103,17 +100,10 @@ def _lay_out_query_audit_log(conn) -> None:
 
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
-# org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
-# and glossary_terms ride along because registered_tables.product_id (REQ-1634) and
-# registered_tables.class_term_id (REQ-2130) reference them.
-_ROOT_EXTRA_TABLES = [
-    sources,
-    domains,
-    data_products,
-    glossary_terms,
-    registered_tables,
-    table_columns,
-]
+# org rebuilds root's org-registry view and re-registers it as a meta-domain table. The rest of
+# that catalog (sources, domains, data_products, glossary_terms, registered_tables) is already
+# among SIGN_IN_TABLES: the sign-in path rewrites object_owners from it (REQ-2219).
+_ROOT_EXTRA_TABLES = [table_columns]
 
 # REQ-1337: every gate on these routers reads a RIGHT, so a role row with an empty capability list
 # authorizes nothing however it is named. These are the capabilities schema.sql seeds, trimmed to
