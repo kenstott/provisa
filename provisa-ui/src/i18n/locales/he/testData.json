@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "ערך מדומה",
+    "template": "תבנית JSON",
+    "templateHint": "האובייקט שמוצגת בכל שורה: כל שדה הוא ערך מדומה כגון email() או uniform(min=1, max=9)::integer, אובייקט מקונן, מערך באורך קבוע, או ליטרל במרכאות כפולות עבור שדה שאינו משתנה",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "כלל סינתטי",
     "stable": "יציב",
     "stableHint": "אותו ערך מדומה בכל מנוע ובכל אזור",

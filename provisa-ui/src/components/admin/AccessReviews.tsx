@@ -44,6 +44,7 @@ import {
   type ReviewDecision,
 } from "../../api/accessReview";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../list/ListTable";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { useCapability } from "../../hooks/useCapability";
@@ -68,6 +69,8 @@ export function AccessReviews() {
     decision: ReviewDecision;
   } | null>(null);
   const [reason, setReason] = useState("");
+  // REQ-1968: a decision needs its reason, checked when it is pressed.
+  const reasonRequired = useRequiredFields({ reason });
   const [cron, setCron] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -152,7 +155,7 @@ export function AccessReviews() {
   };
 
   const decide = async () => {
-    if (deciding === null) return;
+    if (deciding === null || !reasonRequired.validate()) return;
     try {
       await decideAccessReviewRow(deciding.row.id, deciding.decision, reason.trim());
       setDeciding(null);
@@ -330,7 +333,7 @@ export function AccessReviews() {
           <FormField size="long" hint={t("accessReview.reasonHint")}>
             <TextInput
               label={t("accessReview.reasonLabel")}
-              required
+              {...reasonRequired.field("reason")}
               value={reason}
               onChange={(e) => setReason(e.currentTarget.value)}
               data-testid="access-review-reason"
@@ -341,19 +344,11 @@ export function AccessReviews() {
             cancelProps={{ "data-testid": "access-review-decide-cancel" }}
             action={
               deciding.decision === "revoked" ? (
-                <DestructiveConfirmButton
-                  disabled={reason.trim() === ""}
-                  onClick={decide}
-                  testId="access-review-decide-submit"
-                >
+                <DestructiveConfirmButton onClick={decide} testId="access-review-decide-submit">
                   {t("accessReview.revoke")}
                 </DestructiveConfirmButton>
               ) : (
-                <Button
-                  disabled={reason.trim() === ""}
-                  onClick={decide}
-                  data-testid="access-review-decide-submit"
-                >
+                <Button onClick={decide} data-testid="access-review-decide-submit">
                   {t("accessReview.confirm")}
                 </Button>
               )
@@ -464,6 +459,7 @@ export function AccessReviews() {
                           variant="light"
                           onClick={() => {
                             setReason("");
+                            reasonRequired.reset();
                             setDeciding({ row: r, decision: "confirmed" });
                           }}
                           data-testid={`access-review-confirm-${r.id}`}
@@ -476,6 +472,7 @@ export function AccessReviews() {
                           variant="light"
                           onClick={() => {
                             setReason("");
+                            reasonRequired.reset();
                             setDeciding({ row: r, decision: "revoked" });
                           }}
                           data-testid={`access-review-revoke-${r.id}`}

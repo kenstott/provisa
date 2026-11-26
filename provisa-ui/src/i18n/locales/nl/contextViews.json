@@ -6,11 +6,22 @@
     "nowhere": "Nergens",
     "hiddenPlaces_one": "Nog {{count}} die u niet mag lezen",
     "hiddenPlaces_other": "Nog {{count}} die u niet mag lezen",
-    "rowFilters_one": "{{count}} rijfilter",
-    "rowFilters_other": "{{count}} rijfilters",
-    "classifiedAs": "Toegewezen door classificatie: {{kind}}",
     "noDependents": "Niets",
     "enabled": "Ingeschakeld",
-    "disabled": "Uitgeschakeld"
+    "disabled": "Uitgeschakeld",
+    "objectCount_one": "{{count}} object",
+    "objectCount_other": "{{count}} objecten",
+    "sourceCount_one": "{{count}} bron",
+    "sourceCount_other": "{{count}} bronnen",
+    "objectsInSources": "{{objects}} in {{sources}}",
+    "classificationCount_one": "{{count}} classificatie",
+    "classificationCount_other": "{{count}} classificaties",
+    "rowRuleCount_one": "{{count}} rijregel",
+    "rowRuleCount_other": "{{count}} rijregels",
+    "groupTables": "Tabellen ({{count}})",
+    "groupColumns": "Kolommen ({{count}})",
+    "groupClassification": "Toegewezen door classificatie ({{count}})",
+    "groupRowRules": "Rijregels ({{count}})",
+    "filterClassifications": "Classificaties filteren"
   }
 }

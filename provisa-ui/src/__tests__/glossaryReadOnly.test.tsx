@@ -130,12 +130,14 @@ const READ_CONTROLS = [
   // The AI menu's trigger; its Definitions and Relationships items exist only while it is open.
   "glossary-generate-menu",
   "glossary-edit-btn",
+  // The term's toggles in its panel's head.
+  "glossary-pii-toggle",
+  "glossary-export-excluded-toggle",
   "glossary-retire-btn",
   "glossary-delete-btn",
 ];
 const FORM_CONTROLS = [
   "glossary-name-input",
-  "glossary-export-excluded-checkbox",
   "glossary-edit-save",
   "glossary-move-select-10-revenue",
   "glossary-claim-columns",
@@ -189,7 +191,13 @@ describe("glossary read-only mode", () => {
     auth.capabilities = ["glossary_read", "glossary_rw"];
     mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, curatable: false });
     await openRevenue();
-    for (const testid of ["glossary-edit-btn", "glossary-retire-btn", "glossary-delete-btn"]) {
+    for (const testid of [
+      "glossary-edit-btn",
+      "glossary-pii-toggle",
+      "glossary-export-excluded-toggle",
+      "glossary-retire-btn",
+      "glossary-delete-btn",
+    ]) {
       expect(screen.queryByTestId(testid), testid).toBeNull();
     }
     // Duplicating is a create, which glossary_rw alone allows.
@@ -222,13 +230,12 @@ describe("glossary read-only mode", () => {
     expect(within(incoming).getByText(t("glossaryTab.rel_PART_OF"))).toBeInTheDocument();
   });
 
-  it("reads the name and the export setting as values, with no control to change them", async () => {
+  it("reads the name as a value, with no control to change it or the export setting", async () => {
     await openRevenue();
     const read = screen.getByTestId("glossary-read-fields");
     expect(read).toHaveTextContent("Revenue");
-    expect(read).toHaveTextContent(t("glossaryTab.excludeFromExportLabel"));
     expect(screen.queryByTestId("glossary-name-input")).toBeNull();
-    expect(screen.queryByTestId("glossary-export-excluded-checkbox")).toBeNull();
+    expect(screen.queryByTestId("glossary-export-excluded-toggle")).toBeNull();
   });
 
   it("keeps searching and filtering, which write nothing", async () => {

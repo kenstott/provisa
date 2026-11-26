@@ -188,6 +188,60 @@ describe("TableReadView for a table with a required parameter", () => {
   });
 });
 
+// REQ-1986: the Columns tab lists a table's data columns first, then its parameters apart under a
+// Parameters heading, each by the name a caller gives it (without `_nf_`).
+describe("TableReadView's Columns tab for a parameterized table", () => {
+  const column = (id: number, columnName: string, nativeFilterType: string | null) =>
+    ({
+      id,
+      columnName,
+      computedSqlAlias: columnName,
+      visibleTo: [],
+      masks: [],
+      scope: "domain",
+      dataType: "text",
+      nativeFilterType,
+      nativeFilterRequired: nativeFilterType ? false : null,
+    }) as unknown as RegisteredTable["columns"][number];
+  const repos = makeTable({
+    id: 11,
+    sourceId: "gh",
+    tableName: "repos",
+    columns: [
+      column(1, "_nf_owner", "path_param"),
+      column(2, "name", null),
+      column(3, "stars", null),
+    ],
+  });
+
+  it("lists the data columns, then the parameters under their own heading", () => {
+    renderView(false, repos, { section: "columns", onSectionChange: vi.fn() });
+    const rows = within(screen.getByTestId("table-section-columns-panel"))
+      .getAllByRole("row")
+      .map((r) => r.getAttribute("data-testid"))
+      .filter(Boolean);
+    expect(rows).toEqual([
+      "table-read-column-name",
+      "table-read-column-stars",
+      "table-read-parameters-heading",
+      "table-read-column-_nf_owner",
+    ]);
+    expect(screen.getByTestId("table-read-parameters-heading")).toHaveTextContent("Parameters");
+    const owner = screen.getByTestId("table-read-column-_nf_owner");
+    // Named as a caller gives it; its SQL alias (the naming tab's next cell) stays the column's.
+    expect(owner.querySelector("td code")).toHaveTextContent(/^owner$/);
+  });
+
+  it("has no Parameters heading for a table without parameters", () => {
+    renderView(false, makeTable({ id: 12, columns: [column(2, "name", null)] }), {
+      section: "columns",
+      onSectionChange: vi.fn(),
+    });
+    expect(screen.getByTestId("table-read-column-name")).toBeInTheDocument();
+    expect(screen.queryByTestId("table-read-parameters-heading")).toBeNull();
+  });
+});
+
 // REQ-1921: there is no draft state: the read view offers no control to set or clear it, and
 // marks a withdrawn table instead.
 describe("TableReadView and a draft", () => {

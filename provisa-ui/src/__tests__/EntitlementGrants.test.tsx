@@ -186,8 +186,15 @@ describe("granting access from the Team page", () => {
     await userEvent.click(
       await screen.findByTestId("entitlement-pending-end-new@acme.example|viewer|tables"),
     );
+    // REQ-1968: End is never disabled by the empty reason; pressing it marks the reason.
     const submit = screen.getByTestId("entitlement-pending-end-submit");
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    await userEvent.click(submit);
+    expect(mockEnd).not.toHaveBeenCalled();
+    expect(screen.getByTestId("entitlement-pending-end-reason")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
     await userEvent.type(screen.getByTestId("entitlement-pending-end-reason"), "offer withdrawn");
     await userEvent.click(submit);
     await waitFor(() =>

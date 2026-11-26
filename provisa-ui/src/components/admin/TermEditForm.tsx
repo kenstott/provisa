@@ -23,7 +23,6 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   Group,
   Modal,
   MultiSelect,
@@ -52,7 +51,7 @@ import { DescriptionField } from "../../pages/tables/DescriptionField";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
-import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
 import { GlossaryRelationships } from "./GlossaryRelationships";
 import { TagLossSummary } from "./TagLossSummary";
@@ -65,11 +64,8 @@ import {
   draftOf,
   type Change,
   type TermDraft,
-  type TermTags,
 } from "./termDraft";
 import { useCommandOutputColumns } from "../../hooks/useCommandOutputColumns";
-import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
-import { refusalError } from "../../i18n/serverMessage";
 import { useViewDomains } from "../../lib/viewDomains";
 import { type TermOption } from "./termLabel";
 
@@ -115,19 +111,6 @@ export function TermEditForm({
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
   const [draft, setDraft] = useState<TermDraft | null>(null);
   const [owners, setOwners] = useState<Map<string, ColumnTerm> | null>(null);
-  const { assignTag } = useAssignTag();
-  const { unassignTag } = useUnassignTag();
-  // The term's own tags, marked and unmarked as the tag picker does; a refusal is said by Save.
-  const termTags: TermTags = {
-    mark: async (tagId) => {
-      const r = await assignTag({ tagId, objectType: "term", termId: term.id });
-      if (!r.success) throw refusalError(r);
-    },
-    unmark: async (tagId) => {
-      const r = await unassignTag({ tagId, objectType: "term", termId: term.id });
-      if (!r.success) throw refusalError(r);
-    },
-  };
   // REQ-1387: the bound tables the last draft read no samples from.
   const [unsampled, setUnsampled] = useState<string[]>([]);
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
@@ -264,7 +247,7 @@ export function TermEditForm({
     setRefused(null);
     let removed = false;
     let done = true;
-    const list = changes(term, read.tables, draft, termTags);
+    const list = changes(term, read.tables, draft);
     try {
       for (let i = start; i < list.length; i++) {
         const change = list[i];
@@ -408,36 +391,6 @@ export function TermEditForm({
             />
           </Stack>
         </FormField>
-        <FormChecks>
-          <FormField size="short" help={t("glossaryTab.excludeFromExportHelp")}>
-            <Checkbox
-              label={t("glossaryTab.excludeFromExportLabel")}
-              checked={draft.exportExcluded}
-              onChange={(e) => set({ exportExcluded: e.currentTarget.checked })}
-              data-testid="glossary-export-excluded-checkbox"
-            />
-          </FormField>
-          {/* REQ-2145: pii on a Property covers every column it means; a Class or a Concept holds
-              none to cover, and a draft governs nothing until it is defined. */}
-          <FormField
-            size="short"
-            help={
-              role !== "property"
-                ? t("glossaryTab.piiPropertyOnly")
-                : !draft.definition.trim()
-                  ? t("serverErrors.tag.term_not_live", { term: draft.name.trim() })
-                  : t("glossaryTab.piiHelp")
-            }
-          >
-            <Checkbox
-              label={t("glossaryTab.piiLabel")}
-              checked={draft.pii}
-              disabled={role !== "property" || (!draft.definition.trim() && !draft.pii)}
-              onChange={(e) => set({ pii: e.currentTarget.checked })}
-              data-testid="glossary-pii-checkbox"
-            />
-          </FormField>
-        </FormChecks>
         {domainsEnabled && term.is_abstract && (
           <FormField size="medium">
             <MultiSelect
@@ -734,7 +687,9 @@ export function TermEditForm({
       {said("experts")}
 
       <FormLayout>
+        {/* Save and Cancel in the panel's head beside the term's name, as on the Tables panel. */}
         <FormFooter
+          panel
           onSave={() => save()}
           onCancel={onCancel}
           saving={saving}
