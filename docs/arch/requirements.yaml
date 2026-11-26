@@ -98657,8 +98657,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     aliases (REQ-2281) apply. A schema-name match in a document links the document to the table or column, and
     where no glossary term covers that column the steward is offered to create or ground one. COST: the
     statistical model runs either on the Provisa server itself (CPU, for development and small orgs, under a small
-    scan budget that keeps it workable) or optionally on a remote worker (a GPU host paired like a code-source
-    remote host); never on the serving engines. A rotating scanner works through the tagged tables, columns and documents at a set budget
+    scan budget that keeps it workable) or optionally on a remote worker paired like a code-source remote host, with a GPU
+    for throughput or a cheaper CPU-only host accepting less; never on the serving engines; the scan budget is set
+    per placement. A rotating scanner works through the tagged tables, columns and documents at a set budget
     and starts over; an item is rescanned only when its content, the pattern list or the model changed (its scan
     fingerprint), the pattern list is rebuilt each cycle, progress shows as one status line, and any table or
     document can be scanned on demand. spaCy and its models are an optional install, staged like the other
