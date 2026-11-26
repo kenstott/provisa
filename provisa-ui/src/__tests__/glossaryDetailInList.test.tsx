@@ -87,7 +87,7 @@ beforeEach(() => {
   vi.mocked(listGlossaryTerms).mockImplementation(async (q, _all, domains) =>
     ALL.filter(
       (term) =>
-        (domains === null || term.domains.some((d) => domains.includes(d))) &&
+        (!domains || term.domains.some((d) => domains.includes(d))) &&
         term.name.includes(q),
     ),
   );
