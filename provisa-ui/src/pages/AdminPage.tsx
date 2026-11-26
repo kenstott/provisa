@@ -113,6 +113,7 @@ const OWN_HEADER: ReadonlySet<string> = new Set([
   "Triggers",
   "Domains",
   "Platform",
+  "Environments",
 ]);
 
 /** Admin overview page — dashboard, config management, platform settings. */
@@ -226,7 +227,7 @@ export function AdminPage() {
           </>
         )}
 
-        {activeTab === "Environments" && <EnvironmentsTab />}
+        {activeTab === "Environments" && <EnvironmentsTab title={adminTitle} />}
 
         {activeTab === "Platform" && <PlatformRegionsTab title={adminTitle} />}
 

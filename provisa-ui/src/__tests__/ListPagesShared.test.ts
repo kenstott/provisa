@@ -39,22 +39,31 @@ const LIST_PAGES = [
   "components/admin/TermReadView.tsx",
   "components/admin/MergeRequestsPanel.tsx",
   "components/admin/EnvironmentsTab.tsx",
+  // The environments' rows: EnvironmentsTab lists them through it.
+  "components/admin/EnvironmentRow.tsx",
   "components/admin/SecretsTab.tsx",
   "components/admin/CacheManager.tsx",
   "components/admin/SyntheticDatasetsPanel.tsx",
   "components/admin/AiModelsTab.tsx",
 ];
 
+const ROWS_DELEGATED = new Set([
+  "pages/RelationshipsPage.tsx",
+  "components/admin/EnvironmentsTab.tsx",
+]);
+
 const src = (rel: string) => readFileSync(resolve(process.cwd(), "src", rel), "utf8");
 
 describe("REQ-1940 list pages use the shared list component", () => {
   it.each(LIST_PAGES.map((p) => [p]))("%s", (page) => {
     const tsx = src(page);
-    expect(tsx).toMatch(/from "(\.\.\/)+(components\/)?list\/ListTable"/);
+    // SortGroupTable is the shared list over ListTable.
+    expect(tsx).toMatch(/from "(\.\.\/)+(components\/)?list\/(ListTable|SortGroupTable)"/);
     // No page-local list styling: no striped/bordered Mantine tables or scroll containers.
     // Item rows are ListRow, so every list gets the stripe and hover.
-    // (RelationshipsPage delegates its item rows to RelationshipRow, which is listed itself.)
-    if (page !== "pages/RelationshipsPage.tsx") expect(tsx).toContain("<ListRow");
+    // (RelationshipsPage and EnvironmentsTab delegate their item rows to RelationshipRow and
+    // EnvironmentRow, each listed itself.)
+    if (!ROWS_DELEGATED.has(page)) expect(tsx).toContain("<ListRow");
     expect(tsx).not.toContain("<Table.ScrollContainer");
     expect(tsx).not.toMatch(/<Table\s+striped/);
   });
@@ -87,6 +96,7 @@ describe("REQ-1940 list pages load with PageLoading", () => {
 // AiModelsTab (inline-editable config grids addressed by array index, which a reorder would break).
 const SORT_EXEMPT = new Set([
   "components/relationships/RelationshipRow.tsx",
+  "components/admin/EnvironmentRow.tsx",
   "components/admin/SystemHealth.tsx",
   "components/admin/AiModelsTab.tsx",
 ]);

@@ -97,6 +97,10 @@ const PAGES: Record<DetailPage, { file: string; call: string; marks?: true }> = 
     file: "components/admin/PlatformRegionsTab.tsx",
     call: 'useRememberedDetail(\n    "platformRegions",',
   },
+  environments: {
+    file: "components/admin/EnvironmentsTab.tsx",
+    call: 'useRememberedDetail(\n    "environments",',
+  },
   triggers: {
     file: "components/admin/ScheduledTasks.tsx",
     call: 'useRememberedDetail("triggers",',

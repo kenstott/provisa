@@ -92,6 +92,7 @@ export const DETAIL_VIEWS = {
   requests: { route: "/admin/requests", param: "request" },
   team: { route: "/team", param: "member" },
   platformRegions: { route: "/admin/platform", param: "region" },
+  environments: { route: "/admin/environments", param: "environment" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;
