@@ -11,7 +11,6 @@
     "mcp": "Appel d'outil MCP",
     "copy": "Copier : {{what}}",
     "close": "Fermer",
-    "createRelationships": "Créer les relations",
     "relationshipsCreated_one": "{{count}} relation créée.",
     "relationshipsCreated_other": "{{count}} relations créées."
   }

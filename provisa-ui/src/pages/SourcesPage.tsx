@@ -158,7 +158,6 @@ import {
 } from "./sources/sourceSeed";
 import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
-import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { SourceSetupStepper } from "./sources/SourceSetupStepper";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
@@ -669,9 +668,10 @@ export function SourcesPage() {
 
   // The source the short create step just made is selected. It is saved, so its detail is the
   // read view, seeded from the list as it is now; its edit form opens on Edit alone.
-  // REQ-2234: the panel opens first on registering its tables, then on Your data, shown over
-  // the read view: skipping or closing either leaves the source read.
-  const [afterSave, setAfterSave] = useState<string | null>(null);
+  // REQ-2234 / REQ-2262: the source's setup flow, opened as the panel's working surface -- right
+  // after the source is saved, or from the setup strip on its read view -- on a done step gone
+  // back to, or (null) on the current one. Finish later leaves the source read.
+  const [setup, setSetup] = useState<{ sourceId: string; step: number | null } | null>(null);
   // REQ-2262: the relationships the review after registration created, said on the source it
   // returns to.
   const [related, setRelated] = useState<{ sourceId: string; count: number } | null>(null);
@@ -679,7 +679,7 @@ export function SourcesPage() {
     const fresh = await refetchSources();
     if (fresh.data?.sources.some((x) => x.id === id)) {
       updateExpanded(id);
-      setAfterSave(id);
+      setSetup({ sourceId: id, step: null });
     }
   };
 
@@ -763,7 +763,7 @@ export function SourcesPage() {
         (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
       );
     }
-    setAfterSave(null);
+    setSetup(null);
     setDiscoverSourceId(null);
     setDiscoverSourceType(null);
     setMappingSourceId(null);
@@ -1607,15 +1607,29 @@ export function SourcesPage() {
     </FormLayout>
   );
   const working =
-    afterSave !== null && afterSave === expanded ? (
-      <AfterSaveSteps
-        sourceId={afterSave}
-        onClose={() => setAfterSave(null)}
-        onRelated={(count) => {
-          setRelated({ sourceId: afterSave, count });
-          setAfterSave(null);
-        }}
-      />
+    setup !== null && selectedSource !== null && setup.sourceId === selectedSource.id ? (
+      <PanelWorking
+        back={t("sourceSetup.finishLater")}
+        onBack={() => setSetup(null)}
+        testId="source-setup-finish-later"
+      >
+        <SourceSetupStepper
+          sourceId={selectedSource.id}
+          outcomes={selectedSource.setupOutcomes}
+          open
+          step={setup.step}
+          onConnect={() => {
+            setSetup(null);
+            handleEdit(selectedSource);
+          }}
+          onOpen={(step) => setSetup({ sourceId: selectedSource.id, step })}
+          onClose={() => setSetup(null)}
+          onRelated={(count) => {
+            setRelated({ sourceId: selectedSource.id, count });
+            setSetup(null);
+          }}
+        />
+      </PanelWorking>
     ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}
@@ -1801,9 +1815,13 @@ export function SourcesPage() {
               <SourceSetupStepper
                 sourceId={s.id}
                 outcomes={s.setupOutcomes}
+                open={false}
+                step={null}
                 // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
                 onConnect={() => handleEdit(s)}
-                onRegister={() => setAfterSave(s.id)}
+                onOpen={(step) => setSetup({ sourceId: s.id, step })}
+                onClose={() => setSetup(null)}
+                onRelated={(count) => setRelated({ sourceId: s.id, count })}
               />
             )}
             <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
@@ -1859,7 +1877,7 @@ export function SourcesPage() {
       ? t("sourcesPage.panelNewSource")
       : (selectedSource?.id ?? discoverSourceId ?? mappingSourceId ?? "");
   const closePanel = () => {
-    setAfterSave(null);
+    setSetup(null);
     setDiscoverSourceId(null);
     setDiscoverSourceType(null);
     setMappingSourceId(null);

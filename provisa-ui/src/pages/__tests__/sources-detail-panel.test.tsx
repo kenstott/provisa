@@ -325,8 +325,8 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     await userEvent.click(screen.getByTestId("sources-submit"));
     await waitFor(() => expect(createSource).toHaveBeenCalled());
     expect(createSource.mock.calls[0][0]).toMatchObject({ id: "crm", type: "postgresql" });
-    // REQ-2234: the panel opens first on registering its tables; skipping that step closes it.
-    await userEvent.click(await screen.findByTestId("register-tables-skip"));
+    // REQ-2234: the panel opens first on the source's setup; Finish later leaves it for the read.
+    await userEvent.click(await screen.findByTestId("source-setup-finish-later"));
     // Its detail, read: the source is saved, so nothing is offered to save.
     const read = await within(panel()!).findByTestId("source-read");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("crm");
@@ -379,7 +379,8 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     );
     // A step in the source's own panel, not a dialog over the page.
     expect(panel()).toContainElement(screen.getByTestId("register-tables-field"));
-    expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
+    expect(panel()).toContainElement(screen.getByTestId("source-setup-skip-tables"));
+    expect(panel()).toContainElement(screen.getByTestId("source-setup-finish-later"));
   });
 });
 
