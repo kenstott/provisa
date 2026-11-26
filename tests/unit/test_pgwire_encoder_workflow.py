@@ -515,3 +515,11 @@ def test_every_recipe_names_one_toolchain():
                 name,
                 job,
             )
+
+
+def test_the_images_pin_an_unyanked_ziglang():
+    """cargo-zigbuild links the Linux wheel with the ziglang package. PyPI yanked ziglang 0.17.0
+    (a partial upload), so both images pin 0.17.1, the release that replaced it."""
+    for path in ("Dockerfile", "Dockerfile.dev"):
+        pins = re.findall(r'"ziglang==([^"]+)"', (REPO / path).read_text())
+        assert pins == ["0.17.1"], f"{path}: {pins}"
