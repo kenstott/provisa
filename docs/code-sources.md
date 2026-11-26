@@ -844,7 +844,7 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 - **Your registries.** Packages come from your organization's own npm registries, PyPI indexes, Go module proxies and Git hosts, entered once under **Admin → Package registries**. The public npm registry, PyPI and Go module proxy need no entry. See [Package Registries](package-registries.md).
 - **Cached.** An install is cached by the code's content hash, so the same code installs once.
 
-The source form shows a link to the reference section for the language you choose — Python, Node, Go, Rust or Spark. The link opens in the in-app Docs page at that section.
+The source form shows a link to the reference section for the language you choose: Python, Node, Go, Rust or Spark. The link opens in the in-app Docs page at that section.
 
 ### Node {: #node }
 
@@ -1926,7 +1926,7 @@ Declares a setup value the code needs. Whoever adds the source fills it in. Stac
 
 A single function whose return value—a `provisa_services.Discovered`—generates tables, queries and commands at read time. The generated items share one handler function per kind.
 
-The SDK has no `@discover` decorator: write it in the docstring. `@discover` is currently available in Python only; other languages follow as separate additions.
+The SDK has no `@discover` decorator: write it in the docstring. `@discover` is available in Python only.
 
 ```python
 from provisa_services import Discovered

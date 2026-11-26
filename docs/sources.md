@@ -78,7 +78,7 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver a
 
 #### `oracle`
 
-Oracle results are read as Arrow through python-oracledb (version 26.1 or later is required). Column types that python-oracledb has no Arrow form for are cast in the database: `ROWID` and `UROWID` read as text, `JSON` reads as json, and `XMLTYPE` reads as text. An object-type column is refused by name. No column that read before the Arrow path stops reading.
+Oracle results are read as Arrow through python-oracledb (version 26.1 or later is required). Column types that python-oracledb has no Arrow form for are cast in the database: `ROWID` and `UROWID` read as text, `JSON` reads as json, and `XMLTYPE` reads as text. Object-type, BFILE and nested-cursor columns are refused by name. To read a refused column, select it cast to a type it reads (for example its text).
 
 #### `saphana`
 
