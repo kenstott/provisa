@@ -16,7 +16,6 @@
     "empty": "Aucun rapport enregistré dans le domaine ops.",
     "filterPlaceholder": "Filtrer les rapports…",
     "noMatch": "Aucun rapport ne correspond",
-    "resize": "Redimensionner la liste des rapports",
     "drift": {
       "title": "Dérive depuis la période précédente",
       "baseline": "Comparé au modèle du {{date}}, dernière version au {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Gagné",
         "new": "Nouveau"
       }
-    }
+    },
+    "kindColumn": "Type",
+    "kindBuiltIn": "Intégré",
+    "kindCustom": "Personnalisé",
+    "panelLabel": "Rapport",
+    "closeForm": "Fermer le formulaire",
+    "loading": "Chargement des rapports…"
   }
 }

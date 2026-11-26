@@ -53,6 +53,9 @@ const STATED_EXCEPTIONS: Readonly<Record<string, string>> = {
   "components/admin/ClassificationKindsTab.tsx":
     "Admin › Classification: a kind is shipped with the product; its Edit only switches it on or " +
     "off. Kinds are not created on this page, so there is no create form a copy could fill.",
+  "components/admin/OrgsTab.tsx":
+    "Admin › Orgs: an org's Edit sets only its tier. An org holds nothing a create form could " +
+    "copy but a new id and name, which the create form asks for anyway.",
   "components/admin/ontologyImport/ImportReviewPanel.tsx":
     "Ontology import review: the panel is an import's review (Apply, Discard); its pencil edits " +
     "one proposed item of the import, an object that exists only inside the review. An import is " +

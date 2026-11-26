@@ -87,6 +87,9 @@
     "editAria": "Modifier {{name}}",
     "enableAria": "Activer {{name}}",
     "disableAria": "Désactiver {{name}}",
-    "deleteAria": "Supprimer {{name}}"
+    "deleteAria": "Supprimer {{name}}",
+    "filterPlaceholder": "Filtrer les déclencheurs",
+    "closeForm": "Fermer le formulaire",
+    "noMatch": "Aucun déclencheur ne correspond"
   }
 }

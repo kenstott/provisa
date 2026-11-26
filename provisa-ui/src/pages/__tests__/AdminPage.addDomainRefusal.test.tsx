@@ -27,7 +27,14 @@ const hooks = vi.hoisted(() => ({
   domains: {
     loading: false,
     domains: [
-      { id: "sales", description: "Sales", alias: null, stewards: [], stewardField: { people: [], roles: [] }, effectiveStewards: [] },
+      {
+        id: "sales",
+        description: "Sales",
+        alias: null,
+        stewards: [],
+        stewardField: { people: [], roles: [] },
+        effectiveStewards: [],
+      },
     ],
     refetch: undefined as unknown,
   },
@@ -76,6 +83,7 @@ import { AdminPage } from "../AdminPage";
 // use) is said as refused, in red, the form left open to correct -- never reported as added.
 describe("Admin > Domains: adding a domain", () => {
   beforeEach(() => {
+    localStorage.clear();
     createDomain.mockClear();
     refetch.mockClear();
   });

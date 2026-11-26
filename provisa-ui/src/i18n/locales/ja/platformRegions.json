@@ -38,6 +38,8 @@
     "org": "組織",
     "pickOrg": "組織を選択",
     "orgGranted": "{{id}} (付与済み: {{regions}})",
-    "orgNone": "{{id}} (リージョンなし)"
+    "orgNone": "{{id}} (リージョンなし)",
+    "filterPlaceholder": "リージョンを絞り込む",
+    "closeForm": "フォームを閉じる"
   }
 }

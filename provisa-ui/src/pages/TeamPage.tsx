@@ -9,7 +9,11 @@
 // permission from the copyright holder.
 
 import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
-import { Users } from "lucide-react";
+import { Users, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
+import { useRememberedDetail } from "../components/list/useDetailParam";
+import { useUrlFilter } from "../components/list/useUrlFilter";
+import { matchesQuery } from "../lib/searchItems";
 import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -84,8 +88,13 @@ export function TeamPage() {
   const canReview = canManageUsers || ownsDomains;
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
-  // The member whose attributes the panel beside the list shows.
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  // REQ-2277: the member whose attributes and access the panel beside the list shows (?member=).
+  const detail = useRememberedDetail("team", membersLoaded ? members.map((m) => m.user_id) : null);
+  const selectedMemberId = detail.id;
+  const [search, setSearch] = useUrlFilter();
+  // The invite form, open in the members' panel from the header's Invite.
+  const [inviting, setInviting] = useState(false);
   const [roleId, setRoleId] = useState<string | null>(null);
   // REQ-1287/REQ-1310: addressing the invitation is what makes it a message rather than a link the
   // org_admin has to carry themselves. Empty means a shareable link, which is still a valid choice.
@@ -127,7 +136,12 @@ export function TeamPage() {
 
   useEffect(() => {
     if (!activeOrgId) return;
-    fetchOrgMembers(activeOrgId).then(setMembers).catch(reportError);
+    fetchOrgMembers(activeOrgId)
+      .then((found) => {
+        setMembers(found);
+        setMembersLoaded(true);
+      })
+      .catch(reportError);
   }, [activeOrgId]);
 
   // REQ-1302: the server refuses the removal or demotion that would leave the org with no admin.
@@ -273,7 +287,10 @@ export function TeamPage() {
       groupValue: (i) => inviteStatus(i),
     },
   ];
-  const memberSortGroup = useListSortGroup(members, memberColumns, "team-members");
+  const shownMembers = members.filter((m) =>
+    matchesQuery([m.display_name, m.email, m.user_id, m.provider], search),
+  );
+  const memberSortGroup = useListSortGroup(shownMembers, memberColumns, "team-members");
   const inviteSortGroup = useListSortGroup(invites, inviteColumns, "team-invites");
 
   const handleCreate = async () => {
@@ -327,11 +344,119 @@ export function TeamPage() {
     setInvites((prev) => prev.filter((i) => i.token !== token));
   };
 
+  // REQ-2277: inviting is the page's create, its form in the members' panel.
+  const inviteForm = (
+    <FormLayout data-testid="team-invite-form">
+      <Text c="dimmed" size="sm">
+        {t("teamPage.inviteHelp")}
+      </Text>
+      <FormField size="long" hint={t("teamPage.emailDesc")}>
+        <TextInput
+          label={t("teamPage.emailLabel")}
+          placeholder="person@acme.com"
+          type="email"
+          value={inviteEmail}
+          onChange={(e) => setInviteEmail(e.currentTarget.value)}
+          data-testid="team-invite-email"
+        />
+      </FormField>
+      <FormField size="medium" hint={t("teamPage.roleDesc")}>
+        <Select
+          label={t("teamPage.roleLabel")}
+          placeholder={t("teamPage.rolePlaceholder")}
+          data={roleOptions}
+          value={roleId}
+          onChange={setRoleId}
+          data-testid="team-invite-role"
+        />
+      </FormField>
+      {/* REQ-1594/REQ-1595: who the link admits, and what it gives them: both are answered
+                  about the invitation as a whole, not per invitee. */}
+      <FormField size="short" help={t("teamPage.expiresDesc")}>
+        <NumberInput
+          label={t("teamPage.expiresLabel")}
+          min={1}
+          max={36500}
+          allowDecimal={false}
+          value={expiresInDays}
+          onChange={setExpiresInDays}
+          data-testid="team-invite-expires-days"
+        />
+      </FormField>
+      <FormField size="medium" help={t("teamPage.envPolicyDesc")}>
+        <Select
+          label={t("teamPage.envPolicyLabel")}
+          data={[
+            { value: ENV_POLICY_NONE, label: t("teamPage.envPolicyNone") },
+            { value: ENV_POLICY_PER_VISITOR, label: t("teamPage.envPolicyPerVisitor") },
+          ]}
+          value={envPolicy}
+          onChange={(v) => setEnvPolicy(v ?? ENV_POLICY_NONE)}
+          allowDeselect={false}
+          data-testid="team-invite-env-policy"
+        />
+      </FormField>
+      {envPolicy === ENV_POLICY_PER_VISITOR && (
+        <FormField size="short">
+          <Select
+            label={t("teamPage.envTtlLabel")}
+            data={ttlOptions}
+            value={envTtl}
+            onChange={(v) => setEnvTtl(v ?? "3600")}
+            allowDeselect={false}
+            data-testid="team-invite-env-ttl"
+          />
+        </FormField>
+      )}
+      <FormChecks>
+        <FormField size="long" help={t("teamPage.openLinkDesc")}>
+          <Switch
+            label={t("teamPage.openLinkLabel")}
+            checked={openLink}
+            onChange={(e) => setOpenLink(e.currentTarget.checked)}
+            data-testid="team-invite-open-link"
+          />
+        </FormField>
+      </FormChecks>
+      {/* The form's one action: it creates the link (or sends it, with an address). */}
+      <FormFooter
+        action={
+          <Button
+            onClick={handleCreate}
+            disabled={!activeOrgId || !roleId || !(Number(expiresInDays) >= 1)}
+            data-testid="team-invite-create"
+          >
+            {inviteEmail.trim() === "" ? t("teamPage.generateInvite") : t("teamPage.sendInvite")}
+          </Button>
+        }
+      />
+    </FormLayout>
+  );
+
   return (
     <Stack gap="lg" p="md" data-testid="team-page">
       <div>
         <div className="page-header">
           <PageTitle icon={Users}>{t("teamPage.title")}</PageTitle>
+          <FilterInput
+            value={search}
+            onChange={setSearch}
+            placeholder={t("teamPage.filterPlaceholder")}
+            testId="team-members-filter"
+          />
+          <div className="page-actions">
+            <Button
+              variant={inviting ? "outline" : "filled"}
+              onClick={() => {
+                if (!inviting) detail.close();
+                setInviting(!inviting);
+              }}
+              aria-label={inviting ? t("teamPage.closeInvite") : undefined}
+              data-testid="team-invite-open"
+            >
+              {inviting ? <X size={14} /> : t("teamPage.inviteButton")}
+            </Button>
+          </div>
         </div>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}
@@ -347,6 +472,7 @@ export function TeamPage() {
       <Collapsibles id="team.sections" reveal={requestedSection} testId="team-sections">
         <CollapsibleItem
           value="members"
+          forceOpen={inviting || selectedMemberId !== null}
           controlTestId="team-section-members"
           title={t("teamPage.membersHeading")}
         >
@@ -354,10 +480,15 @@ export function TeamPage() {
             testId="team-members-split"
             storageKey="provisa.team.detailWidth"
             title={(() => {
+              if (inviting) return t("teamPage.inviteHeading");
               const m = members.find((m) => m.user_id === selectedMemberId);
               return m ? (m.display_name ?? m.email ?? m.user_id) : "";
             })()}
-            onClose={() => setSelectedMemberId(null)}
+            onClose={() => {
+              setInviting(false);
+              detail.close();
+            }}
+            closeOnEscape={!inviting}
             labels={{
               panel: t("teamPage.memberPanel"),
               resize: t("teamPage.resizeMemberPanel"),
@@ -378,7 +509,7 @@ export function TeamPage() {
                   ]}
                 />
                 <Table.Tbody>
-                  {members.length === 0 && (
+                  {shownMembers.length === 0 && (
                     <ListEmpty colSpan={4}>{t("teamPage.noMembers")}</ListEmpty>
                   )}
                   <ListItems
@@ -390,10 +521,12 @@ export function TeamPage() {
                       return (
                         <ListRow
                           testId={`team-member-${m.user_id}`}
-                          selected={m.user_id === selectedMemberId}
-                          onClick={() =>
-                            setSelectedMemberId(m.user_id === selectedMemberId ? null : m.user_id)
-                          }
+                          selected={!inviting && m.user_id === selectedMemberId}
+                          onClick={() => {
+                            setInviting(false);
+                            if (m.user_id === selectedMemberId) detail.close();
+                            else detail.open(m.user_id);
+                          }}
                         >
                           <Table.Td>
                             <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
@@ -454,7 +587,9 @@ export function TeamPage() {
               </ListTable>
             }
           >
-            {selectedMemberId === null ? null : canAssign ? (
+            {inviting ? (
+              inviteForm
+            ) : selectedMemberId === null ? null : canAssign ? (
               <Tabs defaultValue="attributes" keepMounted={false} data-testid="team-member-tabs">
                 <Tabs.List>
                   <Tabs.Tab value="attributes" data-testid="team-member-tab-attributes">
@@ -513,94 +648,6 @@ export function TeamPage() {
           controlTestId="team-section-invites"
           title={t("teamPage.inviteHeading")}
         >
-          <FormLayout data-testid="team-invite-form" style={{ marginBottom: "1rem" }}>
-            <Text c="dimmed" size="sm">
-              {t("teamPage.inviteHelp")}
-            </Text>
-            <FormField size="long" hint={t("teamPage.emailDesc")}>
-              <TextInput
-                label={t("teamPage.emailLabel")}
-                placeholder="person@acme.com"
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.currentTarget.value)}
-                data-testid="team-invite-email"
-              />
-            </FormField>
-            <FormField size="medium" hint={t("teamPage.roleDesc")}>
-              <Select
-                label={t("teamPage.roleLabel")}
-                placeholder={t("teamPage.rolePlaceholder")}
-                data={roleOptions}
-                value={roleId}
-                onChange={setRoleId}
-                data-testid="team-invite-role"
-              />
-            </FormField>
-            {/* REQ-1594/REQ-1595: who the link admits, and what it gives them: both are answered
-                  about the invitation as a whole, not per invitee. */}
-            <FormField size="short" help={t("teamPage.expiresDesc")}>
-              <NumberInput
-                label={t("teamPage.expiresLabel")}
-                min={1}
-                max={36500}
-                allowDecimal={false}
-                value={expiresInDays}
-                onChange={setExpiresInDays}
-                data-testid="team-invite-expires-days"
-              />
-            </FormField>
-            <FormField size="medium" help={t("teamPage.envPolicyDesc")}>
-              <Select
-                label={t("teamPage.envPolicyLabel")}
-                data={[
-                  { value: ENV_POLICY_NONE, label: t("teamPage.envPolicyNone") },
-                  { value: ENV_POLICY_PER_VISITOR, label: t("teamPage.envPolicyPerVisitor") },
-                ]}
-                value={envPolicy}
-                onChange={(v) => setEnvPolicy(v ?? ENV_POLICY_NONE)}
-                allowDeselect={false}
-                data-testid="team-invite-env-policy"
-              />
-            </FormField>
-            {envPolicy === ENV_POLICY_PER_VISITOR && (
-              <FormField size="short">
-                <Select
-                  label={t("teamPage.envTtlLabel")}
-                  data={ttlOptions}
-                  value={envTtl}
-                  onChange={(v) => setEnvTtl(v ?? "3600")}
-                  allowDeselect={false}
-                  data-testid="team-invite-env-ttl"
-                />
-              </FormField>
-            )}
-            <FormChecks>
-              <FormField size="long" help={t("teamPage.openLinkDesc")}>
-                <Switch
-                  label={t("teamPage.openLinkLabel")}
-                  checked={openLink}
-                  onChange={(e) => setOpenLink(e.currentTarget.checked)}
-                  data-testid="team-invite-open-link"
-                />
-              </FormField>
-            </FormChecks>
-            {/* The form's one action: it creates the link (or sends it, with an address). */}
-            <FormFooter
-              action={
-                <Button
-                  onClick={handleCreate}
-                  disabled={!activeOrgId || !roleId || !(Number(expiresInDays) >= 1)}
-                  data-testid="team-invite-create"
-                >
-                  {inviteEmail.trim() === ""
-                    ? t("teamPage.generateInvite")
-                    : t("teamPage.sendInvite")}
-                </Button>
-              }
-            />
-          </FormLayout>
-
           {/* The table keeps every column; what its card leaves too little room for scrolls. */}
           <div className="card-table-scroll">
             <ListTable minWidth={640} testId="team-invites">

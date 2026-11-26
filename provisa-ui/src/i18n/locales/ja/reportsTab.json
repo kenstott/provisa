@@ -16,7 +16,6 @@
     "empty": "ops ドメインに登録されたレポートはありません。",
     "filterPlaceholder": "レポートを絞り込む…",
     "noMatch": "一致するレポートはありません",
-    "resize": "レポート一覧のサイズを変更",
     "drift": {
       "title": "前期間からのドリフト",
       "baseline": "{{cutoff}} 時点の最新バージョンである {{date}} のモデルと比較しています。",
@@ -34,6 +33,12 @@
         "gained": "獲得",
         "new": "新規"
       }
-    }
+    },
+    "kindColumn": "種類",
+    "kindBuiltIn": "組み込み",
+    "kindCustom": "カスタム",
+    "panelLabel": "レポート",
+    "closeForm": "フォームを閉じる",
+    "loading": "レポートを読み込み中…"
   }
 }
