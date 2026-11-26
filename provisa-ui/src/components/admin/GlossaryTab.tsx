@@ -47,9 +47,14 @@ import { TermCurationActions } from "./TermCurationActions";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
-import { defaultFindDomains, tableNames, toReview } from "./termFindings";
+import { defaultFindDomains, tableNames } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
-import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
+import {
+  linkedTermFilters,
+  matchesTermFilters,
+  withTermFilters,
+  type TermListFilters,
+} from "./termListFilters";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
 import { OntologyImportsView } from "./ontologyImport/OntologyImportsView";
@@ -112,7 +117,7 @@ export function GlossaryTab() {
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
@@ -130,8 +135,11 @@ export function GlossaryTab() {
   const viewDomains = useViewDomains();
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  // REQ-2259, REQ-2277: a link naming a list filter (a Context Health count) decides every filter
+  // that visit, and the filters stay in its URL as they change; else they reopen as left.
+  const [linked] = useState(() => linkedTermFilters(searchParams));
   const [query, setQueryState] = useState(
-    () => searchParams.get("search") ?? readStoredString("glossary.search") ?? "",
+    () => searchParams.get("search") ?? (linked ? "" : readStoredString("glossary.search")) ?? "",
   );
   const setQuery = (value: string) => {
     setQueryState(value);
@@ -139,40 +147,66 @@ export function GlossaryTab() {
   };
   // REQ-2144: the list filtered by a term's status and, apart, by its grounding (REQ-1387). No
   // status picked shows every status; the choice is remembered as a comma-separated list.
-  const [statusFilter, setStatusFilterState] = useState<TermStatus[]>(
-    () => (readStoredString("glossary.status") ?? "").split(",").filter(Boolean) as TermStatus[],
+  const [statusFilter, setStatusFilterState] = useState<TermStatus[]>(() =>
+    linked
+      ? linked.status
+      : ((readStoredString("glossary.status") ?? "").split(",").filter(Boolean) as TermStatus[]),
   );
+  const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(() =>
+    linked ? linked.grounding : (readStoredString("glossary.grounding") as TermGrounding | null),
+  );
+  // REQ-1387: narrow the list to the terms an agent sees by name.
+  const [agentVisibleOnly, setAgentVisibleOnlyState] = useState(() =>
+    linked ? linked.agentVisible : readStoredBool("glossary.agentVisible", false),
+  );
+  // REQ-2146: narrow the list to the terms with findings.
+  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
+    linked ? linked.toReview : readStoredBool("glossary.toReview", false),
+  );
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
+  // links that want review. A report's placeholder row opens the list with it on (REQ-1386).
+  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
+    linked ? linked.relatedTo : readStoredBool("glossary.relatedTo", false),
+  );
+  const filters: TermListFilters = {
+    status: statusFilter,
+    grounding: groundingFilter,
+    agentVisible: agentVisibleOnly,
+    toReview: toReviewOnly,
+    relatedTo: relatedToOnly,
+  };
+  const relink = (change: Partial<TermListFilters>) => {
+    if (linked !== null) {
+      setSearchParams((p) => withTermFilters(p, { ...filters, ...change }), { replace: true });
+    }
+  };
   const setStatusFilter = (value: TermStatus[]) => {
     setStatusFilterState(value);
     writeStored("glossary.status", value.join(","));
+    relink({ status: value });
   };
-  const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(
-    () => readStoredString("glossary.grounding") as TermGrounding | null,
-  );
   const setGroundingFilter = (value: TermGrounding | null) => {
     setGroundingFilterState(value);
     writeStored("glossary.grounding", value ?? "");
+    relink({ grounding: value });
   };
-  // The approval being confirmed, its impact shown first (REQ-2144).
-  const [approveOpen, setApproveOpen] = useState(false);
-  // REQ-2146: narrow the list to the terms with findings.
-  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
-    readStoredBool("glossary.toReview", false),
-  );
+  const setAgentVisibleOnly = (on: boolean) => {
+    setAgentVisibleOnlyState(on);
+    writeStoredBool("glossary.agentVisible", on);
+    relink({ agentVisible: on });
+  };
   const setToReviewOnly = (on: boolean) => {
     setToReviewOnlyState(on);
     writeStoredBool("glossary.toReview", on);
+    relink({ toReview: on });
   };
-  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
-  // links that want review.
-  // A report's placeholder row opens the list with it on (REQ-1386: ?relatedTo=1).
-  const [relatedToOnly, setRelatedToOnlyState] = useState(
-    () => searchParams.get(RELATED_TO_PARAM) === "1" || readStoredBool("glossary.relatedTo", false),
-  );
   const setRelatedToOnly = (on: boolean) => {
     setRelatedToOnlyState(on);
     writeStoredBool("glossary.relatedTo", on);
+    relink({ relatedTo: on });
   };
+  // The approval being confirmed, its impact shown first (REQ-2144).
+  const [approveOpen, setApproveOpen] = useState(false);
   // The RELATED_TO edges the assistant just added, each with the shapes that may resolve it.
   const [review, setReview] = useState<RelatedToReview[]>([]);
 
@@ -507,13 +541,7 @@ export function GlossaryTab() {
     [],
   );
   const otherTermOptions = termOptions(terms.filter((term) => term.id !== detail?.id));
-  const displayedTerms = terms.filter(
-    (term) =>
-      (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
-      (!groundingFilter || term.grounding === groundingFilter) &&
-      (!toReviewOnly || toReview(term)) &&
-      (!relatedToOnly || term.related_to > 0),
-  );
+  const displayedTerms = terms.filter((term) => matchesTermFilters(term, filters));
   const statusOptions = (["draft", "approved", "deprecated", "retired"] as const).map((st) => ({
     value: st,
     label: t(`glossaryTab.status_${st}`),
@@ -661,6 +689,14 @@ export function GlossaryTab() {
                 onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-to-review-only"
+              />
+              <Checkbox
+                size="xs"
+                label={t("glossaryTab.agentVisibleOnly")}
+                checked={agentVisibleOnly}
+                onChange={(e) => setAgentVisibleOnly(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-agent-visible-only"
               />
               <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>

@@ -31,6 +31,7 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
+  fetchReviewsDue: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -111,8 +112,13 @@ describe("the Library in the app", () => {
     const context = NAV_BAR.find((e) => e.kind === "group" && e.group.id === "context");
     expect(context).toBeDefined();
     const documents =
-      context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
-    expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
+      context!.kind === "group"
+        ? context!.group.items.find((i) => i.to === "/context/documents")
+        : undefined;
+    expect(documents).toMatchObject({
+      labelKey: "navBar.itemDocuments",
+      capability: "glossary_read",
+    });
     expect(read("App.tsx")).toMatch(
       /path="\/context\/documents"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
     );
@@ -536,5 +542,40 @@ describe("LibraryPage", () => {
     expect(card).toHaveTextContent("search_reference_library");
     expect(card).toHaveTextContent("Re-embed is needed only when that model changes.");
     expect(card).not.toHaveTextContent(/\bRAG\b/);
+  });
+});
+
+// REQ-2259: Context Health's Documents count opens the Library at ?reviewsDue=1, the list narrowed
+// to exactly the documents it counts.
+describe("the documents with reviews due, from the URL", () => {
+  beforeEach(() => {
+    api.fetchReviewsDue.mockResolvedValue({
+      documents: [{ id: 2, title: "Payments standard", reviews: 3 }],
+    });
+  });
+
+  it("lists only the documents with reviews due, the filter shown on", async () => {
+    render(<LibraryPage />, { initialEntries: ["/context/documents?reviewsDue=1"] });
+    expect(await screen.findByTestId("reflib-row-2")).toBeInTheDocument();
+    expect(screen.queryByTestId("reflib-row-3")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reflib-reviews-due-only")).toBeChecked();
+  });
+
+  it("lists every document without it, and reads no reviews", async () => {
+    render(<LibraryPage />, { initialEntries: ["/context/documents"] });
+    expect(await screen.findByTestId("reflib-row-3")).toBeInTheDocument();
+    expect(screen.getByTestId("reflib-row-2")).toBeInTheDocument();
+    expect(screen.getByTestId("reflib-reviews-due-only")).not.toBeChecked();
+    expect(api.fetchReviewsDue).not.toHaveBeenCalled();
+  });
+
+  it("is turned on and off from the list", async () => {
+    render(<LibraryPage />, { initialEntries: ["/context/documents"] });
+    await screen.findByTestId("reflib-row-3");
+    fireEvent.click(screen.getByTestId("reflib-reviews-due-only"));
+    await waitFor(() => expect(screen.queryByTestId("reflib-row-3")).not.toBeInTheDocument());
+    expect(screen.getByTestId("reflib-row-2")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("reflib-reviews-due-only"));
+    expect(await screen.findByTestId("reflib-row-3")).toBeInTheDocument();
   });
 });

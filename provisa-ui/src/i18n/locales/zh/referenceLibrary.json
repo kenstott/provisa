@@ -3,6 +3,7 @@
     "title": "文档",
     "why": "为什么:赋予数据含义的文档",
     "filterPlaceholder": "筛选文档",
+    "reviewsDueOnly": "待审阅",
     "colIndex": "索引状态",
     "colReaders": "读者",
     "colAddedOrRefreshed": "添加或刷新时间",

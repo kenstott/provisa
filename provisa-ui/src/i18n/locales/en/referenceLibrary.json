@@ -3,6 +3,7 @@
     "title": "Documents",
     "why": "Why: the documents that give your data its meaning",
     "filterPlaceholder": "Filter documents",
+    "reviewsDueOnly": "Reviews due",
     "colIndex": "Index status",
     "colReaders": "Readers",
     "colAddedOrRefreshed": "Added or refreshed",

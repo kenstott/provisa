@@ -3,6 +3,7 @@
     "title": "文件",
     "why": "為甚麼:賦予數據含義的文件",
     "filterPlaceholder": "篩選文件",
+    "reviewsDueOnly": "待審閱",
     "colIndex": "索引狀態",
     "colReaders": "讀者",
     "colAddedOrRefreshed": "新增或重新整理時間",

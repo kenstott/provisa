@@ -3,6 +3,7 @@
     "title": "ドキュメント",
     "why": "目的:データに意味を与えるドキュメント",
     "filterPlaceholder": "ドキュメントを絞り込む",
+    "reviewsDueOnly": "期限のレビュー",
     "colIndex": "インデックスの状態",
     "colReaders": "閲覧者",
     "colAddedOrRefreshed": "追加または更新日時",
