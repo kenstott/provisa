@@ -66,3 +66,20 @@ def prepare(
         ctx.org_id,
         workers=config.workers,
     )
+
+
+def entered_files(source: str, dependencies: list[str]) -> dict[str, str]:
+    """REQ-2227, REQ-1993 (amended 2026-11-25): entered code is ``src/lib.rs`` of the crate
+    ``entered``; each dependency line is ``name@version``, checked against the Cargo.lock given
+    beside it."""
+    import json
+
+    from provisa.codesource.entered import name_at_version
+
+    cargo = '[package]\nname = "entered"\nversion = "0.1.0"\nedition = "2021"\n'
+    if dependencies:
+        cargo += "\n[dependencies]\n" + "".join(
+            f"{name} = {json.dumps(version)}\n"
+            for name, version in (name_at_version(d) for d in dependencies)
+        )
+    return {"Cargo.toml": cargo, "src/lib.rs": source}

@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-1984, REQ-1993, REQ-2200, REQ-2227: what a Node, Python, Go or Rust source's code is -- its runtime, and where the code
-// comes from: a package at an exact version, a Git repository at a commit, or an uploaded archive,
-// with a lockfile beside it when the code carries none. The server installs and
+// comes from: a package at an exact version, a Git repository at a commit, an uploaded archive, or
+// (REQ-1993, amended 2026-11-25) code entered here in the app's code editor with its dependency
+// list, with a lockfile beside it when the code carries none. The server installs and
 // reads the code when the source is saved, and refuses code it cannot use by name.
 // REQ-2104: the org secrets its code may read through Provisa's services, picked by name.
 // REQ-2105: the monthly cap on what its calls to Provisa's LLM service cost.
@@ -32,6 +33,7 @@ import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
 import { FieldGroup, FormField, FormSection } from "../../components/form/FormLayout";
 import { useFormRead } from "../../components/form/formRead";
+import { CodeEditorField } from "../../components/CodeEditorField";
 import { CodeExports } from "./CodeExports";
 import { VscodeLink } from "./VscodeLink";
 import {
@@ -54,6 +56,7 @@ import {
   NODE,
   PYTHON,
   RUST,
+  ENTERED_LANGUAGE,
   declaredSecrets,
   vscodeLink,
   withSecretNames,
@@ -230,6 +233,8 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 ...(multitenancy
                   ? []
                   : [{ value: "directory", label: t("codeSourceFields.directoryOrigin") }]),
+                // REQ-1993 (amended 2026-11-25): the code written here, kept in the model.
+                { value: "entered", label: t("codeSourceFields.entered") },
               ]}
               value={origin}
               allowDeselect={false}
@@ -374,6 +379,34 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 value={fields.code_directory ?? ""}
                 onChange={(e) => set({ code_directory: e.currentTarget.value })}
                 data-testid="code-directory"
+              />
+            </FormField>
+          </FieldGroup>
+        )}
+
+        {origin === "entered" && (
+          <FieldGroup>
+            <FormField size="full" help={t("codeSourceFields.codeHint")}>
+              <CodeEditorField
+                required
+                label={t("codeSourceFields.code")}
+                language={ENTERED_LANGUAGE[type]}
+                value={fields.code_source ?? ""}
+                onChange={(text) => set({ code_source: text })}
+                data-testid="code-source"
+              />
+            </FormField>
+            <FormField size="long" help={t(`codeSourceFields.dependenciesHint_${type}`)}>
+              <Textarea
+                label={t("codeSourceFields.dependencies")}
+                placeholder={t(`codeSourceFields.dependenciesPlaceholder_${type}`)}
+                value={fields.code_dependencies ?? ""}
+                onChange={(e) => set({ code_dependencies: e.currentTarget.value })}
+                autosize
+                minRows={2}
+                maxRows={10}
+                styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                data-testid="code-dependencies"
               />
             </FormField>
           </FieldGroup>

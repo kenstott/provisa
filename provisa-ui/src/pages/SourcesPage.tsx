@@ -1445,6 +1445,39 @@ export function SourcesPage() {
     if (seedFrom(selectedSource)) setReadSeeded(selectedSource.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seedFrom is a fresh closure each render; the source, edit and create states decide a reseed
   }, [selectedSource, editingSourceId, showForm]);
+  // REQ-2277: the create form is a deep link -- ?new=<type>, and for a code source &origin=<where
+  // its code comes from> (REQ-1993: entered for code entered here) -- opened again from the URL.
+  const linkedOrigin = searchParams.get("origin");
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    const linked = searchParams.get("new");
+    if (openedFromLink.current || !linked || opensKaggle) return;
+    openedFromLink.current = true;
+    openEmptyForm(linked);
+    if (linkedOrigin && CODE_SOURCE_TYPES.has(linked)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the form opens once from its link, as a press of + Source opens it
+      setAuthFields((held) => ({ ...held, code_origin: linkedOrigin }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once, when the page opens from its link
+  }, []);
+  const creating = showForm && !editingSourceId;
+  const createdOrigin =
+    creating && CODE_SOURCE_TYPES.has(form.type) ? (authFields.code_origin ?? "package") : null;
+  useEffect(() => {
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (creating) n.set("new", form.type);
+        else n.delete("new");
+        if (createdOrigin) n.set("origin", createdOrigin);
+        else n.delete("origin");
+        return n.toString() === p.toString() ? p : n;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the URL follows the create form's type and origin
+  }, [creating, form.type, createdOrigin]);
+
   if (loading) return <PageLoading message={t("sourcesPage.loading")} />;
 
   // What a source's row offered beside it: now in the head of its panel, with its name.
