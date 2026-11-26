@@ -65,6 +65,7 @@ const SOURCES = [
     username: "",
     cacheEnabled: true,
     cacheTtl: null,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   } as unknown as Source,
 ];
 

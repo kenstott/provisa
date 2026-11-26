@@ -1787,6 +1787,7 @@ export function SourcesPage() {
             {editingSourceId !== s.id && (
               <SourceSetupStepper
                 sourceId={s.id}
+                outcomes={s.setupOutcomes}
                 // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
                 onConnect={() => handleEdit(s)}
                 onRegister={() => setAfterSave(s.id)}

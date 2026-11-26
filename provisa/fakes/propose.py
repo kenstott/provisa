@@ -23,13 +23,17 @@ named: a named column is proposed from the profile whatever it declares. Nothing
 proposals fill the editor's fields.
 """
 
-# Requirements: REQ-1494, REQ-2053
+# Requirements: REQ-1494, REQ-2053, REQ-2279
 
 from __future__ import annotations
 
+import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
+
+from provisa.fakes.template import is_json
 
 #: How confident a plausible type must be to propose from it.
 CONFIDENT = 0.7
@@ -82,6 +86,8 @@ class ProfiledColumnFacts:
     plausible_type: str
     confidence: float
     frequencies: tuple[int, ...]  # the full value-frequency table's counts, when recorded
+    data_type: str  # the column's registered type
+    values: tuple[str, ...]  # its most frequent non-null values the run kept, as text
 
 
 @dataclass
@@ -122,6 +128,106 @@ def _rule(c: ProfiledColumnFacts, run_id: str) -> str | None:
     return None
 
 
+#: A JSON field's fake by its key: the identifying fakes, named as the keys name them.
+_FIELD_FAKES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("email()", ("email", "email_address", "mail")),
+    ("phone_number()", ("phone", "phone_number", "mobile", "tel", "telephone", "cell")),
+    ("first_name()", ("first_name", "firstname", "given_name")),
+    ("last_name()", ("last_name", "lastname", "surname", "family_name")),
+    ("company()", ("company", "employer", "organization")),
+    ("user_name()", ("username", "user_name", "login", "handle")),
+    ("name()", ("name", "full_name", "fullname")),
+    ("street_address()", ("street", "address", "street_address", "address_line")),
+    ("city()", ("city", "town")),
+    ("state()", ("state", "region", "province")),
+    ("postcode()", ("postcode", "zip", "zip_code", "postal_code")),
+    ("country()", ("country",)),
+) + _FAKES_BY_NAME
+
+
+def _key_fake(key: str) -> str:
+    """A text field's fake by its key: an identifying fake its key names, else a word."""
+    tokens = _tokens(key)
+    for fake, names in _FIELD_FAKES:
+        if tokens & set(names):
+            return fake
+    return "word()"
+
+
+def _range(values: list[float]) -> tuple[float, float]:
+    lo, hi = min(values), max(values)
+    # uniform() needs min below max: one value observed is a range one wide from it.
+    return (lo, hi) if hi > lo else (lo, lo + 1)
+
+
+def _num(value: float) -> str:
+    return f"{int(value)}" if float(value).is_integer() else repr(float(value))
+
+
+def _field(key: str, values: list[Any]) -> str:
+    """A template field for the values a key held: the most frequent JSON type's fake."""
+
+    def kind_of(v: Any) -> str:
+        if isinstance(v, bool):
+            return "boolean"
+        if isinstance(v, int):
+            return "integer"
+        if isinstance(v, float):
+            return "number"
+        if isinstance(v, str):
+            return "string"
+        if isinstance(v, dict):
+            return "object"
+        if isinstance(v, list):
+            return "array"
+        return "null"
+
+    held = [v for v in values if v is not None]
+    if not held:
+        return "null"
+    kind = Counter(kind_of(v) for v in held).most_common(1)[0][0]
+    of_kind = [v for v in held if kind_of(v) == kind]
+    if kind == "boolean":
+        return f"bool({sum(of_kind) / len(of_kind):.2f})"
+    if kind == "integer":
+        lo, hi = _range(of_kind)
+        return f"uniform(min={_num(lo)}, max={_num(hi)})::integer"
+    if kind == "number":
+        lo, hi = _range(of_kind)
+        return f"uniform(min={_num(lo)}, max={_num(hi)})"
+    if kind == "object":
+        return _object(of_kind)
+    if kind == "array":
+        # Fixed length: the length the arrays most often had, each item from the items seen there.
+        length = Counter(len(v) for v in of_kind).most_common(1)[0][0]
+        items = [[v[i] for v in of_kind if len(v) == length] for i in range(length)]
+        return "[" + ", ".join(_field(key, item) for item in items) + "]"
+    return _key_fake(key)
+
+
+def _object(objects: list[dict[str, Any]]) -> str:
+    keys: dict[str, list[Any]] = {}
+    for obj in objects:
+        for k, v in obj.items():
+            keys.setdefault(k, []).append(v)
+    inner = ", ".join(f"{json.dumps(k)}: {_field(k, vs)}" for k, vs in keys.items())
+    return "{" + inner + "}"
+
+
+def _template(c: ProfiledColumnFacts) -> str | None:
+    """A template for a JSON column from the keys and value types of the values the run kept,
+    or None when none of them is a JSON object (REQ-2279)."""
+    objects = []
+    for text in c.values:
+        try:
+            value = json.loads(text)
+        except ValueError:
+            continue  # a value that is not JSON says nothing of the object's keys
+        if isinstance(value, dict):
+            objects.append(value)
+    return _object(objects) if objects else None
+
+
 def propose(
     run_id: str,
     columns: list[ProfiledColumnFacts],
@@ -140,6 +246,10 @@ def propose(
     out = Proposals(run_id)
     for c in columns:
         if c.name in skipped:
+            continue
+        template = _template(c) if is_json(c.data_type) else None
+        if template is not None:
+            out.columns[c.name] = {"fake": template}
             continue
         fake = _identifying(c)
         if fake is not None:
@@ -197,7 +307,10 @@ async def latest_facts(
     # A run labels every column it profiles (provisa.profiler.run.result_rows).
     plausible = {p["column_name"]: p for p in await rows("plausible_type")}
     freq: dict[str, list[int]] = {}
+    kept: dict[str, list[str]] = {}
     for v in await rows("top_values"):
+        if v["value"] is not None:
+            kept.setdefault(v["column_name"], []).append(v["value"])
         if v["kind"] != "top" and v["value"] is not None:
             freq.setdefault(v["column_name"], []).append(v["row_count"])
     facts = []
@@ -211,6 +324,8 @@ async def latest_facts(
                 plausible_type=p["plausible_type"],
                 confidence=float(p["confidence"]),
                 frequencies=tuple(freq.get(c["column_name"], ())),  # empty: no full table recorded
+                data_type=c["data_type"],
+                values=tuple(kept.get(c["column_name"], ())),  # empty: the run kept none
             )
         )
     return run_id, facts

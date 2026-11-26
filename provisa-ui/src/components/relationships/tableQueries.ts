@@ -14,9 +14,15 @@
 // root, gRPC calls its Query method, and JSON:API reads its resources. Each by the names the acting
 // role is served and with a row limit; a surface that does not serve the table to the role has no
 // query.
+//
+// A parameterized table's query carries each of its parameters (REQ-1986), in the syntax its
+// surface takes them: a ``_nf_`` condition in Cypher and SQL, a root-field argument in GraphQL,
+// the ``params`` object in REST, JSON:API and gRPC. The model records no default for a
+// parameter, so each carries a placeholder to fill in, and the query opens without running.
 
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { quoteIdent, tableSqlRef } from "../../naming";
+import { parameterName } from "../nativeParams";
 import { allPrefixes, compactIri, withUsedPrefixes, type SparqlVocabulary } from "../graph/sparql";
 import { grpcExample, grpcMethod } from "../../pages/data-products/tableExamples";
 import {
@@ -31,6 +37,38 @@ import {
 
 const LIMIT = RELATIONSHIP_QUERY_LIMIT;
 
+/** A table's column as its queries read it: a parameter where it has a native-filter type. */
+export interface QueryColumn {
+  columnName: string;
+  alias: string | null;
+  nativeFilterType: string | null;
+}
+
+/** A table as its queries are built from it: its names and its columns. */
+export interface TableQueryRef extends RelationshipQueryTable {
+  columns: QueryColumn[];
+}
+
+const parametersOf = (tb: TableQueryRef): QueryColumn[] =>
+  tb.columns.filter((c) => c.nativeFilterType);
+
+/** The value a query carries for a parameter: a placeholder naming it, to be filled in. */
+export const parameterPlaceholder = (name: string): string => `<${name}>`;
+
+const sqlText = (v: string) => `'${v.replace(/'/g, "''")}'`;
+const cypherText = (v: string) => `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+
+/** The ``params`` object REST, JSON:API and gRPC take: each parameter by its name. */
+function paramsObject(tb: TableQueryRef): Record<string, string> {
+  return Object.fromEntries(
+    parametersOf(tb).map((c) => [parameterName(c), parameterPlaceholder(parameterName(c))]),
+  );
+}
+
+// The root field's own arguments; a parameter named as one is offered as ``_<name>``
+// (provisa/compiler/schema_gen.py _build_native_filter_args).
+const FIELD_ARGUMENTS = ["where", "order_by", "limit", "offset", "distinct_on", "by", "having"];
+
 /** The table's node label in the role's graph schema; null when it is not served in Cypher. */
 const labelOf = (tb: RelationshipQueryTable, graph: GraphSchemaDoc): string | null =>
   graph.node_labels.find((n) => Number(n.table_id) === tb.id)?.label ?? null;
@@ -40,8 +78,13 @@ const rootOf = (tb: RelationshipQueryTable, reader: MetaReader): string | null =
   reader.roots.get(rootKey(tb.domainId, tb.tableName)) ?? null;
 
 export function tableCypher(tb: RelationshipQueryTable, graph: GraphSchemaDoc): string | null {
-  const label = labelOf(tb, graph);
-  return label === null ? null : `MATCH (n:${label}) RETURN n LIMIT ${LIMIT}`;
+  const node = graph.node_labels.find((n) => Number(n.table_id) === tb.id);
+  if (!node) return null;
+  const conditions = node.native_filter_columns.map(
+    (p) => `n._nf_${p.name} = ${cypherText(parameterPlaceholder(p.name))}`,
+  );
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  return `MATCH (n:${node.label})${where} RETURN n LIMIT ${LIMIT}`;
 }
 
 export function tableSparql(
@@ -58,46 +101,83 @@ export function tableSparql(
   return withUsedPrefixes(body, namespaces);
 }
 
-export function tableSql(tb: RelationshipQueryTable, reader: MetaReader): string | null {
-  return rootOf(tb, reader) === null ? null : `select * from ${tableSqlRef(tb)} limit ${LIMIT}`;
+export function tableSql(tb: TableQueryRef, reader: MetaReader): string | null {
+  if (rootOf(tb, reader) === null) return null;
+  // Each parameter as the governed read binds it: a condition on its column (nativeParams
+  // buildParamWhere).
+  const conditions = parametersOf(tb).map(
+    (c) =>
+      `${quoteIdent(c.alias || c.columnName)} = ${sqlText(parameterPlaceholder(parameterName(c)))}`,
+  );
+  const where = conditions.length > 0 ? ` where ${conditions.join(" and ")}` : "";
+  return `select * from ${tableSqlRef(tb)}${where} limit ${LIMIT}`;
 }
 
-export function tableGraphql(tb: RelationshipQueryTable, reader: MetaReader): string | null {
+/** A parameter's argument on the table's root field: its alias where it has one, else its name,
+ * and ``_<name>`` where that is one of the field's own arguments or columns. */
+function graphqlArgument(c: QueryColumn, columns: string[]): string {
+  const given = parameterName({ columnName: c.alias || c.columnName });
+  return FIELD_ARGUMENTS.includes(given) || columns.includes(given) ? `_${given}` : given;
+}
+
+export function tableGraphql(tb: TableQueryRef, reader: MetaReader): string | null {
   const root = rootOf(tb, reader);
   const type = root ? reader.schema.rootType(root) : null;
   if (!root || !type) return null;
   const columns = reader.schema.scalars(type);
   if (columns.length === 0) return null;
-  return `{ ${root}(limit: ${LIMIT}) { ${columns.join(" ")} } }`;
+  const args = [
+    `limit: ${LIMIT}`,
+    ...parametersOf(tb).map(
+      (c) =>
+        `${graphqlArgument(c, columns)}: ${JSON.stringify(parameterPlaceholder(parameterName(c)))}`,
+    ),
+  ];
+  return `{ ${root}(${args.join(", ")}) { ${columns.join(" ")} } }`;
 }
 
-export function tableRest(tb: RelationshipQueryTable, reader: MetaReader): string | null {
+/** The query string REST and JSON:API read the table with: its row limit, and its parameters as
+ * one ``params`` object. */
+function readQuery(tb: TableQueryRef, limitKey: string): string {
+  const query = new URLSearchParams({ [limitKey]: String(LIMIT) });
+  if (parametersOf(tb).length > 0) query.set("params", JSON.stringify(paramsObject(tb)));
+  return query.toString();
+}
+
+export function tableRest(tb: TableQueryRef, reader: MetaReader): string | null {
   const root = rootOf(tb, reader);
-  return root === null ? null : `GET /data/rest/${tb.domainId}/${tb.tableName}?limit=${LIMIT}`;
-}
-
-export function tableJsonApi(tb: RelationshipQueryTable, reader: MetaReader): string | null {
-  if (rootOf(tb, reader) === null) return null;
-  const query = new URLSearchParams({ "page[size]": String(LIMIT) });
-  return `/data/jsonapi/${tb.domainId}/${tb.tableName}?${query.toString()}`;
-}
-
-export function tableGrpc(tb: RelationshipQueryTable, reader: MetaReader): QueryLink | null {
-  const call = grpcExample(reader, tb);
-  return call === null
+  return root === null
     ? null
-    : { to: "/grpc", state: { ...call.state, grpcBody: { limit: LIMIT }, autoRun: true } };
+    : `GET /data/rest/${tb.domainId}/${tb.tableName}?${readQuery(tb, "limit")}`;
 }
 
-/** Each surface's query of ``tb`` as an Explore hand-off, run at once, in the order the
- * relationship links show them; a surface the role is not served the table on is left out. */
+export function tableJsonApi(tb: TableQueryRef, reader: MetaReader): string | null {
+  if (rootOf(tb, reader) === null) return null;
+  return `/data/jsonapi/${tb.domainId}/${tb.tableName}?${readQuery(tb, "page[size]")}`;
+}
+
+export function tableGrpc(tb: TableQueryRef, reader: MetaReader): QueryLink | null {
+  const call = grpcExample(reader, tb);
+  if (call === null) return null;
+  const grpcBody =
+    parametersOf(tb).length > 0 ? { limit: LIMIT, params: paramsObject(tb) } : { limit: LIMIT };
+  return {
+    to: "/grpc",
+    state: { ...call.state, grpcBody, autoRun: parametersOf(tb).length === 0 },
+  };
+}
+
+/** Each surface's query of ``tb`` as an Explore hand-off, in the order the relationship links
+ * show them, run at once unless it carries parameters to fill in; a surface the role is not
+ * served the table on is left out. */
 export function tableQueryLinks(
-  tb: RelationshipQueryTable,
+  tb: TableQueryRef,
   surfaces: RelationshipSurfaces,
 ): { surface: RelationshipSurface; link: QueryLink }[] {
   const { reader, graph, vocabulary } = surfaces;
+  const autoRun = parametersOf(tb).length === 0;
   const run = (to: string, key: string, text: string | null): QueryLink | null =>
-    text === null ? null : { to, state: { [key]: text, autoRun: true } };
+    text === null ? null : { to, state: { [key]: text, autoRun } };
   const built: Record<RelationshipSurface, QueryLink | null> = {
     cypher: graph ? run("/graph", "query", tableCypher(tb, graph)) : null,
     sql: reader ? run("/sql", "sql", tableSql(tb, reader)) : null,

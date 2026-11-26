@@ -8,13 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The one page-title pattern: a lucide icon before the title text. Every top-level page heading
-// renders through this so the pages read as one set.
+// The one page-title pattern: a lucide icon before the title text, then the page's (?) help
+// (REQ-2277 rule 8, read from the registry by the route). Every top-level page heading renders
+// through this so the pages read as one set.
 
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Group, Title } from "@mantine/core";
 import type { TitleOrder } from "@mantine/core";
+import { RoutePageHelp } from "./RoutePageHelp";
 
 interface PageTitleProps {
   icon: LucideIcon;
@@ -31,6 +33,7 @@ export function PageTitle({ icon: Icon, order = 2, mb, children }: PageTitleProp
       <Title order={order} mb={mb ?? 0} lh={1}>
         {children}
       </Title>
+      <RoutePageHelp placement="title" />
     </Group>
   );
 }

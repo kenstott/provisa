@@ -39,7 +39,7 @@ asyncio machinery itself:
   listener, a reaper) a dedicated thread. :func:`shutdown_background` stops all three.
 """
 
-# Requirements: REQ-1882
+# Requirements: REQ-1882, REQ-2225
 
 from __future__ import annotations
 
@@ -295,6 +295,21 @@ def current_connection_loop() -> ConnectionLoop:
     if cl is None:
         raise RuntimeError("no connection loop is bound to this thread")
     return cl
+
+
+@contextmanager
+def connection_loop_or_current() -> Generator[ConnectionLoop]:
+    """Yield the connection loop already bound to this thread, or check one out when none is.
+
+    Use instead of :func:`connection_loop` when the caller may legitimately run on a thread
+    that already owns a loop (e.g. an asyncio threadpool thread driven by a background worker).
+    """
+    existing = getattr(_bound, "cl", None)
+    if existing is not None:
+        yield existing
+    else:
+        with connection_loop() as cl:
+            yield cl
 
 
 def run_on_connection_loop(coro: Coroutine[Any, Any, T], *, timeout: float | None = None) -> T:

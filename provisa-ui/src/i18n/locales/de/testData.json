@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "Fake-Wert",
+    "template": "JSON-Vorlage",
+    "templateHint": "Das Objekt, das jede Zeile zeigt: jedes Feld ein Fake-Wert wie email() oder uniform(min=1, max=9)::integer, ein verschachteltes Objekt, ein Array fester Länge oder ein Literal in doppelten Anführungszeichen für ein Feld, das sich nicht ändert",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "Synthetische Regel",
     "stable": "Stabil",
     "stableHint": "Derselbe Fake-Wert auf jeder Engine und in jeder Region",
