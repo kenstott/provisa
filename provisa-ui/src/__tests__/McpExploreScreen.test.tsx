@@ -88,6 +88,7 @@ const ctx: ClientToolContext = {
   presentChoice: vi.fn(),
   runAdminMutation: vi.fn(),
   chooseFile: vi.fn(),
+  changed: vi.fn(),
 };
 
 function page(question = QUESTION) {

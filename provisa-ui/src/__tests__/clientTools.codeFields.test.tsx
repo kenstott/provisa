@@ -38,6 +38,7 @@ const ctx = (): ClientToolContext => ({
   presentChoice: vi.fn(),
   runAdminMutation: vi.fn(),
   chooseFile: vi.fn(),
+  changed: vi.fn(),
 });
 
 async function fields() {
