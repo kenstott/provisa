@@ -121,6 +121,7 @@
     "standingKind": "Tipo di differenza",
     "compare": "Confronta con il catalogo",
     "title": "Sincronizzazione del contesto",
+    "filterPlaceholder": "Filtra voci…",
     "importCron": "Pianificazione dell'importazione",
     "importCronHelp": "Espressione cron per un'importazione non presidiata. Ogni esecuzione prende il valore del catalogo solo dove la scelta fissa lo prevede e solo il catalogo l'ha cambiato; ogni altra differenza viene trattenuta per uno steward. Lasciare vuoto per importare solo su richiesta.",
     "importCronPlaceholder": "0 3 * * *",

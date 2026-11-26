@@ -162,7 +162,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   const [search, setSearch] = useUrlFilter();
   const [page, setPage] = useState(1);
   // The panel holds the create form while it is open; else the open tag, read or in its form.
-  const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const editingId = editing && openTag !== undefined ? openTag.id : null;
   const [formId, setFormId] = useState("");
@@ -228,7 +228,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   };
 
   const closeForm = () => {
-    setCreating(false);
+    setCreateOpen(false);
     setEditing(false);
     resetForm();
   };
@@ -244,7 +244,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setEditing(false);
     resetForm();
     setFormScopes([scope]);
-    setCreating(true);
+    setCreateOpen(true);
   };
 
   const openRow = (id: string) => {
@@ -271,7 +271,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setFormDomains([...tag.allowedDomains]);
     setOutside([]);
     setFormCited(tag.citations);
-    setCreating(true);
+    setCreateOpen(true);
   };
 
   const openEdit = (tag: Tag) => {
@@ -343,7 +343,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
       // The saved tag is the panel's, read -- or, where the save narrowed its domains, still in its
       // form listing the assignments now outside them (REQ-2208); they stay.
       const left = (result.params as { outside?: TagOutsideAssignment[] } | null)?.outside ?? [];
-      setCreating(false);
+      setCreateOpen(false);
       detail.open(id);
       if (left.length > 0) {
         setEditing(true);
@@ -708,8 +708,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     </Stack>
   );
 
-  const panelTitle = creating ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
-  const panelBody = creating
+  const panelTitle = createOpen ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
+  const panelBody = createOpen
     ? form
     : openTag !== undefined
       ? editing
@@ -733,12 +733,12 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         <div className="page-actions">
           {!readOnly && (
             <Button
-              variant={creating ? "outline" : "filled"}
-              onClick={() => (creating ? closeForm() : openCreate())}
+              variant={createOpen ? "outline" : "filled"}
+              onClick={() => (createOpen ? closeForm() : openCreate())}
               data-testid="tags-create-button"
-              aria-label={creating ? t("tagsTab.closeForm") : undefined}
+              aria-label={createOpen ? t("tagsTab.closeForm") : undefined}
             >
-              {creating ? <X size={14} /> : t("tagsTab.addTag")}
+              {createOpen ? <X size={14} /> : t("tagsTab.addTag")}
             </Button>
           )}
           <HelpBubble
@@ -779,7 +779,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         title={panelTitle}
         onClose={closePanel}
         // Escape closes a tag that is only being looked at; it never drops what is typed.
-        closeOnEscape={!creating && !editing}
+        closeOnEscape={!createOpen && !editing}
         labels={{
           panel: t("tagsTab.heading"),
           resize: t("tablesPage.resizeDetail"),
@@ -840,7 +840,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 <ListRow
                   key={tag.id}
                   testId={`tags-row-${tag.id}`}
-                  selected={!creating && tag.id === detail.id}
+                  selected={!createOpen && tag.id === detail.id}
                   onClick={() => openRow(tag.id)}
                 >
                   <Table.Td>
