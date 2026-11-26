@@ -34,6 +34,7 @@
     "addTitle": "添加文档",
     "loading": "正在加载参考资料库...",
     "empty": "资料库中还没有文档。",
+    "noMatch": "没有符合筛选条件的文档。",
     "detailPanel": "文档详情",
     "colTitle": "标题",
     "colSource": "来源",

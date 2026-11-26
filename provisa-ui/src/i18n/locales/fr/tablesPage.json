@@ -78,6 +78,7 @@
     "erdHelpBody": "Dessine les tables enregistrées et les relations déclarées entre elles, pour que vous voyiez quelles jointures existent avant d'écrire une requête. En lecture seule : filtrez par domaine et exportez le diagramme en PNG ou SVG.",
     "purposeModel": "+ Modèle déclare une entité ou un fait, les briques d'un schéma en étoile et d'un Data Vault. Il enregistre la vue matérialisée, son Time Travel et les relations avec les entités sur lesquelles elle s'appuie.",
     "empty": "Aucune table enregistrée pour le moment.",
+    "noMatch": "Aucune table ne correspond au filtre.",
     "resizeDetail": "Redimensionner le panneau de détails",
     "detailPanel": "Détails de la table",
     "closeDetail": "Fermer le panneau de détails",

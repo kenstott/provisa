@@ -8,6 +8,7 @@
     "none_data_catalog": "עדיין אין קטלוגי נתונים.",
     "none_ontology": "עדיין אין אונטולוגיות.",
     "none_custom": "עדיין אין מערכות מותאמות אישית.",
+    "noMatch": "אין רשומות התואמות לסינון.",
     "addEntry": "הוספה",
     "newEntry": "חדש",
     "duplicateCredentialsNote": "פרטי הכניסה של {{id}} אינם מועתקים: הזינו אותם כאן.",

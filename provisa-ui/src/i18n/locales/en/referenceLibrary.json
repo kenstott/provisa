@@ -34,6 +34,7 @@
     "addTitle": "Add a document",
     "loading": "Loading the reference library...",
     "empty": "The library holds no documents yet.",
+    "noMatch": "No documents match the filter.",
     "detailPanel": "Document details",
     "colTitle": "Title",
     "colSource": "Source",

@@ -23,10 +23,11 @@ const RESIDENCY = "data_residency";
 /** A capability as a role's row names it: data residency with the regions it grants. */
 export function capabilityLabel(
   capability: string,
-  regions: readonly string[],
+  // A role that grants no region carries none (Role.residencyValues is optional).
+  regions: readonly string[] | undefined,
   t: TFunction,
 ): string {
-  if (capability !== RESIDENCY || regions.length === 0) return capability;
+  if (capability !== RESIDENCY || regions === undefined || regions.length === 0) return capability;
   const region = (value: string) => (value === NO_REGION ? t("residencyGrant.noRegion") : value);
   return `${capability}: ${regions.map(region).join(", ")}`;
 }

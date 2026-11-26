@@ -194,6 +194,7 @@
     "colGqlAlias": "Alias GQL",
     "colSteward": "Steward",
     "noDomains": "Nenhum domínio definido",
+    "noDomainsMatch": "Nenhum domínio corresponde ao filtro",
     "deleteDomain": "Excluir domínio {{id}}",
     "resolveSteward": "Mostrar quem é steward do domínio {{id}}",
     "pageIndicator": "Página {{page}} / {{total}}",

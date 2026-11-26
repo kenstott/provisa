@@ -50,6 +50,7 @@
     "colAssignments": "Affectations",
     "colActions": "Actions",
     "empty": "Aucun tag pour cette portée",
+    "noMatch": "Aucun tag ne correspond au filtre",
     "systemTag": "Étiquette système (lecture seule)",
     "editTag": "Modifier le tag {{id}}",
     "deleteTag": "Supprimer le tag {{id}}",

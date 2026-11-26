@@ -13,6 +13,7 @@ import { render, screen, fireEvent, waitFor, within } from "../test-utils/render
 import i18n from "../i18n";
 import { TagsTab } from "../components/admin/TagsTab";
 import type { Tag, TagAssignment } from "../types/admin";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
 
@@ -221,6 +222,25 @@ describe("TagsTab", () => {
       "tags-row-pii",
       "tags-row-finance",
     ]);
+  });
+
+  it("finds each tag by every text its row shows", async () => {
+    mockTags = [
+      USER_TAG,
+      { ...SYSTEM_TAG, required: true, requiresCitation: true, needsReview: true },
+      DERIVED_TAG,
+    ];
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("tags-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-tag" } });
+    expect(screen.getByTestId("tags-empty")).toHaveTextContent("No tags match the filter");
   });
 
   it("filters the registry by the selected scope and counts assignments", () => {

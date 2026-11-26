@@ -50,6 +50,7 @@
     "colAssignments": "שיוכים",
     "colActions": "פעולות",
     "empty": "אין תגיות לתחום זה",
+    "noMatch": "אין תגיות התואמות לסינון",
     "systemTag": "תג מערכת (לקריאה בלבד)",
     "editTag": "עריכת תגית {{id}}",
     "deleteTag": "מחיקת תגית {{id}}",

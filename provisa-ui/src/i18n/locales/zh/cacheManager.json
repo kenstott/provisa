@@ -21,6 +21,7 @@
       "clients": "客户端",
       "opsPerSec": "操作/秒",
       "filterPlaceholder": "按表或域筛选…",
+      "noMatch": "没有符合筛选条件的表。",
       "purgeAll": "清空全部缓存",
       "purging": "正在清除...",
       "table": "表",

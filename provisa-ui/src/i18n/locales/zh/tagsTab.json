@@ -50,6 +50,7 @@
     "colAssignments": "分配",
     "colActions": "操作",
     "empty": "此范围没有标签",
+    "noMatch": "没有符合筛选条件的标签",
     "systemTag": "系统标签（只读）",
     "editTag": "编辑标签 {{id}}",
     "deleteTag": "删除标签 {{id}}",

@@ -78,6 +78,7 @@
     "erdHelpBody": "Tekent de geregistreerde tabellen en de daartussen gedeclareerde relaties, zodat zichtbaar is welke joins bestaan voordat er een query wordt geschreven. Alleen-lezen: filter op domein en exporteer het diagram als PNG of SVG.",
     "purposeModel": "+ Model declareert een entiteit of een feit, de bouwstenen van een sterschema en een Data Vault. Het registreert de gematerialiseerde view, de Time Travel ervan en de relaties met de entiteiten waarop hij steunt.",
     "empty": "Nog geen tabellen geregistreerd.",
+    "noMatch": "Geen tabellen komen overeen met het filter.",
     "resizeDetail": "Formaat van het detailpaneel wijzigen",
     "detailPanel": "Tabeldetails",
     "closeDetail": "Detailpaneel sluiten",

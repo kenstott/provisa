@@ -122,7 +122,10 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
   if (!kept || !activeOrgId) return null;
 
   const open = kept.find((r) => r.id === detail.id) ?? null;
-  const shown = kept.filter((r) => matchesQuery([r.address, r.username], search));
+  // Every text a registry's row shows.
+  const shown = kept.filter((r) =>
+    matchesQuery([r.address, r.username, r.default ? t("detailFields.yes") : ""], search),
+  );
 
   const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const openForm = (next: Mode, from: Draft) => {
@@ -334,6 +337,8 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           list={
             <SortGroupTable
               testPrefix="container-registries"
+              testId="container-registries-list"
+              emptyTestId="container-registries-empty"
               rows={shown}
               columns={[
                 {
@@ -356,7 +361,10 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
               headers={[{ col: "address" }, { col: "username" }, { col: "default" }]}
               colSpan={3}
               rowKey={(r) => r.id}
-              empty={t("containerRegistries.none")}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("containerRegistries.none") : t("containerRegistries.noMatch")
+              }
               render={(r) => (
                 <ListRow
                   key={r.id}

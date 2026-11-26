@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import type { BranchSync, Environment } from "../api/environments";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 import { notifications } from "@mantine/notifications";
 
 // The notification host is not mounted in these renders, so what a notification SAYS is read off
@@ -178,6 +179,35 @@ async function openEnv(name: string) {
   fireEvent.click(await screen.findByTestId(`env-row-${name}`));
   await screen.findByTestId(`env-read-${name}`);
 }
+
+describe("EnvironmentsTab filter", () => {
+  it("finds each environment by every text its row shows", async () => {
+    mockList.mockResolvedValue([
+      env("prod", { protected: true, expires_at: "2027-01-01" }),
+      env("dev", { drifted: true, created_by: "ada", expired_kept_by: { view: 1 } }),
+    ]);
+    mockSync.mockResolvedValue({
+      remote_configured: true,
+      branches: { prod: syncOf(), dev: syncOf({ ahead: 2 }) },
+    });
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-sync-dev");
+    await expectFilterFindsEveryCell(screen.getByTestId("environments-filter"), () =>
+      screen.getByTestId("environments-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-row-dev");
+    fireEvent.change(screen.getByTestId("environments-filter"), {
+      target: { value: "no-such-environment" },
+    });
+    expect(screen.getByTestId("environments-empty")).toHaveTextContent(
+      "No environments match the filter.",
+    );
+  });
+});
 
 describe("EnvironmentsTab", () => {
   it("opens an environment's panel from its row, by its deep link", async () => {

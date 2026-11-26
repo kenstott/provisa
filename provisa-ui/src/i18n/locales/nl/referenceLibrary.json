@@ -34,6 +34,7 @@
     "addTitle": "Een document toevoegen",
     "loading": "Referentiebibliotheek laden...",
     "empty": "De bibliotheek bevat nog geen documenten.",
+    "noMatch": "Geen documenten komen overeen met het filter.",
     "detailPanel": "Documentdetails",
     "colTitle": "Titel",
     "colSource": "Bron",

@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { SecretsTab, MySecretsTab, SecretsServicePanel } from "../components/admin/SecretsTab";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -141,6 +142,35 @@ describe("SecretsTab", () => {
     const exported = Object.keys(await import("../api/secrets"));
     expect(exported).toContain("fetchSecrets");
     expect(exported.filter((n) => /read|reveal|show|value|get/i.test(n))).toEqual([]);
+  });
+
+  it("finds each secret by every text its row shows", async () => {
+    mockFetch.mockResolvedValue({
+      ...BUILT_IN,
+      secrets: [
+        SECRET,
+        {
+          ...SECRET,
+          name: "WAREHOUSE_KEY",
+          description: "Snowflake service account",
+          updated_at: null,
+          updated_by: null,
+          reference: "${secret:WAREHOUSE_KEY}",
+        },
+      ],
+    });
+    render(<SecretsTab title="Org Secrets" />);
+    await screen.findByTestId("secret-row-WAREHOUSE_KEY");
+    await expectFilterFindsEveryCell(screen.getByTestId("secrets-filter"), () =>
+      screen.getByTestId("secrets-table"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<SecretsTab title="Org Secrets" />);
+    await screen.findByTestId("secret-row-GIT_TOKEN");
+    fireEvent.change(screen.getByTestId("secrets-filter"), { target: { value: "no-such-secret" } });
+    expect(screen.getByTestId("secrets-empty")).toHaveTextContent("No secrets match the filter.");
   });
 
   it("stores a new secret under the name that was typed", async () => {

@@ -29,6 +29,7 @@
     "cacheOn": "פעיל",
     "cacheOff": "כבוי",
     "empty": "לא נמצאו מקורות.",
+    "noMatch": "אין מקורות התואמים לסינון.",
     "discover": "גילוי",
     "mapTable": "מיפוי טבלה",
     "refreshSchema": "רענון סכמה",

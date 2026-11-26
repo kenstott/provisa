@@ -34,6 +34,7 @@
     "addTitle": "新增文件",
     "loading": "正在載入參考資料庫...",
     "empty": "資料庫中還沒有文件。",
+    "noMatch": "沒有符合篩選條件的文件。",
     "detailPanel": "文件詳情",
     "colTitle": "標題",
     "colSource": "來源",

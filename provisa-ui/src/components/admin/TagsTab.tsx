@@ -77,6 +77,7 @@ import { useDomainFilter } from "../../context/DomainFilterContext";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
 import { ContextPlaces } from "../ContextPlaces";
+import { contextPlaceTexts } from "../contextPlaceTexts";
 import { EntityLink } from "../EntityLink";
 
 const PAGE_SIZE = 50;
@@ -202,9 +203,40 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     return counts;
   }, [tagAssignments]);
 
-  const filtered = tags
-    .filter((tag) => tag.appliesTo.includes(scope))
-    .filter((tag) => matchesQuery([tag.id, tag.description], search))
+  // Every text a tag's row shows, which the filter searches; the row below draws the same.
+  const tagRowTexts = (tag: Tag): string[] => {
+    const use = readOnly ? uses?.get(tag.id) : undefined;
+    return [
+      tag.id,
+      tag.required ? t("tagsTab.requiredLabel") : "",
+      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
+      tag.needsReview ? t("tagCitations.needsReview") : "",
+      tag.reasonPolicy === "required"
+        ? t("tagsTab.reasonPolicyBadge", { policy: policyLabel(tag.reasonPolicy) })
+        : "",
+      tag.expiresPolicy === "required"
+        ? t("tagsTab.expiresPolicyBadge", { policy: policyLabel(tag.expiresPolicy) })
+        : "",
+      tag.description,
+      ...tag.appliesTo.map(scopeLabel),
+      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
+      ...(use === undefined
+        ? []
+        : [
+            ...contextPlaceTexts(use.usages, use.hiddenUsages, t),
+            use.rowFilters === 0 && use.classificationKinds.length === 0
+              ? t("contextViews.noDependents")
+              : "",
+            use.rowFilters > 0 ? t("contextViews.rowFilters", { count: use.rowFilters }) : "",
+            ...use.classificationKinds.map((k) =>
+              t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) }),
+            ),
+          ]),
+    ];
+  };
+  const inScope = tags.filter((tag) => tag.appliesTo.includes(scope));
+  const filtered = inScope
+    .filter((tag) => matchesQuery(tagRowTexts(tag), search))
     .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -708,7 +740,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     </Stack>
   );
 
-  const panelTitle = createOpen ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
+  const panelTitle = createOpen
+    ? t("tagsTab.createButton")
+    : openTag !== undefined
+      ? openTag.id
+      : "";
   const panelBody = createOpen
     ? form
     : openTag !== undefined
@@ -801,6 +837,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
             <SortGroupTable
               selection={readOnly ? undefined : selection}
               testPrefix="tags"
+              testId="tags-list"
+              emptyTestId="tags-empty"
               minWidth={640}
               rows={filtered}
               columns={[
@@ -833,7 +871,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               ]}
               colSpan={readOnly ? 6 : 4}
               rowKey={(tag) => tag.id}
-              empty={t("tagsTab.empty")}
+              // A list a filter emptied says so, never that there are no tags.
+              empty={inScope.length === 0 ? t("tagsTab.empty") : t("tagsTab.noMatch")}
               page={{ index: safePage - 1, size: PAGE_SIZE }}
               onGroupedChange={setGrouped}
               render={(tag) => [

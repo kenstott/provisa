@@ -50,6 +50,7 @@
     "colAssignments": "割り当て",
     "colActions": "操作",
     "empty": "このスコープにタグはありません",
+    "noMatch": "フィルターに一致するタグはありません",
     "systemTag": "システムタグ(読み取り専用)",
     "editTag": "タグ {{id}} を編集",
     "deleteTag": "タグ {{id}} を削除",

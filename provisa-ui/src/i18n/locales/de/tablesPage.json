@@ -78,6 +78,7 @@
     "erdHelpBody": "Zeichnet die registrierten Tabellen und die zwischen ihnen deklarierten Beziehungen, sodass Sie sehen, welche Joins existieren, bevor Sie eine Abfrage schreiben. Die Ansicht ist schreibgeschützt: Filtern Sie nach Domäne und exportieren Sie das Diagramm als PNG oder SVG.",
     "purposeModel": "+ Modell deklariert eine Entität oder einen Fakt, die Bausteine eines Sternschemas und eines Data Vault. Es registriert die materialisierte Sicht, ihr Time Travel und die Beziehungen zu den Entitäten, auf die sie verweist.",
     "empty": "Noch keine Tabellen registriert.",
+    "noMatch": "Keine Tabellen entsprechen dem Filter.",
     "resizeDetail": "Größe des Detailbereichs ändern",
     "detailPanel": "Tabellendetails",
     "closeDetail": "Detailbereich schließen",

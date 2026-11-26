@@ -29,6 +29,7 @@
     "cacheOn": "ein",
     "cacheOff": "aus",
     "empty": "Keine Quellen gefunden.",
+    "noMatch": "Keine Quellen entsprechen dem Filter.",
     "discover": "Erkennen",
     "mapTable": "Tabelle zuordnen",
     "refreshSchema": "Schema aktualisieren",

@@ -362,7 +362,17 @@ function SecretsVault({ vault, title, header }: VaultProps) {
   const writable = state.provider.writable;
   const open = state.secrets.find((s) => s.name === detail.id) ?? null;
   const shown = state.secrets.filter((s) =>
-    matchesQuery([s.name, s.description ?? "", s.reference], search),
+    // Every text a secret's row shows.
+    matchesQuery(
+      [
+        s.name,
+        s.description,
+        s.updated_at ? new Date(s.updated_at).toLocaleString() : t("secretsTab.never"),
+        s.updated_by ? t("secretsTab.updatedBy", { actor: s.updated_by }) : "",
+        s.reference,
+      ],
+      search,
+    ),
   );
 
   const formView = (
@@ -567,7 +577,9 @@ function SecretsVault({ vault, title, header }: VaultProps) {
               ]}
               colSpan={4}
               rowKey={(s) => s.name}
-              empty={t("secretsTab.empty")}
+              // A list a filter emptied says so, never that no secret is kept.
+              empty={state.secrets.length === 0 ? t("secretsTab.empty") : t("secretsTab.noMatch")}
+              emptyTestId="secrets-empty"
               render={(s) => (
                 <ListRow
                   key={s.name}

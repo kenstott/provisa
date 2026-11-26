@@ -50,6 +50,7 @@
     "colAssignments": "Atribuições",
     "colActions": "Ações",
     "empty": "Nenhuma tag para este escopo",
+    "noMatch": "Nenhuma tag corresponde ao filtro",
     "systemTag": "Tag do sistema (somente leitura)",
     "editTag": "Editar tag {{id}}",
     "deleteTag": "Excluir tag {{id}}",
