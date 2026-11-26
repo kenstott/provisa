@@ -98582,7 +98582,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-26. The entity tag builds an entity hub: every column tagged entity:<name>,
-    across every source, feeds one hub per entity name (entity:customer gives the customer hub). Each entity
+    across every source, feeds one hub per entity name (entity:customer gives the customer hub). An entity column is a varchar; the entity tag is refused by name on a column of any other type. Each entity
     name declares its normalization rules once (for example lowercase and trim an email, E.164 a phone, strip
     punctuation from a tax id), a column may override them, and values are normalized before they are
     compared. The resolver produces two governed derived tables: the hub, one row per resolved entity with a
@@ -98599,8 +98599,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     attribute (most recent, preferred source, most complete) choose the hub''s attribute values when sources
     disagree. Governance carries through: masks, row rules and column visibility on an input column apply to
     the hub and link rows drawn from it, so a role that cannot read a source column cannot read its links. The
-    resolver also searches the reference library: a document section that names a resolved entity (its
-    canonical value or a declared alias) is linked to that hub entity with a confidence, reviewable like a
+    resolver also searches the reference library: a document section, or a varchar value in any served column, that holds a resolved entity''s
+    canonical value or a declared alias, either exactly or contained within the text, is linked to that hub entity with a confidence, reviewable like a
     fuzzy match, so an entity lists the documents that mention it and a document lists its entities; the
     link obeys the document''s and the source column''s read rights.'
   scenario: 'Given two sources each with an email column tagged entity:customer holding Bob@X.com and
