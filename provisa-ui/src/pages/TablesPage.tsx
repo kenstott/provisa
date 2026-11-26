@@ -922,7 +922,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         }}
         testId="your-data-back"
       >
-        <YourDataStep registered={registeredMany} role={actingRole} />
+        <YourDataStep
+          registered={registeredMany}
+          role={actingRole}
+          onOpenQuery={(graphql) => navigate("/query", { state: { query: graphql } })}
+        />
       </PanelWorking>
     ) : newRegistration !== null && editingTable !== null ? (
       editForm(editingTable, null)
