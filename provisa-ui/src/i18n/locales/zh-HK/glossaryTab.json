@@ -206,7 +206,6 @@
     "agentVisibleTitle": "智能體能看到的術語",
     "waitingTitle": "再批准一次即可到達資料",
     "approvedNotGroundedTitle": "未到達任何資料的已批准術語",
-    "waitingApprove": "批准 {{terms}}",
     "noneListed": "無。",
     "bulkApprove": "批准已定義且已錨定的草稿",
     "bulkApproveTitle": "批准草稿",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII：開。標記 {{count}} 欄。關閉以取消術語的標記。",
     "piiOffTip": "PII：關。開啟以標記表示此術語的每一欄，並說明原因。",
     "exportExcludedOnTip": "已從中繼數據匯出中排除。關閉以重新將術語發佈到目錄。",
-    "exportExcludedOffTip": "包含在中繼數據匯出中。開啟以使術語不出現在 Provisa 發佈到的目錄中。"
+    "exportExcludedOffTip": "包含在中繼數據匯出中。開啟以使術語不出現在 Provisa 發佈到的目錄中。",
+    "agentVisibleOnly": "智能體可見",
+    "stewardshipFilter": "篩選術語",
+    "stewardshipColTerm": "術語",
+    "stewardshipColStatus": "狀態",
+    "stewardshipColApprove": "批准後可到達資料"
   }
 }

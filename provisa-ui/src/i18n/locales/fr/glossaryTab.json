@@ -206,7 +206,6 @@
     "agentVisibleTitle": "Termes visibles par les agents",
     "waitingTitle": "Une approbation avant d'atteindre les données",
     "approvedNotGroundedTitle": "Termes approuvés qui n'atteignent aucune donnée",
-    "waitingApprove": "approuver {{terms}}",
     "noneListed": "Aucun.",
     "bulkApprove": "Approuver les brouillons définis et ancrés",
     "bulkApproveTitle": "Approuver des brouillons",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII : activé. Marque {{count}} colonnes. Désactivez pour retirer la marque du terme.",
     "piiOffTip": "PII : désactivé. Activez pour marquer chaque colonne de cette signification, avec un motif.",
     "exportExcludedOnTip": "Exclu de l'export de métadonnées. Désactivez pour publier à nouveau le terme dans les catalogues.",
-    "exportExcludedOffTip": "Inclus dans l'export de métadonnées. Activez pour tenir le terme hors des catalogues où Provisa publie."
+    "exportExcludedOffTip": "Inclus dans l'export de métadonnées. Activez pour tenir le terme hors des catalogues où Provisa publie.",
+    "agentVisibleOnly": "Visibles par les agents",
+    "stewardshipFilter": "Filtrer les termes",
+    "stewardshipColTerm": "Terme",
+    "stewardshipColStatus": "Statut",
+    "stewardshipColApprove": "Approuver pour atteindre les données"
   }
 }

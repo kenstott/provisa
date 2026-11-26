@@ -206,7 +206,6 @@
     "agentVisibleTitle": "智能体能看到的术语",
     "waitingTitle": "再批准一次即可到达数据",
     "approvedNotGroundedTitle": "未到达任何数据的已批准术语",
-    "waitingApprove": "批准 {{terms}}",
     "noneListed": "无。",
     "bulkApprove": "批准已定义且已锚定的草稿",
     "bulkApproveTitle": "批准草稿",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII：开。标记 {{count}} 列。关闭以取消术语的标记。",
     "piiOffTip": "PII：关。打开以标记表示此术语的每一列，并说明原因。",
     "exportExcludedOnTip": "已从元数据导出中排除。关闭以重新将术语发布到目录。",
-    "exportExcludedOffTip": "包含在元数据导出中。打开以使术语不出现在 Provisa 发布到的目录中。"
+    "exportExcludedOffTip": "包含在元数据导出中。打开以使术语不出现在 Provisa 发布到的目录中。",
+    "agentVisibleOnly": "智能体可见",
+    "stewardshipFilter": "筛选术语",
+    "stewardshipColTerm": "术语",
+    "stewardshipColStatus": "状态",
+    "stewardshipColApprove": "批准后可到达数据"
   }
 }

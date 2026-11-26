@@ -206,7 +206,6 @@
     "agentVisibleTitle": "Begriffe, die Agents sehen können",
     "waitingTitle": "Eine Freigabe bis zum Datenzugriff",
     "approvedNotGroundedTitle": "Freigegebene Begriffe ohne Daten",
-    "waitingApprove": "{{terms}} freigeben",
     "noneListed": "Keine.",
     "bulkApprove": "Definierte, verankerte Entwürfe freigeben",
     "bulkApproveTitle": "Entwürfe freigeben",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII: an. Markiert {{count}} Spalten. Ausschalten hebt die Markierung des Begriffs auf.",
     "piiOffTip": "PII: aus. Einschalten markiert jede Spalte mit dieser Bedeutung, mit einer Begründung.",
     "exportExcludedOnTip": "Vom Metadatenexport ausgeschlossen. Ausschalten veröffentlicht den Begriff wieder in Katalogen.",
-    "exportExcludedOffTip": "Im Metadatenexport enthalten. Einschalten hält den Begriff aus den Katalogen heraus, in die Provisa veröffentlicht."
+    "exportExcludedOffTip": "Im Metadatenexport enthalten. Einschalten hält den Begriff aus den Katalogen heraus, in die Provisa veröffentlicht.",
+    "agentVisibleOnly": "Für Agents sichtbar",
+    "stewardshipFilter": "Begriffe filtern",
+    "stewardshipColTerm": "Begriff",
+    "stewardshipColStatus": "Status",
+    "stewardshipColApprove": "Freigeben, um Daten zu erreichen"
   }
 }

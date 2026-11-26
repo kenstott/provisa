@@ -206,7 +206,6 @@
     "agentVisibleTitle": "מונחים שסוכנים רואים",
     "waitingTitle": "אישור אחד מהגעה לנתונים",
     "approvedNotGroundedTitle": "מונחים מאושרים שאינם מגיעים לנתונים",
-    "waitingApprove": "אשרו את {{terms}}",
     "noneListed": "אין.",
     "bulkApprove": "אישור טיוטות מוגדרות ומעוגנות",
     "bulkApproveTitle": "אישור טיוטות",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII: פעיל. מסמן {{count}} עמודות. כבה כדי להסיר את הסימון מהמונח.",
     "piiOffTip": "PII: כבוי. הפעל כדי לסמן כל עמודה שזו משמעותה, עם סיבה.",
     "exportExcludedOnTip": "מוחרג מייצוא מטא-נתונים. כבה כדי לפרסם את המונח שוב בקטלוגים.",
-    "exportExcludedOffTip": "כלול בייצוא מטא-נתונים. הפעל כדי להשאיר את המונח מחוץ לקטלוגים ש-Provisa מפרסמת אליהם."
+    "exportExcludedOffTip": "כלול בייצוא מטא-נתונים. הפעל כדי להשאיר את המונח מחוץ לקטלוגים ש-Provisa מפרסמת אליהם.",
+    "agentVisibleOnly": "גלויים לסוכנים",
+    "stewardshipFilter": "סינון מונחים",
+    "stewardshipColTerm": "מונח",
+    "stewardshipColStatus": "סטטוס",
+    "stewardshipColApprove": "לאשר כדי להגיע לנתונים"
   }
 }

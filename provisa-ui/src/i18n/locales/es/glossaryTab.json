@@ -206,7 +206,6 @@
     "agentVisibleTitle": "Términos que los agentes ven",
     "waitingTitle": "Una aprobación para llegar a los datos",
     "approvedNotGroundedTitle": "Términos aprobados que no llegan a ningún dato",
-    "waitingApprove": "aprobar {{terms}}",
     "noneListed": "Ninguno.",
     "bulkApprove": "Aprobar borradores definidos y anclados",
     "bulkApproveTitle": "Aprobar borradores",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII: activado. Marca {{count}} columnas. Desactívelo para desmarcar el término.",
     "piiOffTip": "PII: desactivado. Actívelo para marcar cada columna con este significado, con un motivo.",
     "exportExcludedOnTip": "Excluido de la exportación de metadatos. Desactívelo para volver a publicar el término en los catálogos.",
-    "exportExcludedOffTip": "Incluido en la exportación de metadatos. Actívelo para mantener el término fuera de los catálogos en los que publica Provisa."
+    "exportExcludedOffTip": "Incluido en la exportación de metadatos. Actívelo para mantener el término fuera de los catálogos en los que publica Provisa.",
+    "agentVisibleOnly": "Visibles para los agentes",
+    "stewardshipFilter": "Filtrar términos",
+    "stewardshipColTerm": "Término",
+    "stewardshipColStatus": "Estado",
+    "stewardshipColApprove": "Aprobar para llegar a los datos"
   }
 }

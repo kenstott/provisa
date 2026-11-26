@@ -206,7 +206,6 @@
     "agentVisibleTitle": "Termen die agents kunnen zien",
     "waitingTitle": "Eén goedkeuring van het bereiken van data",
     "approvedNotGroundedTitle": "Goedgekeurde termen die geen data bereiken",
-    "waitingApprove": "keur {{terms}} goed",
     "noneListed": "Geen.",
     "bulkApprove": "Gedefinieerde, verankerde ontwerpen goedkeuren",
     "bulkApproveTitle": "Ontwerpen goedkeuren",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII: aan. Markeert {{count}} kolommen. Zet uit om de markering van de term te halen.",
     "piiOffTip": "PII: uit. Zet aan om elke kolom met deze betekenis te markeren, met een reden.",
     "exportExcludedOnTip": "Uitgesloten van metadata-export. Zet uit om de term weer in catalogi te publiceren.",
-    "exportExcludedOffTip": "Opgenomen in metadata-export. Zet aan om de term buiten de catalogi te houden waarin Provisa publiceert."
+    "exportExcludedOffTip": "Opgenomen in metadata-export. Zet aan om de term buiten de catalogi te houden waarin Provisa publiceert.",
+    "agentVisibleOnly": "Zichtbaar voor agents",
+    "stewardshipFilter": "Termen filteren",
+    "stewardshipColTerm": "Term",
+    "stewardshipColStatus": "Status",
+    "stewardshipColApprove": "Goedkeuren om data te bereiken"
   }
 }

@@ -206,7 +206,6 @@
     "agentVisibleTitle": "エージェントに見える用語",
     "waitingTitle": "データに到達するまであと 1 回の承認",
     "approvedNotGroundedTitle": "データに到達しない承認済み用語",
-    "waitingApprove": "{{terms}} を承認",
     "noneListed": "なし。",
     "bulkApprove": "定義済み・紐付け済みの下書きを承認",
     "bulkApproveTitle": "下書きを承認",
@@ -263,6 +262,11 @@
     "piiOnTip_other": "PII: オン。{{count}} 列をマークしています。オフにすると用語のマークを外します。",
     "piiOffTip": "PII: オフ。オンにすると、この用語を意味するすべての列を理由付きでマークします。",
     "exportExcludedOnTip": "メタデータエクスポートから除外されています。オフにすると用語をカタログに再び公開します。",
-    "exportExcludedOffTip": "メタデータエクスポートに含まれています。オンにすると、Provisa が公開するカタログから用語を除外します。"
+    "exportExcludedOffTip": "メタデータエクスポートに含まれています。オンにすると、Provisa が公開するカタログから用語を除外します。",
+    "agentVisibleOnly": "エージェントに見える",
+    "stewardshipFilter": "用語を絞り込む",
+    "stewardshipColTerm": "用語",
+    "stewardshipColStatus": "ステータス",
+    "stewardshipColApprove": "承認するとデータに到達"
   }
 }

@@ -88,6 +88,7 @@
     "helpWhat": "A short, chosen set of reference documents (policies, regulations, contracts, processes), added by file or URL. Not a document store.",
     "helpWho": "Polly answers from it, citing passages. AI agents connected through Provisa's MCP server search it (search_reference_library). Find terms reads it to propose glossary terms and definitions.",
     "helpSees": "An assistant acting for a role draws only on kept documents in domains the role reads, plus whole-organization ones.",
-    "helpEmbedding": "Passages are embedded with the organization's embedding model when a document is added; Re-embed is needed only when that model changes."
+    "helpEmbedding": "Passages are embedded with the organization's embedding model when a document is added; Re-embed is needed only when that model changes.",
+    "reviewsDueOnly": "Reviews due"
   }
 }
