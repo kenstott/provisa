@@ -20,7 +20,7 @@ Every function takes ``(state, role, request, ...)``; ``role`` is the caller's p
 first by :func:`provisa.api.mcp.tools.require_role`.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304, REQ-2253
 
 from __future__ import annotations
 
@@ -57,15 +57,22 @@ def _require_table_editor(request: Any) -> None:
 
 
 async def find_table_id(state: Any, role: str, request: Any, domain: str, table: str) -> list[dict]:
-    """The registered tables of ``domain`` named or aliased ``table``, with their ids."""
+    """The registered tables of ``domain`` named or aliased ``table``, with their ids.
+
+    ``domain`` may be the raw domain id (``pet-store``) or its SQL-safe form (``pet_store``):
+    both name the same domain. The DB stores raw ids, so both sides are normalised before
+    comparison (REQ-2253: the model calls list_schemas which returns SQL-safe names, so it
+    naturally passes the SQL-safe form here)."""
     require_role(role, state)
     from sqlalchemy import or_, select
 
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.compiler.naming import domain_to_sql_name
     from provisa.core.schema_org import registered_tables as rt
 
     require_capability_request(request, "table_registration")  # the table editor's right
+    sql_domain = domain_to_sql_name(domain)
     pool = await _get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -77,10 +84,12 @@ async def find_table_id(state: Any, role: str, request: Any, domain: str, table:
                 rt.c.alias,
                 rt.c.profiler_source_id,
             )
-            .where(rt.c.domain_id == domain, or_(rt.c.table_name == table, rt.c.alias == table))
+            .where(or_(rt.c.table_name == table, rt.c.alias == table))
             .order_by(rt.c.id)
         )
-        rows = result.fetchall()
+        # Filter by SQL-safe domain name so both 'pet-store' and 'pet_store' match the row
+        # whose domain_id is 'pet-store' (the raw stored form).
+        rows = [r for r in result.fetchall() if domain_to_sql_name(r.domain_id) == sql_domain]
     return [
         {
             "id": r.id,

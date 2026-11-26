@@ -15,7 +15,7 @@ The schemas carry no ``role``: the endpoint pins it (see chat.py). Every one of 
 the verified request, because the admin route it calls reads the caller's rights from it.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304, REQ-2253
 
 from __future__ import annotations
 
@@ -526,7 +526,18 @@ async def _refuse_outside_selection(state: Any, name: str, args: dict) -> None:
     if name in _WHOLE_ORG:
         refuse_whole_org(_WHOLE_ORG[name])
     if name == "find_table_id":
-        refuse_object(f"Domain {args['domain']!r}", {args["domain"]})
+        # REQ-2253: list_schemas returns SQL-safe names (e.g. pet_store); the scope the domain
+        # filter binds holds raw ids (e.g. pet-store). Normalize both sides before comparing so
+        # the same domain is never refused just because its id contains a hyphen or other
+        # non-alphanumeric character that domain_to_sql_name replaces with an underscore.
+        from provisa.compiler.naming import domain_to_sql_name
+
+        scope = current()
+        sql_arg = domain_to_sql_name(args["domain"])
+        if not any(domain_to_sql_name(d) == sql_arg for d in scope):  # type: ignore[union-attr]
+            raise PermissionError(
+                f"Domain {args['domain']!r} is outside the domains selected in the domain filter"
+            )
     from provisa.api.admin.domain_guard import table_domain
 
     pool = state.model_db
