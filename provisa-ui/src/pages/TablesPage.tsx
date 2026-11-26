@@ -265,6 +265,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     () => (hidingOnly ? hidingDomains(selectedRoles) : null),
     [hidingOnly, selectedRoles],
   );
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredTables = useMemo(
     () =>
@@ -272,10 +273,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
         if (viewsOnly && !t.viewSql) return false;
         if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
-        if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
-        return matchesQuery([t.sourceId, t.tableName, t.domainId], tableSearch);
+        return !(t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId));
       }),
-    [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
+    [tables, viewsOnly, checkedDomains, governedDomains],
   );
   const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
     () => [
@@ -304,10 +304,37 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
+  // Every text a table's row shows, which the filter searches; the row below draws the same.
+  const tableRowTexts = (t: RegisteredTable) => {
+    const checker = sources.find((s) => s.id === t.sourceId)?.type;
+    return [
+      t.sourceId === DERIVED_SOURCE_ID ? translate("tablesPage.derived") : t.sourceId,
+      domainsEnabled && t.domainId ? domainToSqlName(t.domainId) : "",
+      t.alias || t.tableName,
+      t.tableName,
+      t.withdrawn || t.sourceWithdrawn ? translate("tablesPage.withdrawn") : "",
+      t.modelingRole ? translate(`tablesPage.modelingRole.${t.modelingRole}`) : "",
+      !t.modelingRole && t.enableAggregates ? translate("tablesPage.modelingRole.fact") : "",
+      !t.modelingRole && t.enableGroupBy ? translate("tablesPage.modelingRole.dimension") : "",
+      t.businessKey.length > 0 ? translate("tablesPage.history.badge") : "",
+      checker === "soda" || checker === "great_expectations"
+        ? translate(`tablesPage.checker.${checker}`)
+        : "",
+      ...t.productIds.map((id) => dataProducts.find((p) => p.id === id)?.name ?? id),
+      t.gqlNamingConvention
+        ? namingConventionLabel(translate, t.gqlNamingConvention)
+        : translate("tablesPage.inheritSource"),
+      t.cacheTtl != null ? ttlText(t.cacheTtl, translate) : translate("tablesPage.inherit"),
+      getEffectiveTableTtl(t),
+      hasRegions ? (t.region ?? translate("regionSelector.noRegion")) : "",
+      String(t.columns.length),
+    ];
+  };
+  const searchedTables = filteredTables.filter((t) => matchesQuery(tableRowTexts(t), tableSearch));
   const nameSearchActive = tableSearch.trim().length > 0;
   const { visible: regionTables, hidden: regionHidden } = nameSearchActive
-    ? { visible: filteredTables, hidden: 0 }
-    : filterByRegion(filteredTables, regionSel, connected, (t) => t.region ?? null);
+    ? { visible: searchedTables, hidden: 0 }
+    : filterByRegion(searchedTables, regionSel, connected, (t) => t.region ?? null);
   const sortGroup = useListSortGroup(regionTables, listColumns, "tables");
   // REQ-2240: tables selected and deleted together; the header's box takes every table shown.
   const shownTableIds = useMemo(() => regionTables.map((tbl) => tbl.id), [regionTables]);
@@ -354,7 +381,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const createTable = useCreateTable();
 
   // Cache state
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [cacheTtlEdits, setCacheTtlEdits] = useState<
     Record<number, { value: string; dirty: boolean; saving: boolean }>
   >({});
@@ -433,7 +459,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     });
   }, [tables]);
 
-  const getEffectiveTableTtl = (t: RegisteredTable): string => {
+  function getEffectiveTableTtl(t: RegisteredTable): string {
     const source = sources.find((s) => s.id === t.sourceId);
     const ttl = t.cacheTtl ?? source?.cacheTtl;
     if (ttl === NEVER_EXPIRES) {
@@ -451,7 +477,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     if (source?.cacheTtl != null) return `${source.cacheTtl}s (from source)`;
     if (settings) return `${settings.cache.default_ttl}s (global)`;
     return "default";
-  };
+  }
 
   // A table whose source caches its results (a remote API's) has a cache to drop; the panel's
   // head offers that for it alone.
@@ -1386,7 +1412,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)}
                           testId="tables-empty"
                         >
-                          {translate("tablesPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {tables.every(
+                            (t) =>
+                              t.sourceId === "provisa-admin" ||
+                              t.sourceId === "provisa-otel" ||
+                              (viewsOnly && !t.viewSql),
+                          )
+                            ? translate("tablesPage.empty")
+                            : translate("tablesPage.noMatch")}
                         </ListEmpty>
                       );
                     }

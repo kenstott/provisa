@@ -31,8 +31,11 @@ const isTest = (name: string) => /\.test\.tsx?$/.test(name);
 const sources = files(SRC, (n) => /\.tsx$/.test(n) && !isTest(n));
 const tests = files(SRC, isTest);
 
-/** A list page: a filter box over a standard list. */
-const LIST_PAGE = /<FilterInput\b[\s\S]*?(<ListTable\b|<SortGroupTable\b|<ListItems\b)/;
+/** A list page: a filter box and a standard list. */
+const LIST_PAGE = {
+  test: (text: string) =>
+    /<FilterInput\b/.test(text) && /<(ListTable|SortGroupTable|ListItems)\b/.test(text),
+};
 
 /** The list pages a test holds to every shown text: the modules it imports, by file name. */
 function covered(): Set<string> {
