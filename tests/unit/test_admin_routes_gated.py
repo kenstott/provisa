@@ -167,17 +167,13 @@ EXEMPT[("GET", "/admin/erd-layouts")] = _ERD_LAYOUT_READ
 EXEMPT[("GET", "/admin/erd-layouts/{name}")] = _ERD_LAYOUT_READ
 
 
-# REQ-2180 (amended 2026-11-24): the suggestions a caller receives are answered by the domains whose
+# REQ-2180 (amended 2026-11-24): the counts a caller receives are answered by the domains whose
 # suggestions go to them (stewards, data product owners); an anonymous reader owns no domains, so
-# /counts answers [] (the Tables page shows no banner) and the listing answers 403 not_a_recipient.
-# The reader is read by a never-raising helper, so no sign-in gate applies; the per-domain recipient
-# check is the authorization.
-_SUGGESTION_READ = (
+# /counts answers [] (the Tables page shows no banner). The listing stays gated by _suggester.
+EXEMPT[("GET", "/admin/product-suggestions/counts")] = (
     "REQ-2180: answered by the domains whose suggestions go to the caller; anonymous owns none, "
-    "so counts are empty and the listing is refused not_a_recipient"
+    "so the counts are empty"
 )
-EXEMPT[("GET", "/admin/product-suggestions")] = _SUGGESTION_READ
-EXEMPT[("GET", "/admin/product-suggestions/counts")] = _SUGGESTION_READ
 
 
 def _callees(fn) -> set[str]:
