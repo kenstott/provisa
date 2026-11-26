@@ -12628,7 +12628,7 @@ DIRECT routes must stream for user-data scans via the source's own server-side c
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-HTTP-addressable local materialization. Extend the existing local_dir file:// materialization to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+HTTP-addressable local materialization. Extend the existing local_dir file:// materialization to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized redirect results are downloadable over HTTP by a client, not only via desktop file:// paths. (Amended 2026-11-26 by the maintainer, a local-disk redirect URL is absolute, the request's base URI followed by /data/redirect-file/<id>.<ext>. A request that arrived without HTTP (pgwire, Flight SQL, Bolt, gRPC, stdio MCP) uses server.public_url as the base; when that is unset the delivery is refused, naming the setting.)
 
 **Use case:** HTTP-addressable local materialization generalizes the Trino "engine writes the file, client receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote consumers to retrieve materialized results.
 
@@ -12682,7 +12682,7 @@ Extend engine-native ctas_redirect beyond Trino to all object-store-capable engi
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** constraint
 
-Sink-tier selection rule. ctas_redirect targets the engine's native object-store sink when a reachable object store is configured (PROVISA_REDIRECT_ENDPOINT + credentials); otherwise it falls back to Provisa's local_dir + HTTP-serve ([REQ-1191](#REQ-1191)). For DuckDB, this fallback is a deployment gap (no guaranteed bucket), not a capability gap; configuring an object store promotes it to the native path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file tier absent an extension.
+Sink-tier selection rule. ctas_redirect targets the engine's native object-store sink when a reachable object store is configured (PROVISA_REDIRECT_ENDPOINT + credentials); otherwise it falls back to Provisa's local_dir + HTTP-serve ([REQ-1191](#REQ-1191)). For DuckDB, this fallback is a deployment gap (no guaranteed bucket), not a capability gap; configuring an object store promotes it to the native path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file tier absent an extension. (Amended 2026-11-26 by the maintainer, the results store is chosen once per profile and every format uses it. Where an object store is configured, every format goes there, a format the engine writes itself through its own write, any other format written by Provisa and uploaded. A configured store that cannot take the result fails the delivery by name; nothing falls back to local disk. Only where no object store is configured are results kept on local disk.)
 
 **Use case:** Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path available given the engine and deployment configuration.
 
