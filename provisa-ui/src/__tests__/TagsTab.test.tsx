@@ -31,6 +31,10 @@ let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files (see ScheduledTasks.test.tsx).
+// A citation links to its section for a viewer who may open the Library (EntityLink).
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["glossary_read"] }),
+}));
 vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTags: () => ({ tags: mockTags, loading: false, refetch: vi.fn() }),

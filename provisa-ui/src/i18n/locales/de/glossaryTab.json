@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "Gegenbegriff zu",
     "expertsTitle": "Experten",
     "noExperts": "Keine Experten.",
+    "documentsTitle": "Dokumente",
+    "documentsLoading": "Dokumente werden geladen…",
     "expertUserLabel": "Person",
     "expertKindLabel": "Art",
     "addExpert": "+ Experte",

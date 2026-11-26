@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "Антоним к",
     "expertsTitle": "Эксперты",
     "noExperts": "Нет экспертов.",
+    "documentsTitle": "Документы",
+    "documentsLoading": "Загрузка документов…",
     "expertUserLabel": "Человек",
     "expertKindLabel": "Тип",
     "addExpert": "+ Эксперт",

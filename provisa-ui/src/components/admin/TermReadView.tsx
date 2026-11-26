@@ -11,7 +11,7 @@
 // A term's panel read: the sections its Edit form has (TermEditForm.tsx), in the same order, each
 // value shown and nothing changed here -- the name and definition, export and domains, what follows
 // from its columns and tables, the columns it names, the tables it is grounded in, its
-// relationships and its experts.
+// relationships, the library documents it cites and its experts.
 
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -33,6 +33,7 @@ import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
 import { TermGroundingChip, TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { RetiredTermRecord } from "./RetiredTermRecord";
+import { TermDocuments } from "./TermDocuments";
 import { OntologySnippet } from "../graph3d/OntologyGraph";
 import { termPreset } from "../graph3d/ontologyPresets";
 import { type TermOption } from "./termLabel";
@@ -45,11 +46,14 @@ function TermSection({
   section,
   title,
   defaultOpen,
+  mountWhenOpen,
   children,
 }: {
   section: string;
   title: string;
   defaultOpen?: boolean;
+  /** Its content reads something when mounted: it is read only when the section is opened. */
+  mountWhenOpen?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -58,6 +62,7 @@ function TermSection({
         value={section}
         title={title}
         defaultOpen={defaultOpen}
+        mountWhenOpen={mountWhenOpen}
         controlTestId={`glossary-term-${section}-toggle`}
       >
         {children}
@@ -339,6 +344,11 @@ export function TermReadView({
           removeGlossaryEdge={removeGlossaryEdge}
           addGlossaryEdge={addGlossaryEdge}
         />
+      </TermSection>
+
+      {/* REQ-2208, REQ-2179: the library documents the term cites, and what review proposes. */}
+      <TermSection section="documents" title={t("glossaryTab.documentsTitle")} mountWhenOpen>
+        <TermDocuments key={term.id} termId={term.id} canEdit={canEdit} />
       </TermSection>
 
       <TermSection section="experts" title={t("glossaryTab.expertsTitle")}>

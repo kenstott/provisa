@@ -48,6 +48,7 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }
 import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
 import { NAV_BAR } from "../components/navGroups";
+import { entityHref, sectionMark } from "../lib/entityHref";
 
 const URL_DOC = {
   id: 3,
@@ -420,6 +421,24 @@ describe("LibraryPage", () => {
     expect(screen.queryByTestId("reflib-upload-version")).toBeNull();
     fireEvent.click(screen.getByTestId("reflib-refresh"));
     await waitFor(() => expect(api.refreshLibraryDocument).toHaveBeenCalledWith(3));
+  });
+
+  it("opens a section's link on the Sections tab, at the section", async () => {
+    api.fetchLibraryDocument.mockResolvedValue({
+      ...URL_DOC,
+      passage_list: [
+        { ordinal: 0, section: "Who is a Client", page: null, text: "A Client holds an account." },
+        { ordinal: 1, section: "Scope", page: null, text: "Applies to all clients." },
+        { ordinal: 2, section: "Scope", page: null, text: "And their agents." },
+      ],
+    });
+    render(<LibraryPage />, {
+      initialEntries: [entityHref("section", 3, undefined, sectionMark("Scope", null))],
+    });
+    const at = await screen.findByTestId("reflib-section-at");
+    expect(at).toHaveTextContent("Applies to all clients.");
+    expect(screen.getByTestId("reflib-tab-sections")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByTestId("reflib-section-at")).toHaveLength(1);
   });
 
   it("keeps or discards a proposed document", async () => {

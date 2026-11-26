@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "反义于",
     "expertsTitle": "专家",
     "noExperts": "暂无专家。",
+    "documentsTitle": "文档",
+    "documentsLoading": "正在加载文档…",
     "expertUserLabel": "人员",
     "expertKindLabel": "类型",
     "addExpert": "+ 专家",

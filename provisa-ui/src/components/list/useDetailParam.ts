@@ -59,7 +59,13 @@ export const DETAIL_VIEWS = {
   views: { route: "/views", ...TABLE_VIEW },
   relationships: { route: "/relationships", param: "relationship" },
   ontology: { route: "/context/ontology", param: "term" },
-  library: { route: "/context/documents", param: "document" },
+  // REQ-2208: ``at`` marks a section on the Sections tab (entityHref's ``section``).
+  library: {
+    route: "/context/documents",
+    param: "document",
+    tab: { param: "tab", first: "overview" },
+    alsoClears: ["at"],
+  },
   metrics: { route: "/metrics", param: "metric" },
   // REQ-2158: a linked contract is the linked product's; REQ-2277: so is a dataset's profile runs
   // dialog (`table` names the dataset).
