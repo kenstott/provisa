@@ -1021,6 +1021,8 @@
   "ja/codeSourceFields.json::codeSourceFields.versionHintRust": "An exact crate version, such as 1.2.0.",
   "ja/codeSourceFields.json::codeSourceFields.workers": "Workers",
   "ja/codeSourceFields.json::codeSourceFields.workersHint": "How many workers this source runs in each Provisa process. A column transform's batches run side by side across them, so more workers raise its throughput.",
+  "ja/collapsible.json::collapsible.collapseAll": "Collapse all",
+  "ja/collapsible.json::collapsible.expandAll": "Expand all",
   "ja/columnFilter.json::columnFilter.addTyped": "Add “{{value}}”",
   "ja/columnFilter.json::columnFilter.appliesToLoaded": "Filters apply to the {{count}} rows loaded, not the whole result.",
   "ja/columnFilter.json::columnFilter.apply": "Apply",
