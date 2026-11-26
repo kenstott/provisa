@@ -537,12 +537,23 @@ def _require_table_registration(request: Request) -> None:
 
 
 @router.get("/ref")
-async def term_for_ref(request: Request, table_id: int, column_name: str) -> dict:
-    """The glossary summary for one physical column — the hover popup's lookup.
+async def term_for_ref(
+    request: Request,
+    table_id: int,
+    column_name: str | None = None,
+    query_name: str | None = None,
+) -> dict:
+    """The glossary summary for one column — the hover popup's lookup.
+
+    The column is named either by its physical ``column_name`` (the Tables surface) or by the
+    ``query_name`` its consumers query it by, its SQL alias where one is set (a data product's
+    consumer view, REQ-2158 amended 2026-11-25). Exactly one is given.
 
     Gated on table_registration rather than org_settings: it serves the Tables surface
     read-only, and a term summary reveals nothing the column list doesn't already.
     """
+    if (column_name is None) == (query_name is None):
+        raise ApiError(400, "glossary.invalid", "give exactly one of column_name and query_name")
     _require_table_registration(request)
     require_active_org_id(request)
     pool = await _pool()
@@ -553,11 +564,20 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
         from provisa.api.admin.domain_guard import table_domain
 
         _require_domain(request, await table_domain(_conn, table_id))
-        term = await glossary_repo.get_term_by_ref(_conn, table_id, column_name)
+        physical = (
+            column_name
+            if query_name is None
+            else await glossary_repo.column_queried_as(_conn, table_id, query_name)
+        )
+        term = (
+            None
+            if physical is None
+            else await glossary_repo.get_term_by_ref(_conn, table_id, physical)
+        )
     from provisa.api.admin.read_rights import reader_for_request
 
     # REQ-2152: a column the caller is not served is answered as one no term is bound to.
-    if term is None or not reader_for_request(request).column(table_id, column_name):
+    if term is None or not reader_for_request(request).column(table_id, physical):
         raise ApiError(404, "glossary.ref_not_found", "no term for that column")
     return term
 
