@@ -184,6 +184,10 @@ async def suggestion_counts(request: Request) -> list[dict]:
     """How many suggestions name each table of the domains whose suggestions go to the caller,
     most wanted first. Anonymous callers receive no domains and so an empty list."""
     reader = _reader(request)
+    # REQ-2180: anonymous callers own no domains; return [] rather than a 401 that the
+    # browser logs as a console error (the Tables page loads this unconditionally).
+    if reader == _ANONYMOUS:
+        return []
     state = _state()
     async with state.model_db.acquire() as conn:
         return await suggestions.counts(conn, await received_domains(conn, reader))

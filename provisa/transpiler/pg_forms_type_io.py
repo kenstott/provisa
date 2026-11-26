@@ -1451,17 +1451,15 @@ def _said_number(number: int, sql_type: str) -> exp.Expr:
 
 
 def _said_refusal(refusal: literals.Refused) -> exp.Expr:
-    """PostgreSQL's error raised on every engine via provisa_raise (REQ-2236: never a wrong answer).
+    """An expression that raises PostgreSQL's error, whatever type the call would have answered.
 
-    provisa_raise carries the SQLSTATE and message through each engine's raise mechanism
-    (DuckDB: error(), Trino: fail(), ClickHouse: throwIf()) and raises FunctionRefused on
-    MySQL-family dialects — a real error instead of CAST(CAST(text AS SIGNED) AS CHAR)
-    silently returning '0'."""
+    Uses CAST(CAST(text AS INTEGER) AS TEXT): every engine raises on the invalid cast, and
+    provisa.core.pg_error.from_engine reads the SQLSTATE and message back from the error text.
+    MySQL-family dialects silently return '0' instead of raising; those are listed in
+    functions.json as known wrong answers (provisa_raise cannot be used here because it is
+    not installed on pg-compatible federated engines and has no form on non-SQL engines)."""
     quoted = "'" + refusal.message.replace("'", "''") + "'"
-    return sqlglot.parse_one(
-        f"provisa_raise('{refusal.sqlstate}', {quoted})",
-        read="postgres",
-    )
+    return sqlglot.parse_one(refused(refusal.sqlstate, quoted, "TEXT"), read="postgres")
 
 
 def _array_kind(value: exp.Expr) -> str | None:
