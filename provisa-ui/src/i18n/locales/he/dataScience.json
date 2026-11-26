@@ -10,6 +10,7 @@
     "rowsShown": "מוצגות {{shown}} מתוך {{total}} שורות",
     "figure": "איור {{n}}",
     "resizeLabel": "שינוי גודל העורך והפלט",
+    "output": "פלט",
     "notebookFrame": "מחברת Jupyter",
     "copyCode": "העתקת הקוד",
     "clearCode": "ניקוי העורך",
