@@ -69,7 +69,6 @@
     "hoverExpertsLabel": "專家：",
     "hoverRefsLabel": "欄：",
     "excludeFromExportLabel": "從中繼數據匯出中排除",
-    "excludeFromExportHelp": "適用於描述底層機制的詞彙，例如「ETL 批次識別碼」或「行版本」。被排除的詞彙會留在此處供工程師使用，但不會出現在 Provisa 發佈的目錄中。其欄位仍會匯出；詞彙及其關係則不會。",
     "bulkGenerateDefinitions": "定義",
     "bulkGenerateRelationships": "關係",
     "generateMenu": "使用 AI 生成",
@@ -164,8 +163,6 @@
     "tagsLabel": "標籤",
     "piiHelp": "表示此術語的每一欄（包括以後的）都帶有 PII。",
     "piiPropertyOnly": "只有屬性會標示欄位。類別或概念不會標示任何欄位。",
-    "piiMarks_one": "標記 {{count}} 個欄位",
-    "piiMarks_other": "標記 {{count}} 個欄位",
     "moveOneUnnamed": "移動 {{column}}？",
     "moveManyUnnamed_one": "移動 {{count}} 個欄位？",
     "moveManyUnnamed_other": "移動 {{count}} 個欄位？",
@@ -259,6 +256,13 @@
     "relatedToDialogAnyway": "仍然加入「相關於」",
     "newTermPlaceholder": "新術語",
     "shapeFormTitle": "新術語：{{shape}}",
-    "shapeFormEdges": "隨之加入的關係"
+    "shapeFormEdges": "隨之加入的關係",
+    "editTip": "編輯 {{name}}",
+    "approvedTip": "已批准。棄用或停用可使術語退出服務。",
+    "piiOnTip_one": "PII：開。標記 {{count}} 欄。關閉以取消術語的標記。",
+    "piiOnTip_other": "PII：開。標記 {{count}} 欄。關閉以取消術語的標記。",
+    "piiOffTip": "PII：關。開啟以標記表示此術語的每一欄，並說明原因。",
+    "exportExcludedOnTip": "已從中繼數據匯出中排除。關閉以重新將術語發佈到目錄。",
+    "exportExcludedOffTip": "包含在中繼數據匯出中。開啟以使術語不出現在 Provisa 發佈到的目錄中。"
   }
 }

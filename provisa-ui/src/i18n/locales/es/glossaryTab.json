@@ -69,7 +69,6 @@
     "hoverExpertsLabel": "Expertos:",
     "hoverRefsLabel": "Columnas:",
     "excludeFromExportLabel": "Excluir de la exportación de metadatos",
-    "excludeFromExportHelp": "Para términos que describen la fontanería, como «identificador de lote ETL» o «versión de fila». Un término excluido permanece aquí para los ingenieros y fuera de los catálogos en los que publica Provisa. Sus columnas se siguen exportando; el término y sus relaciones no.",
     "bulkGenerateDefinitions": "Definiciones",
     "bulkGenerateRelationships": "Relaciones",
     "generateMenu": "Generar con IA",
@@ -164,8 +163,6 @@
     "tagsLabel": "Etiquetas",
     "piiHelp": "Cada columna con este significado lleva PII, también las futuras.",
     "piiPropertyOnly": "Solo una propiedad marca columnas. Una clase o un concepto no marca ninguna.",
-    "piiMarks_one": "Marca {{count}} columna",
-    "piiMarks_other": "Marca {{count}} columnas",
     "moveOneUnnamed": "¿Mover {{column}}?",
     "moveManyUnnamed_one": "¿Mover {{count}} columna?",
     "moveManyUnnamed_other": "¿Mover {{count}} columnas?",
@@ -259,6 +256,13 @@
     "relatedToDialogAnyway": "Añadir «Relacionado con» de todos modos",
     "newTermPlaceholder": "término nuevo",
     "shapeFormTitle": "Término nuevo: {{shape}}",
-    "shapeFormEdges": "Relaciones que se añaden con él"
+    "shapeFormEdges": "Relaciones que se añaden con él",
+    "editTip": "Editar {{name}}",
+    "approvedTip": "Aprobado. Marcar obsoleto o Retirar saca el término de servicio.",
+    "piiOnTip_one": "PII: activado. Marca {{count}} columna. Desactívelo para desmarcar el término.",
+    "piiOnTip_other": "PII: activado. Marca {{count}} columnas. Desactívelo para desmarcar el término.",
+    "piiOffTip": "PII: desactivado. Actívelo para marcar cada columna con este significado, con un motivo.",
+    "exportExcludedOnTip": "Excluido de la exportación de metadatos. Desactívelo para volver a publicar el término en los catálogos.",
+    "exportExcludedOffTip": "Incluido en la exportación de metadatos. Actívelo para mantener el término fuera de los catálogos en los que publica Provisa."
   }
 }

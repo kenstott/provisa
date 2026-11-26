@@ -69,7 +69,6 @@
     "hoverExpertsLabel": "Experten:",
     "hoverRefsLabel": "Spalten:",
     "excludeFromExportLabel": "Vom Metadatenexport ausschließen",
-    "excludeFromExportHelp": "Für Begriffe, die technische Infrastruktur beschreiben, etwa „ETL-Batch-Kennung“ oder „Zeilenversion“. Ein ausgeschlossener Begriff bleibt hier für Engineers erhalten und erscheint nicht in den Katalogen, in die Provisa veröffentlicht. Seine Spalten werden weiterhin exportiert, der Begriff und seine Beziehungen nicht.",
     "bulkGenerateDefinitions": "Definitionen",
     "bulkGenerateRelationships": "Beziehungen",
     "generateMenu": "Mit KI generieren",
@@ -164,8 +163,6 @@
     "tagsLabel": "Tags",
     "piiHelp": "Jede Spalte mit dieser Bedeutung trägt PII, auch künftige.",
     "piiPropertyOnly": "Nur eine Eigenschaft kennzeichnet Spalten. Eine Klasse oder ein Konzept kennzeichnet keine.",
-    "piiMarks_one": "Markiert {{count}} Spalte",
-    "piiMarks_other": "Markiert {{count}} Spalten",
     "moveOneUnnamed": "{{column}} verschieben?",
     "moveManyUnnamed_one": "{{count}} Spalte verschieben?",
     "moveManyUnnamed_other": "{{count}} Spalten verschieben?",
@@ -259,6 +256,13 @@
     "relatedToDialogAnyway": "Trotzdem „Verwandt mit“ hinzufügen",
     "newTermPlaceholder": "neuer Begriff",
     "shapeFormTitle": "Neuer Begriff: {{shape}}",
-    "shapeFormEdges": "Damit hinzugefügte Kanten"
+    "shapeFormEdges": "Damit hinzugefügte Kanten",
+    "editTip": "{{name}} bearbeiten",
+    "approvedTip": "Freigegeben. Als veraltet markieren oder Außer Dienst stellen nimmt den Begriff aus dem Dienst.",
+    "piiOnTip_one": "PII: an. Markiert {{count}} Spalte. Ausschalten hebt die Markierung des Begriffs auf.",
+    "piiOnTip_other": "PII: an. Markiert {{count}} Spalten. Ausschalten hebt die Markierung des Begriffs auf.",
+    "piiOffTip": "PII: aus. Einschalten markiert jede Spalte mit dieser Bedeutung, mit einer Begründung.",
+    "exportExcludedOnTip": "Vom Metadatenexport ausgeschlossen. Ausschalten veröffentlicht den Begriff wieder in Katalogen.",
+    "exportExcludedOffTip": "Im Metadatenexport enthalten. Einschalten hält den Begriff aus den Katalogen heraus, in die Provisa veröffentlicht."
   }
 }

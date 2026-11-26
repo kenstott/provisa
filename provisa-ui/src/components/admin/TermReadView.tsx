@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A term's panel read: the sections its Edit form has (TermEditForm.tsx), in the same order, each
-// value shown and nothing changed here -- the name and definition, export and domains, what follows
+// value shown and nothing changed here -- the name and definition, the domains, what follows
 // from its columns and tables, the columns it names, the tables it is grounded in, its
 // relationships, the library documents it cites and its experts.
 
@@ -18,7 +18,6 @@ import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { Badge, Group, Stack, Table, Text } from "@mantine/core";
 import {
-  termRole,
   addGlossaryEdge,
   removeGlossaryEdge,
   retypeGlossaryEdge,
@@ -106,7 +105,6 @@ export function TermReadView({
   onTagsChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
   return (
     <Stack gap="md" pb="md">
       {/* REQ-1968: the form layout's read form, the fields in the edit form's order
@@ -126,30 +124,6 @@ export function TermReadView({
             label={t("glossaryTab.calculationMethodLabel")}
             value={term.calculation_method}
             size="full"
-          />
-        )}
-        <ReadRow
-          label={t("glossaryTab.excludeFromExportLabel")}
-          value={yesNo(term.export_excluded)}
-          size="short"
-        />
-        {/* REQ-2145: pii on a Property, which every column it means carries. */}
-        {termRole(term) === "property" && (
-          <ReadRow
-            label={t("glossaryTab.piiLabel")}
-            size="short"
-            value={
-              term.tags.some((g) => g.tag_id === "pii") ? (
-                <Group gap={6} data-testid="glossary-detail-pii">
-                  <Badge size="xs" color="red" variant="light">
-                    {t("glossaryTab.piiLabel")}
-                  </Badge>
-                  <Text size="sm">{t("glossaryTab.piiMarks", { count: term.ref_count })}</Text>
-                </Group>
-              ) : (
-                yesNo(false)
-              )
-            }
           />
         )}
         {/* REQ-1591: derived from the refs for a rooted term, declared for a concept; none means
