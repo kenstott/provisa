@@ -139,6 +139,8 @@ export interface CyInstance {
   center(eles?: CyCollection): void;
   zoom(): number;
   zoom(level: number): void;
+  minZoom(): number;
+  minZoom(level: number): void;
   pan(): { x: number; y: number };
   pan(pos: { x: number; y: number }): void;
   on(events: string, fn: (e: CyEvent) => void): void;

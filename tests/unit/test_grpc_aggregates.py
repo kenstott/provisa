@@ -572,3 +572,47 @@ def test_an_empty_group_s_null_aggregates_are_left_unset():
     )
     assert result.count == 0
     assert not result.sum.HasField("amount")
+
+
+class TestAggregateValueAsItsField:
+    """REQ-1961: a sized numeric's min and max are string fields, its exact digits; its sum, avg,
+    stddev and variance are doubles."""
+
+    @staticmethod
+    def _classes():
+        from google.protobuf import descriptor_pb2, descriptor_pool
+        from google.protobuf.message_factory import GetMessageClass
+
+        proto = descriptor_pb2.FileDescriptorProto(
+            name="agg_value.proto", package="aggvalue", syntax="proto3"
+        )
+        for name, field_type in (("OrdersMinFields", 9), ("OrdersSumFields", 1)):
+            msg = proto.message_type.add(name=name)
+            msg.field.add(name="amount", number=1, type=field_type, label=1)
+        result = proto.message_type.add(name="OrdersAggregateResult")
+        result.field.add(name="count", number=1, type=5, label=1)
+        result.field.add(
+            name="min", number=2, type=11, label=1, type_name=".aggvalue.OrdersMinFields"
+        )
+        result.field.add(
+            name="sum", number=3, type=11, label=1, type_name=".aggvalue.OrdersSumFields"
+        )
+        pool = descriptor_pool.DescriptorPool()
+        pool.Add(proto)
+        return {
+            name: GetMessageClass(pool.FindMessageTypeByName(f"aggvalue.{name}"))
+            for name in ("OrdersMinFields", "OrdersSumFields", "OrdersAggregateResult")
+        }
+
+    def test_a_decimal_fills_a_string_field_with_its_digits_and_a_double_with_its_number(self):
+        from decimal import Decimal
+
+        servicer = ProvisaServicer(MagicMock(), SimpleNamespace(**self._classes()))
+        msg = servicer._build_aggregate_result_message(
+            "Orders",
+            {"count": Decimal("3")},
+            {"min": {"amount": Decimal("12.50")}, "sum": {"amount": Decimal("40.25")}},
+        )
+        assert msg.count == 3
+        assert msg.min.amount == "12.50"
+        assert msg.sum.amount == 40.25

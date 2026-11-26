@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 
 import re
+from decimal import Decimal
 
 import pytest
 
@@ -102,7 +103,7 @@ def _build_schema_and_ctx():
 def given_db_mutation(shared_data):
     si, schema, ctx = _build_schema_and_ctx()
     doc = parse(
-        'mutation { insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows } }'
+        'mutation { insertOrders(input: { amount: "42.0", region: "us-east" }) { affected_rows } }'
     )
     # The mutation must validate against the generated schema for the registered table.
     errors = validate(schema, doc)
@@ -150,7 +151,7 @@ def then_bypass_trino_enforce_write_authority(shared_data):
     assert getattr(compiled, "source_id", None) is not None
 
     # Parameters are real, positional, and carry the supplied write values.
-    assert compiled.params == [42.0, "us-east"]
+    assert compiled.params == [Decimal("42.0"), "us-east"]  # REQ-1961: exact digits
     assert "$1" in compiled.sql
 
 
@@ -314,7 +315,7 @@ def then_excluded_columns_absent_and_rejected(shared_data):
     # 3. A mutation that references the excluded column must be rejected at parse/validate time.
     #    Build a GraphQL document that attempts to set the excluded 'region' column.
     excluded_mutation_src = (
-        f'mutation {{ {insert_field_name}(input: {{ amount: 10.0, {excluded_column}: "eu-west" }}) '
+        f'mutation {{ {insert_field_name}(input: {{ amount: "10.0", {excluded_column}: "eu-west" }}) '
         f"{{ affected_rows }} }}"
     )
     excluded_doc = parse(excluded_mutation_src)
@@ -334,7 +335,7 @@ def then_excluded_columns_absent_and_rejected(shared_data):
 
     # 5. A mutation using only permitted columns must validate successfully.
     permitted_mutation_src = (
-        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0 }}) {{ affected_rows }} }}"
+        f'mutation {{ {insert_field_name}(input: {{ amount: "10.0" }}) {{ affected_rows }} }}'
     )
     permitted_doc = parse(permitted_mutation_src)
     permitted_errors = validate(schema, permitted_doc)

@@ -130,7 +130,33 @@ COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
 COPY provisa-ui/src/theme/palette.ts ./src/theme/palette.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
-# Stage 4: lean runtime image — no wheels, only app source + installed packages
+# Stage 4: the React SPA the UI server serves from static/, built here so an image built from a
+# source checkout serves the UI with no Node on the host (a checkout's static/ is empty, and the UI
+# container answered GET / with 503 "UI not bundled"). The same build as the release's wheel job:
+# `npm ci` and `npm run build` in provisa-ui, whose prebuild renders the offline MkDocs site
+# (provisa-ui/scripts/build-docs-site.mjs: scripts/gen_docs_index.py from the READMEs, then mkdocs
+# with mkdocs.yml's hooks) into the build, with the packages .github/actions/docs-site-deps
+# installs. `tsc -b` also checks a test that imports scripts/gen-site-source-picker.mjs. The repo's
+# layout is kept under /build so every relative path resolves as it does in a checkout.
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS ui-build
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv /opt/docs-site \
+ && /opt/docs-site/bin/pip install --no-cache-dir mkdocs-material pymdown-extensions mkdocs-static-i18n
+ENV PATH=/opt/docs-site/bin:$PATH
+WORKDIR /build/provisa-ui
+COPY provisa-ui/package.json provisa-ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY provisa-ui/ ./
+COPY mkdocs.yml README*.md /build/
+COPY docs/ /build/docs/
+COPY scripts/gen_docs_index.py scripts/mkdocs_hooks.py scripts/mkdocs_search_per_locale.py \
+     scripts/gen-site-source-picker.mjs /build/scripts/
+RUN npm run build && test -f dist/index.html
+
+# Stage 5: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
 WORKDIR /app
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
@@ -199,8 +225,8 @@ COPY --from=eclipse-temurin:21-jre-noble@sha256:000fd431958bc81a24abe1e8e5f0f0fd
      /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="/opt/java/openjdk/bin:${PATH}"
-# static/ contains the built React SPA; may be empty in dev builds
-COPY static/ ./static/
+# The React SPA, built by the ui-build stage (stage 4); ui_server.py serves static/.
+COPY --from=ui-build /build/provisa-ui/dist/ ./static/
 # Bake ONLY the shipped runtime configs — NEVER the whole config/ dir. A blanket copy also
 # baked the dev-local config/provisa.yaml (a divergent 909-line config) into the image; a
 # secondary that loaded it registered a DIFFERENT source set than the primary's demo config

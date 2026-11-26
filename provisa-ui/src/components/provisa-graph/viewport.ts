@@ -77,6 +77,12 @@ export function keepView(cy: CyInstance): void {
   modes.set(cy, { kind: "kept" });
 }
 
+/** A new instance drawing what ``mode`` was the view of, at the same zoom and pan (a drawing
+ * rebuilt in place, its view held): it keeps that mode. */
+export function holdViewMode(cy: CyInstance, mode: ViewMode): void {
+  modes.set(cy, mode);
+}
+
 /** The view is the opening view (a focus fitted into view): a resize opens it again. */
 export function openingView(cy: CyInstance): void {
   modes.set(cy, { kind: "opening" });
@@ -107,6 +113,19 @@ export function followResize(cy: CyInstance, was: Size): ViewMode["kind"] {
   return mode.kind;
 }
 
+const readerMins = new WeakMap<CyInstance, number>();
+
+/** The least zoom the instance was made with: the bound on the reader's own zooming. A fit lowers
+ * the instance's limit below it (fitBelowLegend); this is what it was before any fit. */
+function readerMinZoom(cy: CyInstance): number {
+  let least = readerMins.get(cy);
+  if (least === undefined) {
+    least = cy.minZoom();
+    readerMins.set(cy, least);
+  }
+  return least;
+}
+
 /** Fit by the drawn extent below the legend, at no less than `floor`; whether the whole diagram
  * is in view. */
 function fitBelowLegend(cy: CyInstance, padding: number, floor: number): boolean {
@@ -129,7 +148,12 @@ function fitBelowLegend(cy: CyInstance, padding: number, floor: number): boolean
     cy.fit(undefined, padding);
     return true;
   }
-  cy.zoom(Math.max(Math.min(width / bb.w, height / bb.h), floor));
+  const fits = Math.min(width / bb.w, height / bb.h);
+  // The lead's decision (REQ-2239, FIT MEANS THE WHOLE IMAGE): the instance's least zoom bounds
+  // the reader's own zooming only; a fit goes below it when that is what shows the whole diagram,
+  // and the reader may zoom out as far as that fit.
+  cy.minZoom(Math.min(readerMinZoom(cy), fits));
+  cy.zoom(Math.max(fits, floor));
   // The zoom the instance accepted: it holds its own limits.
   const z = cy.zoom();
   const wide = bb.w * z > width;
