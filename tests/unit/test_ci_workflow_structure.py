@@ -1998,9 +1998,12 @@ def test_no_workflow_or_action_names_a_node_version_anywhere():
             assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
 
 
-def test_the_images_node_is_the_nvmrc():
-    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
-    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+@pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.dev"])
+def test_the_images_node_is_the_nvmrc(dockerfile):
+    """Every node stage (graph-render, ui-build) runs the .nvmrc's Node."""
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / dockerfile).read_text(), flags=re.M)
+    assert tags, f"{dockerfile} has no node stage"
+    assert set(tags) == {_node_pin()}, f"{dockerfile} node images {tags}, .nvmrc {_node_pin()}"
 
 
 def test_the_nixos_guests_node_is_the_nvmrc_major():

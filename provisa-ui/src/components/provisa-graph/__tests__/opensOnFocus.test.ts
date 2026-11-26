@@ -145,6 +145,8 @@ function stage(w: number, h: number, nodes: Record<string, BB>, edges: [string, 
       pan = p;
       return undefined;
     },
+    // Cytoscape's least zoom, which a fit reads and may lower (viewport.ts); none here.
+    minZoom: () => 0,
   } as unknown as CyInstance;
   return { cy, at: (id: string) => render(nodes[id]), whole: () => render(model) };
 }

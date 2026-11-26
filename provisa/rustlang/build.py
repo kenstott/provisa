@@ -16,7 +16,9 @@ compiled once per code hash with the code's crate as a dependency, one static bi
 functions: Rust has no reflection, so the call is written out from what the reader read of its
 signature -- its arguments decoded with serde into the types its parameters name, its Result's
 error made the call's failure, and what it returns made rows (a collection or an iterator) or a
-value.
+value. A table's or stream's parameters are what it takes (REQ-2100): its inputs struct, made of
+the arguments by name, and its read context, each decoded into the type it declares; a
+``@loader``'s map of each key's hash to its rows is answered keyed.
 
 The build is a crate of its own: the host's ``Cargo.toml`` with the code's crate added by path,
 and one ``Cargo.lock`` joining the host's and the code's (the code's entry where both name a
@@ -25,7 +27,7 @@ code's ``[patch]`` sections apply to the code's own workspace only, as for any c
 dependency.
 """
 
-# Requirements: REQ-2227
+# Requirements: REQ-2227, REQ-2100
 from __future__ import annotations
 
 import os
@@ -36,7 +38,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from provisa.codesource.manifest import STREAM, TABLE, Manifest
+from provisa.codesource.manifest import CONTEXT, STREAM, TABLE, Export, Manifest
 from provisa.rustlang.reader import CargoRunner, cargo_environment, run_cargo
 from provisa.rustlang.toolchain import Toolchain
 
@@ -46,14 +48,16 @@ _HOST_SOURCES = ("src/main.rs", "src/glue.rs", "src/rows.rs", "src/wire.rs")
 CODE_CRATE = "code"
 
 
-def _call(export: dict[str, Any], kind: str) -> str:
+def _call(export: dict[str, Any], read: Export) -> str:
     """One registry entry of exports.rs: the export's name, and the call of its function."""
-    name = export["name"]
+    name, kind = export["name"], read.kind
     (signature,) = export["signatures"]
     count = len(signature["parameters"])
     if kind in (TABLE, STREAM):
-        # A table's or stream's one parameter is its inputs, made of the call's arguments by name.
-        check, given = "", "inputs(a)?" if count else ""
+        # A table's or stream's parameters are what it takes, in order: its inputs, made of the
+        # call's arguments by name, and its read context (REQ-2100).
+        check = ""
+        given = ", ".join("context(a)?" if t == CONTEXT else "inputs(a)?" for t in read.takes)
     else:
         check = f"expect(a, {count})?; "
         given = ", ".join(f"arg(a, {i})?" for i in range(count))
@@ -67,6 +71,9 @@ def _call(export: dict[str, Any], kind: str) -> str:
         body = f"fallible_rows({invoked})"
     elif returns["kind"] in ("array", "iterable"):
         body = f"rows({invoked})"
+    elif kind == TABLE and read.loader and returns["kind"] == "record":
+        # REQ-2100: a loader's map of each key's hash to its rows.
+        body = f"keyed({invoked})"
     else:
         body = f"value({invoked})"
     return f'        ("{name}", |a: &Args| {{ {check}{body} }}),'
@@ -83,7 +90,7 @@ def exports_source(document: dict[str, Any], manifest: Manifest) -> str:
         "",
         "pub fn exports() -> Vec<(&'static str, Export)> {",
         "    vec![",
-        *(_call(read[e.name], e.kind) for e in manifest.exports),
+        *(_call(read[e.name], e) for e in manifest.exports),
         "    ]",
         "}",
         "",
