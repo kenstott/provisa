@@ -21,13 +21,15 @@ reader and runs it in Provisa's Python host, as every Python code source runs.
 
 What the code is written from is the source as saved: an OpenAPI source's spec is the one its
 ``path`` names (read as ``load_source_spec`` reads it, with its mapping's exclusions), its address
-the mapping's ``base_url`` or the spec's first server, its auth and headers the mapping's; a
+the mapping's ``base_url`` or the spec's first server, its auth the mapping's, its headers the
+mapping's and its brand's, and the version each operation's calls carry its brand's (REQ-1874,
+as api_source.loader derives them for an ApiSource); a
 remote GraphQL source's endpoint is its ``path``, its schema the one the endpoint answers
 introspection with, its auth, namespace and field overrides the mapping's, and its mapping limits
 the deployment's (``graphql_remote`` settings).
 """
 
-# Requirements: REQ-2267
+# Requirements: REQ-2267, REQ-1874
 from __future__ import annotations
 
 import importlib
@@ -144,6 +146,7 @@ def _refused(refused: Exception, source_id: str) -> BundleRefused:
 def _openapi_code(directory: Path, source_id: str, path: str, mapping: dict) -> str:
     from provisa.api_source.openapi_endpoint import api_auth
     from provisa.core.secrets import resolve_secrets
+    from provisa.openapi.brands import spec_headers, spec_operation_headers
     from provisa.openapi.code_source import write_code
     from provisa.openapi.exclusions import load_source_spec
     from provisa.openapi.loader import spec_server_url
@@ -159,7 +162,10 @@ def _openapi_code(directory: Path, source_id: str, path: str, mapping: dict) -> 
         spec=spec,
         base_url=base_url,
         auth=auth,
-        headers=mapping.get("headers") or {},
+        # REQ-1874: every brand header reaches the code's calls -- the brand's beside the
+        # mapping's, the brand's version prevailing, so an answer has the spec's shape.
+        headers={**(mapping.get("headers") or {}), **spec_headers(spec_path)},
+        operation_headers=spec_operation_headers(spec_path),
     )
 
 
