@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -49,6 +48,7 @@ from provisa.codesource.manifest import Manifest
 from provisa.codesource.worker import HostCommand, Worker, pool
 
 if TYPE_CHECKING:
+    from provisa.codesource.lifecycle import Setup
     from provisa.core.database import Database
     from provisa.core.package_registries import Resolved
 
@@ -209,7 +209,7 @@ class Prepared:
     #: REQ-2131: how many workers it runs in this process (``CodeConfig.workers``).
     workers: int = 1
     #: REQ-2221: what gives its remote host its setup values; None when its code has no @on-start.
-    setup: Callable[[], dict[str, Any]] | None = None
+    setup: Setup | None = None
 
     def worker(self, slot: int = 0) -> Worker:
         """Its worker number ``slot`` of :attr:`workers` (REQ-2131); one call that needs one
