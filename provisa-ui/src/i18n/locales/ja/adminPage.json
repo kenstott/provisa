@@ -193,7 +193,6 @@
     "colDescription": "説明",
     "colGqlAlias": "GQLエイリアス",
     "colSteward": "スチュワード",
-    "colActions": "操作",
     "noDomains": "ドメインが定義されていません",
     "deleteDomain": "ドメイン {{id}} を削除",
     "resolveSteward": "ドメイン {{id}} のスチュワードを表示",
@@ -225,6 +224,9 @@
     "apolloSubgraphNameHint": "スーパーグラフがこのサブグラフを識別する名前です。",
     "apolloSubgraphRole": "実行ロール",
     "apolloSubgraphRoleHint": "スーパーグラフは呼び出し元の ID を引き継げないため、ルーターはこのロールでサインインし、このロールの行ルール、マスク、可視性が取得するすべてのエンティティに適用されます。",
-    "stewardsHint": "このドメインに責任を持つ人。各人に domain_steward を持つロールが必要です。"
+    "stewardsHint": "このドメインに責任を持つ人。各人に domain_steward を持つロールが必要です。",
+    "domainsFilterPlaceholder": "ドメインを絞り込む",
+    "closeForm": "フォームを閉じる",
+    "domainPanel": "ドメイン"
   }
 }

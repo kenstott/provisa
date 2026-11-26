@@ -147,7 +147,7 @@ Wie `relationships`, umfasst aber `meta:%`-synthetische Einträge. Wird vom Grap
 Jeder `RelationshipType` exponiert:
 
 - **`autoSuggested → Boolean`** — ob die Beziehung durch FK-Analyse vorgeschlagen wurde (`id` beginnt mit `fk__`).
-- **`physicalName → String`** — der Name der Beziehung auf der SQL- und gRPC-Ebene (der `?include=`-Parameter). Serverseitig abgeleitet; Clients dürfen den GraphQL-Alias nicht transliterieren.
+- **`physicalName → String`** — der API-Name der Beziehung, in der Oberfläche als API-Name angezeigt: der Name, den `?include=` bei REST und JSON:API sowie das include von gRPC annehmen. Reines SQL nennt keine Beziehung. Serverseitig abgeleitet; Clients dürfen den GraphQL-Alias nicht transliterieren.
 
 ---
 

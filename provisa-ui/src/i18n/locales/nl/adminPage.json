@@ -193,7 +193,6 @@
     "colDescription": "Beschrijving",
     "colGqlAlias": "GQL-alias",
     "colSteward": "Data steward",
-    "colActions": "Acties",
     "noDomains": "Geen domeinen gedefinieerd",
     "deleteDomain": "Domein {{id}} verwijderen",
     "resolveSteward": "Tonen wie data steward is van domein {{id}}",
@@ -225,6 +224,9 @@
     "apolloSubgraphNameHint": "De naam waaronder de supergraaf deze subgraaf kent.",
     "apolloSubgraphRole": "Treedt op als rol",
     "apolloSubgraphRoleHint": "Een supergraph kan de identiteit van de aanroeper niet doorgeven, dus de router meldt zich aan met deze rol, en de rijregels, maskers en zichtbaarheid van deze rol bepalen elke entiteit die hij ophaalt.",
-    "stewardsHint": "Mensen die verantwoordelijk zijn voor het domein; elk heeft een rol met domain_steward nodig."
+    "stewardsHint": "Mensen die verantwoordelijk zijn voor het domein; elk heeft een rol met domain_steward nodig.",
+    "domainsFilterPlaceholder": "Domeinen filteren",
+    "closeForm": "Formulier sluiten",
+    "domainPanel": "Domein"
   }
 }

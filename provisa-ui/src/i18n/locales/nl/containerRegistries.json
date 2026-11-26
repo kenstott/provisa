@@ -14,6 +14,10 @@
     "defaultHelp": "Een build pusht hierheen, tenzij die een ander register noemt. Een organisatie heeft één standaardregister.",
     "saved": "Opgeslagen",
     "removed": "Verwijderd",
-    "remove": "Verwijderen"
+    "remove": "Verwijderen",
+    "filterPlaceholder": "Registers filteren",
+    "closeForm": "Formulier sluiten",
+    "edit": "{{name}} bewerken",
+    "removeConfirm": "{{name}} verwijderen? Builds die ernaar pushen kunnen hun image niet meer pushen."
   }
 }

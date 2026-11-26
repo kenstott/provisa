@@ -19,9 +19,7 @@
     "colWaitingOn": "En espera de",
     "colStatus": "Estado",
     "colReason": "Motivo",
-    "colActions": "",
     "none": "—",
-    "viewPayload": "ver",
     "approve": "Aprobar",
     "execute": "Ejecutar",
     "reject": "Rechazar",
@@ -39,6 +37,8 @@
     "deliveryHelp": "Cómo se informa de una solicitud a los miembros de los roles a los que va dirigida. Correo electrónico: Provisa envía un aviso a cada uno. Solo eventos: Provisa no envía ningún aviso; su herramienta de flujo de trabajo se suscribe a ops.requests. Ambos: correo electrónico y eventos.",
     "deliveryEmail": "Correo electrónico",
     "deliveryEvents": "Solo eventos",
-    "deliveryBoth": "Ambos"
+    "deliveryBoth": "Ambos",
+    "panelTitle": "Solicitud n.º {{id}}",
+    "panelLabel": "Solicitud"
   }
 }

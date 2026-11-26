@@ -1,6 +1,7 @@
 {
   "metricsPage": {
     "title": "Metrics",
+    "filterPlaceholder": "Filter metrics…",
     "newMetric": "+ Metric",
     "loading": "Loading...",
     "empty": "No metrics registered yet.",

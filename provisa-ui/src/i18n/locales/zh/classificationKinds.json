@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "每次画像运行都会按这些类型检验每一列取值的样本。足够多的值通过时，该列会得到一条建议，由数据管家接受或拒绝。已停用的类型不会被检验。",
+    "filterPlaceholder": "筛选类型…",
+    "empty": "没有符合筛选条件的类型",
     "kindHeader": "类型",
     "testHeader": "检验",
     "thresholdHeader": "必须通过的比例",

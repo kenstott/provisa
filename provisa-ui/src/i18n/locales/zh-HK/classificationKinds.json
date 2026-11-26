@@ -1,6 +1,8 @@
 {
   "classificationKinds": {
     "intro": "每次剖析執行都會按這些類型檢驗每個欄位取值的樣本。足夠多的值通過時，該欄位會得到一項建議，由數據管家接受或拒絕。已停用的類型不會被檢驗。",
+    "filterPlaceholder": "篩選類型…",
+    "empty": "沒有符合篩選條件的類型",
     "kindHeader": "類型",
     "testHeader": "檢驗",
     "thresholdHeader": "必須通過的比例",

@@ -8,21 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { ScanSearch } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { PageTitle } from "../../components/PageTitle";
 import { ClassificationKindsTab } from "../../components/admin/ClassificationKindsTab";
 
 /** REQ-2259: the Classification page of the Context group -- the kinds and where each was
- * detected, read-only. Kinds are switched in Admin; decisions are made in the table editor. */
+ * detected, read-only. Kinds are switched in Admin; decisions are made in the table editor. ClassificationKindsTab draws
+ * the page's header and list. */
 export function ContextClassificationPage() {
   const { t } = useTranslation();
   return (
-    <div className="page">
-      <div className="page-header">
-        <PageTitle icon={ScanSearch}>{t("navBar.itemClassificationKinds")}</PageTitle>
-      </div>
-      <ClassificationKindsTab readOnly />
+    <div className="page page-sticky-head">
+      <ClassificationKindsTab readOnly title={t("navBar.itemClassificationKinds")} />
     </div>
   );
 }

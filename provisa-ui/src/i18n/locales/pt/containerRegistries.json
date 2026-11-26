@@ -14,6 +14,10 @@
     "defaultHelp": "Uma build envia para cá, a menos que indique outro registro. Uma organização tem um registro padrão.",
     "saved": "Salvo",
     "removed": "Removido",
-    "remove": "Remover"
+    "remove": "Remover",
+    "filterPlaceholder": "Filtrar registros",
+    "closeForm": "Fechar o formulário",
+    "edit": "Editar {{name}}",
+    "removeConfirm": "Remover {{name}}? Os builds que enviam para ele não poderão mais enviar sua imagem."
   }
 }

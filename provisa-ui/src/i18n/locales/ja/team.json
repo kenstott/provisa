@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "ローカルユーザー",
     "attributesTab": "属性",
-    "accessTab": "アクセス"
+    "accessTab": "アクセス",
+    "filterPlaceholder": "メンバーを絞り込む",
+    "inviteButton": "招待",
+    "closeInvite": "招待フォームを閉じる"
   }
 }

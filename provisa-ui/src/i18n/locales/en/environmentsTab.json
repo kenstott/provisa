@@ -152,8 +152,14 @@
     "rebuild": "Rebuild",
     "rebuilt": "Committed {{env}}'s model to the repository again.",
     "rebuildFailed": "{{env}} is still drifted, because the commit did not land.",
+    "protect": "Protect",
+    "unprotect": "Unprotect",
     "stageTitle": "Stage",
     "stageHelp": "Declares what this environment is for: production, preprod, test or development. The organization's original environment starts as production and a new one as development; any number of environments may share a stage.",
-    "stageHelp2": "The stage labels the environment in the switcher, in reports and in catalog and lineage exports. It never changes what anyone may do here: that comes only from the roles assigned in the environment."
+    "stageHelp2": "The stage labels the environment in the switcher, in reports and in catalog and lineage exports. It never changes what anyone may do here: that comes only from the roles assigned in the environment.",
+    "filterPlaceholder": "Filter environments",
+    "closeForm": "Close the form",
+    "newEnvironment": "New environment",
+    "panelLabel": "Environment"
   }
 }

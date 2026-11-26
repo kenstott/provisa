@@ -147,7 +147,7 @@ Igual a `relationships`, mas inclui as entradas sintéticas `meta:%`. Usado pelo
 Cada `RelationshipType` expõe:
 
 - **`autoSuggested → Boolean`** — se o relacionamento foi sugerido pela análise de FK (o `id` começa com `fk__`).
-- **`physicalName → String`** — o nome do relacionamento nos planos SQL e gRPC (o parâmetro `?include=`). Derivado no servidor; clientes não devem transliterar o alias GraphQL.
+- **`physicalName → String`** — o nome da API do relacionamento, exibido como Nome da API na interface: o nome que `?include=` do REST e do JSON:API e o include do gRPC aceitam. O SQL simples não nomeia nenhum relacionamento. Derivado no servidor; clientes não devem transliterar o alias GraphQL.
 
 ---
 

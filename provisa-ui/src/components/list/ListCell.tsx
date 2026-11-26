@@ -24,7 +24,10 @@ import { useCut } from "./useCut";
  * - words (anything with a space in it, however short): its column gives up width before the list
  *   grows past the window and the text wraps at its spaces, the row growing up to its maximum of
  *   lines, where the last line ends with an ellipsis. A long text keeps a minimum width so it does
- *   not read one word to a line; a short phrase may wrap down to its longest word.
+ *   not read one word to a line; a short phrase may wrap down to its longest word;
+ * - a short value with a parenthesised group in it ("Inherit (source)", "300s (from source)"): one
+ *   value, kept on one line at its whole width like a short single value. In a longer text each
+ *   parenthesised group is kept whole: the text wraps around it, never inside it.
  *
  * A cell that is cut shows its whole value on hover, and takes keyboard focus so the same can be
  * read without a pointer. A cell that is not cut is not a tab stop.
@@ -45,10 +48,19 @@ export function ListCell({
   // Text with a space in it wraps; a single value gives up width only when it is longer than what
   // it keeps when squeezed.
   const value = text.trim();
-  const words = !oneLine && /\s/.test(value);
-  const kind = words ? "words" : oneLine || value.length > LIST_CUT_MIN_CHARS ? "token" : "value";
+  const grouped = PAREN_GROUP.test(value);
+  // A short value with a parenthesised group reads as one value: not broken at its spaces, not cut.
+  const oneValue = !oneLine && grouped && value.length <= LIST_WRAP_MIN_CHARS;
+  const words = !oneLine && !oneValue && /\s/.test(value);
+  const kind = words
+    ? "words"
+    : oneLine || (!oneValue && value.length > LIST_CUT_MIN_CHARS)
+      ? "token"
+      : "value";
   // Only text longer than a wrapped column's minimum is held to that minimum.
   const wide = words && value.length > LIST_WRAP_MIN_CHARS;
+  // A longer text drawn as plain text keeps each parenthesised group whole as it wraps.
+  const drawn = words && grouped && children === text ? keepGroupsWhole(text) : children;
   return (
     <Tip text={cut ? text : false}>
       <div
@@ -57,9 +69,25 @@ export function ListCell({
         data-cut={cut || undefined}
         tabIndex={cut ? 0 : undefined}
       >
-        {children}
+        {drawn}
       </div>
     </Tip>
+  );
+}
+
+/** A parenthesised group: the part of a value that is never broken. */
+const PAREN_GROUP = /\([^()]*\)/;
+
+/** The text, with every parenthesised group set in a span that does not wrap. */
+function keepGroupsWhole(text: string): ReactNode {
+  return text.split(/(\([^()]*\))/).map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="list-cell__group">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 

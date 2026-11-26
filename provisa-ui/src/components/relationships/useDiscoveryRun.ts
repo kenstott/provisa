@@ -64,6 +64,8 @@ export interface DiscoveryRunState {
   stop: (runId: number) => Promise<void>;
   /** Show the latest run in the dialog. */
   openLatest: () => void;
+  /** REQ-2277: show the run a link names, read from the server; a failed read is thrown. */
+  show: (runId: number) => Promise<void>;
   /** Leave the ended run's result and set up a new run. */
   dismiss: () => void;
 }
@@ -212,6 +214,15 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
     setRun(latest);
   }, [latest]);
 
+  const show = useCallback(
+    async (runId: number) => {
+      const read = await fetchDiscoveryRun(runId);
+      setRun(read);
+      seen(read);
+    },
+    [seen],
+  );
+
   const dismiss = useCallback(() => {
     setRun((shown) => (shown?.status === "running" ? shown : null));
   }, []);
@@ -227,6 +238,7 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
     start,
     stop,
     openLatest,
+    show,
     dismiss,
   };
 }

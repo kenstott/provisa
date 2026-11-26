@@ -289,6 +289,49 @@ def method_names() -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+#: A family's column type and the values that fit it, in plain words.
+_FAMILY_WORDS: dict[str, tuple[str, str | None]] = {
+    "text": ("text", "text"),
+    "integer": ("whole-number", "whole numbers"),
+    "numeric": ("decimal-number", "numbers"),
+    "boolean": ("true/false", "true/false values"),
+    "date": ("date", "dates"),
+    "timestamp": ("timestamp", "timestamps"),
+    "other": ("JSON", None),
+}
+
+
+def _values_word(sample: Any) -> str:
+    if isinstance(sample, bool):
+        return "true/false values"
+    if isinstance(sample, str):
+        return "text"
+    if isinstance(sample, int):
+        return "whole numbers"
+    if isinstance(sample, (float, decimal.Decimal)):
+        return "decimal numbers"
+    if isinstance(sample, _dt.datetime):
+        return "timestamps"
+    if isinstance(sample, _dt.date):
+        return "dates"
+    if sample is None:
+        return "nothing"
+    return f"{type(sample).__name__} values"
+
+
+def _cannot_hold(name: str, sample: Any, holds: str) -> str:
+    """Why a column of family ``holds`` takes no ``name`` method: what the method makes, and what
+    the column does take."""
+    from provisa.fakes.catalog import kinds_for
+
+    column, values = _FAMILY_WORDS[holds]
+    kinds = [*kinds_for(holds)]
+    if values is not None:
+        kinds.append(f"a method that makes {values}")
+    taken = ", ".join(kinds[:-1]) + f" or {kinds[-1]}" if len(kinds) > 1 else kinds[0]
+    return f"{name}() makes {_values_word(sample)}; a {column} column takes {taken}"
+
+
 def check_method(method: Method, holds: str | None) -> None:
     """Refuse a method that does not exist, cannot take the arguments given, or makes values a
     column holding ``holds`` (a family of :func:`provisa.fakes.checks.family`) cannot hold;
@@ -324,10 +367,7 @@ def check_method(method: Method, holds: str | None) -> None:
         or (isinstance(sample, bool) and bool not in kinds)
         or not isinstance(sample, kinds)
     ):
-        raise FakeRefused(
-            f"{method.name}() makes {type(sample).__name__} values, which a {holds} column "
-            f"cannot hold"
-        )
+        raise FakeRefused(_cannot_hold(method.name, sample, holds))
 
 
 def sample_of(method: Method) -> Any:

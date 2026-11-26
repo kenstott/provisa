@@ -87,6 +87,9 @@
     "editAria": "{{name}} を編集",
     "enableAria": "{{name}} を有効にする",
     "disableAria": "{{name}} を無効にする",
-    "deleteAria": "{{name}} を削除"
+    "deleteAria": "{{name}} を削除",
+    "filterPlaceholder": "トリガーを絞り込む",
+    "closeForm": "フォームを閉じる",
+    "noMatch": "一致するトリガーはありません"
   }
 }
