@@ -446,8 +446,9 @@ def _lake_storage(required_region: bool) -> tuple[Field, ...]:
 
 _CODE_NOTE = (
     "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', "
-    "repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} "
-    "(an archive uploaded with admin_request); runtime is the language's; secrets lists the "
+    "repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} "
+    "(an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the "
+    "code's text, kept in the model, and its dependency lines; REQ-1993); runtime is the language's; secrets lists the "
     "organization secrets the code reads, by name; settings holds its non-secret settings."
 )
 

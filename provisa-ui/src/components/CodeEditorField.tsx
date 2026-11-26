@@ -116,6 +116,8 @@ type Props = {
   value: string;
   language: CodeLanguage;
   required?: boolean;
+  /** False when the label draws the required mark itself (a FormField with help does). */
+  withAsterisk?: boolean;
   placeholder?: string;
   "data-testid"?: string;
 } & (
@@ -129,6 +131,7 @@ export function CodeEditorField({
   onChange,
   language,
   required,
+  withAsterisk,
   readOnly,
   placeholder,
   "aria-labelledby": labelledBy,
@@ -140,7 +143,7 @@ export function CodeEditorField({
   else if (typeof label === "string") name = { label, description };
   else throw new Error("CodeEditorField: a label that is not text needs aria-labelledby");
   return (
-    <Input.Wrapper label={label} required={required}>
+    <Input.Wrapper label={label} required={required} withAsterisk={withAsterisk}>
       <CodeEditor
         name={name}
         value={value}

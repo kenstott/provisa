@@ -385,7 +385,8 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
         )}
 
         {origin === "entered" && (
-          <FieldGroup>
+          // The code takes a row of its own, its dependency list beneath it.
+          <FieldGroup row>
             <FormField size="full" help={t("codeSourceFields.codeHint")}>
               <CodeEditorField
                 required
