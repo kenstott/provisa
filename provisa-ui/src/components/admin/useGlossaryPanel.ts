@@ -14,7 +14,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { namedIn, rememberedDetail, useRememberedDetail } from "../list/useDetailParam";
+import {
+  namedIn,
+  rememberedDetail,
+  useRememberedDetail,
+  type DetailList,
+} from "../list/useDetailParam";
 import { getStored, setStored } from "../../lib/browserStorage";
 import { listGlossaryTerms, type GlossaryTermSummary } from "../../api/glossary";
 import { useNavPayload } from "../../hooks/useNavPayload";
@@ -56,35 +61,37 @@ export function writeStored(key: string, value: string): void {
 }
 
 /**
- * REQ-2260: the ids of every term the viewer can read, unnarrowed by the search: what the term left
- * open is checked against before it is reopened; null until read. `read` reads the list (every
- * status) for a search: an unnarrowed read is the ids; under a search the unnarrowed list is read
- * too, once per domains shown.
+ * REQ-2260, REQ-2277 rule 9: every term the viewer can read, narrowed neither by the search nor by
+ * the domains in view: what a term named in the address is found in, to say why the list leaves it
+ * out (or, where it is not there, that it is gone); null until read. `read` reads the list (every
+ * status) for a search and the domains in view; the unnarrowed list is read with it while the list
+ * read is unnarrowed, and once per domains in view otherwise.
  */
-export function useReadableTermIds() {
-  const [ids, setIds] = useState<string[] | null>(null);
+export function useReadableTerms() {
+  const [readable, setReadable] = useState<GlossaryTermSummary[] | null>(null);
   const scope = useRef<string | null>(null);
   const read = useCallback(
     async (query: string, domains: string[] | null): Promise<GlossaryTermSummary[]> => {
       const listed = await listGlossaryTerms(query, true, domains);
       const at = JSON.stringify(domains);
-      if (query === "" || scope.current !== at) {
-        const readable = query === "" ? listed : await listGlossaryTerms("", true, domains);
+      if ((query === "" && domains === null) || scope.current !== at) {
+        const all =
+          query === "" && domains === null ? listed : await listGlossaryTerms("", true, null);
         scope.current = at;
-        setIds(readable.map((term) => String(term.id)));
+        setReadable(all);
       }
       return listed;
     },
     [],
   );
-  return [ids, read] as const;
+  return [readable, read] as const;
 }
 
 /**
- * `listed`: the ids of every term the viewer can read, unnarrowed by the search; `null` while
- * they load.
+ * `list`: the terms the list shows, and why it leaves one out (REQ-2277 rule 9): a term is open
+ * only while it is a row of the list.
  */
-export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | null) {
+export function useGlossaryPanel(canEdit: boolean, list: DetailList) {
   // REQ-1387, REQ-2241: the selected term is the URL's ?term= (the shared detail parameter), so a
   // relationship link, a shared URL, or Back and Forward all show the term it names.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -97,7 +104,10 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
   );
   // REQ-2260: a visit naming no term reopens the term left open (the shared memory of list pages),
   // once the terms are read; under the graph it waits, as the graph holds the page's place.
-  const detail = useRememberedDetail("ontology", ontology ? null : listed);
+  const detail = useRememberedDetail(
+    "ontology",
+    ontology ? { shown: null, leftOut: list.leftOut } : list,
+  );
   const { open: openTerm, close: closeTerm } = detail;
   // The term the page reopens: it is the page's term once the terms read hold it, while the URL is
   // given it.
@@ -110,10 +120,8 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     () => detail.id ?? (searchParams.toString() === "" ? rememberedDetail("ontology") : null),
   );
   if (detail.id !== null && detail.id !== held) setHeld(detail.id);
-  // A reopened term the terms read do not hold is not reopened (useRememberedDetail forgets it).
-  const reopenHeld =
-    held === reopened && reopened !== null && listed !== null && listed.includes(reopened);
-  const named = ontology ? held : (detail.id ?? (reopenHeld ? reopened : null));
+  // The list's term: open only while it is a row of the list (useRememberedDetail).
+  const named = ontology ? held : detail.id;
   const parsed = named === null ? NaN : Number(named);
   const selectedId = Number.isFinite(parsed) ? parsed : null;
   const setSelectedId = useCallback(
@@ -215,5 +223,13 @@ export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | n
     return () => window.clearTimeout(timer);
   }, [selectedId, setEditing, held, reopened]);
 
-  return { ontology, setOntology, selectedId, setSelectedId, editing, setEditing };
+  return {
+    ontology,
+    setOntology,
+    selectedId,
+    setSelectedId,
+    editing,
+    setEditing,
+    outOfList: ontology ? null : detail.outOfList,
+  };
 }

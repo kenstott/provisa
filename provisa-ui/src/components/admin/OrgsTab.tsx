@@ -50,10 +50,10 @@ import { PanelDelete } from "../list/PanelDelete";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
-import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -75,10 +75,43 @@ export function OrgsTab({ title }: { title: string }) {
   const [orgInvites, setOrgInvites] = useState<OrgInvite[] | null>(null);
   const [view, setView] = useUrlTab<View>("view", VIEWS);
   const [search, setSearch] = useUrlFilter();
-  const orgDetail = useRememberedDetail("orgs", orgs === null ? null : orgs.map((o) => o.id));
+  // REQ-2277 rule 9: an org or an invite is open only while its tab's list, under the search,
+  // shows its row; the other tab's list is not shown.
+  const orgNarrowings = [
+    searchNarrowing<Org>(
+      t,
+      search,
+      () => setSearch(""),
+      (o) => [o.id, o.name],
+    ),
+  ];
+  const inviteNarrowings = [
+    searchNarrowing<OrgInvite>(
+      t,
+      search,
+      () => setSearch(""),
+      (i) => [i.org_name, i.token, i.created_by],
+    ),
+  ];
+  const orgDetail = useRememberedDetail(
+    "orgs",
+    detailListOf(
+      t,
+      view === "orgs" ? orgs : null,
+      (o) => o.id,
+      (o) => o.name,
+      orgNarrowings,
+    ),
+  );
   const inviteDetail = useRememberedDetail(
     "orgInvites",
-    orgInvites === null ? null : orgInvites.map((i) => i.token),
+    detailListOf(
+      t,
+      view === "invites" ? orgInvites : null,
+      (i) => i.token,
+      (i) => i.org_name,
+      inviteNarrowings,
+    ),
   );
   const [form, setForm] = useState<Form>(null);
   const [saving, setSaving] = useState(false);
@@ -249,12 +282,10 @@ export function OrgsTab({ title }: { title: string }) {
 
   const allOrgs = orgs ?? [];
   const allInvites = orgInvites ?? [];
-  const filteredOrgs = allOrgs.filter((o) => matchesQuery([o.id, o.name], search));
+  const filteredOrgs = shownBy(allOrgs, orgNarrowings);
   const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
   const orgSafePage = Math.min(orgPage, orgTotalPages);
-  const filteredInvites = allInvites.filter((i) =>
-    matchesQuery([i.org_name, i.token, i.created_by], search),
-  );
+  const filteredInvites = shownBy(allInvites, inviteNarrowings);
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);
   const orgSelectData = allOrgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
@@ -743,6 +774,7 @@ export function OrgsTab({ title }: { title: string }) {
         </Tabs.List>
       </Tabs>
       <SplitPane
+        outOfList={view === "orgs" ? orgDetail.outOfList : inviteDetail.outOfList}
         testId="orgs-split"
         storageKey="provisa.orgs.detailWidth"
         title={panelTitle}

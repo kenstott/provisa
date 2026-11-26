@@ -34,8 +34,8 @@ import { Pencil, Power, PowerOff, Timer, X } from "lucide-react";
 import { PageTitle } from "../PageTitle";
 import { FilterInput } from "./FilterInput";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
-import { matchesQuery } from "../../lib/searchItems";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
@@ -166,7 +166,27 @@ export function ScheduledTasks({ title }: { title: string }) {
   }, [t]);
 
   const [search, setSearch] = useUrlFilter();
-  const detail = useRememberedDetail("triggers", loading ? null : tasks.map((task) => task.id));
+  // REQ-2277 rule 9: a trigger is open only while the search shows its row.
+  const searchNarrowed = useMemo(
+    () =>
+      searchNarrowing<ScheduledTask>(
+        t,
+        search,
+        () => setSearch(""),
+        (task) => [task.name, task.id, task.cronExpression, task.onTable, task.role],
+      ),
+    [t, search, setSearch],
+  );
+  const detail = useRememberedDetail(
+    "triggers",
+    detailListOf(
+      t,
+      loading ? null : tasks,
+      (task) => task.id,
+      (task) => task.name,
+      [searchNarrowed],
+    ),
+  );
   const selectedId = detail.id;
   // What the panel shows: the selected trigger, read or being edited, or a new one being made.
   const [mode, setMode] = useState<"read" | "edit" | "create">("read");
@@ -250,13 +270,7 @@ export function ScheduledTasks({ title }: { title: string }) {
     { key: "lastRun", label: t("scheduledTasks.colLastRun"), sortValue: (k) => k.lastRunAt ?? "" },
     { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
   ];
-  const shownTasks = useMemo(
-    () =>
-      tasks.filter((task) =>
-        matchesQuery([task.name, task.id, task.cronExpression, task.onTable, task.role], search),
-      ),
-    [tasks, search],
-  );
+  const shownTasks = useMemo(() => shownBy(tasks, [searchNarrowed]), [tasks, searchNarrowed]);
   const sortGroup = useListSortGroup(shownTasks, columns, "scheduled-tasks");
   // REQ-2240: scheduled tasks selected and deleted together, each named by its name.
   const shownTaskIds = useMemo(() => shownTasks.map((task) => task.id), [shownTasks]);
@@ -695,6 +709,7 @@ export function ScheduledTasks({ title }: { title: string }) {
           </Alert>
         )}
         <SplitPane
+          outOfList={detail.outOfList}
           testId="scheduled-tasks-split"
           storageKey="provisa.triggers.detailWidth"
           title={mode === "create" ? t("scheduledTasks.panelNew") : (selected?.name ?? "")}

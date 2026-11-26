@@ -57,11 +57,11 @@ import { ListRow } from "../../list/ListTable";
 import { SortGroupTable } from "../../list/SortGroupTable";
 import { SplitPane } from "../../list/SplitPane";
 import { useRememberedDetail } from "../../list/useDetailParam";
+import { detailListOf, filterNarrowing, searchNarrowing, shownBy } from "../../list/leftOut";
 import { useUrlFilter } from "../../list/useUrlFilter";
 import { CollapsibleItem, Collapsibles } from "../../collapsible/Collapsible";
 import { PageTitle } from "../../PageTitle";
 import { FilterInput } from "../FilterInput";
-import { matchesQuery } from "../../../lib/searchItems";
 import { EntryPanel } from "./EntryPanel";
 import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
@@ -93,7 +93,33 @@ export function SyncingTab() {
       { replace: true },
     );
 
-  const detail = useRememberedDetail("sync", s === null ? null : s.entries.map((e) => e.id));
+  // REQ-2277 rule 9: an entry is open only while the list -- narrowed to the products chosen and
+  // by the search -- shows its row.
+  const narrowings = [
+    filterNarrowing<SyncEntry>(
+      t,
+      productFilter.length > 0,
+      t("syncingTab.productFilterLabel"),
+      (e) => e.products.some((p) => productFilter.includes(p.product_id)),
+      () => setProductFilter([]),
+    ),
+    searchNarrowing<SyncEntry>(
+      t,
+      search,
+      () => setSearch(""),
+      (e) => [e.id, e.provider ?? "", ...e.domains],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "sync",
+    detailListOf(
+      t,
+      s === null ? null : s.entries,
+      (e) => e.id,
+      (e) => e.id,
+      narrowings,
+    ),
+  );
   const openEntry = (id: string) => {
     setCreating(null);
     detail.open(id);
@@ -209,16 +235,8 @@ export function SyncingTab() {
       ...productFilter,
     ]),
   ].sort();
-  const publishesChosen = (e: SyncEntry) =>
-    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
-
   const section = (type: SyncEntryType) => {
-    const rows = s.entries.filter(
-      (e) =>
-        e.type === type &&
-        publishesChosen(e) &&
-        matchesQuery([e.id, e.provider ?? "", ...e.domains], search),
-    );
+    const rows = shownBy(s.entries, narrowings).filter((e) => e.type === type);
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
@@ -340,6 +358,7 @@ export function SyncingTab() {
         onChange={setProductFilter}
       />
       <SplitPane
+        outOfList={detail.outOfList}
         testId="syncing-split"
         storageKey="provisa.syncing.detailWidth"
         title={panelTitle}
