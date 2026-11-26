@@ -67,7 +67,21 @@ KIND_DIRS: dict[str, str] = {
     "org_regions": "regions",  # REQ-1921
     "data_products": "data-products",  # REQ-1526
     "erd_layouts": "erd-layouts",  # REQ-2189
+    "column_rules": "column-rules",  # REQ-2278
 }
+
+#: REQ-2278: what a column rule is keyed on, as the second segment of its path names it.
+COLUMN_RULE_KEYS: dict[str, str] = {"tag": "tag_id", "classification": "classification"}
+
+
+def column_rule_path(row: dict[str, Any]) -> str:  # REQ-2278
+    """A column rule's file: ``column-rules/<tag|classification>/<key>/<role>.yaml``. A role holds
+    one rule per tag or classification, so the key and the role name it in every environment; it
+    has a file of its own because the code-defined tags (pii) and the classification kinds have
+    none it could be written in."""
+    kind = "tag" if row["tag_id"] is not None else "classification"
+    return kind_path(KIND_DIRS["column_rules"], kind, row[COLUMN_RULE_KEYS[kind]], row["role_id"])
+
 
 #: The two command registries share one directory, because REQ-1385 gives them one address space:
 #: ``provisa://<org>/commands/<name>``. A name used by both is a collision in that address space
@@ -603,6 +617,9 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                     table="glossary_term_refs",
                 ),
             )
+
+    for row in await _rows(conn, org.column_rules, schema):  # REQ-2278
+        tree[column_rule_path(row)] = entity("column_rules", row)
 
     rules = await _rows(conn, org.naming_rules, schema)
     if rules:

@@ -68,6 +68,8 @@ SECTION_RIGHTS: dict[str, tuple[str, ...]] = {
     "tags": (_C.TABLE_REGISTRATION.value,),
     "tag_assignments": (_C.TABLE_REGISTRATION.value,),
     "rls_rules": (_C.MASKING_CONFIG.value,),
+    # REQ-2278: a hide rule exercises column_grant and a mask rule masking_config.
+    "column_rules": (_C.MASKING_CONFIG.value, _C.COLUMN_GRANT.value),
     "functions": (_C.TABLE_REGISTRATION.value,),
     "webhooks": (_C.TABLE_REGISTRATION.value,),
     "scheduled_triggers": (_C.QUERY_DEVELOPMENT.value,),  # REQ-1327

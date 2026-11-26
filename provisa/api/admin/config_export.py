@@ -305,6 +305,9 @@ def _address_governance(cfg: dict, addr: _Addresses) -> None:
         _set_ref(rule, "tag_id", addr.tags.get(rule.get("tag_id") or ""))
         if rule.get("table_id"):
             _set_ref(rule, "table_id", addr.table(rule["table_id"], context))
+    for rule in cfg.get("column_rules") or []:  # REQ-2278
+        _set_ref(rule, "role_id", addr.roles.get(rule.get("role_id") or ""))
+        _set_ref(rule, "tag_id", addr.tags.get(rule.get("tag_id") or ""))
 
 
 def _address_metrics(cfg: dict, addr: _Addresses) -> None:

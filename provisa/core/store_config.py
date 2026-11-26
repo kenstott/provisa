@@ -36,6 +36,7 @@ from sqlalchemy import select
 from provisa.core import domain_policy
 from provisa.core.models import (
     CalendarConfig,
+    ColumnRuleModel,
     ConnectorConfig,
     DataProduct,
     DeclaredOffer,
@@ -83,6 +84,7 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "tags",
     "tag_assignments",
     "rls_rules",
+    "column_rules",  # REQ-2278
     "functions",
     "webhooks",
     "scheduled_triggers",
@@ -356,6 +358,10 @@ def item_identity(section: str, item: dict[str, Any]) -> str:  # REQ-2222
         target = (item.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
         named = "/".join(str(t) for t in target if t is not None)
         return f"{item['role_id']}/{named}/{','.join(sorted(item.get('rights') or []))}"
+    if section == "column_rules":  # REQ-2278: a role holds one rule per tag or classification
+        key = item.get("tag_id") or item["classification"]
+        kind = "tag" if item.get("tag_id") else "classification"
+        return f"{item['role_id']}/{kind}:{key}"
     for name in ("id", "name"):
         if name in item:
             return str(item[name])
@@ -404,6 +410,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.db import BUILT_IN_SOURCE_IDS, SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
     from provisa.core.repositories import calendar as calendar_repo
+    from provisa.core.repositories import column_rule as column_rule_repo
     from provisa.core.repositories import connector as connector_repo
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import data_product_offer as offer_repo
@@ -546,6 +553,14 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             tag_assignments, key=lambda a: json.dumps(a, sort_keys=True, default=str)
         ),
         "rls_rules": rls_rules,
+        # REQ-2278: ordered by what names a rule, never by its serial.
+        "column_rules": sorted(
+            (
+                _written(ColumnRuleModel.model_validate(_fields(ColumnRuleModel, row)))
+                for row in await column_rule_repo.list_all(conn)
+            ),
+            key=lambda r: item_identity("column_rules", r),
+        ),
         "functions": [
             _written(Function.model_validate(_fields(Function, row)))
             for row in await function_repo.list_functions(conn)

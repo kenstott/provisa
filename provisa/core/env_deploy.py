@@ -864,6 +864,9 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     }
                 )
 
+        elif table == "column_rules":  # REQ-2278
+            rows["column_rules"].append(_column_rule(path, body, roles, problems))
+
         elif table == "naming_rules":
             for order, rule in enumerate(body.get("rules") or [], start=1):
                 rows["naming_rules"].append({**rule, "id": order})
@@ -902,6 +905,46 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
     if problems:
         raise DeployError(problems)
     return rows
+
+
+def _column_rule(
+    path: str, body: dict[str, Any], roles: frozenset[str], problems: list[str]
+) -> dict[str, Any]:  # REQ-2278
+    """A column rule's file back into its row: its key and role are what its path names
+    (:func:`provisa.core.env_project.column_rule_path`), its action and mask its body."""
+    from pydantic import ValidationError
+
+    from provisa.core.env_project import COLUMN_RULE_KEYS
+    from provisa.core.models import ColumnRuleModel
+
+    named = _name_of(path)
+    if len(named) != 3 or named[0] not in COLUMN_RULE_KEYS:
+        problems.append(
+            f"{path!r} is not a column rule's address: column-rules/<tag|classification>/<key>/"
+            f"<role>{SUFFIX}"
+        )
+        return {}
+    kind, key, role_id = named
+    if role_id not in roles:
+        problems.append(
+            f"{path!r} is a column rule for the role {role_id!r}, which this environment does "
+            "not define"
+        )
+    try:
+        rule = ColumnRuleModel.model_validate(
+            {**body, "tag_id": None, "classification": None, COLUMN_RULE_KEYS[kind]: key}
+            | {"role_id": role_id}
+        )
+    except ValidationError as exc:
+        problems.append(f"{path!r} is not a column rule: {exc.errors()[0]['msg']}")
+        return {}
+    return {
+        "tag_id": rule.tag_id,
+        "classification": rule.classification,
+        "role_id": rule.role_id,
+        "action": rule.action,
+        "mask": None if rule.mask is None else rule.mask.model_dump(exclude_none=True),
+    }
 
 
 def _domain_id_of(path: str) -> str:
