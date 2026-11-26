@@ -10,7 +10,8 @@
 
 // The Database tab's node labels under a domain selection: deselecting meta takes meta's labels
 // away and keeps the others', whichever page of the list was open; and their counts, a count the
-// engine could not make said as such.
+// engine could not make said as such. And (REQ-2277) the splitter at its right edge, dragged with
+// the pointer.
 
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -103,5 +104,16 @@ describe("the Database tab's node labels", () => {
         "Not counted: PetStore:PETINQUIRIES (Catalog petstore is not attached)",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("the sidebar's splitter (REQ-2277)", () => {
+  it("follows the pointer: the width grows by how far it is dragged", () => {
+    const p = props(PETSTORE);
+    render(<GraphSidebar {...p} />);
+    fireEvent.pointerDown(screen.getByTestId("graph-sidebar-handle"), { clientX: 280 });
+    fireEvent.pointerMove(window, { clientX: 340 });
+    fireEvent.pointerUp(window);
+    expect(p.onWidthChange).toHaveBeenLastCalledWith(340);
   });
 });
