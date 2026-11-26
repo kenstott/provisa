@@ -73,3 +73,25 @@ def prepare(
         ctx.org_id,
         workers=config.workers,
     )
+
+
+def entered_files(source: str, dependencies: list[str]) -> dict[str, str]:
+    """REQ-2200, REQ-1993 (amended 2026-11-25): entered code is the root package of the module
+    ``provisa.local/entered``; each dependency line is ``module version``, a go.mod require,
+    checked against the go.sum given beside it."""
+    from provisa.codesource.bundle import BundleRefused
+
+    required = []
+    for line in dependencies:
+        words = line.split()
+        if len(words) != 2:
+            raise BundleRefused(
+                "entered_dependency",
+                f"{line!r}: a Go dependency is written module version",
+                dependency=line,
+            )
+        required.append(f"\t{words[0]} {words[1]}\n")
+    go_mod = "module provisa.local/entered\n\ngo 1.23\n"
+    if required:
+        go_mod += "\nrequire (\n" + "".join(required) + ")\n"
+    return {"go.mod": go_mod, "entered.go": source}
