@@ -80,19 +80,16 @@ def _jsonable(rule: dict) -> dict:
     }
 
 
-async def rebuild_if_keyed(tags: "tuple[str, ...]" = (), kinds: "tuple[str, ...]" = ()) -> None:
-    """Rebuild the runtime when a column rule is keyed on one of ``tags`` (a tag, or its base) or
-    ``kinds``: a column tagged or classified comes under the rule at once, and one whose tag or
-    classification is taken off is released at once."""
-    from provisa.api.app import _rebuild_schemas
+async def keyed_by(conn: Any, tags: "tuple[str, ...]" = (), kinds: "tuple[str, ...]" = ()) -> bool:
+    """Whether a column rule is keyed on one of ``tags`` (a tag, or its base) or ``kinds``: a
+    change of a column's tags or classifications then rebuilds the runtime, so the column comes
+    under the rule at once, and is released at once when the tag or classification comes off."""
     from provisa.core.models import base_tag_id
     from provisa.core.repositories import column_rule as repo
 
-    async with _db().acquire() as conn:
-        keyed_tags, keyed_kinds = await repo.keyed(conn)
+    keyed_tags, keyed_kinds = await repo.keyed(conn)
     named = {t for tag in tags for t in (tag, base_tag_id(tag))}
-    if named & keyed_tags or set(kinds) & keyed_kinds:
-        await _rebuild_schemas()
+    return bool(named & keyed_tags or set(kinds) & keyed_kinds)
 
 
 @router.get("/column-rules")

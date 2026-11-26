@@ -938,6 +938,7 @@ async def tag_glossary_term(
     and later, carries it. Says how many columns it covers."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.column_rules_router import keyed_by
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, tag_term
     from provisa.api.admin.schema_mutation import _refresh_config_tags
     from provisa.api.errors import ApiError
@@ -954,10 +955,13 @@ async def tag_glossary_term(
             if exc.status_code == 403:
                 raise
             raise ValueError(exc.detail) from exc
+        # REQ-2278: the term's columns come under a column rule keyed on the tag at once.
+        ruled = await keyed_by(conn, tags=(tag_id,))
     await _refresh_config_tags()
-    from provisa.api.admin.column_rules_router import rebuild_if_keyed
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
 
-    await rebuild_if_keyed(tags=(tag_id,))  # REQ-2278: the term's columns come under the rule
+        await _rebuild_schemas()
     await _notify(org_id, "ontology term tagged")
     return {"ok": True, "term_id": term_id, "tag_id": tag_id, "covers": covers}
 
@@ -968,6 +972,7 @@ async def untag_glossary_term(
     """Take a tag off an ontology term: its columns no longer carry it through the term."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.column_rules_router import keyed_by
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, untag_term
     from provisa.api.admin.schema_mutation import _refresh_config_tags
 
@@ -978,12 +983,15 @@ async def untag_glossary_term(
     async with pool.acquire() as conn:
         await _refuse_term_outside_selection(conn, term_id)
         removed = await untag_term(conn, request, term_id, tag_id)
+        # REQ-2278: the term's columns are released from a column rule keyed on the tag at once.
+        ruled = await keyed_by(conn, tags=(tag_id,))
     if not removed:
         raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
     await _refresh_config_tags()
-    from provisa.api.admin.column_rules_router import rebuild_if_keyed
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
 
-    await rebuild_if_keyed(tags=(tag_id,))  # REQ-2278: the term's columns are released
+        await _rebuild_schemas()
     await _notify(org_id, "ontology term untagged")
     return {"ok": True}
 
