@@ -36,8 +36,8 @@ function sseResponse(events: Record<string, unknown>[]): Response {
 
 function sentBodies(fetchMock: ReturnType<typeof vi.spyOn>) {
   return fetchMock.mock.calls
-    .filter(([url]) => String(url).endsWith("/admin/mcp/chat"))
-    .map(([, init]) => JSON.parse((init as RequestInit).body as string));
+    .filter(([url]: unknown[]) => String(url).endsWith("/admin/mcp/chat"))
+    .map(([, init]: unknown[]) => JSON.parse((init as RequestInit).body as string));
 }
 
 async function openPanel() {
@@ -83,7 +83,9 @@ describe("ChatPanel — attaching a file (REQ-2114)", () => {
 
     const file = new File(["id,total\n1,9.5\n"], "orders.csv", { type: "text/csv" });
     fireEvent.change(attachInput(), { target: { files: [file] } });
-    await waitFor(() => expect(screen.getByTestId("chat-panel-attachment")).toHaveTextContent("orders.csv"));
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-panel-attachment")).toHaveTextContent("orders.csv"),
+    );
 
     fireEvent.change(screen.getByPlaceholderText(/Ask me a question/), {
       target: { value: "Summarize this CSV" },

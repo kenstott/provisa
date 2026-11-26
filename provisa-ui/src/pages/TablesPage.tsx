@@ -75,6 +75,7 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
+import { ParameterizedBadge } from "./tables/ParameterizedBadge";
 import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
@@ -1447,6 +1448,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1986: a parameterized table, and whether a read must give
+                                any of its parameters. */}
+                                <ParameterizedBadge tableName={t.tableName} columns={t.columns} />
                                 <SuggestionsBadge
                                   count={countOf(suggestionCounts, t)}
                                   table={t}
@@ -1670,10 +1674,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
               {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
-              <TableSuggestionsModal
-                table={suggestionsOf}
-                onClose={() => setSuggestionsOf(null)}
-              />
+              <TableSuggestionsModal table={suggestionsOf} onClose={() => setSuggestionsOf(null)} />
             </>
           )
         }
