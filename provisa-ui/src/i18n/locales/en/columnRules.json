@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Column rules",
+    "hint": "Each rule hides, or masks, every column carrying this key from a role and the roles that inherit from it, a table's columns and a command's output columns alike. A column's own visibility and masks still apply; the stricter result holds.",
+    "none": "No column rule.",
+    "colRole": "Role",
+    "colEffect": "Effect",
+    "hidden": "Hidden",
+    "maskedCompletely": "Masked completely",
+    "maskedAs": "Masked: {{mask}}",
+    "remove": "Remove the rule for {{role}}",
+    "roleLabel": "Role",
+    "actionLabel": "Effect",
+    "actionHide": "Hide",
+    "actionMask": "Mask",
+    "maskLabel": "Mask",
+    "maskComplete": "Completely masked",
+    "constantLabel": "Constant value",
+    "patternLabel": "Pattern",
+    "replaceLabel": "Replacement",
+    "add": "Add rule"
+  }
+}

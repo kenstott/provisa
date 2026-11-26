@@ -1960,6 +1960,27 @@ profiler_constraints = Table(
     UniqueConstraint("table_id", "signature"),
 )
 
+# REQ-2278: a column rule keyed on a tag or a classification kind, never both: for one role (and
+# the roles descending from it) every column carrying the key -- a table's or a command's output
+# column -- is hidden, or masked through ``mask`` (None on a mask rule: completely masked). tag_id
+# has no FK: a system tag is code-defined, with no row in tags.
+column_rules = Table(
+    "column_rules",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tag_id", Text),
+    Column("classification", Text),
+    Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
+    Column("action", Text, nullable=False),
+    Column("mask", JSON(none_as_null=True)),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("tag_id", "role_id"),
+    UniqueConstraint("classification", "role_id"),
+    CheckConstraint("action IN ('hide', 'mask')", name="column_rules_action"),
+    CheckConstraint("(tag_id IS NULL) <> (classification IS NULL)", name="column_rules_one_key"),
+    CheckConstraint("action = 'mask' OR mask IS NULL", name="column_rules_hide_no_mask"),
+)
+
 # REQ-2147: a steward's decision on a classification a profile suggested for a column -- accepted
 # (the column linked to the kind's Property term; for a sensitive kind marked pii), or rejected so
 # it is not suggested again for that column and kind.

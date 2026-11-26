@@ -35,6 +35,7 @@ import { useRememberedDetail } from "../list/useDetailParam";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { matchesQuery } from "../../lib/searchItems";
 import { FilterInput } from "./FilterInput";
+import { ColumnRules } from "./ColumnRules";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
@@ -201,6 +202,13 @@ export function ClassificationKindsTab({
               ]
             : []),
         ]}
+      />
+      {/* REQ-2278: the rules that hide or mask, per role, every column classified as the kind. */}
+      <ColumnRules
+        key={k.id}
+        classification={k.id}
+        readOnly={readOnly}
+        testId={`classification-kind-column-rules-${k.id}`}
       />
     </Stack>
   );

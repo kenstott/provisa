@@ -2120,6 +2120,25 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     CONSTRAINT profiler_classifications_run_of_table CHECK ((run_id IS NULL) = (table_id IS NULL))
 );
 
+-- REQ-2278: a column rule keyed on a tag or a classification kind, never both: for one role (and the
+-- roles descending from it) every column carrying the key -- a table's or a command's output
+-- column -- is hidden, or masked through ``mask`` (NULL on a mask rule: completely masked). It names
+-- no column. tag_id has no FK: a system tag (pii) is code-defined, with no row in tags; a user tag
+-- carrying a rule is refused deletion (repositories.integrity).
+CREATE TABLE IF NOT EXISTS column_rules (
+    id             SERIAL PRIMARY KEY,
+    tag_id         TEXT,
+    classification TEXT,
+    role_id        TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    action         TEXT NOT NULL CHECK (action IN ('hide', 'mask')),
+    mask           JSONB,
+    tenant_id      UUID,
+    UNIQUE (tag_id, role_id),
+    UNIQUE (classification, role_id),
+    CONSTRAINT column_rules_one_key CHECK ((tag_id IS NULL) <> (classification IS NULL)),
+    CONSTRAINT column_rules_hide_no_mask CHECK (action = 'mask' OR mask IS NULL)
+);
+
 -- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
 -- kinds held inside their values.
 CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (

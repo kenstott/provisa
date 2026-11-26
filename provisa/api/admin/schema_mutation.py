@@ -4642,8 +4642,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return refused
             covers = await _covers(cast("Connection", conn), model)  # REQ-2145
         await _refresh_config_tags()
-        if model.object_type == "table":
-            await _rebuild_if_tag_filtered(model.tag_id)
+        await _rebuild_if_tag_governs(model.tag_id, model.object_type)
         return MutationResult(
             success=True,
             message=f"Tag {input.tag_id!r} assigned",
@@ -4740,8 +4739,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"tag": input.tag_id, "objectKey": model.object_key()},
             )
         await _refresh_config_tags()
-        if model.object_type == "table":
-            await _rebuild_if_tag_filtered(model.tag_id)
+        await _rebuild_if_tag_governs(model.tag_id, model.object_type)
         return MutationResult(
             success=True,
             message=f"Tag {input.tag_id!r} unassigned",
@@ -7973,15 +7971,28 @@ async def _upsert_tag_rls_rule(
     )
 
 
-async def _rebuild_if_tag_filtered(tag_id: str) -> None:  # REQ-1384
+#: The objects a tag on which reaches a column a column rule governs (REQ-2278): the column, a
+#: command's output column, and a term, whose pii its columns carry (REQ-2145).
+_COLUMN_RULE_OBJECTS = ("column", "command_column", "term")
+
+
+async def _rebuild_if_tag_governs(tag_id: str, object_type: str) -> None:  # REQ-1384, REQ-2278
     """A tag that carries a row filter decides which rows its tables' readers see, so putting
-    it on a table or taking it off rebuilds the role contexts; any other tag is annotation."""
+    it on a table or taking it off rebuilds the role contexts. A tag a column rule is keyed on
+    decides whether its columns are hidden or masked, so putting it on a column (or a term) or
+    taking it off does too, and the column comes under the rule, or is released, at once. Any
+    other tag is annotation."""
     from provisa.core.models import base_tag_id
+
+    from provisa.core.repositories import column_rule as column_rule_repo
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
         filtered = await rls_repo.tags_with_filters(cast("Connection", conn))
-    if base_tag_id(tag_id) in filtered:
+        ruled, _kinds = await column_rule_repo.keyed(cast("Connection", conn))
+    if object_type == "table" and base_tag_id(tag_id) in filtered:
+        await _rebuild_schemas()
+    elif object_type in _COLUMN_RULE_OBJECTS and {tag_id, base_tag_id(tag_id)} & ruled:
         await _rebuild_schemas()
 
 

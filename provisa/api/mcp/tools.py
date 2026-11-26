@@ -955,6 +955,9 @@ async def tag_glossary_term(
                 raise
             raise ValueError(exc.detail) from exc
     await _refresh_config_tags()
+    from provisa.api.admin.column_rules_router import rebuild_if_keyed
+
+    await rebuild_if_keyed(tags=(tag_id,))  # REQ-2278: the term's columns come under the rule
     await _notify(org_id, "ontology term tagged")
     return {"ok": True, "term_id": term_id, "tag_id": tag_id, "covers": covers}
 
@@ -978,6 +981,9 @@ async def untag_glossary_term(
     if not removed:
         raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
     await _refresh_config_tags()
+    from provisa.api.admin.column_rules_router import rebuild_if_keyed
+
+    await rebuild_if_keyed(tags=(tag_id,))  # REQ-2278: the term's columns are released
     await _notify(org_id, "ontology term untagged")
     return {"ok": True}
 

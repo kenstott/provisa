@@ -55,6 +55,8 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("held_entitlements", {})
         # As the real state: the runtime always holds the commands it loaded, none here.
         attrs.setdefault("tracked_functions", {})
+        # As the real state of an org with no tag- or classification-keyed column rule (REQ-2278).
+        attrs.setdefault("ruled_columns", {})
         # As the real state bound to no org: no control plane (AppState.model_db).
         attrs.setdefault("model_db", None)
         # As the real state before startup: no gRPC server started and no HTTP surface mounted.

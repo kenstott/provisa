@@ -79,6 +79,7 @@ import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
 import { ContextPlaces } from "../ContextPlaces";
 import { EntityLink } from "../EntityLink";
 import { CommandColumnTags } from "./CommandColumnTags";
+import { ColumnRules } from "./ColumnRules";
 
 const PAGE_SIZE = 50;
 
@@ -636,6 +637,17 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
           },
         ]}
       />
+      {/* REQ-2278: the rules that hide or mask, per role, every column carrying the tag. A tag
+          that only ever lands on whole objects keys none; a derived tag is never assigned. */}
+      {!tag.derived &&
+        (tag.appliesTo.includes("column") || tag.appliesTo.includes("command_column")) && (
+          <ColumnRules
+            key={tag.id}
+            tagId={tag.id}
+            readOnly={readOnly}
+            testId={`tags-column-rules-${tag.id}`}
+          />
+        )}
       {/* REQ-1467: the value list is editable even on a system tag -- the tag itself is
           code-defined, but which values it admits is the maintainer's call. */}
       {tag.paramPolicy === "required" && (
@@ -710,7 +722,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     </Stack>
   );
 
-  const panelTitle = createOpen ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
+  const panelTitle = createOpen
+    ? t("tagsTab.createButton")
+    : openTag !== undefined
+      ? openTag.id
+      : "";
   const panelBody = createOpen
     ? form
     : openTag !== undefined
