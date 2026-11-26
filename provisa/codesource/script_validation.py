@@ -46,6 +46,7 @@ from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.manifest import COMMAND, COMMANDS, TABLE, Export, Manifest, TableOf
 
 if TYPE_CHECKING:
+    from provisa.codesource.lifecycle import Setup
     from provisa.codesource.remote import RemoteWorker
 
 #: How many rows of each table argument, and of each function's result, a dry run takes.
@@ -295,7 +296,7 @@ class Target:
 
     worker: "RemoteWorker"
     remote: dict
-    setup: Any  # lifecycle.setup_values: what gives the host its setup values
+    setup: Setup  # lifecycle.setup_values: what gives the host its setup values
     own_cluster: str | None
     offered: set[str]
     script_name: str
@@ -385,7 +386,7 @@ async def validate(state: Any, target: Target, asked: Asked, role_id: str) -> di
         report["dry_run"] = _step(NOT_RUN, [], reason=no_cluster)
         report["keys"] = _step(NOT_RUN, [], reason=no_cluster)
         return report
-    values = await asyncio.to_thread(target.setup)
+    values = await target.setup.read()
     if asked.script is not None:
         values[target.script_name] = asked.script
     known: list[dict] = []

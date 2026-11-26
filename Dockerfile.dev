@@ -50,6 +50,26 @@ FROM scratch AS pyodide-downloads
 # (tests/duckdb_ext_wheels.py).
 FROM scratch AS duckdb-ext-wheels
 
+# The React SPA the UI server serves from static/, built as Dockerfile's ui-build stage builds it
+# (the same instructions; Dockerfile says why): a checkout's static/ is empty.
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS ui-build
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m venv /opt/docs-site \
+ && /opt/docs-site/bin/pip install --no-cache-dir mkdocs-material pymdown-extensions mkdocs-static-i18n
+ENV PATH=/opt/docs-site/bin:$PATH
+WORKDIR /build/provisa-ui
+COPY provisa-ui/package.json provisa-ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY provisa-ui/ ./
+COPY mkdocs.yml README*.md /build/
+COPY docs/ /build/docs/
+COPY scripts/gen_docs_index.py scripts/mkdocs_hooks.py scripts/mkdocs_search_per_locale.py \
+     scripts/gen-site-source-picker.mjs /build/scripts/
+RUN npm run build && test -f dist/index.html
+
 FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml .
@@ -90,7 +110,7 @@ RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \
 # REQ-2194: the wheel, for the code images this server builds (codesource/image_build.py).
 COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
 ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels
-COPY static/ ./static/
+COPY --from=ui-build /build/provisa-ui/dist/ ./static/
 RUN mkdir -p ./config && useradd -m -u 1000 appuser && chown -R appuser /app
 USER 1000
 
