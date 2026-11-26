@@ -14,6 +14,10 @@
     "defaultHelp": "Una build invia qui a meno che non indichi un altro registro. Un'organizzazione ha un registro predefinito.",
     "saved": "Salvato",
     "removed": "Rimosso",
-    "remove": "Rimuovi"
+    "remove": "Rimuovi",
+    "filterPlaceholder": "Filtra registri",
+    "closeForm": "Chiudi il modulo",
+    "edit": "Modifica {{name}}",
+    "removeConfirm": "Rimuovere {{name}}? Le build che vi pubblicano non potranno più pubblicare la loro immagine."
   }
 }

@@ -14,8 +14,40 @@ import { useViewDomains } from "../lib/viewDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
+/** REQ-2114: the largest file a person may attach, and the most a conversation may hold. The server
+ *  states and enforces the same limits (provisa/api/mcp/polly_files.py) and refuses past them; the
+ *  panel checks them first only so the person hears at once. */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS = 5;
+/** The files Polly reads: a CSV, an API spec, a code archive or a document. */
+export const ATTACHMENT_ACCEPT =
+  ".csv,.tsv,.json,.yaml,.yml,.graphql,.graphqls,.proto,.zip,.tar,.tgz,.tar.gz," +
+  ".pdf,.docx,.xlsx,.md,.markdown,.txt,.html,.htm";
+
+/** A file attached in the chat: held in this browser session and sent with every turn, as the
+ *  conversation's history is; the server keeps it only for the request. */
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  size: number;
+  /** The file's bytes, base64. */
+  data: string;
+}
+
+/** A file's bytes as base64, read in the browser. */
+export async function fileToBase64(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 /** What Polly hands over besides text (the server's `artifact` event): a graph render_graph drew,
- *  or a result run_sql delivered as a file. Shown in the reply, never sent back to the model. */
+ *  a result run_sql delivered as a file, or a file offer_download handed back (REQ-2114). Shown in
+ *  the reply, never sent back to the model. */
 export type ChatArtifact =
   | { kind: "graph"; png: string; cypher: string; nodes: number; relationships: number }
   | {
@@ -24,7 +56,8 @@ export type ChatArtifact =
       row_count: number;
       expires_in: number | null;
       content_type: string | null;
-    };
+    }
+  | { kind: "download"; filename: string; content_type: string; size: number; data: string };
 
 /** The artifact an `artifact` stream event carries: the event minus its `type` tag. Shared by every
  *  chat that reads the server's stream, so a new artifact is handled in one place. */
@@ -84,6 +117,9 @@ export function useMcpChat(
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
+  // REQ-2114: the files attached in this conversation, sent with every turn.
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const attachSeq = useRef(0);
   // REQ-1815: the in-flight fetch a "Stop" click aborts.
   const abortRef = useRef<AbortController | null>(null);
 
@@ -114,10 +150,21 @@ export function useMcpChat(
         messages: convo,
         current_route: currentRoute,
         domains: viewDomains ? [...viewDomains] : undefined,
+        attachments: attachments.map(({ id, name, data }) => ({ id, name, data })),
       }),
       signal,
     });
-    if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
+    if (!resp.ok) {
+      // A refusal the server states (an attachment over the size limit, say) is shown as it says it.
+      const refusal =
+        resp.headers.get("content-type")?.includes("application/json") === true
+          ? ((await resp.json()) as { detail?: unknown }).detail
+          : undefined;
+      throw new Error(
+        typeof refusal === "string" ? refusal : `chat failed: ${resp.status}`,
+      );
+    }
+    if (!resp.body) throw new Error(`chat failed: ${resp.status}`);
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -288,7 +335,17 @@ export function useMcpChat(
     clear: () => {
       setMessages([]);
       setTools([]);
+      setAttachments([]);
     },
+    attachments,
+    /** Attach a file to the conversation, read into this browser session (REQ-2114). */
+    attach: async (file: File) => {
+      const data = await fileToBase64(file);
+      attachSeq.current += 1;
+      const id = `att${attachSeq.current}`;
+      setAttachments((prev) => [...prev, { id, name: file.name, size: file.size, data }]);
+    },
+    detach: (id: string) => setAttachments((prev) => prev.filter((a) => a.id !== id)),
     pushMessage: (msg: ChatMsg) => setMessages((prev) => [...prev, msg]),
   };
 }

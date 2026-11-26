@@ -35,6 +35,11 @@
     "graphCaption": "Узлы: {{nodes}} · Связи: {{relationships}}",
     "downloadPng": "Скачать PNG",
     "openOnGraphPage": "Открыть на странице «Граф»",
-    "choiceClosed": "(закрыто без выбора)"
+    "choiceClosed": "(закрыто без выбора)",
+    "attach": "Прикрепите файл, который прочитает Polly: CSV, спецификацию API, архив кода или документ, до {{limit}} МБ",
+    "attachTooLarge": "{{name}} больше {{limit}} МБ — максимального размера файла, прикрепляемого для Polly.",
+    "attachTooMany": "В беседе может быть не более {{max}} прикреплённых файлов. Удалите один, чтобы прикрепить другой.",
+    "removeAttachment": "Удалить {{name}}",
+    "download": "Скачать"
   }
 }

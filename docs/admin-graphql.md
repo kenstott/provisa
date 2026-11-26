@@ -151,7 +151,7 @@ Same as `relationships`, but includes `meta:%` synthetic entries. Used by the gr
 Each `RelationshipType` exposes:
 
 - **`autoSuggested → Boolean`.** Whether the relationship was suggested by FK analysis (`id` starts with `fk__`).
-- **`physicalName → String`.** The relationship's name on the SQL and gRPC planes (the `?include=` parameter). Derived server-side; clients must not transliterate the GraphQL alias.
+- **`physicalName → String`.** The relationship's API name, shown as API name in the UI: the name REST and JSON:API `?include=` and gRPC's include take. Plain SQL names no relationship. Derived server-side; clients must not transliterate the GraphQL alias.
 
 ---
 

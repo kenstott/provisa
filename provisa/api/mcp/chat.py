@@ -41,18 +41,21 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from provisa.api.mcp import (
     admin_api,
     docs_tools,
     model_tool_specs,
+    polly_files,
     polly_pages,
     polly_usage,
     tag_edit,
 )
 from provisa.api.mcp import tools as mcp_tools
+from provisa.api.mcp import code_upload
+from provisa.api.mcp.code_upload import UPLOAD_CODE
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
 from provisa.nl.scope import Scope
@@ -255,6 +258,61 @@ _TOOLS: list[Any] = [
                 },
             },
             "required": ["address", "language"],
+        },
+    },
+    # REQ-2114 (amended 2026-11-25): files only through the person's browser -- read what they
+    # attach in the chat, hand back what they save. No path on the server is ever read or written.
+    {
+        "name": "read_attachment",
+        "description": (
+            "Read a file the user attached in this chat, by the id the system prompt lists it "
+            "under: a CSV (with its columns and row count), an API spec (OpenAPI, Swagger, "
+            "AsyncAPI, GraphQL SDL or protobuf), a code archive (.zip, .tar, .tar.gz: without "
+            "`member` it lists the archive's files, with `member` it reads one), or a document "
+            "(PDF, Word, Excel, markdown, HTML, text). Returns the text a window at a time: "
+            "pass `offset` = next_offset to read on. You have no other access to files: you "
+            "cannot read a path on the server or anywhere else, so when the user wants you to "
+            "read a file, ask them to attach it. " + polly_files.LIMIT_TEXT
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "attachment": {"type": "string", "description": "The attachment's id."},
+                "member": {
+                    "type": "string",
+                    "description": "A code archive's file, by its name in the archive's list.",
+                },
+                "offset": {"type": "integer"},
+            },
+            "required": ["attachment"],
+        },
+    },
+    {
+        "name": "offer_download",
+        "description": (
+            "Hand the user a file to save, shown in the chat as a download card. kind 'code' "
+            "(code you generated) or 'report' (a report you wrote, markdown or HTML): pass "
+            "`filename` and the whole `content`. kind 'model_export': the model as a "
+            "configuration file, or with `sections` only those model sections, as the "
+            "Settings page exports it and for the same people. kind 'query_result': `sql` run "
+            "under your role and saved as `format` csv or xlsx with every row. A file goes to "
+            "the user only this way: you cannot write a file on the server or anywhere else. A "
+            f"download may be at most {polly_files.MAX_FILE_BYTES // (1024 * 1024)} MB."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": list(polly_files.DOWNLOAD_KINDS)},
+                "filename": {
+                    "type": "string",
+                    "description": "The name it is saved under, with its ending (e.g. orders.py).",
+                },
+                "content": {"type": "string"},
+                "sections": {"type": "array", "items": {"type": "string"}},
+                "sql": {"type": "string"},
+                "format": {"type": "string", "enum": ["csv", "xlsx"]},
+            },
+            "required": ["kind"],
         },
     },
     {
@@ -1076,6 +1134,34 @@ _CLIENT_TOOLS: list[Any] = [
             "required": ["method", "path", "summary"],
         },
     },
+    # REQ-1984: code Polly wrote, kept as a code source's uploaded code.
+    {
+        "name": UPLOAD_CODE,
+        "description": (
+            "Upload code you wrote as a code source's code. `files` maps each file's relative "
+            "path (e.g. source.py) to its full text; they are zipped and sent to the "
+            "organization's code uploads (POST /admin/orgs/<org>/code-uploads/archive), from the "
+            "user's own browser session, only after the user confirms the code and `summary` in "
+            "the chat. The result is the upload's answer, {content_hash, filename}: the source's "
+            "mappingJson.code is then {kind: 'upload', upload: <content_hash>}. Or 'Cancelled by "
+            "the user.'"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "object",
+                    "description": "Relative path -> the file's text.",
+                    "additionalProperties": {"type": "string"},
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "One plain sentence: what this code is, for the user.",
+                },
+            },
+            "required": ["files", "summary"],
+        },
+    },
     # REQ-2115: what the user is looking at, read in their own browser session.
     {
         "name": "read_screen",
@@ -1418,7 +1504,10 @@ _SYSTEM = (
     "refused, or queued as a request for approval, exactly as on the admin page -- report its "
     "answer as it came. A UI action that is a REST route and not a mutation (a file upload, a "
     "setting, the organization folder's encryption, a code archive) is found with "
-    "admin_rest_routes and reached with admin_request. 'Create any relationships to <table>': "
+    "admin_rest_routes and reached with admin_request. Code you wrote for a code source is "
+    "uploaded with upload_code, never by asking the user for a file; its answer's content_hash "
+    "is the source's mappingJson.code {kind: 'upload', upload: <content_hash>}. "
+    "'Create any relationships to <table>': "
     "run discover_relationships for it, show the candidates with present_choice (mode 'multi'), "
     "and accept each the user picks with admin_request POST "
     "/admin/discover/candidates/{id}/accept. "
@@ -1644,7 +1733,10 @@ def _in_a_demo() -> bool:
     )
 
 
-def _system_prompt(current_route: str | None) -> str:
+def _system_prompt(
+    current_route: str | None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
+) -> str:
     """_SYSTEM plus the frontend's current route, when it sent one (REQ-1800).
 
     There is no tool for "what page is the user on" — the browser already knows its own route on
@@ -1652,9 +1744,11 @@ def _system_prompt(current_route: str | None) -> str:
     tool round-trip to ask for something the caller could hand over for free. Kept OUT of _SYSTEM
     itself since it changes per turn, not per deployment."""
     system = f"{_SYSTEM}\n\n{_DEMO_ANSWERS}" if _in_a_demo() else _SYSTEM
-    if not current_route:
-        return system
-    return f"{system}\n\nThe user is currently viewing the app at route: {current_route!r}."
+    if current_route:
+        system = f"{system}\n\nThe user is currently viewing the app at route: {current_route!r}."
+    # REQ-2114: the files attached in this chat, named so she reads them with read_attachment.
+    listing = polly_files.prompt_listing(attachments)
+    return system if listing is None else f"{system}\n\n{listing}"
 
 
 async def _effective_config(state: Any) -> dict:
@@ -1866,6 +1960,50 @@ async def _render_graph(state: Any, role: str, cypher: str, layout: str, *, requ
     }
 
 
+def _required(args: dict, kind: str, *names: str) -> list[Any]:
+    missing = [n for n in names if not args.get(n)]
+    if missing:
+        raise ValueError(f"offer_download of kind {kind!r} needs {', '.join(missing)}")
+    return [args[n] for n in names]
+
+
+async def _offer_download(state: Any, role: str, args: dict, *, request: Any) -> dict:
+    """offer_download (REQ-2114): a file for the person to save, built in memory and handed to
+    the chat panel as a download. Code and a report are the content the model wrote; a model
+    export is the Settings page's export, for the people it is for; a query result is the SQL
+    run under the chat's role, every row, as CSV or XLSX. Nothing is written anywhere."""
+    kind = args["kind"]
+    if kind in ("code", "report"):
+        filename, content = _required(args, kind, "filename", "content")
+        return polly_files.download(filename, content.encode("utf-8"))
+    if kind == "model_export":
+        if request is None:
+            raise ValueError("a model export runs as the user, and this chat carries no request")
+        from provisa.api.admin._platform_guard import require_deployment_settings
+        from provisa.api.admin.config_export import build_live_config_yaml
+
+        require_deployment_settings(request)  # as GET /admin/config/live
+        content = await build_live_config_yaml(args.get("sections"))
+        # The name GET /admin/config/live saves the same export under.
+        return polly_files.download("provisa.live.yaml", content.encode("utf-8"))
+    if kind == "query_result":
+        filename, sql, fmt = _required(args, kind, "filename", "sql", "format")
+        if fmt not in ("csv", "xlsx"):
+            raise ValueError(f"format {fmt!r} is not csv or xlsx")
+        quoted, _quote_error = quote_identifiers(sql)
+        result = await mcp_tools.run_sql(state, role, quoted)
+        if result["truncated"]:
+            raise ValueError(
+                f"the result has {result['total_rows']} rows, more than the {result['row_count']} "
+                "a download holds; for every row as CSV, call run_sql with file_format csv"
+            )
+        build = polly_files.csv_bytes if fmt == "csv" else polly_files.xlsx_bytes
+        return polly_files.download(filename, build(result["columns"], result["rows"]))
+    raise ValueError(
+        f"offer_download has no kind {kind!r}; use one of {polly_files.DOWNLOAD_KINDS}"
+    )
+
+
 def _split_artifact(result: Any) -> tuple[Any, dict | None]:
     """A tool result as the model gets it, and the artifact the chat panel shows, when it has one
     (a picture, a download): the artifact goes to the browser alone, never into the model's
@@ -1877,7 +2015,14 @@ def _split_artifact(result: Any) -> tuple[Any, dict | None]:
 
 
 async def _execute_tool(
-    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+    state: Any,
+    role: str,
+    name: str,
+    args: dict,
+    *,
+    scope: Scope,
+    request: Any = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> Any:
     """Run one tool call within ``scope`` (REQ-2253): the domains selected in the domain filter,
     intersected with the role's (``provisa.nl.scope.selected_scope``), or None for no selection.
@@ -1886,7 +2031,9 @@ async def _execute_tool(
     from provisa.security.selected_domains import within
 
     with within(scope):
-        return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
+        return await _dispatch_tool(
+            state, role, name, args, scope=scope, request=request, attachments=attachments
+        )
 
 
 def _source_types(name: str | None) -> dict:
@@ -1908,13 +2055,21 @@ def _source_types(name: str | None) -> dict:
 
 
 async def _dispatch_tool(
-    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+    state: Any,
+    role: str,
+    name: str,
+    args: dict,
+    *,
+    scope: Scope,
+    request: Any = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> Any:
     """Dispatch one tool call to the governed MCP tool, with the role pinned by the endpoint.
 
     `request` is the real, AuthMiddleware-verified HTTP request behind this chat turn -- passed
     to the tools that act as the user through the admin API (REQ-2114). Every other tool ignores
-    it."""
+    it. ``attachments`` are the files the person attached in this chat (REQ-2114), the only
+    files read_attachment reads."""
     if name == "list_schemas":
         return await mcp_tools.list_schemas(state, role)
     if name == "list_tables":
@@ -1939,6 +2094,12 @@ async def _dispatch_tool(
         return docs_tools.search_docs(args["query"], args["language"])
     if name == "read_doc":  # REQ-2114
         return docs_tools.read_doc(args["address"], args["language"])
+    if name == "read_attachment":  # REQ-2114
+        return polly_files.read_attachment(
+            attachments, args["attachment"], args.get("member"), int(args.get("offset", 0))
+        )
+    if name == "offer_download":  # REQ-2114
+        return await _offer_download(state, role, args, request=request)
     if name == "run_sql":
         # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
         # and the result says why it was not quoted.
@@ -2230,16 +2391,24 @@ def _unquoted_note(error: str) -> str:
     return f"The SQL could not be read to quote its names, so it is used as written: {error}"
 
 
-def _prepare_client_call(call: dict, confirmation: str | None = None) -> tuple[dict, str | None]:
+def _prepare_client_call(
+    call: dict, confirmation: str | None = None, *, org_id: str | None = None
+) -> tuple[dict, str | None]:
     """A client tool call as the browser receives it, and a note for the user when there is one.
 
     SQL handed to the SQL explorer has every identifier quoted (a reserved word as a column name
     otherwise breaks it). SQL that does not parse is handed on unchanged, and the note says why.
     A ``confirmation`` -- what the navigate's result can confirm -- travels with the call, and the
-    browser adds it to the result it returns.
+    browser adds it to the result it returns. An upload_code call is handed as the admin_request
+    that keeps its code in ``org_id``, the request's active organization (_refused_client_calls
+    has refused it when there is none).
     """
     if confirmation is not None:
         call = {**call, "confirmation": confirmation}
+    if call["name"] == UPLOAD_CODE:
+        assert org_id is not None  # _refused_client_calls refuses an upload with no org
+        handed = code_upload.as_admin_request(call["input"], org_id)
+        return {**call, "name": "admin_request", "input": handed}, None
     if call["name"] in model_tool_specs.TAG_NAMES:
         handed = tag_edit.as_admin_mutation(call["name"], call["input"])
         return {**call, "name": "admin_mutation", "input": handed}, None
@@ -2318,6 +2487,23 @@ def _refused_tag_edits(calls: list[dict]) -> dict[str, str]:
     return refused
 
 
+def _active_org(request: Any) -> str | None:
+    """The organization the chat's request acts in, as the admin routes read it."""
+    return None if request is None else getattr(request.state, "active_org_id", None)
+
+
+def _refused_client_calls(calls: list[dict], request: Any) -> dict[str, str]:
+    """Each client call that cannot be put to the person, by call id, with why: a tag edit
+    _refused_tag_edits refuses, or an upload_code with no organization or no usable files."""
+    refused = _refused_tag_edits(calls)
+    for call in calls:
+        if call["name"] == UPLOAD_CODE:
+            why = code_upload.refusal(call["input"], _active_org(request))
+            if why is not None:
+                refused[call["id"]] = why
+    return refused
+
+
 def _split_tool_calls(calls: list[dict]) -> tuple[list[dict], list[dict]]:
     """Normalized {id, name, input} tool calls -> (client_calls, server_calls)."""
     client_calls = [c for c in calls if c["name"] in _CLIENT_TOOL_NAMES]
@@ -2333,14 +2519,87 @@ _EPHEMERAL = {"type": "ephemeral"}
 # what one call can spend.
 _MAX_TOKENS = 32000
 
+
 # REQ-1838: a turn whose rounds all ran out still calling tools (the last one is asked to call
 # none, but a provider may not honour that) ends saying so, never in silence.
-# REQ-1838: a final round that answered nothing -- blank text and no tool call -- ends saying so.
-# DeepSeek did, twice in bake-off run 38635124027, and the turn showed an empty reply.
-_NO_ANSWER = {
-    "type": "text",
-    "text": "\n\n(The model returned no answer — please ask again.)",
-}
+# REQ-1838: a final round that answered nothing -- blank text and no tool call -- ends saying so,
+# with the model's own stop reason. DeepSeek did, twice in bake-off run 38635124027, and the turn
+# showed an empty reply; a maintainer's "yes. upload it." ended "please ask again" with every tool
+# call green and nothing to say why.
+def _blank_ending(stop_reason: str) -> dict:
+    return {
+        "type": "text",
+        "text": (
+            f"\n\n(The model returned no answer: it stopped with stop reason {stop_reason!r}, "
+            "and no tool call failed — please ask again.)"
+        ),
+    }
+
+
+def _block_field(block: Any, key: str) -> Any:
+    """``key`` of a content block: a wire dict (the browser's resumed history) or an SDK block
+    (a round this loop appended to ``convo``)."""
+    return block.get(key) if isinstance(block, dict) else getattr(block, key, None)
+
+
+def _result_text(content: Any) -> str:
+    """A tool result's content as text: a string, or a list of text blocks."""
+    if isinstance(content, str):
+        return content
+    return "".join(str(_block_field(b, "text") or "") for b in content or ())
+
+
+def _failed_tool_calls(convo: list[Any]) -> list[tuple[str, str, int]]:
+    """This turn's failed tool calls -- since the user's question, rounds resumed after a client
+    tool included -- as (tool, error, times), each distinct one once, in the order first seen."""
+    start = 0
+    for i in range(len(convo) - 1, -1, -1):
+        message = convo[i]
+        role = message["role"] if isinstance(message, dict) else message.role
+        content = message["content"] if isinstance(message, dict) else message.content
+        if role == "user" and (
+            isinstance(content, str)
+            or any(_block_field(b, "type") != "tool_result" for b in content)
+        ):
+            start = i
+            break
+    names: dict[str, str] = {}
+    failed: dict[tuple[str, str], int] = {}
+    for message in convo[start:]:
+        content = message["content"] if isinstance(message, dict) else message.content
+        if isinstance(content, str):
+            continue
+        for block in content:
+            kind = _block_field(block, "type")
+            if kind == "tool_use":
+                names[_block_field(block, "id")] = _block_field(block, "name")
+            elif kind == "tool_result" and _block_field(block, "is_error"):
+                key = (
+                    names[_block_field(block, "tool_use_id")],
+                    _result_text(_block_field(block, "content")),
+                )
+                failed[key] = failed.get(key, 0) + 1
+    return [(name, error, times) for (name, error), times in failed.items()]
+
+
+def _no_answer(convo: list[Any], stop_reason: str) -> dict:
+    """REQ-1838: the ending of a turn whose final round answered nothing. After tool calls that
+    failed, it names each one and its error, so the user is told why rather than only asked to
+    try again; with none failed, it states the model's stop reason."""
+    failed = _failed_tool_calls(convo)
+    if not failed:
+        return _blank_ending(stop_reason)
+    lines = [
+        f"- {name}: {error}" + (f" ({times} times)" if times > 1 else "")
+        for name, error, times in failed
+    ]
+    return {
+        "type": "text",
+        "text": "\n\n(The model returned no answer. These tool calls failed:\n"
+        + "\n".join(lines)
+        + ")",
+    }
+
 
 # REQ-1838: the last round is told why it has no tools, so it answers instead of reaching for one:
 # OpenRouter's Gemini and Qwen routes returned tool calls on a round sent with none, and Kimi wrote
@@ -2469,6 +2728,7 @@ async def _run_chat_anthropic(
     scope: Scope,
     request: Any = None,
     current_route: str | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """The original REQ-1008/1795/1796 loop: Anthropic's own Messages API, including the
     Anthropic-only hosted web_search/web_fetch tools. Unchanged behavior from before REQ-1797."""
@@ -2486,7 +2746,7 @@ async def _run_chat_anthropic(
         yield refused
         yield {"type": "done"}
         return
-    system = _system_prompt(current_route)
+    system = _system_prompt(current_route, attachments)
     # REQ-1850: rounds that finish entirely server-side (server tool called, result fed back)
     # before a later round pauses on a CLIENT tool must still reach the frontend's resumed
     # `convo` — otherwise the model resumes having "forgotten" every tool call it made earlier
@@ -2559,6 +2819,12 @@ async def _run_chat_anthropic(
                 )
             resp = await stream.get_final_message()
             usage = usage + polly_usage.from_anthropic(resp.usage)
+            yield _round_event(
+                round_no,
+                model,
+                resp.stop_reason,
+                [b.name for b in resp.content if b.type == "tool_use"],
+            )
             over = budget.over_cap(usage, model)  # REQ-1174: the turn ends at its role's cap
             if over is not None:
                 yield {"type": "error", "error": client_value(over)}
@@ -2570,7 +2836,7 @@ async def _run_chat_anthropic(
                 if _is_answer(text):
                     yield {"type": "text", "text": text}
                 elif resp.stop_reason != "max_tokens":  # that ends with its own note below
-                    yield _NO_ANSWER
+                    yield _no_answer(convo, str(resp.stop_reason))
 
         if resp.stop_reason == "max_tokens":
             # REQ-1838: never end the turn silently on this — the user sees exactly the same
@@ -2601,7 +2867,13 @@ async def _run_chat_anthropic(
             try:
                 result, artifact = _split_artifact(
                     await _execute_tool(
-                        state, role, block.name, dict(block.input), scope=scope, request=request
+                        state,
+                        role,
+                        block.name,
+                        dict(block.input),
+                        scope=scope,
+                        request=request,
+                        attachments=attachments,
                     )
                 )
                 content = json.dumps(result, default=str)
@@ -2624,7 +2896,7 @@ async def _run_chat_anthropic(
 
         raw_blocks = [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks]
         refused, confirmed = await _checked_graph_navigates(state, role, raw_blocks, scope=scope)
-        refused |= _refused_tag_edits(raw_blocks)
+        refused |= _refused_client_calls(raw_blocks, request)
         for block in client_blocks:
             if block.id in refused:
                 yield {"type": "tool_result", "name": block.name, "is_error": True}
@@ -2646,6 +2918,7 @@ async def _run_chat_anthropic(
                 call, note = _prepare_client_call(
                     {"id": block.id, "name": block.name, "input": block.input},
                     confirmed.get(block.id),
+                    org_id=_active_org(request) if block.name == UPLOAD_CODE else None,
                 )
                 if note is not None:
                     yield {"type": "text", "text": f"\n\n{note}"}
@@ -2781,6 +3054,7 @@ async def _run_chat_aisuite(
     scope: Scope,
     request: Any = None,
     current_route: str | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """REQ-1797: the non-Anthropic path — openai/ollama/google (or any other aisuite-supported
     vendor), via aisuite's OpenAI-normalized tool-calling. No hosted web_search/web_fetch: those
@@ -2823,7 +3097,7 @@ async def _run_chat_aisuite(
     at_endpoint = "base_url" in provider_configs.get(provider_key, {})
     cap = output_cap(provider_key, custom_endpoint=at_endpoint)
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
-    system_text = _system_prompt(current_route)
+    system_text = _system_prompt(current_route, attachments)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a
     # block says so; a breakpoint on the system prompt caches it and the tool definitions ahead of
     # it. Other vendors cache a repeated prefix by themselves.
@@ -2886,6 +3160,12 @@ async def _run_chat_aisuite(
         calls_tools = resp.choices[0].finish_reason == "tool_calls" and bool(
             getattr(message, "tool_calls", None)
         )
+        yield _round_event(
+            round_no,
+            model_name,
+            resp.choices[0].finish_reason,
+            [c.function.name for c in getattr(message, "tool_calls", None) or ()],
+        )
         # Text beside a tool call is never shown (see the Anthropic loop); it stays in the
         # assistant content the model's history carries.
         if not calls_tools:
@@ -2899,7 +3179,7 @@ async def _run_chat_aisuite(
                 reasoning = getattr(message, "reasoning", None)
                 if reasoning:
                     yield {"type": "reasoning", "text": reasoning}
-                yield _NO_ANSWER
+                yield _no_answer(convo, str(resp.choices[0].finish_reason))
             break
         if last_round:
             # The last round had no tools to call; a call it made anyway is not run.
@@ -2916,7 +3196,13 @@ async def _run_chat_aisuite(
             try:
                 result, artifact = _split_artifact(
                     await _execute_tool(
-                        state, role, call["name"], call["input"], scope=scope, request=request
+                        state,
+                        role,
+                        call["name"],
+                        call["input"],
+                        scope=scope,
+                        request=request,
+                        attachments=attachments,
                     )
                 )
                 content = json.dumps(result, default=str)
@@ -2938,7 +3224,7 @@ async def _run_chat_aisuite(
             )
 
         refused, confirmed = await _checked_graph_navigates(state, role, client_calls, scope=scope)
-        refused |= _refused_tag_edits(client_calls)
+        refused |= _refused_client_calls(client_calls, request)
         for call in client_calls:
             if call["id"] in refused:
                 yield {"type": "tool_result", "name": call["name"], "is_error": True}
@@ -2954,7 +3240,11 @@ async def _run_chat_aisuite(
         if client_calls:
             prepared_calls = []
             for raw_call in client_calls:
-                call, note = _prepare_client_call(raw_call, confirmed.get(raw_call["id"]))
+                call, note = _prepare_client_call(
+                    raw_call,
+                    confirmed.get(raw_call["id"]),
+                    org_id=_active_org(request) if raw_call["name"] == UPLOAD_CODE else None,
+                )
                 if note is not None:
                     yield {"type": "text", "text": f"\n\n{note}"}
                 prepared_calls.append(call)
@@ -2984,6 +3274,72 @@ async def _run_chat_aisuite(
     yield {"type": "done"}
 
 
+_log = logging.getLogger(__name__)
+
+
+def _round_event(round_no: int, model: str, stop_reason: Any, tool_calls: list[str]) -> dict:
+    """One model round, for the turn's log (run_chat logs it and does not send it on)."""
+    return {
+        "type": "round",
+        "round": round_no + 1,
+        "model": model,
+        "stop_reason": stop_reason,
+        "tool_calls": tool_calls,
+    }
+
+
+class _TurnLog:
+    """A chat turn as the server log tells it: each round's stop reason and tool calls, each tool
+    result ok or error, and how the turn ended."""
+
+    def __init__(self, vendor: str, role: str) -> None:
+        self.vendor = vendor
+        self.role = role
+        self.model: str | None = None
+        self.rounds = 0
+        self.stop_reason: Any = None
+        self.results: list[str] = []
+        self.ending = "no ending event"
+
+    def round(self, event: dict) -> None:
+        self.model = event["model"]
+        self.rounds = event["round"]
+        self.stop_reason = event["stop_reason"]
+        _log.info(
+            "Polly round %d: vendor=%s model=%s stop_reason=%s tool_calls=%s",
+            event["round"],
+            self.vendor,
+            event["model"],
+            event["stop_reason"],
+            event["tool_calls"],
+        )
+
+    def see(self, event: dict) -> None:
+        kind = event["type"]
+        if kind == "tool_result":
+            self.results.append(f"{event['name']} {'error' if event['is_error'] else 'ok'}")
+        elif kind == "awaiting_client_tools":
+            names = [call["name"] for call in event["pending"]]
+            self.ending = f"awaiting the browser for {names}"
+        elif kind == "error":
+            self.ending = f"error: {event['error']}"
+        elif kind == "text":
+            self.ending = f"text: {event['text'].strip()[:160]!r}"
+
+    def finish(self, failure: BaseException | None = None) -> None:
+        ending = self.ending if failure is None else f"raised {failure!r}"
+        _log.info(
+            "Polly turn: vendor=%s model=%s role=%s rounds=%d stop_reason=%s tools=%s ending=%s",
+            self.vendor,
+            self.model,
+            self.role,
+            self.rounds,
+            self.stop_reason,
+            self.results,
+            ending,
+        )
+
+
 async def run_chat(
     state: Any,
     role: str,
@@ -2993,6 +3349,7 @@ async def run_chat(
     request: Any = None,
     current_route: str | None = None,
     domains: list[str] | None = None,
+    attachments: Mapping[str, polly_files.Attachment] = polly_files.NO_ATTACHMENTS,
 ) -> AsyncIterator[dict]:
     """Drive the model's tool-use loop, yielding UI events until it stops calling tools.
 
@@ -3013,6 +3370,9 @@ async def run_chat(
 
     ``domains`` (REQ-2253) is the domain filter's selection: every tool call works within it,
     intersected with the role's domain access. None (no selection) is the role's whole surface.
+
+    ``attachments`` (REQ-2114) are the files the person attached in the chat, sent with the
+    request; read_attachment reads only these.
     """
     mcp_tools.require_role(role, state)  # raises ValueError / PermissionError
     from provisa.nl.scope import selected_scope
@@ -3054,6 +3414,7 @@ async def run_chat(
             scope=scope,
             request=request,
             current_route=current_route,
+            attachments=attachments,
         )
         if vendor == "anthropic"
         else _run_chat_aisuite(
@@ -3066,12 +3427,23 @@ async def run_chat(
             scope=scope,
             request=request,
             current_route=current_route,
+            attachments=attachments,
         )
     )
-    async for event in impl:
-        if event["type"] == "usage":
-            await budget.debit(_event_usage(event), event["model"])
-        yield event
+    turn_log = _TurnLog(vendor, role)
+    try:
+        async for event in impl:
+            if event["type"] == "round":
+                turn_log.round(event)
+                continue
+            turn_log.see(event)
+            if event["type"] == "usage":
+                await budget.debit(_event_usage(event), event["model"])
+            yield event
+    except BaseException as failure:
+        turn_log.finish(failure)
+        raise
+    turn_log.finish()
 
 
 def _event_usage(event: dict) -> Any:

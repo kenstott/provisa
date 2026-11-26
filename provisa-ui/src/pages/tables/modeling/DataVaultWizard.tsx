@@ -35,6 +35,7 @@ import {
   type VaultRule,
   type VaultSatellite,
 } from "./plan";
+import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
 import { AddButton, ListHead, StepHead, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["hubs", "links", "satellites", "rules", "review"] as const;
@@ -508,7 +509,10 @@ export function DataVaultWizard({
   const { t } = useTranslation();
   const tables = useModelTables();
   const [a, setA] = useState<VaultAnswers>(EMPTY);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useStepParam(
+    STEPS.length,
+    reachableStep(STEPS, (sid) => missing(sid as (typeof STEPS)[number], a)),
+  );
   const [problem, setProblem] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const set = (patch: Partial<VaultAnswers>) => setA((prev) => ({ ...prev, ...patch }));
@@ -538,6 +542,12 @@ export function DataVaultWizard({
   ];
 
   const id = STEPS[step];
+  const steps = STEPS.map((sid) => ({
+    key: sid,
+    label: t(
+      sid === "review" ? "modelingWizard.review.title" : `modelingWizard.vault.${sid}.title`,
+    ),
+  }));
   const next = () => {
     const gap = missing(id, a);
     if (gap) {
@@ -557,7 +567,8 @@ export function DataVaultWizard({
       <ModelReview
         plan={plan}
         index={step}
-        count={STEPS.length}
+        steps={steps}
+        onStep={setStep}
         onBack={back}
         onCancel={onCancel}
         onDone={onSuccess}
@@ -570,7 +581,8 @@ export function DataVaultWizard({
     <FormLayout>
       <StepHead
         index={step}
-        count={STEPS.length}
+        steps={steps}
+        onStep={setStep}
         title={t(`modelingWizard.vault.${id}.title`)}
         intro={t(`modelingWizard.vault.${id}.intro`)}
         testId={`wizard-step-${id}`}

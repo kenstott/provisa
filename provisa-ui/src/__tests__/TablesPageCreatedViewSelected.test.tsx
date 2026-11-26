@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { render } from "../test-utils/render";
 import type { RegisteredTable } from "../types/admin";
 import type { Registration } from "../pages/tables/draftTable";
@@ -276,5 +277,35 @@ describe("a view handed over from the SQL editor", () => {
       expect(row).not.toBeNull();
       expect(row).toHaveAttribute("aria-selected", "true");
     });
+  });
+});
+
+function Here() {
+  return <div data-testid="here">{useLocation().search}</div>;
+}
+
+describe("?open=<source>.<table> (REQ-2277 rule 4)", () => {
+  it("is replaced by ?table=<id>, keeping the other parameters", async () => {
+    const before = TABLES.tables;
+    TABLES.tables = [
+      view(31, "orders", { sourceId: "sales-pg", domainId: "sales", schemaName: "public" }),
+    ];
+    try {
+      render(
+        <>
+          <TablesPage />
+          <Here />
+        </>,
+        { initialEntries: ["/tables?open=sales-pg.orders&section=columns"] },
+      );
+      await waitFor(() => {
+        const params = new URLSearchParams(screen.getByTestId("here").textContent ?? "");
+        expect(params.get("table")).toBe("31");
+        expect(params.has("open")).toBe(false);
+        expect(params.get("section")).toBe("columns");
+      });
+    } finally {
+      TABLES.tables = before;
+    }
   });
 });

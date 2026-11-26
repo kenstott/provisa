@@ -35,6 +35,11 @@
     "graphCaption": "ノード: {{nodes}} · リレーションシップ: {{relationships}}",
     "downloadPng": "PNG をダウンロード",
     "openOnGraphPage": "グラフページで開く",
-    "choiceClosed": "(選択せずに閉じました)"
+    "choiceClosed": "(選択せずに閉じました)",
+    "attach": "Polly に読ませるファイルを添付します: CSV、API 仕様、コードアーカイブ、またはドキュメント (最大 {{limit}} MB)",
+    "attachTooLarge": "{{name}} は {{limit}} MB を超えています。Polly に添付できるファイルの上限です。",
+    "attachTooMany": "1 つの会話に添付できるファイルは {{max}} 個までです。別のファイルを添付するには 1 つ削除してください。",
+    "removeAttachment": "{{name}} を削除",
+    "download": "ダウンロード"
   }
 }

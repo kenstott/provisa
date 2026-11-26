@@ -29,6 +29,7 @@ import {
 } from "../../api/contextViews";
 import { fetchReviewsDue, type DocumentReviewsDue } from "../../api/referenceLibrary";
 import { fetchReview, fetchSyncing, type SyncEntry } from "../../api/syncing";
+import { detailHref } from "../../components/list/useDetailParam";
 
 /** A read a card shows: loading, its value, or the server's refusal in words. */
 type Read<T> =
@@ -181,7 +182,7 @@ export function TermsCard({ seq }: { seq: number }) {
 }
 
 /** REQ-1386: the grounding drift since the previous period, as the Ontology quality report has it. */
-export const DRIFT_REPORT = "/admin/reports?report=ontology_quality";
+const DRIFT_REPORT = detailHref("reports", "ontology_quality");
 
 export function DriftCard() {
   const { t } = useTranslation();
