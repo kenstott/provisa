@@ -14,11 +14,12 @@ import type { GNode, GEdge } from "../graph-model";
 import { swapToLayoutMetaEdges } from "../graph-clusters";
 import type { ClusterLevel } from "../graph-clusters";
 import type { CyInstance, CyLayoutOptions } from "../cytoscape-types";
-import { LAYOUT_OPTIONS, type LayoutMode } from "./canvas-types";
+import { FIT_MARGIN, LAYOUT_OPTIONS, type LayoutMode } from "./canvas-types";
 import { idealEdgeLength } from "./edge-length";
 import { anchoredPositions, computeLabelSizeRanges, applyNodeSize } from "./canvas-helpers";
 import { getStored } from "../../../lib/browserStorage";
 import { restyleCaptions } from "../graph-stylesheet";
+import { fitWhole } from "../../provisa-graph/viewport";
 
 interface GraphLayoutRefs {
   cyRef: MutableRefObject<CyInstance | null>;
@@ -177,7 +178,8 @@ export function useGraphLayout({
         applyStyles();
         releaseRun();
         try {
-          cy.fit(undefined, 40);
+          // A laid-out graph opens fitted whole, which a resize keeps (REQ-2277).
+          fitWhole(cy, FIT_MARGIN);
         } catch {
           /* cy may have been destroyed */
         }
@@ -187,7 +189,8 @@ export function useGraphLayout({
         applyStyles();
         releaseRun();
         try {
-          cy.fit(undefined, 40);
+          // A laid-out graph opens fitted whole, which a resize keeps (REQ-2277).
+          fitWhole(cy, FIT_MARGIN);
         } catch {
           /* cy may have been destroyed */
         }

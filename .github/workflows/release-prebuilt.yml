@@ -164,26 +164,6 @@ jobs:
         with:
           platforms: arm64
 
-      # The provisa/provisa:local image serves the React SPA from static/ (Dockerfile
-      # COPY static/ ./static/). A clean checkout ships static/ empty, so without this
-      # step the provisa-ui container returns 503 "UI not bundled". Build the SPA into
-      # static/ before docker build. Mirrors the wheel job's UI toolchain.
-      - name: Set up Python (mkdocs)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Node (vite build)
-        uses: ./.github/actions/setup-ui
-
-      - name: Install docs-site build deps (mkdocs)
-        uses: ./.github/actions/docs-site-deps
-
-      - name: Build UI SPA into static/
-        run: |
-          ( cd provisa-ui && npm run build )
-          cp -r provisa-ui/dist/. static/
-
       # The app image takes Pyodide from this directory, not from its CDN mid-build.
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
@@ -325,26 +305,6 @@ jobs:
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
       - name: Free runner disk
         uses: ./.github/actions/free-runner-disk
-
-      # The provisa/provisa:local image serves the React SPA from static/ (Dockerfile
-      # COPY static/ ./static/). A clean checkout ships static/ empty, so without this
-      # step the provisa-ui container returns 503 "UI not bundled". Build the SPA into
-      # static/ before docker build. Mirrors the wheel job's UI toolchain.
-      - name: Set up Python (mkdocs)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Node (vite build)
-        uses: ./.github/actions/setup-ui
-
-      - name: Install docs-site build deps (mkdocs)
-        uses: ./.github/actions/docs-site-deps
-
-      - name: Build UI SPA into static/
-        run: |
-          ( cd provisa-ui && npm run build )
-          cp -r provisa-ui/dist/. static/
 
       # The app image takes Pyodide from this directory, not from its CDN mid-build.
       - name: Pyodide downloads

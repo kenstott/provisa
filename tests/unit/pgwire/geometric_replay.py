@@ -81,6 +81,9 @@ def outcome(sql: str, dialect: str, run: Callable[[str], Any]) -> str:
     try:
         got = run(transpile(sql, dialect, generated=False))
     except Exception as error:  # noqa: BLE001 -- each engine's client raises its own
+        # A grid row that raises PostgreSQL's own error (RowRefused, REQ-2236) answers as it does.
+        if raises and getattr(error, "sqlstate", None) == (want or "").split()[1]:
+            return "ok"
         if isinstance(error, FunctionRefused) or REFUSED in str(error):
             return "refused"
         if raises and f"{(want or '').split()[1]}:" in str(error):

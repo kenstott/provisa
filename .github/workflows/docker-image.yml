@@ -49,6 +49,10 @@ jobs:
       - name: provisa's encoders import inside the image
         run: docker run --rm provisa/provisa:ci python -c "import provisa._encoders.pgwire"
 
+      # The image serves the UI its ui-build stage built, with no UI built on the host first.
+      - name: the UI server answers GET / inside the image
+        run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/ui_static_smoke.py
+
       - name: render_graph draws inside the image
         run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/render_graph_smoke.py
 

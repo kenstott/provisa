@@ -20,8 +20,10 @@ against an org schema of its own on the TEST instance's PostgreSQL:
    the store's model, not the file's;
 4. an explicit apply of the changed file adds and updates and removes nothing.
 
-A demo organisation is the exception (DEMO ORGANISATIONS ARE THEIR CONFIG): every build of its
-runtime applies the demo configuration again, so an edit to it lasts until its next build.
+A demo organisation is the exception (DEMO ORGANISATIONS ARE THEIR CONFIG, amended 2026-11-23: A
+DEMO RESTART KEEPS ADMIN WORK): every build of its runtime applies the demo configuration over the
+model, so an edit to a declared object lasts until its next build; an object the admin made that
+the configuration does not declare is kept.
 
 The boots are bound to their own org (``ORG_ID``), so no other module's model is touched; the
 module creates and drops that org's schema, and the demo org's.
@@ -225,8 +227,10 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
 
 
 async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, monkeypatch):
-    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): an edit to a demo organisation lasts until
-    its next build, which applies the demo configuration again."""
+    """REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG, amended 2026-11-23: A DEMO RESTART KEEPS
+    ADMIN WORK): an edit to a declared object of a demo organisation lasts until its next build,
+    which applies the demo configuration over the model; an object made in the admin that the
+    configuration does not declare is kept."""
     from provisa.api.app import build_org_runtime
     from provisa.core import model_change
     from provisa.core.models import Role
@@ -262,7 +266,7 @@ async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, m
                     ),
                     org_id=_DEMO_ID,
                 )
-                # An addition, too, lasts only until the next build.
+                # An addition the configuration does not declare is the admin's: it is kept.
                 await role_repo.upsert(
                     conn,
                     Role(
@@ -276,7 +280,7 @@ async def test_a_demo_org_starts_as_its_config_at_every_build(clean, tmp_path, m
             assert await _auditor(rt) == ["usage", "write"]
             rebuilt = await build_org_runtime(_DEMO_ID, include_demo=True)
             async with rebuilt.model_db.acquire() as conn:
-                assert await role_repo.get(conn, "added_in_demo") is None
+                assert await role_repo.get(conn, "added_in_demo") is not None
             return await _auditor(rebuilt)
         finally:
             reset_current_org(token)
