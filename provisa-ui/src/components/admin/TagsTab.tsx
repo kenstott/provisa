@@ -68,6 +68,7 @@ import { PanelDuplicate } from "../list/PanelDuplicate";
 import { DetailFields } from "../detail/DetailFields";
 import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { matchesQuery } from "../../lib/searchItems";
@@ -182,6 +183,9 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   // REQ-1467: the draft new value/description of the open tag's value list.
   const [newValue, setNewValue] = useState("");
   const [newValueDescription, setNewValueDescription] = useState("");
+  // REQ-1968: what each form needs, checked when its action is pressed.
+  const tagRequired = useRequiredFields({ id: formId, scopes: formScopes });
+  const valueRequired = useRequiredFields({ value: newValue });
 
   const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
   const policyLabel = (p: TagFieldPolicy) => t(`tagsTab.policy_${p}`);
@@ -225,6 +229,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setFormDomains([]);
     setOutside([]);
     setFormCited([]);
+    tagRequired.reset();
   };
 
   const closeForm = () => {
@@ -318,7 +323,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   };
 
   const handleSubmit = async () => {
-    if (!formId.trim() || formScopes.length === 0) return;
+    if (!tagRequired.validate()) return;
     const id = formId.trim();
     // A new tag is created; the open one updated (a create refuses an id that exists).
     const save = editingId === null ? createTag : updateTag;
@@ -368,10 +373,12 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   };
 
   const handleAddValue = async (tagId: string) => {
+    if (!valueRequired.validate()) return;
     const result = await upsertTagParamValue(tagId, newValue.trim(), newValueDescription.trim());
     if (result.success) {
       setNewValue("");
       setNewValueDescription("");
+      valueRequired.reset();
     } else {
       notifications.show({ color: "red", message: result.message });
     }
@@ -400,6 +407,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
           <TextInput
             label={t("tagsTab.idLabel")}
             placeholder={t("tagsTab.idPlaceholder")}
+            {...tagRequired.field("id")}
             value={formId}
             disabled={editingId !== null}
             onChange={(e) => setFormId(e.currentTarget.value)}
@@ -417,6 +425,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
       <FormField hint={t("tagsTab.appliesToDesc")} size="full">
         <Checkbox.Group
           label={t("tagsTab.appliesToLabel")}
+          {...tagRequired.field("scopes")}
           value={formScopes}
           onChange={setFormScopes}
         >
@@ -529,7 +538,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         onCancel={closeForm}
         saveProps={{
           "data-testid": "tags-save",
-          disabled: !formId.trim() || formScopes.length === 0,
         }}
       />
     </FormLayout>
@@ -677,6 +685,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               <FormField size="medium">
                 <TextInput
                   label={t("tagsTab.newValueLabel")}
+                  {...valueRequired.field("value")}
                   value={newValue}
                   onChange={(e) => setNewValue(e.currentTarget.value)}
                   data-testid={`tags-new-value-${tag.id}`}
@@ -693,7 +702,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               <FormFooter
                 action={
                   <Button
-                    disabled={newValue.trim() === ""}
                     onClick={() => void handleAddValue(tag.id)}
                     data-testid={`tags-add-value-${tag.id}`}
                   >
@@ -708,7 +716,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     </Stack>
   );
 
-  const panelTitle = createOpen ? t("tagsTab.createButton") : openTag !== undefined ? openTag.id : "";
+  const panelTitle = createOpen
+    ? t("tagsTab.createButton")
+    : openTag !== undefined
+      ? openTag.id
+      : "";
   const panelBody = createOpen
     ? form
     : openTag !== undefined
