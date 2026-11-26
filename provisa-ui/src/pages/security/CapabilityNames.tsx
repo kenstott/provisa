@@ -13,9 +13,7 @@
 
 import { useTranslation } from "react-i18next";
 import { Tip } from "../../components/Tip";
-import { NO_REGION } from "../../components/admin/ResidencyGrant";
-
-const RESIDENCY = "data_residency";
+import { capabilityLabel } from "./roleRowTexts";
 
 export function CapabilityNames({
   capabilities,
@@ -25,7 +23,6 @@ export function CapabilityNames({
   regions?: readonly string[];
 }) {
   const { t } = useTranslation();
-  const region = (value: string) => (value === NO_REGION ? t("residencyGrant.noRegion") : value);
   return (
     <>
       {capabilities.map((capability, index) => (
@@ -33,9 +30,7 @@ export function CapabilityNames({
           {index > 0 && ", "}
           <Tip text={t(`capabilityHelp.${capability}`)}>
             <span data-testid={`capability-name-${capability}`}>
-              {capability === RESIDENCY && regions.length > 0
-                ? `${capability}: ${regions.map(region).join(", ")}`
-                : capability}
+              {capabilityLabel(capability, regions, t)}
             </span>
           </Tip>
         </span>

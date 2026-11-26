@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../test-utils/render";
 import i18n from "../i18n";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
 
@@ -338,5 +339,43 @@ describe("Triggers — on a table, edited, and how the last run ended", () => {
     expect(within(read).getByText(t("scheduledTasks.outcomeFailed"))).toBeTruthy();
     expect(within(read).getByText("the command refused the batch")).toBeTruthy();
     expect(within(read).getByText("event:shop.public.orders")).toBeTruthy();
+  });
+});
+
+describe("Triggers — the list's filter", () => {
+  beforeEach(() => {
+    mockTasks = [
+      task({ lastRunAt: "2026-11-20T02:00:00Z", lastOutcome: "succeeded" }),
+      task({
+        id: "on_orders",
+        name: "Orders changed",
+        firesOn: "table",
+        cronExpression: null,
+        onTable: "shop.public.orders",
+        onEvent: "change",
+        kind: "command",
+        sql: null,
+        command: "reconcile_orders",
+        role: null,
+        enabled: false,
+        lastOutcome: "refused",
+        nextRunAt: "2026-11-27T02:00:00Z",
+      }),
+    ];
+  });
+
+  it("finds each trigger by every text its row shows", async () => {
+    render(<ScheduledTasks title="Admin — Triggers" />);
+    await expectFilterFindsEveryCell(screen.getByTestId("scheduled-tasks-filter"), () =>
+      screen.getByTestId("scheduled-tasks-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", () => {
+    render(<ScheduledTasks title="Admin — Triggers" />);
+    fireEvent.change(screen.getByTestId("scheduled-tasks-filter"), {
+      target: { value: "no-such-trigger" },
+    });
+    expect(screen.getByTestId("scheduled-tasks-empty")).toHaveTextContent("No triggers match");
   });
 });

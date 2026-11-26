@@ -34,6 +34,7 @@ const TICKETS = {
   draft: false,
   region: null,
   apiEndpoint: null,
+  columns: [],
 } as unknown as RegisteredTable;
 
 const PG = { id: "pg", type: "postgresql" } as Source;
@@ -66,7 +67,15 @@ function introspection() {
 function graphSchema() {
   return {
     node_labels: registered
-      ? [{ label: "Tickets", table_id: 7, pk_columns: ["id"], properties: ["id"] }]
+      ? [
+          {
+            label: "Tickets",
+            table_id: 7,
+            pk_columns: ["id"],
+            properties: ["id"],
+            native_filter_columns: [],
+          },
+        ]
       : [],
     relationship_types: [],
     root_fields: registered

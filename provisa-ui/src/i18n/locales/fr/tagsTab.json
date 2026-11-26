@@ -40,8 +40,6 @@
     "policy_required": "Obligatoire",
     "requiredLabel": "Obligatoire",
     "requiredDesc": "Tout objet des types indiqués dans « S'applique à » doit porter ce tag. Un objet sans ce tag apparaît comme manquant dans le rapport des tags.",
-    "reasonPolicyBadge": "Motif : {{policy}}",
-    "expiresPolicyBadge": "Expiration : {{policy}}",
     "createButton": "Créer le tag",
     "saveButton": "Enregistrer le tag",
     "colId": "ID",
@@ -50,6 +48,7 @@
     "colAssignments": "Affectations",
     "colActions": "Actions",
     "empty": "Aucun tag pour cette portée",
+    "noMatch": "Aucun tag ne correspond au filtre",
     "systemTag": "Étiquette système (lecture seule)",
     "editTag": "Modifier le tag {{id}}",
     "deleteTag": "Supprimer le tag {{id}}",
@@ -65,6 +64,7 @@
     "purposeAria": "À propos des tags",
     "outsideTitle": "Affectations hors des domaines autorisés",
     "outsideBody": "L'enregistrement a conservé ces affectations. Retirez le tag d'un objet auquel il ne correspond plus.",
-    "outsideItem": "{{kind}} {{name}}, dans {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, dans {{domains}}",
+    "templateSection": "Modèle"
   }
 }

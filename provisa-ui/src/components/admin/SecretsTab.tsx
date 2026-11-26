@@ -247,7 +247,14 @@ function SecretsVault({ vault, title, header }: VaultProps) {
       t,
       search,
       () => setSearch(""),
-      (s) => [s.name, s.description ?? "", s.reference],
+      // Every text a secret's row shows.
+      (s) => [
+        s.name,
+        s.description,
+        s.updated_at ? new Date(s.updated_at).toLocaleString() : t("secretsTab.never"),
+        s.updated_by ? t("secretsTab.updatedBy", { actor: s.updated_by }) : "",
+        s.reference,
+      ],
     ),
   ];
   const detail = useRememberedDetail(
@@ -581,7 +588,9 @@ function SecretsVault({ vault, title, header }: VaultProps) {
               ]}
               colSpan={4}
               rowKey={(s) => s.name}
-              empty={t("secretsTab.empty")}
+              // A list a filter emptied says so, never that no secret is kept.
+              empty={state.secrets.length === 0 ? t("secretsTab.empty") : t("secretsTab.noMatch")}
+              emptyTestId="secrets-empty"
               render={(s) => (
                 <ListRow
                   key={s.name}

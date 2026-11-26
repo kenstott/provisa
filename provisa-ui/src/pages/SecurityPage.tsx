@@ -56,18 +56,24 @@ import { CapabilityNames } from "./security/CapabilityNames";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
 import { parentRights, reachable, withParents } from "./security/roleParents";
 import { useRegionChoices } from "../hooks/useRegionQueries";
-import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListItems, ListEmpty } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { derivedId, readDerivedId, useRememberedDetail } from "../components/list/useDetailParam";
-import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
+import {
+  detailListOf,
+  searchMatchNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
-import { derivedItems, derivedRoleTexts, type DerivedItem } from "./security/derivedItems";
+import { derivedItems, type DerivedItem } from "./security/derivedItems";
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
+import { derivedRoleMatches, roleRowTexts } from "./security/roleRowTexts";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
@@ -134,7 +140,7 @@ export function SecurityRolesPage() {
       t,
       roleSearch,
       () => setRoleSearch(""),
-      (r) => [r.id, r.description],
+      (r) => roleRowTexts(r, t),
     ),
   ];
   const detail = useRememberedDetail(
@@ -167,11 +173,12 @@ export function SecurityRolesPage() {
       (item) => item.id,
       (item) => item.name,
       [
-        searchNarrowing<DerivedItem>(
+        // A derived role's rows -- the parent and each value role -- show and hide together.
+        searchMatchNarrowing<DerivedItem>(
           t,
           roleSearch,
           () => setRoleSearch(""),
-          (item) => derivedRoleTexts(item.role),
+          (item) => derivedRoleMatches(item.role, roleSearch, t),
         ),
       ],
     ),
@@ -811,6 +818,13 @@ export function SecurityRolesPage() {
                     </React.Fragment>
                   )}
                 />
+                {/* A list a filter emptied says so. */}
+                {filteredRoles.length === 0 &&
+                  !(derived?.roles ?? []).some((d) => derivedRoleMatches(d, roleSearch, t)) && (
+                    <ListEmpty colSpan={4} testId="roles-empty">
+                      {t("securityPage.noRolesMatch")}
+                    </ListEmpty>
+                  )}
                 {derived && (
                   <DerivedRoleRows
                     roles={derived.roles}

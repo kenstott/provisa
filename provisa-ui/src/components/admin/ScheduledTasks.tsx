@@ -166,16 +166,49 @@ export function ScheduledTasks({ title }: { title: string }) {
   }, [t]);
 
   const [search, setSearch] = useUrlFilter();
+  const kindLabel = (kind: Kind) =>
+    kind === "webhook"
+      ? t("scheduledTasks.kindWebhook")
+      : kind === "sql"
+        ? t("scheduledTasks.kindSql")
+        : t("scheduledTasks.kindCommand");
+  const eventLabel = (event: string | null) =>
+    event === "quarantine"
+      ? t("scheduledTasks.eventQuarantine")
+      : event === "error"
+        ? t("scheduledTasks.eventError")
+        : t("scheduledTasks.eventChange");
+  const firesLabel = (task: ScheduledTask) =>
+    task.firesOn === "schedule"
+      ? (task.cronExpression ?? "")
+      : t("scheduledTasks.firesOnTable", { table: task.onTable, event: eventLabel(task.onEvent) });
+  const targetOf = (task: ScheduledTask) =>
+    task.kind === "sql" ? task.sql : task.kind === "command" ? task.command : task.webhookUrl;
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
+  const outcomeLabel = (outcome: string) =>
+    outcome === "succeeded"
+      ? t("scheduledTasks.outcomeSucceeded")
+      : outcome === "refused"
+        ? t("scheduledTasks.outcomeRefused")
+        : t("scheduledTasks.outcomeFailed");
   // REQ-2277 rule 9: a trigger is open only while the search shows its row.
-  const searchNarrowed = useMemo(
-    () =>
-      searchNarrowing<ScheduledTask>(
-        t,
-        search,
-        () => setSearch(""),
-        (task) => [task.name, task.id, task.cronExpression, task.onTable, task.role],
-      ),
-    [t, search, setSearch],
+  const searchNarrowed = searchNarrowing<ScheduledTask>(
+    t,
+    search,
+    () => setSearch(""),
+    // Every text a task's row shows, and its id.
+    (task) => [
+      task.name,
+      task.id,
+      firesLabel(task),
+      kindLabel(task.kind),
+      targetOf(task) || t("scheduledTasks.noTarget"),
+      task.role ?? t("scheduledTasks.noTarget"),
+      task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled"),
+      when(task.lastRunAt) ?? t("scheduledTasks.never"),
+      task.lastOutcome === null ? "" : outcomeLabel(task.lastOutcome),
+      when(task.nextRunAt) ?? t("scheduledTasks.noNextRun"),
+    ],
   );
   const detail = useRememberedDetail(
     "triggers",
@@ -203,36 +236,13 @@ export function ScheduledTasks({ title }: { title: string }) {
     [tables],
   );
 
-  const kindLabel = (kind: Kind) =>
-    kind === "webhook"
-      ? t("scheduledTasks.kindWebhook")
-      : kind === "sql"
-        ? t("scheduledTasks.kindSql")
-        : t("scheduledTasks.kindCommand");
-  const eventLabel = (event: string | null) =>
-    event === "quarantine"
-      ? t("scheduledTasks.eventQuarantine")
-      : event === "error"
-        ? t("scheduledTasks.eventError")
-        : t("scheduledTasks.eventChange");
-  const firesLabel = (task: ScheduledTask) =>
-    task.firesOn === "schedule"
-      ? (task.cronExpression ?? "")
-      : t("scheduledTasks.firesOnTable", { table: task.onTable, event: eventLabel(task.onEvent) });
-  const targetOf = (task: ScheduledTask) =>
-    task.kind === "sql" ? task.sql : task.kind === "command" ? task.command : task.webhookUrl;
-  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
   const outcomeBadge = (outcome: string | null) =>
     outcome === null ? null : (
       <Badge
         variant="light"
         color={outcome === "succeeded" ? "green" : outcome === "refused" ? "yellow" : "red"}
       >
-        {outcome === "succeeded"
-          ? t("scheduledTasks.outcomeSucceeded")
-          : outcome === "refused"
-            ? t("scheduledTasks.outcomeRefused")
-            : t("scheduledTasks.outcomeFailed")}
+        {outcomeLabel(outcome)}
       </Badge>
     );
 
@@ -270,7 +280,7 @@ export function ScheduledTasks({ title }: { title: string }) {
     { key: "lastRun", label: t("scheduledTasks.colLastRun"), sortValue: (k) => k.lastRunAt ?? "" },
     { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
   ];
-  const shownTasks = useMemo(() => shownBy(tasks, [searchNarrowed]), [tasks, searchNarrowed]);
+  const shownTasks = shownBy(tasks, [searchNarrowed]);
   const sortGroup = useListSortGroup(shownTasks, columns, "scheduled-tasks");
   // REQ-2240: scheduled tasks selected and deleted together, each named by its name.
   const shownTaskIds = useMemo(() => shownTasks.map((task) => task.id), [shownTasks]);
@@ -736,7 +746,7 @@ export function ScheduledTasks({ title }: { title: string }) {
                 onDelete={deleteScheduledTasks}
                 testId="scheduled-tasks-bulk"
               />
-              <ListTable minWidth={720} selection={selection}>
+              <ListTable minWidth={720} selection={selection} testId="scheduled-tasks-list">
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[
@@ -751,7 +761,7 @@ export function ScheduledTasks({ title }: { title: string }) {
                 />
                 <Table.Tbody>
                   {shownTasks.length === 0 && (
-                    <ListEmpty colSpan={7}>
+                    <ListEmpty colSpan={7} testId="scheduled-tasks-empty">
                       {tasks.length === 0 ? t("scheduledTasks.empty") : t("scheduledTasks.noMatch")}
                     </ListEmpty>
                   )}

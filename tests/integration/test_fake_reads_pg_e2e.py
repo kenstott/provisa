@@ -248,3 +248,23 @@ def test_the_key_never_reaches_the_server_log(pg, key):
     log = subprocess.run(["docker", "logs", name], capture_output=True, text=True).stderr
     assert log, "the server's log was not read"
     assert key[0].hex() not in log and key[0].hex().upper() not in log
+
+
+def test_postgres_digests_spaced_and_reordered_json_as_the_minified_text(pg, key):
+    """REQ-2279: text, json and jsonb, spaced or reordered, digest as the canonical text."""
+    con, _ = pg
+    value, _dir = key
+    fp = fingerprint(value)
+    minified = '{"age":30,"email":"ann@example.com","tags":["a","b"]}'
+    stored = (
+        minified,
+        '{ "age" : 30 ,\n  "email" : "ann@example.com", "tags" : [ "a", "b" ] }',
+        '{"tags": ["a", "b"], "email": "ann@example.com", "age": 3.0e1}',
+    )
+    for text in stored:
+        for type_ in ("text", "json", "jsonb"):
+            sql = f"SELECT provisa_json_text(%s::{type_}), provisa_digest(%s, provisa_json_text(%s::{type_}))"
+            cur = con.cursor()
+            cur.execute(sql, (text, fp, text))
+            assert cur.fetchone() == (minified, digest(value, minified)), (type_, text)
+    assert _one(con, "SELECT provisa_json_text(NULL::jsonb)") is None

@@ -141,7 +141,17 @@ export function RequestsPage() {
       t,
       search,
       () => setSearch(""),
-      (r) => [String(r.id), r.request_type, r.requested_by, r.status],
+      // Every text a request's row shows.
+      (r) => [
+        String(r.id),
+        r.request_type,
+        r.requested_by,
+        new Date(r.created_at).toLocaleString(),
+        `${r.approvals.length} / ${r.required_approvals}`,
+        r.waiting_on.join(", "),
+        r.status,
+        r.rejection_reason,
+      ],
     ),
   ];
   const detail = useRememberedDetail(
@@ -499,7 +509,7 @@ export function RequestsPage() {
         }}
         list={
           <>
-            <ListTable minWidth={800}>
+            <ListTable minWidth={800} testId="requests-list">
               <ListHead
                 columns={[
                   { col: "id" },
@@ -515,7 +525,7 @@ export function RequestsPage() {
               />
               <Table.Tbody>
                 {filtered.length === 0 && (
-                  <ListEmpty colSpan={8}>
+                  <ListEmpty colSpan={8} testId="requests-empty">
                     {search
                       ? t("requestsPage.emptyFiltered", { tab })
                       : t("requestsPage.empty", { tab })}

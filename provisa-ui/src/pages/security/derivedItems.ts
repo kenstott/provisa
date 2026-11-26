@@ -8,17 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2078: the derived roles' rows in the roles list, as its search and its detail read them
+// REQ-2078: the derived roles' rows in the roles list, as its detail reads them
 // (REQ-2277 rule 9: a derived role is open only while the list shows its row).
 
 import type { DeclaredDerivedRole as DerivedRole } from "../../api/admin";
 import { derivedId } from "../../components/list/useDetailParam";
 import { SEPARATOR } from "../../hooks/useDerivedRoles";
-
-/** The texts the roles list's search finds a derived role, and every value role under it, by. */
-export function derivedRoleTexts(d: DerivedRole): string[] {
-  return [d.attribute, ...d.values.map((v) => `${d.attribute}${SEPARATOR}${v}`)];
-}
 
 /** A row of the derived roles in the roles list: a parent, or one of its value roles. */
 export interface DerivedItem {

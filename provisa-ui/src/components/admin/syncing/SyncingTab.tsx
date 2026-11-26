@@ -93,22 +93,43 @@ export function SyncingTab() {
       { replace: true },
     );
 
+  // Whether an entry publishes one of the products the list is narrowed to.
+  const publishesChosen = (e: SyncEntry) =>
+    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
+  const lastRunLabel = (e: SyncEntry) =>
+    e.last_run === null
+      ? ""
+      : e.last_run.ok
+        ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
+        : t("syncingTab.publishPartial", {
+            count: e.last_run.total_published,
+            failed: e.last_run.errors.length,
+          });
+  // Every text an entry's row shows, the provider by the name `loaded` gives it.
+  const entryRowTexts = (loaded: SyncingState) => {
+    const beta = new Set(loaded.beta_providers);
+    return (e: SyncEntry) => [
+      e.id,
+      t(`syncingTab.direction_${e.direction}`),
+      e.provider,
+      e.provider ? exportProviderName(e.provider, e.provider, t, beta) : "",
+      e.domains.join(", "),
+      lastRunLabel(e),
+    ];
+  };
   // REQ-2277 rule 9: an entry is open only while the list -- narrowed to the products chosen and
-  // by the search -- shows its row.
+  // by the search -- shows its row. Until the entries load there is no list to search.
   const narrowings = [
     filterNarrowing<SyncEntry>(
       t,
       productFilter.length > 0,
       t("syncingTab.productFilterLabel"),
-      (e) => e.products.some((p) => productFilter.includes(p.product_id)),
+      publishesChosen,
       () => setProductFilter([]),
     ),
-    searchNarrowing<SyncEntry>(
-      t,
-      search,
-      () => setSearch(""),
-      (e) => [e.id, e.provider ?? "", ...e.domains],
-    ),
+    s === null
+      ? null
+      : searchNarrowing<SyncEntry>(t, search, () => setSearch(""), entryRowTexts(s)),
   ];
   const detail = useRememberedDetail(
     "sync",
@@ -236,12 +257,15 @@ export function SyncingTab() {
     ]),
   ].sort();
   const section = (type: SyncEntryType) => {
-    const rows = shownBy(s.entries, narrowings).filter((e) => e.type === type);
+    const ofType = s.entries.filter((e) => e.type === type);
+    const chosen = ofType.filter(publishesChosen);
+    const rows = shownBy(ofType, narrowings);
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
         <SortGroupTable
           testPrefix={`syncing-${type}`}
+          testId={`syncing-list-${type}`}
           minWidth={640}
           rows={rows}
           initialSortCol="name"
@@ -270,10 +294,13 @@ export function SyncingTab() {
             { col: "lastRun" },
           ]}
           colSpan={5}
+          // A list a filter emptied says so, never that there are none.
           empty={
-            productFilter.length === 0
-              ? t(`syncingTab.none_${type}`)
-              : t("syncingTab.noneForProducts")
+            chosen.length === 0 && productFilter.length > 0
+              ? t("syncingTab.noneForProducts")
+              : ofType.length === 0
+                ? t(`syncingTab.none_${type}`)
+                : t("syncingTab.noMatch")
           }
           emptyTestId={`syncing-none-${type}`}
           rowKey={(e) => e.id}
@@ -292,12 +319,7 @@ export function SyncingTab() {
               <Table.Td data-testid={`syncing-row-last-run-${e.id}`}>
                 {e.last_run ? (
                   <Badge size="sm" variant="light" color={e.last_run.ok ? "green" : "red"}>
-                    {e.last_run.ok
-                      ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
-                      : t("syncingTab.publishPartial", {
-                          count: e.last_run.total_published,
-                          failed: e.last_run.errors.length,
-                        })}
+                    {lastRunLabel(e)}
                   </Badge>
                 ) : (
                   "—"

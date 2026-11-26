@@ -70,6 +70,7 @@ import { PanelDuplicate } from "../list/PanelDuplicate";
 import { DetailFields } from "../detail/DetailFields";
 import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { MultiSelect } from "../MultiSelect";
@@ -77,7 +78,9 @@ import { useDomains } from "../../hooks/useAdminQueries";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
-import { ContextPlaces } from "../ContextPlaces";
+import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
+import { TagDependents, TagWhereApplied } from "./TagUses";
+import { dependentsSummary, whereAppliedSummary } from "../../lib/tagUseSummary";
 import { EntityLink } from "../EntityLink";
 
 const PAGE_SIZE = 50;
@@ -162,6 +165,31 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setUrlScope(next);
   };
   const [search, setSearch] = useUrlFilter();
+  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
+  const assignmentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
+    // `entity` row this table lists, and counting the full ids would report every one as unused.
+    for (const a of tagAssignments) {
+      const base = baseTagId(a.tagId);
+      counts[base] = (counts[base] ?? 0) + 1;
+    }
+    return counts;
+  }, [tagAssignments]);
+  // Every text a tag's row shows, which the filter searches; the row below draws the same.
+  const tagRowTexts = (tag: Tag): string[] => {
+    const use = readOnly ? uses?.get(tag.id) : undefined;
+    return [
+      tag.id,
+      tag.required ? t("tagsTab.requiredLabel") : "",
+      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
+      tag.needsReview ? t("tagCitations.needsReview") : "",
+      tag.description,
+      ...tag.appliesTo.map(scopeLabel),
+      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
+      ...(use === undefined ? [] : [whereAppliedSummary(use, t), dependentsSummary(use, t)]),
+    ];
+  };
   // REQ-2277 rule 9: a tag is open only while the list -- the scope's tab, under the search --
   // shows its row.
   const narrowings: (Narrowing<Tag> | null)[] = [
@@ -171,12 +199,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
       action: (tag) => t("detailInList.openTab", { tab: t(`tagsTab.scope_${tag.appliesTo[0]}`) }),
       bringIn: (tag) => setScope(tag.appliesTo[0]),
     },
-    searchNarrowing<Tag>(
-      t,
-      search,
-      () => setSearch(""),
-      (tag) => [tag.id, tag.description],
-    ),
+    searchNarrowing<Tag>(t, search, () => setSearch(""), tagRowTexts),
   ];
   const detail = useRememberedDetail(
     "tags",
@@ -211,8 +234,10 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   // REQ-1467: the draft new value/description of the open tag's value list.
   const [newValue, setNewValue] = useState("");
   const [newValueDescription, setNewValueDescription] = useState("");
+  // REQ-1968: what each form needs, checked when its action is pressed.
+  const tagRequired = useRequiredFields({ id: formId, scopes: formScopes });
+  const valueRequired = useRequiredFields({ value: newValue });
 
-  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
   const policyLabel = (p: TagFieldPolicy) => t(`tagsTab.policy_${p}`);
   const policyOptions = POLICIES.map((p) => ({ label: policyLabel(p), value: p }));
   const paramPolicyOptions = PARAM_POLICIES.map((p) => ({
@@ -220,17 +245,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     value: p,
   }));
 
-  const assignmentCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
-    // `entity` row this table lists, and counting the full ids would report every one as unused.
-    for (const a of tagAssignments) {
-      const base = baseTagId(a.tagId);
-      counts[base] = (counts[base] ?? 0) + 1;
-    }
-    return counts;
-  }, [tagAssignments]);
-
+  // The scope's tags before the search: none says the scope has none, not that none matched.
+  const inScope = tags.filter((tag) => tag.appliesTo.includes(scope));
   const filtered = shownBy(tags, narrowings).sort((a, b) =>
     a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1,
   );
@@ -253,6 +269,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setFormDomains([]);
     setOutside([]);
     setFormCited([]);
+    tagRequired.reset();
   };
 
   const closeForm = () => {
@@ -346,7 +363,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   };
 
   const handleSubmit = async () => {
-    if (!formId.trim() || formScopes.length === 0) return;
+    if (!tagRequired.validate()) return;
     const id = formId.trim();
     // A new tag is created; the open one updated (a create refuses an id that exists).
     const save = editingId === null ? createTag : updateTag;
@@ -396,10 +413,12 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   };
 
   const handleAddValue = async (tagId: string) => {
+    if (!valueRequired.validate()) return;
     const result = await upsertTagParamValue(tagId, newValue.trim(), newValueDescription.trim());
     if (result.success) {
       setNewValue("");
       setNewValueDescription("");
+      valueRequired.reset();
     } else {
       notifications.show({ color: "red", message: result.message });
     }
@@ -428,6 +447,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
           <TextInput
             label={t("tagsTab.idLabel")}
             placeholder={t("tagsTab.idPlaceholder")}
+            {...tagRequired.field("id")}
             value={formId}
             disabled={editingId !== null}
             onChange={(e) => setFormId(e.currentTarget.value)}
@@ -445,6 +465,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
       <FormField hint={t("tagsTab.appliesToDesc")} size="full">
         <Checkbox.Group
           label={t("tagsTab.appliesToLabel")}
+          {...tagRequired.field("scopes")}
           value={formScopes}
           onChange={setFormScopes}
         >
@@ -557,7 +578,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         onCancel={closeForm}
         saveProps={{
           "data-testid": "tags-save",
-          disabled: !formId.trim() || formScopes.length === 0,
         }}
       />
     </FormLayout>
@@ -636,20 +656,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 },
               ]
             : []),
-          { label: t("tagsTab.reasonPolicyLabel"), value: policyLabel(tag.reasonPolicy) },
-          { label: t("tagsTab.expiresPolicyLabel"), value: policyLabel(tag.expiresPolicy) },
-          {
-            label: t("tagsTab.paramPolicyLabel"),
-            value: t(`tagsTab.paramPolicy_${tag.paramPolicy}`),
-          },
-          {
-            label: t("tagCitations.requiresCitationLabel"),
-            value: tag.requiresCitation ? t("detailFields.yes") : t("detailFields.no"),
-          },
-          {
-            label: t("tagsTab.requiredLabel"),
-            value: tag.required ? t("detailFields.yes") : t("detailFields.no"),
-          },
           {
             label: t("tagCitations.definitionLabel"),
             value: (
@@ -662,6 +668,36 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
           },
         ]}
       />
+      {/* REQ-2208: what the tag asks of each assignment, its template, in a section of its own. */}
+      <Collapsibles id="tags.panel">
+        <CollapsibleItem
+          value="template"
+          title={t("tagsTab.templateSection")}
+          controlTestId={`tags-template-${tag.id}-toggle`}
+          testId={`tags-template-${tag.id}`}
+        >
+          <DetailFields
+            testId={`tags-template-read-${tag.id}`}
+            fields={[
+              { label: t("tagsTab.reasonPolicyLabel"), value: policyLabel(tag.reasonPolicy) },
+              { label: t("tagsTab.expiresPolicyLabel"), value: policyLabel(tag.expiresPolicy) },
+              {
+                label: t("tagsTab.paramPolicyLabel"),
+                value: t(`tagsTab.paramPolicy_${tag.paramPolicy}`),
+              },
+              {
+                label: t("tagCitations.requiresCitationLabel"),
+                value: tag.requiresCitation ? t("detailFields.yes") : t("detailFields.no"),
+              },
+              {
+                label: t("tagsTab.requiredLabel"),
+                value: tag.required ? t("detailFields.yes") : t("detailFields.no"),
+              },
+            ]}
+          />
+        </CollapsibleItem>
+      </Collapsibles>
+      {readOnly && <TagUsesRead tag={tag} uses={uses} />}
       {/* REQ-1467: the value list is editable even on a system tag -- the tag itself is
           code-defined, but which values it admits is the maintainer's call. */}
       {tag.paramPolicy === "required" && (
@@ -705,6 +741,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               <FormField size="medium">
                 <TextInput
                   label={t("tagsTab.newValueLabel")}
+                  {...valueRequired.field("value")}
                   value={newValue}
                   onChange={(e) => setNewValue(e.currentTarget.value)}
                   data-testid={`tags-new-value-${tag.id}`}
@@ -721,7 +758,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               <FormFooter
                 action={
                   <Button
-                    disabled={newValue.trim() === ""}
                     onClick={() => void handleAddValue(tag.id)}
                     data-testid={`tags-add-value-${tag.id}`}
                   >
@@ -834,6 +870,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
             <SortGroupTable
               selection={readOnly ? undefined : selection}
               testPrefix="tags"
+              testId="tags-list"
+              emptyTestId="tags-empty"
               minWidth={640}
               rows={filtered}
               columns={[
@@ -866,7 +904,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               ]}
               colSpan={readOnly ? 6 : 4}
               rowKey={(tag) => tag.id}
-              empty={t("tagsTab.empty")}
+              // A list a filter emptied says so, never that there are no tags.
+              empty={inScope.length === 0 ? t("tagsTab.empty") : t("tagsTab.noMatch")}
               page={{ index: safePage - 1, size: PAGE_SIZE }}
               onGroupedChange={setGrouped}
               render={(tag) => [
@@ -878,11 +917,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 >
                   <Table.Td>
                     {tag.id}
-                    {(tag.required ||
-                      tag.reasonPolicy === "required" ||
-                      tag.expiresPolicy === "required" ||
-                      tag.requiresCitation ||
-                      tag.needsReview) && (
+                    {/* REQ-2208: the template's requirements (reason, expiry) are the panel's. */}
+                    {(tag.required || tag.requiresCitation || tag.needsReview) && (
                       <Group gap={4} mt={2}>
                         {tag.required && (
                           <Badge
@@ -910,20 +946,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                               {t("tagCitations.needsReview")}
                             </Badge>
                           </Tip>
-                        )}
-                        {tag.reasonPolicy === "required" && (
-                          <Badge size="xs" variant="light" color="gray">
-                            {t("tagsTab.reasonPolicyBadge", {
-                              policy: policyLabel(tag.reasonPolicy),
-                            })}
-                          </Badge>
-                        )}
-                        {tag.expiresPolicy === "required" && (
-                          <Badge size="xs" variant="light" color="gray">
-                            {t("tagsTab.expiresPolicyBadge", {
-                              policy: policyLabel(tag.expiresPolicy),
-                            })}
-                          </Badge>
                         )}
                       </Group>
                     )}
@@ -974,9 +996,28 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   );
 }
 
-/** REQ-2259: a tag's tables and columns and what depends on it, on the Context Tags page. A derived
- * tag is computed off each table's registration and never assigned, so it is applied nowhere by
- * name. */
+/** The open tag's context read, once loaded: a tag the read does not hold is a defect. */
+function tagUse(tag: Tag, uses: Map<string, ContextTagUse>): ContextTagUse {
+  const use = uses.get(tag.id);
+  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
+  return use;
+}
+
+/** REQ-2259, REQ-2208: the panel's Where applied and Depends on it, on the Context Tags page. */
+function TagUsesRead({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
+  if (uses === null) return null;
+  const use = tagUse(tag, uses);
+  return (
+    <>
+      <TagWhereApplied tagId={tag.id} use={use} />
+      <TagDependents tagId={tag.id} use={use} />
+    </>
+  );
+}
+
+/** REQ-2259, REQ-2208: a tag's tables and columns and what depends on it, on the Context Tags page,
+ * one line each: the counts; the panel names them. A derived tag is computed off each table's
+ * registration and never assigned, so it is applied nowhere by name. */
 function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
   const { t } = useTranslation();
   if (uses === null) {
@@ -987,41 +1028,21 @@ function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagU
       </>
     );
   }
-  const use = uses.get(tag.id);
-  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
-  const none = use.rowFilters === 0 && use.classificationKinds.length === 0;
+  const use = tagUse(tag, uses);
   return (
     <>
-      <Table.Td>
-        <ContextPlaces
-          places={use.usages}
-          hidden={use.hiddenUsages}
-          testId={`tags-where-${tag.id}`}
-        />
+      <Table.Td data-testid={`tags-where-summary-${tag.id}`}>
+        <Text size="xs" c={use.usages.length + use.hiddenUsages === 0 ? "dimmed" : undefined}>
+          {whereAppliedSummary(use, t)}
+        </Text>
       </Table.Td>
-      <Table.Td data-testid={`tags-dependents-${tag.id}`}>
-        {none ? (
-          <Text size="xs" c="dimmed">
-            {t("contextViews.noDependents")}
-          </Text>
-        ) : (
-          <Stack gap={2}>
-            {use.rowFilters > 0 && (
-              <Text size="xs">{t("contextViews.rowFilters", { count: use.rowFilters })}</Text>
-            )}
-            {use.classificationKinds.map((k) => (
-              <Text size="xs" key={k}>
-                <EntityLink
-                  kind="classification"
-                  id={k}
-                  testId={`tags-classification-${tag.id}-${k}`}
-                >
-                  {t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) })}
-                </EntityLink>
-              </Text>
-            ))}
-          </Stack>
-        )}
+      <Table.Td data-testid={`tags-dependents-summary-${tag.id}`}>
+        <Text
+          size="xs"
+          c={use.rowFilters + use.classificationKinds.length === 0 ? "dimmed" : undefined}
+        >
+          {dependentsSummary(use, t)}
+        </Text>
       </Table.Td>
     </>
   );

@@ -283,7 +283,16 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
         t,
         search,
         () => setSearch(""),
-        (m) => [m.name, m.expression, m.description ?? "", m.term ?? ""],
+        // Every text a metric's row shows, and the glossary term it names.
+        (m) => [
+          m.name,
+          m.fromFact ? t("metricsPage.fromFact") : "",
+          m.expression,
+          m.datatype,
+          m.description,
+          m.aiContext,
+          m.term,
+        ],
       ),
     [t, search, setSearch],
   );
@@ -589,7 +598,8 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
                 <Table.Tbody>
                   {shownMetrics.length === 0 && (
                     <ListEmpty colSpan={5} testId="metrics-empty">
-                      {t("metricsPage.empty")}
+                      {/* A list a filter emptied says so, never that nothing is registered. */}
+                      {metrics.length === 0 ? t("metricsPage.empty") : t("metricsPage.noMatch")}
                     </ListEmpty>
                   )}
                   <ListItems

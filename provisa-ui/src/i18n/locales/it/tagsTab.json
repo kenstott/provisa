@@ -40,8 +40,6 @@
     "policy_required": "Obbligatorio",
     "requiredLabel": "Obbligatorio",
     "requiredDesc": "Ogni oggetto dei tipi indicati in «Si applica a» deve avere questo tag. Un oggetto senza il tag risulta mancante nel report dei tag.",
-    "reasonPolicyBadge": "Motivo: {{policy}}",
-    "expiresPolicyBadge": "Scadenza: {{policy}}",
     "createButton": "Crea tag",
     "saveButton": "Salva tag",
     "colId": "ID",
@@ -50,6 +48,7 @@
     "colAssignments": "Assegnazioni",
     "colActions": "Azioni",
     "empty": "Nessun tag per questo ambito",
+    "noMatch": "Nessun tag corrisponde al filtro",
     "systemTag": "Tag di sistema (sola lettura)",
     "editTag": "Modifica tag {{id}}",
     "deleteTag": "Elimina tag {{id}}",
@@ -65,6 +64,7 @@
     "purposeAria": "Informazioni sui tag",
     "outsideTitle": "Assegnazioni fuori dai domini consentiti",
     "outsideBody": "Il salvataggio ha mantenuto queste assegnazioni. Togli il tag da un oggetto a cui non appartiene più.",
-    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}",
+    "templateSection": "Modello"
   }
 }

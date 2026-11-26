@@ -96,9 +96,22 @@ export function searchNarrowing<T>(
   clear: () => void,
   texts: (item: T) => (string | null | undefined)[],
 ): Narrowing<T> | null {
+  return searchMatchNarrowing<T>(t, search, clear, (item) => matchesQuery(texts(item), search));
+}
+
+/**
+ * The page's search where whether an item holds it is the page's own reading (`holds`), as for an
+ * item drawn as several rows; null while there is none.
+ */
+export function searchMatchNarrowing<T>(
+  t: TFunction,
+  search: string,
+  clear: () => void,
+  holds: (item: T) => boolean,
+): Narrowing<T> | null {
   if (search.trim() === "") return null;
   return {
-    hides: (item) => !matchesQuery(texts(item), search),
+    hides: (item) => !holds(item),
     reason: () => t("detailInList.bySearch", { search }),
     action: () => t("detailInList.clearSearch"),
     bringIn: clear,

@@ -98,7 +98,14 @@ export function TeamPage() {
       t,
       search,
       () => setSearch(""),
-      (m) => [m.display_name, m.email, m.user_id, m.provider],
+      // Every text a member's row shows, and the id it is known by.
+      (m) => [
+        m.display_name,
+        m.email,
+        m.user_id,
+        m.provider,
+        m.is_org_admin ? t("teamPage.yes") : t("teamPage.no"),
+      ],
     ),
   ];
   const detail = useRememberedDetail(
@@ -570,7 +577,12 @@ export function TeamPage() {
                 />
                 <Table.Tbody>
                   {shownMembers.length === 0 && (
-                    <ListEmpty colSpan={3}>{t("teamPage.noMembers")}</ListEmpty>
+                    <ListEmpty colSpan={3} testId="team-members-empty">
+                      {/* A list a filter emptied says so. */}
+                      {members.length === 0
+                        ? t("teamPage.noMembers")
+                        : t("teamPage.noMembersMatch")}
+                    </ListEmpty>
                   )}
                   <ListItems
                     state={memberSortGroup}

@@ -48,8 +48,9 @@ interface DetailView {
 const TABLE_VIEW = {
   param: "table",
   tab: { param: "section", first: "identity" },
-  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab.
-  alsoClears: ["column", "open", "tab"],
+  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab;
+  // REQ-2277: `profile` and `profileView` are the table's profile runs dialog and its result.
+  alsoClears: ["column", "open", "tab", "profile", "profileView"],
   alsoNames: ["open"],
 } as const;
 
@@ -59,10 +60,21 @@ export const DETAIL_VIEWS = {
   views: { route: "/views", ...TABLE_VIEW },
   relationships: { route: "/relationships", param: "relationship" },
   ontology: { route: "/context/ontology", param: "term" },
-  library: { route: "/context/documents", param: "document" },
+  // REQ-2208: ``at`` marks a section on the Sections tab (entityHref's ``section``).
+  library: {
+    route: "/context/documents",
+    param: "document",
+    tab: { param: "tab", first: "overview" },
+    alsoClears: ["at"],
+  },
   metrics: { route: "/metrics", param: "metric" },
-  // REQ-2158: a linked contract is the linked product's.
-  products: { route: "/data-products", param: "product", alsoClears: ["contract"] },
+  // REQ-2158: a linked contract is the linked product's; REQ-2277: so is a dataset's profile runs
+  // dialog (`table` names the dataset).
+  products: {
+    route: "/data-products",
+    param: "product",
+    alsoClears: ["contract", "table", "profile", "profileView"],
+  },
   // A role and a derived role share the page's list and its one panel: opening one closes the other.
   roles: {
     route: "/security/roles",
@@ -188,6 +200,11 @@ export interface DetailParam {
    * same write as the panel's, so it composes with an open or a close in the same handler.
    */
   setParam: (name: string, value: string | null, how?: { replace?: boolean }) => void;
+  /**
+   * Names the object a parameter naming it another way (`alsoNames`) points to by `id` instead,
+   * replacing the entry: the same object, so its tab and marks stay (REQ-2277 rule 4).
+   */
+  resolve: (id: string) => void;
 }
 
 // The router applies a new location as a transition, after the page's own state changes made in
@@ -313,7 +330,15 @@ export function useDetailParam(page: DetailPage): DetailParam {
       }, how?.replace),
     [write],
   );
-  return { id, tab, open, setTab, close, setParam };
+  const resolve = useCallback(
+    (next: string) =>
+      write((p) => {
+        for (const other of view.alsoNames ?? []) p.delete(other);
+        p.set(view.param, next);
+      }, true),
+    [write, view],
+  );
+  return { id, tab, open, setTab, close, setParam, resolve };
 }
 
 /**

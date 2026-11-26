@@ -29,6 +29,7 @@
     "cacheOn": "on",
     "cacheOff": "off",
     "empty": "No sources found.",
+    "noMatch": "No sources match the filter.",
     "discover": "Discover",
     "mapTable": "Map Table",
     "refreshSchema": "Refresh Schema",

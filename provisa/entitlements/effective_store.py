@@ -256,17 +256,18 @@ async def write_person(
     to their lists or role grants, once the runtime holds it. With no model built yet there is
     no version for the bits to be over and nothing is written: every build's after-answer pass
     recomputes every holder's rows (:func:`write_every_holder`), the first build's included.
-    Who owns and stewards each object (object_owners) is rewritten from the store either way: a
-    change to a person's rows may change it (REQ-2219)."""
+    What ``principal`` owns and stewards (their object_owners rows) is rewritten from the store
+    either way: a change to a person's rows may change it (REQ-2219). Only their rows: no one
+    else's depend on theirs."""
     from provisa.entitlements.owners import write_object_owners
 
     if state.names_table is None:
-        await write_object_owners(conn)
+        await write_object_owners(conn, principal)
         return 0
     at = datetime.now(UTC) if now is None else now
     role_ids = await held_role_ids(conn, state, principal)
     written = await write_rows(conn, principal, compute_rows(state, principal, role_ids, at))
-    await write_object_owners(conn)
+    await write_object_owners(conn, principal)
     return written
 
 

@@ -64,6 +64,7 @@ import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { RoutePageHelp } from "../../components/RoutePageHelp";
 
 const EMPTY_RULE = {
   tableId: "",
@@ -303,6 +304,8 @@ export function SecurityRlsPage() {
     setShowRuleForm(true);
   };
 
+  const rightsLabel = (r: RLSRule) =>
+    r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", ");
   // The domains a rule is in: a tag rule is in every domain that holds a table carrying the tag;
   // another, its action's, its own, or its table's.
   const ruleDomains = (r: RLSRule): string[] => {
@@ -340,7 +343,8 @@ export function SecurityRlsPage() {
       t,
       ruleSearch,
       () => setRuleSearch(""),
-      (r) => [r.roleId, scopeText(r), r.description],
+      // Every text a rule's row shows.
+      (r) => [String(r.id), scopeText(r), r.roleId, rightsLabel(r), r.filterExpr, r.description],
     ),
   ];
   const filtered = shownBy(rules, narrowings);
@@ -369,8 +373,6 @@ export function SecurityRlsPage() {
         : r.domainId
           ? r.domainId
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-  const rightsLabel = (r: RLSRule) =>
-    r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", ");
   const ruleColumns: ListColumn<RLSRule>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {
@@ -711,6 +713,7 @@ export function SecurityRlsPage() {
             ariaLabel={t("securityPage.purposeAria")}
             testId="security-purpose-help"
           />
+          <RoutePageHelp placement="own" />
         </Group>
       </Group>
 
@@ -745,7 +748,7 @@ export function SecurityRlsPage() {
             />
             <Table.Tbody>
               {filtered.length === 0 && (
-                <ListEmpty colSpan={6}>
+                <ListEmpty colSpan={6} testId="rules-empty">
                   {rules.length === 0
                     ? t("securityPage.noRulesDefined")
                     : t("securityPage.noRulesMatchFilter")}

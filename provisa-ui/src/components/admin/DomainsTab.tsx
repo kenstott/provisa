@@ -125,7 +125,17 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
         t,
         search,
         () => setSearch(""),
-        (d) => [d.id, d.description, aliases[d.id], d.parentDomainId],
+        // Every text a domain's row shows.
+        (d) => [
+          d.id,
+          d.description,
+          aliases[d.id],
+          d.parentDomainId,
+          ...shownStewards(d),
+          namedStewards(d).length === 0 && d.stewards.length === 0 && d.effectiveStewards.length > 0
+            ? t("adminPage.stewardInherited")
+            : "",
+        ],
       ),
     [t, search, setSearch, aliases],
   );
@@ -459,7 +469,12 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
                   />
                   <Table.Tbody>
                     {shownDomains.length === 0 && (
-                      <ListEmpty colSpan={5}>{t("adminPage.noDomains")}</ListEmpty>
+                      <ListEmpty colSpan={5} testId="domains-empty">
+                        {/* A list a filter emptied says so, never that none is defined. */}
+                        {userDomains.length === 0
+                          ? t("adminPage.noDomains")
+                          : t("adminPage.noDomainsMatch")}
+                      </ListEmpty>
                     )}
                     <ListItems
                       state={sortGroup}

@@ -4,7 +4,7 @@
     "connect": "Conectar origem",
     "register": "Registrar tabelas",
     "relate": "Descobrir relacionamentos",
-    "query": "Consultar",
+    "yourData": "Seus dados",
     "tablesCount_one": "{{count}} tabela",
     "tablesCount_other": "{{count}} tabelas",
     "registerHint": "Registre as tabelas desta origem para consultá-las.",
@@ -17,6 +17,16 @@
     "relateNotAllowedHint": "Criar relacionamentos exige o direito de criar relacionamentos. Siga para consultar as tabelas.",
     "queryHint": "Abre o explorador de consultas com uma consulta inicial sobre {{table}}.",
     "queryAction": "Abrir uma consulta inicial",
-    "complete": "Configuração concluída"
+    "complete": "Configuração concluída",
+    "skip": "Ignorar",
+    "skipped": "Ignorado",
+    "done": "Concluído",
+    "finish": "Concluir configuração",
+    "runAgain": "Executar configuração novamente",
+    "nothingToQueryHint": "Não há tabelas registradas para consultar.",
+    "newTablesHint_one": "{{count}} tabela registrada desde a configuração não tem relacionamento.",
+    "newTablesHint_other": "{{count}} tabelas registradas desde a configuração não têm relacionamento.",
+    "yourDataAction": "Mostrar seus dados",
+    "finishLater": "Concluir depois"
   }
 }

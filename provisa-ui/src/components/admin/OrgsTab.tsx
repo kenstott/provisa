@@ -75,6 +75,18 @@ export function OrgsTab({ title }: { title: string }) {
   const [orgInvites, setOrgInvites] = useState<OrgInvite[] | null>(null);
   const [view, setView] = useUrlTab<View>("view", VIEWS);
   const [search, setSearch] = useUrlFilter();
+  // REQ-1594: an invitation is spent when it has no redemptions left. "used_at is set" stopped
+  // describing that once a link could admit more than the one person it was minted for.
+  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
+
+  const tierLabel = (tier: OrgTier | null) =>
+    tier === null ? t("orgsTab.tierNotSet") : t(`orgsTab.tier_${tier}`);
+  const statusOf = (inv: OrgInvite) =>
+    isSpent(inv)
+      ? t("orgsTab.spentStatus")
+      : inv.used_at
+        ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
+        : t("orgsTab.activeStatus");
   // REQ-2277 rule 9: an org or an invite is open only while its tab's list, under the search,
   // shows its row; the other tab's list is not shown.
   const orgNarrowings = [
@@ -82,7 +94,8 @@ export function OrgsTab({ title }: { title: string }) {
       t,
       search,
       () => setSearch(""),
-      (o) => [o.id, o.name],
+      // Every text an organization's row shows.
+      (o) => [o.id, o.name, tierLabel(o.tier)],
     ),
   ];
   const inviteNarrowings = [
@@ -90,7 +103,15 @@ export function OrgsTab({ title }: { title: string }) {
       t,
       search,
       () => setSearch(""),
-      (i) => [i.org_name, i.token, i.created_by],
+      // Every text an invite's row shows.
+      (i) => [
+        i.org_name,
+        i.role_id,
+        i.token,
+        i.created_by,
+        new Date(i.expires_at).toLocaleDateString(),
+        statusOf(i),
+      ],
     ),
   ];
   const orgDetail = useRememberedDetail(
@@ -236,10 +257,6 @@ export function OrgsTab({ title }: { title: string }) {
     }));
   };
 
-  // REQ-1594: an invitation is spent when it has no redemptions left. "used_at is set" stopped
-  // describing that once a link could admit more than the one person it was minted for.
-  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
-
   const handleCreateInvite = () => {
     if (!inviteRequired.validate() || inviteOrgId === null) return;
     const orgId = inviteOrgId.trim();
@@ -289,14 +306,6 @@ export function OrgsTab({ title }: { title: string }) {
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);
   const orgSelectData = allOrgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
-  const tierLabel = (tier: OrgTier | null) =>
-    tier === null ? t("orgsTab.tierNotSet") : t(`orgsTab.tier_${tier}`);
-  const statusOf = (inv: OrgInvite) =>
-    isSpent(inv)
-      ? t("orgsTab.spentStatus")
-      : inv.used_at
-        ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
-        : t("orgsTab.activeStatus");
 
   const openOrg = view === "orgs" ? (allOrgs.find((o) => o.id === orgDetail.id) ?? null) : null;
   const openInvite =
@@ -576,6 +585,8 @@ export function OrgsTab({ title }: { title: string }) {
     <>
       <SortGroupTable
         testPrefix="orgs"
+        testId="orgs-list"
+        emptyTestId="orgs-empty"
         minWidth={480}
         rows={filteredOrgs}
         columns={[
@@ -591,7 +602,8 @@ export function OrgsTab({ title }: { title: string }) {
         headers={[{ col: "id" }, { col: "name" }, { col: "tier" }]}
         colSpan={3}
         rowKey={(org) => org.id}
-        empty={t("orgsTab.empty")}
+        // A list a filter emptied says so, never that there are none.
+        empty={allOrgs.length === 0 ? t("orgsTab.empty") : t("orgsTab.noMatch")}
         page={{ index: orgSafePage - 1, size: PAGE_SIZE }}
         onGroupedChange={setOrgsGrouped}
         render={(org) => (
@@ -629,6 +641,8 @@ export function OrgsTab({ title }: { title: string }) {
     <>
       <SortGroupTable
         testPrefix="org-invites"
+        testId="org-invites-list"
+        emptyTestId="org-invites-empty"
         minWidth={640}
         rows={filteredInvites}
         columns={[
@@ -673,7 +687,7 @@ export function OrgsTab({ title }: { title: string }) {
         ]}
         colSpan={6}
         rowKey={(inv) => inv.token}
-        empty={t("orgsTab.noInvites")}
+        empty={allInvites.length === 0 ? t("orgsTab.noInvites") : t("orgsTab.noInvitesMatch")}
         page={{ index: invSafePage - 1, size: PAGE_SIZE }}
         onGroupedChange={setInvitesGrouped}
         render={(inv) => (

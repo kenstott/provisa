@@ -635,17 +635,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         self._graph_vars[alias or expr_text] = graph_var_kind_edge
         endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
         if endpoints:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            rel_type = self._rel_var_type_exprs.get(expr_text) or self._rel_var_types[expr_text]
-            edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                rel_type,
-                src_alias,
-                src_nm,
-                tgt_alias,
-                tgt_nm,
-                is_reversed,
-                self._rel_var_via.get(expr_text),  # REQ-1586
-            )
+            _, _, tgt_alias, tgt_nm, _ = endpoints
+            edge_expr: exp.Expression = self._temporal_context().resolve_graph_element(expr_text)  # pyright: ignore[reportPrivateImportUsage, reportAssignmentType]  # lib omits __all__; a typed relationship always resolves
             matched = getattr(self, "_rel_var_matched", {}).get(expr_text)
             if matched is not None:
                 # Between two nodes the statement holds (#303): an edge where its condition holds.

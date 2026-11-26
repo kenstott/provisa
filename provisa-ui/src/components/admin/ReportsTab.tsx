@@ -75,12 +75,15 @@ export function ReportsTab({ title }: { title: string }) {
   // The list is narrowed by name or description. REQ-2277 rule 9: a report is open only while the
   // list shows its row.
   const [filter, setFilter] = useUrlFilter();
+  const kindOf = (r: ListedTable) =>
+    r.sourceId === DERIVED_SOURCE_ID ? t("reportsTab.kindCustom") : t("reportsTab.kindBuiltIn");
   const narrowings = [
     searchNarrowing<ListedTable>(
       t,
       filter,
       () => setFilter(""),
-      (r) => [r.alias, r.tableName, r.description],
+      // Every text a report's row shows, and the table it reads.
+      (r) => [nameOf(r), r.tableName, r.description, kindOf(r)],
     ),
   ];
   const detail = useRememberedDetail(
@@ -143,9 +146,6 @@ export function ReportsTab({ title }: { title: string }) {
     detail.close({ only: report.tableName });
     refetchTables();
   };
-
-  const kindOf = (r: ListedTable) =>
-    r.sourceId === DERIVED_SOURCE_ID ? t("reportsTab.kindCustom") : t("reportsTab.kindBuiltIn");
 
   const addForm = (
     <FormLayout data-testid="report-add-form">

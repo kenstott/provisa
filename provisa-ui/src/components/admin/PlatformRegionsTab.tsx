@@ -119,7 +119,13 @@ export function PlatformRegionsTab({ title }: { title: string }) {
       t,
       search,
       () => setSearch(""),
-      (r) => [r.id, r.description, ...r.purposes],
+      // Every text a region's row shows: its purposes by the names their badges give them.
+      (r) => [
+        r.id,
+        r.description,
+        ...r.purposes,
+        ...r.purposes.map((p) => t(`regionPurposes.name.${p}`)),
+      ],
     ),
   ];
   const detail = useRememberedDetail(
@@ -489,7 +495,10 @@ function RegionsSection({
               <Table.Tbody>
                 {regions.length === 0 && (
                   <ListEmpty colSpan={3} testId="platform-regions-empty">
-                    {t("platformRegions.none")}
+                    {/* A list a filter emptied says so, never that none is declared. */}
+                    {data.regions.length === 0
+                      ? t("platformRegions.none")
+                      : t("platformRegions.noMatch")}
                   </ListEmpty>
                 )}
                 <ListItems

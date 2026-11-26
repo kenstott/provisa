@@ -72,6 +72,7 @@ import { EnvironmentActions } from "./EnvironmentActions";
 import { EnvironmentRow } from "./EnvironmentRow";
 import { SyntheticSeedFields, SyntheticSeedTick } from "./SyntheticSeedFields";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import type { SyntheticSeed } from "./syntheticSeed";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { Tip } from "../Tip";
@@ -178,15 +179,28 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const mode: DataMode = canAdminister ? dataMode : "inherit";
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<string | null>("environments");
-  // REQ-2277 rule 9: an environment is open only while the list, under the search, shows its row.
-  const narrowings = [
-    searchNarrowing<Environment>(
-      t,
-      search,
-      () => setSearch(""),
-      (e) => [e.name, e.parent, e.created_by],
-    ),
+  // REQ-1546: where each branch stands against the remote, computed from refs and never from the
+  // network — rendering this page dials nobody's git host.
+  const [sync, setSync] = useState<Record<string, BranchSync>>({});
+  // REQ-1552: an org with no remote is not "in sync" — nothing it holds is mirrored anywhere, and
+  // the page says so once rather than leaving every row looking like a branch nobody has pushed.
+  const [remoteConfigured, setRemoteConfigured] = useState<boolean | null>(null);
+  // Every text an environment's row (EnvironmentRow) shows.
+  const envRowTexts = (e: Environment) => [
+    e.name,
+    e.drifted ? t("environmentsTab.drifted") : "",
+    isBase(e)
+      ? t("environmentsTab.ownConnections")
+      : t("environmentsTab.branchOf", { env: e.parent }),
+    t(`environmentStage.${e.stage}`),
+    syncBadge(e.name)?.label,
+    e.created_by,
+    e.expires_at,
+    Object.keys(e.expired_kept_by).length > 0 ? t("environmentsTab.expiredKept") : "",
+    e.protected ? t("detailFields.yes") : t("detailFields.no"),
   ];
+  // REQ-2277 rule 9: an environment is open only while the list, under the search, shows its row.
+  const narrowings = [searchNarrowing<Environment>(t, search, () => setSearch(""), envRowTexts)];
   const detail = useRememberedDetail(
     "environments",
     detailListOf(
@@ -216,13 +230,11 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const [preview, setPreview] = useState<CopyReport | null>(null);
   const [merging, setMerging] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // REQ-1968: a new environment needs a name; a merge needs a target and a message. Each is checked
+  // when its action is pressed.
+  const createRequired = useRequiredFields({ name });
+  const mergeRequired = useRequiredFields({ into: mergeInto, message });
 
-  // REQ-1546: where each branch stands against the remote, computed from refs and never from the
-  // network — rendering this page dials nobody's git host.
-  const [sync, setSync] = useState<Record<string, BranchSync>>({});
-  // REQ-1552: an org with no remote is not "in sync" — nothing it holds is mirrored anywhere, and
-  // the page says so once rather than leaving every row looking like a branch nobody has pushed.
-  const [remoteConfigured, setRemoteConfigured] = useState<boolean | null>(null);
   // The one environment a repository action is running against, so its row shows the wait rather
   // than the whole table going busy.
   const [busy, setBusy] = useState<string | null>(null);
@@ -268,6 +280,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const orgId = activeOrgId;
 
   async function create() {
+    if (!createRequired.validate()) return;
     setCreating(true);
     try {
       const made = await createEnvironment(orgId, {
@@ -285,6 +298,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
       });
       setName("");
       setSynthetic(null);
+      createRequired.reset();
       setAdding(false);
       reload();
       detail.open(made.environment.name);
@@ -434,10 +448,12 @@ export function EnvironmentsTab({ title }: { title: string }) {
     setRetireSource(false);
     setRetireRemote(false);
     setPreview(null);
+    mergeRequired.reset();
   }
 
   async function runPreview() {
-    if (!mergeSource || mergeInto === null) return;
+    // A preview needs only the target; the message is the merge's own.
+    if (!mergeSource || !mergeRequired.validate(["into"]) || mergeInto === null) return;
     try {
       const answer = await previewMerge(orgId, mergeInto, mergeSource.name, removals, selection);
       setPreview(answer.report);
@@ -447,7 +463,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
   }
 
   async function runMerge() {
-    if (!mergeSource || mergeInto === null) return;
+    if (!mergeSource || !mergeRequired.validate() || mergeInto === null) return;
     setMerging(true);
     try {
       const answer = await mergeEnvironment(orgId, mergeInto, {
@@ -488,7 +504,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
    * opens the request; asking twice returns the request that is already open rather than a second.
    */
   async function runReview() {
-    if (!mergeSource || mergeInto === null) return;
+    if (!mergeSource || !mergeRequired.validate() || mergeInto === null) return;
     setReviewing(true);
     try {
       const answer = await requestReview(orgId, mergeSource.name, {
@@ -551,9 +567,13 @@ export function EnvironmentsTab({ title }: { title: string }) {
       <FormField size="medium">
         <TextInput
           label={t("environmentsTab.newName")}
+          {...createRequired.field("name")}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
-          ref={newName}
+          ref={(el: HTMLInputElement | null) => {
+            newName.current = el;
+            createRequired.field("name").ref(el);
+          }}
           data-testid="env-new-name"
         />
       </FormField>
@@ -595,7 +615,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
             leftSection={<GitBranch size={14} aria-hidden />}
             onClick={create}
             loading={creating}
-            disabled={name.trim() === ""}
             data-testid="env-create"
           >
             {t("environmentsTab.create")}
@@ -744,6 +763,14 @@ export function EnvironmentsTab({ title }: { title: string }) {
                 list={
                   <SortGroupTable
                     testPrefix="environments"
+                    testId="environments-list"
+                    emptyTestId="environments-empty"
+                    // A list a filter emptied says so, never that there are none.
+                    empty={
+                      envs.length === 0
+                        ? t("environmentsTab.noEnvironments")
+                        : t("environmentsTab.noMatch")
+                    }
                     rows={shownEnvs}
                     columns={[
                       {
@@ -864,6 +891,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
               <Select
                 label={t("environmentsTab.mergeIntoLabel")}
                 data={names.filter((n) => n !== mergeSource?.name)}
+                {...mergeRequired.field("into")}
                 value={mergeInto}
                 onChange={setMergeInto}
                 data-testid="env-merge-into"
@@ -882,8 +910,8 @@ export function EnvironmentsTab({ title }: { title: string }) {
               <Textarea
                 label={t("environmentsTab.mergeMessage")}
                 value={message}
+                {...mergeRequired.field("message")}
                 onChange={(e) => setMessage(e.currentTarget.value)}
-                required
                 data-testid="env-merge-message"
               />
             </FormField>
@@ -1004,24 +1032,14 @@ export function EnvironmentsTab({ title }: { title: string }) {
             {/* The merge first, at the start; what looks before or asks someone else follows. */}
             <FormFooter
               action={
-                <Button
-                  onClick={runMerge}
-                  loading={merging}
-                  disabled={mergeInto === null || message.trim() === ""}
-                  data-testid="env-merge-run"
-                >
+                <Button onClick={runMerge} loading={merging} data-testid="env-merge-run">
                   {intoEnv?.protected
                     ? t("environmentsTab.propose")
                     : t("environmentsTab.mergeConfirm")}
                 </Button>
               }
             >
-              <Button
-                variant="default"
-                onClick={runPreview}
-                disabled={mergeInto === null}
-                data-testid="env-merge-preview-run"
-              >
+              <Button variant="default" onClick={runPreview} data-testid="env-merge-preview-run">
                 {t("environmentsTab.preview")}
               </Button>
               {/* REQ-1551: for a target branch the git host governs with pull requests, the review
@@ -1031,7 +1049,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
                   variant="subtle"
                   onClick={runReview}
                   loading={reviewing}
-                  disabled={mergeInto === null || message.trim() === ""}
                   data-testid="env-merge-review"
                 >
                   {t("environmentsTab.requestReview")}

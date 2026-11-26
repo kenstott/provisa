@@ -2019,20 +2019,28 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     import type { ReadContext } from "@provisa/services";
 
     export interface ScoreInputs {
-      customerId?: string;
+      customer_id?: string;
     }
 
     export interface Score {
-      customerId: string;
+      customer_id: string;
       score: number;
     }
 
-    /** Churn scores of every customer in one batch.
+    /** Churn score of each customer in the batch.
      * @table
      * @loader
      */
-    export async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
-      return [];
+    export async function churnScore(
+      inputs: ScoreInputs,
+      context: ReadContext,
+    ): Promise<Score[] | Record<string, Score[]>> {
+      const keys = context.keys ?? { "": { customer_id: inputs.customer_id } };
+      const out: Record<string, Score[]> = {};
+      for (const [h, key] of Object.entries(keys)) {
+        out[h] = [{ customer_id: String(key.customer_id), score: 0.5 }];
+      }
+      return context.keys ? out : out[""];
     }
     ```
 
@@ -2042,22 +2050,32 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     import { table, type ReadContext } from "@provisa/sdk";
 
     export interface ScoreInputs {
-      customerId?: string;
+      customer_id?: string;
     }
 
     export interface Score {
-      customerId: string;
+      customer_id: string;
       score: number;
     }
 
-    /** Churn scores of every customer in one batch. */
+    /** Churn score of each customer in the batch. */
     export const churnScore = table(
-      async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
-        return [];
+      async function churnScore(
+        inputs: ScoreInputs,
+        context: ReadContext,
+      ): Promise<Score[] | Record<string, Score[]>> {
+        const keys = context.keys ?? { "": { customer_id: inputs.customer_id } };
+        const out: Record<string, Score[]> = {};
+        for (const [h, key] of Object.entries(keys)) {
+          out[h] = [{ customer_id: String(key.customer_id), score: 0.5 }];
+        }
+        return context.keys ? out : out[""];
       },
-      { loader: true }, // or { loader: 50 }
+      { loader: true },
     );
     ```
+
+`{ loader: 50 }` is `@loader 50`.
 
 **`@stream`**
 
@@ -2067,18 +2085,20 @@ The function is an async generator.
 
     ```typescript
     export interface AuditInputs {
-      actor?: string;
+      user?: string;
     }
 
     export interface AuditEvent {
-      actor: string;
+      user: string;
       action: string;
     }
 
-    /** Audit events as they arrive.
+    /** Audit events as they happen.
      * @stream
      */
-    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {}
+    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {
+      yield { user: inputs.user ?? "admin", action: "login" };
+    }
     ```
 
 === "SDK"
@@ -2087,18 +2107,20 @@ The function is an async generator.
     import { stream } from "@provisa/sdk";
 
     export interface AuditInputs {
-      actor?: string;
+      user?: string;
     }
 
     export interface AuditEvent {
-      actor: string;
+      user: string;
       action: string;
     }
 
-    /** Audit events as they arrive. */
-    export const auditEvents = stream(
-      async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {},
-    );
+    /** Audit events as they happen. */
+    export const auditEvents = stream(async function* auditEvents(
+      inputs: AuditInputs,
+    ): AsyncGenerator<AuditEvent> {
+      yield { user: inputs.user ?? "admin", action: "login" };
+    });
     ```
 
 **`@command`**
@@ -2106,11 +2128,11 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** Cancel one order.
+    /** Cancels an order.
      * @command
      */
     export async function cancelOrder(orderId: number): Promise<boolean> {
-      return true;
+      return orderId > 0;
     }
     ```
 
@@ -2119,9 +2141,9 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
-    /** Cancel one order. */
+    /** Cancels an order. */
     export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-      return true;
+      return orderId > 0;
     });
     ```
 
@@ -2132,10 +2154,10 @@ The function is an async generator.
     ```typescript
     export interface Order {
       id: number;
-      total: number;
+      status: string;
     }
 
-    /** Insert orders.
+    /** Adds orders.
      * @command
      * @insert orders
      */
@@ -2151,10 +2173,10 @@ The function is an async generator.
 
     export interface Order {
       id: number;
-      total: number;
+      status: string;
     }
 
-    /** Insert orders. */
+    /** Adds orders. */
     export const addOrders = command(
       async function addOrders(rows: Order[]): Promise<number> {
         return rows.length;
@@ -2172,27 +2194,19 @@ The function is an async generator.
 
     export interface Store {
       id: number;
-      regionId: number;
-    }
-
-    export interface Region {
-      id: number;
-      name: string;
+      region: string;
     }
 
     export interface Match {
-      storeId: number;
-      regionId: number;
+      store_id: number;
+      region: string;
     }
 
-    /** Match stores to regions.
+    /** The stores in one region.
      * @query
      */
-    export async function storesInRegions(
-      stores: TableRef<Store>,
-      regions: TableRef<Region>,
-    ): Promise<Match[]> {
-      return [];
+    export async function storesInRegion(stores: TableRef<Store>, region: string): Promise<Match[]> {
+      return [{ store_id: stores.columns.length, region }];
     }
     ```
 
@@ -2203,28 +2217,21 @@ The function is an async generator.
 
     export interface Store {
       id: number;
-      regionId: number;
-    }
-
-    export interface Region {
-      id: number;
-      name: string;
+      region: string;
     }
 
     export interface Match {
-      storeId: number;
-      regionId: number;
+      store_id: number;
+      region: string;
     }
 
-    /** Match stores to regions. */
-    export const storesInRegions = query(
-      async function storesInRegions(
-        stores: TableRef<Store>,
-        regions: TableRef<Region>,
-      ): Promise<Match[]> {
-        return [];
-      },
-    );
+    /** The stores in one region. */
+    export const storesInRegion = query(async function storesInRegion(
+      stores: TableRef<Store>,
+      region: string,
+    ): Promise<Match[]> {
+      return [{ store_id: stores.columns.length, region }];
+    });
     ```
 
 **`@columns`**
@@ -2237,11 +2244,11 @@ The function is an async generator.
       city: string;
     }
 
-    /** Parse raw addresses.
+    /** Splits a raw address.
      * @columns
      */
-    export function parseAddress(raw: string[]): Address[] {
-      return raw.map((street) => ({ street, city: "" }));
+    export async function parseAddress(raw: string[]): Promise<Address[]> {
+      return raw.map((r) => ({ street: r.split(",")[0], city: r.split(",")[1] ?? "" }));
     }
     ```
 
@@ -2255,9 +2262,9 @@ The function is an async generator.
       city: string;
     }
 
-    /** Parse raw addresses. */
-    export const parseAddress = columns(function parseAddress(raw: string[]): Address[] {
-      return raw.map((street) => ({ street, city: "" }));
+    /** Splits a raw address. */
+    export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
+      return raw.map((r) => ({ street: r.split(",")[0], city: r.split(",")[1] ?? "" }));
     });
     ```
 
@@ -2266,6 +2273,23 @@ The function is an async generator.
 Write each line in the JSDoc comment. No SDK wrapper.
 
 ```typescript
+import type { TableRef } from "@provisa/services";
+
+export interface Store {
+  id: number;
+}
+
+export interface Region {
+  code: string;
+}
+
+export interface Changed {
+  store_id: number;
+  region_id: string;
+  removed: boolean;
+  seq: number;
+}
+
 /** Store-region matches changed since `since`.
  * @change table=store_regions
  * @change key=store_id,region_id
@@ -2276,15 +2300,19 @@ export async function storeRegionChanges(
   stores: TableRef<Store>,
   regions: TableRef<Region>,
   since?: number,
-): Promise<Changed[]> { ... }
+): Promise<Changed[]> {
+  return [];
+}
 ```
 
 **`@on-start`**
 
+The function takes nothing, or the setup values: the values its `@requires` tags name.
+
 === "JSDoc"
 
     ```typescript
-    /** Called once on start.
+    /** Connects.
      * @on-start
      */
     export async function setup(values: Record<string, string>): Promise<void> {}
@@ -2295,7 +2323,7 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    /** Called once on start. */
+    /** Connects. */
     export const setup = onStart(async function setup(values: Record<string, string>): Promise<void> {});
     ```
 
@@ -2304,7 +2332,7 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** Called once on stop.
+    /** Disconnects.
      * @on-stop
      */
     export async function teardown(): Promise<void> {}
@@ -2315,7 +2343,7 @@ export async function storeRegionChanges(
     ```typescript
     import { onStop } from "@provisa/sdk";
 
-    /** Called once on stop. */
+    /** Disconnects. */
     export const teardown = onStop(async function teardown(): Promise<void> {});
     ```
 
@@ -2349,21 +2377,21 @@ export async function storeRegionChanges(
 
     ```typescript
     export interface Inputs {
-      region?: string;
+      account: string;
     }
 
     export interface Row {
-      id: number;
-      name: string;
+      account: string;
+      balance: number;
     }
 
-    /** Fetch rows.
+    /** Balances.
      * @table
      * @requires REGION
      * @requires API_KEY:secret
      */
-    export async function fetch(inputs: Inputs): Promise<Row[]> {
-      return [];
+    export async function balances(inputs: Inputs): Promise<Row[]> {
+      return [{ account: inputs.account, balance: 0 }];
     }
     ```
 
@@ -2373,22 +2401,26 @@ export async function storeRegionChanges(
     import { table } from "@provisa/sdk";
 
     export interface Inputs {
-      region?: string;
+      account: string;
     }
 
     export interface Row {
-      id: number;
-      name: string;
+      account: string;
+      balance: number;
     }
 
-    /** Fetch rows. */
-    export const fetch = table(
-      async function fetch(inputs: Inputs): Promise<Row[]> {
-        return [];
+    /** Balances. */
+    export const balances = table(
+      async function balances(inputs: Inputs): Promise<Row[]> {
+        return [{ account: inputs.account, balance: 0 }];
       },
       { requires: ["REGION", "API_KEY:secret"] },
     );
     ```
+
+**`@discover`**
+
+Node reads every tag Python does except `@discover`, which is read from a Python code source only.
 
 #### Parameter types
 
@@ -3768,21 +3800,20 @@ The SDK has no serde dependency, so it declares neither `TableRef` nor `ReadCont
 
 ### Spark reference {: #spark-reference }
 
-A Spark script is a Python file. Tags go in docstrings, exactly as for any Python resolver. The script imports `provisa_spark` to reach its Spark cluster, and `provisa_services` for governed table arguments and the read context.
+A Spark source has no script. It is a connection to a cluster, and what the cluster holds is served from its catalog. Logic the cluster does not hold is an ordinary Python code source: its functions open a Spark source's session by the source's name and run on that source's cluster.
 
-The script does not carry its own setup: Provisa reads the cluster URL and the script text from the Spark source's setup form.
+The Python code source needs the Spark Connect client among its own dependencies: `pyspark-client`, at the version of the cluster's Spark. PyPI carries it as an sdist only, and a code source installs wheels only, so ship its wheel with the code, named by path and hash in the code's `requirements.txt`, or serve the wheel from the organization's package index. The worker reaches the cluster through its egress proxy, so the cluster's host must be on the egress allow-list ([the sandbox](#the-sandbox)), as for any address the code calls.
 
-#### Tags
+#### Opening a session
 
-All Python docstring tags are available. The ones most relevant to Spark work are:
-
-**`@table`**
+`provisa_services.spark.session(name)` returns a `SparkSession` on the cluster of the Spark source `name`: the source's own cluster, or the organization's default Spark cluster when the source names none, with its stored credential. Provisa records each session opened in the organization's audit trail.
 
 === "Docstring"
 
     ```python
     from dataclasses import dataclass
-    from provisa_spark import session
+
+    import provisa_services as ps
 
 
     @dataclass
@@ -3796,7 +3827,8 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
         @table
         """
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        spark = ps.spark.session("lakehouse")
+        df = spark.sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
@@ -3804,8 +3836,9 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_sdk import table
-    from provisa_spark import session
 
 
     @dataclass
@@ -3817,51 +3850,22 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
     @table
     def sales() -> list[SalesRow]:
         """Daily sales by region."""
-        df = session().sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
+        spark = ps.spark.session("lakehouse")
+        df = spark.sql("SELECT region, SUM(amount) AS amount FROM delta.sales GROUP BY region")
         return [SalesRow(r.region, r.amount) for r in df.collect()]
     ```
 
-**`@command`**
+#### Governed tables on the cluster
 
-=== "Docstring"
-
-    ```python
-    from provisa_spark import session
-
-
-    def archive_orders(cutoff: str) -> int:
-        """Archive orders older than cutoff.
-
-        @command
-        """
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
-        return df.first()["num_affected_rows"]
-    ```
-
-=== "SDK"
-
-    ```python
-    from provisa_sdk import command
-    from provisa_spark import session
-
-
-    @command
-    def archive_orders(cutoff: str) -> int:
-        """Archive orders older than cutoff."""
-        df = session().sql(f"DELETE FROM delta.orders WHERE created < '{cutoff}'")
-        return df.first()["num_affected_rows"]
-    ```
-
-**`@query`**
-
-A `@query` function can take governed Provisa tables as `TableRef` parameters, reading them through Arrow Flight SQL.
+A `@query` can take governed Provisa tables as `TableRef` parameters. `provisa_services.spark.dataframe(session, table)` reads the table over Arrow Flight SQL as the calling role and hands its rows to the session as a `DataFrame`, so the cluster sees only the rows and columns that role may read.
 
 === "Docstring"
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_services import TableRef
-    from provisa_spark import dataframe
 
 
     @dataclass
@@ -3881,7 +3885,8 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
         @query
         """
-        frame = dataframe(orders).groupBy("region").sum("amount")
+        spark = ps.spark.session("lakehouse")
+        frame = ps.spark.dataframe(spark, orders).groupBy("region").sum("amount")
         return [Total(r[0], r[1]) for r in frame.collect()]
     ```
 
@@ -3889,9 +3894,10 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
 
     ```python
     from dataclasses import dataclass
+
+    import provisa_services as ps
     from provisa_sdk import query
     from provisa_services import TableRef
-    from provisa_spark import dataframe
 
 
     @dataclass
@@ -3909,106 +3915,17 @@ A `@query` function can take governed Provisa tables as `TableRef` parameters, r
     @query
     def regional_totals(orders: TableRef[Order]) -> list[Total]:
         """Totals of governed orders by region."""
-        frame = dataframe(orders).groupBy("region").sum("amount")
+        spark = ps.spark.session("lakehouse")
+        frame = ps.spark.dataframe(spark, orders).groupBy("region").sum("amount")
         return [Total(r[0], r[1]) for r in frame.collect()]
     ```
 
-**`@on-start`** and **`@on-stop`**
+#### Calls
 
-=== "Docstring"
-
-    ```python
-    from provisa_spark import session
-
-
-    def warmup(values: dict) -> None:
-        """@on-start"""
-        session()  # start the Spark Connect session once
-
-
-    def shutdown() -> None:
-        """@on-stop"""
-        session().stop()
-    ```
-
-=== "SDK"
-
-    ```python
-    from provisa_sdk import on_start, on_stop
-    from provisa_spark import session
-
-
-    @on_start
-    def warmup(values: dict) -> None:
-        session()  # start the Spark Connect session once
-
-
-    @on_stop
-    def shutdown() -> None:
-        session().stop()
-    ```
-
-**`@requires NAME` / `@requires NAME:secret`**
-
-Declares a setup value beyond the built-in `script` and `cluster`.
-
-=== "Docstring"
-
-    ```python
-    from dataclasses import dataclass
-
-
-    @dataclass
-    class Inputs:
-        day: str
-
-
-    @dataclass
-    class Row:
-        day: str
-        amount: float
-
-
-    def fetch(inputs: Inputs) -> list[Row]:
-        """@table
-        @requires DELTA_TABLE_PATH
-        """
-        ...
-    ```
-
-=== "SDK"
-
-    ```python
-    from dataclasses import dataclass
-
-    from provisa_sdk import requires, table
-
-
-    @dataclass
-    class Inputs:
-        day: str
-
-
-    @dataclass
-    class Row:
-        day: str
-        amount: float
-
-
-    @requires("DELTA_TABLE_PATH")
-    @table
-    def fetch(inputs: Inputs) -> list[Row]:
-        ...
-    ```
-
-#### Special imports
-
-| Import | What it gives you |
+| Call | What it gives you |
 |---|---|
-| `from provisa_spark import session` | A `SparkSession` connected to the configured cluster, created once and shared. |
-| `from provisa_spark import dataframe` | A governed `TableRef` argument as a Spark `DataFrame`, read through Arrow Flight SQL as the calling role. |
-| `from provisa_services import ReadContext` | The read context (filters, order, limit, columns, keys). |
-| `from provisa_services import TableRef` | The type annotation for a governed table argument. |
+| `provisa_services.spark.session(name)` | A `SparkSession` on the cluster of the Spark source `name`, with its stored credential. |
+| `provisa_services.spark.dataframe(session, table)` | A governed `TableRef` argument as a `DataFrame` on that session, read through Arrow Flight SQL as the calling role. |
 
 #### Column types
 

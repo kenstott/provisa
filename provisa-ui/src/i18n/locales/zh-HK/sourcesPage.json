@@ -29,6 +29,7 @@
     "cacheOn": "開",
     "cacheOff": "關",
     "empty": "找不到數據來源。",
+    "noMatch": "沒有符合篩選條件的數據來源。",
     "discover": "探索",
     "mapTable": "對應表格",
     "refreshSchema": "重新整理結構描述",

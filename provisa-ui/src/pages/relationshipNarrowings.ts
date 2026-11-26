@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2277 rule 9: what narrows the Relationships list -- the domains in view, the search (a
-// relationship is also found by its alias: a tour step names it so, demoTour.ts) and the Rel type
-// column filter -- each named so the page can say why a linked relationship is not listed.
+// REQ-2277 rule 9: what narrows the Relationships list -- the domains in view, the search (over
+// every text a relationship's row shows, and its alias: a tour step names it so, demoTour.ts) and
+// the Rel type column filter -- each named so the page can say why a linked relationship is not listed.
 
 import type { TFunction } from "i18next";
 import { filterNarrowing, searchNarrowing, type Narrowing } from "../components/list/leftOut";
@@ -24,6 +24,22 @@ import { matchesFilter as matchesColumnFilter, type FilterSpec } from "./sql/col
 export const relName = (r: Relationship) =>
   r.alias || `${r.sourceTableName} → ${r.targetTableName}`;
 
+/** The relationships the list holds: not a remote source's, nor the admin source's. */
+export function listableRelationships(
+  rels: readonly Relationship[],
+  tables: readonly { id: number; sourceId: string; schemaName: string }[],
+): Relationship[] {
+  const sourceOf = new Map(tables.map((tb) => [tb.id, tb.sourceId]));
+  const remote = new Set(
+    tables
+      .filter((tb) => tb.schemaName === "graphql_remote" || tb.schemaName === "grpc_remote")
+      .map((tb) => tb.id),
+  );
+  return rels.filter(
+    (r) => !remote.has(r.sourceTableId) && sourceOf.get(r.sourceTableId) !== "provisa-admin",
+  );
+}
+
 export function relationshipNarrowings(
   t: TFunction,
   {
@@ -32,6 +48,7 @@ export function relationshipNarrowings(
     addDomain,
     search,
     clearSearch,
+    rowTexts,
     relTypeFilter,
     clearRelTypeFilter,
   }: {
@@ -41,6 +58,8 @@ export function relationshipNarrowings(
     addDomain: (domain: string) => void;
     search: string;
     clearSearch: () => void;
+    /** Every text a relationship's row shows (relationshipRowTexts). */
+    rowTexts: (r: Relationship) => string[];
     relTypeFilter: FilterSpec | null;
     clearRelTypeFilter: () => void;
   },
@@ -72,11 +91,7 @@ export function relationshipNarrowings(
             for (const d of domainIds(r)) addDomain(d);
           },
         },
-    searchNarrowing<Relationship>(t, search, clearSearch, (r) => [
-      r.sourceTableName,
-      r.targetTableName,
-      r.alias,
-    ]),
+    searchNarrowing<Relationship>(t, search, clearSearch, (r) => [...rowTexts(r), r.alias]),
   ];
   // REQ-1586 (amended 2026-11-22): the Rel type column carries the list's column filter.
   const relTypeNarrowing = filterNarrowing<Relationship>(

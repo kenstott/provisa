@@ -29,7 +29,12 @@ import {
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { ProductSyncCell } from "./data-products/ProductSyncStatus";
-import { SYNC_ORDER, syncState, useProductSyncStatus } from "./data-products/productSync";
+import {
+  SYNC_ORDER,
+  syncLabel,
+  syncState,
+  useProductSyncStatus,
+} from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
@@ -63,6 +68,7 @@ import { ListBulkBar } from "../components/list/ListBulkBar";
 import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { useAuth } from "../context/AuthContext";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
@@ -202,13 +208,23 @@ export function DataProductsPage() {
   // REQ-2260: a visit without one reopens the product left open.
   // REQ-2277 rule 9: a product is open only while the list -- the search and every facet -- shows
   // its row.
+  const syncStatus = useProductSyncStatus();
   const productNarrowings = useMemo(
     () => [
       searchNarrowing<DataProduct>(
         t,
         search,
         () => updateSearch(""),
-        (p) => [p.id, p.name, p.domainId, ...ownerNames(p), p.purpose],
+        // Every text a product's row shows.
+        (p) => [
+          p.id,
+          p.domainId,
+          p.name,
+          ownerNames(p).join(", "),
+          t(`dataProductsTab.status_${p.status}`),
+          syncLabel(syncStatus.statuses[p.id] ?? [], t),
+          p.purpose,
+        ],
       ),
       filterNarrowing<DataProduct>(
         t,
@@ -233,7 +249,16 @@ export function DataProductsPage() {
       ),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are the page's own, fixed for its life; updateSearch and setToReviewOnly are redefined each render but act alike
-    [t, search, toReviewOnly, productFindings.findings, tagFilter, productTags, domainFilter],
+    [
+      t,
+      search,
+      syncStatus.statuses,
+      toReviewOnly,
+      productFindings.findings,
+      tagFilter,
+      productTags,
+      domainFilter,
+    ],
   );
   const detail = useRememberedDetail(
     "products",
@@ -250,6 +275,9 @@ export function DataProductsPage() {
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
+    // REQ-2277: a dataset's profile runs dialog, as the URL names it, once a product is open.
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
+    table: expanded !== null ? searchParams.get("table") : null,
     search,
     toReviewOnly,
     tags: tagFilter,
@@ -507,7 +535,6 @@ export function DataProductsPage() {
     () => shownBy(dataProducts, productNarrowings),
     [dataProducts, productNarrowings],
   );
-  const syncStatus = useProductSyncStatus();
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },

@@ -164,13 +164,17 @@ export function PackageRegistriesTab({ title }: { title: string }) {
   const [error, setError] = useState("");
   const [search, setSearch] = useUrlFilter();
   const kindLabel = (k: RegistryKind) => t(`packageRegistries.kind_${k}`);
+  // Whether a registry is its kind's default, as its row says.
+  const isDefault = (r: PackageRegistry) =>
+    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
   // REQ-2277 rule 9: a registry is open only while the search shows its row.
   const narrowings = [
     searchNarrowing<PackageRegistry>(
       t,
       search,
       () => setSearch(""),
-      (r) => [r.address, r.scope, kindLabel(r.kind)],
+      // Every text a registry's row shows.
+      (r) => [kindLabel(r.kind), r.address, r.scope, isDefault(r)],
     ),
   ];
   const detail = useRememberedDetail(
@@ -394,9 +398,6 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           ? formView
           : readView(open)
         : null;
-  const isDefault = (r: PackageRegistry) =>
-    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
-
   return (
     <>
       <div className="page-header">
@@ -443,6 +444,8 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           list={
             <SortGroupTable
               testPrefix="package-registries"
+              testId="package-registries-list"
+              emptyTestId="package-registries-empty"
               rows={shown}
               columns={[
                 {
@@ -471,7 +474,10 @@ export function PackageRegistriesTab({ title }: { title: string }) {
               headers={[{ col: "kind" }, { col: "address" }, { col: "scope" }, { col: "default" }]}
               colSpan={4}
               rowKey={(r) => r.id}
-              empty={t("packageRegistries.none")}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("packageRegistries.none") : t("packageRegistries.noMatch")
+              }
               render={(r) => (
                 <ListRow
                   key={r.id}

@@ -75,8 +75,10 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
+import { ParameterizedBadge } from "./tables/ParameterizedBadge";
 import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
 import { DataVaultWizard } from "./tables/modeling/DataVaultWizard";
@@ -121,7 +123,7 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
-import { DETAIL_VIEWS, useRememberedDetail } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import {
   detailListOf,
   domainNarrowing,
@@ -195,25 +197,58 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       ),
     [tables, viewsOnly, governedDomains],
   );
+  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  // Whether a table's panel is open, as the last render found it: replica builds are asked for
+  // often while one is, and a table's TTL text, which the search reads, is told by its build.
+  const [panelOpen, setPanelOpen] = useState(false);
+  // One request for every row; asked for often only while a build runs or a detail is open.
+  const { replicaBuilds } = useReplicaBuilds({ watching: panelOpen });
+  // Every text a table's row shows, which the filter searches; the row below draws the same.
+  const tableRowTexts = (t: RegisteredTable) => {
+    const checker = sources.find((s) => s.id === t.sourceId)?.type;
+    return [
+      t.sourceId === DERIVED_SOURCE_ID ? translate("tablesPage.derived") : t.sourceId,
+      domainsEnabled && t.domainId ? domainToSqlName(t.domainId) : "",
+      t.alias || t.tableName,
+      t.tableName,
+      t.withdrawn || t.sourceWithdrawn ? translate("tablesPage.withdrawn") : "",
+      t.modelingRole ? translate(`tablesPage.modelingRole.${t.modelingRole}`) : "",
+      !t.modelingRole && t.enableAggregates ? translate("tablesPage.modelingRole.fact") : "",
+      !t.modelingRole && t.enableGroupBy ? translate("tablesPage.modelingRole.dimension") : "",
+      t.businessKey.length > 0 ? translate("tablesPage.history.badge") : "",
+      checker === "soda" || checker === "great_expectations"
+        ? translate(`tablesPage.checker.${checker}`)
+        : "",
+      ...t.productIds.map((id) => dataProducts.find((p) => p.id === id)?.name ?? id),
+      t.gqlNamingConvention
+        ? namingConventionLabel(translate, t.gqlNamingConvention)
+        : translate("tablesPage.inheritSource"),
+      t.cacheTtl != null ? ttlText(t.cacheTtl, translate) : translate("tablesPage.inherit"),
+      getEffectiveTableTtl(t),
+      hasRegions ? (t.region ?? translate("regionSelector.noRegion")) : "",
+      String(t.columns.length),
+    ];
+  };
   // REQ-2277 rule 9: a table is open only while the list -- the domains in view, the search --
   // shows its row. The ERD in the list's place shows every table the list holds.
-  const tableNarrowings = useMemo(
-    () => [
-      domainNarrowing<RegisteredTable>(
-        translate,
-        checkedDomains.size > 0 ? checkedDomains : null,
-        ensureDomainChecked,
-        (t) => (t.domainId ? [t.domainId] : []),
-      ),
-      searchNarrowing<RegisteredTable>(
-        translate,
-        tableSearch,
-        () => setTableSearch(""),
-        (t) => [t.sourceId, t.tableName, t.domainId],
-      ),
-    ],
-    [translate, checkedDomains, ensureDomainChecked, tableSearch],
-  );
+  const tableNarrowings = [
+    domainNarrowing<RegisteredTable>(
+      translate,
+      checkedDomains.size > 0 ? checkedDomains : null,
+      ensureDomainChecked,
+      (t) => (t.domainId ? [t.domainId] : []),
+    ),
+    searchNarrowing<RegisteredTable>(
+      translate,
+      tableSearch,
+      () => setTableSearch(""),
+      tableRowTexts,
+    ),
+  ];
   const detail = useRememberedDetail(
     viewsOnly ? "views" : "tables",
     detailListOf(
@@ -258,18 +293,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // A table the list leaves out is named by `?table=` already: the page says why it is not shown.
   const openedId =
     detail.id === null && detail.outOfList === null && opened ? String(opened.id) : null;
-  // Written through the detail's own parameters (one entry, replaced), so `section`, `tab` and
-  // `column` stay as an open of another table would drop them.
-  const { setParam: setDetailParam } = detail;
+  const resolveOpened = detail.resolve;
   useEffect(() => {
-    if (openedId === null) return;
-    setDetailParam("open", null, { replace: true });
-    setDetailParam(DETAIL_VIEWS[viewsOnly ? "views" : "tables"].param, openedId, { replace: true });
-  }, [openedId, setDetailParam, viewsOnly]);
+    if (openedId !== null) resolveOpened(openedId);
+  }, [openedId, resolveOpened]);
   const setExpanded = (id: number | null) =>
     id === null ? detail.close() : detail.open(String(id));
-  // One request for every row; asked for often only while a build runs or a detail is open.
-  const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
+  if ((expanded !== null) !== panelOpen) setPanelOpen(expanded !== null);
   // REQ-1386: table whose governed SELECT * preview modal is open.
   const [previewTable, setPreviewTable] = useState<RegisteredTable | null>(null);
   // Table awaiting native-param entry before its profile sample can run.
@@ -288,6 +318,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     domains: erd.focus.domains,
     objects: erd.focus.objects,
     modeling: showModeling || null,
+    // REQ-2277: the profile runs dialog, as the URL names it, once a table is open.
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
   });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
@@ -306,10 +338,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredTables = useMemo(
-    () => shownBy(listableTables, tableNarrowings),
-    [listableTables, tableNarrowings],
-  );
+  const filteredTables = shownBy(listableTables, tableNarrowings);
   const listColumns = useMemo<ListColumn<RegisteredTable>[]>(
     () => [
       {
@@ -333,10 +362,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     ],
     [translate],
   );
-  // REQ-1922: the region selector filters the list; a name search crosses regions (filter off).
-  const { regions, connected, error: regionError } = useRegionChoices();
-  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
-  const hasRegions = regions.length > 0;
   const nameSearchActive = tableSearch.trim().length > 0;
   const { visible: regionTables, hidden: regionHidden } = nameSearchActive
     ? { visible: filteredTables, hidden: 0 }
@@ -387,7 +412,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const createTable = useCreateTable();
 
   // Cache state
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [cacheTtlEdits, setCacheTtlEdits] = useState<
     Record<number, { value: string; dirty: boolean; saving: boolean }>
   >({});
@@ -466,7 +490,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     });
   }, [tables]);
 
-  const getEffectiveTableTtl = (t: RegisteredTable): string => {
+  function getEffectiveTableTtl(t: RegisteredTable): string {
     const source = sources.find((s) => s.id === t.sourceId);
     const ttl = t.cacheTtl ?? source?.cacheTtl;
     if (ttl === NEVER_EXPIRES) {
@@ -484,7 +508,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     if (source?.cacheTtl != null) return `${source.cacheTtl}s (from source)`;
     if (settings) return `${settings.cache.default_ttl}s (global)`;
     return "default";
-  };
+  }
 
   // A table whose source caches its results (a remote API's) has a cache to drop; the panel's
   // head offers that for it alone.
@@ -959,7 +983,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         }}
         testId="your-data-back"
       >
-        <YourDataStep registered={registeredMany} role={actingRole} />
+        <YourDataStep
+          registered={registeredMany}
+          role={actingRole}
+          onOpenQuery={(graphql) => navigate("/query", { state: { query: graphql } })}
+        />
       </PanelWorking>
     ) : newRegistration !== null && editingTable !== null ? (
       editForm(editingTable, null)
@@ -1420,7 +1448,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)}
                           testId="tables-empty"
                         >
-                          {translate("tablesPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {tables.every(
+                            (t) =>
+                              t.sourceId === "provisa-admin" ||
+                              t.sourceId === "provisa-otel" ||
+                              (viewsOnly && !t.viewSql),
+                          )
+                            ? translate("tablesPage.empty")
+                            : translate("tablesPage.noMatch")}
                         </ListEmpty>
                       );
                     }
@@ -1481,6 +1517,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1986: a parameterized table, and whether a read must give
+                                any of its parameters. */}
+                                <ParameterizedBadge tableName={t.tableName} columns={t.columns} />
                                 <SuggestionsBadge
                                   count={countOf(suggestionCounts, t)}
                                   table={t}

@@ -22,6 +22,7 @@
     "colProvider": "サインイン",
     "colOrgAdmin": "組織管理者",
     "noMembers": "メンバーはまだいません。",
+    "noMembersMatch": "フィルターに一致するメンバーはいません。",
     "yes": "はい",
     "no": "いいえ",
     "promote": "組織管理者にする",

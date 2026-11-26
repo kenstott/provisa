@@ -3,6 +3,7 @@
     "help": "Os registros para os quais a imagem construída de uma fonte de código pode ser enviada, para executá-la em um host remoto. Cada campo pode conter um valor ou uma referência a um segredo como ${secret:registry_token}. Sem registro, a imagem construída é baixada em vez disso.",
     "add": "Adicionar registro de contêineres",
     "none": "Nenhum registro de contêineres. As imagens construídas ainda podem ser baixadas.",
+    "noMatch": "Nenhum registro de contêineres corresponde ao filtro.",
     "address": "Registro e namespace",
     "addressHelp": "O registro, com sua porta se tiver uma, e o namespace de repositório sob o qual as imagens são enviadas, por exemplo ghcr.io/example ou registry.example.com:5000/data.",
     "username": "Nome de usuário",

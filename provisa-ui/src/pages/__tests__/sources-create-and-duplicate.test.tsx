@@ -59,6 +59,7 @@ const source = (over: Partial<Source>): Source =>
     description: "The sales warehouse",
     allowedDomains: [],
     ...over,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   }) as unknown as Source;
 
 let SOURCES: Source[] = [];
@@ -226,8 +227,9 @@ describe("Duplicate, in a source's panel head", () => {
     });
     // No table goes with it: the original's tables stay the original's.
     expect(Object.keys(sent).some((k) => /tables?$/i.test(k))).toBe(false);
-    // REQ-2234: as for any new source, its panel opens on registering its tables.
-    expect(await within(panel()).findByTestId("register-tables-skip")).toBeInTheDocument();
+    // REQ-2234: as for any new source, its panel opens on its setup, at registering its tables.
+    expect(await within(panel()).findByTestId("source-setup-finish-later")).toBeInTheDocument();
+    expect(within(panel()).getByTestId("source-setup-stepper")).toHaveAttribute("data-active", "1");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("sales-pg-copy");
   });
 

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { relName, relationshipNarrowings } from "./relationshipNarrowings";
+import { listableRelationships, relName, relationshipNarrowings } from "./relationshipNarrowings";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -47,6 +47,7 @@ import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  relationshipRowTexts,
   SHAPE_CODE,
   tableRef,
   type RelForm,
@@ -187,21 +188,11 @@ export function RelationshipsPage() {
   const tableRefById: Record<number, string> = Object.fromEntries(
     tables.map((t) => [t.id, tableRef(t)]),
   );
-  const tableDomainById = Object.fromEntries(
-    tables.map((t) => [t.id, domainToSqlName(t.domainId)]),
+  const tableDomainById = useMemo(
+    () => Object.fromEntries(tables.map((t) => [t.id, domainToSqlName(t.domainId)])),
+    [tables],
   );
-  const tableSourceById = Object.fromEntries(tables.map((t) => [t.id, t.sourceId]));
-  const remoteTableIds = new Set(
-    tables
-      .filter((t) => t.schemaName === "graphql_remote" || t.schemaName === "grpc_remote")
-      .map((t) => t.id),
-  );
-
-  // The relationships the list holds: not a remote source's, nor the admin source's.
-  const listableRels = rels.filter(
-    (r) =>
-      !remoteTableIds.has(r.sourceTableId) && tableSourceById[r.sourceTableId] !== "provisa-admin",
-  );
+  const listableRels = listableRelationships(rels, tables);
   // REQ-2277 rule 9: a relationship is open only while the list shows its row; the ERD in the
   // list's place shows every relationship.
   const { listNarrowings, relTypeNarrowing } = relationshipNarrowings(t, {
@@ -210,6 +201,7 @@ export function RelationshipsPage() {
     addDomain: ensureDomainChecked,
     search: relSearch,
     clearSearch: () => updateSearch(""),
+    rowTexts: (r) => relationshipRowTexts(r, t, tableDomainById, domainsEnabled),
     relTypeFilter,
     clearRelTypeFilter: () => setRelTypeFilter(null),
   });
@@ -974,7 +966,10 @@ export function RelationshipsPage() {
                     if (filtered.length === 0) {
                       return (
                         <ListEmpty colSpan={domainsEnabled ? 8 : 7} testId="relationships-empty">
-                          {t("relationshipsPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {listableRels.length === 0
+                            ? t("relationshipsPage.empty")
+                            : t("relationshipsPage.noMatch")}
                         </ListEmpty>
                       );
                     }
