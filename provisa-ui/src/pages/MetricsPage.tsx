@@ -445,9 +445,21 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
   const shownMetrics = useMemo(
     () =>
       metrics.filter((m) =>
-        matchesQuery([m.name, m.expression, m.description ?? "", m.term ?? ""], search),
+        // Every text a metric's row shows, and the glossary term it names.
+        matchesQuery(
+          [
+            m.name,
+            m.fromFact ? t("metricsPage.fromFact") : "",
+            m.expression,
+            m.datatype,
+            m.description,
+            m.aiContext,
+            m.term,
+          ],
+          search,
+        ),
       ),
-    [metrics, search],
+    [metrics, search, t],
   );
   const sortGroup = useListSortGroup(shownMetrics, metricColumns, "metrics");
   // REQ-2240: metrics selected and deleted together.
@@ -574,7 +586,8 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
                 <Table.Tbody>
                   {shownMetrics.length === 0 && (
                     <ListEmpty colSpan={5} testId="metrics-empty">
-                      {t("metricsPage.empty")}
+                      {/* A list a filter emptied says so, never that nothing is registered. */}
+                      {metrics.length === 0 ? t("metricsPage.empty") : t("metricsPage.noMatch")}
                     </ListEmpty>
                   )}
                   <ListItems

@@ -29,7 +29,7 @@ import {
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { ProductSyncCell } from "./data-products/ProductSyncStatus";
-import { SYNC_ORDER, syncState, useProductSyncStatus } from "./data-products/productSync";
+import { SYNC_ORDER, syncLabel, syncState, useProductSyncStatus } from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
@@ -456,12 +456,25 @@ export function DataProductsPage() {
     />
   );
 
+  const syncStatus = useProductSyncStatus();
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredProducts = useMemo(
     () =>
       dataProducts.filter(
         (p) =>
-          matchesQuery([p.id, p.name, p.domainId, ...ownerNames(p), p.purpose], search) &&
+          // Every text a product's row shows.
+          matchesQuery(
+            [
+              p.id,
+              p.domainId,
+              p.name,
+              ownerNames(p).join(", "),
+              t(`dataProductsTab.status_${p.status}`),
+              syncLabel(syncStatus.statuses[p.id] ?? [], t),
+              p.purpose,
+            ],
+            search,
+          ) &&
           (!toReviewOnly || productFindings.findings.has(p.id)) &&
           tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
           (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
@@ -469,6 +482,8 @@ export function DataProductsPage() {
     [
       dataProducts,
       search,
+      syncStatus.statuses,
+      t,
       toReviewOnly,
       productFindings.findings,
       tagFilter,
@@ -476,7 +491,6 @@ export function DataProductsPage() {
       domainFilter,
     ],
   );
-  const syncStatus = useProductSyncStatus();
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },

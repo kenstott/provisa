@@ -37,7 +37,7 @@ import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { Tip } from "../../components/Tip";
 import { SEPARATOR, type DerivedPick } from "../../hooks/useDerivedRoles";
-import { matchesQuery } from "../../lib/searchItems";
+import { derivedRoleMatches } from "./roleRowTexts";
 
 /** A derived role's key in the roles list, apart from the plain roles' ids (REQ-2198). */
 const derivedRowKey = (attribute: string) => `derived:${attribute}`;
@@ -54,15 +54,11 @@ export function DerivedRoleRows({
   picked: DerivedPick | null;
   onPick: (pick: DerivedPick) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {roles
-        .filter((d) =>
-          matchesQuery(
-            [d.attribute, ...d.values.map((v) => `${d.attribute}${SEPARATOR}${v}`)],
-            search,
-          ),
-        )
+        .filter((d) => derivedRoleMatches(d, search, t))
         .map((d) => (
           <DerivedRowGroup key={d.attribute} d={d} picked={picked} onPick={onPick} />
         ))}
