@@ -9589,7 +9589,7 @@
     is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
     answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
     truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
-    max_recursion_depth session property.'
+    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.)'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
