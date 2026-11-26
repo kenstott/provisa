@@ -98621,7 +98621,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     GOVERNANCE: the reader sees a domain''s links only by reading that domain''s link table; masks, row rules and
     column visibility on an input column apply to the links drawn from it; references in domains the reader
     cannot read are shown as a count with no names or values, unless the entity''s disclosure setting hides even
-    the count.'
+    the count. UI: a Context > Entities tab, a standard object management page: one line per entity (name,
+    description, owner, feeding domains and tables, scan status), + Entity for people with rights in the Entities
+    domain, and a deep-linked detail panel with the definition, rules, aliases, references grouped by domain,
+    exclusions and scan progress; a tagged column shows the entity it feeds, a document lists the entities it
+    mentions, and the ontology graph may show entities as nodes linked to the tables that feed them.'
   scenario: 'Given an Entities steward who created entity party, and two domains each tagging an email column
     entity:party whose values are Bob@X.com and bob@x.com, when the party hub is built, then the hub holds one
     party with a stable key, each domain''s own link table maps its row to that key with score 1, a query reaches
