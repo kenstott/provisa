@@ -19,6 +19,10 @@
 * ``GET    /admin/classification-kinds`` -- every kind, each with its test, threshold, whether it is
   sensitive and whether the org has it enabled.
 * ``PUT    /admin/classification-kinds`` -- the kinds the org has enabled.
+* ``POST   /admin/classification-kinds`` -- add a custom kind (amended 2026-11-25).
+* ``PATCH  /admin/classification-kinds/{kind_id}`` -- change a kind: a shipped kind's share that
+  must pass, sensitivity and mask, a custom kind's any field, and whether either is enabled.
+* ``DELETE /admin/classification-kinds/{kind_id}`` -- delete a custom kind.
 * ``POST   /admin/tables/{table_id}/sensitive-scans`` -- scan the table's text columns for
   sensitive kinds held inside their values, in the background (KINDS ARE PATTERN RULES; CONTAINED
   VALUES ARE HINTS). Answers at once with the scan, running.
@@ -114,13 +118,19 @@ def _physical(table_id: int, column: str, served: set[str] | None) -> str:
     return physical
 
 
-def _kind(kind_id: str) -> Any:
-    from provisa.profiler.classify import kind_of
+def _unknown_kind(exc: KeyError, kind_id: str) -> ApiError:
+    return ApiError(422, "profile.classification_kind_unknown", exc.args[0], kind=kind_id)
+
+
+async def _kind(kind_id: str) -> Any:
+    """The org's kind ``kind_id`` (a shipped kind as the org changed it, or its own)."""
+    from provisa.profiler import classifications
+    from provisa.profiler.classify import kind_in
 
     try:
-        return kind_of(kind_id)
+        return kind_in(await classifications.org_kinds(_db()), kind_id)
     except KeyError as exc:
-        raise ApiError(422, "profile.classification_kind_unknown", str(exc), kind=kind_id) from exc
+        raise _unknown_kind(exc, kind_id) from exc
 
 
 @router.get("/tables/{table_id}/profile-classifications")
@@ -157,7 +167,7 @@ async def decide_classification(
             f"a decision is one of {classifications.DECISION_STATUSES}, got {body.status!r}",
             status=body.status,
         )
-    kind = _kind(body.kind)
+    kind = await _kind(body.kind)
     accepted = None
     async with _db().acquire() as conn:
         member = await _member(conn, table_id, request)
@@ -179,7 +189,7 @@ async def decide_classification(
                     conn,
                     table_id,
                     physical,
-                    kind.id,
+                    kind,
                     status=body.status,
                     evidence=body.evidence,
                     run_id=body.runId,
@@ -222,7 +232,7 @@ async def forget_classification(
 ) -> dict:
     from provisa.profiler import classifications
 
-    kind = _kind(body.kind)
+    kind = await _kind(body.kind)
     async with _db().acquire() as conn:
         member = await _member(conn, table_id, request)
         await _steward_of(request, conn, table_id)
@@ -242,54 +252,166 @@ async def forget_classification(
     return {"ok": True}
 
 
-def _kind_doc(kind: Any, enabled: bool) -> dict:
+class CustomKind(BaseModel):
+    """A custom kind as the form and Polly send it (REQ-2147, amended 2026-11-25)."""
+
+    label: str
+    pattern: str
+    check: str | None
+    ignore: str | None
+    threshold: float
+    sensitive: bool
+    maskPreset: str | None
+    term: str
+
+
+class KindChange(BaseModel):
+    """A change to one kind: of a shipped kind only ``threshold``, ``sensitive`` and
+    ``maskPreset``; of a custom kind any of its fields; of either whether it is enabled. A field
+    left out is unchanged."""
+
+    enabled: bool | None = None
+    threshold: float | None = None
+    sensitive: bool | None = None
+    maskPreset: str | None = None
+    label: str | None = None
+    pattern: str | None = None
+    check: str | None = None
+    ignore: str | None = None
+    term: str | None = None
+
+
+_STORED = {"maskPreset": "mask_preset"}  # the stored name of a field the API spells otherwise
+
+
+def _stored(fields: dict[str, Any]) -> dict[str, Any]:
+    return {_STORED.get(k, k): v for k, v in fields.items()}
+
+
+def _refused(exc: ValueError, kind_id: str | None) -> ApiError:
+    return ApiError(422, "profile.classification_kind_invalid", str(exc), kind=kind_id or "")
+
+
+async def _kinds_doc() -> dict:
+    from provisa.profiler import classifications
+
+    settings = await classifications.read_settings(_db())
     return {
-        "id": kind.id,
-        "label": kind.label,
-        "sensitive": kind.sensitive,
-        "test": kind.test,
-        "families": list(kind.families),
-        "threshold": kind.threshold,
-        "term": kind.term,
-        "maskPreset": kind.mask_preset,
-        "enabled": enabled,
+        "kinds": [
+            classifications.kind_doc(k, k.id not in settings.disabled) for k in settings.kinds
+        ]
     }
+
+
+async def _save(request: Request, settings: Any) -> None:
+    from provisa.core.org_settings import write_org_overrides
+    from provisa.profiler import classifications
+
+    await write_org_overrides(
+        _db(),
+        {classifications.SETTING_KEY: classifications.setting_of(settings)},
+        updated_by=_caller(request) or "unknown",
+    )
 
 
 @router.get("/classification-kinds")
 async def list_kinds(request: Request) -> dict:
-    from provisa.core.org_settings import read_org_overrides
-    from provisa.profiler import classifications
-    from provisa.profiler.classify import catalogue
-
     # REQ-1327: classification is the steward's -- the kinds a column is tested for are what its
-    # decisions are made on, so the kinds' page and their switch are the decisions' own right.
+    # decisions are made on, so the kinds' page and their changes are the decisions' own right.
     require_capability_request(request, _RIGHT)
-    disabled = classifications.disabled_of(await read_org_overrides(_db()))
-    return {"kinds": [_kind_doc(k, k.id not in disabled) for k in catalogue()]}
+    return await _kinds_doc()
 
 
 @router.put("/classification-kinds")
 async def set_enabled_kinds(request: Request, body: EnabledKinds) -> dict:
-    from provisa.core.org_settings import write_org_overrides
     from provisa.profiler import classifications
-    from provisa.profiler.classify import catalogue
 
     require_capability_request(request, _RIGHT)
-    ids = {k.id for k in catalogue()}
-    unknown = set(body.enabled) - ids
-    if unknown:
+    settings = await classifications.read_settings(_db())
+    try:
+        changed = classifications.with_enabled(settings, set(body.enabled))
+    except KeyError as exc:
+        unknown = sorted(set(body.enabled) - {k.id for k in settings.kinds})
         raise ApiError(
-            422,
-            "profile.classification_kind_unknown",
-            f"unknown classification kinds {sorted(unknown)}",
-            kind=", ".join(sorted(unknown)),
-        )
-    setting = classifications.setting_for(ids - set(body.enabled))
-    await write_org_overrides(
-        _db(), {classifications.SETTING_KEY: setting}, updated_by=_caller(request) or "unknown"
-    )
-    return await list_kinds(request)
+            422, "profile.classification_kind_unknown", exc.args[0], kind=", ".join(unknown)
+        ) from exc
+    await _save(request, changed)
+    return await _kinds_doc()
+
+
+@router.post("/classification-kinds")
+async def create_kind(request: Request, body: CustomKind) -> dict:
+    """Add a custom kind (REQ-2147, amended 2026-11-25). The answer is every kind, and the new
+    kind's id."""
+    from provisa.profiler import classifications
+
+    require_capability_request(request, _RIGHT)
+    settings = await classifications.read_settings(_db())
+    try:
+        changed, kind_id = classifications.with_custom(settings, _stored(body.model_dump()))
+    except ValueError as exc:
+        raise _refused(exc, None) from exc
+    await _save(request, changed)
+    return {"id": kind_id, **await _kinds_doc()}
+
+
+@router.patch("/classification-kinds/{kind_id}")
+async def change_kind(request: Request, kind_id: str, body: KindChange) -> dict:
+    """Change one kind: a shipped kind's share, sensitivity and mask, a custom kind's any field,
+    and whether either is enabled."""
+    from provisa.profiler import classifications
+    from provisa.profiler.classify import CHANGEABLE, kind_in
+
+    require_capability_request(request, _RIGHT)
+    settings = await classifications.read_settings(_db())
+    try:
+        kind = kind_in(settings.kinds, kind_id)
+    except KeyError as exc:
+        raise _unknown_kind(exc, kind_id) from exc
+    given = body.model_dump(exclude_unset=True)
+    enabled = given.pop("enabled", None)
+    change = _stored(given)
+    try:
+        if kind.custom:
+            settings = classifications.with_custom_change(settings, kind_id, change)
+        else:
+            refused = sorted(set(change) - set(CHANGEABLE))
+            if refused:
+                raise ValueError(
+                    f"classification kind {kind_id!r} is shipped: its {', '.join(refused)} "
+                    "cannot change; copy it into a custom kind to change its test"
+                )
+            settings = classifications.with_shipped_change(settings, kind_id, change)
+        if enabled is not None:
+            ids = {k.id for k in settings.kinds} - settings.disabled
+            settings = classifications.with_enabled(
+                settings, ids | {kind_id} if enabled else ids - {kind_id}
+            )
+    except ValueError as exc:
+        raise _refused(exc, kind_id) from exc
+    await _save(request, settings)
+    return await _kinds_doc()
+
+
+@router.delete("/classification-kinds/{kind_id}")
+async def delete_kind(request: Request, kind_id: str) -> dict:
+    """Delete a custom kind, with the decisions on it and the hints of it; a shipped kind is
+    disabled, never deleted."""
+    from provisa.profiler import classifications
+
+    require_capability_request(request, _RIGHT)
+    settings = await classifications.read_settings(_db())
+    try:
+        changed = classifications.without_custom(settings, kind_id)
+    except KeyError as exc:
+        raise _unknown_kind(exc, kind_id) from exc
+    except ValueError as exc:
+        raise _refused(exc, kind_id) from exc
+    async with _db().acquire() as conn:
+        async with conn.transaction():
+            await classifications.forget_kind(conn, kind_id)
+    await _save(request, changed)
+    return await _kinds_doc()
 
 
 # -- contained values: hints -----------------------------------------------------------------------
@@ -329,10 +451,10 @@ async def start_sensitive_scan(request: Request, table_id: int) -> dict:
 async def latest_sensitive_scan(request: Request, table_id: int) -> dict:
     from provisa.api.admin.read_rights import served_columns_request
     from provisa.api.app import state
-    from provisa.profiler import hints
-    from provisa.profiler.classify import kind_of
+    from provisa.profiler import classifications, hints
 
     table_for_steward(request, state, table_id)
+    kinds = {k.id: k for k in await classifications.org_kinds(_db())}
     async with _db().acquire() as conn:
         scan = await hints.latest_scan(conn, table_id)
         found = await hints.hints_of(conn, table_id)
@@ -344,8 +466,9 @@ async def latest_sensitive_scan(request: Request, table_id: int) -> dict:
             {
                 "column": h["physical_column"],
                 "kind": h["kind"],
-                "label": kind_of(h["kind"]).label,
-                "sensitive": kind_of(h["kind"]).sensitive,
+                "label": kinds[h["kind"]].label,
+                "custom": kinds[h["kind"]].custom,
+                "sensitive": kinds[h["kind"]].sensitive,
                 "valuesTested": h["values_tested"],
                 "valuesMatched": h["values_matched"],
                 "share": h["share"],

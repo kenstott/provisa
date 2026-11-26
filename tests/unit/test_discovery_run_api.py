@@ -1648,6 +1648,7 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
         input_tokens,
         4096,
         context.SAMPLE_VALUES,
+        catalogue(),
     )
     assert k == 4096 // 150
     assert len(planned.calls) <= calls, (seed, len(planned.calls), calls)

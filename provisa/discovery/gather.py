@@ -39,7 +39,7 @@ request count before Run is computed from it. :func:`table_facts` adds what a ru
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -59,6 +59,7 @@ from provisa.discovery.direction import Edge, Known, Sampled
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+    from provisa.profiler.classify import Kind
 
 _T = TypeVar("_T")
 
@@ -324,10 +325,11 @@ async def _samples(
     return out
 
 
-def _sensitive(classes: tuple[str, ...]) -> bool:
-    from provisa.profiler.classify import kind_of
-
-    return any(kind_of(c).sensitive for c in classes if c != "unknown")
+def _sensitive(classes: tuple[str, ...], kinds: Mapping[str, "Kind"]) -> bool:
+    """Whether any of a column's classes is a sensitive kind of the org's (``kinds``, by id). A
+    class that is no kind of the org's -- unknown, or a custom kind the org has deleted since the
+    run that matched it (REQ-2147, amended 2026-11-25) -- says nothing of sensitivity."""
+    return any(kinds[c].sensitive for c in classes if c in kinds)
 
 
 async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -> list[TableFacts]:
@@ -444,8 +446,11 @@ async def table_facts(
     is registered (:func:`registered_facts`), and for each table that is read, its columns'
     classes and up to ``samples_per_column`` (the run's) sample values each.
     ``on_table(read, total)`` is told after each table is read."""
+    from provisa.profiler.classifications import org_kinds_on
+
     registered = await registered_facts(state, conn, ids)
     decided = await _decided(conn, [t.table_id for t in registered])
+    kinds = await org_kinds_on(conn)
     out: list[TableFacts] = []
     for table in registered:
         # A table never read, and one with no registered column, has nothing to classify or
@@ -458,7 +463,7 @@ async def table_facts(
             classed = []
             for c in table.columns:
                 classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
-                classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
+                classed.append(replace(c, classes=classes, sensitive=_sensitive(classes, kinds)))
             sampled = [c.name for c in classed if c.groups and not c.sensitive]
             samples = await _samples(state, tid, table.table_name, sampled, samples_per_column)
             table = replace(

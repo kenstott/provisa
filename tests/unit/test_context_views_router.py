@@ -21,9 +21,9 @@ columns it was detected on.
 from __future__ import annotations
 
 import re
-import types
 from pathlib import Path
 
+from provisa.profiler.classify import custom_kind, kind_of
 from provisa.api.admin.context_views_router import (
     CLASSIFICATION_TAG,
     awaiting_by_table,
@@ -86,7 +86,7 @@ def test_tag_usages_name_dependents_and_hide_unreadable():
             _row(2, "ssn", base_tag_id=CLASSIFICATION_TAG),
         ],
         {"finance": 2},
-        ["email", "ssn"],
+        _SENSITIVE_KINDS,
         _readable,
     )
     by_id = {t["id"]: t for t in out}
@@ -96,7 +96,7 @@ def test_tag_usages_name_dependents_and_hide_unreadable():
     assert by_id["finance"]["hiddenUsages"] == 1
     assert by_id["finance"]["rowFilters"] == 2
     assert by_id["finance"]["classificationKinds"] == []
-    assert by_id[CLASSIFICATION_TAG]["classificationKinds"] == ["email", "ssn"]
+    assert by_id[CLASSIFICATION_TAG]["classificationKinds"] == _SENSITIVE_KINDS
     assert by_id[CLASSIFICATION_TAG]["hiddenUsages"] == 1
     assert by_id["unused"] == {
         "id": "unused",
@@ -107,24 +107,49 @@ def test_tag_usages_name_dependents_and_hide_unreadable():
     }
 
 
+_SENSITIVE_KINDS = [
+    {"id": "email_address", "label": "Email address", "custom": False},
+    {"id": "custom.employee_ssn", "label": "Employee SSN", "custom": True},
+]
+
+
 def test_kind_detections_hide_unreadable_and_report_enabled():
-    kinds = [
-        types.SimpleNamespace(id="email", sensitive=True, threshold=0.9, mask_preset="email"),
-        types.SimpleNamespace(id="zip", sensitive=False, threshold=0.8, mask_preset=None),
-    ]
+    zip_kind = custom_kind(
+        {
+            "id": "custom.zip",
+            "label": "Zip",
+            "pattern": r"\d{5}",
+            "check": None,
+            "ignore": None,
+            "threshold": 0.8,
+            "sensitive": False,
+            "mask_preset": None,
+            "term": "zip",
+        }
+    )
+    kinds = [kind_of("email_address"), zip_kind]
     out = kind_detections(
         kinds,
-        frozenset({"zip"}),
-        [_row(2, "email", kind="email"), _row(3, "contact", kind="email")],
+        frozenset({"custom.zip"}),
+        [_row(2, "email", kind="email_address"), _row(3, "contact", kind="email_address")],
         _readable,
     )
     assert out[0]["detections"] == [{"tableId": 2, "tableRef": "s.public.t2", "column": "email"}]
     assert out[0]["hiddenDetections"] == 1
     assert out[0]["enabled"] is True
+    assert out[0]["custom"] is False and out[0]["pattern"] is None  # a shipped test is coded
     assert out[1] == {
-        "id": "zip",
+        "id": "custom.zip",
+        "label": "Zip",
+        "custom": True,
         "sensitive": False,
+        "test": "custom.zip",
+        "pattern": r"\d{5}",
+        "check": None,
+        "ignore": None,
+        "families": ["text", "numeric"],
         "threshold": 0.8,
+        "term": "zip",
         "maskPreset": None,
         "enabled": False,
         "detections": [],

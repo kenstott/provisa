@@ -56,6 +56,7 @@ from provisa.discovery.measure import Measurer, governed_reader
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, KeyValues, Rescore, Tally, execute
 from provisa.discovery.windows import Plan, bound, plan
+from provisa.profiler.classifications import org_kinds_on
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -291,12 +292,20 @@ async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[st
         source_ids, target_ids = await table_sets(conn, spec)
         ids = set(source_ids) | set(target_ids or [])
         facts = {t.table_id: t for t in await gather.registered_facts(state, conn, sorted(ids))}
+        kinds = tuple((await org_kinds_on(conn)).values())
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
     k, calls, pairs = (
         (0, 0, 0)
         if model is None
-        else bound(source, target, model.input_tokens, model.output_tokens, spec.samples_per_column)
+        else bound(
+            source,
+            target,
+            model.input_tokens,
+            model.output_tokens,
+            spec.samples_per_column,
+            kinds,
+        )
     )
     return {
         "requests": calls,
