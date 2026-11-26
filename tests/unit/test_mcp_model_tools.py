@@ -847,8 +847,8 @@ async def test_propose_fakes_proposes_a_named_column_that_declares_a_fake(
         ],
     }
     facts = [
-        ProfiledColumnFacts("email", "text", 40, "email", 0.98, ()),
-        ProfiledColumnFacts("name", "text", 30, "person_name_full", 0.9, ()),
+        ProfiledColumnFacts("email", "text", 40, "email", 0.98, (), "varchar", ()),
+        ProfiledColumnFacts("name", "text", 30, "person_name_full", 0.9, (), "varchar", ()),
     ]
     with (
         patch("provisa.api.admin.db_queries.fetch_tables", new=AsyncMock(return_value=[table])),

@@ -62,7 +62,9 @@ def pg_fake_method(method: str, args: str, value_digest: int | None, def_hash: i
 
 
 #: The functions, as the pg engine creates them once plpython3u is installed. No parameter is
-#: named ``args``: PL/Python binds that name to the list of every argument.
+#: named ``args``: PL/Python binds that name to the list of every argument. ``json_format`` is a
+#: JSON column's text, as a faked read digests it (REQ-2279, provisa.fakes.read_sql.digest), the
+#: name Trino gives it.
 FUNCTIONS_SQL = """
 CREATE OR REPLACE FUNCTION provisa_digest(fp text, value text) RETURNS bigint
 LANGUAGE plpython3u IMMUTABLE PARALLEL SAFE AS $$
@@ -91,4 +93,8 @@ CREATE OR REPLACE FUNCTION provisa_stable_fake(
 from provisa.fakes.portable import stable_fake
 return stable_fake(method, version, value_digest, def_hash)
 $$;
+CREATE OR REPLACE FUNCTION json_format(value json) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT value::text $$;
+CREATE OR REPLACE FUNCTION json_format(value jsonb) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT value::text $$;
 """

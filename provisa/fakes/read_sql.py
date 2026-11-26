@@ -33,10 +33,12 @@ from itertools import groupby
 from collections.abc import Callable
 from collections.abc import Sequence as SequenceOf
 from dataclasses import dataclass
+from typing import NoReturn
 
 import sqlglot
 from sqlglot import exp
 
+from provisa.fakes.checks import family
 from provisa.fakes.digest import definition_hash
 from provisa.fakes.measurement import Measured
 from provisa.fakes.kinds import (
@@ -57,6 +59,12 @@ from provisa.fakes.kinds import (
     Profile,
     Sequence,
     Sql,
+    Template,
+    TemplateArray,
+    TemplateField,
+    TemplateLiteral,
+    TemplateNode,
+    TemplateObject,
     Triangular,
     Truncate,
     Uniform,
@@ -85,6 +93,9 @@ class Column:
     stable: bool
     measured: Measured | None = None  # bound at model build, for a kind that is measured
     stable_version: int | None = None  # the portable definition version a stable method reads
+    # A field of a JSON template: its own definition hash, which names its place in the template
+    # (REQ-2279), so two fields of one fake still differ.
+    def_hash: int | None = None
 
 
 def definition_of(col: Column) -> int:
@@ -92,6 +103,8 @@ def definition_of(col: Column) -> int:
     by its name and arguments, any other kind by its name and declared fields; with the pinned
     portable definition version when stable, and the column's type. REQ-1494: every fake is
     seeded by the value's digest combined with it."""
+    if col.def_hash is not None:
+        return col.def_hash
     k = col.kind
     version = col.stable_version if col.stable else None
     if isinstance(k, Method):
@@ -165,9 +178,18 @@ def _bigint(n: int) -> exp.Cast:
     return _cast(_lit(str(n)), "BIGINT")
 
 
-def digest(fingerprint: str, value: exp.Expr, salt: str = "") -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """The keyed digest of ``value`` under the platform key's ``fingerprint``."""
-    text: exp.Expr = _cast(value, "VARCHAR")  # pyright: ignore[reportPrivateImportUsage]
+def digest(
+    fingerprint: str,
+    value: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    salt: str = "",
+    *,
+    json_value: bool = False,
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """The keyed digest of ``value`` under the platform key's ``fingerprint``. ``json_value``: the
+    value is JSON, digested as its JSON text (JSON_FORMAT: Trino casts no JSON object to text)."""
+    text: exp.Expr = (  # pyright: ignore[reportPrivateImportUsage]
+        exp.JSONFormat(this=value) if json_value else _cast(value, "VARCHAR")
+    )
     if salt:
         text = _p(exp.DPipe(this=text, expression=_lit(":" + salt)))
     return _f("provisa_digest", _lit(fingerprint), text)
@@ -321,14 +343,18 @@ def expression(
     digest: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
     faked: Callable[[str], exp.Expr],  # pyright: ignore[reportPrivateImportUsage]
     family_of: Callable[[str], str],
+    guard: bool = True,
 ) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-1494, REQ-913
     """The faked value of ``col``, built on the AST. ``real`` and ``u`` are its real value and
     uniform point; ``digest`` its digest; ``faked(name)`` the faked form of another column, and
-    ``family_of(name)`` that column's family. Each is copied in where it is read."""
+    ``family_of(name)`` that column's family. Each is copied in where it is read. ``guard``: NULL
+    for a NULL real value (a template's field is guarded by its column instead)."""
     k = col.kind
-    guarded = True
+    guarded = guard
     out: exp.Expr  # pyright: ignore[reportPrivateImportUsage]
-    if isinstance(k, Method):
+    if isinstance(k, Template):
+        out = _template(col, k, real=real, digest=digest)
+    elif isinstance(k, Method):
         if col.stable:
             # The portable definition, the same on every engine (provisa.fakes.portable).
             if col.stable_version is None:
@@ -509,6 +535,127 @@ def expression(
         return out
     null = exp.Is(this=real.copy(), expression=exp.Null())
     return _p(_case([(null, exp.Null())], out))
+
+
+def field_column(col: Column, path: str, f: TemplateField) -> Column:
+    """A template field as a column of its own (REQ-2279): its type, its fake, stable as the
+    template is, and a definition hash naming the template's column type and the field's place,
+    so each field is seeded apart."""
+    k = f.kind
+    version = col.stable_version if col.stable else None
+    own = dict(k.args) if isinstance(k, Method) else dataclasses.asdict(k)
+    name = k.name if isinstance(k, Method) else kind_name(k)
+    return Column(
+        f"{col.name}.{path}",
+        f.data_type,
+        family(f.data_type),
+        k,
+        col.stable,
+        stable_version=col.stable_version,
+        def_hash=definition_hash(name, {"args": own, "field": path}, version, f.data_type),
+    )
+
+
+#: JSON text's escapes of the characters a fake's text can hold that JSON writes escaped.
+_JSON_ESCAPES = (("\\", "\\\\"), ('"', '\\"'), (10, "\\n"), (13, "\\r"), (9, "\\t"))
+
+
+def _json_string(text: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``text`` as a JSON string: quoted, its backslashes, quotes and line breaks escaped."""
+    for char, escaped in _JSON_ESCAPES:
+        found = _lit(char) if isinstance(char, str) else _f("CHR", exp.Literal.number(char))
+        text = _f("REPLACE", text, found, _lit(escaped))
+    return _p(_concat(_lit('"'), text, _lit('"')))
+
+
+#: The scale a field's non-integer number is written at: fixed-point, so every engine writes the
+#: same digits (REQ-2279: the same JSON on every engine). A field typed decimal(p,s) keeps its s.
+_NUMBER_SCALE = 6
+
+
+def _json_value(value: exp.Expr, f: Column) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """A field's value as JSON text, the same on every engine: text and dates quoted, numbers as
+    digits, booleans as true or false, NULL as null."""
+    fam = f.family
+    if fam == "text":
+        text = _json_string(value)
+    elif fam == "integer":
+        text = _cast(value, "VARCHAR")
+    elif fam == "numeric":
+        m = re.search(r",\s*(\d+)\s*\)", f.data_type)
+        scale = int(m.group(1)) if m else _NUMBER_SCALE
+        text = _cast(_cast(value, f"DECIMAL(38, {scale})"), "VARCHAR")
+    elif fam == "boolean":
+        text = _p(_case([(value, _lit("true")), (exp.Not(this=value.copy()), _lit("false"))], None))
+    elif fam == "date":
+        text = _json_string(_cast(value, "VARCHAR"))
+    else:
+        # A timestamp to the second: engines write fractions of a second apart.
+        assert fam == "timestamp", f"a field's type is checked to one of FIELD_TYPES, not {fam}"
+        whole = _f(
+            "SUBSTRING", _cast(value, "VARCHAR"), exp.Literal.number("1"), exp.Literal.number("19")
+        )
+        text = _json_string(whole)
+    # A field the fake makes NULL (null_boolean, say) is JSON's null: the value, not a stand-in.
+    return _f("COALESCE", text, _lit("null"))
+
+
+def _template(
+    col: Column,
+    k: Template,
+    *,
+    real: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    digest: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-2279
+    """A template's object as JSON text, built from its fields' fakes in the order declared and
+    written compactly, then read as the column's JSON: the same text on every engine."""
+    parts: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+
+    def text(piece: str) -> None:
+        if parts and isinstance(parts[-1], exp.Literal) and parts[-1].is_string:
+            parts[-1] = _lit(parts[-1].this + piece)
+        else:
+            parts.append(_lit(piece))
+
+    def node(n: TemplateNode, path: str) -> None:
+        if isinstance(n, TemplateObject):
+            text("{")
+            for i, (key, child) in enumerate(n.fields):
+                text(("," if i else "") + json.dumps(key) + ":")
+                node(child, f"{path}.{key}" if path else key)
+            text("}")
+        elif isinstance(n, TemplateArray):
+            text("[")
+            for i, child in enumerate(n.items):
+                if i:
+                    text(",")
+                node(child, f"{path}[{i}]")
+            text("]")
+        elif isinstance(n, TemplateLiteral):
+            text(json.dumps(n.value, separators=(",", ":")))
+        else:
+            f = field_column(col, path, n)
+            point = uniform(seed(digest.copy(), definition_of(f)))
+            value = expression(
+                f,
+                real=real,
+                u=point,
+                digest=digest,
+                faked=_no_column,
+                family_of=_no_column,
+                guard=False,
+            )
+            parts.append(_json_value(value, f))
+
+    node(k.root, "")
+    # Read as JSON on every engine: JSON_PARSE, as the governed statement names it, is the cast
+    # to JSON on PostgreSQL, json() on DuckDB and json_parse on Trino, whose cast of text to JSON
+    # is a JSON string.
+    return exp.Anonymous(this="JSON_PARSE", expressions=[_p(_concat(*parts))])
+
+
+def _no_column(name: str) -> NoReturn:
+    raise AssertionError(f"a template field names no column ({name}): check_template refuses it")
 
 
 _FAKED = re.compile(r'"__fake__((?:[^"]|"")+)"')
