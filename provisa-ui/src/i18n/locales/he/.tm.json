@@ -4309,7 +4309,7 @@
   "he/modelingWizard.json::modelingWizard.star.sourceLabel": "Where the process is recorded",
   "he/modelingWizard.json::modelingWizard.star.via": "Fact column",
   "he/modelingWizard.json::modelingWizard.star.viaHelp": "The column of the process's table that points at this dimension.",
-  "he/modelingWizard.json::modelingWizard.stepOf": "Step {{index}} of {{count}}",
+  "he/modelingWizard.json::modelingWizard.stepsLabel": "Wizard steps",
   "he/modelingWizard.json::modelingWizard.toReview": "Review",
   "he/modelingWizard.json::modelingWizard.validTime": "Valid time",
   "he/modelingWizard.json::modelingWizard.validTimeHelp": "The column saying from when each version was true in the business. With the recorded time, it lets past versions be queried.",
