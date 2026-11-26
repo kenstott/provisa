@@ -98545,7 +98545,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     field fakes, so the result is the same JSON on every engine and stable fields stay stable. Each field''s fake
     is checked as a column''s would be against the field''s type. Propose fakes offers a template for a JSON
     column from the keys and value types its latest profile run found, and Polly declares one when asked for
-    fakes on fields inside a JSON column. Structured Faker methods (pydict, profile and the like) stay refused.'
+    fakes on fields inside a JSON column. Structured Faker methods (pydict, profile and the like) stay refused. (Amended 2026-11-25 by the lead, the existing per-engine rule applied: the identical-object guarantee holds for a stable template; a template''''s fields follow the column''''s stable flag, and an unstable field, like an unstable column fake, may differ between engines.)'
   scenario: 'Given a JSON column contact with a template fake {"email": email(), "phone": phone_number()},
     when the column is read in the fake environment on DuckDB and on Trino, then each row holds an object with
     an email-shaped email and a phone-shaped phone, and the same row gives the same object on both engines.'
