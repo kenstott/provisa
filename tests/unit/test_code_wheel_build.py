@@ -23,6 +23,7 @@ import pytest
 
 from provisa.codesource import wheel_build
 
+TOOLCHAIN = Path("/rustup/toolchains/1.95.0/bin")
 TOOLS = {"rustup": "/bin/rustup", "cargo-zigbuild": "/bin/cargo-zigbuild", "zig": "/bin/zig"}
 
 
@@ -42,6 +43,7 @@ def crate(tmp_path: Path) -> Path:
 def targets(monkeypatch):
     installed = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"]
     monkeypatch.setattr(wheel_build, "_installed_targets", lambda rustup: installed)
+    monkeypatch.setattr(wheel_build, "_toolchain_bin", lambda rustup: TOOLCHAIN)
     return installed
 
 
@@ -71,7 +73,12 @@ def test_the_wheel_is_built_from_source_for_the_architecture_and_cached(
         )
     assert wheel == house / f"provisa-0.1.0-cp312-cp312-manylinux_2_28_{machine}.whl"
     (argv, cwd, env) = cargo.calls[0]
-    assert argv[:4] == ["/bin/rustup", "run", wheel_build.RUST_TOOLCHAIN, "/bin/cargo-zigbuild"]
+    assert argv[:2] == ["/bin/cargo-zigbuild", "zigbuild"]
+    # The pinned toolchain's cargo and rustc, ahead of any other on PATH.
+    assert env["PATH"].split(":")[0] == str(TOOLCHAIN)
+    assert env["CARGO"] == str(TOOLCHAIN / "cargo")
+    assert env["RUSTC"] == str(TOOLCHAIN / "rustc")
+    assert env["RUSTUP_AUTO_INSTALL"] == "0"
     assert argv[argv.index("--target") + 1] == f"{machine}-unknown-linux-gnu.2.28"
     assert "--locked" in argv and "--release" in argv
     assert cwd == crate

@@ -76,16 +76,37 @@ def _target(arch: str) -> str:
     return f"{WHEEL_ARCH[arch]}-unknown-linux-gnu"
 
 
-def _installed_targets(rustup: str) -> list[str] | None:
-    """The targets the pinned toolchain has, or None when the toolchain is not installed."""
+#: rustup never installs a toolchain behind a probe: a missing one is refused by name.
+_NO_AUTO_INSTALL = {"RUSTUP_AUTO_INSTALL": "0"}
+
+
+def _rustup(rustup: str, *args: str) -> str | None:
+    """rustup's output for ``args`` on the pinned toolchain, or None when it is not installed."""
     done = subprocess.run(  # nosec B603 - fixed argv, no shell
-        [rustup, "target", "list", "--installed", "--toolchain", RUST_TOOLCHAIN],
+        [rustup, *args, "--toolchain", RUST_TOOLCHAIN],
         capture_output=True,
         text=True,
+        env={**os.environ, **_NO_AUTO_INSTALL},
     )
-    if done.returncode != 0:
-        return None
-    return done.stdout.split()
+    return done.stdout if done.returncode == 0 else None
+
+
+def _installed_targets(rustup: str) -> list[str] | None:
+    """The targets the pinned toolchain has, or None when the toolchain is not installed."""
+    listed = _rustup(rustup, "target", "list", "--installed")
+    return None if listed is None else listed.split()
+
+
+def _toolchain_bin(rustup: str) -> Path:
+    """The pinned toolchain's bin directory (its cargo and rustc), put first on cargo-zigbuild's
+    PATH: ``rustup run`` leaves a cargo that is not rustup's (Homebrew's) ahead of it."""
+    cargo = _rustup(rustup, "which", "cargo")
+    if cargo is None:
+        raise WheelBuildRefused(
+            "image_wheel_toolchain",
+            f"rustup lists the Rust {RUST_TOOLCHAIN} toolchain but names no cargo in it",
+        )
+    return Path(cargo.strip()).parent
 
 
 def _beside_python(name: str) -> str | None:
@@ -119,8 +140,9 @@ def _refused(arch: str, missing: str, install: str) -> WheelBuildRefused:
     )
 
 
-def _toolchain(arch: str, which: Which) -> tuple[str, str, dict[str, str]]:
-    """rustup, cargo-zigbuild and zig's environment, or refused naming the first one missing."""
+def _toolchain(arch: str, which: Which) -> tuple[Path, str, dict[str, str]]:
+    """The pinned toolchain's bin, cargo-zigbuild and zig's environment, or refused naming the
+    first one missing."""
     target = _target(arch)
     rustup = which("rustup")
     if rustup is None:
@@ -148,7 +170,7 @@ def _toolchain(arch: str, which: Which) -> tuple[str, str, dict[str, str]]:
     zig = _zig_env(which)
     if zig is None:
         raise _refused(arch, "zig", f"pip install {ZIGLANG}")
-    return rustup, zigbuild, zig
+    return _toolchain_bin(rustup), zigbuild, zig
 
 
 def _record_line(name: str, data: bytes) -> str:
@@ -212,7 +234,7 @@ def build_wheel(
             "source checkout's rust/encoders",
             arch=arch,
         )
-    rustup, zigbuild, zig_env = _toolchain(arch, which)
+    toolchain, zigbuild, zig_env = _toolchain(arch, which)
     target = _target(arch)
     log.info(
         "Build image: compiling the provisa %s wheel for linux/%s (%s, manylinux_2_28) from %s",
@@ -226,15 +248,18 @@ def build_wheel(
         env = {
             **os.environ,
             **zig_env,
+            **_NO_AUTO_INSTALL,
+            "PATH": os.pathsep.join([str(toolchain), os.environ["PATH"]]),
+            "CARGO": str(toolchain / "cargo"),
+            "RUSTC": str(toolchain / "rustc"),
             "CARGO_TARGET_DIR": str(target_dir),
             "PYO3_CROSS_PYTHON_VERSION": "3.12",
         }
-        # rustup run puts the pinned toolchain's cargo first on PATH for cargo-zigbuild; the
-        # target's glibc suffix is cargo-zigbuild's (scripts/cargo-zigbuild-manylinux).
+        # The target's glibc suffix is cargo-zigbuild's (scripts/cargo-zigbuild-manylinux).
         run(
             [
-                rustup, "run", RUST_TOOLCHAIN, zigbuild, "zigbuild", "--release", "--locked",
-                "--lib", "--target", f"{target}.{GLIBC}",
+                zigbuild, "zigbuild", "--release", "--locked", "--lib",
+                "--target", f"{target}.{GLIBC}",
             ],
             crate,
             env,
