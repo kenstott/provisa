@@ -958,6 +958,9 @@ async def _init_control_planes(
     state.model_db, state.tenant_db, state.record_db = open_org_stores(
         org_schema(org_id, PROD), ModelPlane(org_id, PROD), model_engine=tenant_engine
     )
+    from provisa.api import graph_session_cache
+
+    graph_session_cache.listen(state.tenant_db)
     state.admin_db = await bring_up_platform(
         _plane_engine(
             "platform",
