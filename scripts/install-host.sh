@@ -50,7 +50,8 @@ INSTALL_HOST_PG_IMAGE="pgvector/pgvector:pg16-trixie"
 INSTALL_HOST_MINIO_IMAGE="bitnamilegacy/minio:latest"
 INSTALL_HOST_MINIO_CLIENT_IMAGE="bitnamilegacy/minio-client:latest"
 # Zaychik is built by the release: provisa/zaychik:local inside its core-images asset (a dry run's
-# assets), or ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published.
+# assets, and on aarch64 the published release's too: REQ-2269, amended 2026-11-26), or on x86_64
+# ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published (that image is amd64 only).
 INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE="provisa/zaychik:local"
 INSTALL_HOST_ZAYCHIK_IMAGE_FILE="zaychik-local.tar.gz"
 INSTALL_HOST_PG_CONTAINER="provisa-postgres"
@@ -299,13 +300,17 @@ core_images_asset_name() {
 }
 
 zaychik_image() {
-  # $1 repo, $2 tag, $3 assets dir (empty: the published release). Prints the Zaychik image the
-  # install runs: the one inside the assets' core-images file, or the published release's.
+  # $1 repo, $2 tag, $3 assets dir (empty: the published release), $4 machine (uname -m). Prints
+  # the Zaychik image the install runs: the one inside the release's core-images asset, or on
+  # x86_64 the published release's registry image (release-publish.yml pushes it for amd64 only).
   if [ -n "$3" ]; then
     printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE"
-  else
-    printf 'ghcr.io/%s/provisa-zaychik:%s\n' "${1%%/*}" "$2"
+    return 0
   fi
+  case "$4" in
+    aarch64 | arm64) printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ;;
+    *) printf 'ghcr.io/%s/provisa-zaychik:%s\n' "${1%%/*}" "$2" ;;
+  esac
 }
 
 release_api_url() {
@@ -787,19 +792,33 @@ start_core() {
 }
 
 load_zaychik_image() {
-  # Sets IH_ZAYCHIK_IMAGE: loaded from the core-images asset in --assets-dir, or pulled from the
-  # published release.
-  IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_REPO" "$IH_VERSION" "$IH_ASSETS_DIR")"
-  if [ -z "$IH_ASSETS_DIR" ]; then
+  # $1 the release's assets directory on this host. Sets IH_ZAYCHIK_IMAGE: loaded from the
+  # release's core-images asset (the one in --assets-dir, or on aarch64 the published release's,
+  # downloaded into $1 and removed once loaded: it carries every core image and only Zaychik is
+  # taken from it), or on x86_64 pulled from the published release's registry image.
+  local machine name file downloaded=false
+  machine="$(uname -m)"
+  IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_REPO" "$IH_VERSION" "$IH_ASSETS_DIR" "$machine")"
+  if [ "$IH_ZAYCHIK_IMAGE" != "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ]; then
     info "pulling $IH_ZAYCHIK_IMAGE"
     docker pull "$IH_ZAYCHIK_IMAGE" >/dev/null || die "pulling $IH_ZAYCHIK_IMAGE failed"
     return 0
   fi
-  local name file
-  name="$(core_images_asset_name "$IH_VERSION" "$(uname -m)")"
-  [ -n "$name" ] || die "no core-images asset for machine $(uname -m)"
-  file="$IH_ASSETS_DIR/$name"
-  [ -f "$file" ] || die "--assets-dir $IH_ASSETS_DIR lacks $name, the release's core images (Zaychik)"
+  name="$(core_images_asset_name "$IH_VERSION" "$machine")"
+  [ -n "$name" ] || die "no core-images asset for machine $machine"
+  if [ -n "$IH_ASSETS_DIR" ]; then
+    file="$IH_ASSETS_DIR/$name"
+    [ -f "$file" ] || die "--assets-dir $IH_ASSETS_DIR lacks $name, the release's core images (Zaychik)"
+  else
+    file="$1/$name"
+    mkdir -p "$1"
+    info "downloading $name"
+    curl -fL --retry 3 --retry-delay 5 -o "$file.part" \
+      "$(release_download_url "$IH_REPO" "$IH_VERSION" "$name")" ||
+      die "download of $name from release $IH_VERSION failed"
+    mv "$file.part" "$file"
+    downloaded=true
+  fi
   info "loading $IH_ZAYCHIK_IMAGE from $name"
   case "$file" in
     *.zip)
@@ -812,6 +831,7 @@ load_zaychik_image() {
         die "loading $INSTALL_HOST_ZAYCHIK_IMAGE_FILE from $name failed"
       ;;
   esac
+  [ "$downloaded" = false ] || rm -f "$file"
 }
 
 start_zaychik() {
@@ -914,7 +934,7 @@ install_local() {
   ensure_uv
   install_provisa "$assets" "${names[@]}"
   install_trino_plugins "$tarball"
-  load_zaychik_image
+  load_zaychik_image "$assets"
   write_files
   start_core
   start_trino
