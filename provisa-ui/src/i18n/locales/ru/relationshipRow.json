@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "один-ко-многим",
     "materializeCheckbox": "Материализовать",
     "excludeFromCypher": "Исключить из Cypher",
-    "sqlName": "Имя SQL",
+    "apiName": "Имя API",
     "cardinalityWarning": "Внимание: если это соединение возвращает более одной строки на родителя, будет использовано только первое значение.",
     "toggleDetails": "Показать/скрыть детали связи",
     "deleteTitle": "Удалить связь «{{id}}»?",

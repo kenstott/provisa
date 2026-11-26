@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "אחד-לרבים",
     "materializeCheckbox": "מטריאליזציה",
     "excludeFromCypher": "החרגה מ-Cypher",
-    "sqlName": "שם SQL",
+    "apiName": "שם API",
     "cardinalityWarning": "אזהרה: אם ה-JOIN הזה מחזיר יותר משורה אחת לכל הורה, רק הערך הראשון ישמש.",
     "toggleDetails": "הצגה/הסתרה של פרטי הקשר",
     "deleteTitle": "למחוק את הקשר \"{{id}}\"?",

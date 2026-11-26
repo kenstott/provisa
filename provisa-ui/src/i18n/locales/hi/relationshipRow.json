@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "एक-से-अनेक",
     "materializeCheckbox": "मटीरियलाइज़ करें",
     "excludeFromCypher": "Cypher से बाहर रखें",
-    "sqlName": "SQL नाम",
+    "apiName": "API नाम",
     "cardinalityWarning": "चेतावनी: यदि यह जॉइन प्रति पैरेंट एक से अधिक पंक्ति लौटाता है, तो केवल पहला मान उपयोग होगा।",
     "toggleDetails": "संबंध विवरण टॉगल करें",
     "deleteTitle": "संबंध \"{{id}}\" हटाएँ?",

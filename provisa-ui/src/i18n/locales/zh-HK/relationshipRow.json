@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "一對多",
     "materializeCheckbox": "具體化",
     "excludeFromCypher": "從 Cypher 排除",
-    "sqlName": "SQL 名稱",
+    "apiName": "API 名稱",
     "cardinalityWarning": "警告：如此聯結對每個父項傳回多於一列，只會使用第一個值。",
     "toggleDetails": "切換關係詳細資訊",
     "deleteTitle": "刪除關聯「{{id}}」？",
