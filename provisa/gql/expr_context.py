@@ -48,8 +48,10 @@ from provisa.gql.translator_types import (
     map_key_column,
 )
 from provisa.gql.translator_helpers import (  # REQ-1586
+    RelEndpoints,
     _make_junction_joins,
     edge_properties_column,
+    oriented_rel,
     refused_when_read,
     via_alias_for,
 )
@@ -1251,10 +1253,14 @@ class TranslatorExprContext:
         t = self._t
         endpoints = t._rel_var_endpoints.get(var)
         if endpoints:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
-            disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
-            return t._build_node_object_expr(*(disp_start if start else disp_end))
+
+            def end_node(ends: RelEndpoints) -> exp.Expression:
+                src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+                disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
+                disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
+                return t._build_node_object_expr(*(disp_start if start else disp_end))
+
+            return oriented_rel(endpoints, t._rel_var_forward_when.get(var), end_node)
         path_info = t._path_vars.get(var)
         if path_info:
             node_alias = path_info[0] if start else path_info[1]
@@ -1364,19 +1370,30 @@ class TranslatorExprContext:
             return exp.Subquery(this=counted)
         return _anon("ARRAY", inner_select)  # COLLECT
 
+    def edge_object(self, name: str, ends: RelEndpoints) -> exp.Anonymous:
+        """The typed relationship ``name``'s edge object, between ``ends`` read as given."""
+        t = self._t
+        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+        edge = t._build_edge_object(
+            t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
+            src_alias,
+            src_nm,
+            tgt_alias,
+            tgt_nm,
+            is_reversed,
+            t._rel_var_via.get(name),
+        )
+        assert isinstance(edge, exp.Anonymous)
+        return edge
+
     def resolve_graph_element(self, name: str) -> exp.Expression | None:
         t = self._t
         endpoints = t._rel_var_endpoints.get(name)
         if endpoints is not None and name in t._rel_var_types:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            return t._build_edge_object(
-                t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
-                src_alias,
-                src_nm,
-                tgt_alias,
-                tgt_nm,
-                is_reversed,
-                t._rel_var_via.get(name),
+            return oriented_rel(
+                endpoints,
+                t._rel_var_forward_when.get(name),
+                lambda ends: self.edge_object(name, ends),
             )
         if name in t._path_vars:
             # A path as a value ([n, r, p], WITH p): its object, as RETURN p answers it.
@@ -1406,14 +1423,25 @@ class TranslatorExprContext:
             src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
             if is_reversed:
                 # Its ends as the relationship is registered: source first.
-                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+                src_nm, tgt_nm = tgt_nm, src_nm
             if name in t._rel_var_type_exprs:
                 raise CypherTranslateError(
                     f"{name} is one of several relationship types; compare it by type(...) and "
                     "its ends"
                 )
             kind = ("rel", t._rel_var_types[name], src_nm.table_name, tgt_nm.table_name)
-            return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
+
+            def registered_end(position: int) -> exp.Expression:
+                def key(ends: RelEndpoints) -> exp.Expression:
+                    s_alias, s_nm, t_alias, t_nm, reversed_ = ends
+                    pairs = [(s_alias, s_nm), (t_alias, t_nm)]
+                    if reversed_:
+                        pairs.reverse()
+                    return node_key(*pairs[position])
+
+                return oriented_rel(endpoints, t._rel_var_forward_when.get(name), key)
+
+            return kind, [registered_end(0), registered_end(1)]
         if name in t._rel_var_types:
             return None
         if name in t._path_vars:

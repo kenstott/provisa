@@ -13,6 +13,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
+import { expectFilterFindsEveryCell } from "../../../test-utils/listFilter";
 
 const table = (id: number, tableName: string, domainId: string) => ({
   id,
@@ -44,7 +45,10 @@ vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
     },
     refetch: vi.fn(),
   }),
-  useCacheTableStats: () => ({ cacheTableStats: [], refetch: vi.fn() }),
+  useCacheTableStats: () => ({
+    cacheTableStats: [{ tableId: 3, cachedEntries: 42 }],
+    refetch: vi.fn(),
+  }),
   usePurgeCacheByTable: () => ({ purgeCacheByTable: vi.fn() }),
 }));
 vi.mock("../../../hooks/useAdminQueries", async (orig) => ({
@@ -81,9 +85,28 @@ describe("the response cache's table search", () => {
   it("lists the tables matching every word of the search, or either side of or", async () => {
     render(<CacheManager />);
     await screen.findByTestId("purge-table-btn-2");
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "orders or finance" } });
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "orders or finance" },
+    });
     expect(screen.getByTestId("purge-table-btn-1")).toBeInTheDocument();
     expect(screen.getByTestId("purge-table-btn-3")).toBeInTheDocument();
     expect(screen.queryByTestId("purge-table-btn-2")).toBeNull();
+  });
+
+  it("finds each table by every text its row shows", async () => {
+    render(<CacheManager />);
+    await screen.findByTestId("purge-table-btn-2");
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("cache-tables-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<CacheManager />);
+    await screen.findByTestId("purge-table-btn-2");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-table" } });
+    expect(screen.getByTestId("cache-tables-empty")).toHaveTextContent(
+      "No tables match the filter.",
+    );
   });
 });

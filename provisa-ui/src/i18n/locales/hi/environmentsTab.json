@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "एनवायरनमेंट",
+    "noEnvironments": "अभी कोई एनवायरनमेंट नहीं।",
+    "noMatch": "फ़िल्टर से मेल खाता कोई एनवायरनमेंट नहीं।",
     "tabRequests": "मर्ज अनुरोध",
     "tabRepository": "रिपॉज़िटरी",
     "tabIntegration": "इंटीग्रेशन",

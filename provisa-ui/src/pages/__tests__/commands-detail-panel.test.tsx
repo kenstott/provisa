@@ -18,6 +18,7 @@ import { fireEvent, render, screen, waitFor, within } from "../../test-utils/ren
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router-dom";
 import type { TrackedFunction, TrackedWebhook } from "../../api/actions";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 const fn = (name: string): TrackedFunction =>
   ({
@@ -105,6 +106,56 @@ describe("the Commands lists' search", () => {
     expect(screen.getByTestId("commands-fn-row-refund_order")).toBeInTheDocument();
     expect(screen.getByTestId("commands-wh-row-notify_ops")).toBeInTheDocument();
     expect(screen.queryByTestId("commands-fn-row-close_period")).toBeNull();
+  });
+
+  it("finds each command by every text its row shows, in both lists", async () => {
+    ACTIONS = {
+      functions: [
+        fn("refund_order"),
+        {
+          ...fn("close_period"),
+          sourceId: "ledger-db",
+          schemaName: "books",
+          returns: null,
+          returnSchema: { fields: [] },
+          arguments: [],
+          visibleTo: [],
+          domainId: "finance",
+        } as unknown as TrackedFunction,
+      ],
+      webhooks: [
+        wh("notify_ops"),
+        {
+          ...wh("page_oncall"),
+          url: "https://pager.example.com/alert",
+          method: "PUT",
+          timeoutMs: 750,
+          returns: "Ack",
+          arguments: [{ name: "msg", type: "String" }],
+          visibleTo: ["ops", "sre"],
+          domainId: "support",
+          approved: false,
+        } as unknown as TrackedWebhook,
+      ],
+    };
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-wh-row-page_oncall");
+    const box = screen.getByTestId("filter-input");
+    await expectFilterFindsEveryCell(box, () => screen.getByTestId("commands-functions-list"));
+    await expectFilterFindsEveryCell(box, () => screen.getByTestId("commands-webhooks-list"));
+  });
+
+  it("says nothing matches when the search empties a list", async () => {
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-fn-row-refund_order");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund" } });
+    expect(screen.getByTestId("commands-webhooks-empty")).toHaveTextContent(
+      "No webhooks match the filter",
+    );
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-command" } });
+    expect(screen.getByTestId("commands-functions-empty")).toHaveTextContent(
+      "No functions match the filter",
+    );
   });
 });
 

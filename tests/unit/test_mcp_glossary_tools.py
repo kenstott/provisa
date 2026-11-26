@@ -82,10 +82,19 @@ async def test_create_glossary_term_calls_repo_and_notifies():
             "provisa.core.repositories.glossary.create_abstract_term",
             new=AsyncMock(return_value=42),
         ),
+        patch(
+            "provisa.core.repositories.glossary.get_term",
+            new=AsyncMock(return_value=_term(42, "Churn", [], "draft", None)),
+        ),
+        patch(
+            "provisa.core.repositories.glossary.terms_named",
+            new=AsyncMock(return_value={42: set()}),
+        ),
     ):
         result = await tools.create_glossary_term(_state(), "analyst", _request(), "Churn")
 
-    assert result == {"id": 42}
+    assert result["id"] == 42
+    assert result["term"]["id"] == 42
     notify.assert_awaited_once()
     embed.assert_awaited_once()  # REQ-2185: TERMS ARE EMBEDDED AS THEY CHANGE
 
@@ -116,20 +125,101 @@ async def test_delete_glossary_term_is_irreversible_and_checked():
     embed.assert_awaited_once()  # REQ-2185: TERMS ARE EMBEDDED AS THEY CHANGE
 
 
+def _term(term_id: int, name: str, domains: list[str], status: str, definition: str | None):
+    """A term as glossary_repo.get_term returns it, the fields Polly reports."""
+    return {
+        "id": term_id,
+        "name": name,
+        "domains": domains,
+        "status": status,
+        "definition": definition,
+        "edges_out": [],
+        "edges_in": [],
+    }
+
+
 async def test_add_glossary_term_edge_grounds_a_proposed_term():
+    term = _term(1, "Patron", ["sales"], "draft", None)
     with (
         patch("provisa.api.admin.glossary_router._require_glossary_rw"),
         patch("provisa.api.admin.glossary_router._require_term_curatable", new=AsyncMock()),
         patch("provisa.api.admin.glossary_router._notify", new=AsyncMock()),
         patch("provisa.core.repositories.glossary.add_edge", new=AsyncMock()) as add_edge,
+        patch("provisa.core.repositories.glossary.get_term", new=AsyncMock(return_value=term)),
+        patch(
+            "provisa.core.repositories.glossary.terms_named",
+            new=AsyncMock(return_value={1: {"sales"}}),
+        ),
     ):
         result = await tools.add_glossary_term_edge(
             _state(), "analyst", _request(), 1, 2, "broader"
         )
 
-    assert result == {"ok": True}
+    assert result["ok"] is True
+    assert result["term"]["id"] == 1
     called_conn, from_id, to_id, rel_type = add_edge.call_args[0]
     assert (from_id, to_id, rel_type) == (1, 2, "broader")
+
+
+async def test_a_glossary_write_reports_the_term_it_changed_among_others_of_its_name():
+    """Two domains each hold a term named neighborhood (REQ-1591). An edge added to the city's
+    draft reports that term as it now is -- its id, domains, status and definition, read back by
+    id -- and names the other neighborhood by id and domains, never reporting the other's state."""
+    written = _term(41, "neighborhood", ["city"], "draft", None)
+    written["edges_out"] = [
+        {"term_id": 7, "rel_type": "KIND_OF", "name": "location", "domains": ["*"]}
+    ]
+    get_term = AsyncMock(return_value=written)
+    with (
+        patch("provisa.api.admin.glossary_router._require_glossary_rw"),
+        patch("provisa.api.admin.glossary_router._require_term_curatable", new=AsyncMock()),
+        patch("provisa.api.admin.glossary_router._notify", new=AsyncMock()),
+        patch("provisa.core.repositories.glossary.add_edge", new=AsyncMock()),
+        patch("provisa.core.repositories.glossary.get_term", new=get_term),
+        patch(
+            "provisa.core.repositories.glossary.terms_named",
+            new=AsyncMock(return_value={94: {"*"}, 41: {"city"}}),
+        ),
+    ):
+        result = await tools.add_glossary_term_edge(
+            _state(), "analyst", _request(), 41, 7, "KIND_OF"
+        )
+
+    assert get_term.call_args[0][1] == 41
+    assert result["term"] == {
+        "id": 41,
+        "name": "neighborhood",
+        "domains": ["city"],
+        "status": "draft",
+        "definition": None,
+        "edges_out": [{"term_id": 7, "rel_type": "KIND_OF", "name": "location", "domains": ["*"]}],
+        "edges_in": [],
+        "same_name": [{"id": 94, "domains": ["*"]}],
+    }
+
+
+async def test_update_glossary_term_reports_the_definition_as_read_back():
+    term = _term(41, "neighborhood", ["city"], "draft", "An area of the city.")
+    with (
+        patch("provisa.api.admin.glossary_router._require_glossary_rw"),
+        patch("provisa.api.admin.glossary_router._require_term_curatable", new=AsyncMock()),
+        patch("provisa.api.admin.glossary_router._notify", new=AsyncMock()),
+        patch("provisa.api.admin.reference_library_router.embed_terms", new=AsyncMock()),
+        patch(
+            "provisa.core.repositories.glossary.set_definition", new=AsyncMock(return_value=True)
+        ),
+        patch("provisa.core.repositories.glossary.get_term", new=AsyncMock(return_value=term)),
+        patch(
+            "provisa.core.repositories.glossary.terms_named",
+            new=AsyncMock(return_value={41: {"city"}}),
+        ),
+    ):
+        result = await tools.update_glossary_term(
+            _state(), "analyst", _request(), 41, definition="An area of the city."
+        )
+
+    assert result["term"]["definition"] == "An area of the city."
+    assert result["term"]["same_name"] == []
 
 
 async def test_remove_glossary_term_edge_not_found_raises():
@@ -145,3 +235,21 @@ async def test_remove_glossary_term_edge_not_found_raises():
 async def test_glossary_tools_require_role():
     with pytest.raises(ValueError):
         await tools.list_glossary_terms(_state(), "", _request())
+
+
+async def test_polly_acts_on_the_term_on_screen_by_id_and_names_which_of_a_shared_name_it_changed():
+    """The term the user has open is the route's ?term=<id> (sent with the route, and read_screen's
+    inputs.term); Polly acts on that id, reports the write's read-back `term`, and names the one it
+    changed among others of its name (REQ-1591)."""
+    from provisa.api.mcp import chat
+
+    prompt = chat._system_prompt("/context/ontology?term=41", None)
+    assert "/context/ontology?term=41" in prompt
+    for rule in (
+        "/context/ontology?term=<id> for the term you change",
+        "a term goes by its id, never its name",
+        "read_screen's inputs.term",
+        "report what its result's `term` holds",
+        "say which one you changed by id and domains",
+    ):
+        assert rule in prompt

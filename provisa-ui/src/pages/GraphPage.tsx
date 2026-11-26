@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { hasNoStatement } from "../lib/noStatement";
+import { NoQueryMessage } from "../components/NoQueryMessage";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
@@ -86,6 +88,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   // settings; SPARQL's vocabulary stands where Cypher's labels are.
   const graphState = graphStateOf(language);
   const sparql = language === "sparql";
+  // The last run had no statement in the editor: the stream says so.
+  const [noQuery, setNoQuery] = useState(false);
   const { role, selectedRoles, loading: authLoading } = useAuth();
   // REQ-1620: under "Role: All" the acting set is every active role, sent as one
   // comma-separated X-Provisa-Role so the server unions their domain_access — sending only
@@ -539,7 +543,12 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
 
   const runQuery = useCallback(
     async (typed: string, view?: FrameView, frameId?: string) => {
-      if (!typed) return;
+      // No statement in the editor (blank, or comments alone): said in the stream, nothing sent.
+      if (hasNoStatement(typed, language)) {
+        setNoQuery(true);
+        return;
+      }
+      setNoQuery(false);
       const query = asSent(typed);
       const id = frameId ?? uuid();
       if (view) setFrameViews((views) => ({ ...views, [id]: view }));
@@ -569,7 +578,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       });
       await answer(id, query, start);
     },
-    [answer, asSent, graphState],
+    [answer, asSent, graphState, language],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -1040,7 +1049,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           className="graph-stream"
           data-handoff-status={frames.find((f) => f.id === handoffFrameId)?.status}
         >
-          {frames.length === 0 && (
+          {noQuery && <NoQueryMessage testId="graph-no-query" />}
+          {frames.length === 0 && !noQuery && (
             <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
               <div className="graph-stream-empty-icon" aria-hidden="true">
                 ⬡

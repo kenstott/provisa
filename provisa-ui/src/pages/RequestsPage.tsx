@@ -205,7 +205,20 @@ export function RequestsPage() {
       : rows.filter((r) => r.status !== "pending");
 
   const filtered = displayRows.filter((r) =>
-    matchesQuery([String(r.id), r.request_type, r.requested_by, r.status], search),
+    // Every text a request's row shows.
+    matchesQuery(
+      [
+        String(r.id),
+        r.request_type,
+        r.requested_by,
+        new Date(r.created_at).toLocaleString(),
+        `${r.approvals.length} / ${r.required_approvals}`,
+        r.waiting_on.join(", "),
+        r.status,
+        r.rejection_reason,
+      ],
+      search,
+    ),
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -477,7 +490,7 @@ export function RequestsPage() {
         }}
         list={
           <>
-            <ListTable minWidth={800}>
+            <ListTable minWidth={800} testId="requests-list">
               <ListHead
                 columns={[
                   { col: "id" },
@@ -493,7 +506,7 @@ export function RequestsPage() {
               />
               <Table.Tbody>
                 {filtered.length === 0 && (
-                  <ListEmpty colSpan={8}>
+                  <ListEmpty colSpan={8} testId="requests-empty">
                     {search
                       ? t("requestsPage.emptyFiltered", { tab })
                       : t("requestsPage.empty", { tab })}

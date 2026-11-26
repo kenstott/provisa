@@ -4,7 +4,7 @@
     "connect": "Connect source",
     "register": "Register tables",
     "relate": "Discover relationships",
-    "query": "Query",
+    "yourData": "Your data",
     "tablesCount_one": "{{count}} table",
     "tablesCount_other": "{{count}} tables",
     "registerHint": "Register this source's tables to query them.",
@@ -25,6 +25,8 @@
     "runAgain": "Run setup again",
     "nothingToQueryHint": "No tables are registered to query.",
     "newTablesHint_one": "{{count}} table registered since setup has no relationship.",
-    "newTablesHint_other": "{{count}} tables registered since setup have no relationship."
+    "newTablesHint_other": "{{count}} tables registered since setup have no relationship.",
+    "yourDataAction": "Show your data",
+    "finishLater": "Finish later"
   }
 }

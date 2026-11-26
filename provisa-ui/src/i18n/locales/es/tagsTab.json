@@ -48,6 +48,7 @@
     "colAssignments": "Asignaciones",
     "colActions": "Acciones",
     "empty": "No hay etiquetas para este ámbito",
+    "noMatch": "Ninguna etiqueta coincide con el filtro",
     "systemTag": "Etiqueta del sistema (solo lectura)",
     "editTag": "Editar etiqueta {{id}}",
     "deleteTag": "Eliminar etiqueta {{id}}",

@@ -11,7 +11,6 @@
     "mcp": "MCP-Tool-Aufruf",
     "copy": "{{what}} kopieren",
     "close": "Schließen",
-    "createRelationships": "Beziehungen erstellen",
     "relationshipsCreated_one": "{{count}} Beziehung erstellt.",
     "relationshipsCreated_other": "{{count}} Beziehungen erstellt."
   }

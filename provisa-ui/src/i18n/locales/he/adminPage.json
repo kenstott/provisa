@@ -194,6 +194,7 @@
     "colGqlAlias": "כינוי GQL",
     "colSteward": "Steward",
     "noDomains": "לא הוגדרו דומיינים",
+    "noDomainsMatch": "אין דומיינים התואמים לסינון",
     "deleteDomain": "מחיקת דומיין {{id}}",
     "resolveSteward": "הצגת מי אחראי כ-Steward על התחום {{id}}",
     "pageIndicator": "עמוד {{page}} / {{total}}",

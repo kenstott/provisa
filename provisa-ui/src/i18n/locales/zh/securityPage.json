@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "未定义行级安全规则。",
     "noRulesMatchFilter": "没有符合当前筛选条件的规则。",
+    "noRolesMatch": "没有符合筛选条件的角色。",
     "purposeTitle": "RLS 规则的作用",
     "purposeBody": "行级安全规则是绑定到一个角色和一个范围的 SQL 谓词。服务器在执行前将其以 AND 合并到查询中，适用于读取和写入以及每个接口，因此无论使用哪个客户端，角色都只能看到其规则允许的行。",
     "purposeAdd": "可将规则限定到单张表，或限定到整个域以覆盖其中的每张表；两者都适用时，该表以表级规则为准。标签上的规则覆盖当前及今后带有该标签的每张表，并与表自身的规则叠加，因此标签只能缩小角色可读的范围。规则以角色为对象，因此要更改某人能看到的内容，请更改其所持有的角色。",

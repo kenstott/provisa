@@ -25,13 +25,15 @@ which takes the ones whose timer a restart ended."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
 import time
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +67,17 @@ class ResultFormatNotWritable(ValueError):
         )
 
 
+class ResultAddressUnknown(RuntimeError):
+    """A result was to be written to a file with no address to serve it at."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "a result kept on this server is served at the address its request came in on, and "
+            "this request came in over no HTTP; set server.public_url to the address HTTP "
+            "clients reach this server at"
+        )
+
+
 class ResultOwnerUnknown(RuntimeError):
     """A result was to be written to a file with no user to serve it to."""
 
@@ -75,6 +88,38 @@ class ResultFileNotFound(LookupError):
 
 class NotResultOwner(PermissionError):
     """A user asked for a result another user asked for."""
+
+
+#: The base URI of the HTTP request being served (scheme, host, port and root path), bound by the
+#: HTTP middleware for every request; None on a request that came in over no HTTP.
+_request_base: ContextVar[str | None] = ContextVar("result_request_base", default=None)
+
+
+@contextlib.contextmanager
+def bound_request_base(base_uri: str) -> Iterator[None]:
+    """Name the base URI of the HTTP request being served, for the enclosed work."""
+    token = _request_base.set(base_uri.rstrip("/"))
+    try:
+        yield
+    finally:
+        _request_base.reset(token)
+
+
+def serve_base() -> str:
+    """The base a result kept here is served under: the HTTP request's own base URI, so the link
+    reaches this server the way the caller did (REQ-1191). A request on a protocol that is not
+    HTTP (pgwire, Flight SQL, Bolt, gRPC) has no base URI of its own; its link names the address
+    HTTP clients reach this server at, ``server.public_url`` (REQ-1191, REQ-2135), and with that
+    unset the result is refused by name (:class:`ResultAddressUnknown`)."""
+    bound = _request_base.get()
+    if bound is not None:
+        return bound
+    from provisa.core import settings_registry
+
+    public = settings_registry.value("server.public_url")
+    if not public:
+        raise ResultAddressUnknown()
+    return public.rstrip("/")
 
 
 def results_dir() -> Path:
@@ -111,16 +156,17 @@ def record_owner(path: Path, owner: str, content_type: str, row_count: int) -> N
     path.with_name(path.name + _OWNER_SUFFIX).write_text(json.dumps(record))
 
 
-def keep(path: Path, owner: str, content_type: str, row_count: int, ttl: int) -> dict:
+def keep(path: Path, owner: str, base: str, content_type: str, row_count: int, ttl: int) -> dict:
     """Record a written result for its owner, have it deleted after ``ttl``, sweep the org's
-    expired ones, and return its delivery handle: the path it is served at, its rows, how long
-    it is kept and its media type -- the object store's handle, with ``sink: local``."""
+    expired ones, and return its delivery handle: the absolute URL it is served at (``base``,
+    :func:`serve_base`), its rows, how long it is kept and its media type -- the object store's
+    handle, with ``sink: local``."""
     record_owner(path, owner, content_type, row_count)
     schedule_removal(path, ttl)
     reap_expired(path.parent, ttl)
     return {
         "sink": "local",
-        "redirect_url": f"{SERVE_PATH}{path.name}",
+        "redirect_url": f"{base}{SERVE_PATH}{path.name}",
         "row_count": row_count,
         "expires_in": ttl,
         "content_type": content_type,
@@ -134,9 +180,41 @@ def store_bytes(
     request runs as. ``content_type``: the body's own when it is not the format's (an encrypted
     payload, REQ-687)."""
     owner = current_owner()
+    base = serve_base()
     path = new_result_path(output_format)
     path.write_bytes(body)
-    return keep(path, owner, content_type or FILE_FORMATS[output_format.lower()][0], row_count, ttl)
+    return keep(
+        path, owner, base, content_type or FILE_FORMATS[output_format.lower()][0], row_count, ttl
+    )
+
+
+def result_table(state: Any, physical_sql: str, params: list | None):  # -> pa.Table
+    """Run the statement on the bound engine and return its rows as an Arrow table: the result
+    of an engine that does not write the asked-for format itself."""
+    import pyarrow as pa
+
+    stream = state.federation_engine.execute_engine_sync(physical_sql, params)
+    names = list(stream.column_names)
+    rows = stream.rows
+    return pa.table({name: [row[i] for row in rows] for i, name in enumerate(names)})
+
+
+def serialize_table(table, output_format: str) -> bytes:
+    """``table`` (an Arrow table) as the bytes of a result file in ``output_format``."""
+    fmt = output_format.lower()
+    if fmt not in FILE_FORMATS:
+        raise ResultFormatNotWritable(output_format)
+    if fmt == "orc":
+        import io
+
+        import pyarrow.orc as orc
+
+        buf = io.BytesIO()
+        orc.write_table(table, buf)
+        return buf.getvalue()
+    from provisa.executor.redirect import _serialize_arrow_table
+
+    return _serialize_arrow_table(table, fmt)[0]
 
 
 def write_from_rows(
@@ -144,21 +222,8 @@ def write_from_rows(
 ) -> int:
     """Run the statement and write its rows to ``path`` in ``output_format``: the result file of
     an engine that does not write one itself. Returns the rows written."""
-    import pyarrow as pa
-
-    stream = state.federation_engine.execute_engine_sync(physical_sql, params)
-    names = list(stream.column_names)
-    rows = stream.rows
-    table = pa.table({name: [row[i] for row in rows] for i, name in enumerate(names)})
-    fmt = output_format.lower()
-    if fmt == "orc":
-        import pyarrow.orc as orc
-
-        orc.write_table(table, str(path))
-    else:
-        from provisa.executor.redirect import _serialize_arrow_table
-
-        path.write_bytes(_serialize_arrow_table(table, fmt)[0])
+    table = result_table(state, physical_sql, params)
+    path.write_bytes(serialize_table(table, output_format))
     return table.num_rows
 
 
@@ -167,6 +232,7 @@ def write(state: Any, physical_sql: str, output_format: str, params: list | None
     the bound org's folder and return its delivery handle. The engine writes it where it writes
     the format to a file; Provisa writes it from the rows otherwise."""
     owner = current_owner()
+    base = serve_base()
     path = new_result_path(output_format)
     fmt = output_format.lower()
     engine = state.federation_engine
@@ -178,7 +244,7 @@ def write(state: Any, physical_sql: str, output_format: str, params: list | None
     except BaseException:
         remove(path)
         raise
-    return keep(path, owner, FILE_FORMATS[fmt][0], rows, ttl)
+    return keep(path, owner, base, FILE_FORMATS[fmt][0], rows, ttl)
 
 
 def _expired(path: Path, ttl: int, now: float) -> bool:
