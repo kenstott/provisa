@@ -16,8 +16,8 @@ pub struct Inputs {
     pub region: Option<String>,
 }
 
-pub fn rows(inputs: Inputs, more: Inputs) -> Vec<Row> {
-    let _ = (inputs, more);
+pub fn rows(inputs: Inputs, more: Inputs, extra: Inputs) -> Vec<Row> {
+    let _ = (inputs, more, extra);
     Vec::new()
 }
 
