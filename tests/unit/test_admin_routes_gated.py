@@ -167,6 +167,15 @@ EXEMPT[("GET", "/admin/erd-layouts")] = _ERD_LAYOUT_READ
 EXEMPT[("GET", "/admin/erd-layouts/{name}")] = _ERD_LAYOUT_READ
 
 
+# REQ-2180 (amended 2026-11-24): the counts a caller receives are answered by the domains whose
+# suggestions go to them (stewards, data product owners); an anonymous reader owns no domains, so
+# /counts answers [] (the Tables page shows no banner). The listing stays gated by _suggester.
+EXEMPT[("GET", "/admin/product-suggestions/counts")] = (
+    "REQ-2180: answered by the domains whose suggestions go to the caller; anonymous owns none, "
+    "so the counts are empty"
+)
+
+
 def _callees(fn) -> set[str]:
     try:
         tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
