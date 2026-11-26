@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -105,3 +106,14 @@ def test_a_dispatch_names_its_tests_and_pytest_arguments():
     on = yaml.safe_load((_ROOT / ".github" / "workflows" / "nixos.yml").read_text())
     inputs = on[True]["workflow_dispatch"]["inputs"]
     assert inputs["tests"]["default"] == "" and inputs["pytest_args"]["default"] == ""
+
+
+def test_no_vm_run_script_has_a_single_quote_outside_an_expression():
+    """A vm-run script is one single-quoted shell word: a quote in it (an apostrophe in a comment)
+    ends the word, and the guest's `#` then comments out the subshell's closing parenthesis."""
+    workflow = (_ROOT / ".github" / "workflows" / "nixos.yml").read_text()
+    scripts = re.findall(r"vm-run '\n(.*?)\n\s*'\n", workflow, re.DOTALL)
+    assert scripts
+    for script in scripts:
+        bare = re.sub(r"\$\{\{.*?\}\}", "", script)
+        assert "'" not in bare, script

@@ -72,6 +72,7 @@ import { EnvironmentActions } from "./EnvironmentActions";
 import { EnvironmentRow } from "./EnvironmentRow";
 import { SyntheticSeedFields, SyntheticSeedTick } from "./SyntheticSeedFields";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import type { SyntheticSeed } from "./syntheticSeed";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { Tip } from "../Tip";
@@ -198,6 +199,10 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const [preview, setPreview] = useState<CopyReport | null>(null);
   const [merging, setMerging] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // REQ-1968: a new environment needs a name; a merge needs a target and a message. Each is checked
+  // when its action is pressed.
+  const createRequired = useRequiredFields({ name });
+  const mergeRequired = useRequiredFields({ into: mergeInto, message });
 
   // REQ-1546: where each branch stands against the remote, computed from refs and never from the
   // network — rendering this page dials nobody's git host.
@@ -250,6 +255,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const orgId = activeOrgId;
 
   async function create() {
+    if (!createRequired.validate()) return;
     setCreating(true);
     try {
       const made = await createEnvironment(orgId, {
@@ -267,6 +273,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
       });
       setName("");
       setSynthetic(null);
+      createRequired.reset();
       setAdding(false);
       reload();
       detail.open(made.environment.name);
@@ -416,10 +423,12 @@ export function EnvironmentsTab({ title }: { title: string }) {
     setRetireSource(false);
     setRetireRemote(false);
     setPreview(null);
+    mergeRequired.reset();
   }
 
   async function runPreview() {
-    if (!mergeSource || mergeInto === null) return;
+    // A preview needs only the target; the message is the merge's own.
+    if (!mergeSource || !mergeRequired.validate(["into"]) || mergeInto === null) return;
     try {
       const answer = await previewMerge(orgId, mergeInto, mergeSource.name, removals, selection);
       setPreview(answer.report);
@@ -429,7 +438,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
   }
 
   async function runMerge() {
-    if (!mergeSource || mergeInto === null) return;
+    if (!mergeSource || !mergeRequired.validate() || mergeInto === null) return;
     setMerging(true);
     try {
       const answer = await mergeEnvironment(orgId, mergeInto, {
@@ -470,7 +479,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
    * opens the request; asking twice returns the request that is already open rather than a second.
    */
   async function runReview() {
-    if (!mergeSource || mergeInto === null) return;
+    if (!mergeSource || !mergeRequired.validate() || mergeInto === null) return;
     setReviewing(true);
     try {
       const answer = await requestReview(orgId, mergeSource.name, {
@@ -533,9 +542,13 @@ export function EnvironmentsTab({ title }: { title: string }) {
       <FormField size="medium">
         <TextInput
           label={t("environmentsTab.newName")}
+          {...createRequired.field("name")}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
-          ref={newName}
+          ref={(el: HTMLInputElement | null) => {
+            newName.current = el;
+            createRequired.field("name").ref(el);
+          }}
           data-testid="env-new-name"
         />
       </FormField>
@@ -577,7 +590,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
             leftSection={<GitBranch size={14} aria-hidden />}
             onClick={create}
             loading={creating}
-            disabled={name.trim() === ""}
             data-testid="env-create"
           >
             {t("environmentsTab.create")}
@@ -845,6 +857,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
               <Select
                 label={t("environmentsTab.mergeIntoLabel")}
                 data={names.filter((n) => n !== mergeSource?.name)}
+                {...mergeRequired.field("into")}
                 value={mergeInto}
                 onChange={setMergeInto}
                 data-testid="env-merge-into"
@@ -863,8 +876,8 @@ export function EnvironmentsTab({ title }: { title: string }) {
               <Textarea
                 label={t("environmentsTab.mergeMessage")}
                 value={message}
+                {...mergeRequired.field("message")}
                 onChange={(e) => setMessage(e.currentTarget.value)}
-                required
                 data-testid="env-merge-message"
               />
             </FormField>
@@ -985,24 +998,14 @@ export function EnvironmentsTab({ title }: { title: string }) {
             {/* The merge first, at the start; what looks before or asks someone else follows. */}
             <FormFooter
               action={
-                <Button
-                  onClick={runMerge}
-                  loading={merging}
-                  disabled={mergeInto === null || message.trim() === ""}
-                  data-testid="env-merge-run"
-                >
+                <Button onClick={runMerge} loading={merging} data-testid="env-merge-run">
                   {intoEnv?.protected
                     ? t("environmentsTab.propose")
                     : t("environmentsTab.mergeConfirm")}
                 </Button>
               }
             >
-              <Button
-                variant="default"
-                onClick={runPreview}
-                disabled={mergeInto === null}
-                data-testid="env-merge-preview-run"
-              >
+              <Button variant="default" onClick={runPreview} data-testid="env-merge-preview-run">
                 {t("environmentsTab.preview")}
               </Button>
               {/* REQ-1551: for a target branch the git host governs with pull requests, the review
@@ -1012,7 +1015,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
                   variant="subtle"
                   onClick={runReview}
                   loading={reviewing}
-                  disabled={mergeInto === null || message.trim() === ""}
                   data-testid="env-merge-review"
                 >
                   {t("environmentsTab.requestReview")}

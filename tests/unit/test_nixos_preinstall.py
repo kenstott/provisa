@@ -347,7 +347,9 @@ def test_first_launch_installs_the_wheels_it_carries_online_or_not():
     assert "pypi.org" not in first_launch
     body = first_launch[first_launch.index("setup_native_venv() {") :]
     body = body[: body.index("\n}\n")]
-    assert '--no-index --find-links "$wheels" "provisa[embedded]"' in body
+    # Every wheel the AppImage carries, uv.lock's set plus provisa, goes in with no index and
+    # nothing resolved (test_packagers_ship_the_locked_set.py owns the locked-set form).
+    assert '"$pip" install --quiet --no-index --no-deps "$wheels"/*.whl' in body
     installs = (_ROOT / "packaging/nixos/ci/appimage-installs.sh").read_text()
     assert "PROVISA_INSTALL_SOURCE" not in installs
 

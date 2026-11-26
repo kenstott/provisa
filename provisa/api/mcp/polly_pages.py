@@ -53,13 +53,18 @@ PAGES: dict[str, PollyPage] = {
         "query parameters: view=erd, table=<id> (its panel), section=<section> (tab within the "
         "panel: quality opens the Quality tab with profiler results), domains=<a,b> (only these "
         "shown), objects=<domain.table,...> (highlighted), collapsed=<a,b> or collapsed=all, "
-        "layout=<saved layout name>. + Model (tables-model-toggle) opens the entity/fact form; "
+        "layout=<saved layout name>, profile=<run id or latest> (with table: its Profile Runs "
+        "dialog) and profileView=<terrain, relationsMap, jointCloud, driftStrata, drift, columns, "
+        "quantiles, histogram, top_values, ...> (the result shown in it; columns when absent), as "
+        "in /tables?table=<id>&profile=latest&profileView=terrain. + Model (tables-model-toggle) "
+        "opens the entity/fact form; "
         "its drop down (tables-model-menu) offers tables-model-entity-fact, tables-model-star "
         "and tables-model-vault, the Star Schema and Data Vault wizards, stepped with wizard-next "
         "and wizard-back and ended with wizard-create. + Quality tab: "
         "table-read-view-profile-runs opens the Profile Runs modal with the profile terrain",
         "inputs: view, table, domains, objects, modeling (entityFact, star, vault or null), "
-        "wizardStep (number, count, title), collapsed, layout, layoutUnsaved",
+        "wizardStep (number, count, title), collapsed, layout, layoutUnsaved, profile, "
+        "profileView",
         tags=True,
     ),
     "/relationships": PollyPage(

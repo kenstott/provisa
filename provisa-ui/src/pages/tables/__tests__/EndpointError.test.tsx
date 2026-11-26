@@ -36,6 +36,7 @@ const TABLE = {
   region: null,
   apiEndpoint: null,
   apiEndpointError: WHY,
+  columns: [],
 } as unknown as RegisteredTable;
 
 describe("a table whose source's API document could not be read", () => {

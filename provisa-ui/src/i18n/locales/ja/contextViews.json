@@ -6,11 +6,22 @@
     "nowhere": "なし",
     "hiddenPlaces_one": "読み取れないものがあと {{count}} 件",
     "hiddenPlaces_other": "読み取れないものがあと {{count}} 件",
-    "rowFilters_one": "行フィルター {{count}} 件",
-    "rowFilters_other": "行フィルター {{count}} 件",
-    "classifiedAs": "分類により付与: {{kind}}",
     "noDependents": "なし",
     "enabled": "有効",
-    "disabled": "無効"
+    "disabled": "無効",
+    "objectCount_one": "オブジェクト {{count}} 件",
+    "objectCount_other": "オブジェクト {{count}} 件",
+    "sourceCount_one": "ソース {{count}} 件",
+    "sourceCount_other": "ソース {{count}} 件",
+    "objectsInSources": "{{sources}}にわたる{{objects}}",
+    "classificationCount_one": "分類 {{count}} 件",
+    "classificationCount_other": "分類 {{count}} 件",
+    "rowRuleCount_one": "行ルール {{count}} 件",
+    "rowRuleCount_other": "行ルール {{count}} 件",
+    "groupTables": "テーブル ({{count}})",
+    "groupColumns": "列 ({{count}})",
+    "groupClassification": "分類により付与 ({{count}})",
+    "groupRowRules": "行ルール ({{count}})",
+    "filterClassifications": "分類を絞り込む"
   }
 }

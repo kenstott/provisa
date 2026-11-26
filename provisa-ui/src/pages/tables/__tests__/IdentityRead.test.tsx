@@ -30,6 +30,7 @@ const TABLE = {
   apiEndpoint: null,
   fileGlob: "events/2026-*.parquet",
   sourceFileColumn: null,
+  columns: [],
 } as unknown as RegisteredTable;
 
 describe("IdentityRead", () => {

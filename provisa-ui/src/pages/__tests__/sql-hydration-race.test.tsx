@@ -13,6 +13,7 @@ import { act, render, screen, waitFor } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
 import i18n from "../../i18n";
+import { prettifySql } from "../sql/prettifySql";
 
 const t = i18n.getFixedT("en");
 
@@ -175,10 +176,12 @@ describe("SQL explore results hydration", () => {
     await seedPetsTab();
     const release = holdIdbReads();
     openHandoff({ sql: "select glossary_terms" });
-    await waitFor(() => expect(editor()).toHaveValue("select glossary_terms"));
+    // Handed SQL arrives formatted (SqlPage hand-off prettifies it).
+    const handed = prettifySql("select glossary_terms");
+    await waitFor(() => expect(editor()).toHaveValue(handed));
     await waitFor(() => expect(screen.getByText("Query 2")).toBeInTheDocument());
     await release();
-    expect(editor()).toHaveValue("select glossary_terms");
+    expect(editor()).toHaveValue(handed);
     expect(screen.queryByText("breed_name")).not.toBeInTheDocument();
     expect(screen.queryByText("Labrador")).not.toBeInTheDocument();
   });

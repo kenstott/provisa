@@ -156,7 +156,7 @@ describe("a term's page fields", () => {
       ["Name", "form-field--full"],
       ["Definition", "form-field--full"],
       ["Calculation method", "form-field--full"],
-      [t("glossaryTab.excludeFromExportLabel"), "form-field--short"],
+      // Export exclusion and PII are toggles in the panel's head (TermHeadActions), not fields.
       ["Domains", "form-field--medium"],
       ["Role", "form-field--short"],
       ["Tags", "form-field--medium"],

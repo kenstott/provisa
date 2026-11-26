@@ -69,6 +69,7 @@ def test_the_flag_is_stored_and_exposed():
         "replicate": None,
         "region": None,
         "withdrawn": False,  # REQ-1921: the stored column
+        "setup_outcomes": {},  # REQ-2262: the stored column
         "is_system": True,
     }
     assert _source_from_row(row, connection=False).is_system is True
