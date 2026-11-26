@@ -187,6 +187,11 @@ export interface DetailParam {
    * same write as the panel's, so it composes with an open or a close in the same handler.
    */
   setParam: (name: string, value: string | null, how?: { replace?: boolean }) => void;
+  /**
+   * Names the object a parameter naming it another way (`alsoNames`) points to by `id` instead,
+   * replacing the entry: the same object, so its tab and marks stay (REQ-2277 rule 4).
+   */
+  resolve: (id: string) => void;
 }
 
 // The router applies a new location as a transition, after the page's own state changes made in
@@ -312,7 +317,15 @@ export function useDetailParam(page: DetailPage): DetailParam {
       }, how?.replace),
     [write],
   );
-  return { id, tab, open, setTab, close, setParam };
+  const resolve = useCallback(
+    (next: string) =>
+      write((p) => {
+        for (const other of view.alsoNames ?? []) p.delete(other);
+        p.set(view.param, next);
+      }, true),
+    [write, view],
+  );
+  return { id, tab, open, setTab, close, setParam, resolve };
 }
 
 /**
