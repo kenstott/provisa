@@ -1982,6 +1982,11 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
 === "JSDoc"
 
     ```typescript
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
     /** Sales regions.
      * @table
      */
@@ -1995,6 +2000,12 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import { table } from "@provisa/sdk";
 
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
+    /** Sales regions. */
     export const regions = table(async function regions(): Promise<Region[]> {
       return [{ code: "emea", name: "Europe, Middle East and Africa" }];
     });
@@ -2007,23 +2018,45 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import type { ReadContext } from "@provisa/services";
 
-    /** @table
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch.
+     * @table
      * @loader
      */
-    export async function churnScore(
-      inputs: ScoreInputs,
-      context: ReadContext,
-    ): Promise<Score[] | Record<string, Score[]>> {
-      ...
+    export async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+      return [];
     }
     ```
 
 === "SDK"
 
     ```typescript
-    import { table } from "@provisa/sdk";
+    import { table, type ReadContext } from "@provisa/sdk";
 
-    export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch. */
+    export const churnScore = table(
+      async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+        return [];
+      },
+      { loader: true }, // or { loader: 50 }
+    );
     ```
 
 **`@stream`**
@@ -2033,12 +2066,19 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @stream */
-    export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
-      for await (const event of tailLog()) {
-        yield event;
-      }
+    export interface AuditInputs {
+      actor?: string;
     }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive.
+     * @stream
+     */
+    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {}
     ```
 
 === "SDK"
@@ -2046,7 +2086,19 @@ The function is an async generator.
     ```typescript
     import { stream } from "@provisa/sdk";
 
-    export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
+    export interface AuditInputs {
+      actor?: string;
+    }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive. */
+    export const auditEvents = stream(
+      async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {},
+    );
     ```
 
 **`@command`**
@@ -2054,9 +2106,11 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command */
+    /** Cancel one order.
+     * @command
+     */
     export async function cancelOrder(orderId: number): Promise<boolean> {
-      return api.cancel(orderId);
+      return true;
     }
     ```
 
@@ -2065,8 +2119,9 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
+    /** Cancel one order. */
     export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-      ...
+      return true;
     });
     ```
 
@@ -2075,10 +2130,18 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders.
+     * @command
      * @insert orders
      */
-    export async function addOrders(rows: Order[]): Promise<number> { ... }
+    export async function addOrders(rows: Order[]): Promise<number> {
+      return rows.length;
+    }
     ```
 
 === "SDK"
@@ -2086,7 +2149,18 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
-    export const addOrders = command(addOrdersFn, { insert: "orders" });
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders. */
+    export const addOrders = command(
+      async function addOrders(rows: Order[]): Promise<number> {
+        return rows.length;
+      },
+      { insert: "orders" },
+    );
     ```
 
 **`@query`**
@@ -2096,19 +2170,61 @@ The function is an async generator.
     ```typescript
     import type { TableRef } from "@provisa/services";
 
-    /** @query */
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions.
+     * @query
+     */
     export async function storesInRegions(
       stores: TableRef<Store>,
       regions: TableRef<Region>,
-    ): Promise<Match[]> { ... }
+    ): Promise<Match[]> {
+      return [];
+    }
     ```
 
 === "SDK"
 
     ```typescript
-    import { query } from "@provisa/sdk";
+    import { query, type TableRef } from "@provisa/sdk";
 
-    export const storesInRegions = query(storesInRegionsFn);
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions. */
+    export const storesInRegions = query(
+      async function storesInRegions(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+      ): Promise<Match[]> {
+        return [];
+      },
+    );
     ```
 
 **`@columns`**
@@ -2116,8 +2232,17 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @columns */
-    export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses.
+     * @columns
+     */
+    export function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
+    }
     ```
 
 === "SDK"
@@ -2125,8 +2250,14 @@ The function is an async generator.
     ```typescript
     import { columns } from "@provisa/sdk";
 
-    export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
-      ...
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses. */
+    export const parseAddress = columns(function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
     });
     ```
 
@@ -2153,8 +2284,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-start */
-    export async function setup(values?: Record<string, string>): Promise<void> { ... }
+    /** Called once on start.
+     * @on-start
+     */
+    export async function setup(values: Record<string, string>): Promise<void> {}
     ```
 
 === "SDK"
@@ -2162,7 +2295,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
+    /** Called once on start. */
+    export const setup = onStart(async function setup(values: Record<string, string>): Promise<void> {});
     ```
 
 **`@on-stop`**
@@ -2170,8 +2304,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-stop */
-    export async function teardown(): Promise<void> { ... }
+    /** Called once on stop.
+     * @on-stop
+     */
+    export async function teardown(): Promise<void> {}
     ```
 
 === "SDK"
@@ -2179,7 +2315,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStop } from "@provisa/sdk";
 
-    export const teardown = onStop(async function teardown() { ... });
+    /** Called once on stop. */
+    export const teardown = onStop(async function teardown(): Promise<void> {});
     ```
 
 **`@health`**
@@ -2187,7 +2324,9 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @health */
+    /** Returns the code's status.
+     * @health
+     */
     export function status(): string {
       return "ok";
     }
@@ -2198,7 +2337,10 @@ export async function storeRegionChanges(
     ```typescript
     import { health } from "@provisa/sdk";
 
-    export const status = health(function status(): string { return "ok"; });
+    /** Returns the code's status. */
+    export const status = health(function status(): string {
+      return "ok";
+    });
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
@@ -2206,11 +2348,23 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @table
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows.
+     * @table
      * @requires REGION
      * @requires API_KEY:secret
      */
-    export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
+    export async function fetch(inputs: Inputs): Promise<Row[]> {
+      return [];
+    }
     ```
 
 === "SDK"
@@ -2218,7 +2372,22 @@ export async function storeRegionChanges(
     ```typescript
     import { table } from "@provisa/sdk";
 
-    export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows. */
+    export const fetch = table(
+      async function fetch(inputs: Inputs): Promise<Row[]> {
+        return [];
+      },
+      { requires: ["REGION", "API_KEY:secret"] },
+    );
     ```
 
 #### Parameter types
@@ -2629,10 +2798,6 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     	}
     	return out, nil
     }
-
-    type Address struct{}
-
-    func ParseAddress(raw []string) ([]Address, error) { return nil, nil }
 
     var _ = provisa.Columns(ParseAddress)
     ```
