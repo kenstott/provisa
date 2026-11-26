@@ -161,6 +161,9 @@ sources = Table(
     # REQ-1923: the values a branded source's setup was given (Shopify: store, api_version) --
     # Source.brand_setup.
     Column("brand_setup", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-2262: what became of each step of the source's setup -- Source.setup_outcomes
+    # ({tables, relationships, query, decided_at}); empty = nothing decided yet.
+    Column("setup_outcomes", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON(none_as_null=True)),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
     # REQ-1491: whether this environment has supplied this source's connection values. A copy

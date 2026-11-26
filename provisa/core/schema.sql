@@ -130,6 +130,9 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired_id TEXT;
 -- REQ-1921: withdrawn -- out of production while set: its tables serve no role, no engine
 -- attaches it, none of its tables keeps a replica; its definition, grants and relationships stay.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
+-- REQ-2262: what became of each step of the source's setup ({tables, relationships, query,
+-- decided_at}), shared by every user and environment; empty = nothing decided yet.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS setup_outcomes JSONB NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
