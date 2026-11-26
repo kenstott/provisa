@@ -161,6 +161,8 @@ export function LibraryPage() {
       key={doc.id}
       doc={doc}
       canEdit={canEdit}
+      tab={detail.tab ?? "overview"}
+      onTab={detail.setTab}
       onChanged={replace}
       onRemoved={(id) => {
         setDocuments((prev) => (prev ?? []).filter((x) => x.id !== id));

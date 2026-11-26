@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "Antonym of",
     "expertsTitle": "Experts",
     "noExperts": "No experts.",
+    "documentsTitle": "Documents",
+    "documentsLoading": "Loading documents…",
     "expertUserLabel": "Person",
     "expertKindLabel": "Kind",
     "addExpert": "+ Expert",
