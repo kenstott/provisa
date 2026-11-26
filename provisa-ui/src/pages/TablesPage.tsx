@@ -77,6 +77,7 @@ import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
 import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
+import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { ModelingForm } from "./tables/ModelingForm";
 import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
 import { DataVaultWizard } from "./tables/modeling/DataVaultWizard";
@@ -214,11 +215,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     objects: erd.focus.objects,
     modeling: showModeling || null,
     // REQ-2277: the profile runs dialog, as the URL names it, once a table is open.
-    profile: expanded !== null ? searchParams.get("profile") : null,
-    profileView:
-      expanded !== null && searchParams.get("profile") !== null
-        ? (searchParams.get("profileView") ?? "columns")
-        : null,
+    ...profileDialogInputs(expanded !== null ? searchParams : null),
   });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
@@ -1657,10 +1654,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
               {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
               {!viewsOnly && <ListedNamesBlock listed={listedNames} />}
-              <TableSuggestionsModal
-                table={suggestionsOf}
-                onClose={() => setSuggestionsOf(null)}
-              />
+              <TableSuggestionsModal table={suggestionsOf} onClose={() => setSuggestionsOf(null)} />
             </>
           )
         }
