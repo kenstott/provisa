@@ -75,6 +75,7 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ListedNamesBlock } from "./tables/ListedNamesBlock";
 import { SuggestionsBadge, TableSuggestionsModal } from "./tables/TableSuggestions";
+import { ParameterizedBadge } from "./tables/ParameterizedBadge";
 import { countOf, useSuggestionCounts, type SuggestedTable } from "./tables/suggestionCounts";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { profileDialogInputs } from "./tables/useProfileRunsParam";
@@ -1442,6 +1443,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1986: a parameterized table, and whether a read must give
+                                any of its parameters. */}
+                                <ParameterizedBadge tableName={t.tableName} columns={t.columns} />
                                 <SuggestionsBadge
                                   count={countOf(suggestionCounts, t)}
                                   table={t}
