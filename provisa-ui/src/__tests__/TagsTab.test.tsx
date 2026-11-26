@@ -575,25 +575,25 @@ describe("TagsTab", () => {
     );
   });
 
-  it("shows a policy badge in the row only when the policy is required", () => {
+  // REQ-2208 (amended 2026-11-26): the template's requirements are the panel's, not the row's.
+  it("shows the reason and expiry policies in the panel's template section, not in the row", () => {
     render(<TagsTab title="Tags" />);
     // Default scope "source": finance is reason required, expiry hidden.
     const financeRow = screen.getByTestId("tags-row-finance");
-    expect(
-      within(financeRow).getByText(
-        t("tagsTab.reasonPolicyBadge", { policy: t("tagsTab.policy_required") }),
-      ),
-    ).toBeTruthy();
-    expect(within(financeRow).queryByText(/Expiry:/)).toBeNull();
-    fireEvent.click(screen.getByTestId("tags-scope-table"));
-    // data_quality is hidden/hidden: no policy badges.
-    const dqRow = screen.getByTestId("tags-row-data_quality");
-    expect(within(dqRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(dqRow).queryByText(/Expiry:/)).toBeNull();
-    // pii is optional/optional: no policy badges.
-    const piiRow = screen.getByTestId("tags-row-pii");
-    expect(within(piiRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(piiRow).queryByText(/Expiry:/)).toBeNull();
+    expect(within(financeRow).queryByText(/Reason:/)).toBeNull();
+    expect(within(financeRow).queryByText(t("tagsTab.policy_required"))).toBeNull();
+    fireEvent.click(financeRow);
+    const template = screen.getByTestId("tags-template-read-finance");
+    // Each label reads beside its value: reason required, expiry hidden.
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.reasonPolicyLabel")}${t("tagsTab.policy_required")}`,
+    );
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.expiresPolicyLabel")}${t("tagsTab.policy_hidden")}`,
+    );
+    expect(screen.getByTestId("tags-template-finance-toggle")).toHaveTextContent(
+      t("tagsTab.templateSection"),
+    );
   });
 
   it("edit pre-fills the tag's policies", () => {

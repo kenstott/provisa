@@ -40,8 +40,6 @@
     "policy_required": "Obrigatório",
     "requiredLabel": "Obrigatória",
     "requiredDesc": "Todo objeto dos tipos indicados em «Aplica-se a» deve ter esta tag. Um objeto sem ela aparece como ausente no relatório de tags.",
-    "reasonPolicyBadge": "Motivo: {{policy}}",
-    "expiresPolicyBadge": "Expiração: {{policy}}",
     "createButton": "Criar tag",
     "saveButton": "Salvar tag",
     "colId": "ID",
@@ -65,6 +63,7 @@
     "purposeAria": "Sobre as tags",
     "outsideTitle": "Atribuições fora dos domínios permitidos",
     "outsideBody": "Ao salvar, estas atribuições foram mantidas. Retire a tag de um objeto ao qual ela já não pertence.",
-    "outsideItem": "{{kind}} {{name}}, em {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, em {{domains}}",
+    "templateSection": "Modelo"
   }
 }
