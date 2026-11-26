@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The geometric forms on DuckDB, against the PostgreSQL 17 recording (REQ-2171)."""
+"""The geometric forms over columns on DuckDB, against the PostgreSQL 17 recording (REQ-2171)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -17,17 +17,10 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from tests.integration.geometric_engines import check, on_columns
+from tests.integration.geometric_engines import on_columns
 from tests.unit.pgwire.geometric_replay import BY_FUNCTION
 
 pytestmark = [pytest.mark.integration]
-
-
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_forms_on_duckdb(function: str):
-    connection = duckdb.connect()
-    run = lambda sql: connection.execute(sql).fetchone()[0]  # noqa: E731
-    assert check(function, "duckdb", run) == []
 
 
 @pytest.mark.parametrize("function", sorted(BY_FUNCTION))

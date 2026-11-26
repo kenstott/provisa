@@ -16,8 +16,24 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+import duckdb
+
 from provisa.transpiler.transpile import transpile
-from tests.unit.pgwire.geometric_replay import column_statement, problems, same
+from tests.unit.pgwire.geometric_replay import BY_FUNCTION, column_statement, problems, same
+
+#: The DuckDB forms replay is cut into this many files (every Nth function, in sorted order) so each
+#: fits a core shard: one file of all of them ran 1866 s (CI run 45720298507).
+DUCKDB_FORM_SLICES = 4
+
+
+def duckdb_form_slice(index: int) -> list[str]:
+    return sorted(BY_FUNCTION)[index::DUCKDB_FORM_SLICES]
+
+
+def duckdb_forms(function: str) -> None:
+    connection = duckdb.connect()
+    run = lambda sql: connection.execute(sql).fetchone()[0]  # noqa: E731
+    assert check(function, "duckdb", run) == []
 
 
 def check(function: str, dialect: str, run: Callable[[str], Any]) -> list[str]:
