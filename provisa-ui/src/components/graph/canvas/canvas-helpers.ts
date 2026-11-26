@@ -10,6 +10,7 @@
 
 import { propertyValue, type GNode } from "../graph-model";
 import type { CyInstance, CyElement } from "../cytoscape-types";
+import { holdViewMode, viewMode, type ViewMode } from "../../provisa-graph/viewport";
 
 /** The node drawn at a point of the canvas, by the canvas's own coordinates. */
 function nodeAt(cy: CyInstance, x: number, y: number, except?: CyElement): GNode | null {
@@ -105,6 +106,8 @@ export interface HeldDrawing {
   positions: Map<number, { x: number; y: number }>;
   zoom: number;
   pan: { x: number; y: number };
+  /** What the view was (REQ-2277): the drawing rebuilt keeps it, for a resize to follow. */
+  mode: ViewMode;
 }
 
 export function holdDrawing(cy: CyInstance): HeldDrawing {
@@ -113,7 +116,7 @@ export function holdDrawing(cy: CyInstance): HeldDrawing {
     const gn = n.data("_node") as GNode | undefined;
     if (gn) positions.set(gn.id, { ...n.position() });
   });
-  return { positions, zoom: cy.zoom(), pan: { ...cy.pan() } };
+  return { positions, zoom: cy.zoom(), pan: { ...cy.pan() }, mode: viewMode(cy) };
 }
 
 /** Puts each node of a new drawing where ``held`` has it, under the same view, and each new node
@@ -122,6 +125,7 @@ export function restoreDrawing(cy: CyInstance, drawing: HeldDrawing, spread: num
   const held = drawing.positions;
   cy.zoom(drawing.zoom);
   cy.pan(drawing.pan);
+  holdViewMode(cy, drawing.mode);
   const fresh: CyElement[] = [];
   cy.nodes().forEach((n) => {
     const gn = n.data("_node") as GNode | undefined;
