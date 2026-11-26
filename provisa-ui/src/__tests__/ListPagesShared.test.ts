@@ -27,7 +27,7 @@ const LIST_PAGES = [
   "pages/CommandsPage.tsx",
   "pages/RequestsPage.tsx",
   "pages/TeamPage.tsx",
-  "pages/AdminPage.tsx",
+  "components/admin/DomainsTab.tsx",
   "components/admin/RolesTab.tsx",
   "components/admin/LocalUsersTab.tsx",
   "components/admin/OrgsTab.tsx",
@@ -164,7 +164,7 @@ describe("list pages leave a cell's width, wrapping and truncation to the shared
     /<Table\.Td\b[^>]*?(?:whiteSpace|textOverflow|WebkitLineClamp|lineClamp|wordBreak|maxWidth|\bmaw=|\bmiw=|\bw=|\bwidth:|overflow:)[^>]*>/g;
   /** Cells that still set their own, by page: each is to be moved to the shared rule, then leaves. */
   const STILL_OWN: Record<string, number> = {
-    "pages/RequestsPage.tsx": 3,
+    "pages/RequestsPage.tsx": 1,
   };
 
   it.each(LIST_PAGES)("%s", (page) => {

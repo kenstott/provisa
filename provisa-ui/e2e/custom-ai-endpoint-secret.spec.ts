@@ -41,9 +41,9 @@ test.describe("custom AI endpoint via a Secrets-vault key, verified through /exp
     await expect(page.getByTestId("secrets-add")).toBeVisible({ timeout: 30000 });
     await page.getByTestId("secrets-add").click();
 
-    const secretModal = page.getByRole("dialog");
-    await secretModal.getByLabel("Name", { exact: true }).fill(secretName);
-    await secretModal.getByLabel("Value", { exact: true }).fill(process.env.OPENROUTER_API_KEY!);
+    const secretForm = page.getByTestId("secret-form");
+    await secretForm.getByLabel("Name", { exact: true }).fill(secretName);
+    await secretForm.getByLabel("Value", { exact: true }).fill(process.env.OPENROUTER_API_KEY!);
     await page.getByTestId("secret-submit").click();
     await expect(page.getByTestId(`secret-row-${secretName}`)).toBeVisible({ timeout: 15000 });
 

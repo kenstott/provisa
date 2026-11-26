@@ -32,7 +32,14 @@ const hooks = vi.hoisted(() => ({
   domains: {
     loading: false,
     domains: [
-      { id: "sales", description: "Sales", alias: null, stewards: [], stewardField: { people: [], roles: [] }, effectiveStewards: [] },
+      {
+        id: "sales",
+        description: "Sales",
+        alias: null,
+        stewards: [],
+        stewardField: { people: [], roles: [] },
+        effectiveStewards: [],
+      },
     ],
     refetch: undefined as unknown,
   },
@@ -86,6 +93,7 @@ async function addDomain(id: string) {
 
 describe("Admin > Domains: adding a domain", () => {
   beforeEach(() => {
+    localStorage.clear();
     createDomain.mockReset();
     refetch.mockClear();
   });

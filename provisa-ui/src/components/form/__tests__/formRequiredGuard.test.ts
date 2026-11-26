@@ -30,7 +30,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/TagAssignmentForm.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/AccessReviews.tsx": "the primary <Button> disabled by reason",
   "components/admin/AuthTab.tsx": "<FormFooter>'s Save disabled by incomplete",
-  "components/admin/ContainerRegistriesTab.tsx": "<FormFooter>'s Save disabled by missing",
   "components/admin/EncryptionTab.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/EnvironmentsTab.tsx":
     "the primary <Button> disabled by name; the primary <Button> disabled by mergeInto, message",
@@ -46,15 +45,10 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/admin/OrgEncryptionTab.tsx": "the primary <Button> disabled by keyB64",
   "components/admin/OrgEngineTab.tsx": "<FormFooter>'s Save disabled by externalIncomplete",
   "components/admin/OrgFilesTab.tsx": "<FormFooter>'s Save disabled by missing",
-  "components/admin/OrgsTab.tsx":
-    "<FormFooter>'s Save disabled by newOrgId, newOrgName; the primary <Button> disabled by addMemberUserId; the primary <Button> disabled by inviteOrgId",
-  "components/admin/PackageRegistriesTab.tsx": "<FormFooter>'s Save disabled by missing",
   "components/admin/PlatformRegionsTab.tsx": "<FormFooter>'s Save disabled by id, description",
   "components/admin/RegionEngineTabs.tsx": "<FormFooter>'s Save disabled by kind, url",
   "components/admin/RelatedToDialog.tsx": "<FormFooter>'s Save disabled by name",
-  "components/admin/ReportsTab.tsx": "<FormFooter>'s Save disabled by addName, addSql",
-  "components/admin/SecretsTab.tsx":
-    "<FormFooter>'s Save disabled by incomplete; <FormFooter>'s Save disabled by name, value",
+  "components/admin/SecretsTab.tsx": "<FormFooter>'s Save disabled by incomplete",
   "components/admin/SyntheticDatasetsPanel.tsx": "<FormFooter>'s Save disabled by name",
   "components/admin/TagsTab.tsx":
     "<FormFooter>'s Save disabled by formId; the primary <Button> disabled by newValue",
@@ -69,9 +63,7 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/lifecycle/DeprecateDialog.tsx": "the primary <Button> disabled by reason",
   "components/lifecycle/RetireDialog.tsx": "the primary <Button> disabled by reason, successor",
   "components/relationships/JoinThroughAction.tsx": "<FormFooter>'s Save disabled by name",
-  "pages/AdminPage.tsx": "<FormFooter>'s Save disabled by newDomainId",
   "pages/MetricsPage.tsx": "<FormFooter>'s Save disabled by form.name, form.expression",
-  "pages/RequestsPage.tsx": "the primary <Button> disabled by rejectReason",
   "pages/SecurityPage.tsx": "<FormFooter>'s Save disabled by roleForm.description",
   "pages/TablesPage.tsx": "the primary <Button> disabled by regenReason",
   "pages/TeamPage.tsx": "the primary <Button> disabled by roleId",

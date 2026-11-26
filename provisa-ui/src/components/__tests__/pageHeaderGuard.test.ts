@@ -20,6 +20,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { WORK_SURFACE_FILES } from "../../lib/workSurfaces";
+import { NAV_GROUPS } from "../navGroups";
 
 const SRC = resolve(__dirname, "../..");
 
@@ -184,5 +185,161 @@ describe("every object management page (REQ-2277)", () => {
   it("is read: the guard finds the pages it holds", () => {
     const pages = componentFiles(SRC).filter((p) => readFileSync(p, "utf8").includes("<PageTitle"));
     expect(pages.length).toBeGreaterThan(15);
+  });
+});
+
+// REQ-2277: an admin page that manages objects (a list of orgs, secrets, registries, ...) holds the
+// object management anatomy in full: the title, the list filter and the create action in the page
+// header, the standard list beside a right-hand detail panel (SplitPane), and that panel's deep
+// link (useRememberedDetail). Every admin nav entry is one of these or one object's settings
+// (ADMIN_SETTINGS_PAGES), so a new admin page is classified before it ships.
+
+type ObjectRule = "no-title" | "no-filter" | "no-create" | "no-panel" | "no-deep-link";
+
+interface ObjectPage {
+  /** The component, under src/, that draws the page. */
+  file: string;
+  /** Whether the page creates its objects, so its header carries the create action. */
+  creates: boolean;
+}
+
+const ADMIN_OBJECT_PAGES: Readonly<Record<string, ObjectPage>> = {
+  "/admin/orgs": { file: "components/admin/OrgsTab.tsx", creates: true },
+  "/team": { file: "pages/TeamPage.tsx", creates: true },
+  "/admin/domains": { file: "components/admin/DomainsTab.tsx", creates: true },
+  "/admin/environments": { file: "components/admin/EnvironmentsTab.tsx", creates: true },
+  "/admin/scheduled-tasks": { file: "components/admin/ScheduledTasks.tsx", creates: true },
+  "/admin/secrets": { file: "components/admin/SecretsTab.tsx", creates: true },
+  "/admin/my-secrets": { file: "components/admin/SecretsTab.tsx", creates: true },
+  "/admin/platform": { file: "components/admin/PlatformRegionsTab.tsx", creates: true },
+  "/admin/regions": { file: "components/admin/OrgRegionsTab.tsx", creates: false },
+  "/admin/ai-models": { file: "components/admin/AiModelsTab.tsx", creates: true },
+  "/admin/package-registries": { file: "components/admin/PackageRegistriesTab.tsx", creates: true },
+  "/admin/container-registries": {
+    file: "components/admin/ContainerRegistriesTab.tsx",
+    creates: true,
+  },
+  "/admin/tags": { file: "components/admin/TagsTab.tsx", creates: true },
+  "/admin/classification-kinds": {
+    file: "components/admin/ClassificationKindsTab.tsx",
+    creates: false,
+  },
+  "/admin/reports": { file: "components/admin/ReportsTab.tsx", creates: true },
+  "/admin/requests": { file: "pages/RequestsPage.tsx", creates: false },
+};
+
+/** Admin pages that show one object's settings, a dashboard or a one-off tool: no list to manage. */
+const ADMIN_SETTINGS_PAGES: ReadonlySet<string> = new Set([
+  "/admin/overview",
+  "/admin/cache",
+  "/admin/federation-engine",
+  "/admin/org-engine",
+  "/admin/security",
+  "/admin/email",
+  "/admin/maintenance",
+  "/admin/deployment-settings",
+  "/admin/spark-cluster",
+  "/admin/import",
+  "/admin/observability",
+  "/admin/platform-observability",
+]);
+
+/** Whether `n` is drawn inside an element whose className names `cls`. */
+function insideClass(n: ts.Node, cls: string): boolean {
+  const re = new RegExp(`\\b${cls}\\b`);
+  for (let p = n.parent; p; p = p.parent) {
+    if (!ts.isJsxElement(p)) continue;
+    const attr = p.openingElement.attributes.properties.find(
+      (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText() === "className",
+    );
+    const init = attr?.initializer;
+    if (init !== undefined && ts.isStringLiteral(init) && re.test(init.text)) return true;
+  }
+  return false;
+}
+
+/** What an admin object page's source lacks of the object management anatomy. */
+export function checkObjectPage(source: string, creates: boolean): ObjectRule[] {
+  const sf = ts.createSourceFile("x.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const elements: ts.Node[] = [];
+  const visit = (n: ts.Node): void => {
+    if (opening(n)) elements.push(n);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  const inHeader = (name: string) =>
+    elements.some((n) => tagName(n) === name && insideClass(n, "page-header"));
+  const out: ObjectRule[] = [];
+  if (!inHeader("PageTitle")) out.push("no-title");
+  if (!inHeader("FilterInput")) out.push("no-filter");
+  if (
+    creates &&
+    !elements.some(
+      (n) =>
+        tagName(n) === "Button" && insideClass(n, "page-actions") && insideClass(n, "page-header"),
+    )
+  )
+    out.push("no-create");
+  if (!elements.some((n) => tagName(n) === "SplitPane")) out.push("no-panel");
+  if (!source.includes("useRememberedDetail(")) out.push("no-deep-link");
+  return out;
+}
+
+describe("the admin object page rule fails what it is meant to fail", () => {
+  const whole =
+    `const x = <><div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
+    `<FilterInput value={q} onChange={f} /><div className="page-actions"><Button>Add</Button></div>` +
+    `</div><SplitPane list={l}>{p}</SplitPane></>; const d = useRememberedDetail("x", ids);`;
+
+  it("passes the whole anatomy", () => {
+    expect(checkObjectPage(whole, true)).toEqual([]);
+  });
+
+  it("fails each missing part", () => {
+    expect(checkObjectPage(`const x = <Stack><Table /></Stack>;`, true)).toEqual([
+      "no-title",
+      "no-filter",
+      "no-create",
+      "no-panel",
+      "no-deep-link",
+    ]);
+    expect(checkObjectPage(whole.replace("<Button>Add</Button>", ""), true)).toEqual(["no-create"]);
+    expect(checkObjectPage(whole.replace("<Button>Add</Button>", ""), false)).toEqual([]);
+  });
+
+  it("fails a create action outside the header", () => {
+    expect(
+      checkObjectPage(
+        whole.replace(`<div className="page-actions"><Button>Add</Button></div>`, "") +
+          `const y = <Group className="page-actions"><Button>Add</Button></Group>;`,
+        true,
+      ),
+    ).toEqual(["no-create"]);
+  });
+});
+
+describe("every admin page (REQ-2277)", () => {
+  const adminRoutes = (NAV_GROUPS.find((g) => g.id === "admin")?.items ?? []).map((i) => i.to);
+
+  it("is classified: an object page or one object's settings", () => {
+    const classified = new Set([...Object.keys(ADMIN_OBJECT_PAGES), ...ADMIN_SETTINGS_PAGES]);
+    expect(adminRoutes.filter((r) => !classified.has(r))).toEqual([]);
+    expect([...classified].filter((r) => !adminRoutes.includes(r))).toEqual([]);
+  });
+
+  it.each(Object.entries(ADMIN_OBJECT_PAGES))("%s holds the object management anatomy", (_, p) => {
+    expect(checkObjectPage(readFileSync(join(SRC, p.file), "utf8"), p.creates)).toEqual([]);
+  });
+
+  it("the Admin page draws no second header over a page that draws its own", () => {
+    const admin = readFileSync(join(SRC, "pages/AdminPage.tsx"), "utf8");
+    const routes = admin.match(/const ROUTE_TO_SECTION[^}]*\}/s)?.[0] ?? "";
+    const own = admin.match(/const OWN_HEADER[^;]*;/s)?.[0] ?? "";
+    const ownSections = [...own.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const objectSections = Object.keys(ADMIN_OBJECT_PAGES)
+      .map((r) => routes.match(new RegExp(`"${r}":\\s*"([^"]+)"`))?.[1])
+      .filter((s): s is string => s !== undefined);
+    expect(objectSections.length).toBeGreaterThan(5);
+    expect(new Set(ownSections)).toEqual(new Set(objectSections));
   });
 });

@@ -78,6 +78,19 @@ export const DETAIL_VIEWS = {
   tags: { route: "/admin/tags", param: "tag" },
   classification: { route: "/context/classification", param: "kind" },
   sync: { route: "/context/sync", param: "entry" },
+  // REQ-2277: the admin pages that manage objects, each a list beside its object's panel.
+  secrets: { route: "/admin/secrets", param: "secret" },
+  mySecrets: { route: "/admin/my-secrets", param: "secret" },
+  packageRegistries: { route: "/admin/package-registries", param: "registry" },
+  containerRegistries: { route: "/admin/container-registries", param: "registry" },
+  // A report is named by its table name, as links into a report always have named it.
+  reports: { route: "/admin/reports", param: "report" },
+  // An org and an invite link share the page's one panel, each on its own tab.
+  orgs: { route: "/admin/orgs", param: "org", replaces: ["invite"] },
+  orgInvites: { route: "/admin/orgs", param: "invite", replaces: ["org"] },
+  triggers: { route: "/admin/scheduled-tasks", param: "trigger" },
+  requests: { route: "/admin/requests", param: "request" },
+  team: { route: "/team", param: "member" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;

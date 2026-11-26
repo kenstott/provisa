@@ -52,6 +52,21 @@
     "remove": "Remove",
     "gitHostHelp": "The host, with its port and path where the server has them, for example bitbucket.example.com:7990/bitbucket.",
     "caBundle": "Certificate authority (PEM)",
-    "caBundleHelp": "Only for a server whose certificate is signed by your own authority, such as an Artifactory proxy inside your network: its PEM certificate, or a secret reference. It is trusted beside the public authorities. Leave empty otherwise."
+    "caBundleHelp": "Only for a server whose certificate is signed by your own authority, such as an Artifactory proxy inside your network: its PEM certificate, or a secret reference. It is trusted beside the public authorities. Leave empty otherwise.",
+    "kind": "Kind",
+    "kind_npm": "npm registry",
+    "kind_pypi": "PyPI index",
+    "kind_goproxy": "Go module proxy",
+    "kind_cargo": "Cargo registry",
+    "kind_git": "Git host",
+    "add": "Add registry",
+    "none": "No package registries. Installs come from the public registries.",
+    "filterPlaceholder": "Filter registries",
+    "closeForm": "Close the form",
+    "edit": "Edit {{name}}",
+    "removeConfirm": "Remove {{name}}? Installs that go through it use the public registry instead.",
+    "panelLabel": "Package registry",
+    "address": "Address",
+    "defaultColumn": "Default"
   }
 }
