@@ -34,6 +34,7 @@ Credentials (CI secrets; absent, the test fails naming what is missing -- a skip
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 from datetime import datetime, timezone
@@ -84,6 +85,30 @@ def _ok(resp: httpx.Response) -> None:
             f"{resp.request.method} {resp.request.url}: {resp.status_code} {resp.text}",
             pytrace=False,
         )
+
+
+#: Any one of these application roles lets an app-only token reach a user's OneDrive.
+DRIVE_ROLES = ("Files.ReadWrite.All", "Files.Read.All", "Sites.ReadWrite.All")
+
+
+def _preflight_app_only_drive(user: str, token: str, call_get) -> None:
+    """Prints the token's `roles` claim (never the token) and GET /users/<user>/drive, UPN masked;
+    fails naming the missing application permission or with the drive call's own body."""
+    claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+    roles = claims.get("roles") or []
+    print(f"onedrive preflight: token roles = {roles}", flush=True)
+    resp = call_get(f"{GRAPH}/users/{user}/drive")
+    body = resp.text.replace(user, "<upn>")
+    print(f"onedrive preflight: GET /users/<upn>/drive -> {resp.status_code} {body}", flush=True)
+    if not any(r in roles for r in DRIVE_ROLES):
+        pytest.fail(
+            f"the app-only token lacks an application permission for OneDrive "
+            f"(need one of {', '.join(DRIVE_ROLES)}; token roles: {roles}). "
+            f"GET drive: {resp.status_code} {body}",
+            pytrace=False,
+        )
+    if resp.is_error:
+        pytest.fail(f"GET /users/<upn>/drive: {resp.status_code} {body}", pytrace=False)
 
 
 @pytest.fixture(autouse=True)
@@ -146,6 +171,11 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
         _ok(resp)
         return resp
 
+    _preflight_app_only_drive(
+        user,
+        token(),
+        lambda url: client.request("GET", url, headers={"Authorization": f"Bearer {token()}"}),
+    )
     folder = call(
         "POST",
         f"{drive}/root/children",
