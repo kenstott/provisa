@@ -159,13 +159,11 @@ async def test_the_spark_form_reads_its_host_and_the_default_cluster(demo, ungua
     }
 
 
-async def test_an_installation_with_no_spark_host_says_so_by_name(not_demo, unguarded):
-    from provisa.api.errors import ApiError
-
-    with pytest.raises(ApiError) as refused:
-        await unguarded.builtin(cast(Any, None), "acme", "spark")
-    assert refused.value.status_code == 409
-    assert refused.value.code == "codesource.builtin_unavailable"
+async def test_an_installation_with_no_spark_host_reads_a_null_host(not_demo, unguarded):
+    # REQ-2225: no host shipped is a null host (the form handles it), not a 409 console error.
+    found = await unguarded.builtin(cast(Any, None), "acme", "spark")
+    assert found["host"] is None
+    assert found["default_cluster"]["origin"] == "local_test"
 
 
 async def test_only_a_builtin_source_type_is_read_there(demo, unguarded):
