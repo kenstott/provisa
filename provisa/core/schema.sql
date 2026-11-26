@@ -2960,7 +2960,8 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 -- REQ-2208: citations of reference library documents and their sections. One shape for whatever
 -- cites the library: a tag's definition (citer_kind 'tag', object_key ''), and each assignment of
 -- a tag (citer_kind 'tag_assignment', object_key the assignment's, in tag_assignments or
--- reference_document_tags); a security item cites the same way under a kind of its own. tag_id is
+-- reference_document_tags); a data quality check ('dq_check') and a glossary term ('term', object_key
+-- the term's id) cite with no tag; a security item cites the same way under a kind of its own. tag_id is
 -- the BASE id. The cited section is named as a section tag names it, by heading or by page, and
 -- the whole document when neither is given; cite_key is that name ('document:<id>',
 -- 'section:<id>:heading:<h>', 'section:<id>:page:<n>'). text_sha256 is of the section's text when
@@ -2971,7 +2972,7 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 CREATE TABLE IF NOT EXISTS reference_citations (
     id              SERIAL PRIMARY KEY,
     citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
-                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check')),
+                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check', 'term')),
     tag_id          TEXT,
     object_key      TEXT NOT NULL DEFAULT '',
     document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,

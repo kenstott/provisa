@@ -2827,7 +2827,8 @@ reference_document_tags = Table(
 
 # REQ-2208: citations of reference library documents and their sections, one shape for whatever
 # cites the library: a tag's definition (citer_kind "tag", object_key "") and each assignment of a
-# tag (citer_kind "tag_assignment", object_key the assignment's). The section is named by heading or
+# tag (citer_kind "tag_assignment", object_key the assignment's); a data quality check ("dq_check")
+# and a glossary term ("term", object_key the term's id) cite with no tag. The section is named by heading or
 # page, the whole document by neither; cite_key is that name. text_sha256 is of the section's text
 # when cited, so a revised section flags its citer for review (provisa.reference_library.citations).
 # The document's title and source are kept, so a citation outlives the document.
@@ -2855,7 +2856,7 @@ reference_citations = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
     CheckConstraint(
-        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check', 'term')",
         name="reference_citations_citer_kind_check",
     ),
 )

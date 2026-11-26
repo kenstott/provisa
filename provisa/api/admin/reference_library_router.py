@@ -15,7 +15,8 @@ Everyone browses what they may read: the list and a document's detail and citati
 with the glossary -- term finding adds its documents as proposed -- so it asks the glossary's
 curation right, ``glossary_rw`` (REQ-1327: each surface its own right): adding by file or URL,
 keeping or discarding a proposed one, changing its domains, refreshing a URL document, uploading a
-new version of a file document, removing one and retrying a failed one.
+new version of a file document, removing one and retrying a failed one. A term's panel reads the
+documents the term cites, and a curator who may change the term adds and removes them there.
 
 Adding is one step: the document exists at once, and a background job reads and indexes it and then
 looks for its terms. Its index status (indexing with progress, ready, failed with the reason) is
@@ -331,6 +332,156 @@ async def documents_reviews_due(request: Request) -> dict:  # REQ-2259, REQ-2208
         if count:
             due.append({"id": d.id, "title": d.title, "reviews": count})
     return {"documents": due}
+
+
+# -- a term's documents -------------------------------------------------------------------------
+
+
+async def _held_term(conn: Connection, term_id: int, request: Request) -> None:
+    """The term, if this caller may read it: one outside their domains is refused, one that is
+    not there is not found (the glossary's own gate, glossary_router.get_term)."""
+    from provisa.api.admin import glossary_router as glossary
+    from provisa.core.repositories import glossary as glossary_repo
+
+    if await glossary_repo.get_term(conn, term_id) is None:
+        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+    await glossary._require_term_readable(conn, term_id, request)
+
+
+async def _curatable_term(conn: Connection, term_id: int, request: Request) -> None:
+    """The term, if this caller may change it: the curation right the review queue asks
+    (glossary_rw), and the term's own curation gate (glossary_router._curation_refusal)."""
+    from provisa.api.admin import glossary_router as glossary
+
+    await _held_term(conn, term_id, request)
+    refusal = await glossary._curation_refusal(conn, term_id, request)
+    if refusal is not None:
+        raise refusal
+
+
+def _term_citation(c: terms.TermCitation) -> dict:
+    return {
+        "key": c.key,
+        "origin": c.origin,
+        "status": c.status,
+        "document_id": c.document_id,
+        "document_title": c.document_title,
+        "section_heading": c.section_heading,
+        "section_page": c.section_page,
+        "state": c.state,
+        "needs_review": c.state != citations.CURRENT,
+        "quote": c.quote,
+        "ordinal": c.ordinal,
+        "draft_id": c.draft_id,
+        "cite_key": c.cite_key,
+        "cited_by": c.cited_by,
+    }
+
+
+@router.get("/terms/{term_id}/citations")
+async def term_citations(term_id: int, request: Request) -> dict:  # REQ-2208, REQ-2179
+    """The library documents the term cites, among those the caller may read: the passages its
+    accepted drafts were found in, the sections picked for it, and the passages of drafts awaiting
+    review that propose merging into it (``proposed``), each with its state. A scan's citation is
+    shown only where its scan is readable too, as the review queue shows it."""
+    from provisa.core.glossary import readable_term
+
+    scope = _read_scope(request)
+    async with _pool().acquire() as conn:
+        await _held_term(conn, term_id, request)
+        found = await terms.term_citations(conn, term_id)
+        readable = {d.id for d in await store.documents(conn) if _may_read(scope, d.domains)}
+    shown = [
+        c
+        for c in found
+        if (c.document_id is None or c.document_id in readable)
+        and (c.origin != terms.SCAN or readable_term(scope, frozenset(c.domains)))
+    ]
+    return {"citations": [_term_citation(c) for c in shown]}
+
+
+def _place(body: dict) -> citations.Place:
+    """The document, and the section of it by heading or by page, a body names."""
+    document_id = body.get("document_id")
+    heading = body.get("section_heading")
+    page = body.get("section_page")
+    if not isinstance(document_id, int) or isinstance(document_id, bool):
+        raise ApiError(400, citations.CitationRefused.code, "document_id is a document's id")
+    if heading is not None and not isinstance(heading, str):
+        raise ApiError(400, citations.CitationRefused.code, "section_heading is text")
+    if page is not None and (not isinstance(page, int) or isinstance(page, bool)):
+        raise ApiError(400, citations.CitationRefused.code, "section_page is a page number")
+    if heading is not None and page is not None:
+        raise ApiError(
+            400,
+            citations.CitationRefused.code,
+            "a section is named by its heading or, when it has none, by its page",
+        )
+    return citations.Place(document_id, heading, page)
+
+
+@router.post("/terms/{term_id}/citations")
+async def cite_for_term(term_id: int, body: dict, request: Request) -> dict:  # REQ-2208
+    """The term cites a library document, or a section of it, the caller may read; citing it
+    again records its text as it reads now, which confirms a drifted citation. Asks the curation
+    right of the review queue and the term's own curation gate."""
+    scope = _read_scope(request)
+    _guard(request)
+    place = _place(body)
+    try:
+        async with _pool().acquire() as conn:
+            async with conn.transaction():
+                await _curatable_term(conn, term_id, request)
+                await _read_document(conn, place.document_id, scope)
+                await citations.cite(
+                    conn,
+                    citations.TERM,
+                    None,
+                    citations.term_key(term_id),
+                    place,
+                    _user_id(request),
+                )
+            found = await terms.term_citations(conn, term_id)
+    except library.LibraryRefused as exc:
+        raise _refused(exc) from None
+    [cited] = [c for c in found if c.origin == terms.PICKED and c.cite_key == place.key()]
+    return _term_citation(cited)
+
+
+@router.delete("/terms/{term_id}/citations")
+async def uncite_for_term(  # REQ-2208, REQ-2179
+    term_id: int,
+    request: Request,
+    cite_key: str | None = None,
+    draft_id: int | None = None,
+    quote: str | None = None,
+) -> dict:
+    """Take a citation off the term: a picked one by its ``cite_key``, or a scan's by its
+    ``draft_id`` and ``quote`` (the passage leaves the term's accepted draft). A draft awaiting
+    review is rejected through the review queue, not here."""
+    _read_scope(request)
+    _guard(request)
+    if (cite_key is None) == (draft_id is None) or (draft_id is not None and quote is None):
+        raise ApiError(
+            400,
+            citations.CitationRefused.code,
+            "name a picked citation by cite_key, or a scan's by draft_id and quote",
+        )
+    async with _pool().acquire() as conn:
+        async with conn.transaction():
+            await _curatable_term(conn, term_id, request)
+            if cite_key is not None:
+                gone = await citations.uncite_key(
+                    conn, citations.TERM, None, citations.term_key(term_id), cite_key
+                )
+            else:
+                assert draft_id is not None and quote is not None
+                gone = await terms.drop_passage(conn, term_id, draft_id, quote)
+    if not gone:
+        raise ApiError(
+            404, "reference_library.citation_not_found", f"term {term_id} cites no such place"
+        )
+    return {"removed": True}
 
 
 async def _job_embedder() -> library.Embedder:
