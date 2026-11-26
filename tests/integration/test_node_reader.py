@@ -215,3 +215,42 @@ def test_a_query_takes_a_table_and_a_command_is_a_mutation(cache, compiler, tmp_
     assert manifest.export("score").kind == "query"
     assert manifest.export("rescore").kind == "command"
     assert manifest.export("score").parameters[0].shape == TableOf(Named("Order"))
+
+
+ENTERED_JS = """
+/**
+ * @typedef {Object} Rate
+ * @property {string} currency
+ * @property {number} rate
+ */
+
+/**
+ * Today's rates.
+ * @table
+ * @returns {Rate[]}
+ */
+export function rates() {
+  return [{ currency: "EUR", rate: 1.08 }];
+}
+"""
+
+
+@pytest.mark.parametrize("runtime", ["node", "bun", "deno"])
+def test_code_entered_here_is_javascript_read_from_its_jsdoc(runtime, cache, compiler, tmp_path):
+    # REQ-1993 (amended 2026-11-25): Node code entered in the source form is JavaScript with
+    # JSDoc types, its declarations read from itself.
+    from provisa.codesource.bundle import unpack
+    from provisa.codesource.entered import code_of
+    from provisa.codesource.languages import LANGUAGES
+
+    upload = code_of(LANGUAGES["node"], {"kind": "entered", "source": ENTERED_JS})
+    bundle = unpack(upload.filename, upload.data, tmp_path)
+    executable = CodeRuntimeResolver(cache_root=cache).resolve(runtime)
+    manifest = read_bundle(runtime=runtime, executable=executable, compiler=compiler, bundle=bundle)
+    assert [(e.name, e.kind) for e in manifest.exports] == [("rates", "table")]
+    assert manifest.export("rates").description == "Today's rates."
+    assert manifest.export("rates").returns == Named("Rate")
+    assert manifest.types["Rate"].fields == (
+        Field("currency", Scalar("text"), False),
+        Field("rate", Scalar("double"), False),
+    )

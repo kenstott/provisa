@@ -461,9 +461,9 @@ export function McpExplorePage() {
       data-testid="mcp-explore"
       data-answered={answered ? "" : undefined}
     >
-      <PageTitle icon={Compass} mb={4}>
-        {t("mcpExplore.title")}
-      </PageTitle>
+      <div className="page-header">
+        <PageTitle icon={Compass}>{t("mcpExplore.title")}</PageTitle>
+      </div>
       <Text c="dimmed" size="sm" mb="xs">
         {t("mcpExplore.intro")}
       </Text>

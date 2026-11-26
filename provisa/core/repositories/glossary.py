@@ -2536,6 +2536,23 @@ async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -
     return await get_term(conn, row.term_id)
 
 
+async def column_queried_as(conn: "Connection", table_id: int, name: str) -> str | None:
+    """The physical column a consumer queries as ``name``: the one whose SQL alias is ``name``, or,
+    unaliased, whose column name is (REQ-2158, amended 2026-11-25). None when no column is."""
+    unaliased = table_columns.c.alias.is_(None) | (table_columns.c.alias == "")
+    return (
+        await conn.execute_core(
+            select(table_columns.c.column_name).where(
+                (table_columns.c.table_id == table_id)
+                & (
+                    (table_columns.c.alias == name)
+                    | ((table_columns.c.column_name == name) & unaliased)
+                )
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def related_terms_for_tables(
     conn: "Connection", table_ids: "set[int]", *, domains: "frozenset[str] | None" = None
 ) -> list[dict]:

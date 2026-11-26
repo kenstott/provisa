@@ -16,7 +16,6 @@
     "empty": "ops 域中未注册任何报表。",
     "filterPlaceholder": "筛选报表…",
     "noMatch": "没有匹配的报表",
-    "resize": "调整报表列表大小",
     "drift": {
       "title": "自上一周期以来的漂移",
       "baseline": "与 {{date}} 的模型比较，这是截至 {{cutoff}} 的最新版本。",
@@ -34,6 +33,12 @@
         "gained": "获得",
         "new": "新增"
       }
-    }
+    },
+    "kindColumn": "类型",
+    "kindBuiltIn": "内置",
+    "kindCustom": "自定义",
+    "panelLabel": "报表",
+    "closeForm": "关闭表单",
+    "loading": "正在加载报表…"
   }
 }

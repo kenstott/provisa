@@ -1,6 +1,7 @@
 {
   "metricsPage": {
     "title": "メトリクス",
+    "filterPlaceholder": "メトリクスを絞り込み…",
     "newMetric": "+ メトリクス",
     "loading": "読み込み中...",
     "empty": "登録されたメトリクスはまだありません。",

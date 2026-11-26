@@ -215,7 +215,7 @@ def test_the_free_plan_is_every_free_leg_in_file_order_and_no_paid_one():
         for leg in DOC["legs"]
         if leg["lane"] == "free" and leg["engine"] not in planned["refused"]
     ]
-    assert [e["engine"] for e in planned["matrix"]["include"]] == free
+    assert list(dict.fromkeys(e["engine"] for e in planned["matrix"]["include"])) == free
     assert planned["engines"] == ",".join(free)
     assert all(e["secrets"] == "" for e in planned["matrix"]["include"])
 
@@ -232,13 +232,41 @@ def test_a_warehouse_leg_is_planned_only_when_the_dispatch_names_its_lane():
 
 def test_a_plan_entry_carries_every_field_the_workflow_reads():
     entry = legs.plan("free", DOC)["matrix"]["include"][0]
-    assert set(entry) == set(legs.FIELDS) - set(legs.URLS)
+    assert set(entry) == (set(legs.FIELDS) - set(legs.URLS)) | set(legs.PLANNED)
     assert _leg("trino")["boot-attempts"] == "300"
     trino = next(e for e in legs.plan("free", DOC)["matrix"]["include"] if e["engine"] == "trino")
     assert trino["boot-attempts"] == "300" and trino["wait"] == "600"
     duckdb = next(e for e in legs.plan("free", DOC)["matrix"]["include"] if e["engine"] == "duckdb")
     assert duckdb["boot-attempts"] == "90" and duckdb["odbc"] is False
     assert duckdb["extras"] == "dev"
+
+
+def test_the_trino_leg_runs_as_three_shards_and_the_merge_expects_trino_once():
+    """One slow runner took the whole Trino leg past its budget (run 45707974057): each shard
+    measures a third of the overloads on a runner of its own."""
+    planned = legs.plan("free", DOC)
+    trino = [e for e in planned["matrix"]["include"] if e["engine"] == "trino"]
+    assert [(e["leg"], e["shard"]) for e in trino] == [
+        ("trino.shard-1-of-3", "1/3"),
+        ("trino.shard-2-of-3", "2/3"),
+        ("trino.shard-3-of-3", "3/3"),
+    ]
+    assert planned["engines"].split(",").count("trino") == 1
+    duckdb = next(e for e in planned["matrix"]["include"] if e["engine"] == "duckdb")
+    assert (duckdb["leg"], duckdb["shard"], duckdb["shards"]) == ("duckdb", "", "1")
+
+
+def test_each_shard_is_its_own_job_files_and_artifact():
+    probe = _workflow()["jobs"]["probe"]
+    assert probe["name"] == "functions on ${{ matrix.leg }}"
+    assert probe["env"]["LEG"] == "${{ matrix.leg }}"
+    assert probe["env"]["SHARD"] == "${{ matrix.shard }}"
+    assert probe["concurrency"]["group"].endswith("github.run_id, matrix.leg) }}")
+    steps = {s.get("name"): s for s in probe["steps"]}
+    measure = steps["Measure every pg_catalog function"]["run"]
+    assert '${SHARD:+--shard "$SHARD"}' in measure
+    assert "function-support-$LEG.json" in measure
+    assert steps["Upload results"]["with"]["name"] == "function-support-${{ matrix.leg }}"
 
 
 def test_an_unknown_lane_is_refused():
@@ -346,6 +374,8 @@ def test_the_workflow_hands_the_refusals_from_the_plan_to_the_merge():
             {"legs": [{"engine": "a", "lane": "free", "secrets": ["X"]}], "not_run": {}},
             "names its secrets",
         ),
+        ({"legs": [{"engine": "a", "lane": "free", "shards": 0}], "not_run": {}}, "shards"),
+        ({"legs": [{"engine": "a", "lane": "free", "shards": "3"}], "not_run": {}}, "shards"),
     ],
 )
 def test_a_legs_file_that_contradicts_itself_is_refused(tmp_path, doc, message):
@@ -418,7 +448,7 @@ def test_the_workflow_records_why_a_leg_failed_before_it_uploads_the_leg():
     record = steps[names.index("Record why the leg failed")]
     assert record["if"] == "${{ failure() }}"
     assert "function_legs.py failure" in record["run"]
-    assert "leg-failure-$PROVISA_ENGINE.json" in record["run"]
+    assert "leg-failure-$LEG.json" in record["run"]
     assert names.index("Record why the leg failed") < names.index("Upload results")
     ids = {s["id"] for s in steps if "id" in s}
     assert {step_id for step_id, _ in legs.STEPS} <= ids

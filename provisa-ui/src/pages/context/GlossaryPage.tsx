@@ -11,10 +11,11 @@
 // REQ-2259: the Glossary page -- the approved terms read like a book's glossary: each headword,
 // its other names, its plain-prose definition and its related terms as links within the page; a
 // name defined differently per domain is one entry with numbered senses labelled by domain.
+// REQ-2277: the standard header (title, filter, the domain filter) and the order as tabs, A–Z or
+// recently changed; the filter and the tab are in the URL.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FormField, FormLayout } from "../../components/form/FormLayout";
 import {
   Alert,
   Anchor,
@@ -22,16 +23,17 @@ import {
   Group,
   Loader,
   MultiSelect,
-  SegmentedControl,
   Stack,
+  Tabs,
   Text,
-  TextInput,
   Title,
   UnstyledButton,
 } from "@mantine/core";
 import { BookA } from "lucide-react";
 import { ENTERPRISE_DOMAIN, fetchGlossaryEntries } from "../../api/glossary";
 import { PageTitle } from "../../components/PageTitle";
+import { FilterInput } from "../../components/admin/FilterInput";
+import { useUrlFilter, useUrlTab } from "../../components/list/useUrlFilter";
 import { EntityLink } from "../../components/EntityLink";
 import {
   buildEntries,
@@ -47,6 +49,8 @@ import {
   type TermRef,
 } from "./glossaryBook";
 
+const SORTS: readonly GlossarySort[] = ["name", "recent"];
+
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -55,9 +59,9 @@ export function GlossaryPage() {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<GlossaryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useUrlFilter();
   const [domains, setDomains] = useState<string[]>([]);
-  const [sort, setSort] = useState<GlossarySort>("name");
+  const [sort, setSort] = useUrlTab<GlossarySort>("sort", SORTS);
   // A related term the filters hide: they are cleared, and the page scrolls to it once drawn.
   const pending = useRef<number | null>(null);
 
@@ -91,9 +95,36 @@ export function GlossaryPage() {
     setDomains([]);
   };
 
+  const header = (
+    <div className="page-header">
+      <PageTitle icon={BookA}>{t("glossaryPage.title")}</PageTitle>
+      <FilterInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("glossaryPage.searchPlaceholder")}
+        testId="glossary-search"
+        remember={false}
+      />
+      <div className="page-actions">
+        <MultiSelect
+          aria-label={t("glossaryPage.domainFilter")}
+          placeholder={domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined}
+          data={domainOptions}
+          value={domains}
+          onChange={setDomains}
+          clearable
+          searchable
+          comboboxProps={{ withinPortal: true }}
+          data-testid="glossary-domain-filter"
+        />
+      </div>
+    </div>
+  );
+
   if (error !== null) {
     return (
       <div className="page">
+        {header}
         <Alert color="red" data-testid="glossary-error">
           {t("glossaryPage.loadFailed", { message: error })}
         </Alert>
@@ -103,6 +134,7 @@ export function GlossaryPage() {
   if (entries === null) {
     return (
       <div className="page">
+        {header}
         <Loader size="sm" />
       </div>
     );
@@ -118,56 +150,20 @@ export function GlossaryPage() {
 
   return (
     <div className="page" data-testid="glossary-page">
+      {header}
       <Stack gap="md" maw={880}>
-        <div>
-          <PageTitle icon={BookA}>{t("glossaryPage.title")}</PageTitle>
-          <Text c="dimmed" size="sm" mt={4}>
-            {t("glossaryPage.intro")}
-          </Text>
-        </div>
-        <Group gap="sm" align="flex-end" wrap="wrap">
-          <FormLayout style={{ flex: "1 1 auto" }}>
-            <FormField size="medium">
-              <TextInput
-                label={t("glossaryPage.search")}
-                placeholder={t("glossaryPage.searchPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                data-testid="glossary-search"
-              />
-            </FormField>
-            <FormField size="medium">
-              <MultiSelect
-                label={t("glossaryPage.domainFilter")}
-                placeholder={
-                  domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined
-                }
-                data={domainOptions}
-                value={domains}
-                onChange={setDomains}
-                clearable
-                searchable
-                comboboxProps={{ withinPortal: true }}
-                data-testid="glossary-domain-filter"
-              />
-            </FormField>
-          </FormLayout>
-          <Stack gap={4}>
-            <Text size="sm" fw={500}>
-              {t("glossaryPage.sort")}
-            </Text>
-            <SegmentedControl
-              value={sort}
-              onChange={(v) => setSort(v as GlossarySort)}
-              data={[
-                { value: "name", label: t("glossaryPage.sortName") },
-                { value: "recent", label: t("glossaryPage.sortRecent") },
-              ]}
-              aria-label={t("glossaryPage.sort")}
-              data-testid="glossary-sort"
-            />
-          </Stack>
-        </Group>
+        <Text c="dimmed" size="sm">
+          {t("glossaryPage.intro")}
+        </Text>
+        <Tabs value={sort} onChange={(v) => v && setSort(v as GlossarySort)}>
+          <Tabs.List aria-label={t("glossaryPage.sort")} data-testid="glossary-sort">
+            {SORTS.map((v) => (
+              <Tabs.Tab key={v} value={v} data-testid={`glossary-sort-${v}`}>
+                {t(v === "name" ? "glossaryPage.sortName" : "glossaryPage.sortRecent")}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs>
         {sort === "name" && (
           <Group
             gap={4}

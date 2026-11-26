@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import type { Request } from "@playwright/test";
+import { withBody } from "./response-body";
 
 /**
  * REQ-1586: dragging a label onto a Cypher result expands it along the relationship types the
@@ -51,19 +51,23 @@ test("dropping a label expands along the server's types and is answered", async 
   await drawn.click();
   expect((await first).status(), "the drawn label is answered").toBe(200);
 
-  const expanded = page.waitForRequest(
-    (r: Request) =>
-      new URL(r.url()).pathname === "/data/cypher" &&
-      r.method() === "POST" &&
-      ((r.postDataJSON() as { query?: string } | null)?.query ?? "").includes("OPTIONAL MATCH"),
-    { timeout: 90_000 },
+  const expanded = withBody(
+    page.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/data/cypher" &&
+        r.request().method() === "POST" &&
+        ((r.request().postDataJSON() as { query?: string } | null)?.query ?? "").includes(
+          "OPTIONAL MATCH",
+        ),
+      { timeout: 90_000 },
+    ),
   );
   await page.getByTestId(`graph-label-${DROPPED}`).dragTo(page.locator(".gf-frame").first());
-  const sent = await expanded;
+  const answered = await expanded;
+  const sent = answered.response.request();
   const query = (sent.postDataJSON() as { query: string }).query;
   const named = [...query.matchAll(/\[\w*:([A-Z0-9_]+)\]/g)].map((m) => m[1]);
   expect(named.length, query).toBeGreaterThan(0);
   for (const type of named) expect(between.has(type), `${type} in ${query}`).toBe(true);
-  const answered = await sent.response();
-  expect(answered?.status(), JSON.stringify(await answered?.json()).slice(0, 400)).toBe(200);
+  expect(answered.response.status(), answered.text.slice(0, 400)).toBe(200);
 });

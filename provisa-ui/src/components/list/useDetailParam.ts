@@ -72,9 +72,27 @@ export const DETAIL_VIEWS = {
   derived: { route: "/security/roles", param: "derived", replaces: ["role", "section"] },
   rls: { route: "/security/rls", param: "rule" },
   commands: { route: "/commands", param: "command", tab: { param: "section", first: "command" } },
-  // REQ-2240: a domain's row and a tag's are marked on their lists, where they are changed.
+  // REQ-2240: a domain's row is marked on its list, where it is changed.
   domains: { route: "/admin/domains", param: "domain" },
+  // REQ-2277: a tag's panel, on Admin's Tags (where it is changed) and the Context group's.
   tags: { route: "/admin/tags", param: "tag" },
+  classification: { route: "/context/classification", param: "kind" },
+  sync: { route: "/context/sync", param: "entry" },
+  // REQ-2277: the admin pages that manage objects, each a list beside its object's panel.
+  secrets: { route: "/admin/secrets", param: "secret" },
+  mySecrets: { route: "/admin/my-secrets", param: "secret" },
+  packageRegistries: { route: "/admin/package-registries", param: "registry" },
+  containerRegistries: { route: "/admin/container-registries", param: "registry" },
+  // A report is named by its table name, as links into a report always have named it.
+  reports: { route: "/admin/reports", param: "report" },
+  // An org and an invite link share the page's one panel, each on its own tab.
+  orgs: { route: "/admin/orgs", param: "org", replaces: ["invite"] },
+  orgInvites: { route: "/admin/orgs", param: "invite", replaces: ["org"] },
+  triggers: { route: "/admin/scheduled-tasks", param: "trigger" },
+  requests: { route: "/admin/requests", param: "request" },
+  team: { route: "/team", param: "member" },
+  platformRegions: { route: "/admin/platform", param: "region" },
+  environments: { route: "/admin/environments", param: "environment" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;
@@ -164,6 +182,11 @@ export interface DetailParam {
    * `replace` none. With `only`, closes it only while it shows that object (one just deleted).
    */
   close: (how?: { only?: string; replace?: boolean }) => void;
+  /**
+   * Sets (or, with null, removes) another parameter of the page -- its tab (REQ-2277) -- through the
+   * same write as the panel's, so it composes with an open or a close in the same handler.
+   */
+  setParam: (name: string, value: string | null, how?: { replace?: boolean }) => void;
 }
 
 // The router applies a new location as a transition, after the page's own state changes made in
@@ -281,7 +304,15 @@ export function useDetailParam(page: DetailPage): DetailParam {
       }, how?.replace),
     [write, view],
   );
-  return { id, tab, open, setTab, close };
+  const setParam = useCallback(
+    (name: string, value: string | null, how?: { replace?: boolean }) =>
+      write((p) => {
+        if (value === null) p.delete(name);
+        else p.set(name, value);
+      }, how?.replace),
+    [write],
+  );
+  return { id, tab, open, setTab, close, setParam };
 }
 
 /**

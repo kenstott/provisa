@@ -395,8 +395,17 @@ class FederationEngine:  # REQ-840
         type, or names a reach that does not exist, is refused by name."""
         source_type = source.type.value
         if self.asks_in_place(source) and source_type in self.code_host_types:
-            # REQ-2100: a built code source, its host attached as a Postgres catalog.
-            return self.scan_connectors[source_type]
+            # REQ-2100: a built code source, its host attached as a Postgres catalog; REQ-2267: a
+            # dev-mode one, its pgwire sidecar attached the same way. A built source on an engine
+            # that cannot present the host's TLS identity (ClickHouse) keeps its type's reach.
+            from provisa.federation.codehost_connectors import CodeHost
+
+            code_host = self.scan_connectors[source_type]
+            if not isinstance(code_host, CodeHost):
+                raise TypeError(f"{self.name}: {source_type!r}'s attach is not a code host's")
+            if code_host.attaches(source):
+                return code_host
+            return self.connector_for(source_type)
         hints = getattr(source, "federation_hints", None) or {}
         reach = hints.get("reach")
         if reach is None or reach == "replica":
@@ -426,13 +435,13 @@ class FederationEngine:  # REQ-840
     @staticmethod
     def asks_in_place(source: Any) -> bool:
         """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
-        (REQ-1867), or a code source in built mode, its image on a remote host (REQ-2100)."""
+        (REQ-1867), or a code source: in built mode its image on a remote host (REQ-2100), in dev
+        mode its pgwire sidecar (REQ-2267)."""
         from provisa.codesource.source import CODE_SOURCE_TYPES
 
         if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
             return True
-        mapping = getattr(source, "mapping", None) or {}
-        return source.type.value in CODE_SOURCE_TYPES and mapping.get("mode") == "built"
+        return source.type.value in CODE_SOURCE_TYPES
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
@@ -1031,36 +1040,43 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         ClickHouseSplunkConnector,
         ClickHouseSqliteConnector,
     )
+    from provisa.codesource.source import CODE_SOURCE_TYPES
     from provisa.federation.clickhouse_backend import ClickHouseBackend
+    from provisa.federation.clickhouse_connectors import ClickHouseCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
 
     # ATTACH connectors reach external sources in place via ClickHouse's native integration/table
     # engines (zero-copy); every other readable source lands. Reach is derived, not a fixed list.
+    # REQ-2267: a dev-mode code source's pgwire sidecar, an opt-in reach beside its type's land
+    # reach (which its built sources keep), so it is outside the attach set the land is derived from.
     return FederationEngine(
         "clickhouse",
-        _warehouse_connectors(
-            "clickhouse",
-            attach=[
-                ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
-                ClickHouseFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
-                ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
-                ClickHouseSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
-                ClickHouseServicenowConnector(),  # servicenow (pgwire bridge, live attach — REQ-1954)
-                ClickHouseJiraConnector(),  # jira (pgwire bridge, live attach — REQ-2069)
-                ClickHouseCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
-                ClickHouseGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
-                ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
-                ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
-                ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)
-                ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
-                ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
-                ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
-                ClickHouseIcebergConnector(),  # iceberg — IcebergS3 lakehouse engine (zero-copy)
-                ClickHouseDeltaLakeConnector(),  # delta_lake — DeltaLake lakehouse engine (zero-copy)
-                # Config-declared ClickHouse connectors (JDBC/ODBC bridge, Redis, HDFS, URL, …) — REQ-1178
-                *load_custom_connectors("clickhouse"),
-            ],
-        ),
+        [
+            *(ClickHouseCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
+            *_warehouse_connectors(
+                "clickhouse",
+                attach=[
+                    ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
+                    ClickHouseFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
+                    ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
+                    ClickHouseSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
+                    ClickHouseServicenowConnector(),  # servicenow (pgwire bridge, live attach — REQ-1954)
+                    ClickHouseJiraConnector(),  # jira (pgwire bridge, live attach — REQ-2069)
+                    ClickHouseCloudopsConnector(),  # cloudops (pgwire bridge, live attach — REQ-1947)
+                    ClickHouseGovdataConnector(),  # AskAmerica (pgwire bridge, live attach — REQ-540)
+                    ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
+                    ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
+                    ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)
+                    ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
+                    ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
+                    ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
+                    ClickHouseIcebergConnector(),  # iceberg — IcebergS3 lakehouse engine (zero-copy)
+                    ClickHouseDeltaLakeConnector(),  # delta_lake — DeltaLake lakehouse engine (zero-copy)
+                    # Config-declared ClickHouse connectors (JDBC/ODBC bridge, Redis, HDFS, URL, …) — REQ-1178
+                    *load_custom_connectors("clickhouse"),
+                ],
+            ),
+        ],
         native_store="clickhouse",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=True,  # ClickHouse distributes across shards/replicas

@@ -193,7 +193,6 @@
     "colDescription": "Beschreibung",
     "colGqlAlias": "GQL-Alias",
     "colSteward": "Steward",
-    "colActions": "Aktionen",
     "noDomains": "Keine Domänen definiert",
     "deleteDomain": "Domäne {{id}} löschen",
     "resolveSteward": "Anzeigen, wer Domäne {{id}} betreut",
@@ -225,6 +224,9 @@
     "apolloSubgraphNameHint": "Der Name, unter dem der Supergraph diesen Subgraph kennt.",
     "apolloSubgraphRole": "Agiert als Rolle",
     "apolloSubgraphRoleHint": "Ein Supergraph kann die Identität seines Aufrufers nicht weitergeben. Daher meldet sich der Router mit dieser Rolle an, und deren Zeilenregeln, Masken und Sichtbarkeit gelten für jede Entität, die er abruft.",
-    "stewardsHint": "Personen, die für die Domäne verantwortlich sind; jede braucht eine Rolle mit domain_steward."
+    "stewardsHint": "Personen, die für die Domäne verantwortlich sind; jede braucht eine Rolle mit domain_steward.",
+    "domainsFilterPlaceholder": "Domänen filtern",
+    "closeForm": "Formular schließen",
+    "domainPanel": "Domäne"
   }
 }

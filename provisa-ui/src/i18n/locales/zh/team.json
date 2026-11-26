@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "本地用户",
     "attributesTab": "属性",
-    "accessTab": "访问"
+    "accessTab": "访问",
+    "filterPlaceholder": "筛选成员",
+    "inviteButton": "邀请",
+    "closeInvite": "关闭邀请表单"
   }
 }

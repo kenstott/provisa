@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "one-to-many",
     "materializeCheckbox": "Materialize",
     "excludeFromCypher": "Exclude from Cypher",
-    "sqlName": "SQL Name",
+    "apiName": "API name",
     "cardinalityWarning": "Warning: if this join returns more than one row per parent, only the first value will be used.",
     "toggleDetails": "Toggle relationship details",
     "deleteTitle": "Delete relationship \"{{id}}\"?",

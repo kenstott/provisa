@@ -174,14 +174,22 @@ describe("How to use", () => {
     expect(text.replaceAll("Bearer <token>", "")).not.toMatch(/Bearer|provisa_pat_/);
   });
 
-  it.each([["analyst"], ["guest"]])("says who grants access on every surface, for %s", (held) => {
-    show([held]);
-    for (const server of (CONTRACT.servers ?? []).map((s) => String(s.server))) {
-      expect(screen.getByTestId(`data-contract-how-to-use-7-${server}-access`)).toHaveTextContent(
+  it.each([["analyst"], ["guest"]])(
+    "says once, above the surfaces, who grants access, for %s",
+    (held) => {
+      show([held]);
+      // REQ-2277 (2): what is true of every surface is stated once above the list, not on each row.
+      expect(screen.getByTestId("data-contract-how-to-use-7-access")).toHaveTextContent(
         "Works only once access is granted, by owner@example.com, lead@example.com.",
       );
-    }
-  });
+      const text = screen.getByTestId("data-contract-7-howToUse").textContent as string;
+      expect(text.split("Works only once access is granted")).toHaveLength(2);
+      for (const server of (CONTRACT.servers ?? []).map((s) => String(s.server))) {
+        expect(screen.queryByTestId(`data-contract-how-to-use-7-${server}-access`)).toBeNull();
+        expect(cells(server)[2]).not.toContain("Works only once access is granted");
+      }
+    },
+  );
 });
 
 describe("a role that can read the table", () => {
@@ -272,7 +280,7 @@ describe("a role that cannot read the table", () => {
     expect(screen.getByTestId("data-contract-how-to-use-7-pgwire-ask")).toHaveTextContent(
       "Ask a holder of analyst for access",
     );
-    expect(screen.getByTestId("data-contract-how-to-use-7-pgwire-access")).toHaveTextContent(
+    expect(screen.getByTestId("data-contract-how-to-use-7-access")).toHaveTextContent(
       "Works only once access is granted, by a holder of analyst. This contract names no approver.",
     );
   });
@@ -282,7 +290,7 @@ describe("a role that cannot read the table", () => {
     expect(screen.getByTestId("data-contract-how-to-use-7-pgwire-ask")).toHaveTextContent(
       "This contract names no one to ask",
     );
-    expect(screen.getByTestId("data-contract-how-to-use-7-pgwire-access")).toHaveTextContent(
+    expect(screen.getByTestId("data-contract-how-to-use-7-access")).toHaveTextContent(
       "This contract names no role or approver.",
     );
   });

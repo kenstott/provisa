@@ -87,6 +87,9 @@
     "editAria": "{{name}} bearbeiten",
     "enableAria": "{{name}} aktivieren",
     "disableAria": "{{name}} deaktivieren",
-    "deleteAria": "{{name}} löschen"
+    "deleteAria": "{{name}} löschen",
+    "filterPlaceholder": "Trigger filtern",
+    "closeForm": "Formular schließen",
+    "noMatch": "Keine Trigger gefunden"
   }
 }

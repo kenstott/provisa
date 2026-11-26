@@ -17,7 +17,7 @@
     "reviewHelp": "Una cita de esta etiqueta necesita revisión: su sección cambió o ya no existe.",
     "definitionReviewHelp": "Una sección que define esta etiqueta cambió o ya no existe. Revise su cita.",
     "gap": "Sin cita",
-    "gapHelp": "Esta etiqueta exige una cita y esta asignación no tiene ninguna.",
+    "gapHelp": "Esta etiqueta exige una cita para cada asignación.",
     "definedBy": "Definida por {{title}}",
     "definedByLabel": "Definida por",
     "requiresCitationLabel": "Las asignaciones requieren una cita",
@@ -28,9 +28,9 @@
     "citedByDefinition": "Su definición",
     "citedByGone": "Desaparecida",
     "citedByWholeDocument": "Documento completo",
-    "citationsLabel": "Por qué está en este objeto",
-    "neededForCoverage": "Necesaria para la cobertura",
-    "definitionLabel": "Por qué existe esta etiqueta",
-    "definitionDesc": "El documento y la sección que dicen por qué existe esta etiqueta. Por qué está en un objeto se indica en las citas de ese objeto."
+    "citationsLabel": "Cita",
+    "neededForCoverage": "Obligatoria",
+    "definitionLabel": "Fuente de la definición",
+    "definitionDesc": "El documento de la biblioteca y la sección que definen esta etiqueta. La cita de una asignación se añade a esa asignación."
   }
 }

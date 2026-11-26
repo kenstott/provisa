@@ -404,3 +404,52 @@ async def test_a_profiler_with_a_member_outside_the_selection_is_not_run(control
             assert c.execute(select(rt.c.id)).fetchall()
         with within(SALES), pytest.raises(PermissionError, match="'crm'"):
             await _dispatch(control_plane, "run_profiler", {"source_id": "pg"})
+
+
+# -- domain id normalisation (REQ-2253) -----------------------------------------------------------
+
+
+@asynccontextmanager
+async def _hyphen_model(control_plane):
+    """A model with a domain whose id contains a hyphen (pet-store), so its SQL-safe name
+    (pet_store) differs from its raw id. Yields the table id it made."""
+    with control_plane.engine().begin() as c:
+        c.exec_driver_sql('SET LOCAL search_path TO "org_default"')
+        c.execute(insert(domains).values(id="pet-store", description=""))
+        c.execute(insert(sources).values(id="pg", type="postgresql"))
+    async with control_plane.org().acquire() as conn:
+        table_id = await table_repo.upsert(conn, _table("pet-store", "pets"))
+    yield table_id
+
+
+PET_STORE_SCOPE = frozenset({"pet-store"})
+
+
+async def test_find_table_id_sql_safe_name_allowed_when_raw_domain_in_scope(control_plane):
+    """find_table_id(domain='pet_store') is allowed when scope holds 'pet-store' (REQ-2253).
+
+    list_schemas returns the SQL-safe form 'pet_store'; the model uses that for find_table_id.
+    The scope the domain filter binds holds the raw id 'pet-store'. The two must agree."""
+    async with _hyphen_model(control_plane):
+        with within(PET_STORE_SCOPE):
+            ran = await _dispatch(
+                control_plane, "find_table_id", {"domain": "pet_store", "table": "pets"}
+            )
+        ran.assert_awaited_once()
+
+
+async def test_find_table_id_raw_domain_still_allowed_in_scope(control_plane):
+    """find_table_id(domain='pet-store') is also allowed when scope holds 'pet-store'."""
+    async with _hyphen_model(control_plane):
+        with within(PET_STORE_SCOPE):
+            ran = await _dispatch(
+                control_plane, "find_table_id", {"domain": "pet-store", "table": "pets"}
+            )
+        ran.assert_awaited_once()
+
+
+async def test_find_table_id_unrelated_domain_refused_even_with_hyphen_in_scope(control_plane):
+    """find_table_id for a domain genuinely outside the scope is still refused."""
+    async with _hyphen_model(control_plane):
+        with within(PET_STORE_SCOPE), pytest.raises(PermissionError, match="outside the domains"):
+            await _dispatch(control_plane, "find_table_id", {"domain": "crm", "table": "customers"})

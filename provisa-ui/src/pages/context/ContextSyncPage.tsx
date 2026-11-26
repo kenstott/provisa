@@ -8,20 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { RefreshCw } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { PageTitle } from "../../components/PageTitle";
 import { SyncingTab } from "../../components/admin/syncing/SyncingTab";
 
 /** REQ-2259, REQ-2247: Context Sync -- every outside system kept in step with Provisa, moved out of
- * Admin into the Context group with its rights unchanged. */
+ * Admin into the Context group with its rights unchanged. SyncingTab draws the page's header and list. */
 export function ContextSyncPage() {
-  const { t } = useTranslation();
   return (
     <div className="page page-sticky-head">
-      <div className="page-header">
-        <PageTitle icon={RefreshCw}>{t("syncingTab.title")}</PageTitle>
-      </div>
       <SyncingTab />
     </div>
   );

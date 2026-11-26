@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "ステップ {{index}}/{{count}}",
+    "stepsLabel": "ウィザードの手順",
     "next": "次へ",
     "toReview": "確認",
     "back": "戻る",

@@ -44,6 +44,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import re
+import threading
 import uuid
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
@@ -505,6 +506,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
         # one-worker pool took it off.
         self._land_guard = LandGuard("ClickHouse store client")
+        # What attach_source made for each source, by source id: its live views, its staged
+        # engine tables and the databases its relational engine mounted (drop_source).
+        self._made_lock = threading.Lock()
+        self._made: dict[str, set[tuple[str, str]]] = {}
 
     # -- backend selection (REQ-912) -------------------------------------------
 
@@ -605,13 +610,30 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         refuse_live_in_write_surface(schema, source.table_name)  # REQ-1912
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
-        self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(schema)}")
+        # REQ-2267: for code sources the DATABASE is created with its PostgreSQL ENGINE in the
+        # attach_ddl branch below; creating it here (no ENGINE) would prevent the ENGINE from
+        # being set by the subsequent CREATE DATABASE IF NOT EXISTS (which would be a no-op).
+        if not details.get("is_code_source"):
+            self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(schema)}")
         phys = ch_ident(schema, source.table_name)
         if "attach_ddl" in details:  # relational DATABASE engine (postgresql/mysql)
+            if details.get("is_code_source"):
+                # REQ-2267: create the DATABASE at the live-view-schema path directly so
+                # ClickHouse queries the sidecar table with WHERE conditions pushed through.
+                # A VIEW wrapper prevents ClickHouse from pushing predicates to its PostgreSQL
+                # DATABASE engine in a JOIN, so parameter _nf_ conditions must reach the sidecar
+                # directly — the DATABASE name IS the live-view schema, no VIEW needed.
+                db_ident = ch_ident(schema)
+                for stmt in details["attach_ddl"]:
+                    self._backend.command(stmt.replace(ch_ident(details["local_schema"]), db_ident))
+                self._made_for(source.id, ("database", db_ident))
+                return
             for stmt in details["attach_ddl"]:
                 self._backend.command(stmt)
+            self._made_for(source.id, ("database", ch_ident(details["local_schema"])))
             remote = ch_ident(details["local_schema"], source.table_name)
             self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+            self._made_for(source.id, ("view", phys))
             return
         # per-table TABLE engine (file S3/URL/File, or MongoDB)
         clause = bind_table(details["engine_clause"], source.table_name)
@@ -628,7 +650,25 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             )
         else:  # file engine — ClickHouse infers the columns
             self._backend.command(f"CREATE TABLE IF NOT EXISTS {staged} ENGINE = {clause}")
+        self._made_for(source.id, ("table", staged))
         self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {staged}")
+        self._made_for(source.id, ("view", phys))
+
+    def _made_for(self, source_id: str, made: tuple[str, str]) -> None:
+        with self._made_lock:
+            self._made.setdefault(source_id, set()).add(made)
+
+    def drop_source(self, source_id: str) -> None:
+        """Drop what attach_source made for ``source_id``: a deleted source's, or one whose
+        server is gone for good (REQ-2267: a dev-mode code source's sidecar stopped), so the next
+        attach mounts the source as it is then. Its views first, then its staged tables, then the
+        databases its relational engine mounted."""
+        with self._made_lock:
+            made = self._made.pop(source_id, set())
+        order = {"view": "DROP VIEW", "table": "DROP TABLE", "database": "DROP DATABASE"}
+        for kind, statement in order.items():
+            for name in sorted(n for k, n in made if k == kind):
+                self._backend.command(f"{statement} IF EXISTS {name}")
 
     def detach_source(self, source: Any) -> None:
         """Remove the live view of ``source``'s table. Called when the table's reads move to its
