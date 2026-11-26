@@ -97,7 +97,10 @@ const USES = {
       usages: [{ tableId: 2, tableRef: "crm.public.customers", column: "email" }],
       hiddenUsages: 3,
       rowFilters: 0,
-      classificationKinds: ["us_ssn"],
+      classificationKinds: [
+        { id: "us_ssn", label: "US social security number", custom: false },
+        { id: "custom.employee_ssn", label: "Employee SSN", custom: true },
+      ],
     },
     {
       id: "finance",
@@ -113,14 +116,24 @@ const KINDS = {
   kinds: [
     {
       id: "us_ssn",
+      label: "US social security number",
+      custom: false,
       sensitive: true,
+      test: "us_ssn",
+      pattern: "(?:\\d{3}-\\d{2}-\\d{4}|\\d{7,9})",
+      check: "us_ssn",
+      ignore: null,
+      families: ["text", "numeric"],
       threshold: 0.9,
+      term: "us social security number",
       maskPreset: "ssn_last4",
       enabled: true,
       detections: [{ tableId: 2, tableRef: "crm.public.customers", column: "ssn" }],
       hiddenDetections: 4,
     },
   ],
+  checks: ["us_ssn"],
+  masks: ["ssn_last4"],
 };
 
 beforeEach(() => {
@@ -159,6 +172,10 @@ describe("Context Tags (read-only TagsTab)", () => {
     expect(await screen.findByTestId("tags-dependents-finance")).toHaveTextContent("2 row filters");
     expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
       "Assigned by classification: US social security number",
+    );
+    // A custom kind is named by the org's own label (REQ-2147, amended 2026-11-25).
+    expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
+      "Assigned by classification: Employee SSN",
     );
   });
 
@@ -199,12 +216,16 @@ describe("Context Tags (read-only TagsTab)", () => {
   });
 });
 
-describe("Context Classification (read-only ClassificationKindsTab)", () => {
-  it("lists the kinds and where each was detected, without the switch", async () => {
-    render(<ClassificationKindsTab readOnly title="Classification" />);
+describe("Context Classification (ClassificationKindsTab with detections)", () => {
+  it("lists the kinds and where each was detected; without sensitive_data, no change", async () => {
+    render(<ClassificationKindsTab detections title="Classification" />);
     const row = await screen.findByTestId("classification-kind-us_ssn");
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByTestId("classification-kind-enabled-us_ssn")).toBeNull();
+    expect(screen.queryByTestId("classification-kinds-create")).toBeNull();
+    fireEvent.click(row);
+    await screen.findByTestId("classification-kind-detail-us_ssn");
+    expect(screen.queryByTestId("classification-kind-edit-us_ssn")).toBeNull();
+    expect(screen.queryByTestId("classification-kind-duplicate-us_ssn")).toBeNull();
     expect(within(row).getByTestId("classification-kind-state-us_ssn")).toHaveTextContent(
       "Enabled",
     );
@@ -215,7 +236,7 @@ describe("Context Classification (read-only ClassificationKindsTab)", () => {
   });
 
   it("links a detection to its column only with the table page's right", async () => {
-    render(<ClassificationKindsTab readOnly title="Classification" />);
+    render(<ClassificationKindsTab detections title="Classification" />);
     const place = await screen.findByTestId("classification-kind-detected-us_ssn-place");
     expect(place).not.toHaveAttribute("href");
   });

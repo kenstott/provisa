@@ -52,7 +52,7 @@ export const fetchContextTags = () =>
   get<{ tags: ContextTagUse[] }>("fetchContextTags", "/admin/context/tags");
 
 export const fetchContextClassification = () =>
-  get<{ kinds: ContextClassificationKind[] }>(
+  get<{ kinds: ContextClassificationKind[]; checks: string[]; masks: string[] }>(
     "fetchContextClassification",
     "/admin/context/classification",
   );

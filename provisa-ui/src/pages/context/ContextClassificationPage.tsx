@@ -12,13 +12,14 @@ import { useTranslation } from "react-i18next";
 import { ClassificationKindsTab } from "../../components/admin/ClassificationKindsTab";
 
 /** REQ-2259: the Classification page of the Context group -- the kinds and where each was
- * detected, read-only. Kinds are switched in Admin; decisions are made in the table editor. ClassificationKindsTab draws
- * the page's header and list. */
+ * detected. REQ-2147 (amended 2026-11-25): a holder of sensitive_data adds a custom kind here
+ * ("+ Kind") and changes or deletes one in its panel (?kind=<id>); decisions are made in the table
+ * editor. ClassificationKindsTab draws the page's header, list and panel. */
 export function ContextClassificationPage() {
   const { t } = useTranslation();
   return (
     <div className="page page-sticky-head">
-      <ClassificationKindsTab readOnly title={t("navBar.itemClassificationKinds")} />
+      <ClassificationKindsTab detections title={t("navBar.itemClassificationKinds")} />
     </div>
   );
 }

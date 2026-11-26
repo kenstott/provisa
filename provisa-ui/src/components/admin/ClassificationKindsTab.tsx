@@ -8,27 +8,50 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2147: the profiler's classification kinds, each with its test, its threshold, whether it is
-// sensitive and the mask it offers. An organisation administrator enables or disables a kind here;
-// a disabled kind is not tested by any profile run and raises no suggestions. Everything else about
-// a kind is shipped with the product and shown as it is.
+// REQ-2147: the profiler's classification kinds, each with its test, the share of values that must
+// pass, whether it is sensitive and the mask it offers. A disabled kind is not tested by any
+// profile run and raises no suggestions. (Amended 2026-11-25) The org adds its own custom kinds --
+// a name, a regular expression with an optional shipped check, the share, sensitivity, mask and
+// glossary term -- and edits and deletes them; a shipped kind keeps its coded test, but its share,
+// sensitivity and mask are the org's, and it can be copied into a custom kind to change the test.
 
-import { useEffect, useState } from "react";
-import { ActionIcon, Alert, Badge, Group, Loader, Stack, Switch, Table, Text } from "@mantine/core";
-import { Pencil, ScanSearch } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Code,
+  Group,
+  Loader,
+  NumberInput,
+  Select,
+  Stack,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import { Pencil, ScanSearch, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  changeClassificationKind,
+  createClassificationKind,
+  deleteClassificationKind,
   fetchClassificationKinds,
-  setEnabledClassificationKinds,
   type ClassificationKind,
+  type CustomKindInput,
 } from "../../api/profiler";
 import { fetchContextClassification, type ContextPlace } from "../../api/contextViews";
+import { useCapability } from "../../hooks/useCapability";
 import { ContextPlaces } from "../ContextPlaces";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { DetailFields } from "../detail/DetailFields";
-import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { ListRow } from "../list/ListTable";
+import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
@@ -38,13 +61,17 @@ import { FilterInput } from "./FilterInput";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
-type KindRow = Pick<
-  ClassificationKind,
-  "id" | "sensitive" | "threshold" | "maskPreset" | "enabled"
-> & {
+type KindRow = ClassificationKind & {
   detections?: ContextPlace[];
   hiddenDetections?: number;
 };
+
+/** What both reads answer: the kinds, and what a custom kind's form offers. */
+interface KindsRead {
+  kinds: KindRow[];
+  checks: string[];
+  masks: string[];
+}
 
 /** The Context read answers every kind with where it was detected; one without is a defect. */
 function detectedOn(k: KindRow): { places: ContextPlace[]; hidden: number } {
@@ -58,37 +85,96 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** REQ-2277: the standard page anatomy -- the header (title, filter), the list, and a row opening
- * the kind's detail panel (?kind=<id>), read, with Edit in the panel's head where the kind may be
- * switched. REQ-2259: ``readOnly`` is the Context group's Classification page -- the kinds and where
- * each was detected, with no Edit; enabling a kind stays in Admin. */
+/** The form's fields, as typed. The share is a percentage. */
+interface Draft {
+  label: string;
+  pattern: string;
+  check: string | null;
+  ignore: string;
+  percent: number | string;
+  sensitive: boolean;
+  maskPreset: string | null;
+  term: string;
+  enabled: boolean;
+}
+
+type DraftErrors = Partial<Record<keyof Draft, string>>;
+
+const EMPTY: Draft = {
+  label: "",
+  pattern: "",
+  check: null,
+  ignore: "",
+  percent: 90,
+  sensitive: false,
+  maskPreset: null,
+  term: "",
+  enabled: true,
+};
+
+function draftOf(k: KindRow): Draft {
+  return {
+    label: k.label,
+    pattern: k.pattern ?? "",
+    check: k.check,
+    ignore: k.ignore ?? "",
+    percent: Math.round(k.threshold * 100),
+    sensitive: k.sensitive,
+    maskPreset: k.maskPreset,
+    term: k.term,
+    enabled: k.enabled,
+  };
+}
+
+/** The panel holds one thing: a kind read, a kind in its form, or the create form. */
+type Mode = { form: "none" } | { form: "edit" } | { form: "create" };
+
+/** REQ-2277: the standard page anatomy -- the header (title, filter, "+ Kind"), the list, and a
+ * row opening the kind's detail panel (?kind=<id>), read, with Edit, Duplicate and (for a custom
+ * kind) Delete in the panel's head. The kinds are changed by the right a classification decision
+ * asks (sensitive_data, REQ-1327); a caller without it reads them. REQ-2259: ``detections`` is the
+ * Context group's Classification page, which also lists where each kind was detected. */
 export function ClassificationKindsTab({
-  readOnly = false,
+  detections = false,
   title,
 }: {
-  readOnly?: boolean;
+  detections?: boolean;
   title: string;
 }) {
   const { t } = useTranslation();
-  const [kinds, setKinds] = useState<KindRow[] | null>(null);
+  const canEdit = useCapability("sensitive_data");
+  const [read, setRead] = useState<KindsRead | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useUrlFilter();
+  const kinds = read?.kinds ?? null;
   const detail = useRememberedDetail(
     "classification",
     kinds === null ? null : kinds.map((k) => k.id),
   );
-  const [editing, setEditing] = useState(false);
-  const [draftEnabled, setDraftEnabled] = useState(false);
+  const [mode, setMode] = useState<Mode>({ form: "none" });
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [errors, setErrors] = useState<DraftErrors>({});
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  useEffect(() => {
-    (readOnly ? fetchContextClassification() : fetchClassificationKinds())
-      .then((r) => setKinds(r.kinds))
-      .catch((e: unknown) => setError(message(e)));
-  }, [readOnly]);
+  const load = useCallback(
+    () => (detections ? fetchContextClassification() : fetchClassificationKinds()).then(setRead),
+    [detections],
+  );
 
-  const kindLabel = (k: KindRow) => t(`classificationKinds.kind.${k.id}`);
+  useEffect(() => {
+    load().catch((e: unknown) => setError(message(e)));
+  }, [load]);
+
+  const kindLabel = (k: KindRow) => (k.custom ? k.label : t(`classificationKinds.kind.${k.id}`));
+  const checkLabel = (check: string) =>
+    t("classificationKinds.checkOption", { kind: t(`classificationKinds.kind.${check}`) });
+  const testText = (k: KindRow) =>
+    k.custom
+      ? [k.pattern ?? "", k.check === null ? null : checkLabel(k.check)]
+          .filter((part) => part !== null)
+          .join(" + ")
+      : t(`classificationKinds.test.${k.id}`);
   const maskLabel = (k: KindRow) =>
     k.maskPreset ? t(`maskList.preset.${k.maskPreset}`) : t("classificationKinds.noMask");
   const enabledLabel = (k: KindRow) =>
@@ -96,25 +182,104 @@ export function ClassificationKindsTab({
 
   const open = kinds?.find((k) => k.id === detail.id) ?? null;
   const shown = (kinds ?? []).filter((k) =>
-    matchesQuery([k.id, kindLabel(k), t(`classificationKinds.test.${k.id}`)], search),
+    matchesQuery([k.id, kindLabel(k), testText(k)], search),
   );
 
   const closeForm = () => {
-    setEditing(false);
+    setMode({ form: "none" });
+    setErrors({});
     setProblem(null);
   };
 
-  const save = async (kind: KindRow) => {
-    if (kinds === null) return;
-    const wanted = kinds
-      .filter((k) => (k.id === kind.id ? draftEnabled : k.enabled))
-      .map((k) => k.id);
+  const openCreate = () => {
+    // One thing in the panel at a time: the create form replaces whatever kind was open.
+    detail.close();
+    setDraft(EMPTY);
+    setErrors({});
+    setProblem(null);
+    setMode({ form: "create" });
+  };
+
+  // Duplicate: the create form filled from the kind under "<name> (copy)" -- the one way to change
+  // a shipped kind's test. What depends on the kind (its decisions) is not copied.
+  const openDuplicate = (k: KindRow) => {
+    detail.close();
+    setDraft({
+      ...draftOf(k),
+      label: t("classificationKinds.copyName", { kind: kindLabel(k) }),
+      enabled: true,
+    });
+    setErrors({});
+    setProblem(null);
+    setMode({ form: "create" });
+  };
+
+  const openEdit = (k: KindRow) => {
+    setDraft(draftOf(k));
+    setErrors({});
+    setProblem(null);
+    setMode({ form: "edit" });
+  };
+
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+
+  /** The draft's required fields, checked on Save (REQ-2277: never by disabling Save). */
+  const check = (custom: boolean): DraftErrors => {
+    const out: DraftErrors = {};
+    const required = t("classificationKinds.required");
+    if (custom) {
+      if (!draft.label.trim()) out.label = required;
+      if (!draft.pattern.trim()) out.pattern = required;
+      if (!draft.term.trim()) out.term = required;
+    }
+    const percent = Number(draft.percent);
+    if (draft.percent === "" || !(percent > 0 && percent <= 100)) {
+      out.percent = t("classificationKinds.percentRange");
+    }
+    if (draft.sensitive && draft.maskPreset === null) {
+      out.maskPreset = t("classificationKinds.maskRequired");
+    }
+    return out;
+  };
+
+  const settings = () => ({
+    threshold: Number(draft.percent) / 100,
+    sensitive: draft.sensitive,
+    // A mask is a sensitive kind's: a kind made not sensitive offers none.
+    maskPreset: draft.sensitive ? draft.maskPreset : null,
+  });
+
+  const customFields = (): CustomKindInput => ({
+    label: draft.label.trim(),
+    pattern: draft.pattern.trim(),
+    check: draft.check,
+    ignore: draft.ignore.trim() === "" ? null : draft.ignore.trim(),
+    term: draft.term.trim(),
+    ...settings(),
+  });
+
+  const save = async () => {
+    const custom = mode.form === "create" || open?.custom === true;
+    const found = check(custom);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     setSaving(true);
     setProblem(null);
     try {
-      const r = await setEnabledClassificationKinds(wanted);
-      setKinds(r.kinds);
-      setEditing(false);
+      if (mode.form === "create") {
+        const made = await createClassificationKind(customFields());
+        await load();
+        setMode({ form: "none" });
+        detail.open(made.id);
+      } else if (open !== null) {
+        await changeClassificationKind(open.id, {
+          ...(open.custom ? customFields() : settings()),
+          enabled: draft.enabled,
+        });
+        await load();
+        setMode({ form: "none" });
+      }
     } catch (e: unknown) {
       setProblem(message(e));
     } finally {
@@ -122,23 +287,129 @@ export function ClassificationKindsTab({
     }
   };
 
-  const form = (k: KindRow) => (
+  const remove = async (k: KindRow) => {
+    await deleteClassificationKind(k.id);
+    await load();
+  };
+
+  const form = (custom: boolean, shipped: KindRow | null) => (
     <FormLayout data-testid="classification-kind-form">
-      <FormChecks>
-        <FormField size="medium">
-          <Switch
-            label={t("classificationKinds.enabledHeader")}
-            checked={draftEnabled}
-            disabled={saving}
-            onChange={(e) => setDraftEnabled(e.currentTarget.checked)}
-            aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
-            data-testid={`classification-kind-enabled-${k.id}`}
+      {custom && (
+        <>
+          <FormIdentifiers>
+            <FormField hint={t("classificationKinds.nameHint")} size="medium">
+              <TextInput
+                label={t("classificationKinds.nameLabel")}
+                withAsterisk
+                value={draft.label}
+                error={errors.label}
+                onChange={(e) => set("label", e.currentTarget.value)}
+                data-testid="classification-kind-name"
+              />
+            </FormField>
+          </FormIdentifiers>
+          <FormField hint={t("classificationKinds.patternHint")} size="long">
+            <TextInput
+              label={t("classificationKinds.patternLabel")}
+              withAsterisk
+              value={draft.pattern}
+              error={errors.pattern}
+              onChange={(e) => set("pattern", e.currentTarget.value)}
+              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+              data-testid="classification-kind-pattern"
+            />
+          </FormField>
+          <FormField hint={t("classificationKinds.checkHint")} size="medium">
+            <Select
+              label={t("classificationKinds.checkLabel")}
+              placeholder={t("classificationKinds.checkNone")}
+              clearable
+              data={(read?.checks ?? []).map((c) => ({ value: c, label: checkLabel(c) }))}
+              value={draft.check}
+              onChange={(v) => set("check", v)}
+              data-testid="classification-kind-check"
+            />
+          </FormField>
+          <FormField hint={t("classificationKinds.ignoreHint")} size="medium">
+            <TextInput
+              label={t("classificationKinds.ignoreLabel")}
+              value={draft.ignore}
+              onChange={(e) => set("ignore", e.currentTarget.value)}
+              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+              data-testid="classification-kind-ignore"
+            />
+          </FormField>
+        </>
+      )}
+      {shipped !== null && (
+        <Text size="sm" c="dimmed" data-testid="classification-kind-shipped-test">
+          {t("classificationKinds.shippedTestNote", { test: testText(shipped) })}
+        </Text>
+      )}
+      <FormField hint={t("classificationKinds.thresholdHint")} size="short">
+        <NumberInput
+          label={t("classificationKinds.thresholdHeader")}
+          withAsterisk
+          suffix="%"
+          min={1}
+          max={100}
+          value={draft.percent}
+          error={errors.percent}
+          onChange={(v) => set("percent", v)}
+          data-testid="classification-kind-threshold"
+        />
+      </FormField>
+      <FormField hint={t("classificationKinds.maskHint")} size="medium">
+        <Select
+          label={t("classificationKinds.maskHeader")}
+          withAsterisk={draft.sensitive}
+          placeholder={t("classificationKinds.noMask")}
+          disabled={!draft.sensitive}
+          data={(read?.masks ?? []).map((m) => ({ value: m, label: t(`maskList.preset.${m}`) }))}
+          value={draft.sensitive ? draft.maskPreset : null}
+          error={errors.maskPreset}
+          onChange={(v) => set("maskPreset", v)}
+          data-testid="classification-kind-mask"
+        />
+      </FormField>
+      {custom && (
+        <FormField hint={t("classificationKinds.termHint")} size="medium">
+          <TextInput
+            label={t("classificationKinds.termLabel")}
+            withAsterisk
+            value={draft.term}
+            error={errors.term}
+            onChange={(e) => set("term", e.currentTarget.value)}
+            data-testid="classification-kind-term"
           />
         </FormField>
+      )}
+      <FormChecks>
+        <FormField help={t("classificationKinds.sensitiveHint")} size="medium">
+          <Switch
+            label={t("classificationKinds.sensitive")}
+            checked={draft.sensitive}
+            disabled={saving}
+            onChange={(e) => set("sensitive", e.currentTarget.checked)}
+            data-testid="classification-kind-sensitive"
+          />
+        </FormField>
+        {mode.form === "edit" && open !== null && (
+          <FormField size="medium">
+            <Switch
+              label={t("classificationKinds.enabledHeader")}
+              checked={draft.enabled}
+              disabled={saving}
+              onChange={(e) => set("enabled", e.currentTarget.checked)}
+              aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(open) })}
+              data-testid={`classification-kind-enabled-${open.id}`}
+            />
+          </FormField>
+        )}
       </FormChecks>
       <FormFooter
         panel
-        onSave={() => save(k)}
+        onSave={save}
         onCancel={closeForm}
         saving={saving}
         problem={problem ?? undefined}
@@ -149,23 +420,40 @@ export function ClassificationKindsTab({
 
   const readView = (k: KindRow) => (
     <Stack gap="sm" data-testid={`classification-kind-detail-${k.id}`}>
-      {!readOnly && (
+      {canEdit && (
         <PanelActions>
           <fieldset className="panel-action-set">
-            <Tip text={t("classificationKinds.enabledAria", { kind: kindLabel(k) })} named>
-              <ActionIcon
-                aria-label={t("classificationKinds.enabledAria", { kind: kindLabel(k) })}
-                data-testid={`classification-kind-edit-${k.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDraftEnabled(k.enabled);
-                  setProblem(null);
-                  setEditing(true);
-                }}
-              >
-                <Pencil size={14} />
-              </ActionIcon>
-            </Tip>
+            <Group gap="xs">
+              <Tip text={t("classificationKinds.editAria", { kind: kindLabel(k) })} named>
+                <ActionIcon
+                  aria-label={t("classificationKinds.editAria", { kind: kindLabel(k) })}
+                  data-testid={`classification-kind-edit-${k.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(k);
+                  }}
+                >
+                  <Pencil size={14} />
+                </ActionIcon>
+              </Tip>
+              {k.pattern !== null && (
+                <PanelDuplicate
+                  name={kindLabel(k)}
+                  onDuplicate={() => openDuplicate(k)}
+                  testId={`classification-kind-duplicate-${k.id}`}
+                />
+              )}
+              {k.custom && (
+                <PanelDelete
+                  itemKey={k.id}
+                  title={t("classificationKinds.deleteTitle", { kind: kindLabel(k) })}
+                  consequence={t("classificationKinds.deleteConfirm", { kind: kindLabel(k) })}
+                  ariaLabel={t("classificationKinds.deleteTitle", { kind: kindLabel(k) })}
+                  testId={`classification-kind-delete-${k.id}`}
+                  onDelete={() => remove(k)}
+                />
+              )}
+            </Group>
           </fieldset>
         </PanelActions>
       )}
@@ -174,20 +462,25 @@ export function ClassificationKindsTab({
         fields={[
           { label: t("classificationKinds.kindHeader"), value: kindLabel(k) },
           {
+            label: t("classificationKinds.originHeader"),
+            value: t(k.custom ? "classificationKinds.custom" : "classificationKinds.shipped"),
+          },
+          {
             label: t("classificationKinds.sensitive"),
             value: k.sensitive ? t("detailFields.yes") : t("detailFields.no"),
           },
           {
             label: t("classificationKinds.testHeader"),
-            value: t(`classificationKinds.test.${k.id}`),
+            value: k.custom ? <Code>{testText(k)}</Code> : testText(k),
           },
           {
             label: t("classificationKinds.thresholdHeader"),
             value: `${Math.round(k.threshold * 100)}%`,
           },
           { label: t("classificationKinds.maskHeader"), value: maskLabel(k) },
+          { label: t("classificationKinds.termLabel"), value: k.term },
           { label: t("classificationKinds.enabledHeader"), value: enabledLabel(k) },
-          ...(readOnly
+          ...(detections
             ? [
                 {
                   label: t("contextViews.detectedHeader"),
@@ -205,6 +498,20 @@ export function ClassificationKindsTab({
     </Stack>
   );
 
+  const creating = mode.form === "create";
+  const panelTitle = creating
+    ? t("classificationKinds.createTitle")
+    : open === null
+      ? ""
+      : kindLabel(open);
+  const panelBody = creating
+    ? form(true, null)
+    : open === null
+      ? null
+      : mode.form === "edit"
+        ? form(open.custom, open.custom ? null : open)
+        : readView(open);
+
   return (
     <>
       <div className="page-header">
@@ -215,6 +522,18 @@ export function ClassificationKindsTab({
           placeholder={t("classificationKinds.filterPlaceholder")}
           testId="classification-kinds-filter"
         />
+        {canEdit && (
+          <div className="page-actions">
+            <Button
+              variant={creating ? "outline" : "filled"}
+              onClick={() => (creating ? closeForm() : openCreate())}
+              data-testid="classification-kinds-create"
+              aria-label={creating ? t("classificationKinds.closeForm") : undefined}
+            >
+              {creating ? <X size={14} /> : t("classificationKinds.addKind")}
+            </Button>
+          </div>
+        )}
       </div>
       <Text size="sm" c="dimmed" mb="sm">
         {t("classificationKinds.intro")}
@@ -229,12 +548,13 @@ export function ClassificationKindsTab({
         <SplitPane
           testId="classification-kinds-split"
           storageKey="provisa.classificationKinds.detailWidth"
-          title={open === null ? "" : kindLabel(open)}
+          title={panelTitle}
           onClose={() => {
             closeForm();
             detail.close();
           }}
-          closeOnEscape={!editing}
+          // Escape closes a kind that is only being looked at; it never drops what is typed.
+          closeOnEscape={mode.form === "none"}
           labels={{
             panel: t("classificationKinds.kindHeader"),
             resize: t("tablesPage.resizeDetail"),
@@ -254,7 +574,7 @@ export function ClassificationKindsTab({
                   {
                     key: "test",
                     label: t("classificationKinds.testHeader"),
-                    sortValue: (k) => t(`classificationKinds.test.${k.id}`),
+                    sortValue: testText,
                   },
                   {
                     key: "threshold",
@@ -280,16 +600,17 @@ export function ClassificationKindsTab({
                   { col: "threshold" },
                   { col: "mask" },
                   { col: "enabled" },
-                  ...(readOnly ? [t("contextViews.detectedHeader")] : []),
+                  ...(detections ? [t("contextViews.detectedHeader")] : []),
                 ]}
-                colSpan={readOnly ? 6 : 5}
+                colSpan={detections ? 6 : 5}
                 rowKey={(k) => k.id}
                 empty={t("classificationKinds.empty")}
                 render={(k) => [
                   <ListRow
                     key={k.id}
+                    itemKey={k.id}
                     testId={`classification-kind-${k.id}`}
-                    selected={k.id === detail.id}
+                    selected={!creating && k.id === detail.id}
                     onClick={() => {
                       closeForm();
                       if (detail.id === k.id) detail.close();
@@ -299,6 +620,11 @@ export function ClassificationKindsTab({
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
                         {kindLabel(k)}
+                        {k.custom && (
+                          <Badge size="xs" variant="outline">
+                            {t("classificationKinds.custom")}
+                          </Badge>
+                        )}
                         {k.sensitive && (
                           <Badge size="xs" color="red" variant="light">
                             {t("classificationKinds.sensitive")}
@@ -306,7 +632,7 @@ export function ClassificationKindsTab({
                         )}
                       </Group>
                     </Table.Td>
-                    <Table.Td>{t(`classificationKinds.test.${k.id}`)}</Table.Td>
+                    <Table.Td>{k.custom ? <Code>{testText(k)}</Code> : testText(k)}</Table.Td>
                     <Table.Td>{`${Math.round(k.threshold * 100)}%`}</Table.Td>
                     <Table.Td>{maskLabel(k)}</Table.Td>
                     <Table.Td>
@@ -318,7 +644,7 @@ export function ClassificationKindsTab({
                         {enabledLabel(k)}
                       </Text>
                     </Table.Td>
-                    {readOnly && (
+                    {detections && (
                       <Table.Td>
                         <ContextPlaces
                           {...detectedOn(k)}
@@ -332,7 +658,7 @@ export function ClassificationKindsTab({
             </div>
           }
         >
-          {open === null ? null : editing ? form(open) : readView(open)}
+          {panelBody}
         </SplitPane>
       )}
     </>

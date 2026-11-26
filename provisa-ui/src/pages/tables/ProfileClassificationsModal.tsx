@@ -24,6 +24,7 @@ import {
 } from "@mantine/core";
 import {
   decideClassification,
+  fetchClassificationKinds,
   fetchClassifications,
   fetchProfileRun,
   fetchProfileRuns,
@@ -31,6 +32,7 @@ import {
   type ClassificationDecision,
 } from "../../api/profiler";
 import { useAuth } from "../../context/AuthContext";
+import { isCustomKind } from "../../lib/classificationKinds";
 
 type Suggestion = Record<string, unknown>;
 
@@ -71,6 +73,21 @@ export function ProfileClassificationsModal({
   const [decisions, setDecisions] = useState<ClassificationDecision[]>([]);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // The org's custom kinds by id, with their labels. A run's suggestion of a custom kind the org
+  // has since deleted is no suggestion: the kind is gone from the model, with its decisions.
+  const [customKinds, setCustomKinds] = useState<Map<string, string> | null>(null);
+  useEffect(() => {
+    fetchClassificationKinds()
+      .then((r) =>
+        setCustomKinds(new Map(r.kinds.filter((k) => k.custom).map((k) => [k.id, k.label]))),
+      )
+      .catch((e: unknown) => setNotice({ ok: false, text: message(e) }));
+  }, []);
+  const listed = (kind: unknown) =>
+    !isCustomKind(String(kind)) || customKinds?.has(String(kind)) === true;
+  const shown =
+    customKinds === null || suggestions === null ? null : suggestions.filter((s) => listed(s.kind));
+
   const reload = useCallback(
     () =>
       fetchClassifications(tableId)
@@ -100,13 +117,23 @@ export function ProfileClassificationsModal({
       .catch((e: unknown) => setNotice({ ok: false, text: message(e) }));
   }, [tableId, actingRoles]);
 
-  const kindLabel = (kind: unknown) => t(`classificationKinds.kind.${String(kind)}`);
+  // REQ-2147 (amended 2026-11-25): a custom kind is named by the org's label, a shipped one by its
+  // translated words.
+  const customLabel = (kind: unknown) => {
+    const label = customKinds?.get(String(kind));
+    if (label === undefined) throw new Error(`classification kind ${String(kind)} is not listed`);
+    return label;
+  };
+  const kindLabel = (kind: unknown) =>
+    isCustomKind(String(kind)) ? customLabel(kind) : t(`classificationKinds.kind.${String(kind)}`);
+  const kindNoun = (kind: unknown) =>
+    isCustomKind(String(kind)) ? customLabel(kind) : t(`classificationKinds.noun.${String(kind)}`);
 
   const sentence = (s: Suggestion) =>
     t("profileClassificationsModal.suggestion", {
       table: tableName,
       column: String(s.column_name),
-      kind: t(`classificationKinds.noun.${String(s.kind)}`),
+      kind: kindNoun(s.kind),
       share: `${Math.round((Number(s.share) || 0) * 100)}%`,
     });
 
@@ -171,13 +198,13 @@ export function ProfileClassificationsModal({
         </Alert>
       )}
       <Title order={6}>{t("profileClassificationsModal.suggested")}</Title>
-      {suggestions == null && <Loader size="sm" />}
-      {suggestions != null && suggestions.length === 0 && (
+      {shown == null && <Loader size="sm" />}
+      {shown != null && shown.length === 0 && (
         <Text size="sm" c="dimmed" data-testid="classifications-none">
           {t("profileClassificationsModal.none")}
         </Text>
       )}
-      {suggestions != null && suggestions.length > 0 && (
+      {shown != null && shown.length > 0 && (
         <ScrollArea.Autosize mah={320}>
           <Table withTableBorder fz="xs" data-testid="classifications-suggested">
             <Table.Thead>
@@ -189,7 +216,7 @@ export function ProfileClassificationsModal({
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {suggestions.map((s, i) => {
+              {shown.map((s, i) => {
                 const status = decidedAs(s);
                 return (
                   <Table.Tr key={i} data-testid={`classification-suggestion-${i}`}>
@@ -262,7 +289,9 @@ export function ProfileClassificationsModal({
       <Title order={6} mt="md">
         {t("profileClassificationsModal.decided")}
       </Title>
-      {decisions.length === 0 ? (
+      {customKinds === null ? (
+        <Loader size="sm" />
+      ) : decisions.length === 0 ? (
         <Text size="sm" c="dimmed" data-testid="classifications-none-decided">
           {t("profileClassificationsModal.noneDecided")}
         </Text>

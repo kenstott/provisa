@@ -977,13 +977,16 @@ function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagU
               <Text size="xs">{t("contextViews.rowFilters", { count: use.rowFilters })}</Text>
             )}
             {use.classificationKinds.map((k) => (
-              <Text size="xs" key={k}>
+              <Text size="xs" key={k.id}>
                 <EntityLink
                   kind="classification"
-                  id={k}
-                  testId={`tags-classification-${tag.id}-${k}`}
+                  id={k.id}
+                  testId={`tags-classification-${tag.id}-${k.id}`}
                 >
-                  {t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) })}
+                  {t("contextViews.classifiedAs", {
+                    // REQ-2147 (amended 2026-11-25): a custom kind is named by the org's label.
+                    kind: k.custom ? k.label : t(`classificationKinds.kind.${k.id}`),
+                  })}
                 </EntityLink>
               </Text>
             ))}

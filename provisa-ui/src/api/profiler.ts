@@ -383,11 +383,19 @@ export const forgetClassification = (tableId: number, physicalColumn: string, ki
     },
   );
 
+/** The kinds, and what a custom kind's form offers: the shipped checks by name and the mask
+ * presets. Every change to the kinds answers the same. */
+export interface ClassificationKinds {
+  kinds: ClassificationKind[];
+  checks: string[];
+  masks: string[];
+}
+
 export const fetchClassificationKinds = () =>
-  call<{ kinds: ClassificationKind[] }>("fetchClassificationKinds", "/admin/classification-kinds");
+  call<ClassificationKinds>("fetchClassificationKinds", "/admin/classification-kinds");
 
 export const setEnabledClassificationKinds = (enabled: string[]) =>
-  call<{ kinds: ClassificationKind[] }>(
+  call<ClassificationKinds>(
     "setEnabledClassificationKinds",
     "/admin/classification-kinds",
     "PUT",
@@ -396,7 +404,7 @@ export const setEnabledClassificationKinds = (enabled: string[]) =>
   );
 
 export const createClassificationKind = (input: CustomKindInput) =>
-  call<{ id: string; kinds: ClassificationKind[] }>(
+  call<ClassificationKinds & { id: string }>(
     "createClassificationKind",
     "/admin/classification-kinds",
     "POST",
@@ -405,7 +413,7 @@ export const createClassificationKind = (input: CustomKindInput) =>
   );
 
 export const changeClassificationKind = (id: string, change: KindChange) =>
-  call<{ kinds: ClassificationKind[] }>(
+  call<ClassificationKinds>(
     "changeClassificationKind",
     `/admin/classification-kinds/${encodeURIComponent(id)}`,
     "PATCH",
@@ -414,7 +422,7 @@ export const changeClassificationKind = (id: string, change: KindChange) =>
   );
 
 export const deleteClassificationKind = (id: string) =>
-  call<{ kinds: ClassificationKind[] }>(
+  call<ClassificationKinds>(
     "deleteClassificationKind",
     `/admin/classification-kinds/${encodeURIComponent(id)}`,
     "DELETE",
