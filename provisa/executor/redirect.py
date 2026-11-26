@@ -409,8 +409,9 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
             resp["encryption"] = encryption_meta
         return resp
 
-    # No object store configured at all → local fallback (desktop dev).
-    if not config.endpoint_url:
+    # REQ-1195: the deployment's results store, the one run_materialize resolves: with no object
+    # store configured it is the org's folder on this node.
+    if not object_store_configured(config):
         return _store_local("No S3-compatible object store is configured.")
 
     # The first redirect of this process makes sure its bucket exists (REQ-171); a store that
@@ -430,14 +431,12 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
             ExpiresIn=config.ttl,
         )
     except (EndpointConnectionError, ConnectionError, BotoConnectionError) as e:
-        # The store is configured but unreachable (e.g. MinIO not running). Fall back to local so a
-        # desktop dev can still exercise redirect, and say plainly what happened + how to get shared access.
-        log.warning(
-            "Redirect object store %s unreachable (%s); storing locally", config.endpoint_url, e
-        )
-        return _store_local(
-            f"Object store {config.endpoint_url} is not reachable ({type(e).__name__})."
-        )
+        # REQ-1195: a configured store that cannot take the result fails it by name; the result is
+        # never written somewhere else instead.
+        raise RedirectStoreError(
+            f"results object store {config.endpoint_url or 'AWS S3'} cannot take the result in "
+            f"bucket {config.bucket!r}: {type(e).__name__}: {e}"
+        ) from e
 
     response = {
         "redirect_url": url,
@@ -541,7 +540,15 @@ async def presign_ctas_result(  # REQ-044, REQ-029
     s3_prefix: str,
     redirect_config,
 ) -> str:
-    """Find the Parquet/ORC file(s) under the CTAS prefix and return a presigned URL.
+    """Awaitable form of :func:`presign_result_prefix`."""
+    return presign_result_prefix(s3_prefix, redirect_config)
+
+
+def presign_result_prefix(  # REQ-044, REQ-029
+    s3_prefix: str,
+    redirect_config,
+) -> str:
+    """Find the result file(s) under a result prefix and return a presigned URL.
 
     CTAS writes one or more files under the prefix. For a single result set,
     the engine typically writes a single file.
@@ -774,12 +781,47 @@ def object_store_configured(config: RedirectConfig) -> bool:  # REQ-1195
     return bool(config.endpoint_url or config.access_key)
 
 
-def uses_object_store(config: RedirectConfig, engine: Any, output_format: str) -> bool:  # REQ-1195
-    """The sink-tier choice: the object store when one is configured and the engine writes
-    ``output_format`` to it itself; the org's folder on this node otherwise. A configured store
-    the engine writes to and cannot reach fails the delivery by name -- it is not a reason to
-    write the result somewhere else."""
-    return object_store_configured(config) and engine.writes_result(output_format)
+def _upload_result(
+    state, physical_sql: str, fmt: str, params: list | None, config: RedirectConfig
+) -> dict:  # REQ-1194, REQ-1195
+    """The object-store tier for a format the bound engine does not write to the store itself:
+    run the statement, serialize its rows in ``fmt``, put the file under a fresh result prefix in
+    the results bucket and presign it -- the same prefix, presign and TTL cleanup an engine's own
+    write gets. A store that cannot take it fails the delivery by name."""
+    import boto3
+    from botocore.config import Config as BotoConfig
+
+    from provisa.executor import local_results
+    from provisa.federation import result_sink
+
+    content_type, ext = local_results.FILE_FORMATS[fmt]
+    ensure_results_bucket_sync(config)
+    table = local_results.result_table(state, physical_sql, params)
+    body = local_results.serialize_table(table, fmt)
+    target = result_sink.new_target(config)
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=config.endpoint_url or None,
+        aws_access_key_id=config.access_key,
+        aws_secret_access_key=config.secret_key,
+        region_name=config.region,
+        config=BotoConfig(signature_version="s3v4"),
+    )
+    s3.put_object(
+        Bucket=config.bucket,
+        Key=f"{target.key_prefix}/result{ext}",
+        Body=body,
+        ContentType=content_type,
+    )
+    url = presign_result_prefix(target.s3_prefix, config)
+    schedule_s3_cleanup(target.s3_prefix, config)
+    return {
+        "sink": "object-store",
+        "redirect_url": url,
+        "row_count": table.num_rows,
+        "expires_in": config.ttl,
+        "content_type": content_type,
+    }
 
 
 async def run_materialize(
@@ -790,20 +832,29 @@ async def run_materialize(
     ``params`` are the statement's bound values (None when it binds none). Required, so no caller
     can hand the engine a statement whose placeholders have nothing bound to them.
 
-    Sink-tier selection rule (REQ-1195, :func:`uses_object_store`): when an object store is
-    configured and the engine writes the requested format to it, the engine runs a CTAS straight
-    to object storage (REQ-1194) and the client receives a presigned URL — zero rows transit
-    Provisa. Otherwise the result is written to a file in the org's folder and served over HTTP
+    Sink-tier selection rule (REQ-1195, :func:`object_store_configured`): the results store is the
+    deployment's, the same for every format. With an object store configured every format goes
+    there and the client receives a presigned URL: the engine writes it itself where it writes
+    the format (a CTAS straight to object storage, REQ-1194, zero rows transit Provisa), Provisa
+    writes it from the rows otherwise (:func:`_upload_result`). With none configured every format
+    is written to a file in the org's folder and served over HTTP at the request's base URI
     (REQ-1191, :mod:`provisa.executor.local_results`). The tiers are exclusive and chosen here,
-    once, for every transport.
+    once, for every transport; a configured store that cannot take the result fails the delivery
+    by name, never a write somewhere else.
 
     Returns a handle dict: ``{sink, redirect_url, row_count, expires_in, content_type}``.
     """
 
+    import asyncio
+
     fmt = delivery.output_format.lower()
     config = delivery.config
 
-    if uses_object_store(config, state.federation_engine, fmt):
+    if object_store_configured(config) and not state.federation_engine.writes_result(fmt):
+        # Object-store tier, a format the engine does not write there itself: Provisa writes it.
+        return await asyncio.to_thread(_upload_result, state, physical_sql, fmt, params, config)
+
+    if object_store_configured(config):
         # Object-store tier: the engine CTAS-writes Parquet/ORC directly to S3-compatible storage.
         ctas_result = state.federation_engine.ctas_redirect(physical_sql, fmt, params)
         url = await presign_ctas_result(ctas_result["s3_prefix"], config)
@@ -820,8 +871,6 @@ async def run_materialize(
 
     # Local tier (REQ-1191/REQ-1192/REQ-1193): a file in the org's folder, served by
     # /data/redirect-file/<name> to the user who asked for it, deleted after the TTL.
-    import asyncio
-
     from provisa.executor import local_results
 
     return await asyncio.to_thread(

@@ -6168,6 +6168,8 @@ def create_app() -> FastAPI:
     from provisa.core import request_deadline as _request_deadline
     from provisa.core.limits import bound_request_transport, http_transport_for_path
     from provisa.core.request_thread import client_watch
+    from provisa.executor.local_results import bound_request_base
+    from starlette.requests import Request as _StarletteRequest
 
     class _RequestTransportMiddleware:
         def __init__(self, inner: Any) -> None:
@@ -6177,12 +6179,15 @@ def create_app() -> FastAPI:
             if scope["type"] != "http":
                 await self._inner(scope, receive, send)
                 return
+            # REQ-1191: a result kept on this server is answered at this request's own base URI.
+            base_uri = str(_StarletteRequest(scope).base_url)
             transport = http_transport_for_path(scope.get("path", ""))
             if transport is None:
-                with bound_request_transport(None):
+                with bound_request_transport(None), bound_request_base(base_uri):
                     await self._inner(scope, receive, send)
                 return
             with (
+                bound_request_base(base_uri),
                 bound_request_transport(transport),
                 _request_deadline.request(transport) as deadline,
             ):
