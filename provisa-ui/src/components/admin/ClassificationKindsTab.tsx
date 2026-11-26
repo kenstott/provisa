@@ -564,98 +564,99 @@ export function ClassificationKindsTab({
             backToList: t("tablesPage.backToList"),
           }}
           list={
-            <div data-testid="classification-kinds">
-              <SortGroupTable
-                testPrefix="classification-kinds"
-                minWidth={640}
-                rows={shown}
-                columns={[
-                  { key: "kind", label: t("classificationKinds.kindHeader"), sortValue: kindLabel },
-                  {
-                    key: "test",
-                    label: t("classificationKinds.testHeader"),
-                    sortValue: testText,
-                  },
-                  {
-                    key: "threshold",
-                    label: t("classificationKinds.thresholdHeader"),
-                    sortValue: (k) => k.threshold,
-                  },
-                  {
-                    key: "mask",
-                    label: t("classificationKinds.maskHeader"),
-                    sortValue: maskLabel,
-                    groupValue: maskLabel,
-                  },
-                  {
-                    key: "enabled",
-                    label: t("classificationKinds.enabledHeader"),
-                    sortValue: enabledLabel,
-                    groupValue: enabledLabel,
-                  },
-                ]}
-                headers={[
-                  { col: "kind" },
-                  { col: "test" },
-                  { col: "threshold" },
-                  { col: "mask" },
-                  { col: "enabled" },
-                  ...(detections ? [t("contextViews.detectedHeader")] : []),
-                ]}
-                colSpan={detections ? 6 : 5}
-                rowKey={(k) => k.id}
-                empty={t("classificationKinds.empty")}
-                render={(k) => [
-                  <ListRow
-                    key={k.id}
-                    itemKey={k.id}
-                    testId={`classification-kind-${k.id}`}
-                    selected={!creating && k.id === detail.id}
-                    onClick={() => {
-                      closeForm();
-                      if (detail.id === k.id) detail.close();
-                      else detail.open(k.id);
-                    }}
-                  >
+            // The table's own scroller is the list's direct child, so the list scrolls inside its
+            // pane and its header stays under the panel's head (App.css .split-pane__list).
+            <SortGroupTable
+              testId="classification-kinds"
+              testPrefix="classification-kinds"
+              minWidth={640}
+              rows={shown}
+              columns={[
+                { key: "kind", label: t("classificationKinds.kindHeader"), sortValue: kindLabel },
+                {
+                  key: "test",
+                  label: t("classificationKinds.testHeader"),
+                  sortValue: testText,
+                },
+                {
+                  key: "threshold",
+                  label: t("classificationKinds.thresholdHeader"),
+                  sortValue: (k) => k.threshold,
+                },
+                {
+                  key: "mask",
+                  label: t("classificationKinds.maskHeader"),
+                  sortValue: maskLabel,
+                  groupValue: maskLabel,
+                },
+                {
+                  key: "enabled",
+                  label: t("classificationKinds.enabledHeader"),
+                  sortValue: enabledLabel,
+                  groupValue: enabledLabel,
+                },
+              ]}
+              headers={[
+                { col: "kind" },
+                { col: "test" },
+                { col: "threshold" },
+                { col: "mask" },
+                { col: "enabled" },
+                ...(detections ? [t("contextViews.detectedHeader")] : []),
+              ]}
+              colSpan={detections ? 6 : 5}
+              rowKey={(k) => k.id}
+              empty={t("classificationKinds.empty")}
+              render={(k) => [
+                <ListRow
+                  key={k.id}
+                  itemKey={k.id}
+                  testId={`classification-kind-${k.id}`}
+                  selected={!creating && k.id === detail.id}
+                  onClick={() => {
+                    closeForm();
+                    if (detail.id === k.id) detail.close();
+                    else detail.open(k.id);
+                  }}
+                >
+                  <Table.Td>
+                    <Group gap={4} wrap="nowrap">
+                      {kindLabel(k)}
+                      {k.custom && (
+                        <Badge size="xs" variant="outline">
+                          {t("classificationKinds.custom")}
+                        </Badge>
+                      )}
+                      {k.sensitive && (
+                        <Badge size="xs" color="red" variant="light">
+                          {t("classificationKinds.sensitive")}
+                        </Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>{k.custom ? <Code>{testText(k)}</Code> : testText(k)}</Table.Td>
+                  <Table.Td>{`${Math.round(k.threshold * 100)}%`}</Table.Td>
+                  <Table.Td>{maskLabel(k)}</Table.Td>
+                  <Table.Td>
+                    <Text
+                      size="sm"
+                      c={k.enabled ? undefined : "dimmed"}
+                      data-testid={`classification-kind-state-${k.id}`}
+                    >
+                      {enabledLabel(k)}
+                    </Text>
+                  </Table.Td>
+                  {detections && (
                     <Table.Td>
-                      <Group gap={4} wrap="nowrap">
-                        {kindLabel(k)}
-                        {k.custom && (
-                          <Badge size="xs" variant="outline">
-                            {t("classificationKinds.custom")}
-                          </Badge>
-                        )}
-                        {k.sensitive && (
-                          <Badge size="xs" color="red" variant="light">
-                            {t("classificationKinds.sensitive")}
-                          </Badge>
-                        )}
-                      </Group>
+                      <ContextPlaces
+                        {...detectedOn(k)}
+                        testId={`classification-kind-detected-${k.id}`}
+                      />
                     </Table.Td>
-                    <Table.Td>{k.custom ? <Code>{testText(k)}</Code> : testText(k)}</Table.Td>
-                    <Table.Td>{`${Math.round(k.threshold * 100)}%`}</Table.Td>
-                    <Table.Td>{maskLabel(k)}</Table.Td>
-                    <Table.Td>
-                      <Text
-                        size="sm"
-                        c={k.enabled ? undefined : "dimmed"}
-                        data-testid={`classification-kind-state-${k.id}`}
-                      >
-                        {enabledLabel(k)}
-                      </Text>
-                    </Table.Td>
-                    {detections && (
-                      <Table.Td>
-                        <ContextPlaces
-                          {...detectedOn(k)}
-                          testId={`classification-kind-detected-${k.id}`}
-                        />
-                      </Table.Td>
-                    )}
-                  </ListRow>,
-                ]}
-              />
-            </div>
+                  )}
+                </ListRow>,
+              ]}
+            />
           }
         >
           {panelBody}
