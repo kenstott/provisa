@@ -117,7 +117,7 @@ def test_a_cached_wheel_is_not_rebuilt(tmp_path: Path, crate: Path, targets):
     [
         ("rustup", "rustup", "rustup toolchain install 1.95.0 --target aarch64-unknown-linux-gnu"),
         ("cargo-zigbuild", "cargo-zigbuild", "pip install cargo-zigbuild==0.24.0"),
-        ("zig", "zig", "pip install ziglang==0.17.0"),
+        ("zig", "zig", "pip install ziglang==0.17.1"),
     ],
 )
 def test_a_missing_tool_is_refused_by_name_with_what_to_install(

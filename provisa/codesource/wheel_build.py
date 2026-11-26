@@ -54,7 +54,7 @@ PYTHON_TAG = "cp312"
 WHEEL_ARCH = {"amd64": "x86_64", "arm64": "aarch64"}
 #: The pins the Dockerfile's provisa-wheel-build stage installs them at.
 CARGO_ZIGBUILD = "cargo-zigbuild==0.24.0"
-ZIGLANG = "ziglang==0.17.0"
+ZIGLANG = "ziglang==0.17.1"
 
 #: The dist-info file of a source-built wheel naming the SHA-256 of the rust/ sources it was
 #: compiled from (source_hash).
