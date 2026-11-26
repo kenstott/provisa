@@ -30,6 +30,7 @@ const ctx: ClientToolContext = {
   presentChoice: vi.fn(),
   runAdminMutation: vi.fn(),
   chooseFile: vi.fn(),
+  changed: vi.fn(),
 };
 
 function Editor({ route, editor }: { route: string; editor: ScreenEditor }) {

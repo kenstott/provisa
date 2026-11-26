@@ -22,6 +22,7 @@ function context(confirmed: boolean, file: File | null = null): ClientToolContex
     presentChoice: vi.fn(),
     runAdminMutation: vi.fn(async () => ({ success: true, message: '{"createSource":{}}' })),
     chooseFile: vi.fn(async () => file),
+    changed: vi.fn(),
   };
 }
 
@@ -70,6 +71,8 @@ describe("admin_request", () => {
     );
     expect(ctx.confirm).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledWith("/admin/discover/candidates", { method: "GET" });
+    // A read changes nothing: no screen reads again.
+    expect(ctx.changed).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, message: '200 OK\n[{"id": 7}]' });
   });
 
@@ -99,6 +102,27 @@ describe("admin_request", () => {
       headers: { "Content-Type": "application/json" },
       body: '{"name":"orders_customer"}',
     });
+    // The change sent, the screens showing what it changed read again (pollyWrites.ts).
+    expect(ctx.changed).toHaveBeenCalledWith("/admin/discover/candidates/7/accept");
+  });
+
+  it("reads the screens again after a change the route refused", async () => {
+    const ctx = context(true);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("no", { status: 409, statusText: "Conflict" }),
+    );
+    const result = await executeClientTool(
+      "admin_request",
+      {
+        method: "PATCH",
+        path: "/admin/glossary/terms/41",
+        body: { definition: "x" },
+        summary: "x",
+      },
+      ctx,
+    );
+    expect(result.success).toBe(false);
+    expect(ctx.changed).toHaveBeenCalledWith("/admin/glossary/terms/41");
   });
 
   it("sends nothing when the user cancels a change", async () => {
@@ -111,6 +135,7 @@ describe("admin_request", () => {
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.message).toBe("Cancelled by the user.");
+    expect(ctx.changed).not.toHaveBeenCalled();
   });
 
   it("asks the user for the file a route uploads and sends its bytes, named in the path", async () => {
