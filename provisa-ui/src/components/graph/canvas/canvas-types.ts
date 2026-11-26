@@ -107,3 +107,6 @@ export const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
     spacingFactor: 1.4,
   } as CyLayoutOptions,
 };
+
+/** The margin a fit of the result graph leaves round it, in px. */
+export const FIT_MARGIN = 40;

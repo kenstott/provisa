@@ -3899,7 +3899,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.) (Amended 2026-11-26: a table discovery cannot read is left out of the run, named with the reason in the run''s result and in the dialog, and the run goes on with the other tables; it no longer stops the run.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -9589,7 +9589,7 @@
     is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
     answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
     truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
-    max_recursion_depth session property.'
+    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.)'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -38969,7 +38969,7 @@
   type: behavioral
   description: HTTP-addressable local materialization. Extend the existing local_dir file:// materialization
     to an http:// addressable serve endpoint (e.g. /data/redirect-file/<name>) so locally-materialized
-    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths.
+    redirect results are downloadable over HTTP by a client, not only via desktop file:// paths. (Amended 2026-11-26 by the maintainer, a local-disk redirect URL is absolute, the request's base URI followed by /data/redirect-file/<id>.<ext>. A request that arrived without HTTP (pgwire, Flight SQL, Bolt, gRPC, stdio MCP) uses server.public_url as the base; when that is unset the delivery is refused, naming the setting.)
   use_case: HTTP-addressable local materialization generalizes the Trino "engine writes the file, client
     receives only a URL" property to the embedded/no-object-store case, enabling web clients and remote
     consumers to retrieve materialized results.
@@ -39101,7 +39101,7 @@
     back to Provisa's local_dir + HTTP-serve (REQ-1191). For DuckDB, this fallback is a deployment gap
     (no guaranteed bucket), not a capability gap; configuring an object store promotes it to the native
     path. PostgreSQL core COPY cannot target object storage (extension required), so PG stays on the local/host-file
-    tier absent an extension.
+    tier absent an extension. (Amended 2026-11-26 by the maintainer, the results store is chosen once per profile and every format uses it. Where an object store is configured, every format goes there, a format the engine writes itself through its own write, any other format written by Provisa and uploaded. A configured store that cannot take the result fails the delivery by name; nothing falls back to local disk. Only where no object store is configured are results kept on local disk.)
   use_case: Sink-tier selection ensures redirect results use the highest-fidelity, most scalable path
     available given the engine and deployment configuration.
   code:
@@ -82762,7 +82762,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.)'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.) (Amended 2026-11-24 by the maintainer. The GitHub Actions cache keeps Docker image caches only for main and open release branches; a branch''s image caches are deleted when the branch is deleted, so the pinned Trino plugin jar cache is never evicted to make room for them. A download refused with HTTP 429 is retried with backoff, then fails by name.) (Amended 2026-11-26 by the maintainer, a split batch relands without a rerun. Pulling a branch only removes code, so the rest of the batch keeps the first run''s verdicts and goes to the lander without another Smoke or unit run. The split runs only the failing tests, locally and in parallel, not through CI.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -98323,7 +98323,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
     engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
     Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
-    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.)'
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night. (Amended 2026-11-23 by the maintainer. Under provisa run, the native launch profile defaults the federation engine only when neither the environment nor the config names one, so federation_engine in config selects the engine.) (Amended 2026-11-26, maintainer: a host install that runs Trino also starts the core services Trino needs, as the compose core set does: PostgreSQL (the control plane, reachable over TCP for Trino''s JDBC catalogs), MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy; each listens only on 127.0.0.1 with its data under the install''s data directory, their secrets are generated once and kept across upgrades, and provisa run uses that PostgreSQL when its URLs are set instead of the embedded one.) (Amended 2026-11-26 by the maintainer: on aarch64 the install loads the Zaychik image from the release''s core-images asset, the same asset that carries the other core images, rather than pulling it from a registry.)'
   scenario: 'Given a clean Linux machine with Docker and the release''s assets
 
     When the install script runs for that release
@@ -98514,7 +98514,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
     confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
     tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
-    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.)'
+    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.) (Amended 2026-11-26 by the maintainer, rule 9: on every object management page and the ontology, a detail panel shows an object only while that object is a row of the list the page shows. A remembered selection or a deep link to an object the list leaves out (outside the domains in view, or narrowed out by the search or a filter) opens no detail; the page says once, above the list, which object the link named and why it is not listed, with an action that brings it into view (adds its domain, clears the filter). When a filter, the search or the domains in view remove the selected object from the list, its detail closes.)'
 - id: REQ-2278
   status: proposed
   target: 2026-Q4
@@ -98575,32 +98575,102 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 - id: REQ-2281
   status: proposed
-  target: 2026-Q4
+  target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Entity Resolution
   feature: glossary-tags-ontology-tags
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-26. The entity tag builds an entity hub: every column tagged entity:<name>,
-    across every source, feeds one hub per entity name (entity:customer gives the customer hub). An entity column is a varchar; the entity tag is refused by name on a column of any other type. Each entity
-    name declares its normalization rules once (for example lowercase and trim an email, E.164 a phone, strip
-    punctuation from a tax id), a column may override them, and values are normalized before they are
-    compared. The resolver produces two governed derived tables: the hub, one row per resolved entity with a
-    stable surrogate key, its canonical value and first and last seen; and the link table, mapping each source
-    table, column and raw value to its hub key. Both are built and refreshed like a materialized view on the
-    serving engine (identical on every engine), refreshed incrementally from the sources'' change signals, and
-    queryable through every front door; a relationship from each source table to the hub is generated, so a
-    query traverses an entity across sources with no hand-registered join; no relationship is generated
-    where a registered relationship already joins the same tables on the same columns, and generated ones
-    are listed apart from registered ones. Matching is deterministic first: an
-    exact match of normalized values. Fuzzy matching (similarity of normalized values, or a match on several attributes) never merges anything and needs no review: each candidate link carries its match score in the link table, and whoever queries the hub chooses the score or threshold that counts as a match for their use; exact matches score 1. Survivorship rules per
-    attribute (most recent, preferred source, most complete) choose the hub''s attribute values when sources
-    disagree. Governance carries through: masks, row rules and column visibility on an input column apply to
-    the hub and link rows drawn from it, so a role that cannot read a source column cannot read its links. The
-    resolver also searches the reference library: a document section, or a varchar value in any served column, that holds a resolved entity''s
-    canonical value or a declared alias, either exactly or contained within the text, is linked to that hub entity with its match score, so an entity lists the documents that mention it and a document lists its entities; the
-    link obeys the document''s and the source column''s read rights.'
-  scenario: 'Given two sources each with an email column tagged entity:customer holding Bob@X.com and
-    bob@x.com respectively, when the customer hub is built, then the hub holds one customer for both, the link
-    table maps each source row to that key, a query joins both sources through the hub with no registered
-    relationship, and a role that cannot read the second source''s email column sees no link from it.'
+  description: 'Maintainer 2026-11-26 (roadmap, after the feature freeze). Entities: a shared map of which records
+    refer to the same thing, across sources, built from tags. ENTITIES DOMAIN: a system domain named Entities
+    always exists in every org and is owned like any domain; who may see or act in it is ordinary rights, so an
+    org that does not want entities grants nobody rights there. Entity names are org-wide: an entity is created from a glossary term and
+    shares its name, description and definition (every entity is a term; not every term is an entity); creating
+    one, with its normalization rules, aliases, exclusions and disclosure setting, is a right in the Entities
+    domain, and each entity''s hub is a governed table of that domain. Provisa does not position this as
+    master data management: the hubs and links are ordinary governed tables that an MDM product may read through
+    any front door or receive through the metadata exports. DECLARATION: tagging a column entity:<name> declares
+    its table a source of that entity and is itself the approval of the generated relationship from that table to
+    the hub; applying an entity tag requires the right to create relationships in the column''s own domain (no
+    cross-domain entity tagging), and a person without that right applies it through an ordinary request to that
+    domain''s stewards, whose approval applies the tag and the relationship together; removing the tag retires the
+    relationship. Tagging shows the entity''s definition, and joining an entity means accepting that meaning (a
+    domain meaning something else creates another entity). An entity column is a varchar; the tag is refused by
+    name on any other type. Nothing upstream needs to be unique or a key: the hub mints the key. NORMALIZATION:
+    each entity declares its rules once (for example lowercase and trim an email, E.164 a phone, strip
+    punctuation from a tax id), a column may override formatting but not meaning, and values are normalized
+    before they are compared. HUB AND LINKS: per entity, a hub with one row per resolved entity (a surrogate key
+    that stays stable across refreshes, its canonical value, first and last seen); an entity that disappears is
+    retired, never deleted. Each source domain has its own link table, owned and governed by that domain and
+    refreshed from that domain''s sources, mapping each of its tables, columns, raw values and text spans to a key
+    with a match score (exact matches score 1): either an entity''s hub key (an instance mention) or a glossary
+    term''s id (a concept mention, REQ-2282; a term needs no hub, it is the key). Both are built and refreshed like a materialized view on the serving
+    engine, identical on every engine, incrementally from change signals. A relationship from each source table
+    to the hub, through its domain''s link table as a junction, is generated as an ordinary governed relationship
+    marked generated, with the score as a property of the edge; none is generated where a registered relationship
+    already joins the same tables on the same columns. MATCHING: deterministic first, exact match of normalized
+    values; fuzzy matching (similarity, or a match on several attributes) never merges and needs no review: each
+    candidate link carries its score and whoever queries chooses the score or threshold that counts as a match.
+    Survivorship rules per attribute (most recent, preferred source, most complete) choose the hub''s attribute
+    values; a table where the tagged column is unique, detected from the data, is a record of the entity and the
+    preferred source. EXCLUSION: a person who finds a match wrong raises it with a steward through the ordinary
+    request flow; a steward of the entity may exclude a link (or a whole hub entity), with a reason, recorded and
+    reversible, never hard-deleted; an excluded link is shown to no reader at any threshold and is never
+    recreated by a refresh or scan; when excluding, the steward may also add a negative alias so the value never
+    matches that entity anywhere. CROSS-DOMAIN REFERENCES: an entity''s panel lists every reference grouped by
+    domain, table and column (and, through REQ-2282, documents and text), each a link with its score; a governed
+    view of each entity''s references returns the hub joined to every domain link table the reader may read.
+    GOVERNANCE: the reader sees a domain''s links only by reading that domain''s link table; masks, row rules and
+    column visibility on an input column apply to the links drawn from it; references in domains the reader
+    cannot read are shown as a count with no names or values, unless the entity''s disclosure setting hides even
+    the count. UI: a Context > Entities tab, a standard object management page: one line per entity (name,
+    description, owner, feeding domains and tables, scan status), + Entity for people with rights in the Entities
+    domain, and a deep-linked detail panel with the definition, rules, aliases, references grouped by domain,
+    exclusions and scan progress; a tagged column shows the entity it feeds, a document lists the entities it
+    mentions, and the ontology graph may show entities as nodes linked to the tables that feed them.'
+  scenario: 'Given an Entities steward who created entity party, and two domains each tagging an email column
+    entity:party whose values are Bob@X.com and bob@x.com, when the party hub is built, then the hub holds one
+    party with a stable key, each domain''s own link table maps its row to that key with score 1, a query reaches
+    both sources through the hub with no registered relationship, a role that can read only the first domain sees
+    one reference and a count of one more, and a link a steward excluded is shown to nobody after the next refresh.'
+
+- id: REQ-2282
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Entity Resolution
+  feature: glossary-tags-ontology-tags
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-26 (roadmap, after the feature freeze). Entities are also found in text, so
+    for example sales notes link to the products they mention and a policy links to the tables it governs. SCOPE:
+    nothing is searched unless tagged: entity-search on a table searches its varchar columns, on a column only that
+    column, on a reference library document or collection its sections; with no parameter it searches for every
+    entity, and entity-search:<name>[,<name>...] narrows it. PATTERNS: the custom pattern list is every entity''s
+    canonical values and aliases (REQ-2281) plus every glossary term''s name and synonyms as
+    concept patterns.
+    Matching uses spaCy: phrase matching (EntityRuler) of the custom patterns with token boundaries, exact or
+    contained in the text, cheap enough for any host; and the statistical model''s standard entity types (person,
+    organization, place, product and the like; value types such as dates, money, percentages, quantities and
+    numbers are excluded) as detected mentions, which are candidates for creating an entity and, where they
+    match an entity''s values or aliases, scored links. Every text link carries a score; exclusions and negative
+    aliases (REQ-2281) apply. Row-level mentions are stored in the source domain''s link table (REQ-2281), keyed by
+    the entity''s hub key or the term''s id. The ontology gains found edges aggregated from them (a column that mentions
+    a term in a share of its rows, a document section that mentions a term), each with a score, a count and a found
+    origin beside curated citations and groundings; found edges enter no review queue, a steward may promote one to
+    curated or exclude it, and each drills down to its rows. This is how a policy reaches the tables it governs:
+    policy section, term, grounded columns. COST: the
+    statistical model runs either on the Provisa server itself (CPU, for development and small orgs, under a small
+    scan budget that keeps it workable) or optionally on a remote worker paired like a code-source remote host, with a GPU
+    for throughput or a cheaper CPU-only host accepting less; never on the serving engines; the scan budget is set
+    per placement. A rotating scanner works through the tagged tables, columns and documents at a set budget
+    and starts over; an item is rescanned only when its content, the pattern list or the model changed (its scan
+    fingerprint), the pattern list is rebuilt each cycle, progress shows as one status line, and any table or
+    document can be scanned on demand. spaCy and its models are an optional install, staged like the other
+    runtime assets. GOVERNANCE: a text link is visible only to a reader of both the text and the entity''s link
+    table, and a document never reveals a table or column name its reader cannot see.'
+  scenario: 'Given a product entity with value Widget Pro and a sales_notes table tagged entity-search:product
+    whose body reads ordered two widget pro units, when the scanner reaches that row, then a scored link from the
+    note to the Widget Pro product exists, a policy document tagged entity-search that mentions customer email
+    links to the customer_email column, a date in the note produces no link, and a reader who cannot read
+    sales_notes sees no link from it.'

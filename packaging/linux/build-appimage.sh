@@ -31,16 +31,21 @@ info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-appimage]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
 
+# Every download in this build goes through here: a stalled connect gives up after 30 s and a
+# transfer after 600 s, each attempt is retried a fixed 5 times, and the failure names the asset and
+# its URL. The file lands at $out only when complete, so a cached copy is never a partial one.
 curl_retry() {
-  local url="$1" out="$2"
+  local asset="$1" url="$2" out="$3"
   for attempt in 1 2 3 4 5; do
-    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "$out"; then
+    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "${out}.part"; then
+      mv "${out}.part" "$out"
       return 0
     fi
-    info "Download attempt $attempt failed for $(basename "$url"), retrying in 15s..."
+    rm -f "${out}.part"
+    info "Download attempt $attempt/5 failed for ${asset} (${url}), retrying in 15s..."
     sleep 15
   done
-  err "Failed to download $url after 5 attempts"
+  err "Failed to download ${asset} from ${url} after 5 attempts"
   exit 1
 }
 
@@ -125,9 +130,13 @@ bundle_docker() {
   info "Downloading Docker ${DOCKER_VERSION} static binaries..."
   mkdir -p "$DOCKER_BIN_CACHE"
 
+  local tmp="${SCRIPT_DIR}/tmp-docker"
+  rm -rf "$tmp"; mkdir -p "$tmp"
+
   # Core daemon + runtime binaries
-  curl -fsSL "${DOCKER_BASE_URL}/docker-${DOCKER_VERSION}.tgz" \
-    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+  curl_retry "docker ${DOCKER_VERSION}" \
+    "${DOCKER_BASE_URL}/docker-${DOCKER_VERSION}.tgz" "${tmp}/docker.tgz"
+  tar -xzf "${tmp}/docker.tgz" -C "$DOCKER_BIN_CACHE" --strip-components=1 \
         docker/dockerd \
         docker/docker-proxy \
         docker/docker-init \
@@ -136,13 +145,15 @@ bundle_docker() {
         docker/runc
 
   # Rootless extras (no sudo/root required)
-  curl -fsSL "${DOCKER_BASE_URL}/docker-rootless-extras-${DOCKER_VERSION}.tgz" \
-    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+  curl_retry "docker-rootless-extras ${DOCKER_VERSION}" \
+    "${DOCKER_BASE_URL}/docker-rootless-extras-${DOCKER_VERSION}.tgz" "${tmp}/rootless.tgz"
+  tar -xzf "${tmp}/rootless.tgz" -C "$DOCKER_BIN_CACHE" --strip-components=1 \
         docker-rootless-extras/dockerd-rootless.sh \
         docker-rootless-extras/rootlesskit \
         docker-rootless-extras/rootlesskit-docker-proxy \
         docker-rootless-extras/vpnkit
 
+  rm -rf "$tmp"
   chmod +x "${DOCKER_BIN_CACHE}"/*
   touch "$cache_marker"
   ok "Docker ${DOCKER_VERSION} binaries cached at ${DOCKER_BIN_CACHE}/"
@@ -282,7 +293,7 @@ bundle_native_payload() {
     local tmp="${SCRIPT_DIR}/tmp-pbs"
     rm -rf "$tmp"; mkdir -p "$tmp"
     info "Downloading python-build-standalone ${PBS_PYTHON} (Linux x86_64)..."
-    curl_retry "$url" "${tmp}/${tarball}"
+    curl_retry "python-build-standalone ${PBS_PYTHON}" "$url" "${tmp}/${tarball}"
     tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
     if [ ! -x "${tmp}/python/bin/python3" ]; then
       err "python-build-standalone extraction failed (no bin/python3)"
@@ -388,7 +399,7 @@ require_static_runtime() {
 create_appimage() {
   info "Fetching appimagetool..."
   if [ ! -f "$APPIMAGETOOL" ]; then
-    curl -fsSL "$APPIMAGETOOL_URL" -o "$APPIMAGETOOL"
+    curl_retry "appimagetool" "$APPIMAGETOOL_URL" "$APPIMAGETOOL"
     chmod +x "$APPIMAGETOOL"
   fi
 

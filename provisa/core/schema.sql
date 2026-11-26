@@ -1576,6 +1576,8 @@ CREATE TABLE IF NOT EXISTS model_names (
     prime_term_ontology_name TEXT,
     PRIMARY KEY (object_kind, object_id, surface)
 );
+ALTER TABLE model_names ADD COLUMN IF NOT EXISTS prime_term TEXT;
+ALTER TABLE model_names ADD COLUMN IF NOT EXISTS prime_term_ontology_name TEXT;
 
 -- REQ-194: the name clashes the last model build refused, each naming both objects. Emptied by a
 -- build that refuses none.

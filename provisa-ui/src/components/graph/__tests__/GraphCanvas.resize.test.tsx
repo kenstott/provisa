@@ -55,6 +55,16 @@ const { cy, cytoscape } = vi.hoisted(() => {
 });
 vi.mock("cytoscape", () => ({ default: cytoscape }));
 
+const { followResize, keepView } = vi.hoisted(() => ({
+  followResize: vi.fn(),
+  keepView: vi.fn(),
+}));
+vi.mock("../../provisa-graph/viewport", async (actual) => ({
+  ...(await actual<typeof import("../../provisa-graph/viewport")>()),
+  followResize,
+  keepView,
+}));
+
 import { GraphCanvas } from "../GraphCanvas";
 import type { CanvasProps } from "../canvas/canvas-types";
 
@@ -137,5 +147,55 @@ describe("the mouse wheel over a graph zooms it, never scrolls", () => {
     const wheel = new WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true });
     canvas.dispatchEvent(wheel);
     expect(wheel.defaultPrevented).toBe(true);
+  });
+});
+
+// REQ-2277, on every graph surface (the lead's decision): the Cypher result graph keeps its view's
+// mode across a resize as the ERD does. It was re-sized only: a graph fitted whole was cut off by a
+// narrower canvas, and widened it floated in the corner.
+describe("a resize keeps the result graph's view mode (REQ-2277)", () => {
+  let width = 1200;
+  const sizes: { mockRestore: () => void }[] = [];
+  beforeEach(() => {
+    width = 1200;
+    sizes.push(
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width),
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => 600),
+    );
+  });
+  afterEach(() => sizes.splice(0).forEach((s) => s.mockRestore()));
+
+  /** The handler ``cy.on`` was given for ``events``. */
+  const handler = (events: string) =>
+    cy.on.mock.calls.find((c: unknown[]) => c[0] === events)?.at(-1) as () => void;
+
+  it("follows a resize from the size the canvas was, once the graph is laid out", () => {
+    render(<GraphCanvas {...BASE_PROPS} />);
+    // A layout running fits the graph when it ends: a resize before then only re-sizes.
+    width = 900;
+    observe!();
+    expect(cy.resize).toHaveBeenCalledTimes(1);
+    expect(followResize).not.toHaveBeenCalled();
+    handler("layoutstop")();
+    width = 700;
+    observe!();
+    expect(followResize).toHaveBeenCalledWith(cy, { width: 900, height: 600 });
+  });
+
+  it("a hidden canvas is re-sized, not followed, and the next size follows the last shown", () => {
+    render(<GraphCanvas {...BASE_PROPS} />);
+    handler("layoutstop")();
+    width = 0;
+    observe!();
+    expect(followResize).not.toHaveBeenCalled();
+    width = 800;
+    observe!();
+    expect(followResize).toHaveBeenCalledWith(cy, { width: 1200, height: 600 });
+  });
+
+  it("a wheel zoom, a pinch or a drag of the canvas makes the view the reader's own", () => {
+    render(<GraphCanvas {...BASE_PROPS} />);
+    handler("scrollzoom pinchzoom dragpan")();
+    expect(keepView).toHaveBeenCalledWith(cy);
   });
 });

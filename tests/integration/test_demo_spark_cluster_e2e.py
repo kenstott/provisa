@@ -80,6 +80,7 @@ def test_the_demo_starts_queries_and_stops_its_local_test_cluster(demo_home):
     assert (home / demo_spark.CONNECT_JAR).is_file()
     assert list((demo_spark.spark_root() / "downloads").iterdir()) == []
 
+    # The demo's cluster is Provisa's own, dialed on loopback: no org's egress rule applies (REQ-2006).
     assert spark_cluster.answers_locally(address) == demo_spark.SPARK_VERSION
     # A second use runs on the same server.
     assert spark_cluster.local_test_cluster() == address
