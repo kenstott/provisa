@@ -88730,8 +88730,8 @@ Then the mutation is refused as it is in the UI"
   - provisa-ui/src/components/ChatPanel.tsx
 
 - id: REQ-2115
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 10. UI & Admin Surfaces
   category: Catalog Explore
   feature: chat-assistant-panel
@@ -94548,7 +94548,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2194
   value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -95301,7 +95302,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
     with no domain (a role) is checked against the assigner''s acting domains when it is made and records
     no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
-    missing a domain-limited required tag.'
+    missing a domain-limited required tag. (Amended 2026-11-26, maintainer: governance is a tag''s prime use. Every tag has one category from a short fixed list: governance (a classification asserted with evidence, such as pii), policy (the product acts on it: masking, column and row rules; the shipped system tags), quality (certified, trusted source, known issue), lifecycle (draft, experimental; never a state the model already holds such as retired, approved or a suggestion''s outcome, which is refused by name), business (domain-facing labels) and workflow. One tag template serves every category; a category sets the template''s defaults (governance requires a citation per assignment, workflow requires an assignee), and a tag may still carry any section. A workflow is an ordered set of tags: each step names its next step or steps, one or more steps are terminal, each step carries an assignee who completes it and an optional due date or expiry; an object holds one step of a workflow at a time, completing a step replaces it with the next and records who, when and a note, so the assignment history is the workflow''s audit; a terminal step ends the workflow and may expire or remain as the outcome; moving an object to a step is a right on that step''s tag; a workflow never drives a built-in state (the steward still performs the real action). A person sees the steps assigned to them in one place, and Polly reads and moves them under the same rights. Relationships between objects are the ontology''s, not tags''. The Tags list shows one line per tag with counts (where applied: objects and sources; depends on it: classifications and rules) and its category; the detail panel lists them grouped and collapsible, each name a link.)'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -98114,7 +98115,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     catalog can tell production assets from others; the environment switcher shows the stage beside each
     environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
-  status: complete
+  status: in-progress
   tests:
   - tests/unit/test_relationship_review.py
   - tests/integration/test_relationship_review_e2e.py
@@ -98136,7 +98137,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     types among the new tables, and from joins between the new tables and tables already in the model,
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
-    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)'
+    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.) (Amended 2026-11-26, maintainer: the source setup stepper records each step''s outcome per source on the server, shared by every user and environment: tables registered or skipped; relationships found, none found, or skipped; query opened or done. A step is done once it has an outcome, not only once it produces an object. Each step offers one way past it on the step itself: Register tables beside Skip; Discover relationships finishes either way after a run (found: Review; none found: Continue) and offers Skip before a run; Query finishes on opening the explorer or Done. A Finish setup control at the strip''s end is always visible while the strip is active and closes every remaining step as skipped. With every step decided the strip collapses to one Setup complete line with Run setup again; it never reopens on its own, except that newly registered tables with no relationship show as a one-line hint on the collapsed line. There is no separate do-not-show-again control.)'
 - id: REQ-2263
   status: proposed
   target: 2026-Q4
@@ -98513,7 +98514,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     task or is worth sharing (a contract, a profile run, a role''s effective permissions, a create wizard);
     confirmations, pickers and one-field prompts have none. A deep link survives a reload and opens in a new
     tab with the same state. (5) Polly reaches every screen and every significant dialog, through its deep
-    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.)'
+    link or by clicking through from a screen she reaches. (Amended 2026-11-25 by the maintainer, links. (6) Wherever the UI names an object (a source, table, view, column, relationship, command, role, tag, glossary term, metric, data product, document or report), the name is a link to that object''''s deep link, as an IDE or a cloud console links every reference, so a dense screen is navigated by following names; an object the viewer may not open is shown without a link. The ui-audit skill reports an object named as plain text.) (Amended 2026-11-26, maintainer: rule 7, a detail panel body has one vertical rhythm: a shared PanelBody standard sets the spacing between the panel head, a step strip, a section title, its description, the first field and each field group, for read views, forms and wizards alike; no panel sets its own gaps. Rule 8, every page has the page help (?) button in its header, built into the standard page title, with each page''s purpose line and documentation link held in one registry keyed by route; a work surface without the standard title carries the same button in its own header; a page without help content fails a guard test.)'
 - id: REQ-2278
   status: proposed
   target: 2026-Q4
@@ -98572,3 +98573,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
     install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
+- id: REQ-2281
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Entity Resolution
+  feature: glossary-tags-ontology-tags
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-26. The entity tag builds an entity hub: every column tagged entity:<name>,
+    across every source, feeds one hub per entity name (entity:customer gives the customer hub). An entity column is a varchar; the entity tag is refused by name on a column of any other type. Each entity
+    name declares its normalization rules once (for example lowercase and trim an email, E.164 a phone, strip
+    punctuation from a tax id), a column may override them, and values are normalized before they are
+    compared. The resolver produces two governed derived tables: the hub, one row per resolved entity with a
+    stable surrogate key, its canonical value and first and last seen; and the link table, mapping each source
+    table, column and raw value to its hub key. Both are built and refreshed like a materialized view on the
+    serving engine (identical on every engine), refreshed incrementally from the sources'' change signals, and
+    queryable through every front door; a relationship from each source table to the hub is generated, so a
+    query traverses an entity across sources with no hand-registered join; no relationship is generated
+    where a registered relationship already joins the same tables on the same columns, and generated ones
+    are listed apart from registered ones. Matching is deterministic first: an
+    exact match of normalized values. Fuzzy matching (similarity of normalized values, or a match on several attributes) never merges anything and needs no review: each candidate link carries its match score in the link table, and whoever queries the hub chooses the score or threshold that counts as a match for their use; exact matches score 1. Survivorship rules per
+    attribute (most recent, preferred source, most complete) choose the hub''s attribute values when sources
+    disagree. Governance carries through: masks, row rules and column visibility on an input column apply to
+    the hub and link rows drawn from it, so a role that cannot read a source column cannot read its links. The
+    resolver also searches the reference library: a document section, or a varchar value in any served column, that holds a resolved entity''s
+    canonical value or a declared alias, either exactly or contained within the text, is linked to that hub entity with its match score, so an entity lists the documents that mention it and a document lists its entities; the
+    link obeys the document''s and the source column''s read rights.'
+  scenario: 'Given two sources each with an email column tagged entity:customer holding Bob@X.com and
+    bob@x.com respectively, when the customer hub is built, then the hub holds one customer for both, the link
+    table maps each source row to that key, a query joins both sources through the hub with no registered
+    relationship, and a role that cannot read the second source''s email column sees no link from it.'

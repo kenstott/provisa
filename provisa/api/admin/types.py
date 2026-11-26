@@ -1033,7 +1033,7 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
     @strawberry.field
     def physical_name(self) -> str | None:  # REQ-471, REQ-1417
-        """The relationship's name on the SQL plane — what ?include= and gRPC's include take.
+        """The relationship's API name — what ?include= and gRPC's include take.
 
         Derived by the naming authority, never by a client transliterating the GraphQL alias's
         casing: the convention is server configuration, so only the server can answer this.

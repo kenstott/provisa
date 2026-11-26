@@ -247,7 +247,7 @@ class TestChatLoop:
 
     async def test_read_doc_unknown_address_is_error_not_raised(self, monkeypatch):  # REQ-2114
         """When read_doc raises UnknownDocAddress the error reaches the model as is_error=True
-        and the turn continues — it never ends silently with _NO_ANSWER because the error blocked
+        and the turn continues — it never ends silently with the no-answer ending because the error blocked
         the tool_result from being delivered."""
         from provisa.api.mcp import docs_tools
 
@@ -283,7 +283,7 @@ class TestChatLoop:
         ]
         tr = next(e for e in events if e["type"] == "tool_result")
         assert tr["is_error"] is True
-        # The model answered after receiving the error — the turn is not ended by _NO_ANSWER.
+        # The model answered after receiving the error — the turn is not ended by the no-answer ending.
         text_events = [e for e in events if e["type"] == "text"]
         assert text_events and "does not exist" in text_events[0]["text"]
         assert events[-1]["type"] == "done"
@@ -1516,7 +1516,7 @@ class TestABlankAnswerIsNeverShownAsIs:
                 _state(), "analyst", [{"role": "user", "content": "q"}]
             )
         ]
-        assert [e for e in events if e["type"] == "text"] == [chat_mod._NO_ANSWER]
+        assert [e for e in events if e["type"] == "text"] == [chat_mod._blank_ending("end_turn")]
 
     async def _aisuite(self, monkeypatch, tmp_path, message):
         import os
@@ -1536,7 +1536,7 @@ class TestABlankAnswerIsNeverShownAsIs:
         events = await self._aisuite(
             monkeypatch, tmp_path, SimpleNamespace(content="\n\n", tool_calls=None)
         )
-        assert [e for e in events if e["type"] == "text"] == [chat_mod._NO_ANSWER]
+        assert [e for e in events if e["type"] == "text"] == [chat_mod._blank_ending("stop")]
         assert not [e for e in events if e["type"] == "reasoning"]
 
     async def test_aisuite_reasoning_goes_out_on_its_own_event(self, monkeypatch, tmp_path):
@@ -1550,7 +1550,139 @@ class TestABlankAnswerIsNeverShownAsIs:
         assert [e for e in events if e["type"] == "reasoning"] == [
             {"type": "reasoning", "text": "The top path is /products."}
         ]
-        assert [e for e in events if e["type"] == "text"] == [chat_mod._NO_ANSWER]
+        assert [e for e in events if e["type"] == "text"] == [chat_mod._blank_ending("stop")]
+
+    async def test_anthropic_after_failed_tools_states_each_error(self, monkeypatch):
+        """A blank final round after tool calls that failed ends naming each failed tool and its
+        error, not only "please ask again": a maintainer's turn asking Polly for six fakes ended
+        "(The model returned no answer ...)" twice while propose_fakes and set_column_fake had
+        failed, and nothing said why."""
+        calls = [
+            _block(type="tool_use", name="list_tables", input={"schema": "ghost"}, id="t1"),
+            _block(type="tool_use", name="list_tables", input={"schema": "ghost"}, id="t2"),
+            _block(type="tool_use", name="search_catalog", input={"query": "x"}, id="t3"),
+        ]
+        _install_fake_anthropic(
+            monkeypatch,
+            [
+                SimpleNamespace(content=calls, stop_reason="tool_use"),
+                SimpleNamespace(content=[_block(type="text", text="")], stop_reason="end_turn"),
+            ],
+        )
+
+        async def fake_list_tables(state, role, schema):
+            raise ValueError(f"Unknown schema {schema!r}")
+
+        async def fake_search(state, role, query, k=5):
+            return []
+
+        monkeypatch.setattr(mcp_tools, "list_tables", fake_list_tables)
+        monkeypatch.setattr(mcp_tools, "search_catalog", fake_search)
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "q"}]
+            )
+        ]
+        [text] = [e["text"] for e in events if e["type"] == "text"]
+        assert text == (
+            "\n\n(The model returned no answer. These tool calls failed:\n"
+            "- list_tables: Error: Unknown schema 'ghost' (2 times))"
+        )
+
+    async def test_aisuite_after_failed_tools_states_each_error(self, monkeypatch, tmp_path):
+        import os
+
+        cfg = tmp_path / "provisa.yaml"
+        cfg.write_text("sources: []\nai_models:\n  mcp_chat: {vendor: openai, model: gpt-5}\n")
+        monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        call = SimpleNamespace(
+            id="c1",
+            function=SimpleNamespace(name="list_tables", arguments='{"schema": "ghost"}'),
+        )
+        _install_fake_aisuite(
+            monkeypatch,
+            [
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content=None, tool_calls=[call]),
+                            finish_reason="tool_calls",
+                        )
+                    ]
+                ),
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content="", tool_calls=None),
+                            finish_reason="stop",
+                        )
+                    ]
+                ),
+            ],
+        )
+
+        async def fake_list_tables(state, role, schema):
+            raise ValueError(f"Unknown schema {schema!r}")
+
+        monkeypatch.setattr(mcp_tools, "list_tables", fake_list_tables)
+        convo = [{"role": "user", "content": "q"}]
+        events = [ev async for ev in chat_mod.run_chat(_state(), "analyst", convo)]
+        [text] = [e["text"] for e in events if e["type"] == "text"]
+        assert text == (
+            "\n\n(The model returned no answer. These tool calls failed:\n"
+            "- list_tables: Error: Unknown schema 'ghost')"
+        )
+
+
+def test_only_this_turns_failures_are_named():
+    """A failure of an earlier turn, answered then, is not this turn's; a resumed turn's
+    failures (the browser sends them back as wire blocks) are."""
+    convo = [
+        {"role": "user", "content": "earlier"},
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "a", "name": "run_sql", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "a",
+                    "content": "Error: old",
+                    "is_error": True,
+                }
+            ],
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "Answered."}]},
+        {"role": "user", "content": [{"type": "text", "text": "now"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "b", "name": "navigate", "input": {}},
+                {"type": "tool_use", "id": "c", "name": "set_column_fake", "input": {}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "b", "content": "ok"},
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "c",
+                    "content": [{"type": "text", "text": "Error: refused"}],
+                    "is_error": True,
+                },
+            ],
+        },
+    ]
+    assert chat_mod._no_answer(convo, "end_turn")["text"] == (
+        "\n\n(The model returned no answer. These tool calls failed:\n"
+        "- set_column_fake: Error: refused)"
+    )
+    assert chat_mod._no_answer(convo[:5], "end_turn") == chat_mod._blank_ending("end_turn")
 
 
 @pytest.mark.asyncio
@@ -1698,7 +1830,7 @@ class TestTheLastRoundIsToldToAnswer:
             ]
         )
         _calls, events, _ = await self._run(monkeypatch, tmp_path, [_openai_call_reply(), kimi])
-        assert [e for e in events if e["type"] == "text"] == [chat_mod._NO_ANSWER]
+        assert [e for e in events if e["type"] == "text"] == [chat_mod._blank_ending("stop")]
 
     async def test_an_anthropic_call_made_on_the_last_round_is_not_run(self, monkeypatch):
         _install_fake_anthropic(monkeypatch, [_schemas_call("tu1"), _schemas_call("tu2")])

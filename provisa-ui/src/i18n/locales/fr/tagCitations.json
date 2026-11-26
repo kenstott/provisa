@@ -17,7 +17,7 @@
     "reviewHelp": "Une citation de ce tag doit être vérifiée : sa section a changé ou a disparu.",
     "definitionReviewHelp": "Une section qui définit ce tag a changé ou a disparu. Vérifiez sa citation.",
     "gap": "Sans citation",
-    "gapHelp": "Ce tag exige une citation, et cette affectation n’en a aucune.",
+    "gapHelp": "Ce tag exige une citation pour chaque affectation.",
     "definedBy": "Défini par {{title}}",
     "definedByLabel": "Défini par",
     "requiresCitationLabel": "Les affectations exigent une citation",
@@ -28,9 +28,9 @@
     "citedByDefinition": "Sa définition",
     "citedByGone": "Disparue",
     "citedByWholeDocument": "Document entier",
-    "citationsLabel": "Pourquoi il est sur cet objet",
-    "neededForCoverage": "Requise pour la couverture",
-    "definitionLabel": "Pourquoi ce tag existe",
-    "definitionDesc": "Le document et la section qui disent pourquoi ce tag existe. Pourquoi il est sur un objet se dit dans les citations propres à cet objet."
+    "citationsLabel": "Citation",
+    "neededForCoverage": "Requise",
+    "definitionLabel": "Source de la définition",
+    "definitionDesc": "Le document de la bibliothèque et la section qui définissent ce tag. La citation d’une affectation se met sur cette affectation."
   }
 }

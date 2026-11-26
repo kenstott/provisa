@@ -152,8 +152,14 @@
     "rebuild": "Neu aufbauen",
     "rebuilt": "Das Modell von {{env}} wurde erneut ins Repository committet.",
     "rebuildFailed": "{{env}} ist weiterhin abgewichen, weil der Commit nicht angekommen ist.",
+    "protect": "Schützen",
+    "unprotect": "Schutz aufheben",
     "stageTitle": "Stufe",
     "stageHelp": "Legt fest, wofür diese Umgebung gedacht ist: Produktion, Preprod, Test oder Entwicklung. Die ursprüngliche Umgebung der Organisation beginnt als Produktion, eine neue als Entwicklung; beliebig viele Umgebungen können dieselbe Stufe haben.",
-    "stageHelp2": "Die Stufe kennzeichnet die Umgebung im Umgebungswechsler, in Berichten sowie in Katalog- und Lineage-Exporten. Sie ändert nie, was jemand hier tun darf: Das ergibt sich allein aus den in der Umgebung zugewiesenen Rollen."
+    "stageHelp2": "Die Stufe kennzeichnet die Umgebung im Umgebungswechsler, in Berichten sowie in Katalog- und Lineage-Exporten. Sie ändert nie, was jemand hier tun darf: Das ergibt sich allein aus den in der Umgebung zugewiesenen Rollen.",
+    "filterPlaceholder": "Umgebungen filtern",
+    "closeForm": "Formular schließen",
+    "newEnvironment": "Neue Umgebung",
+    "panelLabel": "Umgebung"
   }
 }

@@ -31,6 +31,7 @@
 // The content hash of the code is pinned by the server when the source is saved.
 
 import generated from "../../generated/sourceTypes.json";
+import type { CodeLanguage as EditorLanguage } from "../../components/CodeEditorField";
 import { mappingKeysOf } from "./descriptor";
 
 export const NODE = "node";
@@ -101,9 +102,27 @@ const K = mappingKeysOf(PYTHON, [
   "connector",
 ] as const);
 
-/** Where the code comes from: a package (npm, PyPI, a Go module or a crate), a Git repository, or an
- * upload. */
-export type CodeOrigin = "package" | "git" | "upload" | "directory";
+/** Where the code comes from: a package (npm, PyPI, a Go module or a crate), a Git repository, an
+ * upload, a directory on the server, or REQ-1993's code entered here, in the form's editor. */
+export type CodeOrigin = "package" | "git" | "upload" | "directory" | "entered";
+
+/** REQ-1993 (amended 2026-11-25): the language code entered here is written and highlighted in,
+ * by source type: Node's is JavaScript with JSDoc types (provisa/node/prepare.py entered_files). */
+export const ENTERED_LANGUAGE: Record<string, EditorLanguage> = {
+  [NODE]: "javascript",
+  [PYTHON]: "python",
+  [GO]: "go",
+  [RUST]: "rust",
+  [SPARK]: "python",
+};
+
+/** The form's dependency list, one to a line; a blank line is skipped. */
+export function dependencyLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 /** The package kind each language's packages come from. */
 export const PACKAGE_KIND: Record<string, string> = Object.fromEntries(
@@ -186,7 +205,13 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
           }
         : origin === "directory"
           ? { kind: "directory", path: (fields.code_directory ?? "").trim() }
-          : uploadedCode(fields);
+          : origin === "entered"
+            ? {
+                kind: "entered",
+                source: fields.code_source ?? "",
+                dependencies: dependencyLines(fields.code_dependencies ?? ""),
+              }
+            : uploadedCode(fields);
   const lockfile = fields.lockfile_upload
     ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
     : null;
@@ -230,7 +255,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
 export function codeFieldsFromMapping(mappingJson: string): Record<string, string> {
   const m = JSON.parse(mappingJson) as {
     runtime?: string;
-    code?: Record<string, string>;
+    code?: Record<string, string> & { dependencies?: string[] };
     lockfile?: { filename: string; upload: string } | null;
     entry?: string;
     secrets?: string[] | Record<string, string | null>;
@@ -253,7 +278,9 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
         ? "upload"
         : code.kind === "directory"
           ? "directory"
-          : "package";
+          : code.kind === "entered"
+            ? "entered"
+            : "package";
   return {
     code_runtime: m.runtime ?? "node",
     code_origin: origin,
@@ -265,6 +292,8 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_upload: code.upload ?? "",
     code_upload_filename: code.filename ?? "",
     code_directory: code.kind === "directory" ? (code.path ?? "") : "",
+    code_source: code.kind === "entered" ? (code.source ?? "") : "",
+    code_dependencies: code.kind === "entered" ? (code.dependencies ?? []).join("\n") : "",
     lockfile_upload: m.lockfile?.upload ?? "",
     lockfile_filename: m.lockfile?.filename ?? "",
     code_entry: m.entry ?? "",
@@ -296,7 +325,9 @@ export function missingCodeFields(fields: Record<string, string>): string[] {
         ? ["code_repository", "code_commit"]
         : origin === "directory"
           ? ["code_directory"]
-          : ["code_upload"];
+          : origin === "entered"
+            ? ["code_source"]
+            : ["code_upload"];
   const missing = needed.filter((k) => !(fields[k] ?? "").trim());
   if (origin === "git" && fields.code_commit && !COMMIT.test(fields.code_commit.trim())) {
     missing.push("code_commit");

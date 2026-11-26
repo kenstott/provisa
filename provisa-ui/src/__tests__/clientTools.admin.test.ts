@@ -152,6 +152,45 @@ describe("admin_request", () => {
     expect(result.message).toBe("Cancelled by the user: no file was chosen.");
   });
 
+  // REQ-1984: code Polly wrote (upload_code), handed as its files and their zip archive.
+  const handedCode = {
+    method: "POST",
+    path: "/admin/orgs/acme/code-uploads/archive?filename=code.zip",
+    summary: "Upload the orders code source.",
+    files: { "orders_source.py": "def orders(region):\n    return []\n" },
+    archive: btoa("PK\u0003\u0004zip"),
+  };
+
+  it("shows the code it was handed, then sends its archive once confirmed", async () => {
+    const ctx = context(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response('{"content_hash": "h"}', { status: 200, statusText: "OK" }));
+    const result = await executeClientTool("admin_request", handedCode, ctx);
+    expect(ctx.confirm).toHaveBeenCalledWith({
+      title: "Make this change?",
+      message: "Upload the orders code source.",
+      detail:
+        "POST /admin/orgs/acme/code-uploads/archive?filename=code.zip\n" +
+        "--- orders_source.py ---\ndef orders(region):\n    return []\n",
+    });
+    expect(ctx.chooseFile).not.toHaveBeenCalled();
+    const [path, init] = fetchSpy.mock.calls[0];
+    expect(path).toBe("/admin/orgs/acme/code-uploads/archive?filename=code.zip");
+    expect(init?.headers).toEqual({ "Content-Type": "application/zip" });
+    expect(Array.from(init?.body as Uint8Array)).toEqual(
+      Array.from("PK\u0003\u0004zip", (c) => c.charCodeAt(0)),
+    );
+    expect(result).toEqual({ success: true, message: '200 OK\n{"content_hash": "h"}' });
+  });
+
+  it("sends no handed code when the user cancels", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await executeClientTool("admin_request", handedCode, context(false));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.message).toBe("Cancelled by the user.");
+  });
+
   it.each(["https://elsewhere.example/x", "//elsewhere.example/x", "admin/x"])(
     "refuses %s, which is not one of the app's own routes",
     async (path) => {

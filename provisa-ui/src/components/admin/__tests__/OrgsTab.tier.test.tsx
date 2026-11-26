@@ -11,8 +11,8 @@
 // REQ-1066: an org's subscription tier is stored with the org and set by a platform administrator
 // in Admin > Orgs; every tier-gated feature reads it.
 
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
@@ -36,17 +36,19 @@ vi.mock("../../../api/admin", async (importOriginal) => ({
   ]),
   fetchInvites: vi.fn().mockResolvedValue([]),
   setOrgTier: vi.fn().mockResolvedValue(undefined),
+  fetchOrgMembers: vi.fn().mockResolvedValue([]),
 }));
 
 import { setOrgTier } from "../../../api/admin";
 import { OrgsTab } from "../OrgsTab";
 
+beforeEach(() => localStorage.clear());
+
 describe("an org's tier in Admin > Orgs", () => {
   it("lists the orgs matching every word of the search, or either side of or", async () => {
-    render(<OrgsTab />);
+    render(<OrgsTab title="Admin — Orgs" />);
     await screen.findByTestId("org-tier-globex");
-    // The first search bar is the orgs'; the second, the invites'.
-    fireEvent.change(screen.getAllByTestId("filter-input")[0], {
+    fireEvent.change(screen.getByTestId("filter-input"), {
       target: { value: "acme or initech" },
     });
     expect(screen.getByTestId("org-tier-acme")).toBeInTheDocument();
@@ -54,20 +56,19 @@ describe("an org's tier in Admin > Orgs", () => {
   });
 
   it("shows each org's stored tier, and none as not set", async () => {
-    render(<OrgsTab />);
-    await waitFor(() => expect(screen.getByTestId("org-tier-globex")).toHaveValue("Premium"));
-    expect(screen.getByTestId("org-tier-acme")).toHaveValue("");
-    expect(screen.getByTestId("org-tier-acme")).toHaveAttribute("placeholder", "Not set");
+    render(<OrgsTab title="Admin — Orgs" />);
+    await waitFor(() => expect(screen.getByTestId("org-tier-globex")).toHaveTextContent("Premium"));
+    expect(screen.getByTestId("org-tier-acme")).toHaveTextContent("Not set");
   });
 
-  it("stores the tier a platform administrator picks", async () => {
-    render(<OrgsTab />);
-    const acme = await screen.findByTestId("org-tier-acme");
-    fireEvent.click(acme);
-    // Every row's select keeps its options mounted; Acme's are the list named for it.
-    const options = await screen.findByRole("listbox", { name: "Tier of Acme", hidden: true });
-    fireEvent.click(within(options).getByRole("option", { name: "Standard", hidden: true }));
+  it("stores the tier a platform administrator picks in the org's panel", async () => {
+    render(<OrgsTab title="Admin — Orgs" />);
+    fireEvent.click(await screen.findByTestId("org-row-acme"));
+    fireEvent.click(await screen.findByTestId("org-edit-acme"));
+    fireEvent.click(screen.getByTestId("org-tier"));
+    fireEvent.click(await screen.findByRole("option", { name: "Standard", hidden: true }));
+    fireEvent.click(screen.getByTestId("org-tier-save"));
     await waitFor(() => expect(setOrgTier).toHaveBeenCalledWith("acme", "standard"));
-    await waitFor(() => expect(screen.getByTestId("org-tier-acme")).toHaveValue("Standard"));
+    await waitFor(() => expect(screen.getByTestId("org-tier-acme")).toHaveTextContent("Standard"));
   });
 });

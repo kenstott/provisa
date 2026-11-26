@@ -16,7 +16,6 @@
     "empty": "Nessun report registrato nel dominio ops.",
     "filterPlaceholder": "Filtra i report…",
     "noMatch": "Nessun report corrisponde",
-    "resize": "Ridimensiona l'elenco dei report",
     "drift": {
       "title": "Deriva dal periodo precedente",
       "baseline": "Confrontato con il modello del {{date}}, l'ultima versione entro il {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Acquisito",
         "new": "Nuovo"
       }
-    }
+    },
+    "kindColumn": "Tipo",
+    "kindBuiltIn": "Integrato",
+    "kindCustom": "Personalizzato",
+    "panelLabel": "Report",
+    "closeForm": "Chiudi il modulo",
+    "loading": "Caricamento dei report…"
   }
 }

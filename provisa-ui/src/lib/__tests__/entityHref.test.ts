@@ -47,7 +47,7 @@ describe("the context layer's kinds (REQ-2259)", () => {
   });
 
   it("links a classification kind to the Context group's Classification page", () => {
-    expect(entityHref("classification", "email")).toBe("/context/classification");
+    expect(entityHref("classification", "email")).toBe("/context/classification?kind=email");
   });
 
   it("links a library document to its panel on the Documents page", () => {

@@ -30,7 +30,7 @@ from provisa.core.paging import PaginationConfig, PaginationType
 if TYPE_CHECKING:
     from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
 
-# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325, REQ-2265
+# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325, REQ-2265, REQ-1874
 
 
 class ApiCallError(Exception):
@@ -88,7 +88,7 @@ def _build_request_parts(
     """
     url = endpoint.path
     query_params: dict = {}
-    headers: dict = {}
+    headers: dict = dict(endpoint.headers)  # REQ-1874
     body_parts: dict = {}
 
     for col in endpoint.columns:

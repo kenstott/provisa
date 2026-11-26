@@ -84,7 +84,10 @@ describe("a graph view's Open as query", () => {
     await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
     expect(compiles.calls).toEqual([["analyst", QUERY, true]]);
     fireEvent.click(screen.getByTestId("x-open-as-sql"));
-    expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "ontology"."_terms"' }]);
+    expect(landed()).toEqual([
+      "/sql",
+      { sql: 'SELECT "id" FROM "ontology"."_terms"', autoRun: true },
+    ]);
   });
 
   it("opens its Cypher in Cypher, and not when it has none", async () => {

@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { CyInstance, CyElement } from "../graph/cytoscape-types";
+import { bendPair, linePairs, placePairLabels } from "./pairs";
 
 type Pt = { x: number; y: number };
 
@@ -79,6 +80,8 @@ export function laneRoute(
   targetEndpoint: string;
   weights: string;
   distances: string;
+  /** Where cytoscape draws its label: the middle of the cross-run. */
+  mid: Pt;
 } | null {
   const src = edge.source();
   const tgt = edge.target();
@@ -102,6 +105,7 @@ export function laneRoute(
     targetEndpoint: `${tOff.x}px ${tOff.y}px`,
     weights: `${c1.weight} ${c2.weight}`,
     distances: `${c1.distance} ${c2.distance}`,
+    mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
   };
 }
 
@@ -164,6 +168,7 @@ export function applyTaxiLanes(cy: CyInstance): void {
     edges.push(edge);
   });
   const slots = assignSlots(edges);
+  const mids = new Map<string, Pt>();
   for (const edge of edges) {
     const { source, target } = slots.get(edge)!;
     const turn = 0.5 + (source.index - (source.count - 1) / 2) * TURN_STEP;
@@ -184,10 +189,27 @@ export function applyTaxiLanes(cy: CyInstance): void {
       "segment-weights": route.weights,
       "segment-distances": route.distances,
     });
+    mids.set(edge.id(), route.mid);
+  }
+  // REQ-2277: the lines between one pair of nodes are each drawn on their own lane and their labels
+  // kept clear of each other; a pair with a line taxi routing would lay on another's is bent apart.
+  for (const [key, lines] of linePairs(cy)) {
+    if (lines.every((e) => mids.has(e.id()))) placePairLabels(cy, key, lines, mids);
+    else {
+      lines.forEach((e) =>
+        e.style({
+          "source-endpoint": DEFAULT_ENDPOINT,
+          "target-endpoint": DEFAULT_ENDPOINT,
+          "edge-distances": "intersection",
+        }),
+      );
+      bendPair(cy, key, lines);
+    }
   }
 }
 
-// Bezier routing separates parallel edges by curvature, so the endpoints return to the default.
+// Bezier routing separates parallel edges by curvature, so the endpoints return to the default,
+// and the lines of one pair bend apart (bendPairs).
 export function clearTaxiLanes(cy: CyInstance): void {
   cy.edges(".pg-edge").style({
     "source-endpoint": DEFAULT_ENDPOINT,

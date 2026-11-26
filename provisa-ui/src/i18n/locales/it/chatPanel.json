@@ -35,6 +35,11 @@
     "graphCaption": "Nodi: {{nodes}} · Relazioni: {{relationships}}",
     "downloadPng": "Scarica PNG",
     "openOnGraphPage": "Apri nella pagina Grafo",
-    "choiceClosed": "(chiuso senza scegliere)"
+    "choiceClosed": "(chiuso senza scegliere)",
+    "attach": "Allega un file da far leggere a Polly: un CSV, una specifica API, un archivio di codice o un documento, fino a {{limit}} MB",
+    "attachTooLarge": "{{name}} supera {{limit}} MB, la dimensione massima di un file allegato per Polly.",
+    "attachTooMany": "Una conversazione può contenere {{max}} file allegati. Rimuovine uno per allegarne un altro.",
+    "removeAttachment": "Rimuovi {{name}}",
+    "download": "Scarica"
   }
 }

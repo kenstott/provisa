@@ -87,6 +87,9 @@
     "editAria": "Edit {{name}}",
     "enableAria": "Enable {{name}}",
     "disableAria": "Disable {{name}}",
-    "deleteAria": "Delete {{name}}"
+    "deleteAria": "Delete {{name}}",
+    "filterPlaceholder": "Filter triggers",
+    "closeForm": "Close the form",
+    "noMatch": "No triggers match"
   }
 }

@@ -19,7 +19,7 @@ Endpoints:
   PUT  /admin/openapi/spec/{id}        — store spec JSON + run auto-register
 """
 
-# Requirements: REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-321, REQ-406, REQ-407, REQ-408
+# Requirements: REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-321, REQ-406, REQ-407, REQ-408, REQ-1874
 
 from __future__ import annotations
 
@@ -274,13 +274,24 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
     through the generic source's settings (REQ-2265) takes its address from its setup, its spec
     from the running instance, and its credential as its auth type states it."""
     from provisa.graphql_remote.brands import SetupInvalid
-    from provisa.openapi.brands import BRANDS, CredentialMissing
+    from provisa.openapi.brands import BRANDS, CredentialMissing, VersionUnset
 
     brand = BRANDS.get(body.brand or "")
     if brand is None:
         raise ApiError(
             422, "openapi.unknown_brand", f"Unknown branded source {body.brand!r}", brand=body.brand
         )
+    try:
+        # REQ-1874: every operation that declares the brand's version header states its value.
+        brand.operation_headers()
+    except VersionUnset as unset:
+        raise ApiError(
+            422,
+            "openapi.version_unset",
+            f"{brand.label}: {unset}",
+            brand=brand.id,
+            operation=unset.operation,
+        ) from unset
     try:
         setup = brand.setup(body.setup)
     except SetupInvalid as bad:
@@ -322,7 +333,9 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
     base_url = brand.base_url(setup, spec)
     try:
         await _verify_live_auth(
-            brand.verify_url(setup, base_url), await _resolved_auth(auth), brand.headers()
+            brand.verify_url(setup, base_url),
+            await _resolved_auth(auth),
+            brand.call_headers("GET", brand.verify_path),
         )
     except Exception as exc:
         raise ApiError(

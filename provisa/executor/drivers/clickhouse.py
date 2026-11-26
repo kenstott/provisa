@@ -217,20 +217,33 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         """Run ``sql`` and return the result as a ``pyarrow.Table`` in ClickHouse's native Arrow
         format -- no per-row Python objects (REQ-1865: a keyed row-materialize fetch lands
         millions of rows columnar). ClickHouse ``String`` arrives as Arrow ``string``, not
-        ``binary``. ``params`` fill the statement's ``%(name)s`` placeholders through the
-        driver's own binding, which escapes each value for ClickHouse."""
+        ``binary``; a String whose bytes are not UTF-8 is converted to binary (REQ-2194, matches
+        the ENGINE path's bytes_where_not_text). ``params`` fill the statement's ``%(name)s``
+        placeholders through the driver's own binding, which escapes each value for ClickHouse."""
+        # Local import breaks the clickhouse_runtime → clickhouse.py circular import at module
+        # level (clickhouse_runtime imports result_names from here).
+        import pyarrow as pa
+
+        from provisa.federation.clickhouse_runtime import bytes_where_not_text
+
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
-                return client.query_arrow(
+                table: pa.Table = client.query_arrow(
                     sql, parameters=params, use_strings=True, settings={"query_id": query_id}
                 )
+        batches = [bytes_where_not_text(b) for b in table.to_batches()]
+        return pa.Table.from_batches(batches, schema=batches[0].schema) if batches else table
 
     def iter_arrow_batches(self, sql: str) -> Iterator[Any]:
         """Run fully formed ``sql`` and yield its result as Arrow record batches while the
         server streams them (REQ-1915): one block is held at a time. The pooled client is kept
-        for the life of the iteration and returned when it ends or is closed."""
+        for the life of the iteration and returned when it ends or is closed. A String column
+        whose bytes are not UTF-8 is converted to binary (REQ-2194)."""
         import pyarrow as pa
+
+        # Local import: clickhouse_runtime imports result_names from this module at module level.
+        from provisa.federation.clickhouse_runtime import bytes_where_not_text
 
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
@@ -239,9 +252,10 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             ) as stream:
                 for chunk in stream:
                     if isinstance(chunk, pa.Table):
-                        yield from chunk.to_batches()
+                        for batch in chunk.to_batches():
+                            yield bytes_where_not_text(batch)
                     else:
-                        yield chunk
+                        yield bytes_where_not_text(chunk)
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
@@ -295,7 +309,13 @@ class _ArrowStreamCursor:
         batch = next(self._batches, None)
         if batch is None:
             self._batches = None
-        return batch
+            return None
+        # A String column whose bytes are not UTF-8 is returned as binary (REQ-2194): matches
+        # the ENGINE path's bytes_where_not_text applied in run_sync.
+        # Local import: clickhouse_runtime imports result_names from clickhouse.py at module level.
+        from provisa.federation.clickhouse_runtime import bytes_where_not_text
+
+        return bytes_where_not_text(batch)
 
     def close(self) -> None:
         context, self._context = self._context, None

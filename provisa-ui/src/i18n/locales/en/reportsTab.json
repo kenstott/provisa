@@ -16,7 +16,6 @@
     "empty": "No reports registered in the ops domain.",
     "filterPlaceholder": "Filter reports…",
     "noMatch": "No reports match",
-    "resize": "Resize the report list",
     "drift": {
       "title": "Drift since the previous period",
       "baseline": "Compared with the model as of {{date}}, the latest version by {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Gained",
         "new": "New"
       }
-    }
+    },
+    "kindColumn": "Kind",
+    "kindBuiltIn": "Built-in",
+    "kindCustom": "Custom",
+    "panelLabel": "Report",
+    "closeForm": "Close the form",
+    "loading": "Loading reports…"
   }
 }

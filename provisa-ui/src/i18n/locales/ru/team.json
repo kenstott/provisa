@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "Локальные пользователи",
     "attributesTab": "Атрибуты",
-    "accessTab": "Доступ"
+    "accessTab": "Доступ",
+    "filterPlaceholder": "Фильтр участников",
+    "inviteButton": "Пригласить",
+    "closeInvite": "Закрыть форму приглашения"
   }
 }

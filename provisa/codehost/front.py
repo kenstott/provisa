@@ -513,6 +513,11 @@ class Worker:
                 self._running.pop((id(connection), call_id), None)
             self._release(lane)
 
+    def settle_bounds(self) -> None:
+        """Before a statement the front end answers itself (pgfront.py), the bounds of its DuckDB
+        as Provisa gives them now. A host's come with every call Provisa makes (:meth:`_serve`),
+        so it has none to ask for; a pgwire sidecar's worker asks Provisa (sidecar.py)."""
+
     def invoke(self, export: str, args: list, names: list[str]) -> Any:
         """REQ-2221: the code's function ``export`` called from the front itself (a lifecycle
         function) and its value; :class:`_Failed` when it raises."""

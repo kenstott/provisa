@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "Usuarios locales",
     "attributesTab": "Atributos",
-    "accessTab": "Acceso"
+    "accessTab": "Acceso",
+    "filterPlaceholder": "Filtrar miembros",
+    "inviteButton": "Invitar",
+    "closeInvite": "Cerrar el formulario de invitación"
   }
 }

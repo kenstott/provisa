@@ -1004,13 +1004,13 @@ PENDING: frozenset[tuple[str, str, str]] = frozenset(
         ("codehost_connectors.py", "details", "DATABASE"),
         ("codehost_connectors.py", "details", "USER"),
         ("codehost_connectors.py", "details", "alias"),
-        ("codehost_connectors.py", "details", "files.certificate"),
-        ("codehost_connectors.py", "details", "files.key"),
-        ("codehost_connectors.py", "details", "files.root(source.id)"),
-        ("codehost_connectors.py", "details", "host"),
+        # REQ-2267: the host and port dialled (a built host's paired remote, or a sidecar's
+        # engine endpoint), and the TLS settings naming the identity files Provisa wrote.
+        ("codehost_connectors.py", "details", "at.host"),
+        ("codehost_connectors.py", "details", "at.port"),
+        ("codehost_connectors.py", "details", "security"),
         ("codehost_connectors.py", "details", "local_schema"),
         ("codehost_connectors.py", "details", "options"),
-        ("codehost_connectors.py", "details", "port"),
         ("codehost_connectors.py", "details", "quoted"),
         ("codehost_connectors.py", "details", "schema"),
         ("codehost_connectors.py", "details", "server"),
