@@ -2342,6 +2342,72 @@ _NO_ANSWER = {
     "text": "\n\n(The model returned no answer — please ask again.)",
 }
 
+
+def _block_field(block: Any, key: str) -> Any:
+    """``key`` of a content block: a wire dict (the browser's resumed history) or an SDK block
+    (a round this loop appended to ``convo``)."""
+    return block.get(key) if isinstance(block, dict) else getattr(block, key, None)
+
+
+def _result_text(content: Any) -> str:
+    """A tool result's content as text: a string, or a list of text blocks."""
+    if isinstance(content, str):
+        return content
+    return "".join(str(_block_field(b, "text") or "") for b in content or ())
+
+
+def _failed_tool_calls(convo: list[Any]) -> list[tuple[str, str, int]]:
+    """This turn's failed tool calls -- since the user's question, rounds resumed after a client
+    tool included -- as (tool, error, times), each distinct one once, in the order first seen."""
+    start = 0
+    for i in range(len(convo) - 1, -1, -1):
+        message = convo[i]
+        role = message["role"] if isinstance(message, dict) else message.role
+        content = message["content"] if isinstance(message, dict) else message.content
+        if role == "user" and (
+            isinstance(content, str)
+            or any(_block_field(b, "type") != "tool_result" for b in content)
+        ):
+            start = i
+            break
+    names: dict[str, str] = {}
+    failed: dict[tuple[str, str], int] = {}
+    for message in convo[start:]:
+        content = message["content"] if isinstance(message, dict) else message.content
+        if isinstance(content, str):
+            continue
+        for block in content:
+            kind = _block_field(block, "type")
+            if kind == "tool_use":
+                names[_block_field(block, "id")] = _block_field(block, "name")
+            elif kind == "tool_result" and _block_field(block, "is_error"):
+                key = (
+                    names[_block_field(block, "tool_use_id")],
+                    _result_text(_block_field(block, "content")),
+                )
+                failed[key] = failed.get(key, 0) + 1
+    return [(name, error, times) for (name, error), times in failed.items()]
+
+
+def _no_answer(convo: list[Any]) -> dict:
+    """REQ-1838: the ending of a turn whose final round answered nothing. After tool calls that
+    failed, it names each one and its error, so the user is told why rather than only asked to
+    try again."""
+    failed = _failed_tool_calls(convo)
+    if not failed:
+        return _NO_ANSWER
+    lines = [
+        f"- {name}: {error}" + (f" ({times} times)" if times > 1 else "")
+        for name, error, times in failed
+    ]
+    return {
+        "type": "text",
+        "text": "\n\n(The model returned no answer. These tool calls failed:\n"
+        + "\n".join(lines)
+        + ")",
+    }
+
+
 # REQ-1838: the last round is told why it has no tools, so it answers instead of reaching for one:
 # OpenRouter's Gemini and Qwen routes returned tool calls on a round sent with none, and Kimi wrote
 # one out as text (bake-off run 38639158659).
@@ -2570,7 +2636,7 @@ async def _run_chat_anthropic(
                 if _is_answer(text):
                     yield {"type": "text", "text": text}
                 elif resp.stop_reason != "max_tokens":  # that ends with its own note below
-                    yield _NO_ANSWER
+                    yield _no_answer(convo)
 
         if resp.stop_reason == "max_tokens":
             # REQ-1838: never end the turn silently on this — the user sees exactly the same
@@ -2899,7 +2965,7 @@ async def _run_chat_aisuite(
                 reasoning = getattr(message, "reasoning", None)
                 if reasoning:
                     yield {"type": "reasoning", "text": reasoning}
-                yield _NO_ANSWER
+                yield _no_answer(convo)
             break
         if last_round:
             # The last round had no tools to call; a call it made anyway is not run.

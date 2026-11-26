@@ -235,8 +235,10 @@ SPECS: list[dict] = [
         "name": "list_fake_kinds",
         "description": (
             "The kinds of fake (categories, bool, distributions, relative fakes, sql, ...) and "
-            "fake methods (email, name, phone, ...) a column can declare, with argument names. "
-            "Read before writing a fake. A declaration is one call, e.g. categories((shoes, bra),"
+            "fake methods (email, name, phone, ...) a column can declare, with argument names and"
+            " the column families each fits (text, integer, numeric, boolean, date, timestamp, "
+            "other). Read before writing a fake, and pick one whose families hold the column's "
+            "family (get_table_fakes). A declaration is one call, e.g. categories((shoes, bra),"
             " (.4, .6)), normal(mean=50, sd=10, min=0), after(created_at, 1 to 10 days), email()."
             " syntheticRuleOnly kinds may only be a synthetic rule. Read only. " + _RIGHT_TABLE
         ),
@@ -245,8 +247,9 @@ SPECS: list[dict] = [
     {
         "name": "get_table_fakes",
         "description": (
-            "Each column of a table with its fake, stable flag, synthetic rule and pii tag. Read "
-            "only. " + _RIGHT_TABLE
+            "Each column of a table with its fake, stable flag, synthetic rule, pii tag and "
+            "family (the kind of values it holds; a json column is other). Read only. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
@@ -255,8 +258,10 @@ SPECS: list[dict] = [
         "description": (
             "Set or clear one column's fake, synthetic rule (used only by synthetic generation, "
             "over the fake) and stable flag. An omitted field keeps its value; '' clears a fake "
-            "or rule. Checked as the table editor checks it; refusals come back verbatim. "
-            + _RIGHT_TABLE
+            "or rule. column is a column of the table: a field inside a json column (contact.email)"
+            " is none. The fake must fit the column's family (get_table_fakes): no fake method "
+            "fits an other (json) column. Checked as the table editor checks it; refusals come "
+            "back verbatim, and a missing right is named in them. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -276,7 +281,10 @@ SPECS: list[dict] = [
             "the table's latest succeeded profile run. Saves nothing: show the proposals, ask the"
             " user which to save (present_choice), then save each with set_column_fake. "
             "unmatchedPii: pii columns with no confident proposal. columns: only these, even if "
-            "already declared; omitted, every column declaring neither. " + _RIGHT_TABLE
+            "already declared; omitted, every column declaring neither. A table with no "
+            "succeeded profile run is refused (fakes.no_profile_run). It is not a prerequisite: "
+            "a column's fake can always be chosen from list_fake_kinds and saved with "
+            "set_column_fake. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "columns": {"type": "array", "items": {"type": "string"}}},
@@ -574,7 +582,12 @@ SYSTEM_SECTION = (
     "drop_synthetic_dataset, reset_environment_mutations, set_environment_data discarding kept "
     "mutations, generate_environment_model's second call, and before set_table_profiler "
     "removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "
-    "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. A "
+    "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. "
+    'When the user names the columns to fake ("create fake defs for users.email, ..."), choose '
+    "each fake yourself: read the column's family (get_table_fakes) and a kind or method that "
+    "fits it (list_fake_kinds), save it with set_column_fake, and report each column saved or "
+    "refused with the refusal's reason; propose_fakes is only for proposing from a profile run. A "
+    "fake def is a column's fake, never a switch of environment. A "
     "refusal from any of these is the admin's own message — report it to the user as it is. "
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
     "change, and to /admin/environments before a synthetic dataset change."

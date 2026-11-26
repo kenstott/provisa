@@ -357,8 +357,9 @@ async def create_expectation_check(
 
 
 async def list_fake_kinds(state: Any, role: str, request: Any) -> dict:
-    """The kinds of fake and the fake methods, by name and argument names. Argument defaults are
-    left out: the editor's catalog is the place to read them."""
+    """The kinds of fake and the fake methods, by name, argument names and the column families
+    each fits (a column's family is in get_table_fakes). Argument defaults are left out: the
+    editor's catalog is the place to read them."""
     require_role(role, state)
     from provisa.api.admin.fakes_router import fake_catalog
 
@@ -371,20 +372,28 @@ async def list_fake_kinds(state: Any, role: str, request: Any) -> dict:
                 "category": k["category"],
                 "args": [a["name"] for a in k["args"]],
                 "syntheticRuleOnly": k["ruleOnly"],
+                "families": k["families"],
             }
             for k in full["kinds"]
         ],
         "methods": [
-            {"name": m["name"], "category": m["category"], "args": [p["name"] for p in m["params"]]}
+            {
+                "name": m["name"],
+                "category": m["category"],
+                "args": [p["name"] for p in m["params"]],
+                "families": m["families"],
+            }
             for m in full["methods"]
         ],
     }
 
 
 async def get_table_fakes(state: Any, role: str, request: Any, table_id: int) -> dict:
-    """Each column's fake, whether it is stable, its synthetic rule and whether it is tagged pii."""
+    """Each column's fake, whether it is stable, its synthetic rule, whether it is tagged pii, and
+    the family of values it holds (the families list_fake_kinds says each kind fits)."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
+    from provisa.fakes.checks import family
 
     require_capability_request(request, "table_registration")  # the fakes routes' right
     table = await table_edit.read_table(table_id)
@@ -399,6 +408,8 @@ async def get_table_fakes(state: Any, role: str, request: Any, table_id: int) ->
                 "fakeStable": c.fake_stable,
                 "syntheticRule": c.synthetic_rule,
                 "isPii": c.is_pii,
+                # A column with no registered type is checked as "" (set_column_fake below).
+                "family": family(c.data_type or ""),
             }
             for c in table.columns
         ],
