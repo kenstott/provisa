@@ -31,16 +31,21 @@ info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-appimage]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
 
+# Every download in this build goes through here: a stalled connect gives up after 30 s and a
+# transfer after 600 s, each attempt is retried a fixed 5 times, and the failure names the asset and
+# its URL. The file lands at $out only when complete, so a cached copy is never a partial one.
 curl_retry() {
-  local url="$1" out="$2"
+  local asset="$1" url="$2" out="$3"
   for attempt in 1 2 3 4 5; do
-    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "$out"; then
+    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "${out}.part"; then
+      mv "${out}.part" "$out"
       return 0
     fi
-    info "Download attempt $attempt failed for $(basename "$url"), retrying in 15s..."
+    rm -f "${out}.part"
+    info "Download attempt $attempt/5 failed for ${asset} (${url}), retrying in 15s..."
     sleep 15
   done
-  err "Failed to download $url after 5 attempts"
+  err "Failed to download ${asset} from ${url} after 5 attempts"
   exit 1
 }
 
@@ -111,6 +116,11 @@ check_prereqs() {
     err "Required tool not found: readelf (binutils) -- it checks the AppImage's runtime is static"
     exit 1
   fi
+  # The wheelhouse is uv.lock's set (bundle_native_payload), exported by uv.
+  if ! command -v uv &>/dev/null; then
+    err "Required tool not found: uv"
+    exit 1
+  fi
   ok "Prerequisites satisfied."
 }
 
@@ -125,9 +135,13 @@ bundle_docker() {
   info "Downloading Docker ${DOCKER_VERSION} static binaries..."
   mkdir -p "$DOCKER_BIN_CACHE"
 
+  local tmp="${SCRIPT_DIR}/tmp-docker"
+  rm -rf "$tmp"; mkdir -p "$tmp"
+
   # Core daemon + runtime binaries
-  curl -fsSL "${DOCKER_BASE_URL}/docker-${DOCKER_VERSION}.tgz" \
-    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+  curl_retry "docker ${DOCKER_VERSION}" \
+    "${DOCKER_BASE_URL}/docker-${DOCKER_VERSION}.tgz" "${tmp}/docker.tgz"
+  tar -xzf "${tmp}/docker.tgz" -C "$DOCKER_BIN_CACHE" --strip-components=1 \
         docker/dockerd \
         docker/docker-proxy \
         docker/docker-init \
@@ -136,13 +150,15 @@ bundle_docker() {
         docker/runc
 
   # Rootless extras (no sudo/root required)
-  curl -fsSL "${DOCKER_BASE_URL}/docker-rootless-extras-${DOCKER_VERSION}.tgz" \
-    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+  curl_retry "docker-rootless-extras ${DOCKER_VERSION}" \
+    "${DOCKER_BASE_URL}/docker-rootless-extras-${DOCKER_VERSION}.tgz" "${tmp}/rootless.tgz"
+  tar -xzf "${tmp}/rootless.tgz" -C "$DOCKER_BIN_CACHE" --strip-components=1 \
         docker-rootless-extras/dockerd-rootless.sh \
         docker-rootless-extras/rootlesskit \
         docker-rootless-extras/rootlesskit-docker-proxy \
         docker-rootless-extras/vpnkit
 
+  rm -rf "$tmp"
   chmod +x "${DOCKER_BIN_CACHE}"/*
   touch "$cache_marker"
   ok "Docker ${DOCKER_VERSION} binaries cached at ${DOCKER_BIN_CACHE}/"
@@ -282,7 +298,7 @@ bundle_native_payload() {
     local tmp="${SCRIPT_DIR}/tmp-pbs"
     rm -rf "$tmp"; mkdir -p "$tmp"
     info "Downloading python-build-standalone ${PBS_PYTHON} (Linux x86_64)..."
-    curl_retry "$url" "${tmp}/${tarball}"
+    curl_retry "python-build-standalone ${PBS_PYTHON}" "$url" "${tmp}/${tarball}"
     tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
     if [ ! -x "${tmp}/python/bin/python3" ]; then
       err "python-build-standalone extraction failed (no bin/python3)"
@@ -317,9 +333,20 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
-  # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
-  # Linux torch is the CUDA build, so torch is fetched first from PyPI's CPU-only index at the
-  # version uv.lock pins; the wheelhouse's +cpu wheel then satisfies the extra's torch.
+  # The wheelhouse is exactly uv.lock's set, the one CI tests, never whatever PyPI has newest at
+  # build time (an unconstrained `pip download` shipped platformdirs 4.14 against the lock's 4.10).
+  # The export is hash-pinned: each locked package is fetched at its locked version for this
+  # interpreter (python-base, the target's) with nothing resolved beyond it, and a locked package
+  # with no file for the target fails the build. Its sdist-only packages are built into wheels here,
+  # so first launch installs wheels alone. The embedded extra carries the vector extra (the
+  # default config's embedding model); desktop is mcp-proxy.
+  local locked="${NATIVE_PAYLOAD_DIR}/uv-lock-requirements.txt"
+  ( cd "$REPO_ROOT" && uv export --frozen --no-dev --no-header --no-annotate \
+      --no-emit-project --no-emit-package provisa-notebook --extra embedded --extra desktop \
+      --format requirements-txt -o "$locked" ) >/dev/null
+  # PyPI's Linux torch is the CUDA build, so the lock takes Linux torch from PyTorch's CPU-only
+  # index ([tool.uv.sources]); it is fetched from there first, and the hash-checked step below
+  # takes it from the wheelhouse.
   local torch_cpu
   torch_cpu="$(sed -n '/^name = "torch"$/{n;s/^version = "\(.*+cpu\)"$/\1/p;}' "${REPO_ROOT}/uv.lock")"
   if [ -z "$torch_cpu" ]; then
@@ -328,8 +355,18 @@ bundle_native_payload() {
   fi
   "${base}/bin/python3" -m pip download --dest "$wheels" --no-deps \
     --index-url https://download.pytorch.org/whl/cpu "torch==${torch_cpu}"
-  "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$wheels" \
-    --find-links "$notebook_dir" "${built_wheel}[embedded]" "torch==${torch_cpu}" uvicorn mcp-proxy
+  "${base}/bin/python3" -m pip wheel --wheel-dir "$wheels" --find-links "$wheels" \
+    --require-hashes --no-deps -r "$locked"
+  rm -f "$locked"
+  cp "$built_wheel" "$notebook_dir"/provisa_notebook-*.whl "$wheels/"
+  # The wheelhouse is complete: provisa[embedded], uvicorn and mcp-proxy resolve from it alone.
+  local provisa_wheel
+  provisa_wheel="$(ls "$wheels"/provisa-*.whl)"
+  "${base}/bin/python3" -m pip install --dry-run --quiet --ignore-installed --no-index \
+    --find-links "$wheels" "${provisa_wheel}[embedded]" uvicorn mcp-proxy || {
+    err "the wheelhouse does not hold everything provisa[embedded], uvicorn and mcp-proxy need."
+    exit 1
+  }
   # Never a CUDA build in the wheelhouse: no GPU runtime wheel, and torch only as the +cpu wheel.
   if ls "$wheels" | grep -qE '^(nvidia_|triton-|cuda_)'; then
     err "the wheelhouse holds CUDA wheels: $(ls "$wheels" | grep -E '^(nvidia_|triton-|cuda_)' | tr '\n' ' ')"
@@ -388,7 +425,7 @@ require_static_runtime() {
 create_appimage() {
   info "Fetching appimagetool..."
   if [ ! -f "$APPIMAGETOOL" ]; then
-    curl -fsSL "$APPIMAGETOOL_URL" -o "$APPIMAGETOOL"
+    curl_retry "appimagetool" "$APPIMAGETOOL_URL" "$APPIMAGETOOL"
     chmod +x "$APPIMAGETOOL"
   fi
 

@@ -252,16 +252,25 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "$py" "$notebook_dir"
-  # The runtime takes uv.lock's versions, never whatever PyPI has newest at build time: an
-  # unconstrained install picked deltalake 1.7.0 eleven minutes after its sdist went up, before
-  # its macOS wheel existed, and the source build failed to link (dry run 45076921053).
-  local constraints="${NATIVE_PAYLOAD_DIR}/uv-lock-constraints.txt"
-  ( cd "$REPO_ROOT" && uv export --frozen --no-hashes --no-header --no-annotate \
-      --no-emit-project --no-emit-package provisa-notebook --extra embedded \
-      --format requirements-txt -o "$constraints" ) >/dev/null
-  "$py" -m pip install --quiet -c "$constraints" \
-    --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
-  rm -f "$constraints"
+  # The runtime is exactly uv.lock's set, the one CI tests, never whatever PyPI has newest at build
+  # time: an unconstrained install picked deltalake 1.7.0 eleven minutes after its sdist went up,
+  # before its macOS wheel existed, and the source build failed to link (dry run 45076921053). The
+  # export is hash-pinned and installed with nothing resolved beyond it (--no-deps), so every
+  # package, mcp-proxy's among them (the desktop extra), is the locked version for this platform;
+  # provisa and provisa-notebook go in on top without deps, and pip check proves the set is whole.
+  local locked="${NATIVE_PAYLOAD_DIR}/uv-lock-requirements.txt"
+  ( cd "$REPO_ROOT" && uv export --frozen --no-dev --no-header --no-annotate \
+      --no-emit-project --no-emit-package provisa-notebook --extra embedded --extra desktop \
+      --format requirements-txt -o "$locked" ) >/dev/null
+  "$py" -m pip install --quiet --require-hashes --no-deps -r "$locked"
+  rm -f "$locked"
+  "$py" -m pip install --quiet --no-deps "$built_wheel" "$notebook_dir"/provisa_notebook-*.whl
+  # `build` is a build-host tool, and so is what it brought that the lock does not hold.
+  "$py" -m pip uninstall --quiet --yes build pyproject_hooks
+  "$py" -m pip check || {
+    err "native runtime is not a consistent environment after installing uv.lock's set."
+    exit 1
+  }
   # Third-party test suites are not runtime, and their fixtures break notarization: Apple
   # rejected joblib/test/data/*.gz (zlib pickles, not gzip) in dry run 45212409648. Prune every
   # package test directory, then fail on any archive left that Apple could not unpack. Runs
@@ -289,8 +298,6 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
     err "native runtime is missing the embedding library (sentence-transformers, CPU torch) after install."
     exit 1
   }
-  # `build` is a build-host tool — it has no business in the shipped tree.
-  "$py" -m pip uninstall --quiet --yes build
 
   # ── 3. Built UI → <site-packages>/static, where ui_server resolves it ──
   if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then

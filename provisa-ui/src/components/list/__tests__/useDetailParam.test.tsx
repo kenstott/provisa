@@ -248,4 +248,23 @@ describe("useDetailParam (REQ-2241)", () => {
     await userEvent.click(screen.getByText("history-back"));
     expect(where()).toBe("/tables");
   });
+
+  it("resolving a name to an id keeps the tab and marks, and replaces the entry (REQ-2277)", async () => {
+    function Resolve() {
+      const detail = useDetailParam("tables");
+      return <button onClick={() => detail.resolve("7")}>resolve</button>;
+    }
+    render(
+      <MemoryRouter
+        initialEntries={["/tables", "/tables?open=pg.pets&section=columns&column=name"]}
+      >
+        <Where />
+        <Resolve />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByText("resolve"));
+    expect(where()).toBe("/tables?section=columns&column=name&table=7");
+    await userEvent.click(screen.getByText("history-back"));
+    expect(where()).toBe("/tables");
+  });
 });

@@ -362,6 +362,24 @@ def test_every_ci_image_build_is_given_this_commits_duckdb_extension_wheels():
     assert '${duckdb_ext[@]+"${duckdb_ext[@]}"} \\\n' in appimage
 
 
+def test_every_appimage_build_fetch_is_bounded_and_names_what_failed():
+    """Release 513's packaging dry run (45843520492) died on a bare `curl` of appimagetool that
+    stalled 134 s connecting to github.com and exited 28 with no retry. Every download in the
+    AppImage build goes through curl_retry: a connect timeout, a total timeout, a fixed number of
+    attempts, and a failure that names the asset and its URL."""
+    appimage = (REPO / "packaging/linux/build-appimage.sh").read_text()
+    body = appimage[appimage.index("curl_retry() {") :]
+    body = body[: body.index("\n}\n")]
+    assert "--connect-timeout" in body and "--max-time" in body
+    assert re.search(r"for attempt in 1 2 3 4 5; do", body)
+    assert 'err "Failed to download ${asset} from ${url} after 5 attempts"' in body
+    # Outside curl_retry no line runs curl: each fetch is a call to it.
+    rest = appimage.replace(body, "")
+    bare = [line for line in rest.splitlines() if re.search(r"\bcurl -", line)]
+    assert bare == [], bare
+    assert 'curl_retry "appimagetool" "$APPIMAGETOOL_URL" "$APPIMAGETOOL"' in appimage
+
+
 def test_the_duckdb_ext_wheels_action_builds_only_on_a_priming_miss():
     """The prime phase mirrors and builds only when the cache misses; the restore phase never
     builds, and takes the run's artifact on a miss. Both name the directory for the image build."""

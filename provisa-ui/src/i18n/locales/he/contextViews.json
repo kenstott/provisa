@@ -6,11 +6,22 @@
     "nowhere": "בשום מקום",
     "hiddenPlaces_one": "עוד {{count}} שאין לך הרשאה לקרוא",
     "hiddenPlaces_other": "עוד {{count}} שאין לך הרשאה לקרוא",
-    "rowFilters_one": "מסנן שורות {{count}}",
-    "rowFilters_other": "{{count}} מסנני שורות",
-    "classifiedAs": "הוקצה על ידי סיווג: {{kind}}",
     "noDependents": "כלום",
     "enabled": "מופעל",
-    "disabled": "מושבת"
+    "disabled": "מושבת",
+    "objectCount_one": "אובייקט {{count}}",
+    "objectCount_other": "{{count}} אובייקטים",
+    "sourceCount_one": "מקור {{count}}",
+    "sourceCount_other": "{{count}} מקורות",
+    "objectsInSources": "{{objects}} ב-{{sources}}",
+    "classificationCount_one": "סיווג {{count}}",
+    "classificationCount_other": "{{count}} סיווגים",
+    "rowRuleCount_one": "כלל שורה {{count}}",
+    "rowRuleCount_other": "{{count}} כללי שורה",
+    "groupTables": "טבלאות ({{count}})",
+    "groupColumns": "עמודות ({{count}})",
+    "groupClassification": "הוקצה על ידי סיווג ({{count}})",
+    "groupRowRules": "כללי שורה ({{count}})",
+    "filterClassifications": "סינון סיווגים"
   }
 }

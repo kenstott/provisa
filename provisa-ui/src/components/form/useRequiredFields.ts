@@ -77,10 +77,12 @@ export function useRequiredFields<K extends string>(values: Partial<Record<K, un
   });
 
   /** On the primary action: every field is marked from now on; true when none is missing, else
-   *  focus moves to the first missing one. */
-  const validate = (): boolean => {
-    setShown(new Set(names));
-    const empty = names.filter(missing);
+   *  focus moves to the first missing one. An action that needs only some of the form's fields
+   *  (a preview that needs the target but not the message) names them in `only`. */
+  const validate = (only?: readonly K[]): boolean => {
+    const checked = only ?? names;
+    setShown((prev) => new Set([...prev, ...checked]));
+    const empty = checked.filter(missing);
     if (empty.length === 0) return true;
     // The first on screen, whatever order the form named them in.
     const placed = empty
@@ -91,7 +93,11 @@ export function useRequiredFields<K extends string>(values: Partial<Record<K, un
     return false;
   };
 
-  return { field, native, errorOf, validate };
+  /** After the action succeeds and the form is cleared for the next entry: the cleared fields are
+   *  not red until they are left empty or pressed again, as when the form first opened. */
+  const reset = useCallback(() => setShown(new Set()), []);
+
+  return { field, native, errorOf, validate, reset };
 }
 
 export type RequiredFields<K extends string = string> = ReturnType<typeof useRequiredFields<K>>;

@@ -40,8 +40,6 @@
     "policy_required": "Обязательно",
     "requiredLabel": "Обязательный",
     "requiredDesc": "Каждый объект тех видов, что указаны в поле «Применяется к», должен иметь этот тег. Объект без него отображается в отчёте по тегам как отсутствующий.",
-    "reasonPolicyBadge": "Причина: {{policy}}",
-    "expiresPolicyBadge": "Истечение: {{policy}}",
     "createButton": "Создать тег",
     "saveButton": "Сохранить тег",
     "colId": "ID",
@@ -65,6 +63,7 @@
     "purposeAria": "О тегах",
     "outsideTitle": "Назначения вне разрешённых доменов",
     "outsideBody": "При сохранении эти назначения остались. Снимите тег с объекта, к которому он больше не относится.",
-    "outsideItem": "{{kind}} {{name}}, в {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, в {{domains}}",
+    "templateSection": "Шаблон"
   }
 }

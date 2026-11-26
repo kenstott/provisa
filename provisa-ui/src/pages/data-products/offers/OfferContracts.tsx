@@ -29,7 +29,11 @@ import {
 import type { Offer, OfferDatasetContract } from "../../../api/dataProductOffers";
 import type { ProductLineage } from "../../../api/lineage";
 import type { MetaReader } from "../../../api/metaGraph";
-import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
+import {
+  CollapsibleItem,
+  CollapsibleScope,
+  Collapsibles,
+} from "../../../components/collapsible/Collapsible";
 import { NEVER_EXPIRES } from "../../../components/form/cacheTtl";
 import { Tip } from "../../../components/Tip";
 import type { ContractVersion } from "../../../types/admin";
@@ -291,21 +295,26 @@ function DatasetContract({
         </Text>
       )}
       {context && port && (
-        <Collapsibles id={`data-product.${productId}.offer.${offer.id}.document.${entry.table_id}`}>
-          <CollapsibleItem
-            value="document"
-            defaultOpen={false}
-            mountWhenOpen
-            controlTestId={`${testId}-document-toggle`}
-            title={
-              <Text size="sm" fw={500}>
-                {t("dataProductOffers.contractDocument")}
-              </Text>
-            }
+        <CollapsibleScope id={`${testId}-document`}>
+          <Collapsibles
+            id={`data-product.${productId}.offer.${offer.id}.document.${entry.table_id}`}
           >
-            <ContractDocument productId={productId} offer={offer} port={port} context={context} />
-          </CollapsibleItem>
-        </Collapsibles>
+            <CollapsibleItem
+              value="document"
+              scopeIcons
+              defaultOpen={false}
+              mountWhenOpen
+              controlTestId={`${testId}-document-toggle`}
+              title={
+                <Text size="sm" fw={500}>
+                  {t("dataProductOffers.contractDocument")}
+                </Text>
+              }
+            >
+              <ContractDocument productId={productId} offer={offer} port={port} context={context} />
+            </CollapsibleItem>
+          </Collapsibles>
+        </CollapsibleScope>
       )}
     </Stack>
   );

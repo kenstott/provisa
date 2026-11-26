@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "フェイク値",
+    "template": "JSON テンプレート",
+    "templateHint": "各行が表示するオブジェクト：各フィールドは email() や uniform(min=1, max=9)::integer などのフェイク値、ネストしたオブジェクト、固定長の配列、または変化しないフィールド用の二重引用符で囲んだリテラルです",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "合成ルール",
     "stable": "安定",
     "stableHint": "すべてのエンジンとリージョンで同じフェイク値",

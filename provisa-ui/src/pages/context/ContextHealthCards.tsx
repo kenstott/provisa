@@ -15,12 +15,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Card, Group, Loader, Stack, Text, Title } from "@mantine/core";
 import { EntityLink, EntityPageLink } from "../../components/EntityLink";
+import { fetchOntologyDrift, listGlossaryTerms, type OntologyDrift } from "../../api/glossary";
 import {
-  fetchOntologyDrift,
-  fetchStewardshipSummary,
-  listGlossaryTerms,
-  type OntologyDrift,
-} from "../../api/glossary";
+  matchesTermFilters,
+  NO_TERM_FILTERS,
+  termListHref,
+  type TermListFilters,
+} from "../../components/admin/termListFilters";
 import {
   fetchClassificationAwaiting,
   fetchTagsLost,
@@ -30,6 +31,7 @@ import {
 import { fetchReviewsDue, type DocumentReviewsDue } from "../../api/referenceLibrary";
 import { fetchReview, fetchSyncing, type SyncEntry } from "../../api/syncing";
 import { detailHref } from "../../components/list/useDetailParam";
+import { REVIEWS_DUE_PARAM } from "../library/libraryParts";
 
 /** A read a card shows: loading, its value, or the server's refusal in words. */
 type Read<T> =
@@ -118,28 +120,37 @@ export function CountRow({
   );
 }
 
-const ONTOLOGY = "/context/ontology";
+/** REQ-2259: each Terms count with the term list filters it counts: its link opens the Ontology
+ * page's list under exactly these, and the count is the terms they show. */
+const TERM_COUNTS = {
+  agentVisible: { agentVisible: true },
+  fromData: { status: ["approved"], grounding: "grounded" },
+  noData: { status: ["approved"], grounding: "not_grounded" },
+  drafts: { status: ["draft"] },
+} satisfies Record<string, Partial<TermListFilters>>;
 
-interface TermCounts {
-  agentVisible: number;
-  fromData: number;
-  noData: number;
-  drafts: number;
-}
+type TermCount = keyof typeof TERM_COUNTS;
 
-async function termCounts(): Promise<TermCounts> {
-  const [terms, summary] = await Promise.all([
-    listGlossaryTerms("", false),
-    fetchStewardshipSummary(),
-  ]);
-  const approved = terms.filter((t) => t.status === "approved");
+async function termCounts(): Promise<Record<TermCount, number>> {
+  // Every status, as the Ontology page's list reads them.
+  const terms = await listGlossaryTerms("", true);
+  const counted = (key: TermCount) =>
+    terms.filter((term) => matchesTermFilters(term, { ...NO_TERM_FILTERS, ...TERM_COUNTS[key] }))
+      .length;
   return {
-    agentVisible: summary.agent_visible.length,
-    fromData: approved.filter((t) => t.grounding === "grounded").length,
-    noData: summary.approved_not_grounded.length,
-    drafts: terms.filter((t) => t.status === "draft").length,
+    agentVisible: counted("agentVisible"),
+    fromData: counted("fromData"),
+    noData: counted("noData"),
+    drafts: counted("drafts"),
   };
 }
+
+const TERM_ROWS: { key: TermCount; label: string; testId: string }[] = [
+  { key: "agentVisible", label: "contextHealth.termsAgentVisible", testId: "agent-visible" },
+  { key: "fromData", label: "contextHealth.termsFromData", testId: "from-data" },
+  { key: "noData", label: "contextHealth.termsNoData", testId: "no-data" },
+  { key: "drafts", label: "contextHealth.termsDrafts", testId: "drafts" },
+];
 
 /** Terms visible to agents, approved and reaching data, approved but reaching none, drafts. */
 export function TermsCard({ seq }: { seq: number }) {
@@ -150,30 +161,15 @@ export function TermsCard({ seq }: { seq: number }) {
       <Body read={read} testId="health-terms">
         {(c) => (
           <Stack gap={4}>
-            <CountRow
-              label={t("contextHealth.termsAgentVisible")}
-              count={c.agentVisible}
-              href={ONTOLOGY}
-              testId="health-terms-agent-visible"
-            />
-            <CountRow
-              label={t("contextHealth.termsFromData")}
-              count={c.fromData}
-              href={ONTOLOGY}
-              testId="health-terms-from-data"
-            />
-            <CountRow
-              label={t("contextHealth.termsNoData")}
-              count={c.noData}
-              href={ONTOLOGY}
-              testId="health-terms-no-data"
-            />
-            <CountRow
-              label={t("contextHealth.termsDrafts")}
-              count={c.drafts}
-              href={ONTOLOGY}
-              testId="health-terms-drafts"
-            />
+            {TERM_ROWS.map((row) => (
+              <CountRow
+                key={row.key}
+                label={t(row.label)}
+                count={c[row.key]}
+                href={termListHref(TERM_COUNTS[row.key])}
+                testId={`health-terms-${row.testId}`}
+              />
+            ))}
           </Stack>
         )}
       </Body>
@@ -282,7 +278,7 @@ export function DocumentsCard() {
             <CountRow
               label={t("contextHealth.documentsDue")}
               count={documents.length}
-              href="/context/documents"
+              href={`/context/documents?${REVIEWS_DUE_PARAM}=1`}
               testId="health-documents-total"
             />
             {documents.map((d) => (

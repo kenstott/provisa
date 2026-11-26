@@ -62,6 +62,18 @@ describe("a member's attributes", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
+  // REQ-1968: Add is never disabled by a missing name; pressing it marks the name and refuses.
+  it("marks a missing name when Add is pressed, and records nothing", async () => {
+    render(<MemberAttributes userId="u1" />);
+    await screen.findByTestId("member-attr-org-region");
+    const add = screen.getByTestId("member-attr-add");
+    expect(add).toBeEnabled();
+    await userEvent.click(add);
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(screen.getByTestId("member-attr-name")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("member-attr-name")).toHaveFocus();
+  });
+
   it("edits the org's value in place", async () => {
     render(<MemberAttributes userId="u1" />);
     await userEvent.click(await screen.findByRole("button", { name: "Edit region" }));

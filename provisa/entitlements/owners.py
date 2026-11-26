@@ -252,16 +252,22 @@ class _Person:
     roles: set[str]
 
 
-async def _role_members(conn: "Connection", role_ids: Collection[str]) -> dict[str, set[str]]:
-    """role id -> the people holding a grant of it in force (``role_grants.in_force``)."""
+async def _role_members(
+    conn: "Connection", role_ids: Collection[str], principal: str | None = None
+) -> dict[str, set[str]]:
+    """role id -> the people holding a grant of it in force (``role_grants.in_force``);
+    ``principal`` reads only theirs."""
     from provisa.auth.role_grants import in_force
     from provisa.core.schema_org import user_role_assignments as ura
 
     if not role_ids:
         return {}
-    rows = await conn.execute_core(
-        select(ura.c.role_id, ura.c.user_id).where(ura.c.role_id.in_(sorted(role_ids)), in_force())
+    query = select(ura.c.role_id, ura.c.user_id).where(
+        ura.c.role_id.in_(sorted(role_ids)), in_force()
     )
+    if principal is not None:
+        query = query.where(ura.c.user_id == principal)
+    rows = await conn.execute_core(query)
     out: dict[str, set[str]] = {}
     for r in rows.fetchall():
         out.setdefault(r.role_id, set()).add(r.user_id)
@@ -269,16 +275,23 @@ async def _role_members(conn: "Connection", role_ids: Collection[str]) -> dict[s
 
 
 async def _holders_of(
-    conn: "Connection", kind: OwnedKind, objects: Mapping[str, Paths]
+    conn: "Connection",
+    kind: OwnedKind,
+    objects: Mapping[str, Paths],
+    principal: str | None = None,
 ) -> dict[str, tuple[str, ...]]:
     """object id -> the people holding ``kind``'s capability on it now, for ``objects`` spelled as
     given: a person's own row naming it, or a row an Owner or Steward field wrote on a role they
-    hold a grant of (REQ-2219, amended 2026-11-23: a role named holds it for every holder)."""
+    hold a grant of (REQ-2219, amended 2026-11-23: a role named holds it for every holder).
+    ``principal`` reads only that person's rows, grants and rules: whether they hold an object
+    depends on nothing of anyone else's."""
     from provisa.entitlements.store import load_role_owner_rows
 
     capabilities = await _role_capabilities(conn)
     people: dict[str, _Person] = {}
-    for period in history.current(await history.entitlement_periods(conn, kind=kind.list_kind)):
+    for period in history.current(
+        await history.entitlement_periods(conn, kind=kind.list_kind, principal=principal)
+    ):
         row = period.row
         if row.principal is None:
             continue  # a role's own rows (source ``role``) are read below, for its holders
@@ -297,13 +310,13 @@ async def _holders_of(
         for role_id, rows in (await load_role_owner_rows(conn)).items()
     }
     role_rows = {role_id: rows for role_id, rows in role_rows.items() if rows}
-    for role_id, members in (await _role_members(conn, role_rows.keys())).items():
-        for principal in members:
-            person = people.setdefault(principal, _Person([], {}, set()))
+    for role_id, members in (await _role_members(conn, role_rows.keys(), principal)).items():
+        for member in members:
+            person = people.setdefault(member, _Person([], {}, set()))
             person.lists.extend(role_rows[role_id])
             person.roles.add(role_id)
     rules: dict[str, list[ExpiryRule]] = {}
-    for period in history.current(await history.expiry_periods(conn)):
+    for period in history.current(await history.expiry_periods(conn, principal=principal)):
         row = period.row
         rules.setdefault(row.principal, []).append(
             ExpiryRule(
@@ -315,19 +328,19 @@ async def _holders_of(
         )
     now = datetime.now(UTC)
     out: dict[str, list[str]] = {}
-    for principal in sorted(people):
-        person = people[principal]
+    for holder in sorted(people):
+        person = people[holder]
         for oid in _owned(
             person.lists,
             person.idp,
-            rules.get(principal, ()),
+            rules.get(holder, ()),
             sorted(person.roles),
             lambda role_id: kind.capability in capabilities.get(role_id, frozenset()),
             objects,
             now,
             kind,
         ):
-            out.setdefault(oid, []).append(principal)
+            out.setdefault(oid, []).append(holder)
     return {oid: tuple(people_) for oid, people_ in out.items()}
 
 
@@ -360,15 +373,21 @@ async def named(conn: "Connection", kind: OwnedKind, paths: Paths) -> Named:
 
 
 async def _named_each(
-    conn: "Connection", kind: OwnedKind, objects: Mapping[str, Paths]
+    conn: "Connection",
+    kind: OwnedKind,
+    objects: Mapping[str, Paths],
+    principal: str | None = None,
 ) -> dict[str, Named]:
     """object id -> what its field names now (:func:`named`), for ``objects`` spelled as given,
-    reading the rows once."""
+    reading the rows once. ``principal`` reads only that person's rows: what the fields name of
+    them, and no role."""
     from provisa.entitlements.lists import ROLE
 
     people: dict[str, set[str]] = {oid: set() for oid in objects}
     roles: dict[str, set[str]] = {oid: set() for oid in objects}
-    for p in history.current(await history.entitlement_periods(conn, kind=kind.list_kind)):
+    for p in history.current(
+        await history.entitlement_periods(conn, kind=kind.list_kind, principal=principal)
+    ):
         row = p.row
         if row.capability != kind.capability:
             continue
@@ -439,12 +458,18 @@ async def unstewarded_domains(conn: "Connection") -> list[str]:
 _OBJECT_KIND = {PRODUCTS: "data_product", DOMAINS: "domain", RELATIONSHIPS: "relationship"}
 
 
-async def write_object_owners(conn: "Connection") -> None:
+async def write_object_owners(conn: "Connection", principal: str | None = None) -> None:
     """Replace object_owners with every object's owners and stewards now: the principals its
     field names, people and roles as entered (:func:`named`; ``named``), beside the people who
     hold the capability on it (:func:`holders`; ``holds``), a named role's holders among them.
     What the meta views read of owners and stewards (REQ-2219, amended 2026-11-24). Derived
-    state: a model build and a saved Owner or Steward field are its writers."""
+    state: a model build and a saved Owner or Steward field are its writers.
+
+    ``principal`` replaces only that person's rows, reading only their entitlement rows, grants
+    and expiry rules: what one person's sign-in, redemption or role grant changes. A person's
+    rows depend on nothing of anyone else's, so the result is the full rewrite's whenever the
+    rest of the table was current. A change that can move many owners (a model build, a role's
+    own rows, an Owner or Steward field) rewrites the whole table."""
     from sqlalchemy import delete, insert
 
     from provisa.core.repositories.build_output import replacing_build_output
@@ -453,8 +478,9 @@ async def write_object_owners(conn: "Connection") -> None:
     rows: list[dict[str, Any]] = []
     for kind, name in _OBJECT_KIND.items():
         owned = await owned_objects(conn, kind)
-        held = await _holders_of(conn, kind, owned.reach)
-        fields = await _named_each(conn, kind, owned.exact)  # fields_of, over the same read
+        held = await _holders_of(conn, kind, owned.reach, principal)
+        # fields_of, over the same read; with ``principal`` it names no role (no one's rows).
+        fields = await _named_each(conn, kind, owned.exact, principal)
         for oid in sorted(owned.reach):
             field = fields[oid]
             holding = set(held.get(oid, ()))
@@ -481,7 +507,15 @@ async def write_object_owners(conn: "Connection") -> None:
                 for role in field.roles
             )
     async with replacing_build_output(conn, object_owners):
-        await conn.execute_core(delete(object_owners))
+        if principal is None:
+            await conn.execute_core(delete(object_owners))
+        else:
+            await conn.execute_core(
+                delete(object_owners).where(
+                    object_owners.c.principal_kind == "person",
+                    object_owners.c.principal == principal,
+                )
+            )
         if rows:
             await conn.execute_core(insert(object_owners).values(rows))
 
@@ -929,5 +963,7 @@ async def reload_owner_rows(conn: "Connection", state: Any, people: Iterable[str
     state.role_owner_rows = await store.load_role_owner_rows(conn)
     state.data_product_refs = await data_product_repo.refs(conn)
     for principal in sorted(set(people)):
-        # Each rewrites object_owners from the store as well (effective_store.write_person).
+        # Each rewrites that person's object_owners rows (effective_store.write_person).
         await effective_store.write_person(conn, state, principal)
+    # The field may have named or dropped a role, whose rows are no person's: the whole table.
+    await write_object_owners(conn)

@@ -83,7 +83,9 @@ describe("ChatPanel — attaching a file (REQ-2114)", () => {
 
     const file = new File(["id,total\n1,9.5\n"], "orders.csv", { type: "text/csv" });
     fireEvent.change(attachInput(), { target: { files: [file] } });
-    await waitFor(() => expect(screen.getByTestId("chat-panel-attachment")).toHaveTextContent("orders.csv"));
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-panel-attachment")).toHaveTextContent("orders.csv"),
+    );
 
     fireEvent.change(screen.getByPlaceholderText(/Ask me a question/), {
       target: { value: "Summarize this CSV" },
