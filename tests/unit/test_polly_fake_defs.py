@@ -198,7 +198,10 @@ async def test_a_json_column_refuses_a_method_fake_and_its_family_says_so_first(
             {"table_id": employee["id"], "column": "contact", "fake": "email()"},
         )
     assert refused.value.code == "schema.fake_refused"
-    assert "employee.contact: email() makes str values" in str(refused.value)
+    assert refused.value.detail == (
+        "employee.contact: email() makes text; a JSON column takes categories, sql, sql_group "
+        "or sequence"
+    )
     with pytest.raises(ValueError, match="table 'employee' has no column 'contact.email'"):
         await _tool(
             demo,
@@ -290,8 +293,8 @@ async def test_the_whole_request_saves_four_fakes_and_states_the_two_refusals(de
     [text] = [e["text"] for e in events if e["type"] == "text"]
     assert text == (
         "\n\n(The model returned no answer. These tool calls failed:\n"
-        "- set_column_fake: Error: 422: employee.contact: email() makes str values, which a other "
-        "column cannot hold\n"
-        "- set_column_fake: Error: 422: employees.contact: email() makes str values, which a other "
-        "column cannot hold)"
+        "- set_column_fake: Error: 422: employee.contact: email() makes text; a JSON column takes "
+        "categories, sql, sql_group or sequence\n"
+        "- set_column_fake: Error: 422: employees.contact: email() makes text; a JSON column takes "
+        "categories, sql, sql_group or sequence)"
     )
