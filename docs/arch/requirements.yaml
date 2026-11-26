@@ -98115,7 +98115,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     catalog can tell production assets from others; the environment switcher shows the stage beside each
     environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
-  status: complete
+  status: in-progress
   tests:
   - tests/unit/test_relationship_review.py
   - tests/integration/test_relationship_review_e2e.py
@@ -98137,7 +98137,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     types among the new tables, and from joins between the new tables and tables already in the model,
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
-    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)'
+    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.) (Amended 2026-11-26, maintainer: the source setup stepper records each step''s outcome per source on the server, shared by every user and environment: tables registered or skipped; relationships found, none found, or skipped; query opened or done. A step is done once it has an outcome, not only once it produces an object. Each step offers one way past it on the step itself: Register tables beside Skip; Discover relationships finishes either way after a run (found: Review; none found: Continue) and offers Skip before a run; Query finishes on opening the explorer or Done. A Finish setup control at the strip''s end is always visible while the strip is active and closes every remaining step as skipped. With every step decided the strip collapses to one Setup complete line with Run setup again; it never reopens on its own, except that newly registered tables with no relationship show as a one-line hint on the collapsed line. There is no separate do-not-show-again control.)'
 - id: REQ-2263
   status: proposed
   target: 2026-Q4
