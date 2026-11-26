@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "משתמשים מקומיים",
     "attributesTab": "מאפיינים",
-    "accessTab": "גישה"
+    "accessTab": "גישה",
+    "filterPlaceholder": "סינון חברים",
+    "inviteButton": "הזמנה",
+    "closeInvite": "סגירת טופס ההזמנה"
   }
 }

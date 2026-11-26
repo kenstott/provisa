@@ -15,7 +15,7 @@
 // REQ-2200: Go module proxies are a fourth list, beside npm, PyPI and Git.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
 import en from "../i18n/locales/en/packageRegistries.json";
 
 const auth = vi.hoisted(() => ({
@@ -70,6 +70,9 @@ beforeEach(() => {
   remove.mockReset().mockResolvedValue(undefined);
 });
 
+// A panel opened in one test is remembered (REQ-2260); each test starts from none.
+beforeEach(() => localStorage.clear());
+
 describe("Admin › Package registries", () => {
   it("is an organisation setting in the admin navigation", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
@@ -77,40 +80,46 @@ describe("Admin › Package registries", () => {
     expect(item?.capability).toBe("org_settings");
   });
 
-  it("shows each entry's fields as they were entered, under npm or Git", async () => {
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByTestId("package-registry-r1")).toBeInTheDocument();
-    expect(screen.getByTestId("package-registry-r1-address")).toHaveValue(NPM.address);
-    expect(screen.getByTestId("package-registry-r1-scope")).toHaveValue("@acme");
-    expect(screen.getByTestId("package-registry-r1-credential")).toHaveValue(NPM.credential);
-    expect(screen.getByTestId("package-registries-git")).toContainElement(
-      screen.getByTestId("package-registry-g1"),
+  it("lists every kind's entries in one list, a row opening the entry as entered", async () => {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    const row = await screen.findByTestId("package-registry-r1");
+    expect(row).toHaveTextContent(en.packageRegistries.kind_npm);
+    expect(screen.getByTestId("package-registry-g1")).toHaveTextContent(
+      en.packageRegistries.kind_git,
     );
+    fireEvent.click(row);
+    const read = await screen.findByTestId("package-registry-read-r1");
+    expect(read).toHaveTextContent(NPM.address);
+    expect(read).toHaveTextContent("@acme");
+    fireEvent.click(screen.getByTestId("package-registry-g1"));
     // A Git host has no scope and no mirror.
-    expect(screen.queryByTestId("package-registry-g1-scope")).toBeNull();
-    expect(screen.queryByTestId("package-registry-g1-mirror")).toBeNull();
+    const git = await screen.findByTestId("package-registry-read-g1");
+    expect(git).not.toHaveTextContent(en.packageRegistries.scope);
+    expect(git).not.toHaveTextContent(en.packageRegistries.mirror);
   });
 
-  it("says the public npm registry is used when no npm registry is entered", async () => {
+  it("says the public registries are used when none is entered", async () => {
     list.mockResolvedValue([]);
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByText(en.packageRegistries.npmNone)).toBeInTheDocument();
+    render(<PackageRegistriesTab title="Package Registries" />);
+    expect(await screen.findByText(en.packageRegistries.none)).toBeInTheDocument();
   });
 
-  it("adds an empty entry that is saved only once it has its address and credential", async () => {
+  it("adds an npm mirror, checking its address and credential on save", async () => {
     list.mockResolvedValue([]);
-    render(<PackageRegistriesTab />);
-    fireEvent.click(await screen.findByTestId("package-registries-add-npm"));
-    const card = await screen.findByTestId(/^package-registry-new-npm-\d+$/);
-    const id = card.getAttribute("data-testid") as string;
-    expect(screen.getByTestId(`${id}-save`)).toBeDisabled();
-    fireEvent.change(screen.getByTestId(`${id}-address`), {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registries-add"));
+    // REQ-2277: Save is offered; the required fields are checked when it is pressed.
+    fireEvent.click(await screen.findByTestId("package-registry-save"));
+    expect((await screen.findAllByText("Required")).length).toBe(2);
+    expect(add).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId("package-registry-address"), {
       target: { value: "https://mirror.acme.test/" },
     });
-    expect(screen.getByTestId(`${id}-save`)).toBeDisabled();
-    fireEvent.change(screen.getByTestId(`${id}-credential`), { target: { value: "tok" } });
-    fireEvent.click(screen.getByTestId(`${id}-mirror`));
-    fireEvent.click(screen.getByTestId(`${id}-save`));
+    fireEvent.change(screen.getByTestId("package-registry-credential"), {
+      target: { value: "tok" },
+    });
+    fireEvent.click(screen.getByTestId("package-registry-mirror"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("acme", {
         kind: "npm",
@@ -123,22 +132,26 @@ describe("Admin › Package registries", () => {
     );
   });
 
+  /** Opens the create form on `kind`. */
+  const createKind = async (label: string) => {
+    fireEvent.click(await screen.findByTestId("package-registries-add"));
+    fireEvent.click(await screen.findByTestId("package-registry-kind"));
+    fireEvent.click(await screen.findByRole("option", { name: label, hidden: true }));
+  };
+
   it("adds a PyPI index with no scope, which may be the default index", async () => {
     list.mockResolvedValue([]);
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByTestId("package-registries-pypi-none")).toHaveTextContent(
-      en.packageRegistries.pypiNone,
-    );
-    fireEvent.click(screen.getByTestId("package-registries-add-pypi"));
-    const card = await screen.findByTestId(/^package-registry-new-pypi-\d+$/);
-    const id = card.getAttribute("data-testid") as string;
-    expect(screen.queryByTestId(`${id}-scope`)).toBeNull();
-    fireEvent.change(screen.getByTestId(`${id}-address`), {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    await createKind(en.packageRegistries.kind_pypi);
+    expect(screen.queryByTestId("package-registry-scope")).toBeNull();
+    fireEvent.change(screen.getByTestId("package-registry-address"), {
       target: { value: "https://pypi.acme.test/simple/" },
     });
-    fireEvent.change(screen.getByTestId(`${id}-credential`), { target: { value: "tok" } });
-    fireEvent.click(screen.getByTestId(`${id}-mirror`));
-    fireEvent.click(screen.getByTestId(`${id}-save`));
+    fireEvent.change(screen.getByTestId("package-registry-credential"), {
+      target: { value: "tok" },
+    });
+    fireEvent.click(screen.getByTestId("package-registry-mirror"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("acme", {
         kind: "pypi",
@@ -154,23 +167,19 @@ describe("Admin › Package registries", () => {
   it("adds a Go module proxy with no scope, which may be the default proxy", async () => {
     // REQ-2200: Go modules have no scope; the credential is the go command's user:password.
     list.mockResolvedValue([]);
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByTestId("package-registries-goproxy-none")).toHaveTextContent(
-      en.packageRegistries.goproxyNone,
-    );
-    fireEvent.click(screen.getByTestId("package-registries-add-goproxy"));
-    const card = await screen.findByTestId(/^package-registry-new-goproxy-\d+$/);
-    const id = card.getAttribute("data-testid") as string;
-    expect(screen.queryByTestId(`${id}-scope`)).toBeNull();
-    expect(card).toHaveTextContent(en.packageRegistries.goproxyCredential);
-    fireEvent.change(screen.getByTestId(`${id}-address`), {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    await createKind(en.packageRegistries.kind_goproxy);
+    const form = screen.getByTestId("package-registry-form");
+    expect(screen.queryByTestId("package-registry-scope")).toBeNull();
+    expect(form).toHaveTextContent(en.packageRegistries.goproxyCredential);
+    fireEvent.change(screen.getByTestId("package-registry-address"), {
       target: { value: "https://goproxy.acme.test" },
     });
-    fireEvent.change(screen.getByTestId(`${id}-credential`), {
+    fireEvent.change(screen.getByTestId("package-registry-credential"), {
       target: { value: "ada:made-up-proxy-token" },
     });
-    fireEvent.click(screen.getByTestId(`${id}-mirror`));
-    fireEvent.click(screen.getByTestId(`${id}-save`));
+    fireEvent.click(screen.getByTestId("package-registry-mirror"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("acme", {
         kind: "goproxy",
@@ -186,29 +195,25 @@ describe("Admin › Package registries", () => {
   it("adds a Cargo registry by its sparse index and token, as the default", async () => {
     // REQ-2227: crates have no scope; the credential is the token cargo sends.
     list.mockResolvedValue([]);
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByTestId("package-registries-cargo-none")).toHaveTextContent(
-      en.packageRegistries.cargoNone,
-    );
-    fireEvent.click(screen.getByTestId("package-registries-add-cargo"));
-    const card = await screen.findByTestId(/^package-registry-new-cargo-\d+$/);
-    const id = card.getAttribute("data-testid") as string;
-    expect(screen.queryByTestId(`${id}-scope`)).toBeNull();
-    expect(card).toHaveTextContent(en.packageRegistries.cargoAddress);
-    expect(card).toHaveTextContent(en.packageRegistries.cargoCredential);
-    expect(card).toHaveTextContent(en.packageRegistries.cargoMirror);
-    expect(screen.getByTestId(`${id}-address`)).toHaveAttribute(
+    render(<PackageRegistriesTab title="Package Registries" />);
+    await createKind(en.packageRegistries.kind_cargo);
+    const form = screen.getByTestId("package-registry-form");
+    expect(screen.queryByTestId("package-registry-scope")).toBeNull();
+    expect(form).toHaveTextContent(en.packageRegistries.cargoAddress);
+    expect(form).toHaveTextContent(en.packageRegistries.cargoCredential);
+    expect(form).toHaveTextContent(en.packageRegistries.cargoMirror);
+    expect(screen.getByTestId("package-registry-address")).toHaveAttribute(
       "placeholder",
       "sparse+https://cargo.example.com/index/",
     );
-    fireEvent.change(screen.getByTestId(`${id}-address`), {
+    fireEvent.change(screen.getByTestId("package-registry-address"), {
       target: { value: "sparse+https://cargo.acme.test/index/" },
     });
-    fireEvent.change(screen.getByTestId(`${id}-credential`), {
+    fireEvent.change(screen.getByTestId("package-registry-credential"), {
       target: { value: "made-up-cargo-token" },
     });
-    fireEvent.click(screen.getByTestId(`${id}-mirror`));
-    fireEvent.click(screen.getByTestId(`${id}-save`));
+    fireEvent.click(screen.getByTestId("package-registry-mirror"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("acme", {
         kind: "cargo",
@@ -221,12 +226,17 @@ describe("Admin › Package registries", () => {
     );
   });
 
-  it("replaces a kept entry by its id", async () => {
-    render(<PackageRegistriesTab />);
-    fireEvent.change(await screen.findByTestId("package-registry-r1-address"), {
+  it("replaces a kept entry by its id, from its panel's Edit", async () => {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-r1"));
+    fireEvent.click(await screen.findByTestId("package-registry-edit-r1"));
+    expect(screen.getByTestId("package-registry-address")).toHaveValue(NPM.address);
+    expect(screen.getByTestId("package-registry-scope")).toHaveValue("@acme");
+    expect(screen.getByTestId("package-registry-credential")).toHaveValue(NPM.credential);
+    fireEvent.change(screen.getByTestId("package-registry-address"), {
       target: { value: "https://npm2.acme.test/" },
     });
-    fireEvent.click(screen.getByTestId("package-registry-r1-save"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith("acme", "r1", {
         kind: "npm",
@@ -239,28 +249,43 @@ describe("Admin › Package registries", () => {
     );
   });
 
-  it("removes a kept entry, and drops a new one without asking the server", async () => {
-    render(<PackageRegistriesTab />);
-    fireEvent.click(await screen.findByTestId("package-registry-g1-remove"));
+  it("duplicates a kept entry into a new one", async () => {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-g1"));
+    fireEvent.click(await screen.findByTestId("package-registry-duplicate-g1"));
+    expect(screen.getByTestId("package-registry-address")).toHaveValue(GIT.address);
+    fireEvent.click(screen.getByTestId("package-registry-save"));
+    await waitFor(() =>
+      expect(add).toHaveBeenCalledWith("acme", expect.objectContaining({ kind: "git" })),
+    );
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("removes a kept entry once confirmed", async () => {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-g1"));
+    fireEvent.click(await screen.findByTestId("package-registry-remove-g1"));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
     await waitFor(() => expect(remove).toHaveBeenCalledWith("acme", "g1"));
-    fireEvent.click(screen.getByTestId("package-registries-add-git"));
-    const card = await screen.findByTestId(/^package-registry-new-git-\d+$/);
-    fireEvent.click(screen.getByTestId(`${card.getAttribute("data-testid")}-remove`));
-    await waitFor(() => expect(screen.queryByTestId(/^package-registry-new-git-/)).toBeNull());
-    expect(remove).toHaveBeenCalledTimes(1);
   });
 
   it("shows each entry's certificate authority as entered, and sends it on save", async () => {
-    render(<PackageRegistriesTab />);
-    expect(await screen.findByTestId("package-registry-g1-ca-bundle")).toHaveValue(
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-g1"));
+    expect(await screen.findByTestId("package-registry-read-g1")).toHaveTextContent(
       "${secret:git_ca}",
     );
-    expect(screen.getByTestId("package-registry-r1-ca-bundle")).toHaveValue("");
+    fireEvent.click(screen.getByTestId("package-registry-r1"));
+    fireEvent.click(await screen.findByTestId("package-registry-edit-r1"));
+    expect(screen.getByTestId("package-registry-ca-bundle")).toHaveValue("");
     const pem = "-----BEGIN CERTIFICATE-----\nMIIBmade-up\n-----END CERTIFICATE-----";
-    fireEvent.change(screen.getByTestId("package-registry-r1-ca-bundle"), {
+    fireEvent.change(screen.getByTestId("package-registry-ca-bundle"), {
       target: { value: pem },
     });
-    fireEvent.click(screen.getByTestId("package-registry-r1-save"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
         "acme",
@@ -271,11 +296,13 @@ describe("Admin › Package registries", () => {
   });
 
   it("names Artifactory and each Git provider's user in its help", async () => {
-    render(<PackageRegistriesTab />);
-    await screen.findByTestId("package-registry-r1");
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-g1"));
+    await screen.findByTestId("package-registry-read-g1");
     expect(en.packageRegistries.npmCredentialHelp).toMatch(/Artifactory/);
     expect(en.packageRegistries.caBundleHelp).toMatch(/Artifactory/);
     expect(en.packageRegistries.gitCredentialHelp).toMatch(/x-access-token.*GitLab.*x-token-auth/s);
+    fireEvent.click(screen.getByTestId("package-registry-edit-g1"));
     // Each help is the name of its field's (?) glyph.
     expect(
       screen.getAllByRole("img", { name: en.packageRegistries.gitCredentialHelp }).length,
@@ -285,13 +312,13 @@ describe("Admin › Package registries", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("shows the server's refusal beside the entry", async () => {
+  it("shows the server's refusal at the form's Save", async () => {
     replace.mockRejectedValue(new Error("https://other.test/ is already the mirror"));
-    render(<PackageRegistriesTab />);
-    fireEvent.click(await screen.findByTestId("package-registry-r1-mirror"));
-    fireEvent.click(screen.getByTestId("package-registry-r1-save"));
-    expect(await screen.findByTestId("package-registry-r1-said")).toHaveTextContent(
-      "already the mirror",
-    );
+    render(<PackageRegistriesTab title="Package Registries" />);
+    fireEvent.click(await screen.findByTestId("package-registry-r1"));
+    fireEvent.click(await screen.findByTestId("package-registry-edit-r1"));
+    fireEvent.click(screen.getByTestId("package-registry-mirror"));
+    fireEvent.click(screen.getByTestId("package-registry-save"));
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent("already the mirror");
   });
 });

@@ -19,7 +19,8 @@ other ends of, each speaking the host protocol (provisa/codesource/worker.py), a
 on one is run by Provisa on the source's worker in its pool (provisa/codesource/pgwire_sidecar.py).
 So a read through the sidecar is the same call, on the same worker, as any other read of the
 source. Its name tables (provisa/codesource/names.py) come on stdin, as JSON; ``bounds`` are the
-operator's bounds on its DuckDB (``memory_mb``, ``threads``, ``spill_cap_mb``), as JSON.
+operator's bounds on its DuckDB (``memory_mb``, ``threads``, ``spill_cap_mb``), as JSON, which
+it asks Provisa for again, as they are then, before each statement it answers.
 
 It serves plain PostgreSQL on ``<bind host>:<port>`` and checks no credentials, as the other
 pgwire replicas do (provisa/federation/pgwire_replica.py): it is bound to loopback, or to the
@@ -79,24 +80,29 @@ def main(argv: list[str]) -> int:
     import importlib
 
     front = importlib.import_module("front")
-    residual = importlib.import_module("residual")
-    given = json.loads(bounds)
     Path(spill).mkdir(parents=True, exist_ok=True)
-    residual.configure(
-        memory_mb=int(given["memory_mb"]),
-        threads=int(given["threads"]),
-        spill_cap_mb=int(given["spill_cap_mb"]),
-        spill_dir=spill,
-    )
+    # The bounds it starts with; it asks for them again before each statement (settle_bounds).
+    given = front.Bounds(Path(spill), spill)
+    given.apply(json.loads(bounds))
     names = json.loads(sys.stdin.read())
 
     class _ProvisaWorker(front.Worker):
         """front's worker over the connections Provisa gave: no process of its own."""
 
         def __init__(self, conns: list[socket.socket]) -> None:
-            self.bounds = None
+            self.bounds = given
             self.process = None
             self._attach(conns)
+
+        def settle_bounds(self) -> None:
+            # REQ-2267: before each statement, the operator's bounds as Provisa has them now.
+            lane, own = self._lease()
+            try:
+                lane.send({"op": "bounds", "id": own})
+                for each in self._frames(lane, own):
+                    self.bounds.apply(each["bounds"])  # its one message, the end
+            finally:
+                self._release(lane)
 
     worker = _ProvisaWorker(_connections(connections))
     server = _Server((bind, int(port)), worker, names)

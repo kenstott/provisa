@@ -147,7 +147,7 @@ Come `relationships`, ma include le voci sintetiche `meta:%`. Usata dall'ERD del
 Ogni `RelationshipType` espone:
 
 - **`autoSuggested → Boolean`** — se la relazione è stata suggerita dall'analisi FK (l'`id` inizia con `fk__`).
-- **`physicalName → String`** — il nome della relazione sui piani SQL e gRPC (il parametro `?include=`). Derivato lato server; i client non devono traslitterare l'alias GraphQL.
+- **`physicalName → String`** — il nome API della relazione, mostrato come Nome API nell'interfaccia: il nome che accettano `?include=` di REST e JSON:API e l'include di gRPC. L'SQL semplice non nomina alcuna relazione. Derivato lato server; i client non devono traslitterare l'alias GraphQL.
 
 ---
 

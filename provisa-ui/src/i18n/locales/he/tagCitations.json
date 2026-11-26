@@ -17,7 +17,7 @@
     "reviewHelp": "ציטוט של תג זה דורש בדיקה: הסעיף שלו השתנה או נמחק.",
     "definitionReviewHelp": "סעיף שמגדיר תג זה השתנה או נמחק. בדקו את הציטוט שלו.",
     "gap": "אין ציטוט",
-    "gapHelp": "תג זה דורש ציטוט, ולשיוך הזה אין אף אחד.",
+    "gapHelp": "תגית זו דורשת ציטוט לכל שיוך.",
     "definedBy": "מוגדר ב-{{title}}",
     "definedByLabel": "מוגדר ב",
     "requiresCitationLabel": "שיוכים דורשים ציטוט",
@@ -28,9 +28,9 @@
     "citedByDefinition": "ההגדרה שלו",
     "citedByGone": "נמחק",
     "citedByWholeDocument": "המסמך כולו",
-    "citationsLabel": "מדוע התגית על האובייקט הזה",
-    "neededForCoverage": "נדרש לכיסוי",
-    "definitionLabel": "מדוע התגית הזו קיימת",
-    "definitionDesc": "המסמך והסעיף שמסבירים מדוע התגית הזו קיימת. מדוע היא מוצמדת לאובייקט מסוים נכתב בציטוטים של אותו אובייקט."
+    "citationsLabel": "ציטוט",
+    "neededForCoverage": "נדרש",
+    "definitionLabel": "מקור ההגדרה",
+    "definitionDesc": "המסמך בספרייה והסעיף שמגדירים את התגית הזו. ציטוט עבור שיוך מסוים נוסף לאותו שיוך."
   }
 }

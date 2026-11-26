@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "Lokale gebruikers",
     "attributesTab": "Kenmerken",
-    "accessTab": "Toegang"
+    "accessTab": "Toegang",
+    "filterPlaceholder": "Leden filteren",
+    "inviteButton": "Uitnodigen",
+    "closeInvite": "Uitnodigingsformulier sluiten"
   }
 }

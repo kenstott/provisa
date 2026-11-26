@@ -150,7 +150,10 @@ export function OpenAsQuery({
       </Menu.Target>
       <Menu.Dropdown>
         {item("graphql", unavailable, () => navigate("/query", { state: { query } }))}
-        {item("sql", sqlWhy, () => navigate("/sql", { state: { sql: current?.result?.sql } }))}
+        {item("sql", sqlWhy, () =>
+          // A fresh SQL Explorer tab, run at once, so the results shown are always this query's.
+          navigate("/sql", { state: { sql: current?.result?.sql, autoRun: true } }),
+        )}
         {item("cypher", cypherWhy, () =>
           navigate("/graph", { state: { query: current?.result?.cypher } }),
         )}

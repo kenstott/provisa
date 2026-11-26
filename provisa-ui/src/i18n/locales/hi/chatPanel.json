@@ -35,6 +35,11 @@
     "graphCaption": "नोड: {{nodes}} · संबंध: {{relationships}}",
     "downloadPng": "PNG डाउनलोड करें",
     "openOnGraphPage": "ग्राफ़ पेज पर खोलें",
-    "choiceClosed": "(बिना चुने बंद किया गया)"
+    "choiceClosed": "(बिना चुने बंद किया गया)",
+    "attach": "Polly के पढ़ने के लिए फ़ाइल संलग्न करें: CSV, API स्पेसिफ़िकेशन, कोड आर्काइव या दस्तावेज़, अधिकतम {{limit}} MB",
+    "attachTooLarge": "{{name}} {{limit}} MB से बड़ी है, जो Polly के लिए संलग्न फ़ाइल का अधिकतम आकार है।",
+    "attachTooMany": "एक बातचीत में {{max}} संलग्न फ़ाइलें रह सकती हैं। दूसरी संलग्न करने के लिए एक हटाएँ।",
+    "removeAttachment": "{{name}} हटाएँ",
+    "download": "डाउनलोड करें"
   }
 }

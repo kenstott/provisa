@@ -128,7 +128,7 @@ function PercentField({
   onChange: (value: number) => void;
 }) {
   return (
-    <FormField size="short" hint={hint}>
+    <FormField size="medium" hint={hint}>
       <NumberInput
         label={label}
         data-testid={testId}
@@ -164,7 +164,7 @@ function CountField({
   onChange: (value: number) => void;
 }) {
   return (
-    <FormField size="short" hint={hint}>
+    <FormField size="medium" hint={hint}>
       <NumberInput
         label={label}
         data-testid={testId}

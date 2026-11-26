@@ -1161,6 +1161,113 @@ def test_merge_reads_a_leg_from_wherever_its_artifact_landed_and_fails_on_a_miss
     assert json.loads(out.read_text())["guaranteed"]["functions"] == []
 
 
+def test_a_shard_is_every_nth_overload_and_the_shards_cover_the_leg_once():
+    fns = list(range(10))
+    parts = [support.shard_of(fns, (k, 3)) for k in (1, 2, 3)]  # type: ignore[arg-type]
+    assert parts == [[0, 3, 6, 9], [1, 4, 7], [2, 5, 8]]
+    assert sorted(x for part in parts for x in part) == fns
+    assert support.parse_shard("2/3") == (2, 3)
+    for bad in ("0/3", "4/3", "3", "a/b"):
+        with pytest.raises(Exception, match="a shard is k/n"):
+            support.parse_shard(bad)
+
+
+def _shard(engine: str, k: int, n: int, *entries: dict, seconds: float = 10.0) -> dict[str, Any]:
+    return {**_report(engine, *entries), "seconds": seconds, "shard": f"{k}/{n}"}
+
+
+def _write_leg(root: Path, leg: str, name: str, body: dict) -> None:
+    (root / f"function-support-{leg}").mkdir(parents=True, exist_ok=True)
+    (root / f"function-support-{leg}" / name).write_text(json.dumps(body))
+
+
+def test_the_merge_joins_a_sharded_legs_shards_into_the_one_result_of_the_whole_leg(tmp_path):
+    whole_in, shards_in = tmp_path / "whole", tmp_path / "shards"
+    abs_, mod, ceil = _entry("abs", "pass"), _entry("mod", "pass"), _entry("ceil", "wrong_answer")
+    _write_leg(
+        whole_in, "t", "function-support-t.json", {**_report("t", abs_, mod, ceil), "seconds": 30}
+    )
+    _write_leg(
+        shards_in,
+        "t.shard-1-of-2",
+        "function-support-t.shard-1-of-2.json",
+        _shard("t", 1, 2, abs_, ceil, seconds=12),
+    )
+    _write_leg(
+        shards_in,
+        "t.shard-2-of-2",
+        "function-support-t.shard-2-of-2.json",
+        _shard("t", 2, 2, mod, seconds=14),
+    )
+    joined = support.leg_report(shards_in, "t")
+    assert joined is not None
+    assert joined["server_gone"] is None and joined["seconds"] == 14
+    assert joined["counts"] == support.counts([abs_, mod, ceil])
+    out_w, out_s = tmp_path / "w.json", tmp_path / "s.json"
+    assert support.merge(["t"], whole_in, out_w, tmp_path / "w.md") == 0
+    assert support.merge(["t"], shards_in, out_s, tmp_path / "s.md") == 0
+    assert json.loads(out_w.read_text()) == json.loads(out_s.read_text())
+
+
+def test_a_shard_that_left_no_result_leaves_the_leg_incomplete_with_its_reason(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    root = tmp_path / "in"
+    _write_leg(
+        root,
+        "a.shard-1-of-2",
+        "function-support-a.shard-1-of-2.json",
+        _shard("a", 1, 2, _entry("abs", "pass")),
+    )
+    _write_leg(
+        root,
+        "a.shard-2-of-2",
+        "leg-failure-a.shard-2-of-2.json",
+        {"engine": "a.shard-2-of-2", "reason": "a.shard-2-of-2: the leg failed measuring"},
+    )
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    assert support.merge(["a"], root, out, md, legs, refused={}) == 1
+    doc = json.loads(out.read_text())
+    assert doc["engines_incomplete"] == ["a"]
+    gone = support.leg_report(root, "a")
+    assert gone is not None
+    assert gone["server_gone"] == (
+        "shard 2/2 left no result: a.shard-2-of-2: the leg failed measuring"
+    )
+
+
+def test_a_sharded_leg_whose_every_shard_failed_reports_each_shards_reason(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    root = tmp_path / "in"
+    for k in (1, 2):
+        _write_leg(
+            root,
+            f"b.shard-{k}-of-2",
+            f"leg-failure-b.shard-{k}-of-2.json",
+            {"engine": f"b.shard-{k}-of-2", "reason": f"b.shard-{k}-of-2: failed"},
+        )
+    _write_leg(root, "a", "function-support-a.json", _report("a", _entry("abs", "pass")))
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    assert support.merge(["a", "b"], root, out, md, legs, refused={}) == 1
+    assert json.loads(out.read_text())["leg_failures"] == {
+        "b": "b.shard-1-of-2: failed; b.shard-2-of-2: failed"
+    }
+
+
+def test_the_merge_refuses_a_leg_with_a_whole_result_and_shards(tmp_path):
+    root = tmp_path / "in"
+    _write_leg(root, "a", "function-support-a.json", _report("a", _entry("abs", "pass")))
+    _write_leg(
+        root,
+        "a.shard-1-of-1",
+        "function-support-a.shard-1-of-1.json",
+        _shard("a", 1, 1, _entry("abs", "pass")),
+    )
+    with pytest.raises(SystemExit, match="whole leg and of shards"):
+        support.leg_report(root, "a")
+
+
 LEGS = {
     "legs": [
         {"engine": "a", "lane": "free", "image": "a:1"},

@@ -14,6 +14,10 @@
     "defaultHelp": "除非建置指定其他登錄庫，否則推送到此處。一個組織只有一個預設登錄庫。",
     "saved": "已儲存",
     "removed": "已刪除",
-    "remove": "刪除"
+    "remove": "刪除",
+    "filterPlaceholder": "篩選登錄庫",
+    "closeForm": "關閉表單",
+    "edit": "編輯 {{name}}",
+    "removeConfirm": "要刪除 {{name}} 嗎？推送到這裡的建置將無法再推送其映像。"
   }
 }

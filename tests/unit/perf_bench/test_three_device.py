@@ -1127,7 +1127,10 @@ def test_a_change_to_any_seed_file_changes_the_seed_hash(tmp_path: Path, rel: st
     ("old", "new"),
     [
         ("image: mongo:7", "image: mongo:8"),
-        ("image: clickhouse/clickhouse-server:24.3", "image: clickhouse/clickhouse-server:24.8"),
+        (
+            "image: clickhouse/clickhouse-server@sha256:e49863ded96abdc0545bcd0320c1b99c979c18f27915eb6519a5546760d24cb9",
+            "image: clickhouse/clickhouse-server@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        ),
         ("image: neo4j:5.19-community", "image: neo4j:5.26-community"),
         (
             "image: provisa-perf-postgres:16\n    build:",

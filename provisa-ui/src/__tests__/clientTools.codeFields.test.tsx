@@ -27,6 +27,7 @@ import type { Connector } from "../api/connectors";
 import { ConnectorSetupFields } from "../pages/sources/ConnectorSetupFields";
 import { requiredField } from "../pages/sources/connector";
 import { OpenApiFormSection } from "../pages/sources/OpenApiFormSection";
+import { CodeSourceFields } from "../pages/sources/CodeSourceFields";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
 import { EMPTY_FORM, type FormState } from "../pages/commands/types";
 
@@ -134,6 +135,20 @@ function CommandForm() {
   );
 }
 
+// REQ-1993 (amended 2026-11-25): a code source's code entered here.
+function EnteredCodeForm({ type }: { type: string }) {
+  const [fields, setFields] = useState<Record<string, string>>({
+    code_origin: "entered",
+    code_source: "",
+  });
+  return (
+    <>
+      <CodeSourceFields type={type} fields={fields} setFields={setFields} />
+      <pre data-testid="form-state">{fields.code_source}</pre>
+    </>
+  );
+}
+
 type Field = { label: string; value: string | boolean; language?: string; readOnly?: boolean };
 
 /** The code fields among the fields read_screen reports. */
@@ -235,4 +250,36 @@ describe("a command's SQL field", () => {
     expect(screen.getByTestId("form-state").textContent).toBe(sql);
     expect(codeFields(await fields())[0].value).toBe(sql);
   });
+});
+
+describe("a code source's code entered here", () => {
+  it.each([
+    ["python", "python", 'def rates() -> list[dict]:\n    """@table"""\n    return []\n'],
+    ["node", "javascript", "/** @table */\nexport function rates() { return []; }\n"],
+    ["go", "go", "package entered\n"],
+    ["rust", "rust", "pub fn rates() -> Vec<String> { vec![] }\n"],
+  ])(
+    "%s: Polly drafts the code into the editor, and nothing is saved",
+    async (type, language, code) => {
+      const c = ctx();
+      renderInForm(<EnteredCodeForm type={type} />);
+      expect(codeFields(await fields())).toEqual([
+        { label: "Code", value: "", language, readOnly: false },
+      ]);
+      const out = await executeClientTool(
+        "navigate",
+        {
+          route: "/sources",
+          actions: [{ do: "fill", target: { testId: "code-source" }, value: code }],
+        },
+        c,
+      );
+      expect(out.success).toBe(true);
+      // The draft is the form's, as typed: the source is saved only when the person saves the form.
+      expect(screen.getByTestId("form-state").textContent).toBe(code);
+      expect(editorOf("code-source").state.doc.toString()).toBe(code);
+      expect(c.runMutation).not.toHaveBeenCalled();
+      expect(c.runAdminMutation).not.toHaveBeenCalled();
+    },
+  );
 });

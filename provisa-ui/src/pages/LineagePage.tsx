@@ -207,7 +207,9 @@ export function LineagePage(): React.ReactElement {
     // The graph panel grows to the bottom of the page rather than ending at a fixed height, so the
     // canvas is as tall as the window allows and the DAG is not read through a letterbox.
     <Stack p="md" gap="md" style={{ flex: 1, minHeight: 0 }}>
-      <PageTitle icon={GitBranch} order={3}>{t("lineagePage.title")}</PageTitle>
+      <div className="page-header">
+        <PageTitle icon={GitBranch}>{t("lineagePage.title")}</PageTitle>
+      </div>
       <Text c="dimmed" size="sm">
         <Trans i18nKey="lineagePage.intro" components={{ b: <b /> }} />
       </Text>

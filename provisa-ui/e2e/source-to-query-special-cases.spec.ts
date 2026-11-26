@@ -61,6 +61,7 @@
 //     Sources form, and actually running the dry-run scan.)
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { withBody } from "./response-body";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import path from "node:path";
@@ -398,16 +399,18 @@ for (const c of [
       // Run the dry run for real BEFORE submitting — this is the checker's "query my data"
       // analog, and it works standalone (dryRunContract scans through sourceId + contractText
       // directly, independent of whether the results table has been registered yet).
-      const dryRunResponse = page.waitForResponse(
-        (r) =>
-          r.url().includes("/admin/graphql") &&
-          (r.request().postData() ?? "").includes("DryRunDqContract"),
-        { timeout: 30000 },
+      const dryRunResponse = withBody(
+        page.waitForResponse(
+          (r) =>
+            r.url().includes("/admin/graphql") &&
+            (r.request().postData() ?? "").includes("DryRunDqContract"),
+          { timeout: 30000 },
+        ),
       );
       await page.getByTestId("dq-dry-run").click();
       // The server's own answer, asserted whole: the panel renders only its message and checks,
       // so a GraphQL error or a refusal shows here with its text rather than as an empty alert.
-      const dryRunBody = await (await dryRunResponse).json();
+      const dryRunBody = (await dryRunResponse).json<{ errors?: unknown; data: { dryRunDqContract: { success: boolean } } }>();
       expect(dryRunBody.errors, JSON.stringify(dryRunBody)).toBeUndefined();
       expect(dryRunBody.data.dryRunDqContract.success, JSON.stringify(dryRunBody)).toBe(true);
       await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });

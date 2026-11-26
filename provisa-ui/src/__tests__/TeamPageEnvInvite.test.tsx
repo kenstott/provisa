@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, waitFor } from "../test-utils/render";
+import { fireEvent, render, screen, waitFor } from "../test-utils/render";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
@@ -115,6 +115,8 @@ describe("minting an environment-provisioning invitation", () => {
   it("asks for one environment per redeemer, reaped after an hour of disuse", async () => {
     const user = userEvent.setup();
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
     await pickAnalyst(user);
 
     await user.click(screen.getByTestId("team-invite-open-link"));
@@ -136,6 +138,8 @@ describe("minting an environment-provisioning invitation", () => {
   it("offers the span of disuse only for the policy it means anything under", async () => {
     const user = userEvent.setup();
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
     await pickAnalyst(user);
 
     expect(screen.queryByTestId("team-invite-env-ttl")).toBeNull();
@@ -147,6 +151,8 @@ describe("minting an environment-provisioning invitation", () => {
   it("sends no span when the redeemer is seated in the org itself", async () => {
     const user = userEvent.setup();
     renderTeamPage();
+    // REQ-2277: the header's Invite opens the invite form in the panel.
+    fireEvent.click(await screen.findByTestId("team-invite-open"));
     await pickAnalyst(user);
     await user.click(screen.getByTestId("team-invite-create"));
 

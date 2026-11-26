@@ -128,9 +128,12 @@ def test_a_template_fakes_a_json_column_only():
     ("declaration", "refusal"),
     [
         # Checked against the field's type, as a column's fake is against the column's.
-        ('{"a": email()::integer}', "field 'a': email() makes str values, which a integer"),
+        ('{"a": email()::integer}', "field 'a': email() makes text; a whole-number column takes"),
         ('{"a": poisson(mean=2)::varchar}', "field 'a': poisson() fakes a integer column"),
-        ('{"a": {"b": [pyint(), email()::boolean]}}', "field 'a.b[1]': email() makes str"),
+        (
+            '{"a": {"b": [pyint(), email()::boolean]}}',
+            "field 'a.b[1]': email() makes text; a true/false column takes",
+        ),
         ('{"a": email()::json}', "field 'a': a field is written as one of"),
         # A field computes from the column's value and its own declaration alone.
         ('{"a": categories()}', "field 'a': categories() cannot fake a field"),

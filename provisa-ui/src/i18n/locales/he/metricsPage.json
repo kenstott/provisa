@@ -1,6 +1,7 @@
 {
   "metricsPage": {
     "title": "מדדים",
+    "filterPlaceholder": "סינון מדדים…",
     "newMetric": "+ מדד",
     "loading": "טוען...",
     "empty": "עדיין לא נרשמו מדדים.",

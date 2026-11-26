@@ -33,7 +33,6 @@ const NOT_PANELS: Readonly<Record<string, string>> = {
   "components/admin/LocalUsersTab.tsx": "a list row's detail",
   "pages/data-products/ClampedDetail.tsx":
     "a list entry's text, cut at three lines and shown whole in place",
-  "components/admin/OrgsTab.tsx": "a list row's members",
   "pages/tables/ColumnsTable.tsx": "a column row's mask list, opened beneath the row",
   "pages/tables/TableColumnsSection.tsx": "a column row's mask list, opened beneath the row",
   "pages/JsonApiPage.tsx": "a request builder's field and include pickers",

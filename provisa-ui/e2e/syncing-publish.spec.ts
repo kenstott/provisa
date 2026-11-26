@@ -142,6 +142,8 @@ test("the nav reaches the page and the page lists each entry under its type", as
   await expect(
     page.getByTestId("syncing-section-data_catalog").getByTestId("syncing-row-datazone"),
   ).toBeVisible();
+  // REQ-2277: the schedule is a setting, folded above the list until it is opened.
+  await page.getByTestId("syncing-settings").getByTestId("schedule-toggle").click();
   await expect(page.getByTestId("syncing-reconcile-cron")).toHaveValue("0 * * * *");
 });
 

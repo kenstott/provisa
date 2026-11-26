@@ -19,9 +19,7 @@
     "colWaitingOn": "Waiting on",
     "colStatus": "Status",
     "colReason": "Reason",
-    "colActions": "",
     "none": "—",
-    "viewPayload": "view",
     "approve": "Approve",
     "execute": "Execute",
     "reject": "Reject",
@@ -39,6 +37,8 @@
     "deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
     "deliveryEmail": "Email",
     "deliveryEvents": "Events only",
-    "deliveryBoth": "Both"
+    "deliveryBoth": "Both",
+    "panelTitle": "Request #{{id}}",
+    "panelLabel": "Request"
   }
 }

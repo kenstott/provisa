@@ -27,18 +27,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Button,
-  Card,
   Checkbox,
   Group,
   PasswordInput,
+  Select,
   Stack,
+  Table,
   Text,
   Textarea,
   TextInput,
-  Title,
 } from "@mantine/core";
+import { Package, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   addPackageRegistry,
@@ -49,12 +51,24 @@ import {
   type RegistryKind,
 } from "../../api/packageRegistries";
 import { useAuth } from "../../context/AuthContext";
-import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { matchesQuery } from "../../lib/searchItems";
+import { PageTitle } from "../PageTitle";
+import { Tip } from "../Tip";
+import { FormChecks, FormField, FormFooter, FormLayout, FormRead } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
+import { ListRow } from "../list/ListTable";
+import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
+import { SortGroupTable } from "../list/SortGroupTable";
+import { PanelActions, SplitPane } from "../list/SplitPane";
+import { useRememberedDetail } from "../list/useDetailParam";
+import { useUrlFilter } from "../list/useUrlFilter";
+import { FilterInput } from "./FilterInput";
 
-/** An entry as the form holds it: a kept one (its id) or a new one (no id yet). */
+const KINDS: readonly RegistryKind[] = ["npm", "pypi", "goproxy", "cargo", "git"];
+
+/** An entry as the form holds it. */
 interface Draft {
-  key: string;
-  id: string | null;
   kind: RegistryKind;
   address: string;
   scope: string;
@@ -64,8 +78,6 @@ interface Draft {
 }
 
 const draftOf = (r: PackageRegistry): Draft => ({
-  key: r.id,
-  id: r.id,
   kind: r.kind,
   address: r.address,
   scope: r.scope ?? "",
@@ -74,10 +86,7 @@ const draftOf = (r: PackageRegistry): Draft => ({
   caBundle: r.ca_bundle ?? "",
 });
 
-let fresh = 0;
 const blank = (kind: RegistryKind): Draft => ({
-  key: `new-${kind}-${++fresh}`,
-  id: null,
   kind,
   address: "",
   scope: "",
@@ -85,6 +94,9 @@ const blank = (kind: RegistryKind): Draft => ({
   mirror: false,
   caBundle: "",
 });
+
+/** The form open in the panel: a new entry (blank or a copy), or the open entry's edit. */
+type Mode = "create" | "edit" | null;
 
 /** Each kind's own labels and placeholder; only npm has a scope, and Git hosts no mirror. */
 const LABELS: Record<
@@ -142,27 +154,34 @@ const LABELS: Record<
   },
 };
 
-/** The fields an entry cannot be kept without. */
-const missing = (d: Draft): string[] =>
-  [d.address.trim() ? null : "address", d.credential.trim() ? null : "credential"].filter(
-    (f): f is string => f !== null,
-  );
-
-export function PackageRegistriesTab() {
+/** REQ-2277: the object management anatomy -- the header (title, filter, Add), every registry of
+ * every kind in one list (grouped by kind), and a row opening the registry's panel
+ * (?registry=<id>), read, with Edit, Duplicate and Delete in its head. */
+export function PackageRegistriesTab({ title }: { title: string }) {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
-  const [drafts, setDrafts] = useState<Draft[] | null>(null);
-  const [busy, setBusy] = useState("");
-  const [said, setSaid] = useState<{ key: string; text: string; bad: boolean } | null>(null);
+  const [kept, setKept] = useState<PackageRegistry[] | null>(null);
   const [error, setError] = useState("");
+  const [search, setSearch] = useUrlFilter();
+  const detail = useRememberedDetail(
+    "packageRegistries",
+    kept === null ? null : kept.map((r) => r.id),
+  );
+  const [mode, setMode] = useState<Mode>(null);
+  const [draft, setDraft] = useState<Draft>(blank("npm"));
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const required = useRequiredFields({ address: draft.address, credential: draft.credential });
 
   const load = useCallback(() => {
-    if (!activeOrgId) return;
-    fetchPackageRegistries(activeOrgId)
-      .then((kept) => setDrafts(kept.map(draftOf)))
+    if (!activeOrgId) return Promise.resolve();
+    return fetchPackageRegistries(activeOrgId)
+      .then(setKept)
       .catch((e: unknown) => setError(String(e)));
   }, [activeOrgId]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (error) {
     return (
@@ -171,180 +190,295 @@ export function PackageRegistriesTab() {
       </Alert>
     );
   }
-  if (!drafts || !activeOrgId) return null;
+  if (!kept || !activeOrgId) return null;
 
-  const change = (key: string, patch: Partial<Draft>) =>
-    setDrafts((ds) => (ds ?? []).map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  const kindLabel = (k: RegistryKind) => t(`packageRegistries.kind_${k}`);
+  const open = kept.find((r) => r.id === detail.id) ?? null;
+  const shown = kept.filter((r) => matchesQuery([r.address, r.scope, kindLabel(r.kind)], search));
 
-  const run = async (key: string, act: () => Promise<unknown>, done: string) => {
-    setBusy(key);
-    setSaid(null);
+  const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const openForm = (next: Mode, from: Draft) => {
+    setDraft(from);
+    setProblem(null);
+    setMode(next);
+  };
+  const closeForm = () => {
+    setMode(null);
+    setProblem(null);
+  };
+
+  const save = async () => {
+    if (!required.validate()) return;
+    const body = {
+      kind: draft.kind,
+      address: draft.address.trim(),
+      scope: draft.kind === "npm" ? draft.scope.trim() || null : null,
+      credential: draft.credential,
+      mirror: LABELS[draft.kind].mirror !== null && draft.mirror,
+      ca_bundle: draft.caBundle.trim() || null,
+    };
+    setSaving(true);
+    setProblem(null);
     try {
-      await act();
-      setSaid({ key, text: done, bad: false });
-      load();
+      const saved =
+        mode === "edit" && open !== null
+          ? await replacePackageRegistry(activeOrgId, open.id, body)
+          : await addPackageRegistry(activeOrgId, body);
+      await load();
+      setMode(null);
+      detail.open(saved.id);
     } catch (e) {
-      setSaid({ key, text: String(e), bad: true });
+      setProblem(String(e));
     } finally {
-      setBusy("");
+      setSaving(false);
     }
   };
 
-  const save = (d: Draft) => {
-    const body = {
-      kind: d.kind,
-      address: d.address.trim(),
-      scope: d.kind === "npm" ? d.scope.trim() || null : null,
-      credential: d.credential,
-      mirror: LABELS[d.kind].mirror !== null && d.mirror,
-      ca_bundle: d.caBundle.trim() || null,
-    };
-    return run(
-      d.key,
-      () =>
-        d.id === null
-          ? addPackageRegistry(activeOrgId, body)
-          : replacePackageRegistry(activeOrgId, d.id, body),
-      t("packageRegistries.saved"),
-    );
+  const remove = async (r: PackageRegistry) => {
+    await deletePackageRegistry(activeOrgId, r.id);
+    await load();
+    detail.close({ only: r.id });
   };
 
-  const remove = (d: Draft) =>
-    d.id === null
-      ? setDrafts((ds) => (ds ?? []).filter((x) => x.key !== d.key))
-      : run(
-          d.key,
-          () => deletePackageRegistry(activeOrgId, d.id as string),
-          t("packageRegistries.removed"),
-        );
-
-  const entry = (d: Draft) => {
-    const id = `package-registry-${d.key}`;
+  const fields = (d: Draft, editable: boolean) => {
     const labels = LABELS[d.kind];
     return (
-      <Card key={d.key} withBorder data-testid={id}>
-        <FormLayout>
-          <FormField size="long" help={labels.addressHelp ? t(labels.addressHelp) : undefined}>
+      <>
+        <FormField size="medium" help={t(`packageRegistries.${d.kind}Help`)}>
+          <Select
+            label={t("packageRegistries.kind")}
+            data={KINDS.map((k) => ({ value: k, label: kindLabel(k) }))}
+            value={d.kind}
+            allowDeselect={false}
+            // A kept entry keeps its kind: another kind is another registry.
+            disabled={mode === "edit"}
+            onChange={(v) => v !== null && change({ kind: v as RegistryKind })}
+            data-testid="package-registry-kind"
+          />
+        </FormField>
+        <FormField size="long" help={labels.addressHelp ? t(labels.addressHelp) : undefined}>
+          <TextInput
+            label={t(labels.address)}
+            placeholder={labels.placeholder}
+            value={d.address}
+            onChange={(e) => change({ address: e.currentTarget.value })}
+            autoComplete="off"
+            data-testid="package-registry-address"
+            {...(editable ? required.field("address") : {})}
+          />
+        </FormField>
+        {d.kind === "npm" && (
+          <FormField size="short" help={t("packageRegistries.scopeHelp")}>
             <TextInput
-              label={t(labels.address)}
-              placeholder={labels.placeholder}
-              required
-              value={d.address}
-              onChange={(e) => change(d.key, { address: e.currentTarget.value })}
+              label={t("packageRegistries.scope")}
+              placeholder="@example"
+              value={d.scope}
+              onChange={(e) => change({ scope: e.currentTarget.value })}
               autoComplete="off"
-              data-testid={`${id}-address`}
+              data-testid="package-registry-scope"
             />
           </FormField>
-          {d.kind === "npm" && (
-            <FormField size="short" help={t("packageRegistries.scopeHelp")}>
-              <TextInput
-                label={t("packageRegistries.scope")}
-                placeholder="@example"
-                value={d.scope}
-                onChange={(e) => change(d.key, { scope: e.currentTarget.value })}
-                autoComplete="off"
-                data-testid={`${id}-scope`}
+        )}
+        <FormField size="long" help={t(labels.credentialHelp)}>
+          <PasswordInput
+            label={t(labels.credential)}
+            value={d.credential}
+            onChange={(e) => change({ credential: e.currentTarget.value })}
+            autoComplete="new-password"
+            data-testid="package-registry-credential"
+            {...(editable ? required.field("credential") : {})}
+          />
+        </FormField>
+        <FormField size="long" help={t("packageRegistries.caBundleHelp")}>
+          <Textarea
+            label={t("packageRegistries.caBundle")}
+            placeholder={"-----BEGIN CERTIFICATE-----"}
+            value={d.caBundle}
+            onChange={(e) => change({ caBundle: e.currentTarget.value })}
+            autosize
+            minRows={2}
+            maxRows={8}
+            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+            data-testid="package-registry-ca-bundle"
+          />
+        </FormField>
+        {labels.mirror !== null && (
+          <FormChecks>
+            <FormField size="short" help={t(`${labels.mirror}Help`)}>
+              <Checkbox
+                label={t(labels.mirror)}
+                checked={d.mirror}
+                onChange={(e) => change({ mirror: e.currentTarget.checked })}
+                data-testid="package-registry-mirror"
               />
             </FormField>
-          )}
-          <FormField size="long" help={t(labels.credentialHelp)}>
-            <PasswordInput
-              label={t(labels.credential)}
-              required
-              value={d.credential}
-              onChange={(e) => change(d.key, { credential: e.currentTarget.value })}
-              autoComplete="new-password"
-              data-testid={`${id}-credential`}
-            />
-          </FormField>
-          <FormField size="long" help={t("packageRegistries.caBundleHelp")}>
-            <Textarea
-              label={t("packageRegistries.caBundle")}
-              placeholder={"-----BEGIN CERTIFICATE-----"}
-              value={d.caBundle}
-              onChange={(e) => change(d.key, { caBundle: e.currentTarget.value })}
-              autosize
-              minRows={2}
-              maxRows={8}
-              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
-              data-testid={`${id}-ca-bundle`}
-            />
-          </FormField>
-          {labels.mirror !== null && (
-            <FormChecks>
-              <FormField size="short" help={t(`${labels.mirror}Help`)}>
-                <Checkbox
-                  label={t(labels.mirror)}
-                  checked={d.mirror}
-                  onChange={(e) => change(d.key, { mirror: e.currentTarget.checked })}
-                  data-testid={`${id}-mirror`}
-                />
-              </FormField>
-            </FormChecks>
-          )}
-          <FormFooter
-            onSave={() => save(d)}
-            saving={busy === d.key}
-            saveProps={{ "data-testid": `${id}-save`, disabled: missing(d).length > 0 }}
-          >
-            <Button
-              variant="default"
-              color="red"
-              onClick={() => remove(d)}
-              disabled={busy === d.key}
-              data-testid={`${id}-remove`}
-            >
-              {t("packageRegistries.remove")}
-            </Button>
-            {said?.key === d.key && (
-              <Text size="sm" c={said.bad ? "red" : "green"} data-testid={`${id}-said`}>
-                {said.text}
-              </Text>
-            )}
-          </FormFooter>
-        </FormLayout>
-      </Card>
+          </FormChecks>
+        )}
+      </>
     );
   };
 
-  const section = (kind: RegistryKind) => {
-    const listed = drafts.filter((d) => d.kind === kind);
-    return (
-      <Stack gap="sm" data-testid={`package-registries-${kind}`}>
-        <Group justify="space-between">
-          <div>
-            <Title order={4}>{t(`packageRegistries.${kind}Title`)}</Title>
-            <Text size="sm" c="dimmed">
-              {t(`packageRegistries.${kind}Help`)}
-            </Text>
-          </div>
-          <Button
-            variant="default"
-            onClick={() => setDrafts((ds) => [...(ds ?? []), blank(kind)])}
-            data-testid={`package-registries-add-${kind}`}
-          >
-            {t(`packageRegistries.add_${kind}`)}
-          </Button>
-        </Group>
-        {listed.length === 0 ? (
-          <Text size="sm" c="dimmed" data-testid={`package-registries-${kind}-none`}>
-            {t(`packageRegistries.${kind}None`)}
-          </Text>
-        ) : (
-          listed.map(entry)
-        )}
-      </Stack>
-    );
-  };
+  const formView = (
+    <FormLayout data-testid="package-registry-form">
+      {fields(draft, true)}
+      <FormFooter
+        panel
+        onSave={save}
+        onCancel={closeForm}
+        saving={saving}
+        problem={problem ?? undefined}
+        saveProps={{ "data-testid": "package-registry-save" }}
+      />
+    </FormLayout>
+  );
+
+  const readView = (r: PackageRegistry) => (
+    <Stack gap="sm" data-testid={`package-registry-detail-${r.id}`}>
+      <PanelActions>
+        <fieldset className="panel-action-set">
+          <Group gap="xs">
+            <Tip text={t("packageRegistries.edit", { name: r.address })} named>
+              <ActionIcon
+                aria-label={t("packageRegistries.edit", { name: r.address })}
+                data-testid={`package-registry-edit-${r.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openForm("edit", draftOf(r));
+                }}
+              >
+                <Pencil size={14} />
+              </ActionIcon>
+            </Tip>
+            <PanelDuplicate
+              name={r.address}
+              onDuplicate={() => openForm("create", { ...draftOf(r), mirror: false })}
+              testId={`package-registry-duplicate-${r.id}`}
+            />
+            <PanelDelete
+              itemKey={r.id}
+              title={t("packageRegistries.remove")}
+              consequence={t("packageRegistries.removeConfirm", { name: r.address })}
+              ariaLabel={t("packageRegistries.remove")}
+              testId={`package-registry-remove-${r.id}`}
+              onDelete={() => remove(r)}
+            />
+          </Group>
+        </fieldset>
+      </PanelActions>
+      <FormRead testId={`package-registry-read-${r.id}`}>{fields(draftOf(r), false)}</FormRead>
+    </Stack>
+  );
+
+  const panelTitle =
+    mode === "create" ? t("packageRegistries.add") : open !== null ? open.address : "";
+  const panelBody =
+    mode === "create"
+      ? formView
+      : open !== null
+        ? mode === "edit"
+          ? formView
+          : readView(open)
+        : null;
+  const isDefault = (r: PackageRegistry) =>
+    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
 
   return (
-    <Stack gap="xl" data-testid="package-registries">
-      <Text size="sm">{t("packageRegistries.help")}</Text>
-      {section("npm")}
-      {section("pypi")}
-      {section("goproxy")}
-      {section("cargo")}
-      {section("git")}
-    </Stack>
+    <>
+      <div className="page-header">
+        <PageTitle icon={Package}>{title}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("packageRegistries.filterPlaceholder")}
+          testId="package-registries-filter"
+        />
+        <div className="page-actions">
+          <Button
+            variant={mode === "create" ? "outline" : "filled"}
+            onClick={() => (mode === "create" ? closeForm() : openForm("create", blank("npm")))}
+            aria-label={mode === "create" ? t("packageRegistries.closeForm") : undefined}
+            data-testid="package-registries-add"
+          >
+            {mode === "create" ? <X size={14} /> : t("packageRegistries.add")}
+          </Button>
+        </div>
+      </div>
+      <Stack gap="md" data-testid="package-registries">
+        <Text size="sm" c="dimmed">
+          {t("packageRegistries.help")}
+        </Text>
+        <SplitPane
+          testId="package-registries-split"
+          storageKey="provisa.packageRegistries.detailWidth"
+          title={panelTitle}
+          onClose={() => {
+            closeForm();
+            detail.close();
+          }}
+          closeOnEscape={mode === null}
+          labels={{
+            panel: t("packageRegistries.panelLabel"),
+            resize: t("tablesPage.resizeDetail"),
+            expand: t("tablesPage.expandDetail"),
+            restore: t("tablesPage.restoreDetail"),
+            close: t("tablesPage.closeDetail"),
+            backToList: t("tablesPage.backToList"),
+          }}
+          list={
+            <SortGroupTable
+              testPrefix="package-registries"
+              rows={shown}
+              columns={[
+                {
+                  key: "kind",
+                  label: t("packageRegistries.kind"),
+                  sortValue: (r) => KINDS.indexOf(r.kind),
+                  groupValue: (r) => kindLabel(r.kind),
+                },
+                {
+                  key: "address",
+                  label: t("packageRegistries.address"),
+                  sortValue: (r) => r.address,
+                },
+                {
+                  key: "scope",
+                  label: t("packageRegistries.scope"),
+                  sortValue: (r) => r.scope ?? "",
+                },
+                {
+                  key: "default",
+                  label: t("packageRegistries.defaultColumn"),
+                  sortValue: isDefault,
+                  groupValue: isDefault,
+                },
+              ]}
+              headers={[{ col: "kind" }, { col: "address" }, { col: "scope" }, { col: "default" }]}
+              colSpan={4}
+              rowKey={(r) => r.id}
+              empty={t("packageRegistries.none")}
+              render={(r) => (
+                <ListRow
+                  key={r.id}
+                  testId={`package-registry-${r.id}`}
+                  selected={mode !== "create" && r.id === detail.id}
+                  onClick={() => {
+                    closeForm();
+                    if (detail.id === r.id) detail.close();
+                    else detail.open(r.id);
+                  }}
+                >
+                  <Table.Td>{kindLabel(r.kind)}</Table.Td>
+                  <Table.Td>{r.address}</Table.Td>
+                  <Table.Td>{r.scope ?? ""}</Table.Td>
+                  <Table.Td>{isDefault(r)}</Table.Td>
+                </ListRow>
+              )}
+            />
+          }
+        >
+          {panelBody}
+        </SplitPane>
+      </Stack>
+    </>
   );
 }

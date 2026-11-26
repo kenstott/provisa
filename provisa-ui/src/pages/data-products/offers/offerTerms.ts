@@ -53,7 +53,8 @@ export function offerSummary(offer: OfferInput, datasets: number, t: TFunction):
 }
 
 /** A contract's columns as the columns table reads them: each as ``role`` sees it, a masked one
- *  carrying its mask's kind. */
+ *  carrying its mask's kind. A field is named as its consumers query it (REQ-2158, amended
+ *  2026-11-25), so it has no SQL alias of its own. */
 export function contractColumns(fields: OfferField[], role: string): ColumnForm[] {
   return fields.map((f) => ({
     name: f.name,

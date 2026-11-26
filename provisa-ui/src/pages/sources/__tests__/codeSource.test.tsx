@@ -16,6 +16,8 @@
 // REQ-2106: its non-secret settings, which its code reads through Provisa's services.
 // REQ-2200: a Go source is a Go module at an exact version, its package and its go.sum.
 // REQ-2227: a Rust source is a crate at an exact version, its crate directory and its Cargo.lock.
+// REQ-1993 (amended 2026-11-25): code entered here, in the app's code editor in the source's
+// language, with its dependency list, in every code language.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -40,6 +42,7 @@ import { fetchSecrets } from "../../../api/secrets";
 import { CodeSourceFields } from "../CodeSourceFields";
 import { codeFieldsFromMapping, codeMappingJson, missingCodeFields } from "../codeSource";
 import { NO_CONNECTION_TYPES, SOURCE_TYPES } from "../constants";
+import { editorOf, languageOf, typeInto } from "../../../test-utils/codeEditor";
 
 describe("the source pick list", () => {
   it("offers Node.js, Python, Go, Rust and Spark as code sources, with no connection fields", () => {
@@ -292,7 +295,40 @@ describe("what a code source saves", () => {
       missingCodeFields({ code_origin: "git", code_repository: "r", code_commit: "v1.0" }),
     ).toEqual(["code_commit"]);
     expect(missingCodeFields({ code_origin: "upload", code_upload: "h" })).toEqual([]);
+    expect(missingCodeFields({ code_origin: "entered", code_source: " \n" })).toEqual([
+      "code_source",
+    ]);
+    expect(missingCodeFields({ code_origin: "entered", code_source: "def f(): ..." })).toEqual([]);
   });
+
+  it.each(["node", "python", "go", "rust"])(
+    "is code entered here for %s, with its dependency list, and reads back",
+    (type) => {
+      const fields = {
+        code_origin: "entered",
+        code_runtime: "deno",
+        code_source: "line one\n  line two\n",
+        code_dependencies: "first@1.0.0\n\n  second@2.0.0  \n",
+        lockfile_upload: "lock-sha-1",
+        lockfile_filename: "lock",
+      };
+      const mapping = JSON.parse(codeMappingJson(type, fields));
+      expect(mapping.code).toEqual({
+        kind: "entered",
+        // The text is kept as written: the hash is of what was entered.
+        source: "line one\n  line two\n",
+        dependencies: ["first@1.0.0", "second@2.0.0"],
+      });
+      expect(mapping.lockfile).toEqual({ filename: "lock", upload: "lock-sha-1" });
+      expect(codeFieldsFromMapping(JSON.stringify(mapping))).toMatchObject({
+        code_origin: "entered",
+        code_source: "line one\n  line two\n",
+        code_dependencies: "first@1.0.0\nsecond@2.0.0",
+        code_upload: "",
+        code_directory: "",
+      });
+    },
+  );
 });
 
 function Harness({
@@ -434,4 +470,39 @@ describe("the code source's fields", () => {
       }),
     );
   });
+
+  it.each([
+    ["python", "python", "httpx==0.27.0"],
+    ["node", "javascript", "@acme/rates@1.2.0"],
+    ["go", "go", "github.com/acme/rates v1.2.0"],
+    ["rust", "rust", "serde@1.0.200"],
+  ])(
+    "offer Enter it here for %s: the code editor in its language and a dependency list",
+    async (type, language, placeholder) => {
+      const seen: Record<string, string>[] = [];
+      renderInForm(<Harness type={type} onFields={(f) => seen.push(f)} />);
+      expect(screen.queryByTestId("code-source")).toBeNull();
+      fireEvent.click(screen.getByTestId("code-origin"));
+      fireEvent.click(await screen.findByRole("option", { name: "Enter it here" }));
+      await waitFor(() => expect(screen.getByTestId("code-source")).toBeInTheDocument());
+      // The app's code editor, highlighting the source's language, which Polly reads and fills.
+      const view = editorOf("code-source");
+      expect(languageOf(view)).toBe(language);
+      expect(view.contentDOM.getAttribute("data-code-field")).toBe(language);
+      expect(screen.queryByTestId("code-package")).toBeNull();
+      typeInto(view, "the code\n");
+      await waitFor(() =>
+        expect(seen.at(-1)).toMatchObject({ code_origin: "entered", code_source: "the code\n" }),
+      );
+      const deps = screen.getByTestId("code-dependencies");
+      expect(deps).toHaveAttribute("placeholder", placeholder);
+      fireEvent.change(deps, { target: { value: placeholder } });
+      expect(seen.at(-1)).toMatchObject({
+        code_source: "the code\n",
+        code_dependencies: placeholder,
+      });
+      // A lockfile is given beside entered code as beside any other.
+      expect(screen.getByTestId("code-lockfile")).toBeInTheDocument();
+    },
+  );
 });

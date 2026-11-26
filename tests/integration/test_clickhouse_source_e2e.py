@@ -211,5 +211,52 @@ async def test_a_server_older_than_26_is_refused_at_connect_by_name():
     assert "26" in str(refused.value)
 
 
+@pytest.mark.requires_clickhouse_26
+@pytest.mark.asyncio
+async def test_nonutf8_string_direct_reads_as_bytes_not_text():
+    """REQ-2194: a ClickHouse String that is not UTF-8 reads as bytes on the DIRECT path,
+    matching what the ENGINE path delivers via bytes_where_not_text. The raw bytes of e.g.
+    int4send(255) are \\x00\\x00\\x00\\xff — not valid UTF-8 text."""
+    _TABLE_NUB = "provisa_nonutf8_bytes_test"
+    import clickhouse_connect
+
+    client = clickhouse_connect.get_client(
+        host=_HOST or "localhost",
+        port=_port(),
+        username=os.environ.get("CLICKHOUSE_USER", "default"),
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+    )
+    try:
+        client.command(f"DROP TABLE IF EXISTS {_TABLE_NUB}")
+        client.command(
+            f"CREATE TABLE {_TABLE_NUB} (id Int64, raw String, name String)"
+            " ENGINE = MergeTree ORDER BY id"
+        )
+        # Insert a row whose 'raw' column holds the bytes of int4send(255): 00 00 00 ff.
+        # clickhouse-connect inserts Python bytes as a ClickHouse String's raw bytes.
+        client.insert(
+            _TABLE_NUB,
+            [[1, b"\x00\x00\x00\xff", "hello"]],
+            column_names=["id", "raw", "name"],
+        )
+        driver = await _driver(_port())
+        try:
+            result = await driver.execute(f"SELECT id, raw, name FROM {_TABLE_NUB} ORDER BY id")
+            assert result.column_names == ["id", "raw", "name"]
+            rows = result.rows
+            assert len(rows) == 1
+            _id, raw, name = rows[0]
+            assert _id == 1
+            # The non-UTF-8 column arrives as bytes, not garbled text.
+            assert raw == b"\x00\x00\x00\xff", f"expected bytes, got {raw!r}"
+            # The valid-UTF-8 column stays as text.
+            assert name == "hello"
+        finally:
+            await driver.close()
+    finally:
+        client.command(f"DROP TABLE IF EXISTS {_TABLE_NUB}")
+        client.close()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])

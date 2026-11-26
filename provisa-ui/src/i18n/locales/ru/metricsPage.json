@@ -1,6 +1,7 @@
 {
   "metricsPage": {
     "title": "Метрики",
+    "filterPlaceholder": "Фильтр метрик…",
     "newMetric": "+ Метрика",
     "loading": "Загрузка...",
     "empty": "Метрики ещё не зарегистрированы.",
