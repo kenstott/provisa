@@ -16,6 +16,7 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -83,6 +84,13 @@ function useHiddenColumns(
 ): ReadonlySet<number> {
   const positions = useMemo(() => hideOrder(order), [order]);
   const [count, setCount] = useState(0);
+  // The count the list was last drawn with: two reports before the next drawing hide one column,
+  // not two, since both measured the same drawing.
+  const drawn = useRef(0);
+  // Set as the drawing is committed, before the browser reports the new sizes.
+  useLayoutEffect(() => {
+    drawn.current = count;
+  }, [count]);
   useEffect(() => {
     const box = room.current;
     const table = list.current;
@@ -93,7 +101,7 @@ function useHiddenColumns(
         width = box.clientWidth;
         setCount(0);
       } else if (table.offsetWidth > box.clientWidth + 1) {
-        setCount((now) => Math.min(now + 1, positions.length));
+        setCount(Math.min(drawn.current + 1, positions.length));
       }
     });
     watch.observe(box);
