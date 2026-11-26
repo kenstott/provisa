@@ -43,6 +43,7 @@ import {
   type PendingGrant,
 } from "../../api/entitlements";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { Tip } from "../Tip";
 import { EntitlementListForm } from "./EntitlementListForm";
 import { ExpiryRules } from "./ExpiryRules";
@@ -81,6 +82,8 @@ export function PersonEntitlements({
   const [view, setView] = useState<AccessView | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [endReason, setEndReason] = useState("");
+  // REQ-1968: ending a list needs its reason, checked when End is pressed.
+  const endRequired = useRequiredFields({ reason: endReason });
   const [error, setError] = useState<string | null>(null);
 
   const report = useCallback(
@@ -133,7 +136,7 @@ export function PersonEntitlements({
   };
 
   const end = async (kind: string) => {
-    if (roleId === null) return;
+    if (roleId === null || !endRequired.validate()) return;
     try {
       saved(await endList({ grantee: { principal }, roleId, kind, reason: endReason.trim() }));
     } catch (e) {
@@ -241,6 +244,7 @@ export function PersonEntitlements({
                 onEdit={() => setMode({ type: "edit", kind: l.kind })}
                 onEnd={() => {
                   setEndReason("");
+                  endRequired.reset();
                   setMode({ type: "end", kind: l.kind });
                 }}
               />
@@ -318,7 +322,7 @@ export function PersonEntitlements({
           <FormField size="long" hint={t("entitlements.form.reasonHint")}>
             <TextInput
               label={t("entitlements.form.reasonLabel")}
-              required
+              {...endRequired.field("reason")}
               value={endReason}
               onChange={(e) => setEndReason(e.currentTarget.value)}
               data-testid="person-entitlements-end-reason"
@@ -329,7 +333,6 @@ export function PersonEntitlements({
             cancelProps={{ "data-testid": "person-entitlements-end-cancel" }}
             action={
               <DestructiveConfirmButton
-                disabled={endReason.trim() === ""}
                 onClick={() => end(mode.kind)}
                 testId="person-entitlements-end-submit"
               >

@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "नकली मान",
+    "template": "JSON टेम्पलेट",
+    "templateHint": "हर पंक्ति में दिखने वाला ऑब्जेक्ट: हर फ़ील्ड email() या uniform(min=1, max=9)::integer जैसा नकली मान, नेस्टेड ऑब्जेक्ट, निश्चित लंबाई वाला ऐरे, या न बदलने वाले फ़ील्ड के लिए डबल कोट्स में लिखा लिटरल है",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "सिंथेटिक नियम",
     "stable": "स्थिर",
     "stableHint": "हर इंजन और हर क्षेत्र में एक ही नकली मान",

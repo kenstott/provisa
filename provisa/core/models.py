@@ -292,6 +292,24 @@ class SourceCdcConfig(BaseModel):  # REQ-824
     consumer_group_id: str | None = None
 
 
+class SourceSetupOutcomes(BaseModel):  # REQ-2262
+    """What became of each step of a source's setup, shared by every user and environment: its
+    tables registered or skipped; its relationships found, none found, or skipped; the query
+    explorer opened on it, the step marked done, or skipped. None = not decided yet. ``decided_at``
+    (ISO 8601) is when every step was last decided -- tables registered after it, related to
+    nothing, are what the collapsed line hints at -- and None while any step is open."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tables: Literal["registered", "skipped"] | None = None
+    relationships: Literal["found", "none_found", "skipped"] | None = None
+    query: Literal["opened", "done", "skipped"] | None = None
+    decided_at: str | None = None
+
+    def all_decided(self) -> bool:
+        return None not in (self.tables, self.relationships, self.query)
+
+
 class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
     model_config = ConfigDict(populate_by_name=True)
 
@@ -343,6 +361,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # none of its tables serves any role. Carried as the store holds it, so a promotion lands a
     # move in progress with it.
     withdrawn: bool = False
+    # REQ-2262: what became of each step of the source's setup, as the store holds it; set only by
+    # setSourceSetupOutcomes (and carried by a configuration), so a form save keeps it.
+    setup_outcomes: SourceSetupOutcomes = Field(default_factory=SourceSetupOutcomes)
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the

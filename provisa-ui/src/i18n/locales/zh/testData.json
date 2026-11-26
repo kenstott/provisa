@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "虚构值",
+    "template": "JSON 模板",
+    "templateHint": "每一行显示的对象：每个字段可以是 email() 或 uniform(min=1, max=9)::integer 这类虚构值、嵌套对象、固定长度的数组，或用双引号括起、不会变化的字段字面量",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "合成规则",
     "stable": "稳定",
     "stableHint": "在每个引擎和每个区域中都是相同的虚构值",

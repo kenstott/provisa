@@ -17,6 +17,14 @@
     "relateNotAllowedHint": "Creating relationships needs the create relationship right. Go on to query the tables.",
     "queryHint": "Open the query explorer on a starter query over {{table}}.",
     "queryAction": "Open a starter query",
-    "complete": "Setup complete"
+    "complete": "Setup complete",
+    "skip": "Skip",
+    "skipped": "Skipped",
+    "done": "Done",
+    "finish": "Finish setup",
+    "runAgain": "Run setup again",
+    "nothingToQueryHint": "No tables are registered to query.",
+    "newTablesHint_one": "{{count}} table registered since setup has no relationship.",
+    "newTablesHint_other": "{{count}} tables registered since setup have no relationship."
   }
 }

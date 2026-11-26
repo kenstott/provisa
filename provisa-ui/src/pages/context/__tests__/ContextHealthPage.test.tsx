@@ -14,7 +14,7 @@
 // only for a viewer holding that page's right; the Context Sync card only for a holder of its right.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import type { GlossaryTermSummary } from "../../../api/glossary";
 import type { SyncEntry } from "../../../api/syncing";
 
@@ -59,7 +59,17 @@ const term = (
   id: number,
   status: GlossaryTermSummary["status"],
   grounding: GlossaryTermSummary["grounding"],
-) => ({ id, name: `t${id}`, status, grounding }) as GlossaryTermSummary;
+  agentVisible = false,
+) =>
+  ({
+    id,
+    name: `t${id}`,
+    status,
+    grounding,
+    agent_visible: agentVisible,
+    findings: 0,
+    related_to: 0,
+  }) as GlossaryTermSummary;
 
 const entry = (id: string, extra: Partial<SyncEntry>): SyncEntry => ({
   ...blankEntry("data_catalog"),
@@ -71,12 +81,13 @@ const entry = (id: string, extra: Partial<SyncEntry>): SyncEntry => ({
 beforeEach(() => {
   auth.capabilities = ["glossary_read"];
   api.listGlossaryTerms.mockResolvedValue([
-    term(1, "approved", "grounded"),
-    term(2, "approved", "grounded"),
+    term(1, "approved", "grounded", true),
+    term(2, "approved", "grounded", true),
     term(3, "approved", "not_grounded"),
-    term(4, "draft", "grounded_pending"),
+    term(4, "draft", "grounded_pending", true),
     term(5, "draft", "not_grounded"),
     term(6, "draft", "not_grounded"),
+    term(7, "deprecated", "grounded"),
   ]);
   api.fetchStewardshipSummary.mockResolvedValue({
     agent_visible: [
@@ -205,9 +216,7 @@ describe("Context Health's cards, from real reads", () => {
       "pg.public.customers.home_address",
     );
     expect(within(first).getByTestId("health-tags-lost-tag-0")).toHaveTextContent("pii");
-    expect(within(first).getByTestId("health-tags-lost-term-0")).toHaveTextContent(
-      "Home address",
-    );
+    expect(within(first).getByTestId("health-tags-lost-term-0")).toHaveTextContent("Home address");
     expect(first).toHaveTextContent("alice");
     // A loss no member signed names no one; a term since deleted is its name alone.
     const second = screen.getByTestId("health-tags-lost-1");
@@ -225,10 +234,129 @@ describe("Context Health's cards, from real reads", () => {
   });
 });
 
+// REQ-2259: each Terms count opens the Ontology page's term list (never its graph) filtered to
+// exactly the terms it counts; glossaryUrlFilters.test.tsx opens the list at each of these.
+describe("each Terms count links to the list it counts", () => {
+  it.each([
+    ["health-terms-agent-visible", "/context/ontology?panel=terms&agentVisible=1"],
+    ["health-terms-from-data", "/context/ontology?panel=terms&status=approved&grounding=grounded"],
+    [
+      "health-terms-no-data",
+      "/context/ontology?panel=terms&status=approved&grounding=not_grounded",
+    ],
+    ["health-terms-drafts", "/context/ontology?panel=terms&status=draft"],
+  ])("%s opens %s", async (testId, href) => {
+    render(<ContextHealthPage />);
+    expect(await count(testId)).toHaveAttribute("href", href);
+  });
+});
+
+// REQ-2144, REQ-2259: an enterprise's term sets run long, so the stewardship summary's three
+// sets are standard lists -- sortable, under a filter, each term an entity link, at a fixed height
+// that scrolls.
+describe("the stewardship summary's three lists", () => {
+  beforeEach(() => {
+    auth.capabilities = ["glossary_read"];
+    api.fetchStewardshipSummary.mockResolvedValue({
+      agent_visible: [
+        { term_id: 2, name: "Revenue", status: "approved" },
+        { term_id: 1, name: "Churn", status: "approved" },
+        { term_id: 4, name: "Margin", status: "draft" },
+      ],
+      waiting_on_one_approval: [
+        { term_id: 8, name: "Gross margin", approve: [{ term_id: 4, name: "Margin" }] },
+        { term_id: 9, name: "Bookings", approve: [{ term_id: 5, name: "Order" }] },
+      ],
+      approved_not_grounded: [
+        { term_id: 3, name: "Lifetime value" },
+        { term_id: 10, name: "Attrition" },
+      ],
+    });
+  });
+
+  const LISTS = [
+    ["stewardship-agent-visible", [1, 4, 2]],
+    ["stewardship-waiting", [9, 8]],
+    ["stewardship-approved-not-grounded", [10, 3]],
+  ] as const;
+
+  const rowsOf = (list: string) =>
+    within(screen.getByTestId(list))
+      .getAllByTestId(new RegExp(`^${list}-row-\\d+$`))
+      .map((r) => Number(r.getAttribute("data-testid")!.split("-").pop()));
+
+  it.each(LISTS)("%s lists its terms by name, each an entity link", async (list, ids) => {
+    render(<ContextHealthPage />);
+    await screen.findByTestId(list);
+    expect(rowsOf(list)).toEqual(ids);
+    for (const id of ids) {
+      expect(screen.getByTestId(`${list}-term-${id}`)).toHaveAttribute(
+        "href",
+        `/context/ontology?term=${id}`,
+      );
+    }
+    expect(screen.getByTestId(`${list}-count`)).toHaveTextContent(String(ids.length));
+  });
+
+  it.each(LISTS)("%s sorts by its name column", async (list, ids) => {
+    render(<ContextHealthPage />);
+    await screen.findByTestId(list);
+    // Opened ascending by name; the header turns it descending.
+    fireEvent.click(within(screen.getByTestId(list)).getByTestId(`${list}-sort-term`));
+    expect(rowsOf(list)).toEqual([...ids].reverse());
+  });
+
+  it.each(LISTS)("%s keeps a fixed height and scrolls", async (list) => {
+    render(<ContextHealthPage />);
+    const scroll = await screen.findByTestId(`${list}-scroll`);
+    expect(scroll).toHaveStyle({ height: "280px", overflowY: "auto" });
+  });
+
+  it("narrows each list by its own filter, kept in the URL", async () => {
+    render(<ContextHealthPage />);
+    await screen.findByTestId("stewardship-agent-visible");
+    fireEvent.change(screen.getByTestId("stewardship-agent-visible-filter"), {
+      target: { value: "rev" },
+    });
+    expect(rowsOf("stewardship-agent-visible")).toEqual([2]);
+    // The other lists are not narrowed by it.
+    expect(rowsOf("stewardship-approved-not-grounded")).toEqual([10, 3]);
+    // A waiting term is found by the draft whose approval grounds it, too.
+    fireEvent.change(screen.getByTestId("stewardship-waiting-filter"), {
+      target: { value: "order" },
+    });
+    expect(rowsOf("stewardship-waiting")).toEqual([9]);
+  });
+
+  it("opens with the filters a link names", async () => {
+    render(<ContextHealthPage />, { initialEntries: ["/context/health?noDataSearch=attr"] });
+    await screen.findByTestId("stewardship-approved-not-grounded");
+    expect(screen.getByTestId("stewardship-approved-not-grounded-filter")).toHaveValue("attr");
+    expect(rowsOf("stewardship-approved-not-grounded")).toEqual([10]);
+  });
+
+  it("names the drafts whose approval grounds a waiting term, as links", async () => {
+    render(<ContextHealthPage />);
+    expect(await screen.findByTestId("stewardship-waiting-approve-8-4")).toHaveAttribute(
+      "href",
+      "/context/ontology?term=4",
+    );
+  });
+
+  it("says None. for an empty list", async () => {
+    api.fetchStewardshipSummary.mockResolvedValue({
+      agent_visible: [],
+      waiting_on_one_approval: [],
+      approved_not_grounded: [],
+    });
+    render(<ContextHealthPage />);
+    expect(await screen.findByTestId("stewardship-waiting-empty")).toHaveTextContent("None.");
+  });
+});
+
 describe("links are drawn only for the right their page asks (REQ-2259)", () => {
   it("a glossary reader follows the term and document counts, not the drift report or tables", async () => {
     render(<ContextHealthPage />);
-    expect(await count("health-terms-drafts")).toHaveAttribute("href", "/context/ontology");
     expect(await count("health-documents-11")).toHaveAttribute(
       "href",
       "/context/documents?document=11",
@@ -236,6 +364,10 @@ describe("links are drawn only for the right their page asks (REQ-2259)", () => 
     expect(screen.getByTestId("health-classification-total")).toHaveAttribute(
       "href",
       "/context/classification",
+    );
+    expect(screen.getByTestId("health-documents-total")).toHaveAttribute(
+      "href",
+      "/context/documents?reviewsDue=1",
     );
     // Observability opens the Ontology quality report; table_registration the table's page.
     expect(await count("health-drift-lost")).not.toHaveAttribute("href");
