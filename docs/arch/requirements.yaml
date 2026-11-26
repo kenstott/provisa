@@ -95302,7 +95302,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
     with no domain (a role) is checked against the assigner''s acting domains when it is made and records
     no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
-    missing a domain-limited required tag. (Amended 2026-11-26, maintainer: governance is a tag''s prime use. A tag has a kind: system (changes the behaviour of the objects it is on: masking, column and row rules), governance (a classification asserted with its definition source, per-assignment citations, a reason and an expiry) or state (a cross-object work marker such as to do or in review, with an optional assignee and its expiry). A state tag never shadows a state the model already holds (retired, needs review, approved, a suggestion''s outcome): such a name is refused by name. Relationships between objects are the ontology''s, not tags''. The Tags list shows one line per tag with counts (where applied: objects and sources; depends on it: classifications and rules); the detail panel lists them grouped and collapsible, each name a link.)'
+    missing a domain-limited required tag. (Amended 2026-11-26, maintainer: governance is a tag''s prime use. Every tag has one category from a short fixed list: governance (a classification asserted with evidence, such as pii), policy (the product acts on it: masking, column and row rules; the shipped system tags), quality (certified, trusted source, known issue), lifecycle (draft, experimental; never a state the model already holds such as retired, approved or a suggestion''s outcome, which is refused by name), business (domain-facing labels) and workflow. One tag template serves every category; a category sets the template''s defaults (governance requires a citation per assignment, workflow requires an assignee), and a tag may still carry any section. A workflow is an ordered set of tags: each step names its next step or steps, one or more steps are terminal, each step carries an assignee who completes it and an optional due date or expiry; an object holds one step of a workflow at a time, completing a step replaces it with the next and records who, when and a note, so the assignment history is the workflow''s audit; a terminal step ends the workflow and may expire or remain as the outcome; moving an object to a step is a right on that step''s tag; a workflow never drives a built-in state (the steward still performs the real action). A person sees the steps assigned to them in one place, and Polly reads and moves them under the same rights. Relationships between objects are the ontology''s, not tags''. The Tags list shows one line per tag with counts (where applied: objects and sources; depends on it: classifications and rules) and its category; the detail panel lists them grouped and collapsible, each name a link.)'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -98573,3 +98573,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity, when a File Crawler source with onedrive:// and one with gdrive:// are registered on a server
     install, then each CSV is a table that answers a query the same as the same file read through file://.'
 
+- id: REQ-2281
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Entity Resolution
+  feature: glossary-tags-ontology-tags
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-26. The entity tag builds an entity hub: every column tagged entity:<name>,
+    across every source, feeds one hub per entity name (entity:customer gives the customer hub). Each entity
+    name declares its normalization rules once (for example lowercase and trim an email, E.164 a phone, strip
+    punctuation from a tax id), a column may override them, and values are normalized before they are
+    compared. The resolver produces two governed derived tables: the hub, one row per resolved entity with a
+    stable surrogate key, its canonical value and first and last seen; and the link table, mapping each source
+    table, column and raw value to its hub key. Both are built and refreshed like a materialized view on the
+    serving engine (identical on every engine), refreshed incrementally from the sources'' change signals, and
+    queryable through every front door; a relationship from each source table to the hub is generated, so a
+    query traverses an entity across sources with no hand-registered join; no relationship is generated
+    where a registered relationship already joins the same tables on the same columns, and generated ones
+    are listed apart from registered ones. Matching is deterministic first: an
+    exact match of normalized values. Fuzzy matching is an opt-in rule (a similarity threshold or a match on
+    several attributes) that records a confidence and whether each link was automatic or reviewed; a candidate
+    below the threshold goes to a steward review queue and is never merged unreviewed. Survivorship rules per
+    attribute (most recent, preferred source, most complete) choose the hub''s attribute values when sources
+    disagree. Governance carries through: masks, row rules and column visibility on an input column apply to
+    the hub and link rows drawn from it, so a role that cannot read a source column cannot read its links. The
+    resolver also searches the reference library: a document section that names a resolved entity (its
+    canonical value or a declared alias) is linked to that hub entity with a confidence, reviewable like a
+    fuzzy match, so an entity lists the documents that mention it and a document lists its entities; the
+    link obeys the document''s and the source column''s read rights.'
+  scenario: 'Given two sources each with an email column tagged entity:customer holding Bob@X.com and
+    bob@x.com respectively, when the customer hub is built, then the hub holds one customer for both, the link
+    table maps each source row to that key, a query joins both sources through the hub with no registered
+    relationship, and a role that cannot read the second source''s email column sees no link from it.'
