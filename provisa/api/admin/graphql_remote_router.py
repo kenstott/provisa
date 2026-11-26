@@ -370,6 +370,9 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 table_columns.c.column_name,
                 table_columns.c.visible_to,
                 table_columns.c.required_by_steward,
+                table_columns.c.gql_selection,
+                table_columns.c.data_type,
+                table_columns.c.description,
             )
             .select_from(
                 registered_tables.join(
@@ -391,6 +394,20 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         _steward_required = {
             (r.table_name, r.column_name) for r in _existing if r.required_by_steward
         }
+        # REQ-308: nor on the columns the model registers with the selection that reads them
+        # (``employee_id: employee { id }`` reads the id of the one ``employee`` the remote type
+        # holds). The endpoint's schema has no field of that name, so it lists no such column,
+        # and every read of the registered column is the model's, not the endpoint's.
+        _selected: dict[str, dict[str, Column]] = {}
+        for r in _existing:
+            if r.gql_selection:
+                _selected.setdefault(r.table_name, {})[r.column_name] = Column(
+                    name=r.column_name,
+                    visible_to=list(r.visible_to or []),
+                    description=r.description,
+                    data_type=r.data_type,
+                    gql_selection=r.gql_selection,
+                )
         # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
         # snapshot has to be taken while the rows the wipe below removes are still there.
         from provisa.core.repositories import glossary as glossary_repo
@@ -400,6 +417,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         for t in tables:
             # A table already registered keeps the name it is registered under.
             _sql_name = t.get("registered_name") or apply_sql_name(t["name"])
+            _listed = {apply_sql_name(c["name"]) for c in t.get("columns", [])}
             tbl = Table(
                 source_id=source_id,
                 # A table registered on its own keeps the domain it was registered into.
@@ -423,6 +441,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                     )
                     for c in t.get("columns", [])
                 ]
+                + [c for name, c in _selected.get(_sql_name, {}).items() if name not in _listed]
                 + [
                     Column(
                         name=f"_nf_{apply_sql_name(a['name'])}",
