@@ -11,7 +11,13 @@
 // REQ-788: a files source's table reads the glob it spans and the column naming each row's file,
 // under the labels it was registered with; a table of any other source has neither.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { render, screen } from "../../../test-utils/render";
 import type { RegisteredTable, Source } from "../../../types/admin";
 import { IdentityRead } from "../TableSectionsRead";

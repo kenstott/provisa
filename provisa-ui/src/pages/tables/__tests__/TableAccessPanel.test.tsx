@@ -13,6 +13,12 @@
 // reach behind each.
 
 import { describe, expect, it, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import { TableAccessPanel } from "../TableAccessPanel";
 import type { TableAccess } from "../../../api/roleRights";
