@@ -330,9 +330,9 @@ export function TeamPage() {
   return (
     <Stack gap="lg" p="md" data-testid="team-page">
       <div>
-        <PageTitle icon={Users} mb={4}>
-          {t("teamPage.title")}
-        </PageTitle>
+        <div className="page-header">
+          <PageTitle icon={Users}>{t("teamPage.title")}</PageTitle>
+        </div>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}
         </Text>

@@ -138,6 +138,9 @@ const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
 /** Admin overview page — dashboard, config management, platform settings. */
 /** REQ-2219 (amended 2026-11-24): what a domain's Steward field names, people and roles as
  * entered. */
+// REQ-2277: the tabs that are list pages draw their own header (title, filter, add).
+const OWN_HEADER: ReadonlySet<string> = new Set(["Tags", "Classification"]);
+
 const namedStewards = (d: Domain) => [...d.stewardField.people, ...d.stewardField.roles];
 
 /** A domain's stewards as its row shows them: its field as entered, or with none of its own the
@@ -338,13 +341,17 @@ export function AdminPage() {
   };
 
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
+  const adminTitle = `${t("adminPage.title")} — ${activeTab}`;
 
   return (
     <div className="page">
-      <PageTitle icon={Settings} mb="md">
-        {/* Reads as a breadcrumb: the area, then the section within it. */}
-        {t("adminPage.title")} — {activeTab}
-      </PageTitle>
+      {/* Reads as a breadcrumb: the area, then the section within it. A tab that is a list page
+          draws the header itself, with its filter and its add (REQ-2277). */}
+      {!OWN_HEADER.has(activeTab) && (
+        <div className="page-header">
+          <PageTitle icon={Settings}>{adminTitle}</PageTitle>
+        </div>
+      )}
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
           page has painted, so it gates on the admin content itself. */}
@@ -618,8 +625,8 @@ export function AdminPage() {
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
         {activeTab === "Spark Cluster" && <SparkClusterTab />}
         {activeTab === "Import" && <ImportTab />}
-        {activeTab === "Tags" && <TagsTab />}
-        {activeTab === "Classification" && <ClassificationKindsTab />}
+        {activeTab === "Tags" && <TagsTab title={adminTitle} />}
+        {activeTab === "Classification" && <ClassificationKindsTab title={adminTitle} />}
         {activeTab === "Reports" && <ReportsTab />}
       </Stack>
       {refusal.dialog}

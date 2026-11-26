@@ -8,14 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useTranslation } from "react-i18next";
 import { TagsTab } from "../../components/admin/TagsTab";
 
 /** REQ-2259: the Tags page of the Context group -- each tag, where it is applied and what depends
- * on it, read-only. Tags are edited in Admin. */
+ * on it, read-only. Tags are edited in Admin. TagsTab draws the page's header, tabs and list. */
 export function ContextTagsPage() {
+  const { t } = useTranslation();
   return (
-    <div className="page">
-      <TagsTab readOnly />
+    <div className="page page-sticky-head">
+      <TagsTab readOnly title={t("navBar.itemTags")} />
     </div>
   );
 }

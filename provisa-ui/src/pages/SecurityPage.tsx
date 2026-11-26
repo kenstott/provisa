@@ -634,16 +634,15 @@ export function SecurityRolesPage() {
         </Alert>
       )}
 
-      <Group justify="space-between" wrap="wrap">
+      <div className="page-header">
         <PageTitle icon={Shield}>{t("securityPage.rolesHeading")}</PageTitle>
         <FilterInput
           value={roleSearch}
           onChange={setRoleSearch}
           placeholder={t("securityPage.filterByRoleId")}
         />
-        {/* Nested Group: the parent spreads its children, and the bubble explains this
-            button, so it has to travel with it. */}
-        <Group gap="xs">
+        {/* The bubble explains this button, so it travels with it. */}
+        <div className="page-actions">
           {mayDefine && !showRoleForm && !showDerivedForm && (
             // REQ-2078: a role is granted rights; a derived one comes from an attribute.
             <Menu position="bottom-end" withinPortal>
@@ -684,8 +683,8 @@ export function SecurityRolesPage() {
             ariaLabel={t("securityPage.rolePurposeAria")}
             testId="roles-purpose-help"
           />
-        </Group>
-      </Group>
+        </div>
+      </div>
 
       <SplitPane
         testId="roles-split"
