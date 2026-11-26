@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "反義於",
     "expertsTitle": "專家",
     "noExperts": "沒有專家。",
+    "documentsTitle": "文件",
+    "documentsLoading": "正在載入文件…",
     "expertUserLabel": "人員",
     "expertKindLabel": "類型",
     "addExpert": "+ 專家",

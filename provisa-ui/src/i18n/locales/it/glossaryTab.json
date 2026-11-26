@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "Contrario di",
     "expertsTitle": "Esperti",
     "noExperts": "Nessun esperto.",
+    "documentsTitle": "Documenti",
+    "documentsLoading": "Caricamento dei documenti…",
     "expertUserLabel": "Persona",
     "expertKindLabel": "Tipo",
     "addExpert": "+ Esperto",

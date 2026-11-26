@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "היפוך של",
     "expertsTitle": "מומחים",
     "noExperts": "אין מומחים.",
+    "documentsTitle": "מסמכים",
+    "documentsLoading": "טוען מסמכים…",
     "expertUserLabel": "אדם",
     "expertKindLabel": "סוג",
     "addExpert": "+ מומחה",

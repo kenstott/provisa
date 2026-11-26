@@ -11321,5 +11321,11 @@
   "ja/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "ja/yourData.json::yourData.rest": "REST",
   "ja/yourData.json::yourData.sql": "SQL",
-  "ja/yourData.json::yourData.title": "Your data"
+  "ja/yourData.json::yourData.title": "Your data",
+  "ja/glossaryTab.json::glossaryTab.documentsTitle": "Documents",
+  "ja/glossaryTab.json::glossaryTab.documentsLoading": "Loading documents…",
+  "ja/tagCitations.json::tagCitations.accept": "Accept",
+  "ja/tagCitations.json::tagCitations.reject": "Reject",
+  "ja/tagCitations.json::tagCitations.proposed": "Proposed",
+  "ja/tagCitations.json::tagCitations.proposedHelp": "A document scan proposes merging this passage's draft into the term. Accept merges the draft; Reject declines it."
 }

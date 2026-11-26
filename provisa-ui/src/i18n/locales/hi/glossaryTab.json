@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "इसका विलोम",
     "expertsTitle": "विशेषज्ञ",
     "noExperts": "कोई विशेषज्ञ नहीं।",
+    "documentsTitle": "दस्तावेज़",
+    "documentsLoading": "दस्तावेज़ लोड हो रहे हैं…",
     "expertUserLabel": "व्यक्ति",
     "expertKindLabel": "प्रकार",
     "addExpert": "+ विशेषज्ञ",

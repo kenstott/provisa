@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "Tegenhanger van",
     "expertsTitle": "Experts",
     "noExperts": "Geen experts.",
+    "documentsTitle": "Documenten",
+    "documentsLoading": "Documenten laden…",
     "expertUserLabel": "Persoon",
     "expertKindLabel": "Soort",
     "addExpert": "+ Expert",

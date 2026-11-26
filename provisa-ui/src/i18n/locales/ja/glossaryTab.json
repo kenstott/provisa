@@ -55,6 +55,8 @@
     "rel_ANTONYM_OF": "対義語",
     "expertsTitle": "エキスパート",
     "noExperts": "エキスパートはいません。",
+    "documentsTitle": "ドキュメント",
+    "documentsLoading": "ドキュメントを読み込んでいます…",
     "expertUserLabel": "担当者",
     "expertKindLabel": "種類",
     "addExpert": "+ エキスパート",
