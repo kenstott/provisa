@@ -34,6 +34,8 @@ import {
 } from "@mantine/core";
 import { FilterInput } from "../../components/admin/FilterInput";
 import { HelpBubble } from "../../components/HelpBubble";
+import { EntityLink } from "../../components/EntityLink";
+import { entityName } from "../../components/entityName";
 import { useRoles, useTables, useDomains } from "../../hooks/useAdminQueries";
 import { useRLSRules, useUpsertRlsRule, useDeleteRlsRule } from "../../hooks/useSecurityQueries";
 import { baseTagId, type RLSRule, type RuleRight } from "../../types/admin";
@@ -752,13 +754,15 @@ export function SecurityRlsPage() {
                             <Text span c="dimmed" fz="0.75em">
                               {t("securityPage.domainPrefix")}{" "}
                             </Text>
-                            {r.domainId}
+                            {entityName("domain", r.domainId)}
                           </>
                         ) : (
-                          (tableLabelById[r.tableId!] ?? String(r.tableId))
+                          <EntityLink kind="table" id={r.tableId!}>
+                            {tableLabelById[r.tableId!] ?? String(r.tableId)}
+                          </EntityLink>
                         )}
                       </Table.Td>
-                      <Table.Td>{r.roleId}</Table.Td>
+                      <Table.Td>{entityName("role", r.roleId)}</Table.Td>
                       <Table.Td data-testid={`rule-right-${r.id}`}>{rightsLabel(r)}</Table.Td>
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>

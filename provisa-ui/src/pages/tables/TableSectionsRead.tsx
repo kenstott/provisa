@@ -18,6 +18,7 @@ import { READ_WAIT_NO_ROWS } from "./ReadWaitField";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { namingConventionLabel } from "../../hooks/useNamingConventions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
+import { entityName } from "../../components/entityName";
 import { useSourceKind } from "../sources/sourceKind";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
 import {
@@ -116,10 +117,10 @@ export function IdentityRead({
     ? namingConventionLabel(t, table.gqlNamingConvention)
     : t("tablesPage.inheritSource");
   const fields: DetailField[] = [
-    { label: t("tableSections.source"), value: table.sourceId },
+    { label: t("tableSections.source"), value: entityName("source", table.sourceId) },
     { label: t("tableSections.schema"), value: table.schemaName },
     { label: t("tableSections.table"), value: table.tableName },
-    { label: t("tableSections.domain"), value: table.domainId },
+    { label: t("tableSections.domain"), value: entityName("domain", table.domainId) },
     {
       label: t("tableEditForm.sqlAliasLabel"),
       value: table.alias ?? null,

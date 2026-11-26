@@ -34,7 +34,10 @@ export type EntityKind =
   | "metric"
   | "classification"
   // REQ-2259: a reference library document, on the Context group's Documents page.
-  | "document";
+  | "document"
+  // REQ-2277 rule 6: a role, on Security's Roles page; an environment, on Admin's Environments.
+  | "role"
+  | "environment";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
@@ -75,6 +78,10 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       return detailHref("classification", id);
     case "document":
       return detailHref("library", id);
+    case "role":
+      return detailHref("roles", id);
+    case "environment":
+      return detailHref("environments", id);
   }
 }
 

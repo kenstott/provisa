@@ -8,14 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Anchor } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { entityLink, pageLink, type EntityKind } from "../lib/entityHref";
 
 /** REQ-2259: a link to another page's thing, drawn only when the viewer holds that page's right;
- * otherwise its name as plain text. */
+ * otherwise its name as plain text. REQ-2277 rule 6: every name of an object the UI shows is drawn
+ * through it (objectLinkGuard). A link in a list row opens its object, not the row's: the press
+ * stops at the link. */
 export function EntityLink({
   kind,
   id,
@@ -33,11 +35,13 @@ export function EntityLink({
   const href = entityLink(capabilities, kind, id, table);
   if (href === undefined) return <span data-testid={testId}>{children}</span>;
   return (
-    <Anchor component={Link} to={href} data-testid={testId}>
+    <Anchor component={Link} to={href} data-testid={testId} onClick={stopAtLink}>
       {children}
     </Anchor>
   );
 }
+
+const stopAtLink = (e: MouseEvent) => e.stopPropagation();
 
 /** REQ-2259: a link to a page (or a page narrowed by its query), drawn only when the viewer holds
  * that page's right; otherwise its words as plain text. */

@@ -57,6 +57,7 @@ import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { commandId, readCommandId, useRememberedDetail } from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
+import { entityName } from "../components/entityName";
 import type { ActionType, FormState } from "./commands/types";
 import {
   EMPTY_FORM,
@@ -854,8 +855,10 @@ export function CommandsPage() {
                               <TagControl objectType="command" commandName={fn.name} />
                             </Group>
                           </Table.Td>
-                          <Table.Td>{fn.sourceId}</Table.Td>
-                          <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>{entityName("source", fn.sourceId)}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", fn.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>
                             {fn.schemaName}.{fn.functionName}
                           </Table.Td>
@@ -939,7 +942,9 @@ export function CommandsPage() {
                                 : t("commandsPage.statusApproved")}
                             </Badge>
                           </Table.Td>
-                          <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", wh.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>{wh.url}</Table.Td>
                           <Table.Td>{wh.method}</Table.Td>
                           <Table.Td>{wh.timeoutMs}ms</Table.Td>
