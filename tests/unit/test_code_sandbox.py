@@ -101,7 +101,10 @@ def test_the_launcher_starts_from_anywhere_with_no_provisa_package_on_the_path(t
     then runs the host or says the sandbox is unavailable where the kernel has no Landlock."""
     import subprocess
 
-    argv = lx.launcher_argv(sys.executable, read=[], proxy_port=1, argv=["/bin/true"])
+    # On a Nix host /bin/true resolves into the store, which a worker reads only as the parent
+    # grants it (sandbox._linux_readable); elsewhere the grant is empty and /usr serves it.
+    read = lx.nix_store_grant("/bin/true", [], {})
+    argv = lx.launcher_argv(sys.executable, read=read, proxy_port=1, argv=["/bin/true"])
     bare = [argv[0], "-I", "-S"]
     started = subprocess.run(
         [*bare, *argv[2:]], cwd=tmp_path, capture_output=True, text=True, env={}
