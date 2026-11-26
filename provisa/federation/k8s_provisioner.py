@@ -928,12 +928,20 @@ async def _await_ready(shard: str) -> str:
     as the process answers, which on a cluster is true before the engine is whole; ``readyReplicas``
     is the cluster's own statement that the pod passed its readiness gate and is in the Service's
     endpoint set — the condition that actually has to hold before a query is released.
+
+    When a rolling update is in progress (the new spec is live but ``updatedReplicas <
+    replicas``), the deadline is extended once by ``PROVISA_ENGINE_DRAIN_SECONDS`` so the old
+    pod has time to finish draining before the new one is started.  Without this extension the
+    default ``terminationGracePeriodSeconds`` (600 s) exceeds the default
+    ``PROVISA_ENGINE_READY_TIMEOUT`` (420 s), causing convergence to time out before the new
+    pod with the pinned images can even begin starting (REQ-2194).
     """
     settings = provisioner_settings()
     name = shard_workload_name(shard)
     path = f"/apis/apps/v1/namespaces/{settings['namespace']}/deployments/{name}"
     timeout = _int_env("PROVISA_ENGINE_READY_TIMEOUT", 420)
     deadline = asyncio.get_running_loop().time() + timeout
+    _rollout_extended = False
     last = "no status"
     while True:
         resp = await _k8s("GET", path)
@@ -955,6 +963,22 @@ async def _await_ready(shard: str) -> str:
                 # Resolved here rather than by the caller: the pod that just passed its readiness
                 # gate is the one this wake produced, and its IP is what the caller will dial.
                 return await _resolve_pod_ip(shard)
+            # Rolling update detected: the new spec is live but the old pod is still present.
+            # Extend the deadline once by the full drain window so the old pod can finish
+            # draining and the new one can start.  Extending more than once is unnecessary —
+            # one drain window covers every subsequent poll until the new pod is ready.
+            if not _rollout_extended and observed >= generation and updated < replicas:
+                drain = _int_env("PROVISA_ENGINE_DRAIN_SECONDS", 600)
+                deadline = max(
+                    deadline,
+                    asyncio.get_running_loop().time() + drain + timeout,
+                )
+                _rollout_extended = True
+                log.info(
+                    "engine shard %s: rolling update in progress; deadline extended by %ds",
+                    shard,
+                    drain,
+                )
             last = (
                 f"generation={generation} observed={observed} "
                 f"replicas={replicas} updated={updated} ready={ready}"

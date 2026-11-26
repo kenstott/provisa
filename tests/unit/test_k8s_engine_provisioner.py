@@ -948,3 +948,84 @@ async def test_the_isolated_lane_carries_no_queue_policy(monkeypatch, configured
     assert "resource-groups.properties" not in config["data"]
     deployment = next(m for m in applied if m.get("kind") == "Deployment")
     assert deployment["metadata"]["labels"]["provisa.dev/lane"] == "isolated"
+
+
+# ---- image convergence -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_convergence_patches_stale_images(monkeypatch, configured):
+    """When an existing shard's container images differ from the pinned env-var values,
+    ensure_shard_running submits the deployment manifest that contains the new images, so
+    the Kubernetes rolling-update controller replaces the pod (REQ-2194)."""
+    new_engine = "ghcr.io/kenstott/provisa-trino-engine:v0.1.0-alpha.512"
+    new_zaychik = "ghcr.io/kenstott/provisa-zaychik:v0.1.0-alpha.512"
+    monkeypatch.setenv("PROVISA_ENGINE_IMAGE", new_engine)
+    monkeypatch.setenv("PROVISA_ZAYCHIK_IMAGE", new_zaychik)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if "/deployments/" in path and request.method == "GET":
+            return httpx.Response(200, json=_rolled_out(ready=1))
+        if request.method == "PATCH":
+            return httpx.Response(200, json={"metadata": {"name": "applied"}})
+        return _cluster_get()
+
+    calls = _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+
+    await prov.ensure_shard_running("shared_1")
+
+    deployment_patches = [c for c in calls if c.method == "PATCH" and b'"Deployment"' in c.content]
+    assert len(deployment_patches) == 1
+    body = json.loads(deployment_patches[0].content)
+    containers = body["spec"]["template"]["spec"]["containers"]
+    trino_img = next(c["image"] for c in containers if c["name"] == "trino")
+    zaychik_img = next(c["image"] for c in containers if c["name"] == "zaychik")
+    assert trino_img == new_engine
+    assert zaychik_img == new_zaychik
+
+
+@pytest.mark.asyncio
+async def test_await_ready_extends_deadline_during_shard_rollout(monkeypatch, configured):
+    """When a rolling update is in progress (observed generation caught up but updatedReplicas <
+    replicas), _await_ready extends the deadline by PROVISA_ENGINE_DRAIN_SECONDS so the old pod
+    has time to drain and the new pod time to start (REQ-2194).
+
+    Without the extension a shard draining at the default terminationGracePeriodSeconds (600s)
+    would exceed the PROVISA_ENGINE_READY_TIMEOUT (420s) before the new pod can even begin
+    starting, leaving the deployment stuck on old images."""
+    # Zero initial timeout: would immediately time out without the drain extension.
+    monkeypatch.setenv("PROVISA_ENGINE_READY_TIMEOUT", "0")
+    monkeypatch.setenv("PROVISA_ENGINE_DRAIN_SECONDS", "60")
+    seen: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/deployments/" in request.url.path:
+            seen.append(1)
+            if len(seen) < 3:
+                # Rollout in progress: spec acknowledged, old pod still occupying a replica slot
+                # but not matching the new pod template (different images).
+                return httpx.Response(
+                    200,
+                    json={
+                        "metadata": {"generation": 2},
+                        "status": {
+                            "observedGeneration": 2,
+                            "replicas": 1,
+                            "updatedReplicas": 0,
+                            "readyReplicas": 1,
+                        },
+                    },
+                )
+            # Rollout complete: new pod ready.
+            return httpx.Response(200, json=_rolled_out(ready=1, generation=2))
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+
+    # Should NOT raise K8sProvisioningError despite timeout=0, because the rollout extends
+    # the deadline by drain_seconds (60) on detecting updatedReplicas < replicas.
+    await prov._await_ready("shared_1")
+    assert len(seen) == 3
