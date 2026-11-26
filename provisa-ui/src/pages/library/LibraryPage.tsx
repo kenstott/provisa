@@ -37,7 +37,6 @@ import { SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
 import { useUrlFilter } from "../../components/list/useUrlFilter";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
-import { PageHelp } from "../../components/PageHelp";
 import { PageLoading } from "../../components/PageLoading";
 import { PageTitle } from "../../components/PageTitle";
 import { useCapability } from "../../hooks/useCapability";
@@ -203,18 +202,6 @@ export function LibraryPage() {
               {t("referenceLibrary.add")}
             </Button>
           )}
-          <PageHelp
-            title={t("referenceLibrary.helpTitle")}
-            paragraphs={[
-              t("referenceLibrary.intro"),
-              t("referenceLibrary.helpWhat"),
-              t("referenceLibrary.helpWho"),
-              t("referenceLibrary.helpSees"),
-              t("referenceLibrary.helpEmbedding"),
-            ]}
-            ariaLabel={t("referenceLibrary.helpLabel")}
-            testId="reflib-page-help"
-          />
         </div>
       </div>
       <Text c="dimmed" size="sm" mb="sm" data-testid="reflib-why">

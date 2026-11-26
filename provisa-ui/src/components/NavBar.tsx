@@ -27,6 +27,7 @@ import { WhatsNewModal } from "./WhatsNewModal";
 import { RELEASE_NOTES } from "../lib/releaseNotes";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
+import { RoutePageHelp } from "./RoutePageHelp";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { deleteSandboxAccount } from "../api/admin";
@@ -387,6 +388,9 @@ export function NavBar() {
               </span>
             ))}
           <div className="subnav-extra" ref={setSubnavExtraNode} />
+          {/* REQ-2277 rule 8: a work surface with no PageTitle carries its (?) at the end of the
+              subnav, the header row above it. */}
+          <RoutePageHelp placement="subnav" />
         </nav>
       )}
       {profileOpen && <UserProfileModal onClose={() => setProfileOpen(false)} />}

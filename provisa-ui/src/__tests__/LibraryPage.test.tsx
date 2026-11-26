@@ -111,8 +111,13 @@ describe("the Library in the app", () => {
     const context = NAV_BAR.find((e) => e.kind === "group" && e.group.id === "context");
     expect(context).toBeDefined();
     const documents =
-      context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
-    expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
+      context!.kind === "group"
+        ? context!.group.items.find((i) => i.to === "/context/documents")
+        : undefined;
+    expect(documents).toMatchObject({
+      labelKey: "navBar.itemDocuments",
+      capability: "glossary_read",
+    });
     expect(read("App.tsx")).toMatch(
       /path="\/context\/documents"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
     );
@@ -524,14 +529,14 @@ describe("LibraryPage", () => {
     expect(screen.queryByTestId("reflib-reembed-all")).toBeNull();
   });
 
-  it("carries the page's (?) help, last among its actions", async () => {
-    render(<LibraryPage />);
+  // REQ-2277 rule 8: the help is the page title's, read from the registry for /context/documents.
+  it("carries the page's (?) help in its title", async () => {
+    render(<LibraryPage />, { initialEntries: ["/context/documents"] });
     await screen.findByTestId("reflib-row-3");
-    const help = screen.getByRole("button", { name: "About the reference library" });
-    expect(help).toBe(screen.getByTestId("reflib-page-help"));
-    expect(help.parentElement?.lastElementChild).toBe(help);
+    const help = screen.getByRole("button", { name: "About this page" });
+    expect(screen.getByTestId("page-title")).toContainElement(help);
     fireEvent.click(help);
-    const card = await screen.findByTestId("reflib-page-help-card");
+    const card = await screen.findByTestId("page-help-card");
     expect(card).toHaveTextContent("Not a document store.");
     expect(card).toHaveTextContent("search_reference_library");
     expect(card).toHaveTextContent("Re-embed is needed only when that model changes.");
