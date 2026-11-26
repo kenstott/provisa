@@ -30,6 +30,7 @@ import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverRunLine } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
+import { NEW_RUN, useDiscoverParam } from "../components/relationships/useDiscoverParam";
 import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
 import {
   useRelationships,
@@ -94,7 +95,9 @@ export function RelationshipsPage() {
   const [relTypeFilter, setRelTypeFilter] = useState<FilterSpec | null>(null);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
-  const [discoverAsk, setDiscoverAsk] = useState(false);
+  // REQ-2277: the dialog is open while the URL names it (`?discover=`).
+  const discoverLink = useDiscoverParam();
+  const discoverAsk = discoverLink.discover !== null;
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
@@ -370,14 +373,33 @@ export function RelationshipsPage() {
   const nothingListed = useCallback(() => {}, []);
   const discovery = useDiscoveryRun(nothingListed);
   const openDiscover = () => {
-    setDiscoverAsk(true);
+    discoverLink.open();
     void discovery.refresh();
   };
   // REQ-413 (amended 2026-11-16): the page's line about the latest run opens it in the dialog.
   const openLatestRun = () => {
     discovery.openLatest();
-    setDiscoverAsk(true);
+    discoverLink.open();
   };
+  // REQ-2277: a link naming a run shows that run once it is read. Until then the URL keeps the
+  // run it names; after, it follows what the open dialog shows: the form or the run.
+  const [linkedRun] = useState(() => discoverLink.runId);
+  const [linking, setLinking] = useState(linkedRun !== null);
+  // The run the link names could not be read: said in the dialog, over the form.
+  const [linkError, setLinkError] = useState("");
+  const showRun = discovery.show;
+  useEffect(() => {
+    if (linkedRun === null) return;
+    showRun(linkedRun)
+      .catch((e: unknown) => setLinkError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLinking(false));
+  }, [linkedRun, showRun]);
+  const shownInDialog = discovery.run === null ? NEW_RUN : String(discovery.run.id);
+  const { discover: linkedValue, replace: replaceLink } = discoverLink;
+  useEffect(() => {
+    if (linking || linkedValue === null || linkedValue === shownInDialog) return;
+    replaceLink(shownInDialog);
+  }, [linking, linkedValue, shownInDialog, replaceLink]);
 
   // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed,
   // and the page's line counts again how many of the run's suggestions wait.
@@ -614,6 +636,8 @@ export function RelationshipsPage() {
     relationship: allRels.some((r) => String(r.id) === expanded) ? expanded : null,
     domains: erd.focus.domains,
     objects: erd.focus.objects,
+    // REQ-2277: the Discover relationships dialog: `new` (setting up a run) or the run it shows.
+    discover: discoverAsk ? shownInDialog : null,
   });
 
   if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
@@ -827,7 +851,11 @@ export function RelationshipsPage() {
       />
       <DiscoverDialog
         opened={discoverAsk}
-        onClose={() => setDiscoverAsk(false)}
+        onClose={() => {
+          setLinkError("");
+          discoverLink.close();
+        }}
+        linkError={linkError}
         discovery={discovery}
         tables={tables}
         defaultDomains={domainsEnabled ? [...checkedDomains] : []}
