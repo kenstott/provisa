@@ -95302,7 +95302,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
     with no domain (a role) is checked against the assigner''s acting domains when it is made and records
     no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
-    missing a domain-limited required tag.'
+    missing a domain-limited required tag. (Amended 2026-11-26, maintainer: governance is a tag''s prime use. A tag has a kind: system (changes the behaviour of the objects it is on: masking, column and row rules), governance (a classification asserted with its definition source, per-assignment citations, a reason and an expiry) or state (a cross-object work marker such as to do or in review, with an optional assignee and its expiry). A state tag never shadows a state the model already holds (retired, needs review, approved, a suggestion''s outcome): such a name is refused by name. Relationships between objects are the ontology''s, not tags''. The Tags list shows one line per tag with counts (where applied: objects and sources; depends on it: classifications and rules); the detail panel lists them grouped and collapsible, each name a link.)'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
