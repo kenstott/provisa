@@ -38,6 +38,8 @@ from provisa.executor.result import QueryResult
 from provisa.federation import result_sink
 
 ROWS = [(1, "ada", 9.5), (2, "ben", None), (3, "cy", 1.25)]
+#: The base URI of the HTTP request a result is written for (the TestClient's own host).
+BASE = "http://testserver"
 COLUMNS = ["id", "name", "score"]
 
 
@@ -92,15 +94,16 @@ def _no_timers(monkeypatch):
 
 
 def _write(engine, fmt: str, *, user: str = "ada@example.com", ttl: int = 600) -> dict:
-    with audit_identity_scope(user, "http"):
+    with audit_identity_scope(user, "http"), local_results.bound_request_base(BASE + "/"):
         return local_results.write(
             SimpleNamespace(federation_engine=engine), "SELECT 1", fmt, [7], ttl
         )
 
 
 def _path(handle: dict, folder: Path) -> Path:
-    assert handle["redirect_url"].startswith(local_results.SERVE_PATH)
-    return folder / "results" / handle["redirect_url"][len(local_results.SERVE_PATH) :]
+    served_at = BASE + local_results.SERVE_PATH
+    assert handle["redirect_url"].startswith(served_at)
+    return folder / "results" / handle["redirect_url"][len(served_at) :]
 
 
 # -- writing ------------------------------------------------------------------------------------
@@ -114,7 +117,7 @@ def test_an_engine_that_writes_the_format_writes_the_file(org_folder, _no_timers
     assert path.read_text() == "id\n1\n2\n"
     assert handle == {
         "sink": "local",
-        "redirect_url": f"/data/redirect-file/{path.name}",
+        "redirect_url": f"{BASE}/data/redirect-file/{path.name}",
         "row_count": 2,
         "expires_in": 900,
         "content_type": "text/csv",

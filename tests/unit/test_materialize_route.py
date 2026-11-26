@@ -88,7 +88,8 @@ class TestExecutePlanMaterializeTerminal:
 
 
 class TestSinkTierSelection:
-    """REQ-1195: object-store tier when the engine can write the format natively to a store."""
+    """REQ-1195: the object-store tier for every format when a store is configured; the local
+    tier for every format when none is."""
 
     @pytest.mark.asyncio
     async def test_object_store_tier(self, monkeypatch):
@@ -132,28 +133,48 @@ class TestSinkTierSelection:
         monkeypatch.setattr(local_results, "write", _write)
         return calls
 
+    @staticmethod
+    def _uploads(monkeypatch) -> list[tuple]:
+        """Record the object-store tier's own uploads (a format the engine does not write)."""
+        import provisa.executor.redirect as rd
+
+        calls: list[tuple] = []
+
+        def _upload(state, physical_sql, fmt, params, config):
+            calls.append((physical_sql, fmt, params, config.ttl))
+            return {"sink": "object-store", "redirect_url": "https://signed", "row_count": 3}
+
+        monkeypatch.setattr(rd, "_upload_result", _upload)
+        return calls
+
     @pytest.mark.asyncio
-    async def test_an_engine_that_writes_no_result_itself_uses_the_local_tier(self, monkeypatch):
-        # REQ-1194: the tier is chosen by what the bound engine declares it writes, not by which
-        # engine it is. One that writes nothing itself → the local tier (REQ-1191).
-        calls = self._local(monkeypatch)
+    async def test_an_engine_that_writes_no_result_itself_still_uses_the_object_store(
+        self, monkeypatch
+    ):
+        # REQ-1195: the results store is the deployment's, whatever the engine writes itself. One
+        # that writes nothing to the store → Provisa writes the result there from its rows.
+        local = self._local(monkeypatch)
+        uploads = self._uploads(monkeypatch)
         state = MagicMock()
         state.federation_engine.writes_result.return_value = False
         handle = await run_materialize(
             state, "SELECT 1", Delivery(output_format="parquet", config=_cfg()), [5]
         )
-        assert handle["sink"] == "local"
-        assert calls == [("SELECT 1", "parquet", [5], 3600)]
+        assert handle["sink"] == "object-store"
+        assert uploads == [("SELECT 1", "parquet", [5], 3600)]
+        assert local == []
         state.federation_engine.ctas_redirect.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_non_native_format_uses_local_tier(self, monkeypatch):
-        # CSV is a format no engine writes to the store itself → the local tier, whatever the engine.
-        calls = self._local(monkeypatch)
+    async def test_non_native_format_uses_the_object_store(self, monkeypatch):
+        # CSV is a format no engine writes to the store itself → still the configured store.
+        local = self._local(monkeypatch)
+        uploads = self._uploads(monkeypatch)
         state = MagicMock()
         state.federation_engine.writes_result.side_effect = lambda fmt: fmt == "parquet"
         await run_materialize(state, "SELECT 1", Delivery(output_format="csv", config=_cfg()), None)
-        assert [c[1] for c in calls] == ["csv"]
+        assert [c[1] for c in uploads] == ["csv"]
+        assert local == []
         state.federation_engine.ctas_redirect.assert_not_called()
 
     @pytest.mark.asyncio

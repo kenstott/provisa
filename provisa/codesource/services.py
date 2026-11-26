@@ -199,6 +199,7 @@ SERVICES = (
     "metric",
     "audit",
     "dq",
+    "spark",
 )
 
 #: The header a worker's services request names its call by (the call's id), so the services'
@@ -325,6 +326,8 @@ def _dispatch(
             from provisa.dq import service as dq_service
 
             return cl.run(dq_service.answer(grant, role, method, sub, span))
+        if service == "spark":  # REQ-2225
+            return cl.run(service_ops.spark(grant, method, sub, span))
         return cl.run(service_ops.http(grant, method, body, span))
 
 

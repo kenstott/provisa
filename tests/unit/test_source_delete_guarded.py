@@ -320,7 +320,7 @@ async def test_deleting_a_native_source_stops_its_host_frees_its_port_and_remove
 
     port = hosted["port"]
     await _insert_code_source(
-        plane, "spark_jobs", {"host": "127.0.0.1", "port": port, "native": "script"}
+        plane, "spark_jobs", {"host": "127.0.0.1", "port": port, "native": True}
     )
     assert _listening(port)
     assert (await _delete_source("spark_jobs")).success
@@ -331,7 +331,7 @@ async def test_deleting_a_native_source_stops_its_host_frees_its_port_and_remove
     assert not _listening(port)
     assert not hosted["work"].exists()
     with pytest.raises(native_connector.NativeHostFailed, match="has no state"):
-        native_connector.ensure_running(hosted["org"], "spark_jobs", "d" * 64, "script", port)
+        native_connector.ensure_running(hosted["org"], "spark_jobs", "d" * 64, port)
 
 
 async def test_deleting_an_image_source_touches_no_host(plane, hosted, monkeypatch):
