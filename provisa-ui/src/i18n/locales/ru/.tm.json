@@ -11,6 +11,7 @@
   "ru.json::common.discardTitle": "Discard your changes?",
   "ru.json::common.identity": "Identity",
   "ru.json::common.loading": "Loading...",
+  "ru.json::common.noQuery": "There is no query to run.",
   "ru.json::common.processing": "Processing...",
   "ru.json::common.required": "Required",
   "ru.json::common.save": "Save",

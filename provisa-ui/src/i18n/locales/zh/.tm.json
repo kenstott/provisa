@@ -11,6 +11,7 @@
   "zh.json::common.discardTitle": "Discard your changes?",
   "zh.json::common.identity": "Identity",
   "zh.json::common.loading": "Loading...",
+  "zh.json::common.noQuery": "There is no query to run.",
   "zh.json::common.processing": "Processing...",
   "zh.json::common.required": "Required",
   "zh.json::common.save": "Save",

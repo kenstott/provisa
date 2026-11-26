@@ -11,6 +11,7 @@
   "zh-HK.json::common.discardTitle": "Discard your changes?",
   "zh-HK.json::common.identity": "Identity",
   "zh-HK.json::common.loading": "Loading...",
+  "zh-HK.json::common.noQuery": "There is no query to run.",
   "zh-HK.json::common.processing": "Processing...",
   "zh-HK.json::common.required": "Required",
   "zh-HK.json::common.save": "Save",
