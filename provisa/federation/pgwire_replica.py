@@ -394,12 +394,22 @@ def _files_operand(source: Any) -> dict:
     directory, source_glob = split_source_path(raw_path)
     if source_glob is not None:
         operand["glob"] = source_glob
-    # Also verified live: a relative directory resolves against the bundled Calcite child JVM's OWN
-    # cwd (its bundle cache directory), not this process's — an unqualified "demo/files/northwind"
-    # found nothing even with the glob already stripped. Absolute-ize against this process's cwd,
-    # which is where a source's ``path`` is meant to be interpreted from everywhere else in Provisa.
-    resolved_dir = str(Path(directory).resolve())
-    operand["directory"] = resolved_dir
+    # REQ-2280: a onedrive:// or gdrive:// directory is read live by the adapter's drive storage
+    # provider, signed in with the source's own credentials; its directory is within the drive.
+    from provisa.file_source.cloud_drive import drive_adapter_operand, drive_storage_options
+
+    drive = drive_adapter_operand(source, directory)
+    if drive is not None:
+        operand.update(drive)
+        resolved_dir = drive["directory"]
+    else:
+        # Also verified live: a relative directory resolves against the bundled Calcite child
+        # JVM's OWN cwd (its bundle cache directory), not this process's — an unqualified
+        # "demo/files/northwind" found nothing even with the glob already stripped. Absolute-ize
+        # against this process's cwd, which is where a source's ``path`` is meant to be
+        # interpreted from everywhere else in Provisa.
+        resolved_dir = str(Path(directory).resolve())
+        operand["directory"] = resolved_dir
     # REQ-788: each file_glob table of this source is a glob-url table of the file adapter, which
     # merges the matched files into one logical table (identical column sets, refused by name
     # otherwise; the optional source-file column). The glob is relative to the source directory.
@@ -411,11 +421,14 @@ def _files_operand(source: Any) -> dict:
             # past it is refused by name (FileOutsideSourceGlob) before the adapter reads it.
             from provisa.file_source.files_glob import matched_files
 
-            matched_files(raw_path, spec["file_glob"])
-        entry = {
-            "name": spec["name"],
-            "url": str(Path(resolved_dir) / spec["file_glob"]),
-        }
+            matched_files(raw_path, spec["file_glob"], drive_storage_options(source))
+        # A drive table's url is within the drive, as its directory is.
+        url = (
+            "/".join(p for p in (resolved_dir, spec["file_glob"]) if p)
+            if drive is not None
+            else str(Path(resolved_dir) / spec["file_glob"])
+        )
+        entry = {"name": spec["name"], "url": url}
         if spec.get("source_file_column"):
             entry["sourceFileColumn"] = spec["source_file_column"]
         tables.append(entry)

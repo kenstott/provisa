@@ -80,6 +80,7 @@ def _probe_factory(
     source_path: str | None = None,
     file_glob: str | None = None,
     loader_probe: Probe | None = None,
+    storage_options: Any = None,
 ) -> Callable[[], Probe]:
     """Build a node's probe factory from its resolved ``probe_type`` (REQ-982). Each fire yields a
     fresh transport (``() -> str | None``) via :func:`probes.build_probe`; ``check_node`` compares the
@@ -98,6 +99,7 @@ def _probe_factory(
             source_path=source_path,
             file_glob=file_glob,
             loader_probe=loader_probe,
+            storage_options=storage_options,
         )
 
     return factory
@@ -273,6 +275,7 @@ def build_source_node_spec(
     # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
     from provisa.compiler.naming import source_to_catalog
     from provisa.core.secrets import resolve_secrets
+    from provisa.file_source.cloud_drive import drive_storage_options
 
     ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
     factory = (
@@ -284,6 +287,8 @@ def build_source_node_spec(
             sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
             source_path=resolve_secrets(getattr(src, "path", "") or "") or None,  # REQ-788
             file_glob=getattr(tbl, "file_glob", None),  # REQ-788
+            # REQ-2280: a onedrive:// or gdrive:// glob is stat'd with the source's sign-in.
+            storage_options=drive_storage_options(src) if getattr(tbl, "file_glob", None) else None,
             # The source's own adapter may ask its provider whether the table changed.
             loader_probe=source_probe(src, tbl) if source_probe is not None else None,
         )

@@ -590,8 +590,20 @@ class TrinoFilesConnector(_TrinoConnector):
             raise ValueError(
                 f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
             )
+        glob = resolve_secrets(source.path)
+        from provisa.file_source.drive_schemes import scheme_of
+
+        drive = scheme_of(glob)
+        if drive is not None:
+            # REQ-2280: the trino-file plugin derives the adapter's storageType from the glob's
+            # scheme but takes no storageConfig for it (calcite engine-v0.129.0's FileConfig has
+            # aws.* and sftp.* only), so a drive's sign-in cannot reach the adapter on Trino.
+            raise ValueError(
+                f"Source {source.id!r}: Trino cannot read {drive}:// files: its trino-file plugin "
+                f"takes no {drive} sign-in (storageConfig)"
+            )
         details = {
-            "glob": resolve_secrets(source.path),
+            "glob": glob,
             "recursive": "true",
             "schema-name": source.id.replace("-", "_"),
             "execution-engine": "DUCKDB",

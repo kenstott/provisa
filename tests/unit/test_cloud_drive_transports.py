@@ -32,9 +32,9 @@ from provisa.file_source.cloud_drive import (
     GoogleDriveFileSystem,
     OneDriveFileSystem,
     drive_storage_options,
-    scheme_of,
 )
 from provisa.file_source.crawler import crawl_directory
+from provisa.file_source.drive_schemes import scheme_of
 from provisa.file_source.files_glob import (
     columns_of_file,
     matched_files,

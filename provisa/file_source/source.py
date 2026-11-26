@@ -160,7 +160,7 @@ def _readable(config: FileSourceConfig) -> Any:
     """What pyarrow reads ``config.path`` from: the path itself, or for a onedrive:// or
     gdrive:// path, which pyarrow has no filesystem for, the file's bytes read through the
     transport with the source's sign-in (``options["storage_options"]``, REQ-2280)."""
-    from provisa.file_source.cloud_drive import scheme_of
+    from provisa.file_source.drive_schemes import scheme_of
 
     if scheme_of(config.path) is None:
         return config.path

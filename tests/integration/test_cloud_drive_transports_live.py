@@ -11,9 +11,12 @@
 """Live: onedrive:// and gdrive:// File Crawler transports against the real drive APIs (REQ-2280).
 
 Each test creates its own folder for the run (named with the run's id, and stamped with the run
-id and time in the folder's description), puts one CSV in it, registers a File Crawler source on
-the transport, and checks the crawl finds the CSV as a table whose rows read the same as the same
-file read through file://. Teardown deletes the folder and reads it back, failing when it is still
+id and time in the folder's description), puts one CSV in a folder nested in it, registers a File
+Crawler source on the transport, and checks the crawl finds the CSV as a table whose rows read the
+same as the same file read through file://. Then the engines' read (REQ-2280, amended
+2026-11-26): the source's Calcite pgwire server (the pinned pgwire-file bundle, whose file adapter
+has the onedrive and gdrive storage providers) reads the table live from the drive, and its rows
+are the file's. Teardown deletes the folder and reads it back, failing when it is still
 there (REQ-254; paid-cloud rule: create, test, destroy). No standing folder is relied on.
 
 Credentials (CI secrets; absent, the test fails naming what is missing -- a skip is a defect):
@@ -30,6 +33,7 @@ Credentials (CI secrets; absent, the test fails naming what is missing -- a skip
 # Requirements: REQ-2280
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -40,6 +44,8 @@ import pyarrow.csv as pac
 import pytest
 
 from provisa.api_source.oauth_grants import service_account_token
+from provisa.core.models import Source, SourceType
+from provisa.federation import pgwire_replica as pr
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.file_source.cloud_drive import DRIVE_API, GRAPH, drive_storage_options
 from provisa.file_source.crawler import crawl_directory
@@ -48,6 +54,14 @@ from tests.integration.live_teardown import none_remain, run_every, run_name
 pytestmark = [pytest.mark.integration]
 
 CSV = b"id,amount,region\n1,9.5,east\n2,3.25,west\n3,12.0,east\n"
+ROWS = [
+    {"id": 1, "amount": 9.5, "region": "east"},
+    {"id": 2, "amount": 3.25, "region": "west"},
+    {"id": 3, "amount": 12.0, "region": "east"},
+]
+#: The folder the CSV is in, below the run's folder: a nested path, which the adapter's drive
+#: providers address as more than one segment.
+INNER = "inner"
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
 RUN = run_name("provisa-req2280", "-")
 STAMP = f"run {RUN} created {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
@@ -84,6 +98,17 @@ def _reads_as_the_file_does(tmp_path, found: list[dict], url: str, opts: dict) -
         assert pac.read_csv(f).equals(pac.read_csv(str(local)))
 
 
+def _engine_reads_as_the_file_does(source: Source) -> None:
+    """The source's Calcite pgwire server reads ``orders`` live from the drive (the file adapter's
+    drive storage provider, signed in with the source's fields) and answers the file's rows."""
+    replica = pr.ConnectorReplica(source)
+    try:
+        rows = asyncio.run(replica.load("orders"))
+    finally:
+        replica.close()
+    assert sorted(rows, key=lambda r: r["id"]) == ROWS
+
+
 # --- OneDrive ----------------------------------------------------------------------------------
 
 
@@ -93,7 +118,7 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
     user = env["M365_TEST_MAILBOXES"].split(",")[0].strip()
     source = SimpleNamespace(
         id="od-live",
-        path=f"onedrive://{user}/{RUN}/*.csv",
+        path=f"onedrive://{user}/{RUN}/{INNER}/*.csv",
         database=env["M365_TENANT_ID"],
         username=env["M365_CLIENT_ID"],
         password=env["M365_CLIENT_SECRET"],
@@ -114,9 +139,24 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
         json={"name": RUN, "folder": {}, "description": STAMP},
     ).json()
     try:
-        call("PUT", f"{drive}/items/{folder['id']}:/orders.csv:/content", content=CSV)
+        inner = call(
+            "POST", f"{drive}/items/{folder['id']}/children", json={"name": INNER, "folder": {}}
+        ).json()
+        call("PUT", f"{drive}/items/{inner['id']}:/orders.csv:/content", content=CSV)
         found = crawl_directory(source.path, storage_options=opts)
-        _reads_as_the_file_does(tmp_path, found, f"onedrive://{user}/{RUN}/orders.csv", opts)
+        _reads_as_the_file_does(
+            tmp_path, found, f"onedrive://{user}/{RUN}/{INNER}/orders.csv", opts
+        )
+        _engine_reads_as_the_file_does(
+            Source(
+                id="od-live",
+                type=SourceType.files,
+                path=source.path,
+                database=source.database,
+                username=source.username,
+                password=source.password,
+            )
+        )
     finally:
 
         def delete() -> None:
@@ -178,7 +218,17 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
         },
     ).json()
     try:
-        metadata = json.dumps({"name": "orders.csv", "parents": [folder["id"]]})
+        inner = call(
+            "POST",
+            f"{DRIVE_API}/files",
+            params=all_drives,
+            json={
+                "name": INNER,
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": [folder["id"]],
+            },
+        ).json()
+        metadata = json.dumps({"name": "orders.csv", "parents": [inner["id"]]})
         call(
             "POST",
             "https://www.googleapis.com/upload/drive/v3/files",
@@ -188,9 +238,20 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
                 "file": ("orders.csv", CSV, "text/csv"),
             },
         )
-        root = f"gdrive://{folder['id']}/*.csv"
+        root = f"gdrive://{folder['id']}/{INNER}/*.csv"
         found = crawl_directory(root, storage_options=opts)
-        _reads_as_the_file_does(tmp_path, found, f"gdrive://{folder['id']}/orders.csv", opts)
+        _reads_as_the_file_does(
+            tmp_path, found, f"gdrive://{folder['id']}/{INNER}/orders.csv", opts
+        )
+        _engine_reads_as_the_file_does(
+            Source(
+                id="gd-live",
+                type=SourceType.files,
+                path=root,
+                password=key,
+                mapping={"gdrive_auth": "service_account"},
+            )
+        )
     finally:
 
         def delete() -> None:

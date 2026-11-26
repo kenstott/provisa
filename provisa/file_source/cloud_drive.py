@@ -41,10 +41,7 @@ import fsspec
 import httpx
 from fsspec.spec import AbstractFileSystem
 
-ONEDRIVE = "onedrive"
-GDRIVE = "gdrive"
-#: The path schemes this module serves.
-DRIVE_SCHEMES: frozenset[str] = frozenset({ONEDRIVE, GDRIVE})
+from provisa.file_source.drive_schemes import GDRIVE, ONEDRIVE, scheme_of
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 MICROSOFT_LOGIN = "https://login.microsoftonline.com"
@@ -289,12 +286,6 @@ def register() -> None:
 register()
 
 
-def scheme_of(path: str) -> str | None:
-    """The drive scheme ``path`` is in, or None when it is not a drive path."""
-    scheme = path.split("://", 1)[0] if "://" in path else None
-    return scheme if scheme in DRIVE_SCHEMES else None
-
-
 def _field(source: Any, name: str) -> Any:
     """A source's field, from a Source model or a sources row (a dict)."""
     return source.get(name) if isinstance(source, Mapping) else getattr(source, name, None)
@@ -311,23 +302,18 @@ def _required(source: Any, field: str, what: str, scheme: str) -> str:
     return resolve_secrets(value, credential=field == "password")
 
 
-def _onedrive_token(source: Any) -> Token:
-    from provisa.api_source.caller import _fetch_oauth2_token
-    from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
-
-    tenant = _required(source, "database", "the tenant id", ONEDRIVE)
-    auth = ApiAuthOAuth2ClientCredentials(
-        client_id=_required(source, "username", "the client id", ONEDRIVE),
-        client_secret=_required(source, "password", "the client secret", ONEDRIVE),
-        token_url=f"{MICROSOFT_LOGIN}/{quote(tenant, safe='')}/oauth2/v2.0/token",
-        scope=GRAPH_SCOPE,
-    )
-    return lambda: _fetch_oauth2_token(auth)
+def _onedrive_sign_in(source: Any) -> dict[str, str]:
+    """A onedrive:// source's app registration: its tenant, client id and client secret."""
+    return {
+        "tenantId": _required(source, "database", "the tenant id", ONEDRIVE),
+        "clientId": _required(source, "username", "the client id", ONEDRIVE),
+        "clientSecret": _required(source, "password", "the client secret", ONEDRIVE),
+    }
 
 
-def _gdrive_token(source: Any) -> Token:
-    from provisa.api_source.oauth_grants import access_token, service_account_token
-    from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
+def _gdrive_sign_in(source: Any) -> dict[str, str]:
+    """A gdrive:// source's sign-in, by its ``mapping.gdrive_auth``: a service account key
+    (``serviceAccountKey``), or an OAuth client and its refresh token."""
     from provisa.core.secrets import resolve_secrets
 
     source_id = _field(source, "id")
@@ -339,16 +325,45 @@ def _gdrive_token(source: Any) -> Token:
         )
     if mapping["gdrive_auth"] == GDRIVE_SERVICE_ACCOUNT:
         key = _required(source, "password", "the service account key, JSON", GDRIVE)
-        return lambda: service_account_token(key, [DRIVE_READONLY_SCOPE])
+        return {"serviceAccountKey": key}
     refresh_token = mapping.get("refresh_token")
     if not refresh_token:
         raise DriveCredentialsMissing(
             f"files source {source_id!r}: gdrive_auth=oauth needs mapping.refresh_token"
         )
+    return {
+        "clientId": _required(source, "username", "the OAuth client id", GDRIVE),
+        "clientSecret": _required(source, "password", "the OAuth client secret", GDRIVE),
+        "refreshToken": resolve_secrets(str(refresh_token), credential=True),
+    }
+
+
+def _onedrive_token(source: Any) -> Token:
+    from provisa.api_source.caller import _fetch_oauth2_token
+    from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
+
+    sign_in = _onedrive_sign_in(source)
+    auth = ApiAuthOAuth2ClientCredentials(
+        client_id=sign_in["clientId"],
+        client_secret=sign_in["clientSecret"],
+        token_url=f"{MICROSOFT_LOGIN}/{quote(sign_in['tenantId'], safe='')}/oauth2/v2.0/token",
+        scope=GRAPH_SCOPE,
+    )
+    return lambda: _fetch_oauth2_token(auth)
+
+
+def _gdrive_token(source: Any) -> Token:
+    from provisa.api_source.oauth_grants import access_token, service_account_token
+    from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
+
+    sign_in = _gdrive_sign_in(source)
+    if "serviceAccountKey" in sign_in:
+        key = sign_in["serviceAccountKey"]
+        return lambda: service_account_token(key, [DRIVE_READONLY_SCOPE])
     auth = ApiAuthOAuth2RefreshToken(
-        client_id=_required(source, "username", "the OAuth client id", GDRIVE),
-        client_secret=_required(source, "password", "the OAuth client secret", GDRIVE),
-        refresh_token=resolve_secrets(str(refresh_token), credential=True),
+        client_id=sign_in["clientId"],
+        client_secret=sign_in["clientSecret"],
+        refresh_token=sign_in["refreshToken"],
         token_url=GOOGLE_TOKEN_URL,
         scope=DRIVE_READONLY_SCOPE,
     )
@@ -368,3 +383,34 @@ def drive_storage_options(source: Any) -> dict[str, Any]:
     token = _onedrive_token(source) if scheme == ONEDRIVE else _gdrive_token(source)
     client = httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks())
     return {"token": token, "client": client}
+
+
+def drive_adapter_operand(source: Any, directory: str) -> dict[str, Any] | None:
+    """How the Calcite file adapter reads ``directory`` (a files source's path before its glob,
+    secrets resolved) live from its drive: the adapter's ``storageType``, its ``storageConfig``
+    (the drive and the source's sign-in, secrets resolved) and the ``directory`` within the
+    drive. None for a directory in no drive.
+
+    - ``onedrive://<user>/<folder>``: storage ``onedrive``, the drive of ``userPrincipalName``
+      ``<user>``; ``<folder>`` is relative to the drive's root.
+    - ``gdrive://<folder id>/<folder>``: storage ``gdrive``, rooted at ``folderId``
+      ``<folder id>``; ``<folder>`` is found by name below it.
+    """
+    scheme = scheme_of(directory)
+    if scheme is None:
+        return None
+    root, _, rest = directory.split("://", 1)[1].partition("/")
+    if not root:
+        raise ValueError(
+            f"files source {_field(source, 'id')!r}: {directory!r} names no "
+            + (
+                "drive owner: onedrive://<user>/<folder>"
+                if scheme == ONEDRIVE
+                else "folder: gdrive://<folder id>/<folder>"
+            )
+        )
+    if scheme == ONEDRIVE:
+        config: dict[str, Any] = {"userPrincipalName": root, **_onedrive_sign_in(source)}
+    else:
+        config = {"folderId": root, **_gdrive_sign_in(source)}
+    return {"storageType": scheme, "storageConfig": config, "directory": rest.strip("/")}
