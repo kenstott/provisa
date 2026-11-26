@@ -17,7 +17,7 @@ the real routes over a stand-in database; a table change runs the real fake chec
 ``updateTable`` mutation with the whole table as the editor would send it.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1857
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1857, REQ-2253
 
 from __future__ import annotations
 
@@ -300,6 +300,42 @@ async def test_find_table_id_reads_the_registration(monkeypatch, app_state):
             "table": "orders",
             "alias": None,
             "profilerSourceId": "prof",
+        }
+    ]
+
+
+async def test_find_table_id_matches_sql_safe_domain_name(monkeypatch, app_state):
+    """find_table_id called with SQL-safe 'pet_store' finds a table whose domain_id is 'pet-store'.
+
+    list_schemas returns SQL-safe names; the model uses them for find_table_id. The DB stores the
+    raw id. Both must resolve to the same table (REQ-2253)."""
+    _use_db(
+        monkeypatch,
+        app_state,
+        {
+            "registered_tables": [
+                {
+                    "id": 3,
+                    "source_id": "pg",
+                    "domain_id": "pet-store",
+                    "table_name": "pets",
+                    "alias": None,
+                    "profiler_source_id": None,
+                }
+            ]
+        },
+    )
+    found = await model_tools.find_table_id(
+        app_state, "steward", _request("steward"), "pet_store", "pets"
+    )
+    assert found == [
+        {
+            "id": 3,
+            "sourceId": "pg",
+            "domain": "pet-store",
+            "table": "pets",
+            "alias": None,
+            "profilerSourceId": None,
         }
     ]
 
@@ -654,6 +690,7 @@ async def test_get_table_fakes_lists_each_columns_fake(monkeypatch, app_state):
             "fakeStable": False,
             "syntheticRule": None,
             "isPii": True,
+            "family": "text",
         }
     ]
 
@@ -800,6 +837,41 @@ async def test_list_fake_kinds_is_compact_and_never_names_the_library(app_state)
     assert {"categories", "bool"} <= names
     assert any(m["name"] == "email" for m in out["methods"])
     assert "faker" not in json.dumps(out).lower()
+
+
+async def test_list_fake_kinds_says_which_column_families_each_fits(app_state):
+    """Polly chose email() for the demo's employee.contact, a jsonb column (family other) that no
+    method fake fits, and the save was refused. The families a kind or method fits are listed
+    beside it, and get_table_fakes gives each column's family, so the fit is read before a save."""
+    out = await model_tools.list_fake_kinds(app_state, "steward", _request("steward"))
+    kinds = {k["name"]: k["families"] for k in out["kinds"]}
+    methods = {m["name"]: m["families"] for m in out["methods"]}
+    assert methods["email"] == ["text"]
+    assert "other" in kinds["categories"] and "other" in kinds["sql"]
+    assert not [name for name, families in methods.items() if "other" in families]
+    table = _table(columns=[_column("contact", "jsonb"), _column("email", "varchar")])
+    with patch("provisa.api.mcp.table_edit.read_table", new=AsyncMock(return_value=table)):
+        fakes = await model_tools.get_table_fakes(app_state, "steward", _request("steward"), 7)
+    assert {c["column"]: c["family"] for c in fakes["columns"]} == {
+        "contact": "other",
+        "email": "text",
+    }
+
+
+def test_propose_fakes_is_no_prerequisite_for_named_columns():
+    """propose_fakes reads a profile run and is refused (fakes.no_profile_run) on a table with
+    none; Polly called it twice for columns the user had named, on unprofiled demo tables, and
+    stopped. The guidance says a named column's fake is chosen from list_fake_kinds and saved with
+    set_column_fake, propose_fakes only proposing from a profile run when there is one."""
+    specs = {s["name"]: s["description"] for s in model_tool_specs.SPECS}
+    assert "no_profile_run" in specs["propose_fakes"]
+    assert "not a prerequisite" in specs["propose_fakes"]
+    section = model_tool_specs.SYSTEM_SECTION
+    assert "When the user names the columns" in section
+    assert "list_fake_kinds" in section and "set_column_fake" in section
+    # "fake defs" are column fakes, never a switch to a fake environment.
+    assert "never a switch of environment" in section
+    assert "family" in specs["set_column_fake"] and "family" in specs["get_table_fakes"]
 
 
 @pytest.fixture

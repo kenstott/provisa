@@ -16,31 +16,39 @@ import { useTranslation } from "react-i18next";
 import { Button, Input, Text } from "@mantine/core";
 import { FormField, FormFooter } from "../../../components/form/FormLayout";
 import { useScreenInputs } from "../../../mcp/screenState";
+import { StepStrip, type Step } from "../../../components/StepStrip";
 import { FieldLabel } from "../FieldLabel";
 
-/** Which step this is, its title and what it asks, at the head of the step. */
+/** The step strip, then the step's title and what it asks, at the head of the step. */
 export function StepHead({
   index,
-  count,
+  steps,
+  onStep,
   title,
   intro,
   testId,
 }: {
   index: number;
-  count: number;
+  steps: readonly Step[];
+  /** A completed step in the strip was pressed. */
+  onStep: (index: number) => void;
   title: string;
   intro: string;
   testId: string;
 }) {
   const { t } = useTranslation();
   // REQ-2115: Polly's read_screen reads the step on screen; a wizard opens only on Tables.
-  useScreenInputs("/tables", { wizardStep: { number: index + 1, count, title } });
+  useScreenInputs("/tables", { wizardStep: { number: index + 1, count: steps.length, title } });
   return (
     <FormField size="full">
       <div data-testid={testId}>
-        <Text size="xs" c="dimmed" data-testid="wizard-step-count">
-          {t("modelingWizard.stepOf", { index: index + 1, count })}
-        </Text>
+        <StepStrip
+          steps={steps}
+          active={index}
+          onStepClick={onStep}
+          label={t("modelingWizard.stepsLabel")}
+          testId="wizard-steps"
+        />
         <Text fw={600}>{title}</Text>
         <Text size="sm" c="dimmed">
           {intro}

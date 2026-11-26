@@ -93,6 +93,9 @@
     },
     "localUsersHeading": "स्थानीय उपयोगकर्ता",
     "attributesTab": "गुण",
-    "accessTab": "पहुँच"
+    "accessTab": "पहुँच",
+    "filterPlaceholder": "सदस्य फ़िल्टर करें",
+    "inviteButton": "आमंत्रित करें",
+    "closeInvite": "आमंत्रण फ़ॉर्म बंद करें"
   }
 }

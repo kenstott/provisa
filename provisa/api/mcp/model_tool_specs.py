@@ -15,7 +15,7 @@ The schemas carry no ``role``: the endpoint pins it (see chat.py). Every one of 
 the verified request, because the admin route it calls reads the caller's rights from it.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304, REQ-2253
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from typing import Any
 
 from provisa.api.mcp import model_tools
 
-_TABLE_ID = {"type": "integer", "description": "The registered table's numeric id."}
+_TABLE_ID = {"type": "integer", "description": "From find_table_id."}
 _CHECKER_ID = {
     "type": "integer",
     "description": (
@@ -44,10 +44,9 @@ SPECS: list[dict] = [
     {
         "name": "find_table_id",
         "description": (
-            "The numeric id of a registered table, which the profiler, constraint, check and fake"
-            " tools take. domain: the table's domain (schema); table: its registered name or "
-            "alias. Returns every match (id, source, domain, name, profiler); empty if none. Read"
-            " only. " + _RIGHT_TABLE
+            "A registered table's numeric id, which the profiler, constraint, check and fake "
+            "tools take. domain: its domain (schema); table: its name or alias. Returns every "
+            "match (id, source, domain, name, profiler). Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"domain": {"type": "string"}, "table": {"type": "string"}}, ["domain", "table"]
@@ -66,8 +65,8 @@ SPECS: list[dict] = [
         "description": (
             "Add a table to a profiler (profiler_source_id from list_profilers) or remove it "
             "(null). A table whose rows need a required filter cannot join; refusals come back "
-            "verbatim. Removing stops its scheduled profiling: confirm with the user "
-            "(present_choice, mode='yes_no') first. " + _RIGHT_TABLE
+            "verbatim. Removing stops its scheduled profiling: confirm with the user first. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -187,7 +186,7 @@ SPECS: list[dict] = [
         "name": "export_profile_constraint",
         "description": (
             "Add an accepted constraint to a data-quality checker table that scans the table. "
-            "checker_table_id: needed only when several checkers scan it. " + _RIGHT_TABLE
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -211,8 +210,7 @@ SPECS: list[dict] = [
         "name": "create_drift_check",
         "description": (
             "Add a drift check over the table's drift result table (registered on the profiler) "
-            "to a checker. checker_table_id: needed only when several checkers scan it. "
-            + _RIGHT_TABLE
+            "to a checker. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "checker_table_id": _CHECKER_ID}, ["table_id"]
@@ -223,8 +221,7 @@ SPECS: list[dict] = [
         "description": (
             "Add a check comparing the table's drift results with an expectations table "
             "(expectations_table_id, from list_profile_checks' expectationTables). The drift "
-            "table must be registered; checker_table_id: needed only when several checkers scan "
-            "it. " + _RIGHT_TABLE
+            "table must be registered. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -239,8 +236,10 @@ SPECS: list[dict] = [
         "name": "list_fake_kinds",
         "description": (
             "The kinds of fake (categories, bool, distributions, relative fakes, sql, ...) and "
-            "fake methods (email, name, phone, ...) a column can declare, with argument names. "
-            "Read before writing a fake. A declaration is one call, e.g. categories((shoes, bra),"
+            "fake methods (email, name, phone, ...) a column can declare, with argument names and"
+            " the column families each fits (text, integer, numeric, boolean, date, timestamp, "
+            "other). Read before writing a fake, and pick one whose families hold the column's "
+            "family (get_table_fakes). A declaration is one call, e.g. categories((shoes, bra),"
             " (.4, .6)), normal(mean=50, sd=10, min=0), after(created_at, 1 to 10 days), email()."
             " syntheticRuleOnly kinds may only be a synthetic rule. Read only. " + _RIGHT_TABLE
         ),
@@ -249,8 +248,9 @@ SPECS: list[dict] = [
     {
         "name": "get_table_fakes",
         "description": (
-            "Each column of a table with its fake, stable flag, synthetic rule and pii tag. Read "
-            "only. " + _RIGHT_TABLE
+            "Each column of a table with its fake, stable flag, synthetic rule, pii tag and "
+            "family (the kind of values it holds; a json column is other). Read only. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
@@ -259,8 +259,10 @@ SPECS: list[dict] = [
         "description": (
             "Set or clear one column's fake, synthetic rule (used only by synthetic generation, "
             "over the fake) and stable flag. An omitted field keeps its value; '' clears a fake "
-            "or rule. Checked as the table editor checks it; refusals come back verbatim. "
-            + _RIGHT_TABLE
+            "or rule. column is a column of the table: a field inside a json column (contact.email)"
+            " is none. The fake must fit the column's family (get_table_fakes): no fake method "
+            "fits an other (json) column. Checked as the table editor checks it; refusals come "
+            "back verbatim, and a missing right is named in them. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -280,7 +282,10 @@ SPECS: list[dict] = [
             "the table's latest succeeded profile run. Saves nothing: show the proposals, ask the"
             " user which to save (present_choice), then save each with set_column_fake. "
             "unmatchedPii: pii columns with no confident proposal. columns: only these, even if "
-            "already declared; omitted, every column declaring neither. " + _RIGHT_TABLE
+            "already declared; omitted, every column declaring neither. A table with no "
+            "succeeded profile run is refused (fakes.no_profile_run). It is not a prerequisite: "
+            "a column's fake can always be chosen from list_fake_kinds and saved with "
+            "set_column_fake. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "columns": {"type": "array", "items": {"type": "string"}}},
@@ -306,13 +311,12 @@ SPECS: list[dict] = [
     {
         "name": "define_synthetic_dataset",
         "description": (
-            "Define or replace a synthetic dataset: dataset_id, seed, scale (rows relative to the"
-            " profiled tables), tables [{tableId, profileEnv, runId, scale?}] from "
-            "list_synthetic_profile_runs. Optional: fanoutConditions [{relationship, condition, "
-            "count: {fixed} | {low, high} | {measured: true}}], assertions [statement], "
-            "privateEpsilon (makes it private), closenessThreshold with closenessDraws (both or "
-            "neither). Refused for an invalid name, a table missing a parent its relationships "
-            "need, or a pii column with neither fake nor synthetic rule. " + _RIGHT_ENV
+            "Define or replace a synthetic dataset. scale: rows relative to the profiled tables;"
+            " tables from list_synthetic_profile_runs. A fanout condition's count: {fixed} | "
+            "{low, high} | {measured: true}. privateEpsilon makes it private; closenessThreshold "
+            "and closenessDraws go together. Refused for an invalid name, a table missing a "
+            "parent its relationships need, or a pii column with neither fake nor synthetic "
+            "rule. " + _RIGHT_ENV
         ),
         "input_schema": _obj(
             {
@@ -372,7 +376,7 @@ SPECS: list[dict] = [
         "name": "drop_synthetic_dataset",
         "description": (
             "Drop a synthetic dataset and its generated tables. Irreversible: confirm with the "
-            "user (present_choice, mode='yes_no') first. " + _RIGHT_ENV
+            "user first. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
@@ -392,7 +396,7 @@ SPECS: list[dict] = [
             "Change an environment's data mode and/or mutation handling. inherit and unbound set "
             "every source's binding; the test modes leave them. A change to or from "
             "test_synthetic discards kept mutations: refused unless confirmDiscard is true, so "
-            "ask the user first (present_choice, mode='yes_no'). test_fake is refused while a "
+            "ask the user first. test_fake is refused while a "
             "sensitive column has no fake. Needs environment_data."
         ),
         "input_schema": _obj(
@@ -449,9 +453,9 @@ SPECS: list[dict] = [
     {
         "name": "generate_environment_model",
         "description": (
-            "Generate a Test (synthetic) environment's whole model, in two calls. Without digest "
+            "Generate a Test (synthetic) environment's whole model in two calls. Without digest "
             "it generates nothing and returns the Limitations of Synthetic Data warning: show it "
-            "and ask the user (present_choice, mode='yes_no'); once they confirm, call again with"
+            "and ask the user; once they confirm, call again with"
             " the same runs, seed and scale and the warning's digest to generate in the "
             "background (get_environment_detail shows progress). runs: {table id: profile run "
             "id}; an omitted table takes the preselected run. Needs environment_data."
@@ -471,8 +475,7 @@ SPECS: list[dict] = [
         "name": "reset_environment_mutations",
         "description": (
             "Drop the mutations a Reversible environment keeps, returning it to its baseline. "
-            "Irreversible: confirm with the user (present_choice, mode='yes_no') first. Needs "
-            "environment_data."
+            "Irreversible: confirm with the user first. Needs environment_data."
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
@@ -618,7 +621,18 @@ async def _refuse_outside_selection(state: Any, name: str, args: dict) -> None:
     if name in _WHOLE_ORG:
         refuse_whole_org(_WHOLE_ORG[name])
     if name == "find_table_id":
-        refuse_object(f"Domain {args['domain']!r}", {args["domain"]})
+        # REQ-2253: list_schemas returns SQL-safe names (e.g. pet_store); the scope the domain
+        # filter binds holds raw ids (e.g. pet-store). Normalize both sides before comparing so
+        # the same domain is never refused just because its id contains a hyphen or other
+        # non-alphanumeric character that domain_to_sql_name replaces with an underscore.
+        from provisa.compiler.naming import domain_to_sql_name
+
+        scope = current()
+        sql_arg = domain_to_sql_name(args["domain"])
+        if not any(domain_to_sql_name(d) == sql_arg for d in scope):  # type: ignore[union-attr]
+            raise PermissionError(
+                f"Domain {args['domain']!r} is outside the domains selected in the domain filter"
+            )
     from provisa.api.admin.domain_guard import table_domain
 
     pool = state.model_db
@@ -651,10 +665,18 @@ SYSTEM_SECTION = (
     "generate_environment_model, "
     "reset_environment_mutations, create_classification_kind, change_classification_kind, "
     "delete_classification_kind "
-    "(get_environment_detail and get_environment_synthetic_plan read). Confirm with "
-    "present_choice (mode='yes_no') before drop_synthetic_dataset, before "
-    "delete_classification_kind and before set_table_profiler removes a table from its profiler. propose_fakes saves nothing: show its proposals, ask which "
-    "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. A "
+    "(get_environment_detail and get_environment_synthetic_plan read). Where a tool says to "
+    "confirm with or ask the user first, ask with present_choice (mode='yes_no'): before "
+    "drop_synthetic_dataset, reset_environment_mutations, set_environment_data discarding kept "
+    "mutations, generate_environment_model's second call, delete_classification_kind, and before "
+    "set_table_profiler removes a table from its profiler. propose_fakes saves nothing: show its "
+    "proposals, ask which "
+    "to save (present_choice, mode='multi'), then call set_column_fake once per chosen column. "
+    'When the user names the columns to fake ("create fake defs for users.email, ..."), choose '
+    "each fake yourself: read the column's family (get_table_fakes) and a kind or method that "
+    "fits it (list_fake_kinds), save it with set_column_fake, and report each column saved or "
+    "refused with the refusal's reason; propose_fakes is only for proposing from a profile run. A "
+    "fake def is a column's fake, never a switch of environment. A "
     "refusal from any of these is the admin's own message — report it to the user as it is. "
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
     "change, to /admin/environments before a synthetic dataset change, and to "
@@ -701,7 +723,7 @@ _CITATION = {
     },
     "required": ["document_id"],
 }
-_CONFIRMED = " Shown to the user to confirm in the chat; written at once over MCP."
+_CONFIRMED = " Over MCP, written at once."
 
 TAG_SPECS: list[dict] = [
     {

@@ -50,6 +50,9 @@ const STATED_EXCEPTIONS: Readonly<Record<string, string>> = {
     "lists (one tab per granted region); regions are not created here, so there is no create " +
     "form to open. Granted regions and stores are duplicated in Admin › Region grants " +
     "(GrantEditor).",
+  "components/admin/OrgsTab.tsx":
+    "Admin › Orgs: an org's Edit sets only its tier. An org holds nothing a create form could " +
+    "copy but a new id and name, which the create form asks for anyway.",
   "components/admin/ontologyImport/ImportReviewPanel.tsx":
     "Ontology import review: the panel is an import's review (Apply, Discard); its pencil edits " +
     "one proposed item of the import, an object that exists only inside the review. An import is " +

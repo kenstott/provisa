@@ -91,6 +91,12 @@ class ColumnAsset:  # REQ-1070
     # REQ-2171, REQ-2118: the subtype data_type registers as (inet, money, ...); None for none.
     subtype: str | None = None
 
+    @property
+    def consumer_name(self) -> str:
+        """REQ-2158 (amended 2026-11-25): the name a data product's consumers query the column by,
+        its SQL alias where one is set, otherwise its column name."""
+        return self.aliases[0] if self.aliases else self.name
+
 
 @dataclass
 class TableAsset:  # REQ-1070

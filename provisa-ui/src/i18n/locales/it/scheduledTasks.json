@@ -87,6 +87,9 @@
     "editAria": "Modifica {{name}}",
     "enableAria": "Abilita {{name}}",
     "disableAria": "Disabilita {{name}}",
-    "deleteAria": "Elimina {{name}}"
+    "deleteAria": "Elimina {{name}}",
+    "filterPlaceholder": "Filtra trigger",
+    "closeForm": "Chiudi il modulo",
+    "noMatch": "Nessun trigger corrisponde"
   }
 }

@@ -1976,6 +1976,11 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
 === "JSDoc"
 
     ```typescript
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
     /** Sales regions.
      * @table
      */
@@ -1989,6 +1994,12 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import { table } from "@provisa/sdk";
 
+    export interface Region {
+      code: string;
+      name: string;
+    }
+
+    /** Sales regions. */
     export const regions = table(async function regions(): Promise<Region[]> {
       return [{ code: "emea", name: "Europe, Middle East and Africa" }];
     });
@@ -2001,23 +2012,45 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
     ```typescript
     import type { ReadContext } from "@provisa/services";
 
-    /** @table
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch.
+     * @table
      * @loader
      */
-    export async function churnScore(
-      inputs: ScoreInputs,
-      context: ReadContext,
-    ): Promise<Score[] | Record<string, Score[]>> {
-      ...
+    export async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+      return [];
     }
     ```
 
 === "SDK"
 
     ```typescript
-    import { table } from "@provisa/sdk";
+    import { table, type ReadContext } from "@provisa/sdk";
 
-    export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
+    export interface ScoreInputs {
+      customerId?: string;
+    }
+
+    export interface Score {
+      customerId: string;
+      score: number;
+    }
+
+    /** Churn scores of every customer in one batch. */
+    export const churnScore = table(
+      async function churnScore(inputs: ScoreInputs, context: ReadContext): Promise<Score[]> {
+        return [];
+      },
+      { loader: true }, // or { loader: 50 }
+    );
     ```
 
 **`@stream`**
@@ -2027,12 +2060,19 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @stream */
-    export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
-      for await (const event of tailLog()) {
-        yield event;
-      }
+    export interface AuditInputs {
+      actor?: string;
     }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive.
+     * @stream
+     */
+    export async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {}
     ```
 
 === "SDK"
@@ -2040,7 +2080,19 @@ The function is an async generator.
     ```typescript
     import { stream } from "@provisa/sdk";
 
-    export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
+    export interface AuditInputs {
+      actor?: string;
+    }
+
+    export interface AuditEvent {
+      actor: string;
+      action: string;
+    }
+
+    /** Audit events as they arrive. */
+    export const auditEvents = stream(
+      async function* auditEvents(inputs: AuditInputs): AsyncGenerator<AuditEvent> {},
+    );
     ```
 
 **`@command`**
@@ -2048,9 +2100,11 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command */
+    /** Cancel one order.
+     * @command
+     */
     export async function cancelOrder(orderId: number): Promise<boolean> {
-      return api.cancel(orderId);
+      return true;
     }
     ```
 
@@ -2059,8 +2113,9 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
+    /** Cancel one order. */
     export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-      ...
+      return true;
     });
     ```
 
@@ -2069,10 +2124,18 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @command
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders.
+     * @command
      * @insert orders
      */
-    export async function addOrders(rows: Order[]): Promise<number> { ... }
+    export async function addOrders(rows: Order[]): Promise<number> {
+      return rows.length;
+    }
     ```
 
 === "SDK"
@@ -2080,7 +2143,18 @@ The function is an async generator.
     ```typescript
     import { command } from "@provisa/sdk";
 
-    export const addOrders = command(addOrdersFn, { insert: "orders" });
+    export interface Order {
+      id: number;
+      total: number;
+    }
+
+    /** Insert orders. */
+    export const addOrders = command(
+      async function addOrders(rows: Order[]): Promise<number> {
+        return rows.length;
+      },
+      { insert: "orders" },
+    );
     ```
 
 **`@query`**
@@ -2090,19 +2164,61 @@ The function is an async generator.
     ```typescript
     import type { TableRef } from "@provisa/services";
 
-    /** @query */
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions.
+     * @query
+     */
     export async function storesInRegions(
       stores: TableRef<Store>,
       regions: TableRef<Region>,
-    ): Promise<Match[]> { ... }
+    ): Promise<Match[]> {
+      return [];
+    }
     ```
 
 === "SDK"
 
     ```typescript
-    import { query } from "@provisa/sdk";
+    import { query, type TableRef } from "@provisa/sdk";
 
-    export const storesInRegions = query(storesInRegionsFn);
+    export interface Store {
+      id: number;
+      regionId: number;
+    }
+
+    export interface Region {
+      id: number;
+      name: string;
+    }
+
+    export interface Match {
+      storeId: number;
+      regionId: number;
+    }
+
+    /** Match stores to regions. */
+    export const storesInRegions = query(
+      async function storesInRegions(
+        stores: TableRef<Store>,
+        regions: TableRef<Region>,
+      ): Promise<Match[]> {
+        return [];
+      },
+    );
     ```
 
 **`@columns`**
@@ -2110,8 +2226,17 @@ The function is an async generator.
 === "JSDoc"
 
     ```typescript
-    /** @columns */
-    export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses.
+     * @columns
+     */
+    export function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
+    }
     ```
 
 === "SDK"
@@ -2119,8 +2244,14 @@ The function is an async generator.
     ```typescript
     import { columns } from "@provisa/sdk";
 
-    export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
-      ...
+    export interface Address {
+      street: string;
+      city: string;
+    }
+
+    /** Parse raw addresses. */
+    export const parseAddress = columns(function parseAddress(raw: string[]): Address[] {
+      return raw.map((street) => ({ street, city: "" }));
     });
     ```
 
@@ -2147,8 +2278,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-start */
-    export async function setup(values?: Record<string, string>): Promise<void> { ... }
+    /** Called once on start.
+     * @on-start
+     */
+    export async function setup(values: Record<string, string>): Promise<void> {}
     ```
 
 === "SDK"
@@ -2156,7 +2289,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStart } from "@provisa/sdk";
 
-    export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
+    /** Called once on start. */
+    export const setup = onStart(async function setup(values: Record<string, string>): Promise<void> {});
     ```
 
 **`@on-stop`**
@@ -2164,8 +2298,10 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @on-stop */
-    export async function teardown(): Promise<void> { ... }
+    /** Called once on stop.
+     * @on-stop
+     */
+    export async function teardown(): Promise<void> {}
     ```
 
 === "SDK"
@@ -2173,7 +2309,8 @@ export async function storeRegionChanges(
     ```typescript
     import { onStop } from "@provisa/sdk";
 
-    export const teardown = onStop(async function teardown() { ... });
+    /** Called once on stop. */
+    export const teardown = onStop(async function teardown(): Promise<void> {});
     ```
 
 **`@health`**
@@ -2181,7 +2318,9 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @health */
+    /** Returns the code's status.
+     * @health
+     */
     export function status(): string {
       return "ok";
     }
@@ -2192,7 +2331,10 @@ export async function storeRegionChanges(
     ```typescript
     import { health } from "@provisa/sdk";
 
-    export const status = health(function status(): string { return "ok"; });
+    /** Returns the code's status. */
+    export const status = health(function status(): string {
+      return "ok";
+    });
     ```
 
 **`@requires NAME` / `@requires NAME:secret`**
@@ -2200,11 +2342,23 @@ export async function storeRegionChanges(
 === "JSDoc"
 
     ```typescript
-    /** @table
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows.
+     * @table
      * @requires REGION
      * @requires API_KEY:secret
      */
-    export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
+    export async function fetch(inputs: Inputs): Promise<Row[]> {
+      return [];
+    }
     ```
 
 === "SDK"
@@ -2212,7 +2366,22 @@ export async function storeRegionChanges(
     ```typescript
     import { table } from "@provisa/sdk";
 
-    export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
+    export interface Inputs {
+      region?: string;
+    }
+
+    export interface Row {
+      id: number;
+      name: string;
+    }
+
+    /** Fetch rows. */
+    export const fetch = table(
+      async function fetch(inputs: Inputs): Promise<Row[]> {
+        return [];
+      },
+      { requires: ["REGION", "API_KEY:secret"] },
+    );
     ```
 
 #### Parameter types
@@ -2336,6 +2505,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     type AuditInputs struct{}
     type AuditEvent struct{}
 
+    // AuditEvents streams audit events.
     func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
         return nil
     }
@@ -2365,6 +2535,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 
     import provisa "provisa.dev/sdk/go"
 
+    // CancelOrder cancels one order.
     func CancelOrder(orderID int) (bool, error) { return true, nil }
 
     var _ = provisa.Command(CancelOrder)
@@ -2395,6 +2566,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 
     type Order struct{}
 
+    // AddOrders inserts orders.
     func AddOrders(rows []Order) (int, error) { return 0, nil }
 
     var _ = provisa.Command(AddOrders, provisa.Insert("orders"))
@@ -2431,6 +2603,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     type Region struct{}
     type Match struct{}
 
+    // StoresInRegions matches stores to regions.
     func StoresInRegions(stores provisa.TableRef[Store], regions provisa.TableRef[Region]) ([]Match, error) {
         return nil, nil
     }
@@ -2462,6 +2635,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
 
     type Address struct{}
 
+    // ParseAddress parses raw addresses.
     func ParseAddress(raw []string) ([]Address, error) { return nil, nil }
 
     var _ = provisa.Columns(ParseAddress)
@@ -2501,6 +2675,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     type Region struct{}
     type Changed struct{}
 
+    // StoreRegionChanges returns matches changed since the cursor.
     func StoreRegionChanges(stores provisa.TableRef[Store], regions provisa.TableRef[Region], since *int) ([]Changed, error) {
         return nil, nil
     }
@@ -2533,6 +2708,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
         provisa "provisa.dev/sdk/go"
     )
 
+    // Setup runs once on start.
     func Setup(ctx context.Context, values map[string]string) error { return nil }
 
     var _ = provisa.OnStart(Setup)
@@ -2563,6 +2739,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
         provisa "provisa.dev/sdk/go"
     )
 
+    // Teardown runs once on stop.
     func Teardown(ctx context.Context) error { return nil }
 
     var _ = provisa.OnStop(Teardown)
@@ -2595,6 +2772,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
         provisa "provisa.dev/sdk/go"
     )
 
+    // Status returns the code's health.
     func Status(ctx context.Context) (string, error) { return "ok", nil }
 
     var _ = provisa.Health(Status)
@@ -2633,6 +2811,7 @@ A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-n
     type Inputs struct{}
     type Row struct{}
 
+    // Fetch fetches rows.
     func Fetch(ctx context.Context, in Inputs) ([]Row, error) { return nil, nil }
 
     var _ = provisa.Table[Inputs, Row](Fetch, provisa.Requires("REGION"), provisa.Requires("API_KEY", provisa.Secret))
@@ -2676,10 +2855,20 @@ A `@table` function takes nothing or one inputs struct. It returns `Vec<T>`, `im
 === "Doc comment"
 
     ```rust
+    pub struct RiskInputs {
+        pub account_id: String,
+    }
+
+    pub struct Risk {
+        pub score: f64,
+        pub reasons: Vec<String>,
+    }
+
     /// The churn risk of one account.
     ///
     /// @table
     pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
+        let _ = inputs;
         Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
     }
     ```
@@ -2687,6 +2876,21 @@ A `@table` function takes nothing or one inputs struct. It returns `Vec<T>`, `im
 === "SDK"
 
     ```rust
+    pub struct RiskInputs {
+        pub account_id: String,
+    }
+
+    pub struct Risk {
+        pub score: f64,
+        pub reasons: Vec<String>,
+    }
+
+    /// The churn risk of one account.
+    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
+        let _ = inputs;
+        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
+    }
+
     provisa_sdk::table!(churn_risk);
     ```
 
@@ -2697,17 +2901,42 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    pub struct AuditInputs {
+        pub actor: Option<String>,
+    }
+
+    pub struct AuditEvent {
+        pub actor: String,
+        pub action: String,
+    }
+
     /// Audit events.
     ///
     /// @stream
     pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
-        tail_log()
+        let _ = inputs;
+        std::iter::empty()
     }
     ```
 
 === "SDK"
 
     ```rust
+    pub struct AuditInputs {
+        pub actor: Option<String>,
+    }
+
+    pub struct AuditEvent {
+        pub actor: String,
+        pub action: String,
+    }
+
+    /// Audit events.
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
+        let _ = inputs;
+        std::iter::empty()
+    }
+
     provisa_sdk::stream!(audit_events);
     ```
 
@@ -2720,6 +2949,7 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     ///
     /// @command
     pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        let _ = order_id;
         Ok(true)
     }
     ```
@@ -2727,6 +2957,12 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "SDK"
 
     ```rust
+    /// Cancel one order.
+    pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        let _ = order_id;
+        Ok(true)
+    }
+
     provisa_sdk::command!(cancel_order);
     ```
 
@@ -2735,16 +2971,33 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
     /// Insert orders.
     ///
     /// @command
     /// @insert orders
-    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> { ... }
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
     ```
 
 === "SDK"
 
     ```rust
+    pub struct Order {
+        pub id: i64,
+        pub total: f64,
+    }
+
+    /// Insert orders.
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> {
+        Ok(rows.len() as i64)
+    }
+
     provisa_sdk::command!(add_orders, insert = "orders");
     ```
 
@@ -2753,15 +3006,68 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    pub struct TableRef<T> {
+        pub name: String,
+        pub row: PhantomData<T>,
+    }
+
+    pub struct Store {
+        pub id: i64,
+        pub region_id: i64,
+    }
+
+    pub struct Region {
+        pub id: i64,
+        pub name: String,
+    }
+
+    pub struct Match {
+        pub store_id: i64,
+        pub region_id: i64,
+    }
+
     /// Match stores to regions.
     ///
     /// @query
-    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> { ... }
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores, regions);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    pub struct TableRef<T> {
+        pub name: String,
+        pub row: PhantomData<T>,
+    }
+
+    pub struct Store {
+        pub id: i64,
+        pub region_id: i64,
+    }
+
+    pub struct Region {
+        pub id: i64,
+        pub name: String,
+    }
+
+    pub struct Match {
+        pub store_id: i64,
+        pub region_id: i64,
+    }
+
+    /// Match stores to regions.
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> {
+        let _ = (stores, regions);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::query!(stores_in_regions);
     ```
 
@@ -2770,15 +3076,32 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
     /// Parse raw addresses.
     ///
     /// @columns
-    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> { ... }
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        Ok(raw.into_iter().map(|street| Address { street, city: String::new() }).collect())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    pub struct Address {
+        pub street: String,
+        pub city: String,
+    }
+
+    /// Parse raw addresses.
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> {
+        Ok(raw.into_iter().map(|street| Address { street, city: String::new() }).collect())
+    }
+
     provisa_sdk::columns!(parse_address);
     ```
 
@@ -2787,18 +3110,75 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    use std::marker::PhantomData;
+
+    pub struct TableRef<T> {
+        pub name: String,
+        pub row: PhantomData<T>,
+    }
+
+    pub struct Store {
+        pub id: i64,
+        pub region_id: i64,
+    }
+
+    pub struct Region {
+        pub id: i64,
+        pub name: String,
+    }
+
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: i64,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
     /// Matches changed since the cursor.
     ///
     /// @change table=store_regions
     /// @change key=store_id,region_id
     /// @change removed=removed
     /// @change cursor=seq
-    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> { ... }
+    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> {
+        let _ = (stores, regions, since);
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::marker::PhantomData;
+
+    pub struct TableRef<T> {
+        pub name: String,
+        pub row: PhantomData<T>,
+    }
+
+    pub struct Store {
+        pub id: i64,
+        pub region_id: i64,
+    }
+
+    pub struct Region {
+        pub id: i64,
+        pub name: String,
+    }
+
+    pub struct Changed {
+        pub store_id: i64,
+        pub region_id: i64,
+        pub removed: bool,
+        pub seq: i64,
+    }
+
+    /// Matches changed since the cursor.
+    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> {
+        let _ = (stores, regions, since);
+        Ok(Vec::new())
+    }
+
     provisa_sdk::change!(
         store_region_changes,
         table = "store_regions",
@@ -2813,15 +3193,28 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    use std::collections::HashMap;
+
     /// Called once on start.
     ///
     /// @on-start
-    pub fn setup(values: HashMap<String, String>) -> Result<(), String> { ... }
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        let _ = values;
+        Ok(())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    use std::collections::HashMap;
+
+    /// Called once on start.
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> {
+        let _ = values;
+        Ok(())
+    }
+
     provisa_sdk::on_start!(setup);
     ```
 
@@ -2833,12 +3226,15 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     /// Called once on stop.
     ///
     /// @on-stop
-    pub fn teardown() { ... }
+    pub fn teardown() {}
     ```
 
 === "SDK"
 
     ```rust
+    /// Called once on stop.
+    pub fn teardown() {}
+
     provisa_sdk::on_stop!(teardown);
     ```
 
@@ -2850,14 +3246,19 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
     /// Returns the code's status.
     ///
     /// @health
-    pub fn status() -> &'static str {
-        "ok"
+    pub fn status() -> String {
+        "ok".to_string()
     }
     ```
 
 === "SDK"
 
     ```rust
+    /// Returns the code's status.
+    pub fn status() -> String {
+        "ok".to_string()
+    }
+
     provisa_sdk::health!(status);
     ```
 
@@ -2866,17 +3267,44 @@ A `@stream` function returns an iterator. An item of `Result<T, E>` ends the str
 === "Doc comment"
 
     ```rust
+    pub struct Inputs {
+        pub region: Option<String>,
+    }
+
+    pub struct Row {
+        pub id: i64,
+        pub name: String,
+    }
+
     /// Fetch rows.
     ///
     /// @table
     /// @requires REGION
     /// @requires API_KEY:secret
-    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> { ... }
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs;
+        Ok(Vec::new())
+    }
     ```
 
 === "SDK"
 
     ```rust
+    pub struct Inputs {
+        pub region: Option<String>,
+    }
+
+    pub struct Row {
+        pub id: i64,
+        pub name: String,
+    }
+
+    /// Fetch rows.
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> {
+        let _ = inputs;
+        Ok(Vec::new())
+    }
+
     provisa_sdk::table!(fetch, requires = "REGION", secret = "API_KEY");
     ```
 

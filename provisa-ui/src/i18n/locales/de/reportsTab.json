@@ -16,7 +16,6 @@
     "empty": "Keine Berichte in der Ops-Domäne registriert.",
     "filterPlaceholder": "Berichte filtern…",
     "noMatch": "Keine Berichte passen",
-    "resize": "Größe der Berichtsliste ändern",
     "drift": {
       "title": "Drift seit dem vorherigen Zeitraum",
       "baseline": "Verglichen mit dem Modell vom {{date}}, der letzten Version bis {{cutoff}}.",
@@ -34,6 +33,12 @@
         "gained": "Gewonnen",
         "new": "Neu"
       }
-    }
+    },
+    "kindColumn": "Art",
+    "kindBuiltIn": "Integriert",
+    "kindCustom": "Benutzerdefiniert",
+    "panelLabel": "Bericht",
+    "closeForm": "Formular schließen",
+    "loading": "Berichte werden geladen…"
   }
 }

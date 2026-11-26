@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, BACKEND_URL } from "./coverage";
+import { withBody } from "./response-body";
 
 /**
  * Verifies that auto-impute adds edges between nodes returned from a node-only query.
@@ -24,10 +25,12 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   await page.getByRole("menuitem", { name: "org_admin", exact: true }).click();
 
   // Intercept impute responses before anything fires
-  const imputeResponsePromise = page.waitForResponse(
-    (resp) =>
-      resp.url().includes("/data/impute-relationships") && resp.status() === 200,
-    { timeout: 90000 }
+  const imputeResponsePromise = withBody(
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/data/impute-relationships") && resp.status() === 200,
+      { timeout: 90000 },
+    ),
   );
 
   // Enable auto-impute if not already active (button name changes based on state)
@@ -87,8 +90,7 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   });
 
   // Wait for the impute API to fire and respond
-  const imputeResp = await imputeResponsePromise;
-  const imputeBody = await imputeResp.json();
+  const imputeBody = (await imputeResponsePromise).json<{ rows?: Array<{ node: Record<string, unknown> }> }>();
 
   const edges = ((imputeBody.rows ?? []) as Array<{ node: Record<string, unknown> }>)
     .map((r) => r.node)

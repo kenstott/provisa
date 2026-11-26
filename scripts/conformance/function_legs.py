@@ -15,6 +15,10 @@ kind is not run.
 ``plan`` writes the workflow's matrix for the lanes a dispatch names (free, warehouse or all) and
 the engines its merge expects, with no URL in it: the runner masks a URL's credentials and drops a
 job output holding a masked value, so a leg's URLs reach its job by ``urls``, from this file.
+A leg with ``shards`` runs as that many jobs, each measuring every n-th overload
+(function_support.py ``measure --shard``), which the merge joins into the engine's one result: the
+Trino leg's step time scales with the runner's speed, and one slow runner took it past its budget
+(run 45707974057, 2026-11-25).
 ``wait`` and ``setup`` make an engine's server ready over its engine URL.
 ``failure`` writes why a leg left no result, which the merge reports beside it: a leg whose engine
 did not start is a failure with its reason, never a leg skipped.
@@ -63,7 +67,11 @@ FIELDS = (
     "wait",
     "control-plane-url",
     "boot-attempts",
+    "shards",
 )
+#: The fields ``plan`` adds to each matrix entry: the leg's id, which names its job, its files and
+#: its artifact, and its shard (``k/n``, empty for a leg run whole).
+PLANNED = ("leg", "shard")
 #: The steps of a leg, in the order they run, by their id in the workflow.
 STEPS = (
     ("odbc", "installing ODBC Driver 18"),
@@ -92,6 +100,9 @@ def load(path: Path = LEGS) -> dict[str, Any]:
         unknown = set(leg) - set(FIELDS)
         if unknown:
             raise ValueError(f"{leg['engine']}: unknown fields {sorted(unknown)}")
+        shards = leg.get("shards", 1)
+        if not isinstance(shards, int) or isinstance(shards, bool) or shards < 1:
+            raise ValueError(f"{leg['engine']}: shards is a whole number of jobs, not {shards!r}")
         if bool(leg.get("secrets")) != (leg["lane"] == "warehouse"):
             raise ValueError(f"{leg['engine']}: a warehouse leg names its secrets, a free leg none")
     return doc
@@ -103,14 +114,27 @@ def uncovered(kinds: frozenset[str], doc: dict[str, Any]) -> dict[str, list[str]
     return {"missing": sorted(kinds - named), "unknown": sorted(named - kinds)}
 
 
-def matrix_entry(leg: dict[str, Any]) -> dict[str, Any]:
+def shard_id(engine: str, shard: int, shards: int) -> str:
+    """The id of one shard of ``engine``'s leg: its job's name, its files' and its artifact's."""
+    return f"{engine}.shard-{shard}-of-{shards}"
+
+
+def matrix_entries(leg: dict[str, Any]) -> list[dict[str, Any]]:
+    """The leg's jobs: one, or one per shard."""
     entry = {field: leg.get(field, "") for field in FIELDS if field not in URLS}
     entry["odbc"] = bool(leg.get("odbc"))
     entry["wait"] = str(leg.get("wait", 600))
     entry["boot-attempts"] = str(leg.get("boot-attempts", 90))
     entry["extras"] = leg.get("extras", "dev")
     entry["secrets"] = " ".join(leg.get("secrets", ()))
-    return entry
+    shards = leg.get("shards", 1)
+    entry["shards"] = str(shards)
+    if shards == 1:
+        return [{**entry, "leg": leg["engine"], "shard": ""}]
+    return [
+        {**entry, "leg": shard_id(leg["engine"], k, shards), "shard": f"{k}/{shards}"}
+        for k in range(1, shards + 1)
+    ]
 
 
 def url_engine_kinds() -> frozenset[str]:
@@ -172,9 +196,9 @@ def plan(lanes: str, doc: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"lanes must be one of {sorted(LANES)}, not {lanes!r}")
     lane = [leg for leg in doc["legs"] if leg["lane"] in LANES[lanes]]
     refusals = {leg["engine"]: why for leg in lane if (why := refused(leg)) is not None}
-    legs = [matrix_entry(leg) for leg in lane if leg["engine"] not in refusals]
+    legs = [leg for leg in lane if leg["engine"] not in refusals]
     return {
-        "matrix": {"include": legs},
+        "matrix": {"include": [entry for leg in legs for entry in matrix_entries(leg)]},
         "engines": ",".join(leg["engine"] for leg in legs),
         "refused": refusals,
     }

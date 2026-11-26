@@ -20,7 +20,7 @@ Every function takes ``(state, role, request, ...)``; ``role`` is the caller's p
 first by :func:`provisa.api.mcp.tools.require_role`.
 """
 
-# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304
+# Requirements: REQ-1934, REQ-1494, REQ-1939, REQ-1919, REQ-1304, REQ-2253
 
 from __future__ import annotations
 
@@ -57,15 +57,22 @@ def _require_table_editor(request: Any) -> None:
 
 
 async def find_table_id(state: Any, role: str, request: Any, domain: str, table: str) -> list[dict]:
-    """The registered tables of ``domain`` named or aliased ``table``, with their ids."""
+    """The registered tables of ``domain`` named or aliased ``table``, with their ids.
+
+    ``domain`` may be the raw domain id (``pet-store``) or its SQL-safe form (``pet_store``):
+    both name the same domain. The DB stores raw ids, so both sides are normalised before
+    comparison (REQ-2253: the model calls list_schemas which returns SQL-safe names, so it
+    naturally passes the SQL-safe form here)."""
     require_role(role, state)
     from sqlalchemy import or_, select
 
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.compiler.naming import domain_to_sql_name
     from provisa.core.schema_org import registered_tables as rt
 
     require_capability_request(request, "table_registration")  # the table editor's right
+    sql_domain = domain_to_sql_name(domain)
     pool = await _get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -77,10 +84,12 @@ async def find_table_id(state: Any, role: str, request: Any, domain: str, table:
                 rt.c.alias,
                 rt.c.profiler_source_id,
             )
-            .where(rt.c.domain_id == domain, or_(rt.c.table_name == table, rt.c.alias == table))
+            .where(or_(rt.c.table_name == table, rt.c.alias == table))
             .order_by(rt.c.id)
         )
-        rows = result.fetchall()
+        # Filter by SQL-safe domain name so both 'pet-store' and 'pet_store' match the row
+        # whose domain_id is 'pet-store' (the raw stored form).
+        rows = [r for r in result.fetchall() if domain_to_sql_name(r.domain_id) == sql_domain]
     return [
         {
             "id": r.id,
@@ -348,8 +357,9 @@ async def create_expectation_check(
 
 
 async def list_fake_kinds(state: Any, role: str, request: Any) -> dict:
-    """The kinds of fake and the fake methods, by name and argument names. Argument defaults are
-    left out: the editor's catalog is the place to read them."""
+    """The kinds of fake and the fake methods, by name, argument names and the column families
+    each fits (a column's family is in get_table_fakes). Argument defaults are left out: the
+    editor's catalog is the place to read them."""
     require_role(role, state)
     from provisa.api.admin.fakes_router import fake_catalog
 
@@ -362,20 +372,28 @@ async def list_fake_kinds(state: Any, role: str, request: Any) -> dict:
                 "category": k["category"],
                 "args": [a["name"] for a in k["args"]],
                 "syntheticRuleOnly": k["ruleOnly"],
+                "families": k["families"],
             }
             for k in full["kinds"]
         ],
         "methods": [
-            {"name": m["name"], "category": m["category"], "args": [p["name"] for p in m["params"]]}
+            {
+                "name": m["name"],
+                "category": m["category"],
+                "args": [p["name"] for p in m["params"]],
+                "families": m["families"],
+            }
             for m in full["methods"]
         ],
     }
 
 
 async def get_table_fakes(state: Any, role: str, request: Any, table_id: int) -> dict:
-    """Each column's fake, whether it is stable, its synthetic rule and whether it is tagged pii."""
+    """Each column's fake, whether it is stable, its synthetic rule, whether it is tagged pii, and
+    the family of values it holds (the families list_fake_kinds says each kind fits)."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
+    from provisa.fakes.checks import family
 
     require_capability_request(request, "table_registration")  # the fakes routes' right
     table = await table_edit.read_table(table_id)
@@ -390,6 +408,8 @@ async def get_table_fakes(state: Any, role: str, request: Any, table_id: int) ->
                 "fakeStable": c.fake_stable,
                 "syntheticRule": c.synthetic_rule,
                 "isPii": c.is_pii,
+                # A column with no registered type is checked as "" (set_column_fake below).
+                "family": family(c.data_type or ""),
             }
             for c in table.columns
         ],

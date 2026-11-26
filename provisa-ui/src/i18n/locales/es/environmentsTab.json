@@ -152,8 +152,14 @@
     "rebuild": "Reconstruir",
     "rebuilt": "El modelo de {{env}} se confirmó de nuevo en el repositorio.",
     "rebuildFailed": "{{env}} sigue desviado, porque el commit no llegó.",
+    "protect": "Proteger",
+    "unprotect": "Desproteger",
     "stageTitle": "Etapa",
     "stageHelp": "Declara para qué sirve este entorno: producción, preproducción, pruebas o desarrollo. El entorno original de la organización empieza como producción y uno nuevo como desarrollo; cualquier número de entornos puede compartir una etapa.",
-    "stageHelp2": "La etapa identifica el entorno en el selector, en los informes y en las exportaciones de catálogo y de linaje. Nunca cambia lo que alguien puede hacer aquí: eso depende solo de los roles asignados en el entorno."
+    "stageHelp2": "La etapa identifica el entorno en el selector, en los informes y en las exportaciones de catálogo y de linaje. Nunca cambia lo que alguien puede hacer aquí: eso depende solo de los roles asignados en el entorno.",
+    "filterPlaceholder": "Filtrar entornos",
+    "closeForm": "Cerrar el formulario",
+    "newEnvironment": "Nuevo entorno",
+    "panelLabel": "Entorno"
   }
 }

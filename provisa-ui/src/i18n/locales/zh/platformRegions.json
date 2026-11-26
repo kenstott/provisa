@@ -38,6 +38,8 @@
     "org": "组织",
     "pickOrg": "选择组织",
     "orgGranted": "{{id}}(已授予:{{regions}})",
-    "orgNone": "{{id}}(无区域)"
+    "orgNone": "{{id}}(无区域)",
+    "filterPlaceholder": "筛选区域",
+    "closeForm": "关闭表单"
   }
 }

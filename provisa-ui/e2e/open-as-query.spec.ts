@@ -247,4 +247,29 @@ test.describe("Open as query", () => {
     for (const e of terms.flatMap((t) => t.edgesOut ?? []))
       expect(said, `edge ${e.relType}`).toContain(e.relType);
   });
+
+  test("its SQL opens formatted in a fresh SQL Explorer tab and runs at once", async ({ page }) => {
+    await filteredView(page);
+
+    await page.getByTestId("ontology-open-as-query").click();
+    const sqlItem = page.getByTestId("ontology-open-as-sql");
+    await expect(sqlItem).toBeEnabled({ timeout: 60_000 });
+    const ran = page.waitForRequest(
+      (r: Request) => new URL(r.url()).pathname === "/data/sql" && r.method() === "POST",
+      { timeout: 60_000 },
+    );
+    await sqlItem.click();
+    await page.waitForURL("**/sql", { timeout: 60_000 });
+
+    // Run with no click on Run, and shown in a tab of its own beside the blank first one.
+    const response = await (await ran).response();
+    expect(response?.status(), "the SQL is answered").toBe(200);
+    await expect(page.getByText("Query 2", { exact: true })).toBeVisible();
+    // Formatted: upper-case keywords, each clause on its own line.
+    const editor = page.locator(".cm-content").first();
+    await expect(editor).toContainText("SELECT", { timeout: 60_000 });
+    const lines = await editor.locator(".cm-line").allTextContents();
+    expect(lines.length, "the statement is laid out over lines").toBeGreaterThan(3);
+    expect(lines.map((l) => l.trim())).toContain("FROM");
+  });
 });
