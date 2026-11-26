@@ -274,3 +274,130 @@ async def test_a_column_registered_with_its_selection_outlives_a_refresh_from_th
     assert kept["gql_selection"] == "employee_id: employee { id }"
     assert (kept["data_type"], list(kept["visible_to"])) == ("integer", ["analyst"])
     assert kept["description"] == "Employee the shift belongs to"
+
+
+# --- what the model holds of a column the endpoint lists -------------------------------------------
+
+
+async def _register_contacts(db: Database, *columns) -> None:
+    from provisa.core.models import Table
+
+    async with db.acquire() as conn:
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="crm",
+                domain_id="sales",
+                schema_name="graphql",
+                table_name="contacts",
+                columns=list(columns),
+            ),
+        )
+
+
+async def _contacts_columns(db: Database) -> dict[str, dict]:
+    async with db.acquire() as conn:
+        held = await table_repo.get_by_name(conn, "crm", "graphql", "contacts")
+    assert held is not None
+    return {c["column_name"]: c for c in held["columns"]}
+
+
+async def test_a_listed_column_keeps_its_mask_alias_scope_and_description_across_a_refresh(plane):
+    """The endpoint owns a column's existence, name and type. A refresh used to rebuild each
+    listed column from the endpoint alone, keeping only ``visible_to`` and
+    ``required_by_steward``, so a mask, alias, scope or description the config or an admin set
+    was overwritten on every boot."""
+    from provisa.core.models import Column
+
+    await _register_contacts(
+        plane,
+        Column(name="id", data_type="integer", visible_to=["analyst"]),
+        Column(
+            name="email",
+            data_type="varchar",
+            visible_to=["analyst"],
+            masks=[{"to": None, "mask": {"type": "constant", "value": "hidden"}}],
+            alias="contact_email",
+            scope="public",
+            description="Where the contact is written to",
+            fake="email()",
+        ),
+    )
+    masked = [(e["to"], e["mask"]) for e in (await _contacts_columns(plane))["email"]["masks"]]
+    assert [(to, mask["type"], mask["value"]) for to, mask in masked] == [
+        (None, "constant", "hidden")
+    ]
+    endpoint = {
+        "name": "contacts",
+        "columns": [
+            {"name": "id", "type": "integer"},
+            {"name": "email", "type": "text", "description": "The endpoint's own wording"},
+        ],
+    }
+    await _upsert_tables_to_semantic_layer("crm", "sales", [endpoint], plane, SERVICE_READER)
+
+    email = (await _contacts_columns(plane))["email"]
+    assert [(e["to"], e["mask"]) for e in email["masks"]] == masked, email["masks"]
+    assert email["alias"] == "contact_email"
+    assert email["scope"] == "public"
+    assert email["description"] == "Where the contact is written to"
+    assert email["fake"] == "email()"
+    assert list(email["visible_to"]) == ["analyst"]
+
+
+async def test_a_listed_column_takes_the_endpoints_type_and_keeps_the_rest(plane):
+    from provisa.core.models import Column
+
+    await _register_contacts(
+        plane,
+        Column(name="id", data_type="integer", visible_to=[]),
+        Column(
+            name="score",
+            data_type="varchar",
+            visible_to=["analyst"],
+            alias="rating",
+            description="How the contact is rated",
+        ),
+    )
+    endpoint = {
+        "name": "contacts",
+        "columns": [{"name": "id", "type": "integer"}, {"name": "score", "type": "integer"}],
+    }
+    await _upsert_tables_to_semantic_layer("crm", "sales", [endpoint], plane, SERVICE_READER)
+
+    score = (await _contacts_columns(plane))["score"]
+    assert score["data_type"] == "integer"
+    assert (score["alias"], score["description"]) == ("rating", "How the contact is rated")
+    assert list(score["visible_to"]) == ["analyst"]
+
+
+async def test_a_column_the_endpoint_drops_leaves_unless_the_model_selects_it(plane):
+    from provisa.core.models import Column
+
+    await _register_contacts(
+        plane,
+        Column(name="id", data_type="integer", visible_to=[]),
+        Column(name="fax", data_type="varchar", visible_to=["analyst"], alias="fax_number"),
+    )
+    endpoint = {"name": "contacts", "columns": [{"name": "id", "type": "integer"}]}
+    await _upsert_tables_to_semantic_layer("crm", "sales", [endpoint], plane, SERVICE_READER)
+
+    assert set(await _contacts_columns(plane)) == {"id"}
+
+
+async def test_a_column_the_endpoint_newly_lists_takes_the_endpoints_description(plane):
+    from provisa.core.models import Column
+
+    await _register_contacts(plane, Column(name="id", data_type="integer", visible_to=[]))
+    endpoint = {
+        "name": "contacts",
+        "columns": [
+            {"name": "id", "type": "integer"},
+            {"name": "phone", "type": "text", "description": "Where the contact is called"},
+        ],
+    }
+    await _upsert_tables_to_semantic_layer("crm", "sales", [endpoint], plane, SERVICE_READER)
+
+    phone = (await _contacts_columns(plane))["phone"]
+    assert (phone["data_type"], phone["description"]) == ("varchar", "Where the contact is called")
+    assert list(phone["visible_to"]) == []
