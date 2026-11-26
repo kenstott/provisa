@@ -47,8 +47,9 @@ interface DetailView {
 const TABLE_VIEW = {
   param: "table",
   tab: { param: "section", first: "identity" },
-  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab.
-  alsoClears: ["column", "open", "tab"],
+  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab;
+  // REQ-2277: `profile` and `profileView` are the table's profile runs dialog and its result.
+  alsoClears: ["column", "open", "tab", "profile", "profileView"],
   alsoNames: ["open"],
 } as const;
 

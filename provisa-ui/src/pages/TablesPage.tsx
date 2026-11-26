@@ -228,6 +228,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     domains: erd.focus.domains,
     objects: erd.focus.objects,
     modeling: showModeling || null,
+    // REQ-2277: the profile runs dialog, as the URL names it, once a table is open.
+    profile: expanded !== null ? searchParams.get("profile") : null,
+    profileView:
+      expanded !== null && searchParams.get("profile") !== null
+        ? (searchParams.get("profileView") ?? "columns")
+        : null,
   });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);

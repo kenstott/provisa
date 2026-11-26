@@ -15,6 +15,7 @@ import type { RegisteredTable } from "../../types/admin";
 import { fetchProfilers, runProfileNow, type Profiler } from "../../api/profiler";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ProfileRunsModal } from "./ProfileRunsModal";
+import { useProfileRunsParam } from "./useProfileRunsParam";
 import { requiredParamColumns } from "../../components/nativeParams";
 import { ProfileClassificationsModal } from "./ProfileClassificationsModal";
 import { ProfileConstraintsModal } from "./ProfileConstraintsModal";
@@ -40,7 +41,8 @@ export function ProfilerPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [runsOpen, setRunsOpen] = useState(false);
+  // REQ-2277: the runs dialog is open while the URL has `?profile=`.
+  const runs = useProfileRunsParam();
   const [constraintsOpen, setConstraintsOpen] = useState(false);
   const [classificationsOpen, setClassificationsOpen] = useState(false);
 
@@ -143,7 +145,7 @@ export function ProfilerPanel({
                 variant="light"
                 data-testid="profiler-view-runs"
                 disabled={unsaved}
-                onClick={() => setRunsOpen(true)}
+                onClick={runs.open}
               >
                 {t("profilerPanel.viewRuns")}
               </Button>
@@ -179,11 +181,10 @@ export function ProfilerPanel({
           </Alert>
         )}
       </CollapsibleSection>
-      {runsOpen && (
+      {runs.profile !== null && (
         <ProfileRunsModal
           tableId={editingTable.id}
           tableName={editingTable.tableName}
-          onClose={() => setRunsOpen(false)}
         />
       )}
       {constraintsOpen && (
