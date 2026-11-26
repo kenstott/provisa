@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
 import { holdDrawing, restoreDrawing } from "../canvas/canvas-helpers";
+import { keepView, viewMode } from "../../provisa-graph/viewport";
 import { NodeContextMenu } from "../NodeContextMenu";
 import type { CyInstance } from "../cytoscape-types";
 import type { GNode } from "../graph-model";
@@ -53,10 +54,13 @@ const asCy = (cy: ReturnType<typeof fakeCy>) => cy as unknown as CyInstance;
 describe("a drawing that keeps its nodes", () => {
   it("holds each node's place by its own id, and the view", () => {
     const cy = fakeCy([fakeNode("a:1", 1, 10, 20)]);
+    // The reader zoomed it (REQ-2277: a view the reader made, which a resize keeps).
     cy.zoom(2);
+    keepView(asCy(cy));
     const held = holdDrawing(asCy(cy));
     expect(held.positions.get(1)).toEqual({ x: 10, y: 20 });
     expect(held.zoom).toBe(2);
+    expect(held.mode).toEqual({ kind: "kept" });
   });
 
   it("puts shared nodes back under the same view, and a new one beside its neighbour", () => {
@@ -64,11 +68,18 @@ describe("a drawing that keeps its nodes", () => {
     const kept = fakeNode("sales:orders:1", 1);
     const fresh = fakeNode("sales:customers:2", 2);
     fresh.links = [kept];
-    const held = { positions: new Map([[1, { x: 100, y: 100 }]]), zoom: 3, pan: { x: 5, y: 6 } };
+    const held = {
+      positions: new Map([[1, { x: 100, y: 100 }]]),
+      zoom: 3,
+      pan: { x: 5, y: 6 },
+      mode: { kind: "whole", padding: 40 } as const,
+    };
     const cy = fakeCy([kept, fresh]);
     const placed = restoreDrawing(asCy(cy), held, 50);
     expect(kept.pos).toEqual({ x: 100, y: 100 });
     expect(cy.view).toEqual({ zoom: 3, pan: { x: 5, y: 6 } });
+    // The rebuilt drawing keeps the view's mode: fitted whole, a resize fits it whole again.
+    expect(viewMode(asCy(cy))).toEqual({ kind: "whole", padding: 40 });
     expect(placed).toEqual(new Set(["sales:customers:2"]));
     const { x, y } = fresh.pos!;
     expect(Math.hypot(x - 100, y - 100)).toBeCloseTo(50);

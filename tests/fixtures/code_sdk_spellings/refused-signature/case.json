@@ -25,12 +25,12 @@
   "rust": {
     "doc": {
       "problems": [
-        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (inputs, more)"
+        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (inputs, more, extra)"
       ]
     },
     "sdk": {
       "problems": [
-        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (inputs, more)"
+        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (inputs, more, extra)"
       ],
       "checker": "rejects"
     }
