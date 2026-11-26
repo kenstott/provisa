@@ -6184,7 +6184,7 @@
   "ja/relationshipRow.json::relationshipRow.sameEntityHint": "The rows it joins are one real-world thing: one term grounds both tables, joined 1:1 on keys",
   "ja/relationshipRow.json::relationshipRow.selectPlaceholder": "Select...",
   "ja/relationshipRow.json::relationshipRow.source": "Source",
-  "ja/relationshipRow.json::relationshipRow.sqlName": "SQL Name",
+  "ja/relationshipRow.json::relationshipRow.apiName": "API name",
   "ja/relationshipRow.json::relationshipRow.tableLabel": "Table",
   "ja/relationshipRow.json::relationshipRow.target": "Target",
   "ja/relationshipRow.json::relationshipRow.targetTypeFunction": "Function (computed)",

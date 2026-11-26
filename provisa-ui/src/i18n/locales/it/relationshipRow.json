@@ -31,7 +31,7 @@
     "cardinalityOneToMany": "uno-a-molti",
     "materializeCheckbox": "Materializza",
     "excludeFromCypher": "Escludi da Cypher",
-    "sqlName": "Nome SQL",
+    "apiName": "Nome API",
     "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
     "toggleDetails": "Mostra/nascondi dettagli della relazione",
     "deleteTitle": "Eliminare la relazione \"{{id}}\"?",

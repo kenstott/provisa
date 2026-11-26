@@ -147,7 +147,7 @@ query {
 כל `RelationshipType` חושף:
 
 - **`autoSuggested → Boolean`** — האם הקשר הוצע על ידי ניתוח FK (`id` מתחיל ב-`fk__`).
-- **`physicalName → String`** — שם הקשר במישורי SQL ו-gRPC (הפרמטר `?include=`). נגזר בצד השרת; לקוחות אסור להם לתעתק את הכינוי של GraphQL.
+- **`physicalName → String`** — שם ה-API של הקשר, המוצג בממשק כשם API: השם ש-`?include=` של REST ו-JSON:API וה-include של gRPC מקבלים. SQL רגיל אינו נוקב בשם קשר. נגזר בצד השרת; לקוחות אסור להם לתעתק את הכינוי של GraphQL.
 
 ---
 
