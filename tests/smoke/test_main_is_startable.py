@@ -505,15 +505,14 @@ def _installed_instance() -> Iterator[Instance]:
         dropped_in = True
         started = _restart_service(install)
 
-        # The service's own control plane, which `provisa run` started under its data directory:
-        # a second start of the same directory names the server already running there.
-        control = _pg_fields(
-            _as_service(install, [*start, str(install.data_dir / "native" / "control-pg")], root)
+        # The service's own control plane: the PostgreSQL install-host.sh runs beside Trino, named
+        # in the install's provisa.env (root-only: it holds the secrets) (REQ-2269).
+        installed_env = dict(
+            line.split("=", 1)
+            for line in _root(["cat", str(install.config_dir / "provisa.env")]).splitlines()
+            if line and not line.startswith("#")
         )
-        database_url = (
-            f"postgresql+psycopg://provisa:{control['PG_PASSWORD']}@/provisa"
-            f"?host={control['PG_HOST']}&port={control['PG_PORT']}"
-        )
+        database_url = installed_env["PLATFORM_DATABASE_URL"]
         pin = root / "mcp_pin.py"
         shutil.copy(Path(mcp_pin.__file__), pin)
         pin.chmod(0o644)

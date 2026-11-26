@@ -110,10 +110,23 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
 
     The profile's engine is a default (REQ-2269): it is applied only when neither the environment
     nor the config file names an engine, so a config's ``federation_engine`` wins over it.
+
+    The control plane (REQ-2269, amended 2026-11-26): with PLATFORM_DATABASE_URL and
+    TENANT_DATABASE_URL both set (a host install's own PostgreSQL), it is that server and no
+    embedded one starts; one without the other is refused.
     """
     from provisa.core.desktop_profile import load_profile
 
-    profile = load_profile("native", data_dir=data_dir)
+    url_keys = ("PLATFORM_DATABASE_URL", "TENANT_DATABASE_URL")
+    named = [key for key in url_keys if os.environ.get(key)]
+    if len(named) == 1:
+        (missing,) = set(url_keys) - set(named)
+        raise SystemExit(
+            f"{named[0]} is set but {missing} is not: set both to run on that PostgreSQL, "
+            "or neither for the embedded control plane"
+        )
+    control_plane = "postgresql" if named else None
+    profile = load_profile("native", data_dir=data_dir, control_plane=control_plane)
     config_engine = _config_names_engine()
     for key, value in profile.env.items():
         if key == "PROVISA_ENGINE" and config_engine:
