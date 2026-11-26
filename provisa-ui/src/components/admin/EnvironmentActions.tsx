@@ -87,18 +87,17 @@ export function EnvironmentActions({
               ))}
             </Menu.Dropdown>
           </Menu>
-          {/* REQ-1504: a protected environment takes merges and pulls as proposals. Pressed while
-            it is protected. */}
+          {/* REQ-1504: a protected environment takes merges and pulls as proposals. The button
+            says what pressing it does. */}
           <Button
             disabled={!canAdminister}
-            aria-pressed={e.protected}
             leftSection={
-              e.protected ? <Lock size={14} aria-hidden /> : <LockOpen size={14} aria-hidden />
+              e.protected ? <LockOpen size={14} aria-hidden /> : <Lock size={14} aria-hidden />
             }
             onClick={onToggleProtected}
             data-testid={`env-panel-protected-${e.name}`}
           >
-            {t("environmentsTab.colProtected")}
+            {e.protected ? t("environmentsTab.unprotect") : t("environmentsTab.protect")}
           </Button>
           {/* REQ-1524: the repair for a drifted projection, offered where the drift is shown. */}
           {e.drifted && (
