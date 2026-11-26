@@ -261,7 +261,7 @@ def test_the_tag_editors_controls_named_are_in_the_code(test_id):
 def test_the_tag_editor_names_its_citation_fields_as_the_form_labels_them():
     tags = polly_pages.PAGES["/admin/tags"].what
     locale = json.loads((UI / "i18n/locales/en/tagCitations.json").read_text())["tagCitations"]
-    assert f'"{locale["definitionLabel"]}"' in tags  # Why this tag exists
+    assert f'"{locale["definitionLabel"]}"' in tags  # Definition source
     assert f'"{locale["requiresCitationLabel"]}"' in tags  # Assignments require a citation
     _a_citation_list("tags-defined-by")
     edit = json.loads((UI / "i18n/locales/en/tagsTab.json").read_text())["tagsTab"]["editTag"]

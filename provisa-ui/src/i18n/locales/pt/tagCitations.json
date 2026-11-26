@@ -17,7 +17,7 @@
     "reviewHelp": "Uma citação desta tag precisa de revisão: a seção mudou ou foi removida.",
     "definitionReviewHelp": "Uma seção que define esta tag mudou ou foi removida. Revise a citação dela.",
     "gap": "Sem citação",
-    "gapHelp": "Esta tag exige uma citação, e esta atribuição não tem nenhuma.",
+    "gapHelp": "Esta tag exige uma citação para cada atribuição.",
     "definedBy": "Definida por {{title}}",
     "definedByLabel": "Definida por",
     "requiresCitationLabel": "As atribuições exigem uma citação",
@@ -28,9 +28,9 @@
     "citedByDefinition": "Sua definição",
     "citedByGone": "Removida",
     "citedByWholeDocument": "Documento inteiro",
-    "citationsLabel": "Por que está neste objeto",
-    "neededForCoverage": "Necessária para a cobertura",
-    "definitionLabel": "Por que esta etiqueta existe",
-    "definitionDesc": "O documento e a seção que dizem por que esta etiqueta existe. Por que ela está em um objeto vai nas citações desse objeto."
+    "citationsLabel": "Citação",
+    "neededForCoverage": "Obrigatória",
+    "definitionLabel": "Fonte da definição",
+    "definitionDesc": "O documento da biblioteca e a seção que definem esta tag. A citação de uma atribuição vai nessa atribuição."
   }
 }
