@@ -21,6 +21,6 @@ public final class ProvisaFunctionsPlugin
     @Override
     public Set<Class<?>> getFunctions()
     {
-        return Set.of(FakeFunctions.class);
+        return Set.of(FakeFunctions.class, JsonText.class);
     }
 }

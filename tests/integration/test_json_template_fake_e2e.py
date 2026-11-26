@@ -75,10 +75,10 @@ def _governed(key: bytes) -> str:
     return exp.select("*").from_(projection.subquery("p")).sql(dialect="postgres")
 
 
-def _people(parse_json: str) -> str:
+def _people(parse_json: str, real: dict[int, str | None] = _REAL) -> str:
     rows = ", ".join(
         f"({i}, {'CAST(NULL AS JSON)' if v is None else parse_json.format(v.replace(chr(39), 2 * chr(39)))})"
-        for i, v in _REAL.items()
+        for i, v in real.items()
     )
     return f"WITH people(id, contact) AS (VALUES {rows}) "
 
@@ -109,3 +109,47 @@ def test_the_contact_template_gives_the_same_object_per_row_on_duckdb_and_trino(
         assert re.search(r"\d{3}", obj["phone"]), obj
         assert obj["email"] != json.loads(str(_REAL[i]))["email"]
     assert on_duckdb[1] == on_duckdb[3] and on_duckdb[1] != on_duckdb[2]
+
+
+#: One contact stored three ways, and another: spaced, and keys reordered, the stored text differs
+#: by engine and by writer, and each engine digests its canonical text (REQ-2279).
+_WRITTEN = {
+    1: '{"email":"ann@example.com","phone":"555-0101"}',
+    2: '{ "email" : "ann@example.com",\n  "phone" : "555-0101" }',
+    3: '{"phone": "555-0101", "email": "ann@example.com"}',
+    4: '{"phone":"555-0102","email":"bob@example.com"}',
+}
+
+
+@pytest.mark.parametrize("stable", [True, False], ids=["stable", "unstable"])
+def test_spaced_or_reordered_json_gives_one_object_on_duckdb_and_trino(trino_conn, key, stable):
+    col = Column("contact", "json", "other", parse(CONTACT), stable, None, CURRENT_VERSION)
+    projection = faked_projection(
+        exp.table_("people"),
+        "t",
+        [("id", "integer", "integer"), ("contact", "json", "other")],
+        {"contact": col},
+        digest_mod.fingerprint(key),
+        None,
+    )
+    governed = exp.select("*").from_(projection.subquery("p")).sql(dialect="postgres")
+
+    con = duckdb.connect()
+    register(con)
+    duck_sql = _people("CAST('{}' AS JSON)", _WRITTEN) + transpile_to_duckdb(
+        governed, generated=True
+    )
+    on_duckdb = _objects(con.execute(duck_sql).fetchall())
+    con.close()
+
+    cur = trino_conn.cursor()
+    cur.execute(
+        _people("JSON_PARSE('{}')", _WRITTEN) + transpile_to_trino(governed, generated=True)
+    )
+    on_trino = _objects(cur.fetchall())
+
+    assert on_duckdb[1] == on_duckdb[2] == on_duckdb[3] != on_duckdb[4]
+    if stable:
+        # The stable fake is the portable definition: the same object on both engines.
+        assert on_duckdb == on_trino
+    assert on_trino[1] == on_trino[2] == on_trino[3] != on_trino[4]

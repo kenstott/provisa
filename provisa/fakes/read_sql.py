@@ -186,9 +186,11 @@ def digest(
     json_value: bool = False,
 ) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """The keyed digest of ``value`` under the platform key's ``fingerprint``. ``json_value``: the
-    value is JSON, digested as its JSON text (JSON_FORMAT: Trino casts no JSON object to text)."""
+    value is JSON, digested as its canonical text (provisa_json_text, digest.canonical_json), so
+    stored JSON differing only in spacing, key order or number spelling digests alike on every
+    engine (REQ-2279)."""
     text: exp.Expr = (  # pyright: ignore[reportPrivateImportUsage]
-        exp.JSONFormat(this=value) if json_value else _cast(value, "VARCHAR")
+        _f("provisa_json_text", value) if json_value else _cast(value, "VARCHAR")
     )
     if salt:
         text = _p(exp.DPipe(this=text, expression=_lit(":" + salt)))
