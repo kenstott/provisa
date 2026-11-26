@@ -184,6 +184,7 @@ function ReadOnlyColumns({
                     <ColumnGlossaryHover
                       tableId={tableId}
                       columnName={col.name}
+                      queried
                       definition={definitionOf(col)}
                     >
                       <Text
