@@ -35,7 +35,7 @@ export function EntityLink({
   const href = entityLink(capabilities, kind, id, table);
   if (href === undefined) return <span data-testid={testId}>{children}</span>;
   return (
-    <Anchor component={Link} to={href} data-testid={testId} onClick={stopAtLink}>
+    <Anchor component={Link} to={href} inherit data-testid={testId} onClick={stopAtLink}>
       {children}
     </Anchor>
   );
