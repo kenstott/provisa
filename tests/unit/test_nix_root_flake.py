@@ -259,3 +259,21 @@ def test_the_settings_give_nix_ld_the_embedded_postgresqls_clickhouse_library():
     settings = (_NIXOS / "preinstall.nix").read_text()
     libraries = settings.split("libraries = with pkgs; [", 1)[1].split("];", 1)[0]
     assert re.search(r"^\s*lz4$", libraries, flags=re.M)
+
+
+def test_the_settings_give_nix_ld_the_harfbuzz_its_pango_needs():
+    """node-canvas bundles an older libharfbuzz.so.0; the settings' pango bound to it and the graph
+    renderer failed on hb_ot_color_has_paint (run 45903556292)."""
+    settings = (_NIXOS / "preinstall.nix").read_text()
+    libraries = settings.split("libraries = with pkgs; [", 1)[1].split("];", 1)[0]
+    assert re.search(r"^\s*pango$", libraries, flags=re.M)
+    assert re.search(r"^\s*harfbuzz$", libraries, flags=re.M)
+
+
+def test_the_ci_host_lets_a_container_dial_a_server_on_the_host():
+    """Trino in a compose network dials a code source's sidecar on the host; the NixOS firewall
+    dropped it (run 45903556292). Docker's bridges are trusted on the CI host only."""
+    ci_host = (_NIXOS / "configuration.nix").read_text()
+    trusted = ci_host.split("networking.firewall.trustedInterfaces = [", 1)[1].split("];", 1)[0]
+    assert '"docker0"' in trusted and '"br-+"' in trusted
+    assert "trustedInterfaces" not in (_NIXOS / "preinstall.nix").read_text()

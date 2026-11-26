@@ -9,7 +9,7 @@
 # The script that sources this provides: PROVISA_HOME, NON_INTERACTIVE, the ok/warn printers and
 # the BOLD/CYAN/NC colours.
 
-NIXOS_PREINSTALL_VERSION="2"
+NIXOS_PREINSTALL_VERSION="3"
 NIXOS_PREINSTALL_MARKER="/etc/provisa/nixos-preinstall"
 
 is_nixos() { [ -e /etc/NIXOS ]; }

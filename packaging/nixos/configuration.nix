@@ -93,6 +93,15 @@ in
     3000
     8000
   ];
+  # A test's server listens on the host for a container to dial: a code source's sidecar bound at
+  # the default bridge's gateway, read by Trino from its compose network. Ubuntu runners have no
+  # host firewall; NixOS's dropped those connections (run 45903556292,
+  # test_code_source_sidecar_trino.py: "The connection attempt failed."). Docker's own bridges
+  # are trusted; every other interface keeps the firewall.
+  networking.firewall.trustedInterfaces = [
+    "docker0"
+    "br-+"
+  ];
 
   # The native tier, started the way a user starts it: `provisa run`. The unit is skipped until the
   # checkout has its venv.
