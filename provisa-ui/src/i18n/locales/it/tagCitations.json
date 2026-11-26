@@ -17,7 +17,7 @@
     "reviewHelp": "Una citazione di questo tag va rivista: la sua sezione è cambiata o è scomparsa.",
     "definitionReviewHelp": "Una sezione che definisce questo tag è cambiata o è scomparsa. Rivedi la sua citazione.",
     "gap": "Nessuna citazione",
-    "gapHelp": "Questo tag richiede una citazione e questa assegnazione non ne ha.",
+    "gapHelp": "Questo tag richiede una citazione per ogni assegnazione.",
     "definedBy": "Definito da {{title}}",
     "definedByLabel": "Definito da",
     "requiresCitationLabel": "Le assegnazioni richiedono una citazione",
@@ -28,9 +28,9 @@
     "citedByDefinition": "La sua definizione",
     "citedByGone": "Scomparsa",
     "citedByWholeDocument": "Intero documento",
-    "citationsLabel": "Perché è su questo oggetto",
-    "neededForCoverage": "Necessaria per la copertura",
-    "definitionLabel": "Perché questo tag esiste",
-    "definitionDesc": "Il documento e la sezione che dicono perché questo tag esiste. Perché è su un oggetto va nelle citazioni di quell'oggetto."
+    "citationsLabel": "Citazione",
+    "neededForCoverage": "Richiesta",
+    "definitionLabel": "Fonte della definizione",
+    "definitionDesc": "Il documento della libreria e la sezione che definiscono questo tag. La citazione di un'assegnazione va su quell'assegnazione."
   }
 }

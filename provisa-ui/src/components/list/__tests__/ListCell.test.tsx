@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Badge, Button, Code, Group, Stack, Table, Text } from "@mantine/core";
 import userEvent from "@testing-library/user-event";
-import { render, screen, within } from "../../../test-utils/render";
+import { act, render, screen, within } from "../../../test-utils/render";
 import { ListCell, ListPills } from "../ListCell";
 import {
   LIST_COLUMN_CAP_PX,
@@ -40,7 +40,10 @@ function cutCells(how: "side" | "foot") {
   return how === "side" ? spy("scrollWidth") : spy("scrollHeight");
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("a cell of text", () => {
   it("(a) fits: shown as it is, no hint, not a tab stop", () => {
@@ -77,6 +80,25 @@ describe("a cell of text", () => {
     const cell = screen.getByText("10/9/2026, 6:00:00 AM");
     expect(cell).toHaveClass("list-cell--words");
     expect(cell).not.toHaveClass("list-cell--wide");
+  });
+
+  it("a short value with a parenthesised group is one value: one line, whole, never broken", () => {
+    for (const value of ["Inherit (source)", "300s (from source)"]) {
+      render(<ListCell text={value} />);
+      const cell = screen.getByText(value);
+      expect(cell).toHaveClass("list-cell--value");
+      expect(cell).not.toHaveClass("list-cell--words");
+      expect(cell).not.toHaveClass("list-cell--token");
+    }
+  });
+
+  it("a longer text keeps each parenthesised group whole as it wraps", () => {
+    const text = "Rows refreshed every night by the loader (from the source schedule)";
+    render(<ListCell text={text} />);
+    const cell = document.querySelector(".list-cell") as HTMLElement;
+    expect(cell).toHaveClass("list-cell--words");
+    expect(cell).toHaveTextContent(text);
+    expect(cell.querySelector(".list-cell__group")).toHaveTextContent("(from the source schedule)");
   });
 
   it("words longer than a wrapped column's minimum keep that minimum", () => {
@@ -263,6 +285,94 @@ describe("a list row", () => {
   });
 });
 
+describe("a list too narrow for every column", () => {
+  /** The list is 300px wider than its 700px room for each lower-priority column still shown. */
+  function narrowRoom() {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains("table-scroll") ? 700 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.tagName !== "TABLE") return 0;
+      return 1000 - 300 * this.querySelectorAll("th.list-col-hidden").length;
+    });
+  }
+
+  /** A ResizeObserver that reports each element when first watched, and again on `resize()`. */
+  function watchSizes() {
+    const watchers: Array<() => void> = [];
+    class Watcher {
+      private readonly told: () => void;
+      constructor(told: () => void) {
+        this.told = told;
+        watchers.push(told);
+      }
+      observe() {
+        queueMicrotask(() => this.told());
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", Watcher);
+    return { resize: () => watchers.forEach((tell) => tell()) };
+  }
+
+  it("hides its lower-priority columns, lowest first, only as many as it takes to fit", async () => {
+    narrowRoom();
+    const sizes = watchSizes();
+    render(
+      <ListTable testId="list">
+        <ListHead
+          columns={[
+            "Name",
+            { label: "Naming", hide: 1 },
+            { label: "Effective TTL", hide: 2 },
+          ]}
+        />
+        <Table.Tbody>
+          <ListRow testId="row">
+            <Table.Td>orders</Table.Td>
+            <Table.Td>Inherit (source)</Table.Td>
+            <Table.Td>300s (from source)</Table.Td>
+          </ListRow>
+        </Table.Tbody>
+      </ListTable>,
+    );
+    const [name, naming, ttl] = screen.getAllByRole("columnheader");
+    await vi.waitFor(() => expect(naming).toHaveClass("list-col-hidden"));
+    expect(name).not.toHaveClass("list-col-hidden");
+    expect(ttl).not.toHaveClass("list-col-hidden");
+    const [nameCell, namingCell, ttlCell] = within(screen.getByTestId("row")).getAllByRole("cell");
+    expect(namingCell).toHaveClass("list-col-hidden");
+    expect(nameCell).not.toHaveClass("list-col-hidden");
+    expect(ttlCell).not.toHaveClass("list-col-hidden");
+    // Once it fits, the list changing again hides nothing more.
+    act(() => sizes.resize());
+    expect(ttl).not.toHaveClass("list-col-hidden");
+    expect(document.querySelectorAll("th.list-col-hidden")).toHaveLength(1);
+  });
+
+  it("hides nothing while every column fits", async () => {
+    watchSizes();
+    render(
+      <ListTable testId="list">
+        <ListHead columns={["Name", { label: "Naming", hide: 1 }]} />
+        <Table.Tbody>
+          <ListRow testId="row">
+            <Table.Td>orders</Table.Td>
+            <Table.Td>Inherit (source)</Table.Td>
+          </ListRow>
+        </Table.Tbody>
+      </ListTable>,
+    );
+    await act(async () => {});
+    expect(document.querySelector(".list-col-hidden")).toBeNull();
+  });
+});
+
 describe("the rules that make it so in a browser", () => {
   const css = readFileSync(resolve(__dirname, "../../../App.css"), "utf8");
   const rule = (selector: string) => {
@@ -313,6 +423,14 @@ describe("the rules that make it so in a browser", () => {
 
   it("a one-line column gives up width down to its header", () => {
     expect(rule(".list-cell--token.list-cell--one-line")).toContain("min-width: 0");
+  });
+
+  it("a parenthesised group in wrapped text is never broken", () => {
+    expect(rule(".list-cell__group")).toContain("white-space: nowrap");
+  });
+
+  it("a column that gave way draws neither its header nor its cells", () => {
+    expect(rule(".data-table .list-col-hidden")).toContain("display: none");
   });
 
   it("a header is shown whole", () => {

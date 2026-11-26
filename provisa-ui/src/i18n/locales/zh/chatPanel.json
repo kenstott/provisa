@@ -35,6 +35,11 @@
     "graphCaption": "节点：{{nodes}} · 关系：{{relationships}}",
     "downloadPng": "下载 PNG",
     "openOnGraphPage": "在图页面打开",
-    "choiceClosed": "（未选择就关闭了）"
+    "choiceClosed": "（未选择就关闭了）",
+    "attach": "附加一个文件供 Polly 读取：CSV、API 规范、代码归档或文档，最大 {{limit}} MB",
+    "attachTooLarge": "{{name}} 超过 {{limit}} MB，即附加给 Polly 的文件的上限。",
+    "attachTooMany": "一个对话最多可附加 {{max}} 个文件。请移除一个后再附加其他文件。",
+    "removeAttachment": "移除 {{name}}",
+    "download": "下载"
   }
 }

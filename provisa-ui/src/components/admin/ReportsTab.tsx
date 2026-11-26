@@ -16,32 +16,26 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Loader,
-  Modal,
-  NavLink,
-  Text,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
+import { Alert, Button, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus, Trash2 } from "lucide-react";
+import { FileBarChart, X } from "lucide-react";
 import { useDeleteTable, useRegisterTable, useTables } from "../../hooks/useAdminQueries";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { ListedTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
 import { reportCellHref } from "../../lib/reportCellHref";
-import { useLocalStorage } from "../graph/graph-persistence";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
-import { Tip } from "../Tip";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { CapabilityGate } from "../CapabilityGate";
+import { PageTitle } from "../PageTitle";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
+import { ListRow } from "../list/ListTable";
+import { PanelDelete } from "../list/PanelDelete";
+import { SortGroupTable } from "../list/SortGroupTable";
+import { PanelActions, SplitPane } from "../list/SplitPane";
+import { useRememberedDetail } from "../list/useDetailParam";
+import { useUrlFilter } from "../list/useUrlFilter";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 import { FilterInput } from "./FilterInput";
 import { matchesQuery } from "../../lib/searchItems";
@@ -49,14 +43,16 @@ import { matchesQuery } from "../../lib/searchItems";
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
 
-const LIST_WIDTH_KEY = "provisa.reportsTab.listWidth";
-const LIST_INITIAL = 240;
-const LIST_MIN = 160;
-const LIST_MAX = 560;
-const KEY_STEP = 32;
 const DESCRIPTION_LINES = 2;
 
-export function ReportsTab() {
+const nameOf = (r: ListedTable) => r.alias || r.tableName;
+
+/**
+ * REQ-2277: the object management anatomy -- the header (title, filter, Add), the reports listed,
+ * and a row opening the report's panel (?report=<table name>), where its rows are read and a custom
+ * report is deleted. Adding a report opens its form in the same panel.
+ */
+export function ReportsTab({ title }: { title: string }) {
   const { t } = useTranslation();
   // REQ-1620: a report is read as the selected roles, the "Role: All" set included.
   const { actingRoles } = useAuth();
@@ -69,51 +65,19 @@ export function ReportsTab() {
       tables
         .filter((tbl) => tbl.domainId === "ops")
         // Alphabetical by the name the row shows, case and accents ignored.
-        .sort((a, b) =>
-          (a.alias || a.tableName).localeCompare(b.alias || b.tableName, undefined, {
-            sensitivity: "base",
-          }),
-        ),
+        .sort((a, b) => nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base" })),
     [tables],
   );
+  const loaded = !(tablesLoading && reports.length === 0);
 
-  // First report auto-selects via the derived fallback, unless the deep link names one
-  // (`?report=<table name>`); the viewer remounts per report (key) and owns fetching + grid state.
-  const [searchParams] = useSearchParams();
-  const linkedReport = searchParams.get("report");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected =
-    reports.find((r) => r.id === selectedId) ??
-    reports.find((r) => r.tableName === linkedReport) ??
-    reports[0] ??
-    null;
+  // The open report is named by its table name (`?report=<table name>`), as links into a report
+  // have always named it; the viewer remounts per report (key) and owns fetching and grid state.
+  const detail = useRememberedDetail("reports", loaded ? reports.map((r) => r.tableName) : null);
+  const selected = reports.find((r) => r.tableName === detail.id) ?? null;
 
-  // The list's width is kept per browser (useLocalStorage, the store useResizableWidth keeps its
-  // width in). The hook measures a panel docked at the right of its row; this list sits at the
-  // left, so the drag measures from the list's left edge here and the key and storage rules match.
-  const [listWidth, setListWidth] = useLocalStorage(LIST_WIDTH_KEY, LIST_INITIAL);
-  const clampWidth = (w: number) => Math.max(LIST_MIN, Math.min(LIST_MAX, Math.round(w)));
-  const startDrag = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = listWidth;
-    const onMove = (ev: MouseEvent) => setListWidth(clampWidth(startW + ev.clientX - startX));
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-  const onHandleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    setListWidth(clampWidth(listWidth + (e.key === "ArrowRight" ? KEY_STEP : -KEY_STEP)));
-  };
-
-  // The list is narrowed by name or description; the selection and the deep link still resolve
-  // over every report, so a filter never changes which report the pane shows.
-  const [filter, setFilter] = useState("");
+  // The list is narrowed by name or description; the open report still resolves over every
+  // report, so a filter never changes which report the panel shows.
+  const [filter, setFilter] = useUrlFilter();
   const visibleReports = reports.filter((r) =>
     matchesQuery([r.alias, r.tableName, r.description], filter),
   );
@@ -124,13 +88,19 @@ export function ReportsTab() {
   const [addSql, setAddSql] = useState("");
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
+  const required = useRequiredFields({ name: addName, sql: addSql });
 
-  const handleSelect = (report: ListedTable) => {
-    setSelectedId(report.id);
+  const openAdd = () => {
+    setAddName("");
+    setAddDescription("");
+    setAddSql("");
+    setAddError("");
+    setAddOpen(true);
   };
 
   const handleAdd = async () => {
-    if (!addName.trim() || !addSql.trim()) return;
+    if (!required.validate()) return;
+    const name = addName.trim();
     setAddSaving(true);
     setAddError("");
     try {
@@ -138,21 +108,16 @@ export function ReportsTab() {
         sourceId: DERIVED_SOURCE_ID,
         domainId: "ops",
         schemaName: "views",
-        tableName: addName.trim(),
-        alias: addName.trim(),
+        tableName: name,
+        alias: name,
         description: addDescription.trim() || undefined,
         viewSql: addSql.trim(),
         columns: [],
       });
-      notifications.show({
-        color: "green",
-        message: t("reportsTab.added", { name: addName.trim() }),
-      });
+      notifications.show({ color: "green", message: t("reportsTab.added", { name }) });
       setAddOpen(false);
-      setAddName("");
-      setAddDescription("");
-      setAddSql("");
       refetchTables();
+      detail.open(name);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -161,81 +126,195 @@ export function ReportsTab() {
   };
 
   const handleDelete = async (report: ListedTable) => {
-    if (!window.confirm(t("reportsTab.deleteConfirm", { name: report.alias || report.tableName })))
-      return;
     const result = await deleteTable(report.id);
-    if (result.success) {
-      notifications.show({
-        color: "green",
-        message: t("reportsTab.deleted", { name: report.alias || report.tableName }),
-      });
-      if (selectedId === report.id) setSelectedId(null);
-      refetchTables();
-    } else {
-      notifications.show({ color: "red", message: result.message });
-    }
+    if (!result.success) throw new Error(result.message);
+    notifications.show({
+      color: "green",
+      message: t("reportsTab.deleted", { name: nameOf(report) }),
+    });
+    detail.close({ only: report.tableName });
+    refetchTables();
   };
 
+  const kindOf = (r: ListedTable) =>
+    r.sourceId === DERIVED_SOURCE_ID ? t("reportsTab.kindCustom") : t("reportsTab.kindBuiltIn");
+
+  const addForm = (
+    <FormLayout data-testid="report-add-form">
+      <FormField size="full">
+        <Text size="xs" c="dimmed">
+          {t("reportsTab.addHint")}
+        </Text>
+      </FormField>
+      <FormIdentifiers>
+        <FormField size="medium">
+          <TextInput
+            label={t("reportsTab.nameLabel")}
+            value={addName}
+            onChange={(e) => setAddName(e.currentTarget.value)}
+            data-testid="report-name-input"
+            {...required.field("name")}
+          />
+        </FormField>
+      </FormIdentifiers>
+      <FormField size="long">
+        <TextInput
+          label={t("reportsTab.descriptionLabel")}
+          value={addDescription}
+          onChange={(e) => setAddDescription(e.currentTarget.value)}
+          data-testid="report-description-input"
+        />
+      </FormField>
+      <FormField size="full">
+        <Textarea
+          label={t("reportsTab.sqlLabel")}
+          value={addSql}
+          onChange={(e) => setAddSql(e.currentTarget.value)}
+          autosize
+          minRows={5}
+          styles={{ input: { fontFamily: "monospace" } }}
+          data-testid="report-sql-input"
+          {...required.field("sql")}
+        />
+      </FormField>
+      {addError && (
+        <FormField size="full">
+          <Alert color="red" data-testid="report-add-error">
+            {addError}
+          </Alert>
+        </FormField>
+      )}
+      <FormFooter
+        panel
+        onSave={() => void handleAdd()}
+        saving={addSaving}
+        onCancel={() => setAddOpen(false)}
+        saveProps={{ "data-testid": "report-save-btn" }}
+      />
+    </FormLayout>
+  );
+
+  const reportView = (report: ListedTable) => (
+    <Stack
+      gap="sm"
+      style={{ minWidth: 0 }}
+      data-testid="report-pane"
+      data-report={report.tableName}
+    >
+      {report.sourceId === DERIVED_SOURCE_ID && (
+        <CapabilityGate capability="table_registration">
+          <PanelActions>
+            <fieldset className="panel-action-set">
+              <PanelDelete
+                itemKey={report.tableName}
+                title={t("reportsTab.delete")}
+                consequence={t("reportsTab.deleteConfirm", { name: nameOf(report) })}
+                ariaLabel={t("reportsTab.delete")}
+                testId={`report-delete-${report.tableName}`}
+                onDelete={() => handleDelete(report)}
+              />
+            </fieldset>
+          </PanelActions>
+        </CapabilityGate>
+      )}
+      <GovernedTableViewer
+        key={report.id}
+        table={report}
+        role={actingRoles}
+        showTitle
+        cellHref={reportCellHref}
+      />
+      {report.tableName === ONTOLOGY_QUALITY_REPORT && <OntologyDriftPanel />}
+    </Stack>
+  );
+
   return (
-    <div style={{ display: "flex", gap: "0.75rem", height: "calc(100vh - 180px)", minHeight: 420 }}>
-      <div
-        style={{
-          width: listWidth,
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-        data-testid="reports-list"
-      >
-        <Group justify="space-between" px="xs" py={6}>
-          <Text size="sm" fw={600}>
-            {t("reportsTab.title")}
-          </Text>
+    <>
+      <div className="page-header">
+        <PageTitle icon={FileBarChart}>{title}</PageTitle>
+        <FilterInput
+          value={filter}
+          onChange={setFilter}
+          placeholder={t("reportsTab.filterPlaceholder")}
+        />
+        <div className="page-actions">
           {/* A report is a view registered in the ops domain, so adding one asks what
               registering a table asks; reading the reports is the ops domain's right. */}
           <CapabilityGate capability="table_registration">
             <Button
-              size="compact-xs"
-              leftSection={<Plus size={12} />}
-              onClick={() => setAddOpen(true)}
+              variant={addOpen ? "outline" : "filled"}
+              onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
+              aria-label={addOpen ? t("reportsTab.closeForm") : undefined}
               data-testid="add-report-btn"
             >
-              {t("reportsTab.add")}
+              {addOpen ? <X size={14} /> : t("reportsTab.addTitle")}
             </Button>
           </CapabilityGate>
-        </Group>
-        <div style={{ padding: "0 var(--mantine-spacing-xs) 6px" }}>
-          <FilterInput
-            value={filter}
-            onChange={setFilter}
-            placeholder={t("reportsTab.filterPlaceholder")}
-          />
         </div>
-        <div style={{ flex: 1, overflow: "auto" }}>
-          {tablesLoading && reports.length === 0 ? (
-            <Group justify="center" py="md">
-              <Loader size="xs" />
-            </Group>
-          ) : reports.length === 0 ? (
-            <Text size="xs" c="dimmed" px="xs" py="sm">
-              {t("reportsTab.empty")}
-            </Text>
-          ) : visibleReports.length === 0 ? (
-            <Text size="xs" c="dimmed" px="xs" py="sm" data-testid="reports-no-match">
-              {t("reportsTab.noMatch")}
-            </Text>
-          ) : (
-            visibleReports.map((report) => {
-              const custom = report.sourceId === DERIVED_SOURCE_ID;
-              return (
-                <NavLink
+      </div>
+      <SplitPane
+        testId="reports-split"
+        storageKey="provisa.reportsTab.detailWidth"
+        title={addOpen ? t("reportsTab.addTitle") : selected !== null ? nameOf(selected) : ""}
+        onClose={() => {
+          setAddOpen(false);
+          detail.close();
+        }}
+        closeOnEscape={!addOpen}
+        labels={{
+          panel: t("reportsTab.panelLabel"),
+          resize: t("tablesPage.resizeDetail"),
+          expand: t("tablesPage.expandDetail"),
+          restore: t("tablesPage.restoreDetail"),
+          close: t("tablesPage.closeDetail"),
+          backToList: t("tablesPage.backToList"),
+        }}
+        list={
+          <div data-testid="reports-list">
+            <SortGroupTable
+              testPrefix="reports"
+              rows={loaded ? visibleReports : []}
+              columns={[
+                { key: "name", label: t("reportsTab.nameLabel"), sortValue: nameOf },
+                {
+                  key: "description",
+                  label: t("reportsTab.descriptionLabel"),
+                  sortValue: (r) => r.description ?? "",
+                },
+                {
+                  key: "kind",
+                  label: t("reportsTab.kindColumn"),
+                  sortValue: kindOf,
+                  groupValue: kindOf,
+                },
+              ]}
+              headers={[{ col: "name" }, { col: "description" }, { col: "kind" }]}
+              colSpan={3}
+              rowKey={(r) => r.tableName}
+              empty={
+                !loaded
+                  ? t("reportsTab.loading")
+                  : reports.length === 0
+                    ? t("reportsTab.empty")
+                    : t("reportsTab.noMatch")
+              }
+              emptyTestId={loaded && reports.length > 0 ? "reports-no-match" : "reports-empty"}
+              render={(report) => (
+                <ListRow
                   key={report.id}
-                  active={report.id === selected?.id}
-                  label={report.alias || report.tableName}
-                  description={
-                    report.description ? (
-                      // Held to two lines; a click on the text opens or closes it and stops there,
-                      // so it does not select the report (a click elsewhere on the row still does).
+                  testId={`report-item-${report.tableName}`}
+                  selected={!addOpen && report.tableName === detail.id}
+                  onClick={() => {
+                    setAddOpen(false);
+                    if (detail.id === report.tableName) detail.close();
+                    else detail.open(report.tableName);
+                  }}
+                >
+                  <Table.Td>{nameOf(report)}</Table.Td>
+                  <Table.Td>
+                    {report.description ? (
+                      // Held to two lines; a click on the text opens or closes it and stops
+                      // there, so it does not open the report (a click elsewhere on the row does).
                       <ClampedDetail
                         testId={`report-description-${report.tableName}`}
                         lines={DESCRIPTION_LINES}
@@ -245,139 +324,17 @@ export function ReportsTab() {
                       >
                         {report.description}
                       </ClampedDetail>
-                    ) : undefined
-                  }
-                  onClick={() => handleSelect(report)}
-                  data-testid={`report-item-${report.tableName}`}
-                  rightSection={
-                    custom ? (
-                      <CapabilityGate capability="table_registration">
-                        <Tip text={t("reportsTab.delete")} named>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            size="sm"
-                            aria-label={t("reportsTab.delete")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleDelete(report);
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </ActionIcon>
-                        </Tip>
-                      </CapabilityGate>
-                    ) : undefined
-                  }
-                />
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* The rule between the list and the report IS the grab handle: a 1px line drawn inside a
-          wider hit area so it stays easy to grab without thickening the divider. */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("reportsTab.resize")}
-        tabIndex={0}
-        onMouseDown={startDrag}
-        onKeyDown={onHandleKeyDown}
-        data-testid="reports-resize-handle"
-        style={{
-          flexShrink: 0,
-          width: 9,
-          marginInline: "-0.375rem",
-          cursor: "col-resize",
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <div style={{ width: 1, height: "100%", background: "var(--border)" }} />
-      </div>
-
-      {selected ? (
-        <div
-          style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
-          data-testid="report-pane"
-          data-report={selected.tableName}
-        >
-          <GovernedTableViewer
-            key={selected.id}
-            table={selected}
-            role={actingRoles}
-            showTitle
-            cellHref={reportCellHref}
-          />
-          {selected.tableName === ONTOLOGY_QUALITY_REPORT && <OntologyDriftPanel />}
-        </div>
-      ) : (
-        <div style={{ flex: 1 }} />
-      )}
-
-      <Modal
-        opened={addOpen}
-        onClose={() => setAddOpen(false)}
-        title={t("reportsTab.addTitle")}
-        size="lg"
-      >
-        <FormLayout>
-          <FormField size="full">
-            <Text size="xs" c="dimmed">
-              {t("reportsTab.addHint")}
-            </Text>
-          </FormField>
-          <FormIdentifiers>
-            <FormField size="medium">
-              <TextInput
-                label={t("reportsTab.nameLabel")}
-                value={addName}
-                onChange={(e) => setAddName(e.currentTarget.value)}
-                data-testid="report-name-input"
-                required
-              />
-            </FormField>
-          </FormIdentifiers>
-          <FormField size="long">
-            <TextInput
-              label={t("reportsTab.descriptionLabel")}
-              value={addDescription}
-              onChange={(e) => setAddDescription(e.currentTarget.value)}
-              data-testid="report-description-input"
+                    ) : null}
+                  </Table.Td>
+                  <Table.Td>{kindOf(report)}</Table.Td>
+                </ListRow>
+              )}
             />
-          </FormField>
-          <FormField size="full">
-            <Textarea
-              label={t("reportsTab.sqlLabel")}
-              value={addSql}
-              onChange={(e) => setAddSql(e.currentTarget.value)}
-              autosize
-              minRows={5}
-              styles={{ input: { fontFamily: "monospace" } }}
-              data-testid="report-sql-input"
-              required
-            />
-          </FormField>
-          {addError && (
-            <FormField size="full">
-              <Alert color="red" data-testid="report-add-error">
-                {addError}
-              </Alert>
-            </FormField>
-          )}
-          <FormFooter
-            onSave={() => void handleAdd()}
-            saving={addSaving}
-            onCancel={() => setAddOpen(false)}
-            saveProps={{
-              "data-testid": "report-save-btn",
-              disabled: !addName.trim() || !addSql.trim(),
-            }}
-          />
-        </FormLayout>
-      </Modal>
-    </div>
+          </div>
+        }
+      >
+        {addOpen ? addForm : selected !== null ? reportView(selected) : null}
+      </SplitPane>
+    </>
   );
 }

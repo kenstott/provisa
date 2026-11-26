@@ -107,6 +107,62 @@ def test_each_owned_setup_is_in_exactly_its_own_action():
         assert holders == [action], f"`{pattern}` is in {holders}, expected only {action}"
 
 
+def _locked_uv_version() -> str:
+    lock = (REPO / "uv.lock").read_text()
+    match = re.search(r'^\[\[package\]\]\nname = "uv"\nversion = "([^"]+)"', lock, re.M)
+    assert match, "uv.lock locks no uv package"
+    return match.group(1)
+
+
+def _setup_uv_steps() -> list[tuple[str, dict]]:
+    found = []
+    for path in [*WORKFLOWS, *ACTIONS]:
+        body = yaml.safe_load(path.read_text())
+        if "runs" in body:
+            step_lists = [body["runs"].get("steps") or []]
+        else:
+            step_lists = [job.get("steps") or [] for job in (body.get("jobs") or {}).values()]
+        for steps in step_lists:
+            for step in steps:
+                if (step.get("uses") or "").startswith("astral-sh/setup-uv@"):
+                    found.append((path.name if "runs" not in body else path.parent.name, step))
+    return found
+
+
+def test_every_uv_install_pins_the_exact_locked_version():
+    """setup-uv given a range (or none, which reads pyproject's `uv>=0.11`) lists every uv release
+    through the GitHub API at run time; that lookup failed in conformance-functions run
+    45698279072 and the mariadb leg ran no test. An exact version makes no API call, and it is
+    the version uv.lock locks, so the CI's uv and the runtime dependency are one version."""
+    locked = _locked_uv_version()
+    steps = _setup_uv_steps()
+    assert steps, "no astral-sh/setup-uv step found"
+    for where, step in steps:
+        version = str((step.get("with") or {}).get("version", ""))
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), (
+            f"{where}: {step.get('name')} installs uv without an exact version ({version!r})"
+        )
+        assert version == locked, f"{where}: {step.get('name')} pins uv {version}, uv.lock {locked}"
+
+
+def test_a_failed_uv_install_is_named():
+    """setup-uv's own failure printed no error in run 45698279072; the action names it."""
+    steps = yaml.safe_load((REPO / ".github/actions/setup-python/action.yml").read_text())
+    steps = steps["runs"]["steps"]
+    uv_ids = [s["id"] for s in steps if (s.get("uses") or "").startswith("astral-sh/setup-uv@")]
+    assert len(uv_ids) == len(
+        [s for s in steps if (s.get("uses") or "").startswith("astral-sh/setup-uv@")]
+    ), "every setup-uv step has an id"
+    namers = [s for s in steps if "::error" in (s.get("run") or "") and "uv" in s["run"]]
+    assert len(namers) == 1, "one step names a failed uv install"
+    condition = namers[0]["if"]
+    assert condition.startswith("failure()")
+    for uv_id in uv_ids:
+        assert f"steps.{uv_id}.outcome == 'failure'" in condition
+    assert _locked_uv_version() in namers[0]["run"]
+    assert "exit 1" in namers[0]["run"]
+
+
 @pytest.mark.parametrize("action", ACTIONS, ids=lambda p: p.parent.name)
 def test_a_composite_action_names_its_shell_and_hides_no_failing_command(action):
     """A composite step has no default shell, and `bash` there is not `bash -eo pipefail`: a step

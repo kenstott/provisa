@@ -87,6 +87,9 @@
     "editAria": "{{name}} संपादित करें",
     "enableAria": "{{name}} सक्षम करें",
     "disableAria": "{{name}} अक्षम करें",
-    "deleteAria": "{{name}} हटाएँ"
+    "deleteAria": "{{name}} हटाएँ",
+    "filterPlaceholder": "ट्रिगर फ़िल्टर करें",
+    "closeForm": "फ़ॉर्म बंद करें",
+    "noMatch": "कोई ट्रिगर मेल नहीं खाता"
   }
 }

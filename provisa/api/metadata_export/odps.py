@@ -720,13 +720,15 @@ def _transforms(snapshot: "MetadataSnapshot", column: "ColumnAsset") -> tuple[li
 
 
 def _relationships(snapshot: "MetadataSnapshot", table: "TableAsset") -> list[dict[str, Any]]:
-    """The member's foreign keys: each direct relationship from it, column to column. A
-    junction-backed one joins through a third table, so it is no key of the member's."""
+    """The member's foreign keys: each direct relationship from it, column to column, each column
+    by the name a consumer queries it by (REQ-2158, amended 2026-11-25). A junction-backed one
+    joins through a third table, so it is no key of the member's."""
+    columns = {(t.ref.parts, c.name): c.consumer_name for t in snapshot.tables for c in t.columns}
     return [
         {
             "type": "foreignKey",
-            "from": f"{table.name}.{edge.source_column}",
-            "to": f"{edge.target.parts[-1]}.{edge.target_column}",
+            "from": f"{table.name}.{columns[(table.ref.parts, edge.source_column)]}",
+            "to": f"{edge.target.parts[-1]}.{columns[(edge.target.parts, edge.target_column)]}",
         }
         for edge in snapshot.relationships
         if edge.source.parts == table.ref.parts
@@ -840,7 +842,8 @@ def _property(
 ) -> dict[str, Any]:
     """One of the member's columns as its contract's schema property (REQ-2158), naming its
     grounded term (REQ-2238)."""
-    prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
+    # REQ-2158 (amended 2026-11-25): a consumer reads each column by the name it queries it by.
+    prop: dict[str, Any] = {"name": column.consumer_name, "physicalType": column.data_type}
     if logical := logical_type(column.data_type):
         prop["logicalType"] = logical
         if options := logical_type_options(column.data_type, column.subtype):

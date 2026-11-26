@@ -15,7 +15,10 @@ user_role_assignments), mirrors the identity (user_directory, REQ-1439) and what
 provider said (user_idp_attributes, REQ-1383) and, when assignments come from the token's
 claims, the role claims it carried (user_idp_roles, REQ-2219), and mirrors the token's entitlement
 lists, attaches grants waiting on its email and records what the person's entitlements come to
-(entitlements, entitlement_expiries, entitlement_pending, effective_entitlements, REQ-2219). Account deletion clears the same copies of who the person was in
+(entitlements, entitlement_expiries, entitlement_pending, effective_entitlements, REQ-2219), then
+rewrites who owns and stewards each object (object_owners, read from data_products, domains and
+relationships with the names a model build stored, model_names; REQ-2219), the tables those foreign
+keys reach among them (registered_tables, sources, glossary_terms). Account deletion clears the same copies of who the person was in
 every org they belong to (REQ-1312), user_idp_roles among them. A test that lays out a partial tenant schema starts from this list, so a table the
 sign-in path comes to need is added here once.
 """
@@ -23,11 +26,19 @@ sign-in path comes to need is added here once.
 from __future__ import annotations
 
 from provisa.core.schema_org import (
+    data_products,
+    domains,
     effective_entitlements,
     entitlement_expiries,
     entitlement_pending,
     entitlements,
+    glossary_terms,
+    model_names,
+    object_owners,
+    registered_tables,
+    relationships,
     roles,
+    sources,
     user_directory,
     user_idp_attributes,
     user_idp_roles,
@@ -44,4 +55,13 @@ SIGN_IN_TABLES = [
     entitlement_expiries,
     entitlement_pending,
     effective_entitlements,
+    # write_object_owners (effective_store.write_person) and the tables their keys reach.
+    sources,
+    domains,
+    glossary_terms,
+    data_products,
+    registered_tables,
+    relationships,
+    model_names,
+    object_owners,
 ]

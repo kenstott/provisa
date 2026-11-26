@@ -739,8 +739,9 @@ const modalSize = () => {
   const sized = document.querySelector<HTMLElement>(".mantine-Modal-root");
   return sized?.style.getPropertyValue("--modal-size");
 };
-// The setup step's size, the shared modal size "lg".
-const STANDARD = "var(--modal-size-lg)";
+// The setup step's size, the shared large modal size "xl" multi-field dialogs use (maintainer
+// 2026-11-25: "lg" wrapped the numeric fields' hints into tall columns).
+const STANDARD = "var(--modal-size-xl)";
 
 describe("Discovery dialog: its size by what it shows", () => {
   it("takes the standard size while setting up a run", async () => {

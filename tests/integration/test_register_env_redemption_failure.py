@@ -40,6 +40,7 @@ from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 pytestmark = [pytest.mark.integration]
 
@@ -78,7 +79,9 @@ def _prepare_sync():
         )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles])
+        # A redemption into prod recomputes the invitee's effective rows (REQ-2219), which reads
+        # and writes what every sign-in does.
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         conn.execute(insert(roles).values(id="org_admin"))
     return engine
 

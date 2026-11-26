@@ -12,7 +12,7 @@
 // the Data Science and Lineage editors) under a field label, with line numbers and highlighting,
 // growing with its content. Its value and onChange are a Textarea's: the text, whole.
 
-// Requirements: REQ-1984, REQ-2225, REQ-2115
+// Requirements: REQ-1984, REQ-2225, REQ-2115, REQ-1993
 
 import { useMemo, type ReactNode } from "react";
 import { Input, useMantineColorScheme } from "@mantine/core";
@@ -24,18 +24,28 @@ import { python } from "@codemirror/lang-python";
 import { PostgreSQL, sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
 import { turtle } from "@codemirror/legacy-modes/mode/turtle";
+import { javascript } from "@codemirror/legacy-modes/mode/javascript";
+import { go } from "@codemirror/legacy-modes/mode/go";
+import { rust } from "@codemirror/legacy-modes/mode/rust";
 import { codeFieldMark, type CodeFieldName } from "../mcp/codeFields";
 
 const turtleLanguage = StreamLanguage.define(turtle);
+const javascriptLanguage = StreamLanguage.define(javascript);
+const goLanguage = StreamLanguage.define(go);
+const rustLanguage = StreamLanguage.define(rust);
 
 /** The languages a code field highlights: a connector's script (Python), a code host's Compose
- * file and an OpenAPI spec (YAML or JSON), a command's SQL, and a reasoner's axioms (Turtle). */
+ * file and an OpenAPI spec (YAML or JSON), a command's SQL, a reasoner's axioms (Turtle), and
+ * REQ-1993's code entered in a code source's form (Python, JavaScript, Go or Rust). */
 const LANGUAGES = {
   python,
   yaml,
   json,
   sql: () => sql({ dialect: PostgreSQL }),
   turtle: () => turtleLanguage,
+  javascript: () => javascriptLanguage,
+  go: () => goLanguage,
+  rust: () => rustLanguage,
 } as const;
 export type CodeLanguage = keyof typeof LANGUAGES;
 
@@ -106,6 +116,8 @@ type Props = {
   value: string;
   language: CodeLanguage;
   required?: boolean;
+  /** False when the label draws the required mark itself (a FormField with help does). */
+  withAsterisk?: boolean;
   placeholder?: string;
   "data-testid"?: string;
 } & (
@@ -119,6 +131,7 @@ export function CodeEditorField({
   onChange,
   language,
   required,
+  withAsterisk,
   readOnly,
   placeholder,
   "aria-labelledby": labelledBy,
@@ -130,7 +143,7 @@ export function CodeEditorField({
   else if (typeof label === "string") name = { label, description };
   else throw new Error("CodeEditorField: a label that is not text needs aria-labelledby");
   return (
-    <Input.Wrapper label={label} required={required}>
+    <Input.Wrapper label={label} required={required} withAsterisk={withAsterisk}>
       <CodeEditor
         name={name}
         value={value}

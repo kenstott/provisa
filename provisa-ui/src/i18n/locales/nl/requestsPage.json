@@ -19,9 +19,7 @@
     "colWaitingOn": "Wacht op",
     "colStatus": "Status",
     "colReason": "Reden",
-    "colActions": "",
     "none": "—",
-    "viewPayload": "bekijken",
     "approve": "Goedkeuren",
     "execute": "Uitvoeren",
     "reject": "Afwijzen",
@@ -39,6 +37,8 @@
     "deliveryHelp": "Hoe de leden van de rollen waaraan een verzoek is gericht ervan op de hoogte worden gebracht. E-mail: Provisa stuurt elk van hen een melding. Alleen events: Provisa stuurt geen melding; uw workflowtool abonneert zich op ops.requests. Beide: e-mail en events.",
     "deliveryEmail": "E-mail",
     "deliveryEvents": "Alleen events",
-    "deliveryBoth": "Beide"
+    "deliveryBoth": "Beide",
+    "panelTitle": "Verzoek #{{id}}",
+    "panelLabel": "Verzoek"
   }
 }

@@ -40,6 +40,9 @@ import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { useUrlFilter } from "../components/list/useUrlFilter";
+import { FilterInput } from "../components/admin/FilterInput";
+import { matchesQuery } from "../lib/searchItems";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -437,9 +440,18 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
     ],
     [t],
   );
-  const sortGroup = useListSortGroup(metrics, metricColumns, "metrics");
+  // REQ-2277: the list's filter, in the URL.
+  const [search, setSearch] = useUrlFilter();
+  const shownMetrics = useMemo(
+    () =>
+      metrics.filter((m) =>
+        matchesQuery([m.name, m.expression, m.description ?? "", m.term ?? ""], search),
+      ),
+    [metrics, search],
+  );
+  const sortGroup = useListSortGroup(shownMetrics, metricColumns, "metrics");
   // REQ-2240: metrics selected and deleted together.
-  const shownMetricNames = useMemo(() => metrics.map((m) => m.name), [metrics]);
+  const shownMetricNames = useMemo(() => shownMetrics.map((m) => m.name), [shownMetrics]);
   const selection = useListSelection(shownMetricNames);
   const deleteMetrics = useDeleteMetrics();
 
@@ -476,15 +488,19 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     // The list and its panel share the height the heading leaves; each scrolls by itself.
-    <div className="page-sticky-head" style={{ padding: "1rem 1.25rem" }}>
-      <Group justify="space-between" mb="md">
-        <PageTitle icon={Gauge} order={3}>
-          {t("metricsPage.title")}
-        </PageTitle>
-        <Group gap="xs">
+    <div className="page page-sticky-head">
+      <div className="page-header">
+        <PageTitle icon={Gauge}>{t("metricsPage.title")}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("metricsPage.filterPlaceholder")}
+          testId="metrics-filter"
+        />
+        <div className="page-actions">
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
           {!readOnly && !creating && editingName === null && (
-            <Button size="xs" onClick={openCreate} data-testid="metrics-new-button">
+            <Button onClick={openCreate} data-testid="metrics-new-button">
               {t("metricsPage.newMetric")}
             </Button>
           )}
@@ -494,8 +510,8 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
             ariaLabel={t("metricsPage.purposeAria")}
             testId="metrics-purpose-help"
           />
-        </Group>
-      </Group>
+        </div>
+      </div>
 
       {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}
       {/* An import under review can be long: it scrolls in its own box, the list keeps its place. */}
@@ -556,7 +572,7 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
                   ]}
                 />
                 <Table.Tbody>
-                  {metrics.length === 0 && (
+                  {shownMetrics.length === 0 && (
                     <ListEmpty colSpan={5} testId="metrics-empty">
                       {t("metricsPage.empty")}
                     </ListEmpty>

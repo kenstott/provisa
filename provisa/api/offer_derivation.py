@@ -116,7 +116,9 @@ def seen_columns(state: Any, role_id: str, table: dict) -> list[offer_contracts.
     read = {c["name"]: c for t in view for c in t["columns"] if c["read"]}
     return [
         offer_contracts.SeenColumn(
-            name=c["column_name"],
+            # REQ-2158 (amended 2026-11-25): a contract names each column as its consumers query
+            # it, by its SQL alias where one is set, otherwise by its column name.
+            name=c.get("alias") or c["column_name"],
             type=c["data_type"],
             description=c.get("description"),
             read=c["column_name"] in read,

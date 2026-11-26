@@ -69,3 +69,22 @@ def prepare(
         ctx.org_id,
         workers=config.workers,
     )
+
+
+def entered_files(source: str, dependencies: list[str]) -> dict[str, str]:
+    """REQ-1984, REQ-1993 (amended 2026-11-25): entered code is the ES module ``index.js``,
+    JavaScript with JSDoc types, which is also what its declarations are read from; each
+    dependency line is ``name@version``, installed from the lockfile given beside it."""
+    import json
+
+    from provisa.codesource.entered import name_at_version
+
+    package = {
+        "name": "entered",
+        "version": "0.0.0",
+        "type": "module",
+        "main": "index.js",
+        "types": "index.js",
+        "dependencies": dict(name_at_version(d) for d in dependencies),
+    }
+    return {"index.js": source, "package.json": json.dumps(package, indent=2) + "\n"}
