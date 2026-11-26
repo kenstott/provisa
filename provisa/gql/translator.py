@@ -91,6 +91,7 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    EitherWay,
     RelEndpoints,
     edge_properties_column,
     oriented_rel,
@@ -991,8 +992,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         self._optional_rel_vars: set[str] = set()
         self._rel_var_matched: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        # REQ-348: a relationship one outer join matched either way → where it matched forward.
-        self._rel_var_forward_when: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: a relationship one outer join matched either way → where it matched forward,
+        # and backward.
+        self._rel_var_forward_when: dict[str, EitherWay] = {}
         self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's

@@ -31,6 +31,7 @@ from provisa.gql.ir import (
 )
 from provisa.gql.label_map import NodeMapping, RelationshipMapping
 from provisa.gql.translator_helpers import (
+    EitherWay,
     _is_bwd_for_candidate,
     either_way_joins,
     _join_alias,
@@ -140,8 +141,9 @@ class _RelJoinMixin:  # mixin for _Translator
         _optional_rel_vars: set[str]
         #: An OPTIONAL relationship between two nodes the statement holds: where it matched (#303).
         _rel_var_matched: dict[str, exp.Expression]
-        #: A relationship matched either way by one outer join (REQ-348): where it matched forward.
-        _rel_var_forward_when: dict[str, exp.Expression]
+        #: A relationship matched either way by one outer join (REQ-348): where it matched
+        #: forward, and backward.
+        _rel_var_forward_when: dict[str, EitherWay]
         #: The conditions of relationships between two nodes the statement holds, which join no
         #: table (#303): the WHERE of the statement _build_from_joins builds the FROM of.
         _held_end_conditions: list[exp.Expression]

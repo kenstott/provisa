@@ -30,11 +30,16 @@ from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapp
 RelEndpoints = tuple[str, NodeMapping, str, NodeMapping, bool]
 
 
+#: Where a relationship matched either way (either_way_joins) matched forward, and backward.
+EitherWay = tuple["exp.Expression", "exp.Expression"]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
 def either_way_joins(
     forward: "list[dict]", backward: "list[dict]"
-) -> "tuple[list[dict], exp.Expression]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> "tuple[list[dict], EitherWay]":
     """REQ-348: an undirected hop of a self-referential type, under OPTIONAL MATCH, as one outer
-    join matching either direction, and the condition a row matched it forward under.
+    join matching either direction, and the conditions a row matched it forward and backward
+    under.
 
     ``forward`` and ``backward`` are the two ways' joins (_make_rel_joins) over the same tables
     and aliases: one FK join, or a junction join and its far end's. The junction joins a row by
@@ -42,7 +47,10 @@ def either_way_joins(
     """
     if len(forward) == 1:
         (fwd,), (bwd,) = forward, backward
-        return [{**fwd, "on": exp.or_(fwd["on"].copy(), bwd["on"].copy())}], fwd["on"].copy()
+        return [{**fwd, "on": exp.or_(fwd["on"].copy(), bwd["on"].copy())}], (
+            fwd["on"].copy(),
+            bwd["on"].copy(),
+        )
     (fwd_via, fwd_far), (bwd_via, bwd_far) = forward, backward
     via = {**fwd_via, "on": exp.or_(fwd_via["on"].copy(), bwd_via["on"].copy())}
     far = {
@@ -52,22 +60,30 @@ def either_way_joins(
             exp.and_(bwd_via["on"].copy(), bwd_far["on"].copy()),
         ),
     }
-    return [via, far], fwd_via["on"].copy()
+    return [via, far], (fwd_via["on"].copy(), bwd_via["on"].copy())
 
 
 def oriented_rel(
     endpoints: RelEndpoints,
-    forward_when: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    either_way: "EitherWay | None",
     build: "Callable[[RelEndpoints], exp.Expression]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """``build`` over a relationship's ends; for one matched either way (either_way_joins), the
-    ends as each row matched it: as recorded where ``forward_when`` holds, else reversed."""
-    if forward_when is None:
+    ends as each row matched it: as recorded where it matched forward, reversed where it matched
+    backward, and null where the OPTIONAL hop matched nothing (the relationship is null)."""
+    if either_way is None:
         return build(endpoints)
+    forward_when, backward_when = either_way
     src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
     return exp.Case(
-        ifs=[exp.If(this=forward_when.copy(), true=build(endpoints))],
-        default=build((src_alias, src_nm, tgt_alias, tgt_nm, not is_reversed)),
+        ifs=[
+            exp.If(this=forward_when.copy(), true=build(endpoints)),
+            exp.If(
+                this=backward_when.copy(),
+                true=build((src_alias, src_nm, tgt_alias, tgt_nm, not is_reversed)),
+            ),
+        ],
+        default=exp.Null(),
     )
 
 
