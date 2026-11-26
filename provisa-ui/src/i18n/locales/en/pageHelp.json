@@ -30,7 +30,7 @@
       "contextHealth": "See the health of the context layer at a glance, and approve the terms waiting for review.",
       "glossary": "Read the approved glossary terms, A to Z or by domain.",
       "ontology": "Edit the ontology: its classes, properties and concepts, and how they map onto tables.",
-      "contextMetrics": "Read the metrics defined on the model. Metrics are edited under Model.",
+      "contextMetrics": "Read the metrics defined on the model. Metrics are edited under Derived.",
       "contextTags": "Read the tags and the objects each one is applied to. Tags are edited under Admin.",
       "contextClassification": "See the kinds of data the profiler classifies and where each kind was detected.",
       "contextSync": "Keep outside catalogs and systems in step with Provisa, and see when each was last brought up to date.",
