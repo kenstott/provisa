@@ -54,6 +54,8 @@ import (
 const (
 	sdkPath     = "provisa.dev/sdk/go"
 	sdkSpelling = 1
+	// Provisa's services to a Go source (provisa/golang/services), present in every build.
+	servicesPath = "provisa_services"
 )
 
 var (
@@ -64,6 +66,7 @@ var (
 	}
 	sdkOptions = map[string]string{
 		"Requires": "requires", "Insert": "insert", "Update": "update", "Delete": "delete",
+		"Loader": "loader",
 	}
 	// A @change registration's positional arguments after the function, each one tag line.
 	changeParts = []string{"table", "key", "removed", "cursor"}
@@ -169,7 +172,8 @@ func (r *reader) tree(t types.Type) node {
 		return node{"kind": "array", "element": r.tree(u.Elem())}
 	case *types.Map:
 		if key, ok := u.Key().Underlying().(*types.Basic); ok && key.Kind() == types.String {
-			return node{"kind": "record"}
+			// REQ-2100: its value's type, which a @loader's map of each key's rows is read by.
+			return node{"kind": "record", "value": r.tree(u.Elem())}
 		}
 		return unsupported(types.TypeString(u, r.qualifier))
 	case *types.Interface:
@@ -229,6 +233,13 @@ func (r *reader) named(n *types.Named) node {
 	}
 	if args.Len() > 0 {
 		return unsupported(types.TypeString(n, r.qualifier))
+	}
+	// REQ-2100: Provisa's own read context, from its services or its SDK, is named, never read:
+	// its fields are Provisa's, not the code's.
+	if n.Obj().Name() == "ReadContext" && n.Obj().Pkg() != nil {
+		if path := n.Obj().Pkg().Path(); path == servicesPath || path == sdkPath {
+			return node{"kind": "ref", "name": "ReadContext"}
+		}
 	}
 	switch u := n.Underlying().(type) {
 	case *types.Struct:
@@ -600,6 +611,10 @@ func (r *reader) option(arg ast.Expr, registration string, target *export, read 
 		r.refuse("%s: %s", target.Name, unknownSDK(name))
 		return
 	}
+	if name == "Loader" {
+		r.loader(call, target)
+		return
+	}
 	if len(call.Args) == 0 {
 		return // the compiler refuses it
 	}
@@ -625,6 +640,28 @@ func (r *reader) option(arg ast.Expr, registration string, target *export, read 
 		text += ":secret"
 	}
 	target.TagArguments = append(target.TagArguments, tagArg{tag, text})
+}
+
+// loader reads provisa.Loader() as @loader and provisa.Loader(N) as @loader N (REQ-2100): N, the
+// largest batch, an integer constant.
+func (r *reader) loader(call *ast.CallExpr, target *export) {
+	if call.Ellipsis.IsValid() || len(call.Args) > 1 {
+		r.refuse("%s: provisa.Loader takes at most one batch size", target.Name)
+		return
+	}
+	if len(call.Args) == 0 {
+		if !contains(target.Tags, "loader") {
+			target.Tags = append(target.Tags, "loader")
+		}
+		return
+	}
+	value := r.pkg.TypesInfo.Types[call.Args[0]].Value
+	if value == nil || value.Kind() != constant.Int {
+		r.refuse("%s: provisa.Loader takes a constant batch size, not %s",
+			target.Name, types.ExprString(call.Args[0]))
+		return
+	}
+	target.TagArguments = append(target.TagArguments, tagArg{"loader", value.ExactString()})
 }
 
 // constantString is e's value when e is a string constant.
