@@ -154,6 +154,10 @@
     "rebuildFailed": "{{env}} continua divergente, porque o commit não foi concluído.",
     "stageTitle": "Estágio",
     "stageHelp": "Declara para que serve este ambiente: produção, pré-produção, teste ou desenvolvimento. O ambiente original da organização começa como produção e um novo começa como desenvolvimento; qualquer número de ambientes pode compartilhar um estágio.",
-    "stageHelp2": "O estágio identifica o ambiente no seletor, nos relatórios e nas exportações de catálogo e de linhagem. Ele nunca muda o que alguém pode fazer aqui: isso vem apenas das funções atribuídas no ambiente."
+    "stageHelp2": "O estágio identifica o ambiente no seletor, nos relatórios e nas exportações de catálogo e de linhagem. Ele nunca muda o que alguém pode fazer aqui: isso vem apenas das funções atribuídas no ambiente.",
+    "filterPlaceholder": "Filtrar ambientes",
+    "closeForm": "Fechar o formulário",
+    "newEnvironment": "Novo ambiente",
+    "panelLabel": "Ambiente"
   }
 }

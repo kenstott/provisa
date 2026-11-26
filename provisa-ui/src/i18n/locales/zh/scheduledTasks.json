@@ -87,6 +87,9 @@
     "editAria": "编辑 {{name}}",
     "enableAria": "启用 {{name}}",
     "disableAria": "停用 {{name}}",
-    "deleteAria": "删除 {{name}}"
+    "deleteAria": "删除 {{name}}",
+    "filterPlaceholder": "筛选触发器",
+    "closeForm": "关闭表单",
+    "noMatch": "没有匹配的触发器"
   }
 }

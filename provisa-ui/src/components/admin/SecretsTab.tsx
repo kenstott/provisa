@@ -320,8 +320,44 @@ function SecretsVault({ vault, title, header }: VaultProps) {
     return true;
   };
 
-  if (error && !state) return <Alert color="red">{error}</Alert>;
-  if (!state) return <Text>{t("secretsTab.loading")}</Text>;
+  // The header stands while the vault loads or is refused, so the page keeps its name.
+  const pageHeader = (
+    <div className="page-header">
+      <PageTitle icon={KeyRound}>{title}</PageTitle>
+      <FilterInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("secretsTab.filterPlaceholder")}
+        testId="secrets-filter"
+      />
+      <div className="page-actions">
+        {state !== null && state.provider.writable && (
+          <Button
+            variant={form === "create" ? "outline" : "filled"}
+            data-testid="secrets-add"
+            aria-label={form === "create" ? t("secretsTab.closeForm") : undefined}
+            onClick={() => (form === "create" ? closeForm() : openForm(null))}
+          >
+            {form === "create" ? <X size={14} /> : t("secretsTab.add")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+  if (error && !state)
+    return (
+      <>
+        {pageHeader}
+        <Alert color="red">{error}</Alert>
+      </>
+    );
+  if (!state)
+    return (
+      <>
+        {pageHeader}
+        <Text>{t("secretsTab.loading")}</Text>
+      </>
+    );
 
   const writable = state.provider.writable;
   const open = state.secrets.find((s) => s.name === detail.id) ?? null;
@@ -442,27 +478,7 @@ function SecretsVault({ vault, title, header }: VaultProps) {
 
   return (
     <>
-      <div className="page-header">
-        <PageTitle icon={KeyRound}>{title}</PageTitle>
-        <FilterInput
-          value={search}
-          onChange={setSearch}
-          placeholder={t("secretsTab.filterPlaceholder")}
-          testId="secrets-filter"
-        />
-        <div className="page-actions">
-          {writable && (
-            <Button
-              variant={form === "create" ? "outline" : "filled"}
-              data-testid="secrets-add"
-              aria-label={form === "create" ? t("secretsTab.closeForm") : undefined}
-              onClick={() => (form === "create" ? closeForm() : openForm(null))}
-            >
-              {form === "create" ? <X size={14} /> : t("secretsTab.add")}
-            </Button>
-          )}
-        </div>
-      </div>
+      {pageHeader}
       <Stack gap="md" data-testid={vault === "org" ? "secrets-tab" : "my-secrets-tab"}>
         {header}
         <Text c="dimmed" fz="sm">

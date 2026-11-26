@@ -193,7 +193,6 @@
     "colDescription": "Description",
     "colGqlAlias": "GQL Alias",
     "colSteward": "Steward",
-    "colActions": "Actions",
     "noDomains": "No domains defined",
     "deleteDomain": "Delete domain {{id}}",
     "resolveSteward": "Show who stewards domain {{id}}",

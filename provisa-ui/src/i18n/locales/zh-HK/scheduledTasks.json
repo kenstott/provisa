@@ -87,6 +87,9 @@
     "editAria": "編輯 {{name}}",
     "enableAria": "啟用 {{name}}",
     "disableAria": "停用 {{name}}",
-    "deleteAria": "刪除 {{name}}"
+    "deleteAria": "刪除 {{name}}",
+    "filterPlaceholder": "篩選觸發器",
+    "closeForm": "關閉表單",
+    "noMatch": "沒有相符的觸發器"
   }
 }

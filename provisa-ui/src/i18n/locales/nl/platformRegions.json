@@ -38,6 +38,8 @@
     "org": "Organisatie",
     "pickOrg": "Kies een organisatie",
     "orgGranted": "{{id}} (toegekend: {{regions}})",
-    "orgNone": "{{id}} (geen regio's)"
+    "orgNone": "{{id}} (geen regio's)",
+    "filterPlaceholder": "Regio's filteren",
+    "closeForm": "Formulier sluiten"
   }
 }

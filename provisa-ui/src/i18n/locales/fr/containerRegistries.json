@@ -14,6 +14,10 @@
     "defaultHelp": "Une construction pousse ici sauf si elle nomme un autre registre. Une organisation a un registre par défaut.",
     "saved": "Enregistré",
     "removed": "Supprimé",
-    "remove": "Supprimer"
+    "remove": "Supprimer",
+    "filterPlaceholder": "Filtrer les registres",
+    "closeForm": "Fermer le formulaire",
+    "edit": "Modifier {{name}}",
+    "removeConfirm": "Supprimer {{name}} ? Les builds qui y publient ne pourront plus publier leur image."
   }
 }
