@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// GET /api/subscribe/confirm?token=... — REQ-2361 step 2: the link from the email api/subscribe.js
+// GET /api/subscribe/confirm?token=... — REQ-2362 step 2: the link from the email api/subscribe.js
 // sent. Only here, once the address is proven, does it join the Resend release list. Navigated to
 // directly by a browser, so every response is an HTML page, not JSON.
 import { confirmSignup } from "../../_lib/releases.js";

@@ -35,7 +35,7 @@ export async function onRequestPost(context) {
     phone: String(body.phone ?? "").trim() || null,
     machine_id: String(body.machine_id ?? "").trim(),
   };
-  // REQ-2361: the optional, unticked "email me about releases" box. The signup stays pending and
+  // REQ-2362: the optional, unticked "email me about releases" box. The signup stays pending and
   // is confirmed by the same license confirmation link, so it needs no second email.
   const releases = body.releases === true;
   // Honeypot, matching /api/subscribe's convention.

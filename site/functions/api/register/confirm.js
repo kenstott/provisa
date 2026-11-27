@@ -87,7 +87,7 @@ export async function onRequestGet(context) {
     .bind(token)
     .run();
 
-  // REQ-2361: this click also proves the address for a release-email signup made on the form.
+  // REQ-2362: this click also proves the address for a release-email signup made on the form.
   const signup = await env.DB.prepare(
     "SELECT * FROM release_signups WHERE license_token = ? AND confirmed_at IS NULL"
   )

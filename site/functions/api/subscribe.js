@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// POST /api/subscribe — step 1 of the double-opt-in release-email signup (REQ-2361). Stores
+// POST /api/subscribe — step 1 of the double-opt-in release-email signup (REQ-2362). Stores
 // {name, email} as a pending signup in D1 and emails a confirmation link; the address joins the
 // Resend release list only when that link is clicked (functions/api/subscribe/confirm.js).
 import { isValidEmail } from "../_lib/license.js";

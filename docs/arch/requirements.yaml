@@ -3135,7 +3135,7 @@
     snake_case exceptions (Hasura''s 2023 naming feature flag) is added only if an import needs it. Both
     presets are always offered; importing from Hasura picks the one its metadata names (a source''s
     customization.naming_convention, or the deployment default). Each preset is proved against a schema that
-    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.) (Amended 2026-11-22 by the maintainer. A table whose naming convention is a Hasura preset is served in Hasura shapes. Its primary key appears in x_constraint as <table>_pkey, PostgreSQL''s default name, since Provisa does not store the source''s constraint name; a declared UNIQUE constraint keeps its declared name. Under graphql-default the x_select_column values are the served camelCase column field names. Streaming subscriptions (x_stream) are served as their own feature.) (Amended 2026-11-22 by the maintainer. A Hasura x_stream subscription whose cursor column the caller''s role sees masked is refused, naming the column. A stream rereads one second after a short batch, a fixed interval matching Hasura''s default.) (Amended 2026-11-24 by the maintainer. A name an export target gives an object is recorded in the names table at the next model build; it may lag a publish until then.)'
+    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.) (Amended 2026-11-22 by the maintainer. A table whose naming convention is a Hasura preset is served in Hasura shapes. Its primary key appears in x_constraint as <table>_pkey, PostgreSQL''s default name, since Provisa does not store the source''s constraint name; a declared UNIQUE constraint keeps its declared name. Under graphql-default the x_select_column values are the served camelCase column field names. Streaming subscriptions (x_stream) are served as their own feature.) (Amended 2026-11-22 by the maintainer. A Hasura x_stream subscription whose cursor column the caller''s role sees masked is refused, naming the column. A stream rereads one second after a short batch, a fixed interval matching Hasura''s default.) (Amended 2026-11-24 by the maintainer. A name an export target gives an object is recorded in the names table at the next model build; it may lag a publish until then.) (Split 2026-11-27 after verification: the rules not yet delivered (a check refusing name shaping outside the authority, suggestions taken from the authority, the UI reading saved names from the names table) moved to REQ-2361. The 2026-11-18 sentence that a word the dictionary does not know takes a rule-based form is superseded by the 2026-11-20 text that a word in neither stays as written.)'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3143,6 +3143,23 @@
   tests:
   - tests/unit/test_graphql_alias.py
   - tests/unit/test_naming.py
+  - tests/unit/test_naming_rules.py
+  - tests/unit/test_naming_bypasses_py.py
+  - tests/unit/test_names_table.py
+  - tests/unit/test_names_meta_table.py
+  - tests/unit/test_names_table_estate.py
+  - tests/unit/test_names_resolution.py
+  - tests/unit/test_names_table_rebuild_guard.py
+  - tests/unit/test_shipped_models_have_no_name_clashes.py
+  - tests/unit/test_inflection_dictionary.py
+  - tests/unit/test_inflection_supplement.py
+  - tests/unit/test_inflection_lemminflect_maps.py
+  - tests/unit/test_hasura_naming_presets.py
+  - tests/unit/test_hasura_serve.py
+  - tests/unit/test_hasura_stream.py
+  - tests/unit/test_data_product_offers.py
+  - provisa-ui/src/components/admin/__tests__/NameClashPolicyCard.test.tsx
+  - provisa-ui/src/__tests__/namingVectors.test.ts
   since: 2026-01
   scenario: 'Given a column with and without an alias configured
 
@@ -100502,6 +100519,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2267
 
 - id: REQ-2361
+  status: in-progress
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Naming Convention
+  feature: semantic-model-naming
+  priority: MUST
+  type: behavioral
+  description: 'Split 2026-11-27 from REQ-194 (naming authority) after verification. These are the rules of REQ-194
+    not yet delivered, and REQ-194''s text governs their detail. A check refuses new name shaping outside the naming
+    authority. Every suggestion made before an object is saved (reverse relationship alias, table and column alias,
+    metric name, junction name) comes from the authority, in the UI and the API alike. The UI reads saved objects''
+    names from the server''s names table and never computes them.'
+  scenario: 'Given a table being registered, when the UI proposes its alias, then the proposal is the authority''s
+    suggestion; and given a saved relationship, when the UI shows its name, then the name is read from the names table.'
+  related_reqs:
+  - REQ-194
+
+- id: REQ-2362
   status: in-progress
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery

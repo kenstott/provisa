@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Shared helpers for the release-email signup (REQ-2361). Not a route: it exports no onRequest*.
+// Shared helpers for the release-email signup (REQ-2362). Not a route: it exports no onRequest*.
 // A signup is stored pending in D1 and joins the Resend release list only once its address is
 // proven, either by the confirmation link (api/subscribe/confirm.js) or by the license
 // confirmation link when the registrant ticked the release-email box (api/register/confirm.js).

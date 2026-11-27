@@ -25,7 +25,7 @@
   //                                     _DEFAULT_LICENSE_PUBKEY_HEX, or every issued license
   //                                     fails verification on every Provisa install.
   //
-  // REQ-2361 (release emails, functions/api/subscribe.js + functions/api/subscribe/confirm.js)
+  // REQ-2362 (release emails, functions/api/subscribe.js + functions/api/subscribe/confirm.js)
   // reuses RESEND_API_KEY, which then needs full access (contacts, not just sending), plus:
   //   RESEND_RELEASES_SEGMENT_ID      — the Resend segment confirmed signups join; release
   //                                     Broadcasts are sent to it.

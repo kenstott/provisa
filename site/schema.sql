@@ -3,7 +3,7 @@
 --   wrangler d1 execute provisa-subscribers --remote --file=site/schema.sql
 
 -- Legacy: rows from the original "Keep me posted" form, which never confirmed the address.
--- Nothing writes here since REQ-2361; release signups live in release_signups below.
+-- Nothing writes here since REQ-2362; release signups live in release_signups below.
 CREATE TABLE IF NOT EXISTS subscribers (
   email      TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS license_registrations (
   UNIQUE (email, machine_id)
 );
 
--- Double opt-in release-email signup (REQ-2361). `token` is the confirmation-link secret; a
+-- Double opt-in release-email signup (REQ-2362). `token` is the confirmation-link secret; a
 -- signup joins the Resend release list only once confirmed. One row per email: signing up again
 -- replaces the token. `license_token` is set when the signup came from the license form's
 -- release box, whose license confirmation link confirms it too.

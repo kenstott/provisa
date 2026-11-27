@@ -16,7 +16,7 @@ site/
   functions/_lib/       license.js — canonicalization/signing for license registration;
                          releases.js — pending release signups and the Resend release list
   functions/api/        Pages Functions — subscribe.js + subscribe/confirm.js (double opt-in
-                         release emails, REQ-2361), register.js + register/confirm.js (double
+                         release emails, REQ-2362), register.js + register/confirm.js (double
                          opt-in license registration, REQ-1793)
   schema.sql            D1 tables for release signups and license registrations
   deploy.sh             manual Cloudflare Pages deploy
@@ -77,7 +77,7 @@ headers (honored by Cloudflare Pages).
 
 The page is also portable to any static host (GitHub Pages, Netlify, S3, or the app's own static mount), but the release-email signup only runs on Cloudflare Pages (it needs the Pages Function + D1).
 
-## Release emails (double opt-in, REQ-2361)
+## Release emails (double opt-in, REQ-2362)
 
 The form under the download section (footer link: Release emails) POSTs `{name, email}` to
 `/api/subscribe` ([functions/api/subscribe.js](functions/api/subscribe.js)), which stores a
