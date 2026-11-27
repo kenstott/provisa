@@ -65,6 +65,7 @@ import { AccessReviews } from "../components/admin/AccessReviews";
 import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
 import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
+import { entityName } from "../components/entityName";
 import { useCapability } from "../hooks/useCapability";
 import { administersOrg, conferrableRoles } from "../lib/capabilities";
 
@@ -721,7 +722,7 @@ export function TeamPage() {
                         </Text>
                       </Table.Td>
                       <Table.Td>{inv.email ?? "—"}</Table.Td>
-                      <Table.Td>{inv.role_id ?? "—"}</Table.Td>
+                      <Table.Td>{entityName("role", inv.role_id) ?? "—"}</Table.Td>
                       <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
                       <Table.Td>
                         {inv.max_uses === null

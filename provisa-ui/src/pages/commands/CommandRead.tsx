@@ -26,6 +26,7 @@ import type {
 } from "../../api/actions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { CodeEditorField } from "../../components/CodeEditorField";
+import { entityName } from "../../components/entityName";
 import { IMPL_KINDS, isNativeSql } from "./types";
 
 function ReadHeading({ children }: { children: string }) {
@@ -118,7 +119,7 @@ function useCommonFields(c: TrackedFunction | TrackedWebhook, type: "function" |
         label: t("commandFormFields.kind"),
         value: c.kind === "query" ? t("commandFormFields.query") : t("commandFormFields.mutation"),
       },
-      { label: t("commandFormFields.domain"), value: c.domainId },
+      { label: t("commandFormFields.domain"), value: entityName("domain", c.domainId) },
     ],
     tail: [
       { label: t("commandFormFields.description"), value: c.description },
@@ -171,12 +172,12 @@ export function FunctionRead({
         ]
       : isNativeSql(impl, binding)
         ? [
-            { label: t("commandFormFields.source"), value: fn.sourceId },
+            { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
             sqlField(t("commandFormFields.nativeSql"), "function-read-native-sql"),
           ]
         : bySource
           ? [
-              { label: t("commandFormFields.source"), value: fn.sourceId },
+              { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
               { label: t("commandFormFields.schema"), value: fn.schemaName },
               { label: t("commandFormFields.functionName"), value: fn.functionName },
             ]
