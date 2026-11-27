@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button, Group, Radio, Select, TextInput, Textarea } from "@mantine/core";
 import type { ActionArg } from "../../api/actions";
+import type { SqlNamedTable } from "../../naming";
 import { ModalLayout } from "../modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
@@ -48,8 +49,8 @@ interface Draft {
   rows: string;
 }
 
-const tableKey = (tb: ArgTable) => `${tb.domainId}.${tb.tableName}`;
-const tableLabel = (tb: ArgTable) => `${tb.domainId}.${tb.alias || tb.tableName}`;
+const tableKey = (tb: SqlNamedTable) => `${tb.domainId}.${tb.tableName}`;
+const tableLabel = (tb: SqlNamedTable) => `${tb.domainId}.${tb.alias || tb.tableName}`;
 
 /** What a draft gives for its argument, to say whether it was given at all. */
 function given(arg: ActionArg, d: Draft): string | null {
