@@ -100,6 +100,8 @@ def test_the_workflow_plans_with_the_nixos_planner_and_runs_what_it_planned():
     run = steps["Run lane"]
     assert 'export PROVISA_LANE_TESTS="${{ matrix.alone || inputs.tests }}"' in run
     assert "${{ matrix.deselect }} ${{ inputs.pytest_args }} --junitxml" in run
+    # The guest's lane budget is read from the job limit the planner raised, not the suite's.
+    assert "--job-minutes ${{ matrix.timeout }}" in run
 
 
 def test_a_dispatch_names_its_tests_and_pytest_arguments():

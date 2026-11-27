@@ -650,7 +650,7 @@ jobs:
             export PROVISA_DUCKDB_EXT_WHEELS="$HOME/duckdb-ext-wheels"
             # A file that runs alone is the one named test of its job; a targeted dispatch names its own.
             export PROVISA_LANE_TESTS="${{ matrix.alone || inputs.tests }}"
-            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} ${{ matrix.deselect }} ${{ inputs.pytest_args }} --junitxml results/junit.xml
+            uv run python scripts/ci/run_lane.py ${{ matrix.lane }} ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} --job-minutes ${{ matrix.timeout }} ${{ matrix.deselect }} ${{ inputs.pytest_args }} --junitxml results/junit.xml
           '
 
       - name: Containers that were not healthy
