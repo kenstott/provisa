@@ -357,6 +357,15 @@ Errors follow the JSON:API error object shape.
 
 **Response cache:** opt in with a request header, `Cache-Control: max-age=N` or `x-provisa-cache: true` (see [Response cache request headers](#response-cache-request-headers)). Every response carries `X-Provisa-Cache: HIT|MISS`, and `X-Provisa-Cache-Age` on a hit. Two forms that disagree return `400` as a JSON:API error object.
 
+#### JSON:API commands {: #jsonapi-commands }
+
+Commands assigned to a role are served at `/data/jsonapi/<domain>/commands/<name>`.
+
+- A query-kind command: `GET /data/jsonapi/<domain>/commands/<name>` with the same `filter`, `sort`, `page[number]`, `page[size]` and declared-argument parameters table reads take. Rows are returned under `meta.rows`; a command row is not a resource, so there is no `data` envelope.
+- A mutation-kind command: `POST /data/jsonapi/<domain>/commands/<name>`. The body is a JSON object whose `meta` field holds the command's arguments. The response carries the return value under `meta`.
+
+The name `commands` is reserved: a table named `commands` is refused at registration, so the command path never shadows a table.
+
 #### JSON:API Explorer
 
 The JSON:API explorer page (`/app/jsonapi`) is a browser UI over these endpoints. Select a table from the domain-grouped list, then configure:

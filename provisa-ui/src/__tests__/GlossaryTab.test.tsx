@@ -267,6 +267,7 @@ const DANGLING: GlossaryTermSummary = {
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...REVENUE,
   refs: [
     {
@@ -289,6 +290,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...CHURN,
   refs: [],
   edges_out: [],
@@ -302,6 +304,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
 const MARGIN_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...MARGIN,
   refs: [],
   edges_out: [],

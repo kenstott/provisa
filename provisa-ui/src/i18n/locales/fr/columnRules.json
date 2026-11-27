@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Règles de colonne",
+    "hint": "Chaque règle masque ou cache, pour un rôle et les rôles qui en héritent, toute colonne portant cette clé, qu'il s'agisse des colonnes d'une table ou des colonnes de sortie d'une commande. La visibilité et les masques propres à la colonne s'appliquent toujours ; le résultat le plus strict l'emporte.",
+    "none": "Aucune règle de colonne.",
+    "colRole": "Rôle",
+    "colEffect": "Effet",
+    "hidden": "Cachée",
+    "maskedCompletely": "Entièrement masquée",
+    "maskedAs": "Masquée : {{mask}}",
+    "remove": "Supprimer la règle pour {{role}}",
+    "roleLabel": "Rôle",
+    "actionLabel": "Effet",
+    "actionHide": "Cacher",
+    "actionMask": "Masquer",
+    "maskLabel": "Masque",
+    "maskComplete": "Entièrement masquée",
+    "constantLabel": "Valeur constante",
+    "patternLabel": "Motif",
+    "replaceLabel": "Remplacement",
+    "add": "Ajouter une règle"
+  }
+}

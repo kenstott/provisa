@@ -24,7 +24,7 @@ and the org's own custom kinds, held in the org's ``classification`` setting
 is part of the model, so it moves with the model across environments.
 """
 
-# Requirements: REQ-2147
+# Requirements: REQ-2147, REQ-1159
 
 from __future__ import annotations
 
@@ -375,6 +375,64 @@ async def forget(conn: Any, table_id: int, physical: str, kind_id: str) -> bool:
     return bool(result.rowcount)
 
 
+# -- a command's output column (REQ-1159) ----------------------------------------------------------
+
+
+async def record_command_column(
+    conn: Any,
+    command_name: str,
+    column: str,
+    kind_id: str,
+    *,
+    status: str,
+    evidence: str,
+    by: str | None,
+) -> None:
+    """A steward's classification of a command's output column (REQ-1159, amended 2026-11-25): its
+    decision on a kind, as on a table column's, with the steward's evidence. No profile run reads
+    a command's output, so the decision cites none."""
+    from provisa.core.schema_org import profiler_classifications as pc
+
+    if status not in DECISION_STATUSES:
+        raise ValueError(f"a decision is one of {DECISION_STATUSES}, got {status!r}")
+    kind_of(kind_id)  # an unknown kind is refused by name
+    await conn.upsert(
+        pc,
+        {
+            "command_name": command_name,
+            "physical_column": column,
+            "kind": kind_id,
+            "status": status,
+            "evidence": evidence,
+            "decided_by": by,
+        },
+        index_elements=["command_name", "physical_column", "kind"],
+        update_columns=["status", "evidence", "decided_by"],
+    )
+
+
+async def command_decisions(conn: Any, command_name: str) -> dict[tuple[str, str], dict]:
+    """Every decision on the command's output columns, by (column, kind)."""
+    from provisa.core.schema_org import profiler_classifications as pc
+
+    result = await conn.execute_core(select(pc).where(pc.c.command_name == command_name))
+    return {(r.physical_column, r.kind): dict(r._mapping) for r in result.fetchall()}
+
+
+async def forget_command_column(conn: Any, command_name: str, column: str, kind_id: str) -> bool:
+    """Withdraw a decision on a command's output column. False when there is none."""
+    from provisa.core.schema_org import profiler_classifications as pc
+
+    result = await conn.execute_core(
+        delete(pc).where(
+            (pc.c.command_name == command_name)
+            & (pc.c.physical_column == column)
+            & (pc.c.kind == kind_id)
+        )
+    )
+    return bool(result.rowcount)
+
+
 # -- accepting -------------------------------------------------------------------------------------
 
 
@@ -451,3 +509,35 @@ async def accept_effects(
         if refused is not None:
             raise PiiRefused(refused)
     return Accepted(term, note, kind.sensitive, kind.mask_preset, changes)
+
+
+async def accept_command_column_effects(
+    conn: Any, command_name: str, domain_id: str, column: str, kind: Kind, evidence: str
+) -> None:
+    """Accepting a kind on a command's output column (REQ-1159, amended 2026-11-25) does what it
+    does on a table column's: the column means the kind's Property term, in the command's domain,
+    and, for a sensitive kind, is marked pii. Raises the glossary's and the tags' own refusals."""
+    from provisa.api.admin.schema_mutation import store_tag_assignment
+    from provisa.core.models import TagAssignment
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.core.repositories import tag as tag_repo
+
+    term_id = await glossary_repo._find_or_create_term(conn, kind.term, domain_id)  # noqa: SLF001
+    await glossary_repo.ground_command_column(conn, term_id, command_name, column)
+    if not kind.sensitive:
+        return
+    tag_row = await tag_repo.get(conn, "pii")
+    assert tag_row is not None, "pii is a system tag"
+    refused = await store_tag_assignment(
+        conn,
+        TagAssignment(
+            tag_id="pii",
+            object_type="command_column",
+            command_name=command_name,
+            column_name=column,
+            reason=evidence,
+        ),
+        tag_row,
+    )
+    if refused is not None:
+        raise PiiRefused(refused)

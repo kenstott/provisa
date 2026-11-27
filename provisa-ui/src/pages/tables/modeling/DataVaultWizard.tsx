@@ -20,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { FieldGroup, FormEntry, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
 import type { Domain } from "../../../types/admin";
 import { ModelReview } from "./ModelReview";
 import { ChoiceField, ChoicesField, DomainField, TextField } from "./pickers";
@@ -36,7 +36,7 @@ import {
   type VaultSatellite,
 } from "./plan";
 import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
-import { AddButton, ListHead, StepHead, WizardFooter } from "./WizardFrame";
+import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["hubs", "links", "satellites", "rules", "review"] as const;
 const GROUPINGS: Grouping[] = ["source", "rateOfChange", "sensitivity"];
@@ -578,15 +578,14 @@ export function DataVaultWizard({
   }
 
   return (
-    <FormLayout>
-      <StepHead
-        index={step}
-        steps={steps}
-        onStep={setStep}
-        title={t(`modelingWizard.vault.${id}.title`)}
-        intro={t(`modelingWizard.vault.${id}.intro`)}
-        testId={`wizard-step-${id}`}
-      />
+    <WizardStep
+      index={step}
+      steps={steps}
+      onStep={setStep}
+      title={t(`modelingWizard.vault.${id}.title`)}
+      intro={t(`modelingWizard.vault.${id}.intro`)}
+      testId={`wizard-step-${id}`}
+    >
       {id === "hubs" && (
         <>
           <DomainField
@@ -743,6 +742,6 @@ export function DataVaultWizard({
         onCancel={onCancel}
         problem={problem}
       />
-    </FormLayout>
+    </WizardStep>
   );
 }

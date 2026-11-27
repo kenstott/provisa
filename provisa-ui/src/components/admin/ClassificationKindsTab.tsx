@@ -56,9 +56,10 @@ import { PanelDuplicate } from "../list/PanelDuplicate";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
-import { matchesQuery } from "../../lib/searchItems";
 import { FilterInput } from "./FilterInput";
+import { ColumnRules } from "./ColumnRules";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
@@ -148,25 +149,6 @@ export function ClassificationKindsTab({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useUrlFilter();
   const kinds = read?.kinds ?? null;
-  const detail = useRememberedDetail(
-    "classification",
-    kinds === null ? null : kinds.map((k) => k.id),
-  );
-  const [mode, setMode] = useState<Mode>({ form: "none" });
-  const [draft, setDraft] = useState<Draft>(EMPTY);
-  const [errors, setErrors] = useState<DraftErrors>({});
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  const load = useCallback(
-    () => (detections ? fetchContextClassification() : fetchClassificationKinds()).then(setRead),
-    [detections],
-  );
-
-  useEffect(() => {
-    load().catch((e: unknown) => setError(message(e)));
-  }, [load]);
-
   const kindLabel = (k: KindRow) => (k.custom ? k.label : t(`classificationKinds.kind.${k.id}`));
   const checkLabel = (check: string) =>
     t("classificationKinds.checkOption", { kind: t(`classificationKinds.kind.${check}`) });
@@ -185,24 +167,41 @@ export function ClassificationKindsTab({
     const { places, hidden } = detectedOn(k);
     return contextPlaceTexts(places, hidden, t);
   };
-  const open = kinds?.find((k) => k.id === detail.id) ?? null;
-  const shown = (kinds ?? []).filter((k) =>
-    // Every text a kind's row shows, and its id.
-    matchesQuery(
-      [
-        k.id,
-        kindLabel(k),
-        k.custom ? t("classificationKinds.custom") : "",
-        k.sensitive ? t("classificationKinds.sensitive") : "",
-        testText(k),
-        `${Math.round(k.threshold * 100)}%`,
-        maskLabel(k),
-        enabledLabel(k),
-        ...(detections ? detectedTexts(k) : []),
-      ],
-      search,
-    ),
+  // Every text a kind's row shows, and its id.
+  const kindRowTexts = (k: KindRow) => [
+    k.id,
+    kindLabel(k),
+    k.custom ? t("classificationKinds.custom") : "",
+    k.sensitive ? t("classificationKinds.sensitive") : "",
+    testText(k),
+    `${Math.round(k.threshold * 100)}%`,
+    maskLabel(k),
+    enabledLabel(k),
+    ...(detections ? detectedTexts(k) : []),
+  ];
+  // REQ-2277 rule 9: a kind is open only while the search shows its row.
+  const narrowings = [searchNarrowing<KindRow>(t, search, () => setSearch(""), kindRowTexts)];
+  const detail = useRememberedDetail(
+    "classification",
+    detailListOf(t, kinds, (k) => k.id, kindLabel, narrowings),
   );
+  const [mode, setMode] = useState<Mode>({ form: "none" });
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [errors, setErrors] = useState<DraftErrors>({});
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const load = useCallback(
+    () => (detections ? fetchContextClassification() : fetchClassificationKinds()).then(setRead),
+    [detections],
+  );
+
+  useEffect(() => {
+    load().catch((e: unknown) => setError(message(e)));
+  }, [load]);
+
+  const open = kinds?.find((k) => k.id === detail.id) ?? null;
+  const shown = shownBy(kinds ?? [], narrowings);
 
   const closeForm = () => {
     setMode({ form: "none" });
@@ -514,6 +513,13 @@ export function ClassificationKindsTab({
             : []),
         ]}
       />
+      {/* REQ-2278: the rules that hide or mask, per role, every column classified as the kind. */}
+      <ColumnRules
+        key={k.id}
+        classification={k.id}
+        readOnly={detections}
+        testId={`classification-kind-column-rules-${k.id}`}
+      />
     </Stack>
   );
 
@@ -565,6 +571,7 @@ export function ClassificationKindsTab({
       {kinds == null && error == null && <Loader size="sm" />}
       {kinds != null && (
         <SplitPane
+          outOfList={detail.outOfList}
           testId="classification-kinds-split"
           storageKey="provisa.classificationKinds.detailWidth"
           title={panelTitle}

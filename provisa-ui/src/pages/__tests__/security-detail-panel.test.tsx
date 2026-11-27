@@ -13,6 +13,12 @@
 // under its own title; Escape never drops a form that is being typed into.
 
 import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 import { openNewRole } from "../../test-utils/securityRoles";
@@ -104,7 +110,9 @@ const rowIn = (list: string, text: string) =>
 describe("the Security lists' search", () => {
   it("lists the roles matching every word of the search, or either side of or", () => {
     render(<SecurityRolesPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or locked" } });
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "analyst or locked" },
+    });
     const list = within(screen.getByTestId("roles-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.getByText("locked")).toBeInTheDocument();
@@ -113,7 +121,9 @@ describe("the Security lists' search", () => {
 
   it("lists the row rules matching every word of the search, or either side of or", () => {
     render(<SecurityRlsPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or payroll" } });
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "analyst or payroll" },
+    });
     const list = within(screen.getByTestId("rules-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.queryByText("steward")).toBeNull();

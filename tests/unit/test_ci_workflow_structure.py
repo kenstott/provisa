@@ -3058,3 +3058,56 @@ def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
     ), props
     # No mirror or alternate repository: artifacts come only from Maven Central.
     assert "mirror" not in text.lower() and "settings.xml" not in text, text
+
+
+# The runner image ships packages.microsoft.com as an apt source. A bare `apt-get update` fetches
+# it, and a 403 there (run 45900004821) fails any step, though none installs from it. Every
+# update goes through scripts/ci/apt-update.sh, which drops the image's Microsoft lists first; the
+# one step that installs a Microsoft package (the mssql-odbc action) refreshes only its own list.
+_APT_UPDATE_HELPER = REPO / "scripts" / "ci" / "apt-update.sh"
+_APT_UPDATE = re.compile(r"\bapt(?:-get)?\b[^\n]*\bupdate\b")
+
+
+def _run_blocks(node: object) -> list[str]:
+    """Every `run:` command in a workflow or action, at any depth (descriptions and inputs are prose)."""
+    if isinstance(node, dict):
+        found = [node["run"]] if isinstance(node.get("run"), str) else []
+        return found + [r for v in node.values() for r in _run_blocks(v)]
+    if isinstance(node, list):
+        return [r for v in node for r in _run_blocks(v)]
+    return []
+
+
+def _command_text(path: Path) -> str:
+    """The commands of a workflow, action or script: a YAML file's `run:` blocks only, comment lines
+    dropped, `\\` continuations joined."""
+    text = path.read_text()
+    if path.suffix in (".yml", ".yaml"):
+        text = "\n".join(_run_blocks(yaml.safe_load(text)))
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    return re.sub(r"\\\n\s*", " ", "\n".join(lines))
+
+
+def test_no_apt_get_update_runs_with_the_microsoft_source_present():
+    sources = [*WORKFLOWS, *ACTIONS, *sorted((REPO / "scripts" / "ci").rglob("*.sh"))]
+    offenders = []
+    for path in sources:
+        if path == _APT_UPDATE_HELPER:
+            continue
+        for line in _command_text(path).splitlines():
+            if not _APT_UPDATE.search(line) or "apt-update.sh" in line:
+                continue
+            if "Dir::Etc::sourceparts=-" in line and "Dir::Etc::sourcelist=" in line:
+                continue  # refreshes only the one list it names
+            offenders.append(f"{path.relative_to(REPO)}: {line.strip()}")
+    assert not offenders, (
+        "apt-get update with the runner image's Microsoft source present:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_apt_update_helper_drops_the_microsoft_source_before_it_updates():
+    text = _command_text(_APT_UPDATE_HELPER)
+    removal = text.index("microsoft-prod.list")
+    assert r"packages\.microsoft\.com" in text  # the helper greps for it as a regex
+    assert removal < re.search(r"apt-get[^\n]*\bupdate\b", text).start()
+    assert os.access(_APT_UPDATE_HELPER, os.X_OK)

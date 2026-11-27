@@ -115,6 +115,10 @@ def _config_names_engine() -> bool:
     return bool((yaml.safe_load(path.read_text()) or {}).get("federation_engine"))
 
 
+# The profile's engine and the materialize store that engine reads: applied together or not at all.
+_PROFILE_ENGINE_KEYS = frozenset({"PROVISA_ENGINE", "PROVISA_MATERIALIZE_URL"})
+
+
 def _apply_embedded_env(data_dir: Path) -> list[str]:
     """Resolve and apply the embedded ("native") launch environment (REQ-1126, REQ-1129).
 
@@ -125,14 +129,17 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     layered on before launch is preserved.
 
     The profile's engine is a default (REQ-2269): it is applied only when neither the environment
-    nor the config file names an engine, so a config's ``federation_engine`` wins over it.
+    nor the config file names an engine, so a config's ``federation_engine`` wins over it. The
+    profile's materialize store belongs to the profile's engine and is applied only with it: under
+    a config-named engine the store is that engine's own declared default (Trino's is the
+    control-plane PostgreSQL), unless the environment names one.
     """
     from provisa.core.desktop_profile import load_profile
 
     profile = load_profile("native", data_dir=data_dir)
     config_engine = _config_names_engine()
     for key, value in profile.env.items():
-        if key == "PROVISA_ENGINE" and config_engine:
+        if key in _PROFILE_ENGINE_KEYS and config_engine:
             continue
         os.environ.setdefault(key, value)
     notes = list(profile.notes)

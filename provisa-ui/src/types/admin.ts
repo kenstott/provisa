@@ -184,6 +184,7 @@ export type TagObjectType =
   | "column"
   | "relationship"
   | "command"
+  | "command_column" // REQ-1159: a command's output column
   | "product"
   | "term"
   | "rls_rule"

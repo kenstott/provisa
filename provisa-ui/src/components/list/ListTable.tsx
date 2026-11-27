@@ -38,6 +38,7 @@ import {
   LIST_WRAP_MIN_CHARS,
 } from "./listCellLimits";
 import { Tip } from "../Tip";
+import { EntityLink } from "../EntityLink";
 import { useLeaveGuard } from "./panelLeave";
 import { DeletingKeysContext } from "./panelActions";
 import { ListSelectionContext, type ListSelection } from "./listSelection";
@@ -177,7 +178,9 @@ export function ListTable({ children, testId, minWidth, style, selection }: List
         <ColumnCaps.Provider value={columnCaps}>
           <ColumnsHidden.Provider value={columnsHidden}>
             <ListSelectionContext.Provider value={selection ?? null}>
-              <DeletingKeysContext.Provider value={deleting}>{children}</DeletingKeysContext.Provider>
+              <DeletingKeysContext.Provider value={deleting}>
+                {children}
+              </DeletingKeysContext.Provider>
             </ListSelectionContext.Provider>
           </ColumnsHidden.Provider>
         </ColumnCaps.Provider>
@@ -616,8 +619,20 @@ function SelectRowCell({ selection, rowKey }: { selection: ListSelection; rowKey
 const HIDDEN_COLUMN = "list-col-hidden";
 const NONE_HIDDEN: ReadonlySet<number> = new Set();
 
-/** Elements that only give text a look: text inside one of them is still a cell of text. */
-const TEXT_LOOKS: ReadonlySet<unknown> = new Set([Text, Code, "span", "code", "em", "strong", "b"]);
+/**
+ * Elements that only give text a look: text inside one of them is still a cell of text. An object's
+ * name drawn as its link (EntityLink, REQ-2277 rule 6) is held like any other name.
+ */
+const TEXT_LOOKS: ReadonlySet<unknown> = new Set([
+  Text,
+  Code,
+  EntityLink,
+  "span",
+  "code",
+  "em",
+  "strong",
+  "b",
+]);
 
 /**
  * The text of a cell that holds nothing but text -- bare, or inside one element that only gives

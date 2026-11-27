@@ -22,7 +22,7 @@ import {
   FormRead,
   FormSections,
 } from "../components/form/FormLayout";
-import React, { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import React, { useCallback, useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -159,8 +159,10 @@ import {
 import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
 import { SourceSetupStepper } from "./sources/SourceSetupStepper";
+import { PanelBody, PanelStrip } from "../components/list/PanelBody";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -170,7 +172,6 @@ import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
 import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePicker";
 import { athenaHints } from "./sources/athena";
-import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
@@ -193,7 +194,59 @@ export function SourcesPage() {
   // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
   // The section is the same in its read view and its edit form.
   // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail("sources", sourcesLoading ? null : sources.map((s) => s.id));
+  const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
+  // The sources the list holds: not the derived, admin or telemetry ones. REQ-2277 rule 9: a source
+  // is open only while the list, under the search, shows its row.
+  const listableSources = useMemo(
+    () =>
+      sources.filter((s) => ![DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)),
+    [sources],
+  );
+  const { regions, connected, error: regionError } = useRegionChoices();
+  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
+  const hasRegions = regions.length > 0;
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const getEffectiveTtl = useCallback(
+    (source: Source): string => {
+      if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
+      if (settings) return `${settings.cache.default_ttl}s (global)`;
+      return "default";
+    },
+    [t, settings],
+  );
+  // Every text a source's row shows, which the filter searches; the row below draws the same.
+  const sourceRowTexts = useCallback(
+    (s: Source) => [
+      s.id,
+      s.withdrawn ? t("sourcesPage.withdrawn") : "",
+      s.type,
+      sourceTypeLabel(s.type, s.federationHintsJson),
+      s.host,
+      s.port ? String(s.port) : "",
+      s.database,
+      hasRegions ? (s.region ?? t("regionSelector.noRegion")) : "",
+      s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+      s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff"),
+      getEffectiveTtl(s),
+      s.description,
+    ],
+    [t, hasRegions, getEffectiveTtl],
+  );
+  const searchNarrowed = useMemo(
+    () => searchNarrowing<Source>(t, sourceSearch, () => updateSearch(""), sourceRowTexts),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateSearch is redefined each render and acts alike
+    [t, sourceSearch, sourceRowTexts],
+  );
+  const detail = useRememberedDetail(
+    "sources",
+    detailListOf(
+      t,
+      sourcesLoading ? null : listableSources,
+      (s) => s.id,
+      (s) => s.id,
+      [searchNarrowed],
+    ),
+  );
   const section = (detail.tab ?? "connection") as SourceSection;
   const setSection = detail.setTab;
   const expanded = detail.id;
@@ -250,40 +303,12 @@ export function SourcesPage() {
     credentialsLeft: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  const { regions, connected, error: regionError } = useRegionChoices();
-  const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
-  const hasRegions = regions.length > 0;
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
-  const getEffectiveTtl = (source: Source): string => {
-    if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
-    if (settings) return `${settings.cache.default_ttl}s (global)`;
-    return "default";
-  };
-  // Every text a source's row shows, which the filter searches; the row below draws the same.
-  const sourceRowTexts = (s: Source) => [
-    s.id,
-    s.withdrawn ? t("sourcesPage.withdrawn") : "",
-    s.type,
-    sourceTypeLabel(s.type, s.federationHintsJson),
-    s.host,
-    s.port ? String(s.port) : "",
-    s.database,
-    hasRegions ? (s.region ?? t("regionSelector.noRegion")) : "",
-    s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
-    s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff"),
-    getEffectiveTtl(s),
-    s.description,
-  ];
-  // The sources the list holds before any filter: none of them is the system's own.
-  const listableSources = sources.filter(
-    (s) => ![DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id),
-  );
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredSources = listableSources.filter((s) =>
-    matchesQuery(sourceRowTexts(s), sourceSearch),
+  const filteredSources = useMemo(
+    () => shownBy(listableSources, [searchNarrowed]),
+    [listableSources, searchNarrowed],
   );
   const listColumns = useMemo<ListColumn<Source>[]>(
     () => [
@@ -1569,7 +1594,6 @@ export function SourcesPage() {
                 ? handleGraphqlRegister
                 : handleCreate
       }
-      style={{ margin: 0 }}
     >
       <FormIdentifiers>
         <FormField size="medium">
@@ -1675,117 +1699,119 @@ export function SourcesPage() {
   const panelBody: React.ReactNode =
     working ??
     (showForm && !editingSourceId ? (
-      <FormLayout
-        component="form"
-        id="sources-new-form"
-        data-tour="sources-form"
-        className="form-card"
-        onSubmit={
-          form.type === "dbt"
-            ? handleDbtRegister
-            : carrierOf(form.type) === "openapi"
-              ? handleOpenapiRegister
-              : form.type === "grpc"
-                ? handleGrpcRegister
-                : carrierOf(form.type) === "graphql"
-                  ? handleGraphqlRegister
-                  : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
-                    // "Add Dataset" button (each file needs its own createSource+registerTable
-                    // call, not one createSource for a single "kaggle" type — which does not
-                    // exist as a SourceType) — the outer submit has nothing of its own to do.
-                    form.type === "kaggle"
-                    ? (e: React.FormEvent) => e.preventDefault()
-                    : handleCreate
-        }
-      >
-        <FormIdentifiers>
-          <FormField size="medium">
-            <TextInput
-              label={t("sourcesPage.idLabel")}
-              required
-              value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
-              placeholder={t("sourcesPage.idPlaceholder")}
-              data-testid="sources-id-input"
-            />
-          </FormField>
-          <FormField size="long">
-            <label>
-              {t("sourcesPage.typeLabel")}
-              <select
-                className="form-select"
-                data-tour="sources-type"
-                data-testid="sources-type-select"
-                value={form.type}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
-                // dialog instead of the long native list. The select still holds the value, so
-                // setting it programmatically (selectOption) works unchanged.
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setTypePickerOpen(true);
-                }}
-                // A click that was not preceded by a mouse press (the guided tour's) opens it too.
-                onClick={() => setTypePickerOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+      <PanelBody>
+        <FormLayout
+          component="form"
+          id="sources-new-form"
+          data-tour="sources-form"
+          className="form-card"
+          onSubmit={
+            form.type === "dbt"
+              ? handleDbtRegister
+              : carrierOf(form.type) === "openapi"
+                ? handleOpenapiRegister
+                : form.type === "grpc"
+                  ? handleGrpcRegister
+                  : carrierOf(form.type) === "graphql"
+                    ? handleGraphqlRegister
+                    : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
+                      // "Add Dataset" button (each file needs its own createSource+registerTable
+                      // call, not one createSource for a single "kaggle" type — which does not
+                      // exist as a SourceType) — the outer submit has nothing of its own to do.
+                      form.type === "kaggle"
+                      ? (e: React.FormEvent) => e.preventDefault()
+                      : handleCreate
+          }
+        >
+          <FormIdentifiers>
+            <FormField size="medium">
+              <TextInput
+                label={t("sourcesPage.idLabel")}
+                required
+                value={form.id}
+                onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
+                placeholder={t("sourcesPage.idPlaceholder")}
+                data-testid="sources-id-input"
+              />
+            </FormField>
+            <FormField size="long">
+              <label>
+                {t("sourcesPage.typeLabel")}
+                <select
+                  className="form-select"
+                  data-tour="sources-type"
+                  data-testid="sources-type-select"
+                  value={form.type}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
+                  // dialog instead of the long native list. The select still holds the value, so
+                  // setting it programmatically (selectOption) works unchanged.
+                  onMouseDown={(e) => {
                     e.preventDefault();
                     setTypePickerOpen(true);
-                  }
-                }}
+                  }}
+                  // A click that was not preceded by a mouse press (the guided tour's) opens it too.
+                  onClick={() => setTypePickerOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+                      e.preventDefault();
+                      setTypePickerOpen(true);
+                    }
+                  }}
+                >
+                  {typeSelectData().map((group) => (
+                    <optgroup
+                      key={group.group}
+                      label={t(`sourceTypePicker.categories.${group.group}`)}
+                    >
+                      {group.items.map((item) => (
+                        <option key={item.value} value={item.value} disabled={item.disabled}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            </FormField>
+          </FormIdentifiers>
+          {duplicateOf?.credentialsLeft && (
+            <FormField size="full">
+              <Alert
+                color="yellow"
+                variant="light"
+                py={4}
+                px="sm"
+                data-testid="sources-duplicate-note"
               >
-                {typeSelectData().map((group) => (
-                  <optgroup
-                    key={group.group}
-                    label={t(`sourceTypePicker.categories.${group.group}`)}
-                  >
-                    {group.items.map((item) => (
-                      <option key={item.value} value={item.value} disabled={item.disabled}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          </FormField>
-        </FormIdentifiers>
-        {duplicateOf?.credentialsLeft && (
-          <FormField size="full">
-            <Alert
-              color="yellow"
-              variant="light"
-              py={4}
-              px="sm"
-              data-testid="sources-duplicate-note"
-            >
-              {t("sourcesPage.duplicateCredentialsNote", { source: duplicateOf.source })}
-            </Alert>
-          </FormField>
-        )}
-        <SourceTypePicker
-          opened={typePickerOpen}
-          onClose={() => setTypePickerOpen(false)}
-          groups={typeSelectData()}
-          value={form.type}
-          onPick={handleTypeChange}
-        />
-        {/* Only what a source needs in order to exist; the rest is set in the edit form the
+                {t("sourcesPage.duplicateCredentialsNote", { source: duplicateOf.source })}
+              </Alert>
+            </FormField>
+          )}
+          <SourceTypePicker
+            opened={typePickerOpen}
+            onClose={() => setTypePickerOpen(false)}
+            groups={typeSelectData()}
+            value={form.type}
+            onPick={handleTypeChange}
+          />
+          {/* Only what a source needs in order to exist; the rest is set in the edit form the
             new source opens in. */}
-        <SourceFormFields {...sourceFormFieldsProps} essential />
-        {/* The same two actions, in the same place and order, as the edit form below: Save first,
+          <SourceFormFields {...sourceFormFieldsProps} essential />
+          {/* The same two actions, in the same place and order, as the edit form below: Save first,
             Cancel beside it, at the start of the row and as wide as their labels. A Kaggle source
             is created by its own section's button, so it gets Cancel alone. */}
-        <FormFooter
-          panel
-          submit={form.type !== "kaggle"}
-          form="sources-new-form"
-          saving={submitting}
-          onCancel={handleCancelForm}
-          saveProps={{ "data-testid": "sources-submit" }}
-          cancelProps={{ "data-testid": "sources-cancel" }}
-        />
-      </FormLayout>
+          <FormFooter
+            panel
+            submit={form.type !== "kaggle"}
+            form="sources-new-form"
+            saving={submitting}
+            onCancel={handleCancelForm}
+            saveProps={{ "data-testid": "sources-submit" }}
+            cancelProps={{ "data-testid": "sources-cancel" }}
+          />
+        </FormLayout>
+      </PanelBody>
     ) : selectedSource ? (
       ((s: Source) => {
         const shown = shownSourceSections(s.type, formSections);
@@ -1797,7 +1823,7 @@ export function SourcesPage() {
           </FormSections>
         );
         return (
-          <>
+          <PanelBody>
             {/* While the form is open the panel's head is the form's: its Save and Cancel. */}
             {editingSourceId !== s.id && sourceActions(s)}
             {related?.sourceId === s.id && (
@@ -1812,19 +1838,23 @@ export function SourcesPage() {
               </Alert>
             )}
             {editingSourceId !== s.id && (
-              <SourceSetupStepper
-                sourceId={s.id}
-                outcomes={s.setupOutcomes}
-                open={false}
-                step={null}
-                // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
-                onConnect={() => handleEdit(s)}
-                onOpen={(step) => setSetup({ sourceId: s.id, step })}
-                onClose={() => setSetup(null)}
-                onRelated={(count) => setRelated({ sourceId: s.id, count })}
-              />
+              <PanelStrip>
+                <SourceSetupStepper
+                  sourceId={s.id}
+                  outcomes={s.setupOutcomes}
+                  open={false}
+                  step={null}
+                  // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
+                  onConnect={() => handleEdit(s)}
+                  onOpen={(step) => setSetup({ sourceId: s.id, step })}
+                  onClose={() => setSetup(null)}
+                  onRelated={(count) => setRelated({ sourceId: s.id, count })}
+                />
+              </PanelStrip>
             )}
-            <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
+            <PanelStrip>
+              <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
+            </PanelStrip>
             {inView === "tables" && <SourceTablesList sourceId={s.id} tables={registeredTables} />}
             {inView === "operations" && <SourceOperations sourceId={s.id} type={s.type} />}
             {editingSourceId === s.id ? (
@@ -1867,7 +1897,7 @@ export function SourcesPage() {
                 }}
               />
             )}
-          </>
+          </PanelBody>
         );
       })(selectedSource)
     ) : null);
@@ -1944,6 +1974,7 @@ export function SourcesPage() {
       <KeptTablesNotice kept={keptTables} onClose={() => setKeptTables([])} />
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="sources-split"
         storageKey="provisa.sources.detailWidth"
         title={panelTitle}

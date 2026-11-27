@@ -69,6 +69,9 @@ _TABLES = (
     "relationship_candidates",
     "profiler_classifications",
     "glossary_term_refs",
+    # REQ-1159: a term's domains include those of the commands whose output columns it means.
+    "tracked_functions",
+    "tracked_webhooks",
     "rls_rules",
     "roles",
     "data_products",

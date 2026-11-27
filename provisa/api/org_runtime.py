@@ -311,6 +311,9 @@ class OrgRuntime:
     # REQ-2059: each masked column as the masks were built from it -- (table id, column, its mask
     # list, its data type) -- what a meta-role built later resolves its own masks from.
     masked_columns: list[tuple[int, str, list[dict], str]] = field(default_factory=list)
+    # REQ-2278: each column (a table's, a command's output column) a tag- or classification-keyed
+    # column rule reaches, with those rules: what both kinds of column are governed by.
+    ruled_columns: dict[Any, Any] = field(default_factory=dict)
 
     # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
     # attach dynamically registered sources that are not in state.config (YAML-only). Keyed by

@@ -57,7 +57,15 @@ import { GlossaryRelationships } from "./GlossaryRelationships";
 import { TagLossSummary } from "./TagLossSummary";
 import { tagLossTitle } from "./tagLoss";
 import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
-import { changes, draftOf, type Change, type TermDraft } from "./termDraft";
+import {
+  changes,
+  commandColumnKey,
+  commandColumnOf,
+  draftOf,
+  type Change,
+  type TermDraft,
+} from "./termDraft";
+import { useCommandOutputColumns } from "../../hooks/useCommandOutputColumns";
 import { useViewDomains } from "../../lib/viewDomains";
 import { type TermOption } from "./termLabel";
 
@@ -174,6 +182,22 @@ export function TermEditForm({
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));
   }, [tables, own, owners]);
+  // REQ-1159: every command's declared output columns, and those this term already holds.
+  const { columns: commandOutputs } = useCommandOutputColumns();
+  const commandColumnOptions = useMemo(() => {
+    const keys = new Set(
+      (commandOutputs ?? []).map((c) =>
+        commandColumnKey({ command_name: c.command, column_name: c.column }),
+      ),
+    );
+    for (const r of term.command_refs) keys.add(commandColumnKey(r));
+    return [...keys]
+      .map((key) => {
+        const ref = commandColumnOf(key);
+        return { value: key, label: `${ref.command_name}.${ref.column_name}` };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [commandOutputs, term.command_refs]);
   const tableOptions = useMemo(
     () =>
       tables
@@ -205,7 +229,9 @@ export function TermEditForm({
       (r) =>
         !keys.has(columnKey(r.table_id, r.column_name)) &&
         draft.moves[columnKey(r.table_id, r.column_name)] === undefined,
-    ) || draft.claims.length > 0;
+    ) ||
+    draft.claims.length > 0 ||
+    draft.commandColumns.length > 0; // REQ-1159: a command's output column is a column too
   const role = draft.tables.length > 0 ? "class" : keepsColumns ? "property" : "concept";
   const said = (field: Change["field"]) =>
     refused?.field === field ? (
@@ -509,6 +535,22 @@ export function TermEditForm({
               searchable
               limit={200}
               data-testid="glossary-claim-columns"
+            />
+          </FormField>
+        </FormLayout>
+      )}
+      {/* REQ-1159 (amended 2026-11-25): a command's output column means a term as a table's does. */}
+      {role !== "class" && (
+        <FormLayout>
+          <FormField size="long" hint={t("glossaryTab.commandColumnsHint")}>
+            <MultiSelect
+              label={t("glossaryTab.commandColumns")}
+              data={commandColumnOptions}
+              value={draft.commandColumns}
+              onChange={(keys) => set({ commandColumns: keys })}
+              searchable
+              clearable
+              data-testid="glossary-command-columns"
             />
           </FormField>
         </FormLayout>

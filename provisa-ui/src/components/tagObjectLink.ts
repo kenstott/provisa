@@ -21,6 +21,7 @@ const PANELS: Record<string, Panel> = {
   column: "tables",
   relationship: "relationships",
   command: "commands",
+  command_column: "commands", // REQ-1159: a command's output column opens its command
   product: "products",
   term: "ontology",
   rls_rule: "rls",
@@ -36,10 +37,11 @@ export function objectName(objectKey: string): string {
 }
 
 /** The link to the panel of the object a tag assignment is on, by the assignment's object type
- *  and key. A column opens its table, a section its document. */
+ *  and key. A column opens its table, a section its document, a command's output column its
+ *  command. */
 export function objectHref(objectType: string, objectKey: string): string {
   const panel = PANELS[objectType];
   const name = objectName(objectKey);
-  const id = objectType === "column" || objectType === "section" ? name.split(":")[0] : name;
-  return detailHref(panel, id);
+  const part = ["column", "section", "command_column"].includes(objectType);
+  return detailHref(panel, part ? name.split(":")[0] : name);
 }

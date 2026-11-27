@@ -145,7 +145,7 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
         if row is None:
             raise DomainLookupError(f"no relationship {assignment.relationship_id!r}")
         return {await table_domain(conn, row["source_table_id"])}
-    if kind == "command":
+    if kind in ("command", "command_column"):  # REQ-1159: a command's column is in its domain
         found = False
         domains: set[str] = set()
         for table in (tracked_functions, tracked_webhooks):

@@ -14,6 +14,8 @@ import type { RLSRule } from "../../types/admin";
 import { RULE_RIGHT_LABEL } from "./ruleRights";
 import { DetailFields } from "../../components/detail/DetailFields";
 import { TagControl } from "../../components/TagControl";
+import { EntityLink } from "../../components/EntityLink";
+import { entityName } from "../../components/entityName";
 
 /**
  * Every value of an RLS rule, read-only, under the labels its form gives them: what it applies
@@ -50,7 +52,9 @@ export function RlsRuleRead({
         { label: t("securityPage.ruleDescription"), value: r.description },
         { label: t("securityPage.applyTo"), value: scopeLabel },
         // A tag reaches across domains: its form has no domain to pick, so none is shown.
-        ...(scope === "tag" ? [] : [{ label: t("securityPage.domain"), value: domain }]),
+        ...(scope === "tag"
+          ? []
+          : [{ label: t("securityPage.domain"), value: entityName("domain", domain) }]),
         ...(scope === "tag"
           ? [
               {
@@ -61,9 +65,19 @@ export function RlsRuleRead({
           : scope === "action"
             ? [{ label: t("securityPage.action"), value: r.actionName }]
             : scope === "table"
-              ? [{ label: t("securityPage.table"), value: tableLabel }]
+              ? [
+                  {
+                    label: t("securityPage.table"),
+                    value:
+                      r.tableId === null || r.tableId === undefined ? null : (
+                        <EntityLink kind="table" id={r.tableId}>
+                          {tableLabel}
+                        </EntityLink>
+                      ),
+                  },
+                ]
               : []),
-        { label: t("securityPage.role"), value: r.roleId },
+        { label: t("securityPage.role"), value: entityName("role", r.roleId) },
         // REQ-2188: what the rule narrows. An action's rows are only read: its form offers none.
         ...(scope === "action"
           ? []

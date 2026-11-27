@@ -39,6 +39,7 @@ _KEYS: dict[str, tuple[tuple[str, type], ...]] = {
     "column": (("table_id", int), ("column_name", str)),
     "relationship": (("relationship_id", str),),
     "command": (("command_name", str),),
+    "command_column": (("command_name", str), ("column_name", str)),  # REQ-1159
     "product": (("product_id", str),),
     "term": (("term_id", int),),
     "rls_rule": (("rls_rule_id", int),),

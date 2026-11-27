@@ -37,7 +37,7 @@ registering a table, a withdrawn one as well as one in service -- and shows hint
 caller is served.
 """
 
-# Requirements: REQ-2147
+# Requirements: REQ-2147, REQ-1159, REQ-2278
 
 from __future__ import annotations
 
@@ -51,6 +51,7 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
+from provisa.api.admin.column_rules_router import keyed_by
 from provisa.api.admin.table_read import refuse_unparameterized, table_for_steward
 from provisa.api.errors import ApiError
 from provisa.api.engine_error_names import client_value
@@ -214,6 +215,13 @@ async def decide_classification(
                 exc.result.message,
                 **(exc.result.params or {}),
             ) from exc
+        # REQ-2278: a column classified (and, for a sensitive kind, marked pii) comes under a column
+        # rule keyed on either at once.
+        ruled = await keyed_by(conn, tags=("pii",), kinds=(kind.id,))
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     if accepted is None:
         return {"status": body.status}
     return {
@@ -249,6 +257,128 @@ async def forget_classification(
                 column=body.physicalColumn,
                 kind=kind.id,
             )
+        ruled = await keyed_by(conn, kinds=(kind.id,))  # REQ-2278: the column is released at once
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+    return {"ok": True}
+
+
+# -- a command's output column (REQ-1159, amended 2026-11-25) ---------------------------------------
+
+
+class CommandClassification(BaseModel):
+    column: str  # a declared output column of the command
+    kind: str
+    status: str  # accepted | rejected
+    evidence: str  # the steward's: no profile run reads a command's output
+
+
+async def _command_steward(request: Request, conn: Any, name: str) -> Any:
+    """The command, for a caller holding ``sensitive_data`` in its domain who reads it."""
+    from provisa.api.admin.command_columns import command_output
+    from provisa.api.admin.read_rights import reader_for_request
+
+    require_capability_request(request, _RIGHT)
+    command = await command_output(conn, name)
+    if not reader_for_request(request).command(name):
+        raise ApiError(404, "actions.command_not_found", f"No command {name!r}", command=name)
+    allowed = allowed_domains_for_capability_request(request, _RIGHT)
+    if allowed is not None and command.domain_id not in allowed:
+        raise ApiError(
+            403,
+            "auth.domain_denied",
+            f"No {_RIGHT} right in domain {command.domain_id!r}",
+            domain=command.domain_id,
+        )
+    return command
+
+
+@router.get("/commands/{name}/profile-classifications")
+async def list_command_classifications(request: Request, name: str) -> dict:
+    from provisa.profiler import classifications
+
+    async with _db().acquire() as conn:
+        await _command_steward(request, conn, name)
+        decided = await classifications.command_decisions(conn, name)
+    return {"decisions": [_jsonable(d) for d in decided.values()]}
+
+
+@router.post("/commands/{name}/profile-classifications")
+async def decide_command_classification(
+    request: Request, name: str, body: CommandClassification
+) -> dict:
+    """A steward's classification of a command's output column, as of a table column's: accepted,
+    the column means the kind's Property term and, for a sensitive kind, is marked pii."""
+    from provisa.api.admin.command_columns import require_output_column
+    from provisa.profiler import classifications
+
+    if body.status not in classifications.DECISION_STATUSES:
+        raise ApiError(
+            422,
+            "profile.classification_status_invalid",
+            f"a decision is one of {classifications.DECISION_STATUSES}, got {body.status!r}",
+            status=body.status,
+        )
+    kind = await _kind(body.kind)
+    async with _db().acquire() as conn:
+        command = await _command_steward(request, conn, name)
+        require_output_column(command, body.column)
+        async with conn.transaction():
+            if body.status == "accepted":
+                try:
+                    await classifications.accept_command_column_effects(
+                        conn, command.name, command.domain_id, body.column, kind, body.evidence
+                    )
+                except classifications.PiiRefused as exc:
+                    raise ApiError(
+                        409,
+                        exc.result.code or "profile.classification_pii_refused",
+                        exc.result.message,
+                        **(exc.result.params or {}),
+                    ) from exc
+            await classifications.record_command_column(
+                conn,
+                command.name,
+                body.column,
+                kind.id,
+                status=body.status,
+                evidence=body.evidence,
+                by=_caller(request),
+            )
+        ruled = await keyed_by(conn, tags=("pii",), kinds=(kind.id,))  # REQ-2278
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+    return {"status": body.status}
+
+
+@router.delete("/commands/{name}/profile-classifications")
+async def forget_command_classification(
+    request: Request, name: str, body: ForgetClassification
+) -> dict:
+    from provisa.profiler import classifications
+
+    kind = await _kind(body.kind)
+    async with _db().acquire() as conn:
+        await _command_steward(request, conn, name)
+        if not await classifications.forget_command_column(
+            conn, name, body.physicalColumn, kind.id
+        ):
+            raise ApiError(
+                404,
+                "profile.classification_decision_not_found",
+                f"No decision on {body.physicalColumn!r} as {kind.id!r}",
+                column=body.physicalColumn,
+                kind=kind.id,
+            )
+        ruled = await keyed_by(conn, kinds=(kind.id,))  # REQ-2278: the column is released at once
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     return {"ok": True}
 
 

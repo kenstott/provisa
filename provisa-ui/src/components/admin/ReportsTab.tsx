@@ -35,10 +35,10 @@ import { PanelDelete } from "../list/PanelDelete";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 import { FilterInput } from "./FilterInput";
-import { matchesQuery } from "../../lib/searchItems";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
@@ -72,18 +72,26 @@ export function ReportsTab({ title }: { title: string }) {
 
   // The open report is named by its table name (`?report=<table name>`), as links into a report
   // have always named it; the viewer remounts per report (key) and owns fetching and grid state.
-  const detail = useRememberedDetail("reports", loaded ? reports.map((r) => r.tableName) : null);
-  const selected = reports.find((r) => r.tableName === detail.id) ?? null;
-
-  // The list is narrowed by name or description; the open report still resolves over every
-  // report, so a filter never changes which report the panel shows.
+  // The list is narrowed by name or description. REQ-2277 rule 9: a report is open only while the
+  // list shows its row.
   const [filter, setFilter] = useUrlFilter();
   const kindOf = (r: ListedTable) =>
     r.sourceId === DERIVED_SOURCE_ID ? t("reportsTab.kindCustom") : t("reportsTab.kindBuiltIn");
-  // Every text a report's row shows, and the table it reads.
-  const visibleReports = reports.filter((r) =>
-    matchesQuery([nameOf(r), r.tableName, r.description, kindOf(r)], filter),
+  const narrowings = [
+    searchNarrowing<ListedTable>(
+      t,
+      filter,
+      () => setFilter(""),
+      // Every text a report's row shows, and the table it reads.
+      (r) => [nameOf(r), r.tableName, r.description, kindOf(r)],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "reports",
+    detailListOf(t, loaded ? reports : null, (r) => r.tableName, nameOf, narrowings),
   );
+  const selected = reports.find((r) => r.tableName === detail.id) ?? null;
+  const visibleReports = shownBy(reports, narrowings);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -253,6 +261,7 @@ export function ReportsTab({ title }: { title: string }) {
         </div>
       </div>
       <SplitPane
+        outOfList={detail.outOfList}
         testId="reports-split"
         storageKey="provisa.reportsTab.detailWidth"
         title={addOpen ? t("reportsTab.addTitle") : selected !== null ? nameOf(selected) : ""}

@@ -1002,6 +1002,13 @@
       "reason_required": "建议需说明其原因。",
       "no_recipient": "域 {{domain}} 没有可接收建议的数据产品所有者或数据管家。",
       "not_a_recipient": "域 {{domain}} 的建议由其数据管家和数据产品所有者阅读。"
+    },
+    "column_rules": {
+      "database_unavailable": "无法连接控制平面",
+      "right_not_everywhere": "列规则作用于所有域；需要在所有域中拥有 {{right}}",
+      "invalid": "列规则无效：{{reason}}",
+      "not_found": "没有列规则 {{rule}}",
+      "tag_not_found": "未找到标签 {{tag}}"
     }
   }
 }

@@ -149,6 +149,7 @@ def test_the_import_page_opens_on_the_orgs_object_rights_never_the_platforms():
         "create_relationship",
         "masking_config",
         "query_development",  # REQ-1327: an imported trigger
+        "column_grant",  # REQ-2278: an imported hide column rule
     }
 
 

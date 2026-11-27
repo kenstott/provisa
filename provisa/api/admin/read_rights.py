@@ -191,6 +191,8 @@ async def _tag_assignment_readable(
     kind = row["object_type"]
     if kind == "term":
         return reader.term((await term_domains(conn)).get(row["term_id"], set()))
+    if kind == "command_column":  # REQ-1159: read as the command whose output it is
+        return reader.command(row["command_name"])
     if kind in ("document", "section"):
         from provisa.reference_library import store
 
