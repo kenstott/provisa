@@ -111,6 +111,20 @@ def _changed(head: str, old: str, new: str) -> str:
     return head.replace(old, new)
 
 
+class _Values:
+    """The source's setup values as lifecycle.Setup gives them: called on a host's thread, and
+    read on the loop a request already runs on."""
+
+    def __init__(self, values: dict) -> None:
+        self._values = values
+
+    def __call__(self) -> dict:
+        return dict(self._values)
+
+    async def read(self) -> dict:
+        return dict(self._values)
+
+
 @pytest.fixture
 async def joined(host, wired):
     """The source joined with :data:`_GOOD` and its validation target."""
@@ -121,7 +135,7 @@ async def joined(host, wired):
     target = Target(
         worker=worker,
         remote={**mapping["remote"], "language": "python"},
-        setup=lambda: {"script": mapping["settings"]["script"], "cluster": _CLUSTER},
+        setup=_Values({"script": mapping["settings"]["script"], "cluster": _CLUSTER}),
         own_cluster=_CLUSTER,
         offered={"script", "cluster"},
         script_name="script",
