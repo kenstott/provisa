@@ -66,6 +66,13 @@
         46073543843
       ],
       "reason": "leaf check of the check-release-asset-size action (fix/r513-core-images-split): tests/unit/test_install_host_script.py, test_core_image_assets.py, test_release_integrity.py, test_ci_workflow_structure.py, test_appimage_first_launch_payload.py, test_desktop_install.py, test_infra_requirements.py, test_release_packaging.py"
+    },
+    "e58bc1911f0c6b425a68379b2f9a3fad1e6bd223": {
+      "tested_sha": "e58bc1911f0c6b425a68379b2f9a3fad1e6bd223",
+      "runs": [
+        46076543093
+      ],
+      "reason": "the release notes the UI bundles count as documentation (scripts/release_gate.py): tests/unit/test_release_gate_ancestor.py"
     }
   }
 }
