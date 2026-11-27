@@ -619,6 +619,19 @@ resource "google_compute_instance" "coordinator" {
         --non-interactive \
         --role control-plane \
         --ram-gb 0
+      # REQ-1264/REQ-2290: the break-glass account (platform-admin) is created by the platform at
+      # its first start, which prints the generated password once in the provisa container's log
+      # before uvicorn reports startup complete. Copy that banner to this script's output, the
+      # serial console; it is in no config file. A start that finds the account already there
+      # prints no banner, and nothing is copied.
+      for _ in $(seq 1 90); do
+        cid=$(docker ps -q --filter label=com.docker.compose.service=provisa | head -1)
+        if [ -n "$cid" ] && docker logs "$cid" 2>&1 | grep -q "Application startup complete"; then
+          docker logs "$cid" 2>&1 | grep -A4 "PROVISA BREAK-GLASS ACCOUNT" || true
+          break
+        fi
+        sleep 10
+      done
       echo "$startup_sha" > "$startup_done"
     SHELL
   })

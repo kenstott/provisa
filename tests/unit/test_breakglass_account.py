@@ -122,8 +122,19 @@ def router_client(monkeypatch, store):  # noqa: ARG001 -- the store backs the en
     from provisa.api import app as app_mod
     from provisa.api.auth_router import router
 
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.errors import ApiError
+
     app = FastAPI()
     app.include_router(router)
+
+    @app.exception_handler(ApiError)
+    async def _coded(_request, exc: ApiError):  # the app's own rendering of a coded error
+        return JSONResponse(
+            status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code}
+        )
+
     monkeypatch.setattr(
         app_mod.state, "auth_config", {"provider": "firebase", "jwt_secret": _SECRET}, raising=False
     )
