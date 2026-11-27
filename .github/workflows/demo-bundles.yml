@@ -156,6 +156,6 @@ jobs:
         env:
           BUNDLE: ${{ steps.build.outputs.bundle }}
           PROVISA_DEMO_REGISTRY_USER: ${{ github.actor }}
-          PROVISA_DEMO_REGISTRY_TOKEN: ${{ secrets.GHCR_ORG_TOKEN }}
+          PROVISA_DEMO_REGISTRY_TOKEN: ${{ secrets.GHCR }}
           REGISTRY: https://ghcr.io/simpleishard-llc
         run: uv run python scripts/demo_bundle.py push "$BUNDLE" --registry "$REGISTRY"
