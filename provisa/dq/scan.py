@@ -26,6 +26,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 from sqlalchemy.schema import CreateTable
@@ -234,17 +235,24 @@ async def reschedule_org_checkers() -> None:
 # REQ-2158 (amended 2026-11-27): the declared-logical-type promise check of every product member,
 # on the same scheduler beside the checker jobs, every member cache_ttl.
 _TYPE_JOB_PREFIX = "contract-types:"
+# REQ-2158 (amended 2026-11-27): a member with no positive cache_ttl is checked once after each
+# model build, by a one-shot job on the same scheduler. Its own prefix, so the interval jobs'
+# reschedule (``register_org_type_checks``) never drops it.
+_BUILT_TYPE_JOB_PREFIX = "contract-types-built:"
 
 
 def type_check_job_id(table_id: int, org_id: str) -> str:
     return f"{_TYPE_JOB_PREFIX}{table_id}:org_{org_id}"
 
 
-async def type_checked_members(conn: Any) -> list[dict]:
+def build_type_check_job_id(table_id: int, org_id: str) -> str:
+    return f"{_BUILT_TYPE_JOB_PREFIX}{table_id}:org_{org_id}"
+
+
+async def _members_with_ttl(conn: Any) -> list[dict]:
     """``[{id, table_name, cache_ttl}]`` of every product member the check runs on: each member
-    table, not retired, whose cache_ttl (its own, else its source's) is a positive interval. A
-    member with none, 0 or -1 (never expires) has no interval to run on (``CLOCKED_SIGNALS``: with
-    no cache_ttl there is no clock)."""
+    table, not retired, with its cache_ttl (its own, else its source's; None when neither states
+    one)."""
     from provisa.core.schema_org import data_product_tables as members
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources
@@ -261,12 +269,35 @@ async def type_checked_members(conn: Any) -> list[dict]:
             .order_by(rt.c.id)
         )
     ).fetchall()
-    out = []
-    for r in rows:
-        seconds = r.cache_ttl if r.cache_ttl is not None else r.src_ttl
-        if seconds is not None and seconds > 0:
-            out.append({"id": int(r.id), "table_name": r.table_name, "cache_ttl": seconds})
-    return out
+    return [
+        {
+            "id": int(r.id),
+            "table_name": r.table_name,
+            "cache_ttl": r.cache_ttl if r.cache_ttl is not None else r.src_ttl,
+        }
+        for r in rows
+    ]
+
+
+def _has_interval(member: dict) -> bool:
+    seconds = member["cache_ttl"]
+    return seconds is not None and seconds > 0
+
+
+async def type_checked_members(conn: Any) -> list[dict]:
+    """``[{id, table_name, cache_ttl}]`` of every product member checked on an interval: those
+    whose cache_ttl is a positive interval. A member with none, 0 or -1 (never expires) has no
+    interval to run on (``CLOCKED_SIGNALS``: with no cache_ttl there is no clock); it is checked
+    after each model build instead (:func:`build_checked_members`)."""
+    return [m for m in await _members_with_ttl(conn) if _has_interval(m)]
+
+
+async def build_checked_members(conn: Any) -> list[dict]:
+    """``[{id, table_name, cache_ttl}]`` of every product member whose cache never expires (no
+    positive cache_ttl): REQ-2158 (amended 2026-11-27) checks each once after each model build, so
+    every contract carries the check. A member with an interval is not among them: its schedule
+    checks it (:func:`type_checked_members`)."""
+    return [m for m in await _members_with_ttl(conn) if not _has_interval(m)]
 
 
 async def check_member_types(state: Any, table_id: int) -> dict:
@@ -348,3 +379,41 @@ async def register_org_type_checks(scheduler: Any, org_id: str) -> int:
             replace_existing=True,
         )
     return len(tables)
+
+
+async def schedule_build_type_checks(scheduler: Any, org_id: str) -> int:
+    """A model of ``org_id`` was just built: schedule each member whose cache never expires
+    (:func:`build_checked_members`) for one type check now, the job the interval checks run
+    (``_scheduled_type_check``), so its result is recorded and shown the same way. A member's job
+    still pending from an earlier build is replaced: two quick builds give one check, of the newer
+    model. The scheduler's holder runs it, as every org job (REQ-1900). Returns how many are
+    scheduled."""
+    from provisa.api.app import state
+
+    assert state.model_db is not None, "the org's model store is bound with its runtime"
+    async with state.model_db.acquire() as conn:
+        tables = await build_checked_members(conn)
+    for t in tables:
+        scheduler.add_job(
+            _scheduled_type_check,
+            trigger=DateTrigger(run_date=datetime.now(UTC)),
+            args=[t["id"], org_id],
+            id=build_type_check_job_id(t["id"], org_id),
+            name=f"contract-types-built:{t['table_name']}",
+            replace_existing=True,
+        )
+    return len(tables)
+
+
+async def type_check_after_build(org_id: str) -> int:
+    """The after-answer pass of a prod build of ``org_id`` (``app._after_answer_steps``):
+    :func:`schedule_build_type_checks` on this process's scheduler. A process that runs no
+    scheduler schedules nothing, as with every org job (``reschedule_org_checkers``); the boot
+    build's pass runs before the scheduler starts, and the startup schedules that build's checks
+    once it has (``app.lifespan``). Returns how many are scheduled."""
+    from provisa.api.app import state
+
+    scheduler = state._scheduler
+    if scheduler is None:
+        return 0
+    return await schedule_build_type_checks(scheduler, org_id)

@@ -253,3 +253,133 @@ async def test_the_product_reads_each_members_latest_type_check(plane):
             "failing": [{"offer_id": 5, "column": "placed", "declared": "date", "live": None}],
         }
     }
+
+
+# REQ-2158 (amended 2026-11-27): a member whose cache never expires (no positive cache_ttl) has its
+# logical-type check run once after each model build instead of on an interval.
+
+
+async def _derived(plane, monkeypatch) -> tuple[int, int]:
+    """Derive p's offers' contracts from the model; answer (member id, its one offer's id)."""
+    built = installed(monkeypatch)
+    async with plane.db.acquire() as conn:
+        await rederive_all(conn, await built.state(conn))
+        member = await _table_id(conn)
+        (offer,) = await offers.list_offers(conn, "p")
+    return member, offer["id"]
+
+
+@pytest.mark.parametrize("ttl", [None, 0, -1])
+async def test_a_member_with_no_interval_is_checked_once_after_each_build(plane, monkeypatch, ttl):
+    from apscheduler.triggers.date import DateTrigger
+
+    from provisa.core.request_context import require_current_org
+    from provisa.dq.scan import _scheduled_type_check, schedule_build_type_checks
+
+    org = require_current_org()
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(update(sources).values(cache_ttl=ttl))
+    member, offer = await _derived(plane, monkeypatch)
+    scheduler = _Scheduler()
+
+    assert await schedule_build_type_checks(scheduler, org) == 1
+    job_id = f"contract-types-built:{member}:org_{org}"
+    assert scheduler.added == [job_id]
+    job = scheduler.jobs[job_id]
+    # The job the interval checks run, once: a one-shot trigger, not an interval.
+    assert job.func is _scheduled_type_check
+    assert isinstance(job.trigger, DateTrigger)
+    assert job.args == [member, org]
+
+    # A type mismatch is recorded as the member's latest result, as the scheduled check records it.
+    asked = _source(monkeypatch, ("id", "bigint"), ("placed_on", "varchar(10)"))
+    await job.func(*job.args)
+    assert asked == [("pg", "public", "orders")]
+    failing = [{"offer_id": offer, "column": "placed", "declared": "date", "live": "varchar(10)"}]
+    assert await _latest(plane.db) == [(member, "fail", failing)]
+
+    # The next build schedules it once more: one check per build, a pending one replaced.
+    assert await schedule_build_type_checks(scheduler, org) == 1
+    assert scheduler.added == [job_id, job_id]
+    assert list(scheduler.jobs) == [job_id]
+
+
+async def test_a_member_with_an_interval_stays_on_its_schedule_and_is_not_checked_after_a_build(
+    plane,
+):
+    from provisa.core.request_context import require_current_org
+    from provisa.dq.scan import register_org_type_checks, schedule_build_type_checks
+
+    org = require_current_org()
+    async with plane.db.acquire() as conn:
+        member = await _table_id(conn)
+    scheduler = _Scheduler()
+    assert await register_org_type_checks(scheduler, org) == 1
+
+    # Source pg's cache_ttl is 900: the build schedules nothing for it.
+    assert await schedule_build_type_checks(scheduler, org) == 0
+    assert scheduler.added == [f"contract-types:{member}:org_{org}"]
+
+
+async def test_the_interval_reschedule_keeps_a_pending_after_build_check(plane):
+    from provisa.core.request_context import require_current_org
+    from provisa.dq.scan import register_org_type_checks, schedule_build_type_checks
+
+    org = require_current_org()
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(update(sources).values(cache_ttl=None))
+        member = await _table_id(conn)
+    scheduler = _Scheduler()
+    await schedule_build_type_checks(scheduler, org)
+
+    assert await register_org_type_checks(scheduler, org) == 0
+    assert list(scheduler.jobs) == [f"contract-types-built:{member}:org_{org}"]
+
+
+async def test_after_a_build_the_checks_go_on_this_processs_scheduler(plane, monkeypatch):
+    from provisa.core.request_context import require_current_org
+    from provisa.dq.scan import type_check_after_build
+
+    org = require_current_org()
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(update(sources).values(cache_ttl=-1))
+        member = await _table_id(conn)
+
+    monkeypatch.setattr(plane.state, "_scheduler", None, raising=False)
+    assert await type_check_after_build(org) == 0  # a process that runs no scheduler
+
+    scheduler = _Scheduler()
+    monkeypatch.setattr(plane.state, "_scheduler", scheduler, raising=False)
+    assert await type_check_after_build(org) == 1
+    assert scheduler.added == [f"contract-types-built:{member}:org_{org}"]
+
+
+@pytest.mark.parametrize("env", ["prod", "dev"])
+async def test_each_builds_after_answer_pass_schedules_the_checks_once_for_prod(monkeypatch, env):
+    import provisa.api.app as appmod
+    from provisa.api import rebuild_trace
+    from provisa.core.environments import PROD
+
+    rewired: list[str] = []
+    scheduled: list[str] = []
+
+    async def rewire() -> None:
+        rewired.append("lifecycle")
+
+    async def after_build(org_id: str) -> int:
+        scheduled.append(org_id)
+        return 1
+
+    monkeypatch.setattr(appmod, "_rewire_lifecycle", rewire)
+    monkeypatch.setattr("provisa.dq.scan.type_check_after_build", after_build)
+    steps = appmod._after_answer_steps(
+        runtime=SimpleNamespace(org_id="acme", role_build_inputs=None),
+        env=env,
+        announce=True,
+        checked={},
+        names=None,
+        build=rebuild_trace.BuildRecord(org_id="acme", env=env, cause="test"),
+    )
+    await steps[rebuild_trace.LIFECYCLE]()
+    assert rewired == ["lifecycle"]
+    assert scheduled == (["acme"] if env == PROD else [])
