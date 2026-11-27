@@ -1442,7 +1442,10 @@ class _RelJoinMixin:  # mixin for _Translator
                     pf_clause = MatchClause(
                         pattern=PathFunction(
                             func_name="allpaths",
-                            pattern=PathPattern(nodes=nodes, rels=rels),
+                            # The pattern as written: the walk starts from the node the arrow
+                            # leaves (_extract_path_nodes), and its path reads in the pattern's
+                            # order (_in_pattern_order).
+                            pattern=PathPattern(nodes=pattern.nodes, rels=pattern.rels),
                         ),
                         variable=path_variable,
                         optional=clause.optional,
