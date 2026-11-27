@@ -69,6 +69,16 @@ def _config() -> dict:
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
+        "roles": [
+            {
+                "id": r,
+                "description": f"{r} role.",
+                "capabilities": ["usage"],
+                "domain_access": ["*"],
+            }
+            for r in readers
+            if r != _ADMIN  # org_admin is a standard role, seeded by init_schema (REQ-2155)
+        ],
         "domains": [{"id": "sales", "description": "the product's member"}],
         "sources": [
             {
