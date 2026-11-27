@@ -112,9 +112,16 @@ class Reader(Protocol):
         ...
 
 
+def _projected(column: Column) -> str:
+    """The column's values as the run's role reads them, as ``v``. The column is only projected,
+    never named in a WHERE: a masked column is read under its mask, and the mask is what is
+    compared (REQ-413); a filter on the column itself is refused (V005)."""
+    return f"SELECT {column.name} AS v FROM {column.relation}"
+
+
 def _sample(column: Column, bound: int) -> str:
     """Up to ``bound`` of the column's non-null values, as rows read: a limit the engine stops at."""
-    return f"SELECT {column.name} AS v FROM {column.relation} WHERE {column.name} IS NOT NULL LIMIT {bound}"
+    return f"SELECT v FROM ({_projected(column)}) AS r WHERE v IS NOT NULL LIMIT {bound}"
 
 
 def _counted(alias: str, column: Column, bound: int) -> list[str]:
@@ -131,7 +138,7 @@ def _matched(alias: str, other: Column) -> str:
     """How many distinct values of ``alias`` (a column's sample) find a match in ``other``."""
     return (
         f"(SELECT COUNT(DISTINCT {alias}.v) FROM {alias} "
-        f"JOIN {other.relation} AS {alias}_in ON {alias}.v = {alias}_in.{other.name})"
+        f"JOIN ({_projected(other)}) AS {alias}_in ON {alias}.v = {alias}_in.v)"
     )
 
 

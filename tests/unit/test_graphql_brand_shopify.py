@@ -572,9 +572,10 @@ async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatc
     staged.apply()
 
     land = build_adapter_loaders(state, SimpleNamespace(engine=SimpleNamespace(connectors={})))
+    # The table as the model holds it (core.models.Table): the columns its registration stored.
     rows = await land["graphql_remote"](
         SimpleNamespace(id="my-shop"),
-        SimpleNamespace(table_name="shopify__products", pagination=None),
+        SimpleNamespace(table_name="shopify__products", pagination=None, columns=answered[0]),
     )
     assert [r["title"] for r in rows] == ["A", "B"]
     priced, *landed = [json.loads(c.request.content)["query"] for c in route.calls]

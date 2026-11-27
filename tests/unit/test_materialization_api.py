@@ -62,7 +62,7 @@ def _pets_row(source_id: str, **table) -> dict:
         "id": PETS,
         "source_id": source_id,
         "table_name": "pets",
-        "columns": [{"column_name": "id", "data_type": "integer"}],
+        "columns": [{"column_name": "id", "data_type": "integer", "gql_selection": None}],
         "cache_ttl": 300,
         **table,
     }
@@ -1063,8 +1063,8 @@ def _gql_registration(**table):
         "table_name": "pets",
         "source_id": "ghsrc",
         "columns": [
-            {"column_name": "id", "data_type": "integer"},
-            {"column_name": "name", "data_type": "text"},
+            {"column_name": "id", "data_type": "integer", "gql_selection": None},
+            {"column_name": "name", "data_type": "text", "gql_selection": None},
         ],
         "cache_ttl": 300,
         **table,
