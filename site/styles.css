@@ -575,6 +575,7 @@ code:not(pre code) {
 .signup-status.is-ok { color: var(--accent); }
 .signup-status.is-error { color: var(--destructive); }
 .signup-fine { margin: 8px 0 0; color: var(--text-muted); font-size: .82rem; }
+.signup-check { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: .92rem; }
 
 /* ── "Read more" links out to the deep pages ───────── */
 .more {

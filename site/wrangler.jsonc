@@ -6,7 +6,7 @@
   "pages_build_output_dir": ".",
   "compatibility_date": "2025-01-01",
 
-  // Private mailing-list store. Create it once, then paste the id here:
+  // Private store for release signups and license registrations. Create it once, then paste the id here:
   //   wrangler d1 create provisa-subscribers
   "d1_databases": [
     {
@@ -24,4 +24,9 @@
   //                                     half must match provisa/licensing/keys.py's
   //                                     _DEFAULT_LICENSE_PUBKEY_HEX, or every issued license
   //                                     fails verification on every Provisa install.
+  //
+  // REQ-2361 (release emails, functions/api/subscribe.js + functions/api/subscribe/confirm.js)
+  // reuses RESEND_API_KEY, which then needs full access (contacts, not just sending), plus:
+  //   RESEND_RELEASES_SEGMENT_ID      — the Resend segment confirmed signups join; release
+  //                                     Broadcasts are sent to it.
 }

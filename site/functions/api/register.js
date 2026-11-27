@@ -13,6 +13,7 @@
 // and sent once that link is clicked (functions/api/register/confirm.js), so an email the
 // registrant doesn't control can never receive a working license.
 import { isValidEmail, randomToken, sendEmail } from "../_lib/license.js";
+import { savePendingSignup } from "../_lib/releases.js";
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -34,6 +35,9 @@ export async function onRequestPost(context) {
     phone: String(body.phone ?? "").trim() || null,
     machine_id: String(body.machine_id ?? "").trim(),
   };
+  // REQ-2361: the optional, unticked "email me about releases" box. The signup stays pending and
+  // is confirmed by the same license confirmation link, so it needs no second email.
+  const releases = body.releases === true;
   // Honeypot, matching /api/subscribe's convention.
   if (String(body.website ?? "").trim()) return json({ ok: true });
 
@@ -76,6 +80,7 @@ export async function onRequestPost(context) {
         fields.machine_id
       )
       .run();
+    if (releases) await savePendingSignup(env, fields.email, fields.first_name, token);
   } catch (err) {
     return json({ error: "Could not save right now. Try again later." }, 500);
   }

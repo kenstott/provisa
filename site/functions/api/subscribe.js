@@ -8,9 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// POST /api/subscribe — appends a {name, email} row to the private D1 table
-// `subscribers`. The table lives in your Cloudflare account only; export it with
-// `wrangler d1 export provisa-subscribers`. Binding `DB` is declared in wrangler.jsonc.
+// POST /api/subscribe — step 1 of the double-opt-in release-email signup (REQ-2361). Stores
+// {name, email} as a pending signup in D1 and emails a confirmation link; the address joins the
+// Resend release list only when that link is clicked (functions/api/subscribe/confirm.js).
+import { isValidEmail } from "../_lib/license.js";
+import { savePendingSignup, sendConfirmEmail } from "../_lib/releases.js";
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -28,21 +31,23 @@ export async function onRequestPost(context) {
   if (trap) return json({ ok: true });
 
   if (!name || name.length > 200) {
-    return json({ error: "Please enter your name." }, 400);
+    return json({ error: "Please enter your first name." }, 400);
   }
-  if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(email)) {
     return json({ error: "Please enter a valid email." }, 400);
   }
 
+  let token;
   try {
-    await env.DB.prepare(
-      "INSERT INTO subscribers (email, name) VALUES (?, ?) " +
-        "ON CONFLICT(email) DO UPDATE SET name = excluded.name"
-    )
-      .bind(email, name)
-      .run();
+    token = await savePendingSignup(env, email, name, null);
   } catch {
     return json({ error: "Could not save right now. Try again later." }, 500);
+  }
+
+  try {
+    await sendConfirmEmail(env, email, name, token);
+  } catch {
+    return json({ error: "Saved, but the confirmation email failed to send. Try again." }, 502);
   }
 
   return json({ ok: true });

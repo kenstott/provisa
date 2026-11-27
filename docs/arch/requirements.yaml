@@ -100500,3 +100500,41 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     built-in code source and no in-process OpenAPI path runs.'
   related_reqs:
   - REQ-2267
+
+- id: REQ-2361
+  status: in-progress
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Marketing & Presence
+  feature: commercial-website
+  priority: SHOULD
+  type: behavioral
+  description: 'Release emails on provisa.dev with double opt-in. A visitor gives a first name and email on
+    the home page, or ticks an optional, unticked box on the license form. The address joins the Resend
+    release segment only after its confirmation link is clicked (the license confirmation link for the
+    box), and the link expires after 48 hours. Release emails are Resend Broadcasts to that segment, so
+    each carries an unsubscribe link and unsubscribed contacts are skipped. Signups made on the original
+    form were never confirmed and are not added automatically.'
+  use_case: People who evaluate Provisa hear about new releases without watching GitHub, and only
+    addresses whose owners confirmed are emailed.
+  scenario: 'Given a visitor who submits the home page release form, when they click the emailed link
+    within 48 hours, then their address is in the Resend release segment, and before the click it is
+    not.'
+  code:
+  - site/index.html
+  - site/register.html
+  - site/functions/api/subscribe.js
+  - site/functions/api/subscribe/confirm.js
+  - site/functions/api/register.js
+  - site/functions/api/register/confirm.js
+  - site/functions/_lib/releases.js
+  - site/schema.sql
+  - site/wrangler.jsonc
+  - site/privacy.html
+  - site/README.md
+  unit_test: false
+  unit_test_reason: Cloudflare Pages Functions outside the main test harness, like REQ-1793. The flow was
+    exercised against an in-memory D1 and a stubbed Resend API during development; the live Resend
+    contact calls are checked at setup.
+  related_reqs:
+  - REQ-1793

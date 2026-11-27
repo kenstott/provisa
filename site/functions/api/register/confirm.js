@@ -13,6 +13,7 @@
 // and emailed — proving control of the address before anything is issued. Navigated to directly
 // by a browser, so every response is an HTML page, not JSON.
 import { signLicense } from "../../_lib/license.js";
+import { confirmSignup } from "../../_lib/releases.js";
 
 // Unconfirmed registrations older than this are treated as abandoned, not confirmable — the
 // registrant re-registers to get a fresh link rather than confirming a week-old request.
@@ -85,6 +86,28 @@ export async function onRequestGet(context) {
   )
     .bind(token)
     .run();
+
+  // REQ-2361: this click also proves the address for a release-email signup made on the form.
+  const signup = await env.DB.prepare(
+    "SELECT * FROM release_signups WHERE license_token = ? AND confirmed_at IS NULL"
+  )
+    .bind(token)
+    .first();
+  if (signup) {
+    try {
+      await confirmSignup(env, signup);
+    } catch (err) {
+      return html(
+        page(
+          "Registration confirmed",
+          "<h1>Provisa</h1><p>Registration confirmed and your license file is on its way. We " +
+            "couldn't add you to release emails, though. Sign up on the " +
+            '<a href="/#releases">home page</a> instead.</p>'
+        ),
+        502
+      );
+    }
+  }
 
   return html(
     successPage(
