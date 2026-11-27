@@ -27,7 +27,7 @@ import {
   type OdcsContract,
 } from "../../../api/dataProductContracts";
 import type { Offer, OfferDatasetContract } from "../../../api/dataProductOffers";
-import type { ProductLineage } from "../../../api/lineage";
+import { isCheckerEntry, type ProductLineage } from "../../../api/lineage";
 import type { MetaReader } from "../../../api/metaGraph";
 import {
   CollapsibleItem,
@@ -204,7 +204,12 @@ function ContractDocument({
       contract={read.doc as OdcsContract}
       versions={read.versions as ContractVersion[]}
       tableId={port.id}
-      promises={lineage ? lineage.dq.promises.filter((c) => c.checked_table_id === port.id) : null}
+      promises={
+        // REQ-2158: the checker tables' promises; the built-in one has its own row.
+        lineage
+          ? lineage.dq.promises.filter(isCheckerEntry).filter((c) => c.checked_table_id === port.id)
+          : null
+      }
       table={port}
       reader={reader}
       viewer={viewer}

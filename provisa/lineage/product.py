@@ -102,6 +102,8 @@ def product_dq(
     members: set[int],
     inputs: set[int],
     served: dict[int, set[str]],
+    type_checks: dict[int, dict],
+    checked_tables: dict[int, dict],
 ) -> dict[str, list[dict]]:
     """A product's data quality (REQ-2157), each checker table in one list.
 
@@ -115,7 +117,13 @@ def product_dq(
     input; another owner's (or no owner's) check on either is related; the product's check on
     neither is unattached, a curation gap for its owner. A check the reader cannot read -- its
     checker table, or the checked columns its rules name (one column of the checked table when
-    they name none) -- is in no list (REQ-2152)."""
+    they name none) -- is in no list (REQ-2152).
+
+    ``type_checks``: each member's latest declared-logical-type check (REQ-2158, amended
+    2026-11-27), by table id -- its ``outcome``, ``checked_at`` and ``failing`` columns; a member
+    without one holds no contract or has not been checked yet. ``checked_tables``: each member's
+    names (id, domain_id, table_name, alias). Each checked member is a built-in promise,
+    :func:`declared_types_promise`."""
     out: dict[str, list[dict]] = {name: [] for name in DQ_LISTS}
     for c in sorted(checkers, key=lambda c: (c["table_name"], c["id"])):
         if not _reads_check(c, served):
@@ -146,9 +154,48 @@ def product_dq(
                 "latest_outcome": c["latest_outcome"],
                 "latest_run_at": c["latest_run_at"],
                 "failing_checks": c["failing_checks"],
+                "builtin": None,
             }
         )
+    for table_id in sorted(members & set(type_checks)):
+        out["promises"].append(
+            declared_types_promise(product_id, type_checks[table_id], checked_tables[table_id])
+        )
     return out
+
+
+#: REQ-2158: the built-in promise's name among a product's promises.
+DECLARED_TYPES = "Declared logical types"
+
+
+def declared_types_promise(product_id: str, check: dict, checked_table: dict) -> dict:
+    """A member's declared-logical-type check (REQ-2158) as a promise beside its checker tables'.
+    It has no checker table and no result relation to link to: ``checker_table_id``,
+    ``table_name``, ``alias`` and ``description`` are None. It is one check (one rule), and each
+    failing column is one failing check; ``failing_columns`` names each with its offer, declared
+    logicalType and live type (None: the column is gone)."""
+    from provisa.dq.contract_types import CONTRACT_TYPE_CHECK
+
+    return {
+        "checker_table_id": None,
+        "domain_id": checked_table["domain_id"],
+        "table_name": None,
+        "alias": None,
+        "description": None,
+        "owner_product_ids": [product_id],
+        "checked_table_id": checked_table["id"],
+        "checked_table": checked_table,
+        "rules": [{"check_type": CONTRACT_TYPE_CHECK, "column_name": "", "args": {}}],
+        "latest_outcome": check["outcome"],
+        "latest_run_at": check["checked_at"],
+        "failing_checks": [
+            {"name": CONTRACT_TYPE_CHECK, "column": column, "outcome": "fail"}
+            for column in sorted({f["column"] for f in check["failing"]})
+        ],
+        "builtin": CONTRACT_TYPE_CHECK,
+        "name": DECLARED_TYPES,
+        "failing_columns": check["failing"],
+    }
 
 
 def _reads_check(checker: dict, served: dict[int, set[str]]) -> bool:

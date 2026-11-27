@@ -406,6 +406,22 @@ df = provisa_client.query(<span class="c-str">"""
         </div>
 
         <a class="more" href="/why/environments#deploy">Kubernetes, Helm and Terraform</a>
+
+        <form id="releases" class="signup" novalidate>
+          <p class="signup-lead">Get an email when a new release ships.</p>
+          <div class="signup-row">
+            <input type="text" name="name" placeholder="First name" autocomplete="given-name" aria-label="First name" required />
+            <input type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Email address" required />
+            <button type="submit" class="btn btn-primary">Subscribe</button>
+          </div>
+          <!-- honeypot: hidden from users; bots fill it and get silently dropped -->
+          <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <p class="signup-status" role="status" aria-live="polite"></p>
+          <p class="signup-fine">
+            We'll email a link to confirm first. Release news only, and every email has an
+            unsubscribe link. See the <a href="/privacy">privacy policy</a>.
+          </p>
+        </form>
       </div>
     </section>
 
@@ -514,6 +530,7 @@ df = provisa_client.query(<span class="c-str">"""
         <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
+        <a href="/#releases">Release emails</a>
         <a href="/register">Register (free license)</a>
         <a href="/privacy">Privacy</a>
         <a href="/terms">Terms</a>
@@ -570,6 +587,44 @@ df = provisa_client.query(<span class="c-str">"""
           select(next);
           next.focus();
         });
+      });
+    })();
+
+    // Release-email signup (REQ-2362): the server stores it pending and emails a confirmation link.
+    (function () {
+      const form = document.getElementById('releases');
+      const status = form.querySelector('.signup-status');
+      const btn = form.querySelector('button[type="submit"]');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        status.className = 'signup-status';
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/subscribe', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              // form.name is the form's own name attribute, so read fields via elements.
+              name: form.elements.namedItem('name').value.trim(),
+              email: form.elements.namedItem('email').value.trim(),
+              company: form.elements.namedItem('company').value,
+            }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.ok) {
+            form.reset();
+            status.textContent = 'Check your email and click the link to confirm.';
+            status.classList.add('is-ok');
+          } else {
+            status.textContent = j.error || 'Something went wrong. Try again.';
+            status.classList.add('is-error');
+          }
+        } catch {
+          status.textContent = 'Network error. Try again.';
+          status.classList.add('is-error');
+        } finally {
+          btn.disabled = false;
+        }
       });
     })();
 
