@@ -6,7 +6,7 @@ macOS installer with two tiers and no VM:
   provisa already installed. First launch copies it to `~/.provisa/venv`. No Docker needed.
 - **Docker tier (`Provisa-Container.dmg`, `PROVISA_EDITION=container`):** runs
   `docker compose` on the user's own Docker (Docker Desktop or colima). Images are
-  `docker load`-ed from the core-images tarball and resolved through `docker-compose.airgap.yml`.
+  `docker load`-ed from the core image assets and resolved through `docker-compose.airgap.yml`.
 
 ## What's inside the DMG
 
@@ -66,7 +66,8 @@ Edit `build-dmg.sh` `IMAGES` array to use `image@sha256:...` instead of tags for
 3. `first-launch.sh` runs:
    - Native tier: copies the bundled runtime to `~/.provisa/venv`
    - Docker tier: checks Docker is running, stages compose files to `~/.provisa/compose/`,
-     acquires the core-images tarball and loads it with `docker load`
+     acquires the core image assets (listed in `provisa-core-images-arm64-<version>.sha256`)
+     and loads them with `docker load`
    - Writes `~/.provisa/config.yaml` (`runtime: native` or `runtime: docker`)
    - Installs `/usr/local/bin/provisa` CLI (prompts for password via osascript if needed)
    - Writes sentinel file `~/.provisa/.first-launch-complete`

@@ -64,7 +64,8 @@ jobs:
 
       # Slim AppImage: images are NOT bundled (they'd push it over GitHub's 2 GB
       # asset limit alongside the native venv payload). The Docker tier acquires
-      # provisa-core-images-amd64-<ver>.zip on demand at first launch.
+      # core image assets (provisa-core-images-amd64-<ver>.sha256 lists them) on demand at
+      # first launch.
 
       # The native tier's wheel + ui-dist payload need a host-built UI (the Docker
       # image builds the UI internally, but bundle_native_payload runs on the host).

@@ -90,9 +90,10 @@ jobs:
           cp artifacts/provisa-notebook-dist/provisa_notebook-*.whl assets/
           cp artifacts/provisa-duckdb-ext-wheels/provisa_duckdb_ext-*.whl assets/
           tar -czf "assets/provisa-trino-plugins-${VERSION}.tar.gz" -C artifacts/trino-plugins/ .
-          # The amd64 core images (release-prebuilt.yml's package-core-images-amd64): Zaychik is
-          # loaded from it, as a published release's image is pulled from GHCR.
-          cp "artifacts/core-images-amd64-tarball/provisa-core-images-amd64-${VERSION}.zip" assets/
+          # The amd64 core image assets and their manifest (release-prebuilt.yml's
+          # package-core-images-amd64): Zaychik is loaded from its asset, as a published release's
+          # image is pulled from GHCR.
+          cp artifacts/core-images-amd64-tarball/* assets/
           ls -l assets/
 
       - name: Install with install-host.sh

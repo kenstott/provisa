@@ -137,7 +137,8 @@ jobs:
     # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
     # Docker tier only: the compose tree + observability config. Images are fetched on
-    # demand (provisa-core-images-<version>.tar.gz), mirroring build-container.ps1.
+    # demand (the core image assets provisa-core-images-arm64-<version>.sha256 lists),
+    # mirroring install-container.ps1.
     needs: [metadata]
     steps:
       - name: Checkout

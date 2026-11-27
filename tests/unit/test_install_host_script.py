@@ -825,7 +825,7 @@ def test_the_zaychik_image_is_the_releases_own():
             f"docker save --platform {platform} {local} | gzip -9 > images/zaychik-local.tar.gz"
             in prebuilt
         )
-    assert _ok('printf "%s" "$INSTALL_HOST_ZAYCHIK_IMAGE_FILE"') == "zaychik-local.tar.gz"
+    assert _ok('printf "%s" "$INSTALL_HOST_ZAYCHIK_IMAGE_NAME"') == "zaychik-local"
     # A published release on x86_64: the image release-publish.yml pushes for its version.
     publish = yaml.safe_load((_ROOT / ".github/workflows/release-publish.yml").read_text())
     push = next(
@@ -847,17 +847,18 @@ def test_the_zaychik_image_is_the_releases_own():
         assert out == "provisa/zaychik:local"
 
 
-def test_the_core_images_asset_is_named_as_the_release_names_it():
+def test_the_core_image_assets_are_named_as_the_release_names_them():
     action = (_ROOT / ".github/actions/release-metadata/action.yml").read_text()
-    assert 'core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip"' in action
-    assert 'core_images_name=provisa-core-images-${TAG}.tar.gz"' in action
-    assert _ok(f"core_images_asset_name {_TAG} x86_64").strip() == (
-        f"provisa-core-images-amd64-{_TAG}.zip"
-    )
-    assert _ok(f"core_images_asset_name {_TAG} aarch64").strip() == (
-        f"provisa-core-images-{_TAG}.tar.gz"
-    )
-    assert "unsupported machine" in _refused(f"core_images_asset_name {_TAG} riscv64")
+    assert 'core_images_manifest_name=provisa-core-images-arm64-${TAG}.sha256"' in action
+    assert 'core_images_amd64_manifest_name=provisa-core-images-amd64-${TAG}.sha256"' in action
+    for machine, arch in (("x86_64", "amd64"), ("aarch64", "arm64")):
+        assert _ok(f"core_images_manifest_name {_TAG} {machine}").strip() == (
+            f"provisa-core-images-{arch}-{_TAG}.sha256"
+        )
+        assert _ok(f"core_image_asset_name zaychik-local {_TAG} {machine}").strip() == (
+            f"provisa-core-image-zaychik-local-{arch}-{_TAG}.tar.gz"
+        )
+    assert "unsupported machine" in _refused(f"core_images_manifest_name {_TAG} riscv64")
 
 
 _LOAD_STUBS = """
@@ -872,32 +873,6 @@ docker() {
 """
 
 
-def test_a_dry_run_loads_zaychik_from_the_core_images_zip(tmp_path):
-    import zipfile
-
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    with zipfile.ZipFile(assets / f"provisa-core-images-amd64-{_TAG}.zip", "w") as z:
-        z.writestr("zaychik-local.tar.gz", b"the zaychik image")
-        z.writestr("provisa-local.tar.gz", b"another image")
-    loaded = tmp_path / "loaded"
-    out = _ok(
-        f"export LOADED={shlex.quote(str(loaded))} MACHINE=x86_64\n{_LOAD_STUBS}"
-        f"IH_ASSETS_DIR={shlex.quote(str(assets))}\n"
-        f'load_zaychik_image {shlex.quote(str(tmp_path / "dest"))}\nprintf "%s" "$IH_ZAYCHIK_IMAGE"'
-    )
-    assert out == "provisa/zaychik:local"
-    assert loaded.read_bytes() == b"the zaychik image"
-
-
-def test_a_dry_run_without_the_core_images_is_refused_naming_them(tmp_path):
-    err = _refused(
-        f"export LOADED=/dev/null MACHINE=x86_64\n{_LOAD_STUBS}"
-        f"IH_ASSETS_DIR={shlex.quote(str(tmp_path))}\nload_zaychik_image {shlex.quote(str(tmp_path))}"
-    )
-    assert f"lacks provisa-core-images-amd64-{_TAG}.zip" in err
-
-
 def _prebuilt_jobs() -> dict:
     return yaml.safe_load((_ROOT / ".github/workflows/release-prebuilt.yml").read_text())["jobs"]
 
@@ -906,48 +881,137 @@ def _step(job: dict, name: str) -> dict:
     return next(s for s in job["steps"] if s.get("name") == name)
 
 
-def _arm64_core_images(tmp_path: Path, image: bytes) -> Path:
-    """The arm64 core-images asset, built as release-prebuilt.yml builds it: pull-images-core saves
-    the images into images/, uploads that directory as docker-images-core, and package-core-images
-    downloads it into core-images/ and tars it with the step's own command."""
+_CORE_JOBS = {
+    "arm64": (
+        "pull-images-core",
+        "Pull core images and build zaychik",
+        "Upload core image tarballs",
+        "package-core-images",
+        "Download core image tarballs",
+        "core_images_manifest_name",
+    ),
+    "amd64": (
+        "pull-images-core-amd64",
+        "Pull core images (amd64), build zaychik and provisa",
+        "Upload amd64 core image tarballs",
+        "package-core-images-amd64",
+        "Download amd64 core image tarballs",
+        "core_images_amd64_manifest_name",
+    ),
+}
+
+
+def _core_assets(tmp_path: Path, arch: str, zaychik: bytes, part_bytes: int | None = None) -> Path:
+    """The core image assets, built as release-prebuilt.yml builds them: pull-images-core(-amd64)
+    saves the images into images/ and uploads that directory, and package-core-images(-amd64)
+    downloads it and runs its own packaging step. part_bytes, when given, stands in for the step's
+    1 GiB part size so a small image is split into parts. Returns the directory of assets."""
+    pull_job, build_step, upload_step, package_job, download_step, manifest_out = _CORE_JOBS[arch]
     jobs = _prebuilt_jobs()
-    core = jobs["pull-images-core"]
-    build = _step(core, "Pull core images and build zaychik")["run"]
-    assert "docker build --platform linux/arm64 -t provisa/zaychik:local ./zaychik" in build
+    core = jobs[pull_job]
+    build = _step(core, build_step)["run"]
+    assert f"docker build --platform linux/{arch} -t provisa/zaychik:local ./zaychik" in build
     assert (
-        "docker save --platform linux/arm64 provisa/zaychik:local | gzip -9 > "
+        f"docker save --platform linux/{arch} provisa/zaychik:local | gzip -9 > "
         "images/zaychik-local.tar.gz"
     ) in build
-    upload = _step(core, "Upload core image tarballs")["with"]
-    assert (upload["name"], upload["path"]) == ("docker-images-core", "images/")
-    package = jobs["package-core-images"]
-    download = _step(package, "Download core image tarballs")["with"]
-    assert download["name"] == "docker-images-core"
-    staged = tmp_path / download["path"]
+    upload = _step(core, upload_step)["with"]
+    assert upload["path"] == "images/"
+    package = jobs[package_job]
+    download = _step(package, download_step)["with"]
+    assert download["name"] == upload["name"]
+    work = tmp_path / f"build-{arch}"
+    staged = work / download["path"]
     staged.mkdir(parents=True)
-    (staged / "zaychik-local.tar.gz").write_bytes(image)
+    (staged / "zaychik-local.tar.gz").write_bytes(zaychik)
     (staged / "provisa-local.tar.gz").write_bytes(b"another image")
-    name = f"provisa-core-images-{_TAG}.tar.gz"
-    command = _step(package, "Package as single tarball")["run"].replace(
-        "${{ needs.metadata.outputs.core_images_name }}", name
+    for rel in (
+        "scripts/ci/package_core_images.sh",
+        ".github/actions/check-release-asset-size/check.sh",
+    ):
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_bytes((_ROOT / rel).read_bytes())
+    command = (
+        _step(package, "Package as per-image assets under 2 GiB")["run"]
+        .replace("${{ inputs.version }}", _TAG)
+        .replace(
+            f"${{{{ needs.metadata.outputs.{manifest_out} }}}}",
+            f"provisa-core-images-{arch}-{_TAG}.sha256",
+        )
     )
-    subprocess.run(["bash", "-euo", "pipefail", "-c", command], cwd=tmp_path, check=True)
-    return tmp_path / name
+    if part_bytes is not None:
+        assert " 1073741824" in command
+        command = command.replace(" 1073741824", f" {part_bytes}")
+    subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", command], cwd=work, check=True, capture_output=True
+    )
+    return work / f"core-assets-{arch}"
 
 
-def test_the_arm64_core_images_asset_carries_the_zaychik_image_an_aarch64_dry_run_loads(tmp_path):
-    asset = _arm64_core_images(tmp_path, b"the arm64 zaychik image")
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    asset.rename(assets / asset.name)
+def _load_from_assets(tmp_path: Path, assets: Path, machine: str) -> tuple[str, Path]:
     loaded = tmp_path / "loaded"
     out = _ok(
-        f"export LOADED={shlex.quote(str(loaded))} MACHINE=aarch64\n{_LOAD_STUBS}"
+        f"export LOADED={shlex.quote(str(loaded))} MACHINE={machine}\n{_LOAD_STUBS}"
         f"IH_ASSETS_DIR={shlex.quote(str(assets))}\n"
         f'load_zaychik_image {shlex.quote(str(tmp_path / "dest"))}\nprintf "%s" "$IH_ZAYCHIK_IMAGE"'
     )
+    return out, loaded
+
+
+def test_a_dry_run_loads_zaychik_from_its_core_image_asset(tmp_path):
+    assets = _core_assets(tmp_path, "amd64", b"the zaychik image")
+    assert sorted(p.name for p in assets.iterdir()) == [
+        f"provisa-core-image-provisa-local-amd64-{_TAG}.tar.gz",
+        f"provisa-core-image-zaychik-local-amd64-{_TAG}.tar.gz",
+        f"provisa-core-images-amd64-{_TAG}.sha256",
+    ]
+    out, loaded = _load_from_assets(tmp_path, assets, "x86_64")
     assert out == "provisa/zaychik:local"
-    assert loaded.read_bytes() == b"the arm64 zaychik image"
+    assert loaded.read_bytes() == b"the zaychik image"
+
+
+def test_a_zaychik_image_published_in_parts_is_loaded_whole(tmp_path):
+    image = bytes(range(256)) * 10
+    assets = _core_assets(tmp_path, "arm64", image, part_bytes=1000)
+    name = f"provisa-core-image-zaychik-local-arm64-{_TAG}.tar.gz"
+    assert sorted(p.name for p in assets.glob(f"{name}*")) == [
+        f"{name}.part1",
+        f"{name}.part2",
+        f"{name}.part3",
+    ]
+    out, loaded = _load_from_assets(tmp_path, assets, "aarch64")
+    assert out == "provisa/zaychik:local"
+    assert loaded.read_bytes() == image
+
+
+def test_a_dry_run_without_the_core_images_manifest_is_refused_naming_it(tmp_path):
+    err = _refused(
+        f"export LOADED=/dev/null MACHINE=x86_64\n{_LOAD_STUBS}"
+        f"IH_ASSETS_DIR={shlex.quote(str(tmp_path))}\nload_zaychik_image {shlex.quote(str(tmp_path))}"
+    )
+    assert f"lacks provisa-core-images-amd64-{_TAG}.sha256" in err
+
+
+def test_a_dry_run_missing_a_listed_zaychik_asset_is_refused_naming_it(tmp_path):
+    assets = _core_assets(tmp_path, "amd64", b"the zaychik image")
+    name = f"provisa-core-image-zaychik-local-amd64-{_TAG}.tar.gz"
+    (assets / name).unlink()
+    err = _refused(
+        f"export LOADED=/dev/null MACHINE=x86_64\n{_LOAD_STUBS}"
+        f"IH_ASSETS_DIR={shlex.quote(str(assets))}\nload_zaychik_image {shlex.quote(str(tmp_path))}"
+    )
+    assert f"lacks {name}, listed in provisa-core-images-amd64-{_TAG}.sha256" in err
+
+
+def test_a_zaychik_asset_that_does_not_match_its_sha256_is_refused(tmp_path):
+    assets = _core_assets(tmp_path, "amd64", b"the zaychik image")
+    name = f"provisa-core-image-zaychik-local-amd64-{_TAG}.tar.gz"
+    (assets / name).write_bytes(b"a truncated image")
+    err = _refused(
+        f"export LOADED=/dev/null MACHINE=x86_64\n{_LOAD_STUBS}"
+        f"IH_ASSETS_DIR={shlex.quote(str(assets))}\nload_zaychik_image {shlex.quote(str(tmp_path))}"
+    )
+    assert f"{name} does not match its sha256 in provisa-core-images-amd64-{_TAG}.sha256" in err
 
 
 _CURL_STUB = """
@@ -962,15 +1026,15 @@ curl() {
     shift
   done
   printf '%s\\n' "$url" >> "$FETCHED"
-  cp "$SERVED" "$out"
+  cp "$SERVED/${url##*/}" "$out"
 }
 """
 
 
 def test_a_published_aarch64_install_loads_zaychik_from_the_releases_core_images(tmp_path):
-    # REQ-2269 (amended 2026-11-26): the release's own core-images asset, downloaded; no registry
-    # pull (the _LOAD_STUBS docker refuses anything but load).
-    served = _arm64_core_images(tmp_path, b"the arm64 zaychik image")
+    # REQ-2269 (amended 2026-11-26): the release's own Zaychik core image asset, downloaded; no
+    # registry pull (the _LOAD_STUBS docker refuses anything but load), and no other image.
+    served = _core_assets(tmp_path, "arm64", b"the arm64 zaychik image")
     dest = tmp_path / "dest"
     dest.mkdir()
     loaded, fetched = tmp_path / "loaded", tmp_path / "fetched"
@@ -982,10 +1046,12 @@ def test_a_published_aarch64_install_loads_zaychik_from_the_releases_core_images
     )
     assert out == "provisa/zaychik:local"
     assert loaded.read_bytes() == b"the arm64 zaychik image"
+    base = f"https://github.com/kenstott/provisa/releases/download/{_TAG}"
     assert fetched.read_text().splitlines() == [
-        f"https://github.com/kenstott/provisa/releases/download/{_TAG}/provisa-core-images-{_TAG}.tar.gz"
+        f"{base}/provisa-core-images-arm64-{_TAG}.sha256",
+        f"{base}/provisa-core-image-zaychik-local-arm64-{_TAG}.tar.gz",
     ]
-    # The asset is the size of every core image; only Zaychik is taken from it, so it is not kept.
+    # Downloaded only to be loaded, so nothing is kept.
     assert list(dest.iterdir()) == []
 
 
@@ -995,7 +1061,7 @@ def test_a_published_aarch64_install_names_a_failed_core_images_download(tmp_pat
         "curl() { return 22; }\nIH_ASSETS_DIR=''\n"
         f"load_zaychik_image {shlex.quote(str(tmp_path))}"
     )
-    assert f"download of provisa-core-images-{_TAG}.tar.gz from release {_TAG} failed" in err
+    assert f"download of provisa-core-images-arm64-{_TAG}.sha256 from release {_TAG} failed" in err
 
 
 def test_a_published_x86_64_install_pulls_the_releases_zaychik_image(tmp_path):

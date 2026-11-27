@@ -1,0 +1,26 @@
+name: Check release asset size
+description: >-
+  Fail when any given file is 2 GiB or more, the size GitHub refuses as a release asset (HTTP 422
+  "size must be less than 2147483648", alpha.513's core images). A packaging job runs it before it
+  keeps a file in a dry run or attaches it to a release, so a dry run, which attaches nothing,
+  fails where the release would.
+inputs:
+  files:
+    description: The files to check, one per line. A line may be a glob; every line must match.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check every asset is under 2 GiB
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        CHECK: ${{ github.action_path }}/check.sh
+      run: |
+        set -euo pipefail
+        files=()
+        while IFS= read -r pattern; do
+          [ -z "$pattern" ] && continue
+          for file in $pattern; do files+=("$file"); done
+        done <<< "$FILES"
+        bash "$CHECK" "${files[@]}"
