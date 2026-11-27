@@ -10,7 +10,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRememberedChoice } from "../../hooks/useRememberedChoice";
-import { useRememberedDetail } from "../list/useDetailParam";
+import { useLocation } from "react-router-dom";
+import { namedIn, useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy, type Narrowing } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { useTranslation } from "react-i18next";
 import {
@@ -71,7 +73,6 @@ import { Tip } from "../Tip";
 import { useRequiredFields } from "../form/useRequiredFields";
 import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
-import { matchesQuery } from "../../lib/searchItems";
 import { MultiSelect } from "../MultiSelect";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { useDomainFilter } from "../../context/DomainFilterContext";
@@ -143,8 +144,9 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
 
   // `?tag=<id>` (a graph's or a refused delete's link, detailHref) opens that tag's panel; the one
   // left open is open again on coming back (REQ-2260).
-  const detail = useRememberedDetail("tags", tagsLoading ? null : tags.map((g) => g.id));
-  const openTag = detail.id === null ? undefined : tags.find((g) => g.id === detail.id);
+  // The tag the address names, whether or not the list shows it: the scope it opens on.
+  const linkedId = namedIn("tags", useLocation().search);
+  const linkedTag = linkedId === null ? undefined : tags.find((g) => g.id === linkedId);
   // The scope tab is the URL's ?scope=. Without one the page opens on the scope the reader last
   // chose -- or, for an open tag that scope does not hold, the first scope the tag applies to (that
   // visit's, not saved over the reader's).
@@ -156,8 +158,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   const [scope, setUrlScope] = useUrlTab<TagObjectType>(
     "scope",
     SCOPES,
-    openTag !== undefined && !openTag.appliesTo.includes(rememberedScope)
-      ? openTag.appliesTo[0]
+    linkedTag !== undefined && !linkedTag.appliesTo.includes(rememberedScope)
+      ? linkedTag.appliesTo[0]
       : rememberedScope,
   );
   const setScope = (next: TagObjectType) => {
@@ -165,6 +167,53 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setUrlScope(next);
   };
   const [search, setSearch] = useUrlFilter();
+  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
+  const assignmentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
+    // `entity` row this table lists, and counting the full ids would report every one as unused.
+    for (const a of tagAssignments) {
+      const base = baseTagId(a.tagId);
+      counts[base] = (counts[base] ?? 0) + 1;
+    }
+    return counts;
+  }, [tagAssignments]);
+  // Every text a tag's row shows, which the filter searches; the row below draws the same.
+  const tagRowTexts = (tag: Tag): string[] => {
+    const use = readOnly ? uses?.get(tag.id) : undefined;
+    return [
+      tag.id,
+      tag.required ? t("tagsTab.requiredLabel") : "",
+      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
+      tag.needsReview ? t("tagCitations.needsReview") : "",
+      tag.description,
+      ...tag.appliesTo.map(scopeLabel),
+      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
+      ...(use === undefined ? [] : [whereAppliedSummary(use, t), dependentsSummary(use, t)]),
+    ];
+  };
+  // REQ-2277 rule 9: a tag is open only while the list -- the scope's tab, under the search --
+  // shows its row.
+  const narrowings: (Narrowing<Tag> | null)[] = [
+    {
+      hides: (tag) => !tag.appliesTo.includes(scope),
+      reason: () => t("detailInList.byTab", { tab: t(`tagsTab.scope_${scope}`) }),
+      action: (tag) => t("detailInList.openTab", { tab: t(`tagsTab.scope_${tag.appliesTo[0]}`) }),
+      bringIn: (tag) => setScope(tag.appliesTo[0]),
+    },
+    searchNarrowing<Tag>(t, search, () => setSearch(""), tagRowTexts),
+  ];
+  const detail = useRememberedDetail(
+    "tags",
+    detailListOf(
+      t,
+      tagsLoading ? null : tags,
+      (g) => g.id,
+      (g) => g.id,
+      narrowings,
+    ),
+  );
+  const openTag = detail.id === null ? undefined : tags.find((g) => g.id === detail.id);
   const [page, setPage] = useState(1);
   // The panel holds the create form while it is open; else the open tag, read or in its form.
   const [createOpen, setCreateOpen] = useState(false);
@@ -191,7 +240,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   const tagRequired = useRequiredFields({ id: formId, scopes: formScopes });
   const valueRequired = useRequiredFields({ value: newValue });
 
-  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
   const policyLabel = (p: TagFieldPolicy) => t(`tagsTab.policy_${p}`);
   const policyOptions = POLICIES.map((p) => ({ label: policyLabel(p), value: p }));
   const paramPolicyOptions = PARAM_POLICIES.map((p) => ({
@@ -199,35 +247,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     value: p,
   }));
 
-  const assignmentCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
-    // `entity` row this table lists, and counting the full ids would report every one as unused.
-    for (const a of tagAssignments) {
-      const base = baseTagId(a.tagId);
-      counts[base] = (counts[base] ?? 0) + 1;
-    }
-    return counts;
-  }, [tagAssignments]);
-
-  // Every text a tag's row shows, which the filter searches; the row below draws the same.
-  const tagRowTexts = (tag: Tag): string[] => {
-    const use = readOnly ? uses?.get(tag.id) : undefined;
-    return [
-      tag.id,
-      tag.required ? t("tagsTab.requiredLabel") : "",
-      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
-      tag.needsReview ? t("tagCitations.needsReview") : "",
-      tag.description,
-      ...tag.appliesTo.map(scopeLabel),
-      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
-      ...(use === undefined ? [] : [whereAppliedSummary(use, t), dependentsSummary(use, t)]),
-    ];
-  };
+  // The scope's tags before the search: none says the scope has none, not that none matched.
   const inScope = tags.filter((tag) => tag.appliesTo.includes(scope));
-  const filtered = inScope
-    .filter((tag) => matchesQuery(tagRowTexts(tag), search))
-    .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
+  const filtered = shownBy(tags, narrowings).sort((a, b) =>
+    a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1,
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const [grouped, setGrouped] = useState(false);
@@ -820,6 +844,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         </Alert>
       )}
       <SplitPane
+        outOfList={detail.outOfList}
         testId="tags-split"
         storageKey="provisa.tags.detailWidth"
         title={panelTitle}

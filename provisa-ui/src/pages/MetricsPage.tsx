@@ -40,9 +40,9 @@ import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
 import { useUrlFilter } from "../components/list/useUrlFilter";
 import { FilterInput } from "../components/admin/FilterInput";
-import { matchesQuery } from "../lib/searchItems";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -274,7 +274,38 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
   // REQ-2241: `?metric=<name>` is the open metric's panel.
   // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail("metrics", loading ? null : metrics.map((m) => m.name));
+  // REQ-2277: the list's filter, in the URL. REQ-2277 rule 9: a metric is open only while the
+  // list, under it, shows its row.
+  const [search, setSearch] = useUrlFilter();
+  const searchNarrowed = useMemo(
+    () =>
+      searchNarrowing<Metric>(
+        t,
+        search,
+        () => setSearch(""),
+        // Every text a metric's row shows, and the glossary term it names.
+        (m) => [
+          m.name,
+          m.fromFact ? t("metricsPage.fromFact") : "",
+          m.expression,
+          m.datatype,
+          m.description,
+          m.aiContext,
+          m.term,
+        ],
+      ),
+    [t, search, setSearch],
+  );
+  const detail = useRememberedDetail(
+    "metrics",
+    detailListOf(
+      t,
+      loading ? null : metrics,
+      (m) => m.name,
+      (m) => m.name,
+      [searchNarrowed],
+    ),
+  );
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
@@ -440,27 +471,7 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
     ],
     [t],
   );
-  // REQ-2277: the list's filter, in the URL.
-  const [search, setSearch] = useUrlFilter();
-  const shownMetrics = useMemo(
-    () =>
-      metrics.filter((m) =>
-        // Every text a metric's row shows, and the glossary term it names.
-        matchesQuery(
-          [
-            m.name,
-            m.fromFact ? t("metricsPage.fromFact") : "",
-            m.expression,
-            m.datatype,
-            m.description,
-            m.aiContext,
-            m.term,
-          ],
-          search,
-        ),
-      ),
-    [metrics, search, t],
-  );
+  const shownMetrics = useMemo(() => shownBy(metrics, [searchNarrowed]), [metrics, searchNarrowed]);
   const sortGroup = useListSortGroup(shownMetrics, metricColumns, "metrics");
   // REQ-2240: metrics selected and deleted together.
   const shownMetricNames = useMemo(() => shownMetrics.map((m) => m.name), [shownMetrics]);
@@ -548,6 +559,7 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
         <PageLoading message={t("metricsPage.loading")} />
       ) : (
         <SplitPane
+          outOfList={detail.outOfList}
           testId="metrics-split"
           storageKey="provisa.metrics.detailWidth"
           title={panelTitle}

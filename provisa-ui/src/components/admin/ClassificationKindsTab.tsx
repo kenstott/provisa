@@ -33,8 +33,8 @@ import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
-import { matchesQuery } from "../../lib/searchItems";
 import { FilterInput } from "./FilterInput";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
@@ -74,9 +74,32 @@ export function ClassificationKindsTab({
   const [kinds, setKinds] = useState<KindRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useUrlFilter();
+  const kindLabel = (k: KindRow) => t(`classificationKinds.kind.${k.id}`);
+  const maskLabel = (k: KindRow) =>
+    k.maskPreset ? t(`maskList.preset.${k.maskPreset}`) : t("classificationKinds.noMask");
+  const enabledLabel = (k: KindRow) =>
+    t(k.enabled ? "contextViews.enabled" : "contextViews.disabled");
+
+  const detectedTexts = (k: KindRow) => {
+    const { places, hidden } = detectedOn(k);
+    return contextPlaceTexts(places, hidden, t);
+  };
+  // Every text a kind's row shows, and its id.
+  const kindRowTexts = (k: KindRow) => [
+    k.id,
+    kindLabel(k),
+    k.sensitive ? t("classificationKinds.sensitive") : "",
+    t(`classificationKinds.test.${k.id}`),
+    `${Math.round(k.threshold * 100)}%`,
+    maskLabel(k),
+    enabledLabel(k),
+    ...(readOnly ? detectedTexts(k) : []),
+  ];
+  // REQ-2277 rule 9: a kind is open only while the search shows its row.
+  const narrowings = [searchNarrowing<KindRow>(t, search, () => setSearch(""), kindRowTexts)];
   const detail = useRememberedDetail(
     "classification",
-    kinds === null ? null : kinds.map((k) => k.id),
+    detailListOf(t, kinds, (k) => k.id, kindLabel, narrowings),
   );
   const [editing, setEditing] = useState(false);
   const [draftEnabled, setDraftEnabled] = useState(false);
@@ -89,33 +112,8 @@ export function ClassificationKindsTab({
       .catch((e: unknown) => setError(message(e)));
   }, [readOnly]);
 
-  const kindLabel = (k: KindRow) => t(`classificationKinds.kind.${k.id}`);
-  const maskLabel = (k: KindRow) =>
-    k.maskPreset ? t(`maskList.preset.${k.maskPreset}`) : t("classificationKinds.noMask");
-  const enabledLabel = (k: KindRow) =>
-    t(k.enabled ? "contextViews.enabled" : "contextViews.disabled");
-
-  const detectedTexts = (k: KindRow) => {
-    const { places, hidden } = detectedOn(k);
-    return contextPlaceTexts(places, hidden, t);
-  };
   const open = kinds?.find((k) => k.id === detail.id) ?? null;
-  const shown = (kinds ?? []).filter((k) =>
-    // Every text a kind's row shows, and its id.
-    matchesQuery(
-      [
-        k.id,
-        kindLabel(k),
-        k.sensitive ? t("classificationKinds.sensitive") : "",
-        t(`classificationKinds.test.${k.id}`),
-        `${Math.round(k.threshold * 100)}%`,
-        maskLabel(k),
-        enabledLabel(k),
-        ...(readOnly ? detectedTexts(k) : []),
-      ],
-      search,
-    ),
-  );
+  const shown = shownBy(kinds ?? [], narrowings);
 
   const closeForm = () => {
     setEditing(false);
@@ -245,6 +243,7 @@ export function ClassificationKindsTab({
       {kinds == null && error == null && <Loader size="sm" />}
       {kinds != null && (
         <SplitPane
+          outOfList={detail.outOfList}
           testId="classification-kinds-split"
           storageKey="provisa.classificationKinds.detailWidth"
           title={open === null ? "" : kindLabel(open)}

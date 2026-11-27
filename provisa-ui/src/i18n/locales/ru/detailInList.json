@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} нет в списке",
+    "why": "Ссылка указывает на него, но {{reasons}}.",
+    "bySearch": "поиск «{{search}}» исключает его",
+    "byFilter": "фильтр {{filter}} исключает его",
+    "byDomain": "его домен ({{domains}}) не отображается",
+    "clearSearch": "Очистить поиск",
+    "clearFilter": "Сбросить фильтр {{filter}}",
+    "addDomain": "Добавить {{domains}} в представление",
+    "showAll": "Показать в списке",
+    "dismiss": "Закрыть",
+    "byTab": "вкладка {{tab}} его не содержит",
+    "openTab": "Показать вкладку {{tab}}"
+  }
+}

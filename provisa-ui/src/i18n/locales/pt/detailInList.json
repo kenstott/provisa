@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} não está na lista",
+    "why": "O link o indica, mas {{reasons}}.",
+    "bySearch": "a pesquisa “{{search}}” o exclui",
+    "byFilter": "o filtro {{filter}} o exclui",
+    "byDomain": "seu domínio ({{domains}}) não está na visualização",
+    "clearSearch": "Limpar a pesquisa",
+    "clearFilter": "Limpar o filtro {{filter}}",
+    "addDomain": "Adicionar {{domains}} à visualização",
+    "showAll": "Mostrar na lista",
+    "dismiss": "Dispensar",
+    "byTab": "a aba {{tab}} não o lista",
+    "openTab": "Mostrar a aba {{tab}}"
+  }
+}
