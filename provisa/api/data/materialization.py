@@ -2026,6 +2026,32 @@ async def _materialize_api_to_engine_cache(
         # under its own name, so the statement's other reads of the table keep theirs.
         table, nf_args = (read_args or {}).get(tn, (tn, statement_args))
         attached_table = attached_tables.get(_sql_name(table))
+        # REQ-2099: a code table the statement joins to a table whose relationship feeds its
+        # parameters is given them by the join -- called once per argument set and landed -- even
+        # where the engine would attach it (REQ-2267): an attached read takes its arguments only
+        # from the statement's own conditions, which a fed join does not hold.
+        attached_feed = (
+            _feed_of(state, ctx, attached_table, table_ids, nf_args)
+            if attached_table is not None
+            else None
+        )
+        if attached_feed is not None:
+            assert attached_table is not None and role_id is not None
+            missing = _missing_parameters(params_of, table, None, nf_args, ctx, attached_feed)
+            if missing:
+                _refuse_or_drop(exec_sql, tn, missing, dropped_tables)
+                continue
+            await _mat_fed_table(
+                tn,
+                attached_table,
+                attached_feed,
+                role_id,
+                state,
+                cache_rewrites,
+                values_cte_entries,
+                nf_args,
+            )
+            continue
         if attached_table is not None:
             # REQ-2100: read from its code, DIRECT or by the engine attaching its host: its
             # parameters' conditions are left in the statement, whose arguments they are.

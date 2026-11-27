@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useMemo, useState } from "react";
+import { PanelBody } from "../../components/list/PanelBody";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { useTranslation } from "react-i18next";
 import {
@@ -193,7 +194,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
   if (created) {
     const kindLabel = t(`modelingForm.${created.kind}`);
     return (
-      <Stack gap="md" data-testid="modeling-created">
+      <PanelBody data-testid="modeling-created">
         <Alert color="green" title={t("modelingForm.createdTitle", { name: created.name })}>
           <Stack gap="xs">
             <Text size="sm">
@@ -237,255 +238,261 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
             {t("modelingForm.createAnother")}
           </Button>
         </Group>
-      </Stack>
+      </PanelBody>
     );
   }
 
   return (
-    <FormLayout>
-      {/* What is being modelled decides the fields that follow, so it comes first. */}
-      <FormField size="medium" help={t("modelingForm.kindHelp")}>
-        <Input.Wrapper label={t("modelingForm.kindLabel")}>
-          <SegmentedControl
-            // The width of its field, so its label stands above it as a box's does.
-            fullWidth
-            data-testid="modeling-kind"
-            value={kind}
-            onChange={(v) => setKind(v as "entity" | "fact")}
-            data={[
-              { value: "entity", label: t("modelingForm.entity") },
-              { value: "fact", label: t("modelingForm.fact") },
-            ]}
-          />
-        </Input.Wrapper>
-      </FormField>
-      {error && (
-        <FormField size="full">
-          <Alert color="red" data-testid="modeling-error">
-            {error}
-          </Alert>
+    <PanelBody>
+      <FormLayout>
+        {/* What is being modelled decides the fields that follow, so it comes first. */}
+        <FormField size="medium" help={t("modelingForm.kindHelp")}>
+          <Input.Wrapper label={t("modelingForm.kindLabel")}>
+            <SegmentedControl
+              // The width of its field, so its label stands above it as a box's does.
+              fullWidth
+              data-testid="modeling-kind"
+              value={kind}
+              onChange={(v) => setKind(v as "entity" | "fact")}
+              data={[
+                { value: "entity", label: t("modelingForm.entity") },
+                { value: "fact", label: t("modelingForm.fact") },
+              ]}
+            />
+          </Input.Wrapper>
         </FormField>
-      )}
-      <FormField size="medium" help={t("modelingForm.nameHelp")}>
-        <TextInput
-          label={t("modelingForm.nameLabel")}
-          required
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder={kind === "entity" ? "Customer" : "Sales"}
-          data-testid="modeling-name"
-        />
-      </FormField>
-      <FormField size="long" help={t("modelingForm.sourceHelp")}>
-        <Select
-          label={t("modelingForm.sourceLabel")}
-          required
-          searchable
-          data={sourceOptions}
-          value={source}
-          onChange={setSource}
-          placeholder={kind === "entity" ? "raw.customers" : "raw.orders"}
-          comboboxProps={{ withinPortal: true }}
-          data-testid="modeling-source"
-        />
-      </FormField>
-      <FormField size="medium" help={t("modelingForm.domainHelp")}>
-        <Select
-          label={t("modelingForm.domainLabel")}
-          required
-          data={assignableDomainIds(domains.map((d) => d.id))}
-          value={domainId}
-          onChange={(v) => setDomainId(v ?? "")}
-          comboboxProps={{ withinPortal: true }}
-          data-testid="modeling-domain"
-        />
-      </FormField>
-      {kind === "entity" ? (
-        <>
-          <FormField size="long" help={t("modelingForm.keyHelp")} hint={t("modelingForm.keyHint")}>
-            <MultiSelect
-              label={t("tableEditForm.businessKeyLabel")}
-              required
-              searchable
-              data={keyColumnOptions}
-              value={key}
-              onChange={setKey}
-              disabled={noSource}
-              placeholder={noSource ? t("modelingForm.selectSourceFirst") : "id"}
-              comboboxProps={{ withinPortal: true }}
-              data-testid="modeling-key"
-            />
+        {error && (
+          <FormField size="full">
+            <Alert color="red" data-testid="modeling-error">
+              {error}
+            </Alert>
           </FormField>
-          <FormField size="long" help={t("modelingForm.attributesHelp")}>
-            <MultiSelect
-              label={t("modelingForm.attributesLabel")}
-              searchable
-              data={allColumnOptions}
-              value={attributes}
-              onChange={setAttributes}
-              disabled={noSource}
-              placeholder={noSource ? t("modelingForm.selectSourceFirst") : "name, region, tier"}
-              comboboxProps={{ withinPortal: true }}
-              data-testid="modeling-attributes"
+        )}
+        <FormField size="medium" help={t("modelingForm.nameHelp")}>
+          <TextInput
+            label={t("modelingForm.nameLabel")}
+            required
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+            placeholder={kind === "entity" ? "Customer" : "Sales"}
+            data-testid="modeling-name"
+          />
+        </FormField>
+        <FormField size="long" help={t("modelingForm.sourceHelp")}>
+          <Select
+            label={t("modelingForm.sourceLabel")}
+            required
+            searchable
+            data={sourceOptions}
+            value={source}
+            onChange={setSource}
+            placeholder={kind === "entity" ? "raw.customers" : "raw.orders"}
+            comboboxProps={{ withinPortal: true }}
+            data-testid="modeling-source"
+          />
+        </FormField>
+        <FormField size="medium" help={t("modelingForm.domainHelp")}>
+          <Select
+            label={t("modelingForm.domainLabel")}
+            required
+            data={assignableDomainIds(domains.map((d) => d.id))}
+            value={domainId}
+            onChange={(v) => setDomainId(v ?? "")}
+            comboboxProps={{ withinPortal: true }}
+            data-testid="modeling-domain"
+          />
+        </FormField>
+        {kind === "entity" ? (
+          <>
+            <FormField
+              size="long"
+              help={t("modelingForm.keyHelp")}
+              hint={t("modelingForm.keyHint")}
+            >
+              <MultiSelect
+                label={t("tableEditForm.businessKeyLabel")}
+                required
+                searchable
+                data={keyColumnOptions}
+                value={key}
+                onChange={setKey}
+                disabled={noSource}
+                placeholder={noSource ? t("modelingForm.selectSourceFirst") : "id"}
+                comboboxProps={{ withinPortal: true }}
+                data-testid="modeling-key"
+              />
+            </FormField>
+            <FormField size="long" help={t("modelingForm.attributesHelp")}>
+              <MultiSelect
+                label={t("modelingForm.attributesLabel")}
+                searchable
+                data={allColumnOptions}
+                value={attributes}
+                onChange={setAttributes}
+                disabled={noSource}
+                placeholder={noSource ? t("modelingForm.selectSourceFirst") : "name, region, tier"}
+                comboboxProps={{ withinPortal: true }}
+                data-testid="modeling-attributes"
+              />
+            </FormField>
+            {!noSource && (
+              <FormField size="full">
+                <Button
+                  variant="subtle"
+                  size="compact-xs"
+                  w="fit-content"
+                  onClick={() => setAttributes(columns.map((c) => c.columnName))}
+                  data-testid="modeling-attributes-all"
+                >
+                  {t("modelingForm.selectAll")}
+                </Button>
+              </FormField>
+            )}
+            <TimeTravelSection
+              choice={historyChoice}
+              value={{ businessKey: key, validTime, recordedTime }}
+              columns={columns.map((c) => c.columnName)}
+              onChange={(next) => {
+                setValidTime(next.validTime);
+                setRecordedTime(next.recordedTime);
+              }}
+              locked={false}
+              withBusinessKey={false}
             />
-          </FormField>
-          {!noSource && (
+          </>
+        ) : (
+          <>
+            <FormField
+              size="long"
+              help={t("modelingForm.grainHelp")}
+              hint={t("modelingForm.keyHint")}
+            >
+              <MultiSelect
+                label={t("modelingForm.grainLabel")}
+                required
+                searchable
+                data={keyColumnOptions}
+                value={grain}
+                onChange={setGrain}
+                disabled={noSource}
+                placeholder={noSource ? t("modelingForm.selectSourceFirst") : "order_id"}
+                comboboxProps={{ withinPortal: true }}
+                data-testid="modeling-grain"
+              />
+            </FormField>
+            <FormField
+              size="long"
+              help={t("modelingForm.measuresHelp")}
+              hint={t("modelingForm.measuresHint")}
+            >
+              <MultiSelect
+                label={t("modelingForm.measuresLabel")}
+                searchable
+                data={numericColumnOptions}
+                value={Object.keys(measures)}
+                onChange={(cols) =>
+                  setMeasures((prev) => {
+                    const next: Record<string, string> = {};
+                    for (const c of cols) next[c] = prev[c] ?? "sum";
+                    return next;
+                  })
+                }
+                disabled={noSource}
+                placeholder={noSource ? t("modelingForm.selectSourceFirst") : "amount, quantity"}
+                comboboxProps={{ withinPortal: true }}
+                data-testid="modeling-measures"
+              />
+            </FormField>
+            {Object.keys(measures).map((col) => (
+              // How each chosen measure is aggregated: a short field under the column's name.
+              <FormField size="short" key={col}>
+                <Select
+                  label={col}
+                  data={_AGGS.map((a) => ({ value: a, label: a }))}
+                  value={measures[col]}
+                  onChange={(v) => setMeasures((prev) => ({ ...prev, [col]: v ?? "sum" }))}
+                  comboboxProps={{ withinPortal: true }}
+                  allowDeselect={false}
+                  data-testid={`modeling-measure-agg-${col}`}
+                />
+              </FormField>
+            ))}
+            <FormField size="full">
+              {/* In the label slot, so it is the size and weight of the form's other labels. */}
+              <Input.Label component="div">
+                <FieldLabel
+                  text={t("modelingForm.dimensionsLabel")}
+                  help={t("modelingForm.dimensionsHelp")}
+                />
+              </Input.Label>
+            </FormField>
+            {dimensions.map((dim, i) => (
+              // One dimension of the list: its two boxes share the row, the remove level with them.
+              <FieldGroup row className="form-field-group--bare" key={i}>
+                <FormField size="medium">
+                  <Select
+                    placeholder={t("modelingForm.dimensionEntity")}
+                    searchable
+                    data={entityOptions}
+                    value={dim.entity || null}
+                    onChange={(v) =>
+                      setDimensions((prev) =>
+                        prev.map((d, j) => (j === i ? { ...d, entity: v ?? "" } : d)),
+                      )
+                    }
+                    comboboxProps={{ withinPortal: true }}
+                    data-testid={`modeling-dim-entity-${i}`}
+                  />
+                </FormField>
+                <FormField size="medium">
+                  <Select
+                    placeholder={t("modelingForm.dimensionVia")}
+                    searchable
+                    data={allColumnOptions}
+                    value={dim.via || null}
+                    onChange={(v) =>
+                      setDimensions((prev) =>
+                        prev.map((d, j) => (j === i ? { ...d, via: v ?? "" } : d)),
+                      )
+                    }
+                    disabled={noSource}
+                    comboboxProps={{ withinPortal: true }}
+                    data-testid={`modeling-dim-via-${i}`}
+                  />
+                </FormField>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  onClick={() => setDimensions((prev) => prev.filter((_, j) => j !== i))}
+                  data-testid={`modeling-dim-remove-${i}`}
+                >
+                  <Trash2 size={16} />
+                </ActionIcon>
+              </FieldGroup>
+            ))}
             <FormField size="full">
               <Button
-                variant="subtle"
-                size="compact-xs"
-                w="fit-content"
-                onClick={() => setAttributes(columns.map((c) => c.columnName))}
-                data-testid="modeling-attributes-all"
+                variant="light"
+                size="xs"
+                onClick={() => setDimensions((prev) => [...prev, { entity: "", via: "" }])}
+                data-testid="modeling-dim-add"
               >
-                {t("modelingForm.selectAll")}
+                {t("modelingForm.addDimension")}
               </Button>
             </FormField>
-          )}
-          <TimeTravelSection
-            choice={historyChoice}
-            value={{ businessKey: key, validTime, recordedTime }}
-            columns={columns.map((c) => c.columnName)}
-            onChange={(next) => {
-              setValidTime(next.validTime);
-              setRecordedTime(next.recordedTime);
-            }}
-            locked={false}
-            withBusinessKey={false}
-          />
-        </>
-      ) : (
-        <>
-          <FormField
-            size="long"
-            help={t("modelingForm.grainHelp")}
-            hint={t("modelingForm.keyHint")}
-          >
-            <MultiSelect
-              label={t("modelingForm.grainLabel")}
-              required
-              searchable
-              data={keyColumnOptions}
-              value={grain}
-              onChange={setGrain}
-              disabled={noSource}
-              placeholder={noSource ? t("modelingForm.selectSourceFirst") : "order_id"}
-              comboboxProps={{ withinPortal: true }}
-              data-testid="modeling-grain"
-            />
-          </FormField>
-          <FormField
-            size="long"
-            help={t("modelingForm.measuresHelp")}
-            hint={t("modelingForm.measuresHint")}
-          >
-            <MultiSelect
-              label={t("modelingForm.measuresLabel")}
-              searchable
-              data={numericColumnOptions}
-              value={Object.keys(measures)}
-              onChange={(cols) =>
-                setMeasures((prev) => {
-                  const next: Record<string, string> = {};
-                  for (const c of cols) next[c] = prev[c] ?? "sum";
-                  return next;
-                })
-              }
-              disabled={noSource}
-              placeholder={noSource ? t("modelingForm.selectSourceFirst") : "amount, quantity"}
-              comboboxProps={{ withinPortal: true }}
-              data-testid="modeling-measures"
-            />
-          </FormField>
-          {Object.keys(measures).map((col) => (
-            // How each chosen measure is aggregated: a short field under the column's name.
-            <FormField size="short" key={col}>
-              <Select
-                label={col}
-                data={_AGGS.map((a) => ({ value: a, label: a }))}
-                value={measures[col]}
-                onChange={(v) => setMeasures((prev) => ({ ...prev, [col]: v ?? "sum" }))}
-                comboboxProps={{ withinPortal: true }}
-                allowDeselect={false}
-                data-testid={`modeling-measure-agg-${col}`}
-              />
-            </FormField>
-          ))}
-          <FormField size="full">
-            {/* In the label slot, so it is the size and weight of the form's other labels. */}
-            <Input.Label component="div">
-              <FieldLabel
-                text={t("modelingForm.dimensionsLabel")}
-                help={t("modelingForm.dimensionsHelp")}
-              />
-            </Input.Label>
-          </FormField>
-          {dimensions.map((dim, i) => (
-            // One dimension of the list: its two boxes share the row, the remove level with them.
-            <FieldGroup row className="form-field-group--bare" key={i}>
-              <FormField size="medium">
-                <Select
-                  placeholder={t("modelingForm.dimensionEntity")}
-                  searchable
-                  data={entityOptions}
-                  value={dim.entity || null}
-                  onChange={(v) =>
-                    setDimensions((prev) =>
-                      prev.map((d, j) => (j === i ? { ...d, entity: v ?? "" } : d)),
-                    )
-                  }
-                  comboboxProps={{ withinPortal: true }}
-                  data-testid={`modeling-dim-entity-${i}`}
-                />
-              </FormField>
-              <FormField size="medium">
-                <Select
-                  placeholder={t("modelingForm.dimensionVia")}
-                  searchable
-                  data={allColumnOptions}
-                  value={dim.via || null}
-                  onChange={(v) =>
-                    setDimensions((prev) =>
-                      prev.map((d, j) => (j === i ? { ...d, via: v ?? "" } : d)),
-                    )
-                  }
-                  disabled={noSource}
-                  comboboxProps={{ withinPortal: true }}
-                  data-testid={`modeling-dim-via-${i}`}
-                />
-              </FormField>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                onClick={() => setDimensions((prev) => prev.filter((_, j) => j !== i))}
-                data-testid={`modeling-dim-remove-${i}`}
-              >
-                <Trash2 size={16} />
-              </ActionIcon>
-            </FieldGroup>
-          ))}
-          <FormField size="full">
-            <Button
-              variant="light"
-              size="xs"
-              onClick={() => setDimensions((prev) => [...prev, { entity: "", via: "" }])}
-              data-testid="modeling-dim-add"
-            >
-              {t("modelingForm.addDimension")}
+          </>
+        )}
+        {/* Creating the model is not a save of this form: it keeps its word, first; Cancel follows. */}
+        <FormFooter
+          panel
+          onCancel={onCancel}
+          action={
+            <Button onClick={submit} loading={busy} data-testid="modeling-submit">
+              {t("modelingForm.submit")}
             </Button>
-          </FormField>
-        </>
-      )}
-      {/* Creating the model is not a save of this form: it keeps its word, first; Cancel follows. */}
-      <FormFooter
-        panel
-        onCancel={onCancel}
-        action={
-          <Button onClick={submit} loading={busy} data-testid="modeling-submit">
-            {t("modelingForm.submit")}
-          </Button>
-        }
-      />
-    </FormLayout>
+          }
+        />
+      </FormLayout>
+    </PanelBody>
   );
 }

@@ -1002,6 +1002,13 @@
       "reason_required": "Une suggestion indique sa raison.",
       "no_recipient": "Le domaine {{domain}} n'a ni propriétaire de produit de données ni data steward pour recevoir une suggestion.",
       "not_a_recipient": "Les suggestions du domaine {{domain}} sont lues par ses data stewards et propriétaires de produits de données."
+    },
+    "column_rules": {
+      "database_unavailable": "Le plan de contrôle est injoignable",
+      "right_not_everywhere": "Une règle de colonne s'applique à tous les domaines ; elle exige {{right}} dans tous les domaines",
+      "invalid": "La règle de colonne n'est pas valide : {{reason}}",
+      "not_found": "Aucune règle de colonne {{rule}}",
+      "tag_not_found": "Tag {{tag}} introuvable"
     }
   }
 }

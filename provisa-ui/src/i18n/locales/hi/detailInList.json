@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} सूची में नहीं है",
+    "why": "लिंक इसका नाम देता है, लेकिन {{reasons}}।",
+    "bySearch": "खोज “{{search}}” इसे बाहर रखती है",
+    "byFilter": "{{filter}} फ़िल्टर इसे बाहर रखता है",
+    "byDomain": "इसका डोमेन ({{domains}}) दृश्य में नहीं है",
+    "clearSearch": "खोज साफ़ करें",
+    "clearFilter": "{{filter}} फ़िल्टर हटाएँ",
+    "addDomain": "{{domains}} को दृश्य में जोड़ें",
+    "showAll": "इसे सूची में दिखाएँ",
+    "dismiss": "खारिज करें",
+    "byTab": "{{tab}} टैब इसे सूचीबद्ध नहीं करता",
+    "openTab": "{{tab}} टैब दिखाएँ"
+  }
+}

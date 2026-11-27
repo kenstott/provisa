@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "Este comando no declara columnas de salida.",
+    "hint": "Una columna sin ningún rol listado la leen los roles a los que está asignado el comando.",
+    "governanceTitle": "Etiquetas, términos y clasificación",
+    "editTags": "Editar etiquetas en la página Etiquetas",
+    "editTerms": "Editar términos en el glosario",
+    "colColumn": "Columna",
+    "colTags": "Etiquetas",
+    "colTerm": "Término del glosario",
+    "colClassification": "Clasificación"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Spaltenregeln",
+    "hint": "Jede Regel verbirgt oder maskiert jede Spalte mit diesem Schlüssel für eine Rolle und die von ihr erbenden Rollen, Tabellenspalten ebenso wie Ausgabespalten eines Befehls. Die eigene Sichtbarkeit und Maskierung einer Spalte gelten weiterhin; das strengere Ergebnis gilt.",
+    "none": "Keine Spaltenregel.",
+    "colRole": "Rolle",
+    "colEffect": "Wirkung",
+    "hidden": "Verborgen",
+    "maskedCompletely": "Vollständig maskiert",
+    "maskedAs": "Maskiert: {{mask}}",
+    "remove": "Regel für {{role}} entfernen",
+    "roleLabel": "Rolle",
+    "actionLabel": "Wirkung",
+    "actionHide": "Verbergen",
+    "actionMask": "Maskieren",
+    "maskLabel": "Maske",
+    "maskComplete": "Vollständig maskiert",
+    "constantLabel": "Konstanter Wert",
+    "patternLabel": "Muster",
+    "replaceLabel": "Ersetzung",
+    "add": "Regel hinzufügen"
+  }
+}

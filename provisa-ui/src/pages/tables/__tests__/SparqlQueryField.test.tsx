@@ -14,6 +14,12 @@
 
 import { useEffect, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { fireEvent, render, renderInForm, screen, waitFor } from "../../../test-utils/render";
 import type { RegisteredTable, Relationship, Source } from "../../../types/admin";
 import { draftColumn } from "../draftTable";

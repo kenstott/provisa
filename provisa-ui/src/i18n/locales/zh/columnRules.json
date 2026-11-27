@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "列规则",
+    "hint": "每条规则对某个角色及继承它的角色隐藏或脱敏带有此键的每一列，表的列和命令的输出列同样适用。列自身的可见性和脱敏设置仍然生效；以更严格的结果为准。",
+    "none": "没有列规则。",
+    "colRole": "角色",
+    "colEffect": "效果",
+    "hidden": "已隐藏",
+    "maskedCompletely": "完全脱敏",
+    "maskedAs": "已脱敏：{{mask}}",
+    "remove": "移除 {{role}} 的规则",
+    "roleLabel": "角色",
+    "actionLabel": "效果",
+    "actionHide": "隐藏",
+    "actionMask": "脱敏",
+    "maskLabel": "脱敏方式",
+    "maskComplete": "完全脱敏",
+    "constantLabel": "常量值",
+    "patternLabel": "模式",
+    "replaceLabel": "替换",
+    "add": "添加规则"
+  }
+}

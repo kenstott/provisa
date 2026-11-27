@@ -245,3 +245,21 @@ async def test_a_masked_value_reaches_the_code_masked():
 async def test_a_read_without_the_source_is_refused_before_the_code_runs():
     with pytest.raises(ValueError, match=r"requires the parameter\(s\)"):
         await _scored('SELECT "score" FROM "public"."churn_risk"', [RISK])
+
+
+async def test_a_code_table_the_engine_attaches_is_still_fed_by_the_join():
+    """A dev-mode source's table the engine attaches through its sidecar (REQ-2267) is fed by the
+    relationship like any other code table: the join gives its parameters, nothing in the
+    statement does, so it is called once per customer rather than refused for them."""
+    with patch("provisa.codesource.attach.attached", return_value=True):
+        called, put_in, _ = await _scored(_JOINED, [CUSTOMERS, RISK])
+    assert [c["customer_id"] for c in called] == [1, 2, 3, 4]
+    assert set(put_in) == {"churn_risk"}
+
+
+async def test_an_attached_code_table_read_without_the_source_is_still_refused():
+    with (
+        patch("provisa.codesource.attach.attached", return_value=True),
+        pytest.raises(ValueError, match=r"requires the parameter\(s\)"),
+    ):
+        await _scored('SELECT "score" FROM "public"."churn_risk"', [RISK])

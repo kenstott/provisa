@@ -76,6 +76,10 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver a
 
 `firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types that DuckDB community extensions reach in place when DuckDB is the active engine. They have no direct driver and no federated connector.
 
+#### `oracle`
+
+Oracle results are read as Arrow through python-oracledb (version 26.1 or later is required). Column types that python-oracledb has no Arrow form for are cast in the database: `ROWID` and `UROWID` read as text, `JSON` reads as json, and `XMLTYPE` reads as text. Object-type, BFILE and nested-cursor columns are refused by name. To read a refused column, select it cast to a type it reads (for example its text).
+
 #### `saphana`
 
 SAP HANA is read through its own driver and replicated into the active engine's store, so it is reachable on every engine. The form takes host, port (default 39015), username, password and database; on a multi-tenant system the database names the tenant. Register Table lists the schemas the user can read, with HANA's system schemas left out.
@@ -1345,7 +1349,7 @@ Snowflake, Databricks, and ClickHouse can be registered as named sources indepen
 
 Once registered, the warehouse is read through the source's DirectDriver, which lands a replica in the active engine's materialization store, and the query runs against that replica. On the usual direct path (asyncpg, aiomysql) the engine is skipped entirely. Here the engine still runs the query, but against a local replica instead of going over the wire to the warehouse on every request.
 
-Reads are Arrow-native where the warehouse supports it: Databricks uses Cloud Fetch, Snowflake uses `fetch_arrow_table`, and ClickHouse uses the native columnar HTTP interface.
+Reads are Arrow-native where the warehouse supports it: Databricks uses Cloud Fetch, Snowflake uses `fetch_arrow_table`, ClickHouse reads through its native Arrow interface. ClickHouse server 26 or later is required; an older server refuses UUID columns in Arrow output and is refused at connect.
 
 Extended connection parameters that the standard `host`/`port`/`username`/`password` fields cannot carry go in `federation_hints`:
 

@@ -57,11 +57,11 @@ import { ListRow } from "../../list/ListTable";
 import { SortGroupTable } from "../../list/SortGroupTable";
 import { SplitPane } from "../../list/SplitPane";
 import { useRememberedDetail } from "../../list/useDetailParam";
+import { detailListOf, filterNarrowing, searchNarrowing, shownBy } from "../../list/leftOut";
 import { useUrlFilter } from "../../list/useUrlFilter";
 import { CollapsibleItem, Collapsibles } from "../../collapsible/Collapsible";
 import { PageTitle } from "../../PageTitle";
 import { FilterInput } from "../FilterInput";
-import { matchesQuery } from "../../../lib/searchItems";
 import { EntryPanel } from "./EntryPanel";
 import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
@@ -93,7 +93,54 @@ export function SyncingTab() {
       { replace: true },
     );
 
-  const detail = useRememberedDetail("sync", s === null ? null : s.entries.map((e) => e.id));
+  // Whether an entry publishes one of the products the list is narrowed to.
+  const publishesChosen = (e: SyncEntry) =>
+    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
+  const lastRunLabel = (e: SyncEntry) =>
+    e.last_run === null
+      ? ""
+      : e.last_run.ok
+        ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
+        : t("syncingTab.publishPartial", {
+            count: e.last_run.total_published,
+            failed: e.last_run.errors.length,
+          });
+  // Every text an entry's row shows, the provider by the name `loaded` gives it.
+  const entryRowTexts = (loaded: SyncingState) => {
+    const beta = new Set(loaded.beta_providers);
+    return (e: SyncEntry) => [
+      e.id,
+      t(`syncingTab.direction_${e.direction}`),
+      e.provider,
+      e.provider ? exportProviderName(e.provider, e.provider, t, beta) : "",
+      e.domains.join(", "),
+      lastRunLabel(e),
+    ];
+  };
+  // REQ-2277 rule 9: an entry is open only while the list -- narrowed to the products chosen and
+  // by the search -- shows its row. Until the entries load there is no list to search.
+  const narrowings = [
+    filterNarrowing<SyncEntry>(
+      t,
+      productFilter.length > 0,
+      t("syncingTab.productFilterLabel"),
+      publishesChosen,
+      () => setProductFilter([]),
+    ),
+    s === null
+      ? null
+      : searchNarrowing<SyncEntry>(t, search, () => setSearch(""), entryRowTexts(s)),
+  ];
+  const detail = useRememberedDetail(
+    "sync",
+    detailListOf(
+      t,
+      s === null ? null : s.entries,
+      (e) => e.id,
+      (e) => e.id,
+      narrowings,
+    ),
+  );
   const openEntry = (id: string) => {
     setCreating(null);
     detail.open(id);
@@ -209,31 +256,10 @@ export function SyncingTab() {
       ...productFilter,
     ]),
   ].sort();
-  const publishesChosen = (e: SyncEntry) =>
-    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
-
-  // Every text an entry's row shows.
-  const lastRunLabel = (e: SyncEntry) =>
-    e.last_run === null
-      ? ""
-      : e.last_run.ok
-        ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
-        : t("syncingTab.publishPartial", {
-            count: e.last_run.total_published,
-            failed: e.last_run.errors.length,
-          });
-  const entryRowTexts = (e: SyncEntry) => [
-    e.id,
-    t(`syncingTab.direction_${e.direction}`),
-    e.provider,
-    e.provider ? providerName(e.provider) : "",
-    e.domains.join(", "),
-    lastRunLabel(e),
-  ];
   const section = (type: SyncEntryType) => {
     const ofType = s.entries.filter((e) => e.type === type);
     const chosen = ofType.filter(publishesChosen);
-    const rows = chosen.filter((e) => matchesQuery(entryRowTexts(e), search));
+    const rows = shownBy(ofType, narrowings);
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
@@ -354,6 +380,7 @@ export function SyncingTab() {
         onChange={setProductFilter}
       />
       <SplitPane
+        outOfList={detail.outOfList}
         testId="syncing-split"
         storageKey="provisa.syncing.detailWidth"
         title={panelTitle}

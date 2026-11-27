@@ -3058,3 +3058,148 @@ def test_zaychik_go_offline_logs_its_fetch_and_retries_through_the_resolver():
     ), props
     # No mirror or alternate repository: artifacts come only from Maven Central.
     assert "mirror" not in text.lower() and "settings.xml" not in text, text
+
+
+# The runner image ships packages.microsoft.com as an apt source. A bare `apt-get update` fetches
+# it, and a 403 there (run 45900004821) fails any step, though none installs from it. Every
+# update goes through scripts/ci/apt-update.sh, which drops the image's Microsoft lists first; the
+# one step that installs a Microsoft package (the mssql-odbc action) refreshes only its own list.
+_APT_UPDATE_HELPER = REPO / "scripts" / "ci" / "apt-update.sh"
+_APT_UPDATE = re.compile(r"\bapt(?:-get)?\b[^\n]*\bupdate\b")
+
+
+def _run_blocks(node: object) -> list[str]:
+    """Every `run:` command in a workflow or action, at any depth (descriptions and inputs are prose)."""
+    if isinstance(node, dict):
+        found = [node["run"]] if isinstance(node.get("run"), str) else []
+        return found + [r for v in node.values() for r in _run_blocks(v)]
+    if isinstance(node, list):
+        return [r for v in node for r in _run_blocks(v)]
+    return []
+
+
+def _command_text(path: Path) -> str:
+    """The commands of a workflow, action or script: a YAML file's `run:` blocks only, comment lines
+    dropped, `\\` continuations joined."""
+    text = path.read_text()
+    if path.suffix in (".yml", ".yaml"):
+        text = "\n".join(_run_blocks(yaml.safe_load(text)))
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    return re.sub(r"\\\n\s*", " ", "\n".join(lines))
+
+
+def test_no_apt_get_update_runs_with_the_microsoft_source_present():
+    sources = [*WORKFLOWS, *ACTIONS, *sorted((REPO / "scripts" / "ci").rglob("*.sh"))]
+    offenders = []
+    for path in sources:
+        if path == _APT_UPDATE_HELPER:
+            continue
+        for line in _command_text(path).splitlines():
+            if not _APT_UPDATE.search(line) or "apt-update.sh" in line:
+                continue
+            if "Dir::Etc::sourceparts=-" in line and "Dir::Etc::sourcelist=" in line:
+                continue  # refreshes only the one list it names
+            offenders.append(f"{path.relative_to(REPO)}: {line.strip()}")
+    assert not offenders, (
+        "apt-get update with the runner image's Microsoft source present:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_apt_update_helper_drops_the_microsoft_source_before_it_updates():
+    text = _command_text(_APT_UPDATE_HELPER)
+    removal = text.index("microsoft-prod.list")
+    assert r"packages\.microsoft\.com" in text  # the helper greps for it as a regex
+    assert removal < re.search(r"apt-get[^\n]*\bupdate\b", text).start()
+    assert os.access(_APT_UPDATE_HELPER, os.X_OK)
+
+
+# ---- the zaychik image: loaded by every lane that starts it, built only when absent ----------
+
+_ZAYCHIK_ACTION = "./.github/actions/zaychik-image"
+
+
+def _action_phase(step: dict) -> str | None:
+    if step.get("uses") != _ZAYCHIK_ACTION:
+        return None
+    return (step.get("with") or {}).get("phase")
+
+
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
+
+
+def test_no_compose_service_builds_on_every_up_and_zaychik_builds_only_when_missing():
+    """Run 45466227019: a NixOS core lane rebuilt zaychik (mvn go-offline) and Maven Central
+    answered 429. `pull_policy: build` is a rebuild on every `up`; zaychik is `missing`: the image
+    a lane loaded is used, the build runs only when it is absent."""
+    for path in sorted(REPO.glob("docker-compose*.yml")):
+        for svc, body in (yaml.safe_load(path.read_text()).get("services") or {}).items():
+            assert body.get("pull_policy") != "build", f"{path.name}:{svc}"
+    core = yaml.safe_load((REPO / "docker-compose.core.yml").read_text())["services"]["zaychik"]
+    assert core["pull_policy"] == "missing"
+    assert core["image"] == "zaychik:latest"
+
+
+def test_the_trino_stack_script_builds_zaychik_only_when_the_image_is_absent():
+    text = (REPO / "scripts/ci/lanes/trino-stack-prepare.sh").read_text()
+    lines = [
+        ln.strip() for ln in text.splitlines() if "build zaychik" in ln and ln.strip()[0] != "#"
+    ]
+    assert len(lines) == 1, lines
+    assert lines[0].startswith("docker image inspect zaychik:latest"), lines[0]
+    assert "||" in lines[0], lines[0]
+
+
+def test_every_lane_that_starts_the_trino_stack_loads_the_primed_zaychik_image():
+    """A caller of lane.yml that mounts the Trino plugins starts the core stack: it passes
+    zaychik-image and needs a job that primes the image."""
+    seen = 0
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for name, job in jobs.items():
+            given = job.get("with") or {}
+            if (
+                job.get("uses") != "./.github/workflows/lane.yml"
+                or given.get("trino-plugins") is not True
+            ):
+                continue
+            seen += 1
+            where = f"{path.name}:{name}"
+            assert given.get("zaychik-image") is True, where
+            needs = job.get("needs") or []
+            needs = [needs] if isinstance(needs, str) else needs
+            primed = [
+                n
+                for n in needs
+                if any(_action_phase(s) == "prime" for s in (jobs[n].get("steps") or []))
+            ]
+            assert primed, f"{where} needs no job that primes the zaychik image"
+    assert seen >= 4
+
+
+def test_a_job_that_runs_the_trino_stack_script_restores_the_zaychik_image_first():
+    def order(steps):
+        return [
+            ("restore" if _action_phase(s) == "restore" else "run")
+            for s in steps
+            if _action_phase(s) == "restore" or "trino-stack-prepare.sh" in (s.get("run") or "")
+        ]
+
+    jobs = _workflow("conformance-functions.yml")["jobs"]["probe"]["steps"]
+    assert order(jobs) == ["restore", "run"]
+    assert [_action_phase(s) for s in jobs if _action_phase(s)] == ["prime", "restore"]
+
+
+def test_the_nixos_lane_loads_the_primed_zaychik_image_into_the_guest():
+    jobs = _workflow("nixos.yml")["jobs"]
+    lane = jobs["lane"]
+    needs = lane["needs"]
+    assert any(
+        _action_phase(s) == "prime" for n in needs if n in jobs for s in jobs[n].get("steps") or []
+    ), needs
+    steps = lane["steps"]
+    texts = [(s.get("run") or "") for s in steps]
+    restore = next(i for i, s in enumerate(steps) if _action_phase(s) == "restore")
+    load = next(i for i, t in enumerate(texts) if "docker load" in t and "vm-run" in t)
+    run_lane = next(i for i, t in enumerate(texts) if "run_lane.py" in t)
+    assert restore < load < run_lane

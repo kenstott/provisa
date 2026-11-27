@@ -11,7 +11,13 @@
 // An RLS rule's panel shows every value of the rule under its form's labels: what it applies to
 // and that one's domain, the table or action it names, the role and the filter.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { render, screen, within } from "../../../test-utils/render";
 import type { RLSRule } from "../../../types/admin";
 import { RlsRuleRead } from "../RlsRuleRead";
@@ -48,6 +54,15 @@ describe("an RLS rule's read view", () => {
       ["Filter Expression", "region = 'east'"],
       ["Tags", ""],
     ]);
+  });
+
+  // REQ-2277 rule 6: the domain, table and role it names are links to their panels.
+  it("links the domain, table and role it names", () => {
+    render(<RlsRuleRead rule={rule({})} domain="sales" tableLabel="sales.orders" />);
+    const href = (name: string) => screen.getByRole("link", { name }).getAttribute("href");
+    expect(href("sales")).toBe("/admin/domains?domain=sales");
+    expect(href("sales.orders")).toBe("/tables?table=7");
+    expect(href("analyst")).toBe("/security/roles?role=analyst");
   });
 
   it("shows a domain rule with its domain, and an action rule with its action", () => {

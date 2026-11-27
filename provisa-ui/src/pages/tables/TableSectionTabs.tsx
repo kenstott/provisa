@@ -27,7 +27,7 @@ export function TableSectionTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <Tabs value={value} onChange={(v) => v && onChange(v as TableSection)} mb="sm">
+    <Tabs value={value} onChange={(v) => v && onChange(v as TableSection)}>
       <Tabs.List aria-label={t("tableSections.label")}>
         {TABLE_SECTIONS.map((section) => {
           const count = errors[section] ?? 0;

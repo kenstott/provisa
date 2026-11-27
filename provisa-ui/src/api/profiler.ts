@@ -361,6 +361,24 @@ export const forgetClassification = (tableId: number, physicalColumn: string, ki
     },
   );
 
+// REQ-1159 (amended 2026-11-25): a steward's classifications of a command's output columns. No profile
+// run reads a command's output, so a decision cites none (table_id and run_id are null).
+export interface CommandClassificationDecision {
+  command_name: string;
+  physical_column: string;
+  kind: string;
+  status: "accepted" | "rejected";
+  evidence: string;
+  decided_by: string | null;
+  decided_at: string;
+}
+
+export const fetchCommandClassifications = (command: string) =>
+  call<{ decisions: CommandClassificationDecision[] }>(
+    "fetchCommandClassifications",
+    `/admin/commands/${encodeURIComponent(command)}/profile-classifications`,
+  );
+
 export const fetchClassificationKinds = () =>
   call<{ kinds: ClassificationKind[] }>("fetchClassificationKinds", "/admin/classification-kinds");
 

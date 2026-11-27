@@ -843,7 +843,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["connectors"].append({**body, "name": _name_of(path)[0]})
 
         elif table == COMMANDS_DIR:
-            own, nested = _split(body, "tags", "row_policies")
+            own, nested = _split(body, "tags", "row_policies", "glossary")
             name = _name_of(path)[0]
             registry = "tracked_functions" if _FUNCTION_MARKER in own else "tracked_webhooks"
             rows[registry].append(
@@ -855,6 +855,17 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["tag_assignments"].extend(
                 _tags(nested["tags"], path, problems, command_name=name, rule_ids=command_rules)
             )
+            for ref in nested["glossary"]:  # REQ-1159: its output columns' terms
+                rows["glossary_term_refs"].append(
+                    {
+                        "command_name": name,
+                        "column_name": ref["column_name"],
+                        "term_id": resolve_term(ref["term"], path),
+                    }
+                )
+
+        elif table == "column_rules":  # REQ-2278
+            rows["column_rules"].append(_column_rule(path, body, roles, problems))
 
         elif table == "naming_rules":
             for order, rule in enumerate(body.get("rules") or [], start=1):
@@ -894,6 +905,46 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
     if problems:
         raise DeployError(problems)
     return rows
+
+
+def _column_rule(
+    path: str, body: dict[str, Any], roles: frozenset[str], problems: list[str]
+) -> dict[str, Any]:  # REQ-2278
+    """A column rule's file back into its row: its key and role are what its path names
+    (:func:`provisa.core.env_project.column_rule_path`), its action and mask its body."""
+    from pydantic import ValidationError
+
+    from provisa.core.env_project import COLUMN_RULE_KEYS
+    from provisa.core.models import ColumnRuleModel
+
+    named = _name_of(path)
+    if len(named) != 3 or named[0] not in COLUMN_RULE_KEYS:
+        problems.append(
+            f"{path!r} is not a column rule's address: column-rules/<tag|classification>/<key>/"
+            f"<role>{SUFFIX}"
+        )
+        return {}
+    kind, key, role_id = named
+    if role_id not in roles:
+        problems.append(
+            f"{path!r} is a column rule for the role {role_id!r}, which this environment does "
+            "not define"
+        )
+    try:
+        rule = ColumnRuleModel.model_validate(
+            {**body, "tag_id": None, "classification": None, COLUMN_RULE_KEYS[kind]: key}
+            | {"role_id": role_id}
+        )
+    except ValidationError as exc:
+        problems.append(f"{path!r} is not a column rule: {exc.errors()[0]['msg']}")
+        return {}
+    return {
+        "tag_id": rule.tag_id,
+        "classification": rule.classification,
+        "role_id": rule.role_id,
+        "action": rule.action,
+        "mask": None if rule.mask is None else rule.mask.model_dump(exclude_none=True),
+    }
 
 
 def _domain_id_of(path: str) -> str:
@@ -976,10 +1027,21 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
             out.append(body)
             continue
         if command_name is not None and fragment is not None:
-            problems.append(
-                f"{path!r} carries a tag on {fragment!r}, but a command has no parts a fragment "
-                f"can name; a command tag is on the command itself"
-            )
+            if not fragment.startswith("#field:"):
+                problems.append(
+                    f"{path!r} carries a tag on {fragment!r}, but the only parts of a command a "
+                    f"fragment can name are its output columns (#field:)"
+                )
+                continue
+            column = fragment[len("#field:") :]  # REQ-1159: a command's output column
+            body |= {
+                "object_type": "command_column",
+                "command_name": command_name,
+                "column_name": column,
+                "object_key": f"command_column:{command_name}:{column}",
+            }
+            body.setdefault("base_tag_id", body["tag_id"])
+            out.append(body)
             continue
         if product_id is not None and fragment is not None:
             problems.append(

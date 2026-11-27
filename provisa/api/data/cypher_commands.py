@@ -125,8 +125,13 @@ def _cell(value: Any) -> exp.Expression:
 def _declared_types(command: dict) -> dict[str, exp.DataType]:
     from provisa.core.ir_types import to_physical
 
+    from provisa.core.models import queried_name
+
+    # REQ-1159: each column under the name consumers query it by, as the governed rows carry it.
     return {
-        c["name"]: exp.DataType.build(to_physical(c["type"], "postgresql"), dialect="postgres")
+        queried_name(c): exp.DataType.build(
+            to_physical(c["type"], "postgresql"), dialect="postgres"
+        )
         for c in command.get("output_columns") or []
     }
 

@@ -9,6 +9,12 @@
     "scope_column": "עמודה",
     "scope_relationship": "קשר",
     "scope_command": "פקודה",
+    "scope_command_column": "עמודת פקודה",
+    "commandColumnsTitle": "עמודות הפלט של פקודות",
+    "commandColumnsNone": "אף פקודה אינה מצהירה על עמודות פלט.",
+    "colCommand": "פקודה",
+    "colOutputColumn": "עמודת פלט",
+    "colTags": "תגיות",
     "scope_product": "מוצר נתונים",
     "scope_term": "מונח במילון המונחים",
     "scope_rls_rule": "כלל שורה",
@@ -48,7 +54,6 @@
     "colAssignments": "שיוכים",
     "colActions": "פעולות",
     "empty": "אין תגיות לתחום זה",
-    "noMatch": "אין תגיות התואמות לסינון",
     "systemTag": "תג מערכת (לקריאה בלבד)",
     "editTag": "עריכת תגית {{id}}",
     "deleteTag": "מחיקת תגית {{id}}",
@@ -65,6 +70,7 @@
     "outsideTitle": "שיוכים מחוץ לדומיינים המורשים",
     "outsideBody": "השמירה השאירה את השיוכים האלה. הסירו את התגית מאובייקט שהיא כבר לא שייכת אליו.",
     "outsideItem": "{{kind}} {{name}}, ב-{{domains}}",
-    "templateSection": "תבנית"
+    "templateSection": "תבנית",
+    "noMatch": "אין תגיות התואמות לסינון"
   }
 }

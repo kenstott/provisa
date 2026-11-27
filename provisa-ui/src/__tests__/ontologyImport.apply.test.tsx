@@ -126,6 +126,7 @@ describe("a term's IRI", () => {
     ref_count: 0,
     table_count: 1,
     refs: [],
+    command_refs: [],
     experts: [],
     export_excluded: false,
     iri: ACCOUNT.iri,

@@ -9,6 +9,12 @@
     "scope_column": "Coluna",
     "scope_relationship": "Relacionamento",
     "scope_command": "Comando",
+    "scope_command_column": "Coluna de comando",
+    "commandColumnsTitle": "Colunas de saída dos comandos",
+    "commandColumnsNone": "Nenhum comando declara colunas de saída.",
+    "colCommand": "Comando",
+    "colOutputColumn": "Coluna de saída",
+    "colTags": "Tags",
     "scope_product": "Produto de dados",
     "scope_term": "Termo do glossário",
     "scope_rls_rule": "Regra de linha",
@@ -48,7 +54,6 @@
     "colAssignments": "Atribuições",
     "colActions": "Ações",
     "empty": "Nenhuma tag para este escopo",
-    "noMatch": "Nenhuma tag corresponde ao filtro",
     "systemTag": "Tag do sistema (somente leitura)",
     "editTag": "Editar tag {{id}}",
     "deleteTag": "Excluir tag {{id}}",
@@ -65,6 +70,7 @@
     "outsideTitle": "Atribuições fora dos domínios permitidos",
     "outsideBody": "Ao salvar, estas atribuições foram mantidas. Retire a tag de um objeto ao qual ela já não pertence.",
     "outsideItem": "{{kind}} {{name}}, em {{domains}}",
-    "templateSection": "Modelo"
+    "templateSection": "Modelo",
+    "noMatch": "Nenhuma tag corresponde ao filtro"
   }
 }

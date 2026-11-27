@@ -210,7 +210,8 @@ export function deriveReturnSchema(outputColumns: DatasetColumn[]): Record<strin
   const cols = outputColumns.filter((c) => c.name.trim() !== "");
   if (cols.length === 0) return null;
   const properties: Record<string, unknown> = {};
-  for (const c of cols) properties[c.name] = { type: irToJsonSchemaType(c.type) };
+  // REQ-1159 (amended 2026-11-25): each column under the name consumers query it by, its alias.
+  for (const c of cols) properties[c.alias || c.name] = { type: irToJsonSchemaType(c.type) };
   return { type: "array", items: { type: "object", properties } };
 }
 
