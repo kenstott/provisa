@@ -16,7 +16,6 @@ import {
   Button,
   Checkbox,
   Group,
-  Modal,
   Select,
   Stack,
   Text,
@@ -25,6 +24,8 @@ import {
   Title,
   useComputedColorScheme,
 } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
+import { FormFooter } from "../../components/form/FormLayout";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { Extension } from "@codemirror/state";
@@ -114,7 +115,7 @@ export function ViewModal({
 
   return (
     <>
-      <Modal
+      <ModalLayout
         opened={viewModal}
         onClose={() => setViewModal(false)}
         title={
@@ -123,39 +124,14 @@ export function ViewModal({
           </Title>
         }
         size="90vw"
-        styles={{ body: { display: "flex", flexDirection: "column", maxHeight: "70vh" } }}
         data-testid="view-modal"
       >
-        <Group justify="flex-end" mb="sm" style={{ flexShrink: 0 }}>
-          {viewMsg && (
-            <Text
-              size="xs"
-              c={viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)"}
-            >
-              {viewMsg}
-            </Text>
-          )}
-          <Button
-            onClick={handleSaveView}
-            disabled={viewSaving || !viewId.trim() || !viewDomainId.trim() || viewHasParams}
-            loading={viewSaving}
-            size="xs"
-            data-testid="save-view-button"
-          >
-            {viewSaving
-              ? t("sqlViewModal.saving")
-              : canCreateView
-                ? // REQ-2109: every setting of the view follows on the Views page.
-                  t("registerTableForm.continue")
-                : t("sqlViewModal.submitRequest")}
-          </Button>
-        </Group>
         {!canCreateView && (
           <Alert color="yellow" mb="sm" style={{ flexShrink: 0 }}>
             {t("sqlViewModal.noPermissionNotice")}
           </Alert>
         )}
-        <Stack gap="sm" style={{ overflow: "auto", flex: 1, paddingInlineEnd: "1rem" }}>
+        <Stack gap="sm">
           <Group gap="sm" style={{ flexShrink: 0 }} grow>
             <TextInput
               label={t("sqlViewModal.alias")}
@@ -226,8 +202,34 @@ export function ViewModal({
             />
           </Box>
         </Stack>
-      </Modal>
-      <Modal
+        <FormFooter
+          action={
+            <Button
+              onClick={handleSaveView}
+              disabled={viewSaving || !viewId.trim() || !viewDomainId.trim() || viewHasParams}
+              loading={viewSaving}
+              data-testid="save-view-button"
+            >
+              {viewSaving
+                ? t("sqlViewModal.saving")
+                : canCreateView
+                  ? // REQ-2109: every setting of the view follows on the Views page.
+                    t("registerTableForm.continue")
+                  : t("sqlViewModal.submitRequest")}
+            </Button>
+          }
+        >
+          {viewMsg && (
+            <Text
+              size="xs"
+              c={viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)"}
+            >
+              {viewMsg}
+            </Text>
+          )}
+        </FormFooter>
+      </ModalLayout>
+      <ModalLayout
         opened={savedViewId !== null}
         onClose={closeConfirmation}
         title={
@@ -243,7 +245,19 @@ export function ViewModal({
             ? t("sqlViewModal.savedMessageCreated", { viewId })
             : t("sqlViewModal.savedMessageSubmitted", { viewId })}
         </Text>
-        <Group justify="flex-end" gap="sm">
+        <FormFooter
+          action={
+            <Button
+              onClick={() => {
+                closeConfirmation();
+                onNavigateToViews();
+              }}
+              data-testid="view-saved-navigate-button"
+            >
+              {t("sqlViewModal.editInModelViews")}
+            </Button>
+          }
+        >
           <Button
             variant="default"
             onClick={closeConfirmation}
@@ -251,17 +265,8 @@ export function ViewModal({
           >
             {t("sqlViewModal.close")}
           </Button>
-          <Button
-            onClick={() => {
-              closeConfirmation();
-              onNavigateToViews();
-            }}
-            data-testid="view-saved-navigate-button"
-          >
-            {t("sqlViewModal.editInModelViews")}
-          </Button>
-        </Group>
-      </Modal>
+        </FormFooter>
+      </ModalLayout>
     </>
   );
 }

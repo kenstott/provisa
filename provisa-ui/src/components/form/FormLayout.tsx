@@ -33,6 +33,7 @@ import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { PanelActionsContext, PanelNoticeContext } from "../list/panelActions";
 import { PanelHeadStyle } from "../list/PanelHeadStyle";
+import { ModalFooterContext } from "../modal/modalFooter";
 import { useHelpNaming } from "./useHelpNaming";
 import { CancelButton } from "./CancelButton";
 import { SaveButton } from "./SaveButton";
@@ -571,6 +572,9 @@ type ButtonExtras = { "data-testid"?: string; disabled?: boolean };
  * `form`: the id of the <form> a `submit` Save belongs to. In a panel's head Save sits outside
  * the form's own element, where a submit button submits nothing; naming the form makes it that
  * form's submit wherever it sits, so the form's required-field checks and its onSubmit run.
+ *
+ * In a dialog (`ModalLayout`) the row is drawn in the dialog's fixed button bar, outside its
+ * scrolling content (REQ-2277 rule 10); a `submit` Save there names its form with `form`.
  */
 export function FormFooter({
   onSave,
@@ -600,6 +604,7 @@ export function FormFooter({
   const { busy: pending, press: save } = usePendingPress(onSave);
   const head = useContext(PanelActionsContext);
   const notice = useContext(PanelNoticeContext);
+  const bar = useContext(ModalFooterContext);
   // A form read is not saved: it offers no Save or Cancel.
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
@@ -655,10 +660,22 @@ export function FormFooter({
       </>
     );
   }
-  return (
+  const row = (
     <div {...rest} className={classes("form-footer", rest.className)}>
       {said}
       {buttons}
     </div>
   );
+  if (bar !== undefined) {
+    // REQ-2277 rule 10: the bar is outside the form's element, where a submit button submits
+    // nothing unless it names its form.
+    if (submit && form === undefined) {
+      throw new Error(
+        "<FormFooter submit> in a <ModalLayout> needs `form`, the id of its <form> (REQ-2277)",
+      );
+    }
+    // The bar is not mounted on the first pass; the row appears in it on the next.
+    return bar === null ? null : createPortal(row, bar);
+  }
+  return row;
 }

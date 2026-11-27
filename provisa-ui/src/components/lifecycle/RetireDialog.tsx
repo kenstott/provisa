@@ -13,7 +13,8 @@
 // tag loss) takes the dialog's place until the reader resolves it or goes back.
 
 import { useState, type ReactNode } from "react";
-import { Alert, Button, Modal, Select, Textarea } from "@mantine/core";
+import { Alert, Button, Select, Textarea } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 export interface RetireDialogText {
@@ -109,7 +110,7 @@ export function RetireDialog<R = undefined>({
         ) ?? null);
 
   return (
-    <Modal opened onClose={onClose} title={shown ? shown.title : text.title} size="lg">
+    <ModalLayout opened onClose={onClose} title={shown ? shown.title : text.title} size="lg">
       {shown ? (
         shown.body
       ) : (
@@ -166,6 +167,6 @@ export function RetireDialog<R = undefined>({
           />
         </FormLayout>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

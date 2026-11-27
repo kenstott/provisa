@@ -21,13 +21,13 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   MultiSelect,
   Stack,
   Text,
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import {
   RESOLVE_SHAPES,
   createGlossaryTerm,
@@ -76,7 +76,7 @@ export function RelatedToDialog({
   }, [from.id, to.id]);
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onCancel}
       title={t("glossaryTab.relatedToDialogTitle", { from: from.name, to: to.name })}
@@ -145,7 +145,7 @@ export function RelatedToDialog({
           <GroundingGuideLink testId="glossary-related-to-dialog-guide" />
         </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }
 
@@ -197,7 +197,7 @@ export function ShapeTermForm({
     }
   };
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onCancel}
       title={t("glossaryTab.shapeFormTitle", { shape: t(`glossaryTab.shape_${shape}`) })}
@@ -262,6 +262,6 @@ export function ShapeTermForm({
           onCancel={onCancel}
         />
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

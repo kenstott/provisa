@@ -16,7 +16,6 @@ import {
   Button,
   Checkbox,
   Group,
-  Modal,
   NumberInput,
   Switch,
   Text,
@@ -24,6 +23,7 @@ import {
   Tabs,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Pause, Play, Maximize2, X } from "lucide-react";
 import {
   updateSettings,
@@ -263,7 +263,7 @@ function TraceFeed() {
           listRef={listRef}
         />
       </div>
-      <Modal
+      <ModalLayout
         opened={expanded}
         onClose={() => setExpanded(false)}
         size="90vw"
@@ -278,7 +278,7 @@ function TraceFeed() {
             setSelected={setSelected}
           />
         </div>
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

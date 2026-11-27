@@ -13,7 +13,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal } from "@mantine/core";
+import { ModalLayout } from "../../../components/modal/ModalLayout";
 import { Maximize2 } from "lucide-react";
 import { Tip } from "../../../components/Tip";
 
@@ -56,33 +56,18 @@ export function FitModal({
   children: ReactNode;
 }) {
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       size={size}
       yOffset="2.5dvh"
       title={title}
-      styles={{
-        content: {
-          height: "95dvh",
-          maxHeight: "95dvh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        },
-        header: { flex: "none" },
-        body: {
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        },
-      }}
+      fill
+      styles={{ content: { height: "95dvh", maxHeight: "95dvh" }, header: { flex: "none" } }}
       data-testid={testId}
     >
       {children}
-    </Modal>
+    </ModalLayout>
   );
 }
 

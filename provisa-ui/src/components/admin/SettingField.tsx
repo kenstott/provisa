@@ -26,7 +26,6 @@ import {
   Button,
   Checkbox,
   Loader,
-  Modal,
   PasswordInput,
   Select,
   Stack,
@@ -34,6 +33,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Plus, X } from "lucide-react";
 import { fetchSettingsCatalog, updateSettingsCatalog } from "../../api/admin";
 import type { CatalogSetting, SettingsCatalog } from "../../api/admin";
@@ -716,7 +716,7 @@ export function CatalogCard({
           <SaveRow save={save} saving={saving} msg={msg} />
         </CollapsibleItem>
       </Collapsibles>
-      <Modal
+      <ModalLayout
         opened={pending !== null}
         onClose={() => setPending(null)}
         title={t("adminPage.setting.confirmTitle")}
@@ -735,7 +735,7 @@ export function CatalogCard({
             </Button>
           }
         />
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

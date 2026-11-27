@@ -15,7 +15,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, FileInput, Modal, Select } from "@mantine/core";
+import { Alert, Button, FileInput, Select } from "@mantine/core";
+import { ModalLayout } from "../../modal/ModalLayout";
 import { FileUp } from "lucide-react";
 import {
   ONTOLOGY_ACCEPT,
@@ -62,7 +63,7 @@ export function ImportOntologyDialog({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("ontologyImport.importTitle")}
@@ -129,6 +130,6 @@ export function ImportOntologyDialog({
           }
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

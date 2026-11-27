@@ -15,7 +15,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal, MultiSelect, Text, Textarea } from "@mantine/core";
+import { Button, MultiSelect, Text, Textarea } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { useRequiredFields } from "../../components/form/useRequiredFields";
 import { suggestProduct, type Suggestion } from "../../api/productSuggestions";
@@ -42,7 +43,7 @@ export function SuggestProductModal({
 }) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={target !== null}
       onClose={onClose}
       title={t("suggestProduct.title", { domain: target?.domainId ?? "" })}
@@ -55,7 +56,7 @@ export function SuggestProductModal({
           onClose={onClose}
         />
       )}
-    </Modal>
+    </ModalLayout>
   );
 }
 

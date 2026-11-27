@@ -14,7 +14,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal, Text, TextInput } from "@mantine/core";
+import { Button, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Route } from "lucide-react";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { serverMessage } from "../../i18n/serverMessage";
@@ -92,7 +93,7 @@ export function JoinThroughForm({
 
   const end = (table: string, column: string) => `${table}.${column}`;
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("joinThrough.title", { table: plan.viaTable })}
@@ -166,6 +167,6 @@ export function JoinThroughForm({
           problem={problem}
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

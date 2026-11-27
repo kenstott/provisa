@@ -9,18 +9,8 @@
 // permission from the copyright holder.
 
 import { DestructiveConfirmButton } from "./form/DestructiveConfirmButton";
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Modal,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Group, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
@@ -93,7 +83,7 @@ export function UserProfileModal({ onClose }: Props) {
   }
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("userProfileModal.title")}
@@ -380,6 +370,6 @@ export function UserProfileModal({ onClose }: Props) {
           </FormLayout>
         </section>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

@@ -26,7 +26,6 @@ import {
   Group,
   Loader,
   Menu,
-  Modal,
   NavLink,
   MultiSelect,
   Select,
@@ -35,6 +34,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
 import { BadgeCheck, BookOpen, ClipboardList, Plus, Sparkles } from "lucide-react";
@@ -1002,7 +1002,7 @@ export function GlossaryTab() {
         </>
       )}
 
-      <Modal
+      <ModalLayout
         opened={addOpen}
         onClose={() => setAddOpen(false)}
         title={t("glossaryTab.newTermTitle")}
@@ -1068,7 +1068,7 @@ export function GlossaryTab() {
             }
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
 
       {findTermsOpen && (
         <FindTermsDialog
@@ -1104,7 +1104,7 @@ export function GlossaryTab() {
         />
       )}
       {detail && approveOpen && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setApproveOpen(false)}
           title={t("glossaryTab.impactTitle_approve", { term: detail.name })}
@@ -1129,7 +1129,7 @@ export function GlossaryTab() {
               }
             />
           </Stack>
-        </Modal>
+        </ModalLayout>
       )}
       <RelatedToReviewModal
         review={review}

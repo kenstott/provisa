@@ -14,7 +14,8 @@ import { useNavPayload } from "../hooks/useNavPayload";
 import { artifactFromEvent, type ChatMsg as ChatMsgBase } from "../hooks/useMcpChat";
 import { ChatArtifact } from "../components/ChatArtifact";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Loader, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import {
   MainContainer,
@@ -230,7 +231,15 @@ function toolStatus(tool: ToolEvent): "running" | "done" | "error" {
 // REQ-2172: what a run_sql call of the agent ran -- the statement it sent, and the statement the
 // one pipeline ran for it under the explorer's role, row rules and masks applied (the SQL
 // explorer's explain, /data/sql/explain). The developer's view; the agent itself is never told.
-function ToolExplain({ sql, roleId, onClose }: { sql: string; roleId: string; onClose: () => void }) {
+function ToolExplain({
+  sql,
+  roleId,
+  onClose,
+}: {
+  sql: string;
+  roleId: string;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const [plan, setPlan] = useState<ExplainResponse | null>(null);
   const [error, setError] = useState("");
@@ -248,7 +257,7 @@ function ToolExplain({ sql, roleId, onClose }: { sql: string; roleId: string; on
     };
   }, [sql, roleId]);
   return (
-    <Modal opened onClose={onClose} size="xl" title={t("mcpExplore.explainTitle")}>
+    <ModalLayout opened onClose={onClose} size="xl" title={t("mcpExplore.explainTitle")}>
       <div data-testid="mcp-explain-panel">
         <Text size="xs" fw={600} mb={4}>
           {t("mcpExplore.explainSent")}
@@ -269,7 +278,7 @@ function ToolExplain({ sql, roleId, onClose }: { sql: string; roleId: string; on
           <Loader size="sm" />
         )}
       </div>
-    </Modal>
+    </ModalLayout>
   );
 }
 
@@ -580,7 +589,8 @@ export function McpExplorePage() {
                       <div className="mcp-bubble">
                         <div className="mcp-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {m.text || (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
+                            {m.text ||
+                              (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
                           </ReactMarkdown>
                         </div>
                         {m.artifacts?.map((a, j) => (

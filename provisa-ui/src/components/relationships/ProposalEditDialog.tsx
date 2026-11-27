@@ -15,7 +15,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Select, TextInput } from "@mantine/core";
+import { Select, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import type { RowEdit } from "./useRunProposals";
 
@@ -55,7 +56,7 @@ export function ProposalEditDialog({
   };
 
   return (
-    <Modal opened onClose={onClose} title={t("proposalEdit.title")} centered>
+    <ModalLayout opened onClose={onClose} title={t("proposalEdit.title")} centered>
       <FormLayout>
         <FormField size="medium">
           <TextInput
@@ -84,6 +85,6 @@ export function ProposalEditDialog({
           cancelProps={{ "data-testid": "proposal-edit-cancel" }}
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

@@ -12,7 +12,8 @@ import type { ResultRedirect } from "../../types/resultRedirect";
 import { resultRedirectText } from "../resultRedirectText";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Divider, Group, Loader, Modal, Stack, Table, Text } from "@mantine/core";
+import { Divider, Group, Loader, Stack, Table, Text } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { runSql } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
 import { formatTelemetryValue, traceDetailSql, type TelemetryIdKind } from "./traceDetails";
@@ -67,7 +68,7 @@ export function TraceDetailsModal({ kind, id, onClose }: TraceDetailsModalProps)
       : loadedNow;
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       size="xl"
@@ -131,6 +132,6 @@ export function TraceDetailsModal({ kind, id, onClose }: TraceDetailsModalProps)
             </div>
           ))}
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }
