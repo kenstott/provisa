@@ -17,7 +17,8 @@ not green. A workflow with no green run on this commit takes the newest green ru
 branch at an ancestor commit A, when every commit in A..this commit is one of (REQ-1989, amended
 2026-11-27: a documentation-only change needs no retest, a fix runs only its own targeted tests):
 
-- documentation only (docs/**, *.md, mkdocs.yml), or a change to ``ACCEPTS_PATH`` alone, which
+- documentation only (docs/**, *.md, mkdocs.yml, and the release notes the UI bundles,
+  provisa-ui/src/generated/releaseNotes.json, which the cut generates with them), or a change to ``ACCEPTS_PATH`` alone, which
   records proof and runs nothing;
 - a clean merge, whose own combined diff is empty: the commits it brings in are judged one by one;
 - listed in ``ACCEPTS_PATH`` with the targeted runs that proved it, every one of them completed
@@ -106,7 +107,9 @@ ROOT = Path(__file__).resolve().parents[1]
 #: Each code commit of a release since its suites last ran, mapped to the targeted runs that
 #: proved it: ``{"commits": {<sha>: {"tested_sha": <sha>, "runs": [<id>...], "reason": <text>}}}``.
 ACCEPTS_PATH = ".github/release-gate-accepts.json"
-_DOC_FILES = ("mkdocs.yml",)
+#: The cut's own notes commit writes releaseNotes.json beside CHANGELOG.md; a re-cut must not
+#: count the previous cut's notes as code (513 re-cut refused on 3fdfbc681b, 2026-11-27).
+_DOC_FILES = ("mkdocs.yml", "provisa-ui/src/generated/releaseNotes.json")
 _JQ = '.[0] // {} | "\\(.status // "never run") \\(.conclusion // "") \\(.url // "")"'
 
 
