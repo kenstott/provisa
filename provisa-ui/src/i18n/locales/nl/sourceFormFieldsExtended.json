@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth (vernieuwingstoken)",
     "gdriveServiceAccountKey": "Serviceaccountsleutel (JSON)",
     "gdriveServiceAccountKeyHint": "Deel de map met het e-mailadres van het serviceaccount: een serviceaccount heeft geen eigen opslag.",
-    "gdriveRefreshToken": "Vernieuwingstoken"
+    "gdriveRefreshToken": "Vernieuwingstoken",
+    "gdriveSubject": "Handelt als gebruiker (optioneel)",
+    "gdriveSubjectHint": "Met domeinbrede delegatie leest het serviceaccount de Drive van deze Workspace-gebruiker. Laat leeg om als het serviceaccount zelf te lezen."
   }
 }

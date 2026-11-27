@@ -2937,6 +2937,12 @@
           "when": "gdrive_auth=oauth"
         },
         {
+          "name": "gdrive_subject",
+          "at": "mappingJson",
+          "when": "gdrive_auth=service_account",
+          "note": "the Workspace user the service account acts as (domain-wide delegation); none reads as the service account itself"
+        },
+        {
           "name": "excel_hints",
           "at": "mappingJson",
           "note": "how a workbook's sheets are read as tables"
@@ -2946,6 +2952,7 @@
       "mapping_json": [
         "gdrive_auth",
         "refresh_token",
+        "gdrive_subject",
         "excel_hints"
       ],
       "federation_hints": []

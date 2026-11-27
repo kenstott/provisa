@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth（刷新令牌）",
     "gdriveServiceAccountKey": "服务账号密钥（JSON）",
     "gdriveServiceAccountKeyHint": "请将文件夹共享给服务账号的电子邮件地址：服务账号没有自己的存储空间。",
-    "gdriveRefreshToken": "刷新令牌"
+    "gdriveRefreshToken": "刷新令牌",
+    "gdriveSubject": "代表用户（可选）",
+    "gdriveSubjectHint": "通过全网域授权，服务账号读取此 Workspace 用户的云端硬盘。留空则以服务账号本身的身份读取。"
   }
 }

@@ -49,7 +49,11 @@ from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
 from provisa.core.paging import PaginationType
 from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
-from provisa.file_source.drive_operand import GDRIVE_AUTH_KINDS, GDRIVE_SERVICE_ACCOUNT
+from provisa.file_source.drive_operand import (
+    GDRIVE_AUTH_KINDS,
+    GDRIVE_SERVICE_ACCOUNT,
+    GDRIVE_SUBJECT,
+)
 from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
 from provisa.profiler.source import DRIFT_SEASONS
 from provisa.quickbooks.settings import ENVIRONMENTS as QUICKBOOKS_ENVIRONMENTS
@@ -684,6 +688,12 @@ _OWN: dict[str, tuple[Field, ...]] = {
             default=GDRIVE_SERVICE_ACCOUNT,
         ),
         _map("refresh_token", when="gdrive_auth=oauth", required=True, secret=True),
+        _map(
+            GDRIVE_SUBJECT,
+            when="gdrive_auth=service_account",
+            note="the Workspace user the service account acts as (domain-wide delegation); "
+            "none reads as the service account itself",
+        ),
         _map("excel_hints", note="how a workbook's sheets are read as tables"),
     ),
     "logs": (

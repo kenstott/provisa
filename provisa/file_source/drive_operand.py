@@ -27,6 +27,8 @@ from provisa.file_source.drive_schemes import GDRIVE, ONEDRIVE, scheme_of
 GDRIVE_SERVICE_ACCOUNT = "service_account"
 GDRIVE_OAUTH = "oauth"
 GDRIVE_AUTH_KINDS: tuple[str, ...] = (GDRIVE_SERVICE_ACCOUNT, GDRIVE_OAUTH)
+#: The Workspace user a gdrive:// service account acts as, by domain-wide delegation (optional).
+GDRIVE_SUBJECT = "gdrive_subject"
 
 
 class DriveCredentialsMissing(ValueError):
@@ -60,7 +62,11 @@ def onedrive_sign_in(source: Any) -> dict[str, str]:
 
 def gdrive_sign_in(source: Any) -> dict[str, str]:
     """A gdrive:// source's sign-in, by its ``mapping.gdrive_auth``: a service account key
-    (``serviceAccountKey``), or an OAuth client and its refresh token."""
+    (``serviceAccountKey``), or an OAuth client and its refresh token.
+
+    A service account with domain-wide delegation acts as the Workspace user its
+    ``mapping.gdrive_subject`` names (``subject``, the assertion's ``sub`` claim); with none it
+    reads as itself. An OAuth sign-in is already a person's, so a subject there is refused."""
     from provisa.core.secrets import resolve_secrets
 
     source_id = _field(source, "id")
@@ -70,9 +76,18 @@ def gdrive_sign_in(source: Any) -> dict[str, str]:
             f"files source {source_id!r}: a gdrive:// path needs mapping.gdrive_auth, one of "
             f"{list(GDRIVE_AUTH_KINDS)}"
         )
+    subject = mapping.get(GDRIVE_SUBJECT)
     if mapping["gdrive_auth"] == GDRIVE_SERVICE_ACCOUNT:
         key = _required(source, "password", "the service account key, JSON", GDRIVE)
+        if subject:
+            return {"serviceAccountKey": key, "subject": resolve_secrets(str(subject))}
         return {"serviceAccountKey": key}
+    if subject:
+        raise DriveCredentialsMissing(
+            f"files source {source_id!r}: mapping.{GDRIVE_SUBJECT} is for gdrive_auth="
+            f"{GDRIVE_SERVICE_ACCOUNT} (domain-wide delegation); an OAuth sign-in reads as the "
+            "person who approved it"
+        )
     refresh_token = mapping.get("refresh_token")
     if not refresh_token:
         raise DriveCredentialsMissing(

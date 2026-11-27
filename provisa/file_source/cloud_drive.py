@@ -21,8 +21,10 @@ path; nothing is written.
   drive). The app needs the Graph ``Files.Read.All`` application permission.
 - ``gdrive://<folder id>/<folder>/<glob>``: the files under a Drive folder (or shared drive)
   through the Google Drive API, signed in as the Google Sheets source signs in: a service
-  account, reading as itself, or a person's OAuth approval (a refresh token). A service account
-  owns no storage, so the folder must be shared with it.
+  account, or a person's OAuth approval (a refresh token). A service account with domain-wide
+  delegation acts as the Workspace user the source's ``mapping.gdrive_subject`` names and reads
+  that user's Drive; with no subject it reads as itself, and owns no storage, so the folder must
+  be shared with it.
 
 A source's credentials are its own fields, secrets resolved (:func:`drive_storage_options`): the
 filesystem is built with them for the one call, never cached across sources.
@@ -298,11 +300,17 @@ def _onedrive_token(source: Any) -> Token:
 
 def _gdrive_token(source: Any) -> Token:
     from provisa.api_source.oauth_grants import access_token, service_account_token
-    from provisa.core.auth_models import ApiAuthOAuth2RefreshToken
+    from provisa.core.auth_models import ApiAuthGoogleServiceAccount, ApiAuthOAuth2RefreshToken
 
     sign_in = gdrive_sign_in(source)
     if "serviceAccountKey" in sign_in:
         key = sign_in["serviceAccountKey"]
+        if "subject" in sign_in:
+            # Domain-wide delegation: the token reads the Drive of the user the source names.
+            delegated = ApiAuthGoogleServiceAccount(
+                key=key, subject=sign_in["subject"], scopes=[DRIVE_READONLY_SCOPE]
+            )
+            return lambda: access_token(delegated)
         return lambda: service_account_token(key, [DRIVE_READONLY_SCOPE])
     auth = ApiAuthOAuth2RefreshToken(
         client_id=sign_in["clientId"],

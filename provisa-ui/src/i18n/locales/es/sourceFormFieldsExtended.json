@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth (token de actualización)",
     "gdriveServiceAccountKey": "Clave de la cuenta de servicio (JSON)",
     "gdriveServiceAccountKeyHint": "Comparta la carpeta con la dirección de correo de la cuenta de servicio: una cuenta de servicio no tiene almacenamiento propio.",
-    "gdriveRefreshToken": "Token de actualización"
+    "gdriveRefreshToken": "Token de actualización",
+    "gdriveSubject": "Actúa como usuario (opcional)",
+    "gdriveSubjectHint": "Con la delegación de todo el dominio, la cuenta de servicio lee el Drive de este usuario de Workspace. Déjelo vacío para leer como la propia cuenta de servicio."
   }
 }

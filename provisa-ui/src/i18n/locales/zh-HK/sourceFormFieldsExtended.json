@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth（重新整理權杖）",
     "gdriveServiceAccountKey": "服務帳戶金鑰（JSON）",
     "gdriveServiceAccountKeyHint": "請將資料夾共用給服務帳戶的電郵地址：服務帳戶沒有自己的儲存空間。",
-    "gdriveRefreshToken": "重新整理權杖"
+    "gdriveRefreshToken": "重新整理權杖",
+    "gdriveSubject": "代表用戶（可選）",
+    "gdriveSubjectHint": "透過全網域委派，服務帳戶讀取此 Workspace 用戶的雲端硬碟。留空則以服務帳戶本身的身分讀取。"
   }
 }

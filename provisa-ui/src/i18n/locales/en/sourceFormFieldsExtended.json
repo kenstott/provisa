@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth (refresh token)",
     "gdriveServiceAccountKey": "Service account key (JSON)",
     "gdriveServiceAccountKeyHint": "Share the folder with the service account's email address: a service account has no storage of its own.",
-    "gdriveRefreshToken": "Refresh token"
+    "gdriveRefreshToken": "Refresh token",
+    "gdriveSubject": "Acts as user (optional)",
+    "gdriveSubjectHint": "With domain-wide delegation, the service account reads this Workspace user's Drive. Leave it empty to read as the service account itself."
   }
 }

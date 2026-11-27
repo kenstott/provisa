@@ -10,8 +10,9 @@
 
 // REQ-2280: the OneDrive and Google Drive transports of a files source. onedrive:// signs in
 // with the source's tenant id (database), client id (username) and client secret (password);
-// gdrive:// with a service account key (password) or an OAuth client (username, password) and
-// its refresh token, as the source's mapping says (provisa/file_source/cloud_drive.py).
+// gdrive:// with a service account key (password), acting as the Workspace user gdrive_subject
+// names when the domain delegated to it, or an OAuth client (username, password) and its refresh
+// token, as the source's mapping says (provisa/file_source/cloud_drive.py).
 
 import { fieldChoices, fieldDefault, mappingKey } from "./descriptor";
 
@@ -21,8 +22,10 @@ export const GDRIVE_TRANSPORT = "gdrive://";
 const FILES = "files";
 export const GDRIVE_AUTH = mappingKey(FILES, "gdrive_auth");
 export const REFRESH_TOKEN = mappingKey(FILES, "refresh_token");
+/** The Workspace user a service account acts as, by domain-wide delegation (optional). */
+export const GDRIVE_SUBJECT = mappingKey(FILES, "gdrive_subject");
 /** The mapping keys only a gdrive:// source holds. */
-export const GDRIVE_KEYS: readonly string[] = [GDRIVE_AUTH, REFRESH_TOKEN];
+export const GDRIVE_KEYS: readonly string[] = [GDRIVE_AUTH, REFRESH_TOKEN, GDRIVE_SUBJECT];
 
 /** How a gdrive:// source signs in, as the descriptor offers it. */
 export const gdriveAuthKinds = (): string[] => fieldChoices(FILES, "mappingJson", "gdrive_auth");
@@ -40,9 +43,11 @@ export function driveMapping(
 ): Record<string, string> {
   if (transport !== GDRIVE_TRANSPORT) return {};
   const auth = gdriveAuth(fields);
-  return auth === GDRIVE_OAUTH
-    ? { [GDRIVE_AUTH]: auth, [REFRESH_TOKEN]: fields[REFRESH_TOKEN] ?? "" }
-    : { [GDRIVE_AUTH]: auth };
+  if (auth === GDRIVE_OAUTH) {
+    return { [GDRIVE_AUTH]: auth, [REFRESH_TOKEN]: fields[REFRESH_TOKEN] ?? "" };
+  }
+  const subject = fields[GDRIVE_SUBJECT]?.trim();
+  return subject ? { [GDRIVE_AUTH]: auth, [GDRIVE_SUBJECT]: subject } : { [GDRIVE_AUTH]: auth };
 }
 
 /** The form's drive fields from a saved mapping. */

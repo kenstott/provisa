@@ -109,6 +109,35 @@ describe("the OneDrive and Google Drive transports", () => {
     expect(screen.queryByTestId("files-gdrive-refresh-token-input")).not.toBeInTheDocument();
   });
 
+  it("gdrive:// with a service account asks for the Workspace user it acts as, optionally", () => {
+    renderInForm(
+      <Harness transport="gdrive://" fields={{ gdrive_subject: "ana@example.com" }} />,
+    );
+    const subject = screen.getByTestId("files-gdrive-subject-input");
+    expect(subject).toHaveValue("ana@example.com");
+    expect(subject).not.toBeRequired();
+  });
+
+  it("saves the gdrive:// subject with a service account only", () => {
+    expect(driveMapping("gdrive://", { gdrive_subject: "ana@example.com" })).toEqual({
+      gdrive_auth: "service_account",
+      gdrive_subject: "ana@example.com",
+    });
+    expect(driveMapping("gdrive://", { gdrive_subject: "" })).toEqual({
+      gdrive_auth: "service_account",
+    });
+    expect(
+      driveMapping("gdrive://", {
+        gdrive_auth: "oauth",
+        refresh_token: "r",
+        gdrive_subject: "ana@example.com",
+      }),
+    ).toEqual({ gdrive_auth: "oauth", refresh_token: "r" });
+    expect(driveFieldsFromMapping({ gdrive_auth: "service_account", gdrive_subject: "a@b" })).toEqual(
+      { gdrive_auth: "service_account", gdrive_subject: "a@b" },
+    );
+  });
+
   it("gdrive:// with OAuth asks for the client and its refresh token", () => {
     renderInForm(<Harness transport="gdrive://" fields={{ gdrive_auth: "oauth" }} />);
     expect(screen.getByTestId("files-gdrive-client-id-input")).toBeInTheDocument();

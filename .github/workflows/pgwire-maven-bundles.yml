@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "engine release of kenstott/calcite (e.g. engine-v0.130.0)"
+        description: "engine release of kenstott/calcite (e.g. engine-v0.131.0)"
         required: true
         type: string
 

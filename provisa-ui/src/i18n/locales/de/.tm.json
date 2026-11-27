@@ -8401,6 +8401,8 @@
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.gdriveRefreshToken": "Refresh token",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.gdriveServiceAccountKey": "Service account key (JSON)",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.gdriveServiceAccountKeyHint": "Share the folder with the service account's email address: a service account has no storage of its own.",
+  "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.gdriveSubject": "Acts as user (optional)",
+  "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.gdriveSubjectHint": "With domain-wide delegation, the service account reads this Workspace user's Drive. Leave it empty to read as the service account itself.",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.getApiKey": "Get API Key →",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.govdataSubjectsUnavailable": "The server has not listed the AskAmerica subjects yet. Try again in a moment.",
   "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.headerName": "Header Name",

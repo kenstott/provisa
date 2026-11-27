@@ -372,6 +372,34 @@ def test_gdrive_signs_in_as_its_service_account(monkeypatch):
     assert opts["token"]() == '{"k":1}|https://www.googleapis.com/auth/drive.readonly'
 
 
+def test_gdrive_signs_in_as_the_workspace_user_its_service_account_acts_as(monkeypatch):
+    # REQ-2280 (amended 2026-11-26): domain-wide delegation. The assertion names the source's
+    # gdrive_subject, so the token reads that user's Drive under drive.readonly.
+    import provisa.api_source.oauth_grants as grants
+    from provisa.core.auth_models import ApiAuthGoogleServiceAccount
+
+    seen = {}
+
+    def token(auth):
+        seen["auth"] = auth
+        return "dwd-token"
+
+    monkeypatch.setattr(grants, "access_token", token)
+    opts = drive_storage_options(
+        _src(
+            f"gdrive://{FOLDER}/R",
+            password='{"k":1}',
+            mapping={"gdrive_auth": "service_account", "gdrive_subject": "ana@example.com"},
+        )
+    )
+    assert opts["token"]() == "dwd-token"
+    assert seen["auth"] == ApiAuthGoogleServiceAccount(
+        key='{"k":1}',
+        subject="ana@example.com",
+        scopes=["https://www.googleapis.com/auth/drive.readonly"],
+    )
+
+
 def test_gdrive_signs_in_with_an_oauth_refresh_token(monkeypatch):
     import provisa.api_source.oauth_grants as grants
 

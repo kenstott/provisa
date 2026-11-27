@@ -24,10 +24,12 @@ Credentials (CI secrets; absent, the test fails naming what is missing -- a skip
 - OneDrive: M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET (an app registration with the Graph
   ``Files.ReadWrite.All`` application permission) and M365_TEST_MAILBOXES (its first entry is the
   user whose drive the run writes to).
-- Google Drive: GOOGLE_APPLICATION_CREDENTIALS (a service account key file) and
-  GDRIVE_TEST_PARENT_ID, a shared drive (or a folder in one) where the service account is a
-  Content manager. A service account owns no storage, so it can create the run's folder only in a
-  shared drive, whose files the drive owns.
+- Google Drive (the google_workspace lane; maintainer 2026-11-26): GWS_SERVICE_ACCOUNT_KEY_FILE
+  (the path of a service account key file) and GWS_TEST_MAILBOXES (its first entry is the
+  Workspace user the service account acts as). The domain has delegated the Drive scopes to the
+  service account (domain-wide delegation), so it acts as that user: the run's folder is made in
+  the user's My Drive with the full drive scope, and the source reads it with drive.readonly,
+  naming the user as its ``gdrive_subject``. There is never a shared drive.
 """
 
 # Requirements: REQ-2280
@@ -44,7 +46,8 @@ import httpx
 import pyarrow.csv as pac
 import pytest
 
-from provisa.api_source.oauth_grants import service_account_token
+from provisa.api_source.oauth_grants import access_token
+from provisa.core.auth_models import ApiAuthGoogleServiceAccount
 from provisa.core import org_files
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
@@ -137,11 +140,11 @@ def _reads_as_the_file_does(tmp_path, found: list[dict], url: str, opts: dict) -
         assert pac.read_csv(f).equals(pac.read_csv(str(local)))
 
 
-def _print_server_log() -> None:
+def _print_server_log(source_id: str) -> None:
     """The end of the source's connector server's own log, so a failed read shows what the
     server's file adapter saw (the log is in the org's folder on this node)."""
     for log in org_files.folder("req2280_live").glob(
-        f"nodes/*/pgwire/*/od-live/{pr.SERVER_LOG_NAME}"
+        f"nodes/*/pgwire/*/{source_id}/{pr.SERVER_LOG_NAME}"
     ):
         print(f"--- {log} (last 150 lines)")
         print("\n".join(log.read_text(errors="replace").splitlines()[-150:]))
@@ -149,7 +152,7 @@ def _print_server_log() -> None:
         for schema in model.get("schemas", []):
             operand = schema.get("operand", {})
             config = {
-                k: ("<redacted>" if "ecret" in k or "assword" in k else v)
+                k: ("<redacted>" if "ecret" in k or "assword" in k or k.endswith("Key") else v)
                 for k, v in operand.get("storageConfig", {}).items()
             }
             print(f"--- model schema {schema.get('name')}: {dict(operand, storageConfig=config)}")
@@ -162,7 +165,7 @@ def _engine_reads_as_the_file_does(source: Source) -> None:
     try:
         rows = asyncio.run(replica.load("orders"))
     except Exception:
-        _print_server_log()
+        _print_server_log(source.id)
         raise
     finally:
         replica.close()
@@ -258,28 +261,26 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
 # --- Google Drive ------------------------------------------------------------------------------
 
 
+# requires_warehouse keeps it out of the stack lanes; requires_google_workspace puts it in the
+# google_workspace lane, which the warehouse lane leaves out.
 @pytest.mark.requires_warehouse
+@pytest.mark.requires_google_workspace
 def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
-    env = _require("GOOGLE_APPLICATION_CREDENTIALS", "GDRIVE_TEST_PARENT_ID")
-    with open(env["GOOGLE_APPLICATION_CREDENTIALS"]) as fh:
+    env = _require("GWS_SERVICE_ACCOUNT_KEY_FILE", "GWS_TEST_MAILBOXES")
+    with open(env["GWS_SERVICE_ACCOUNT_KEY_FILE"]) as fh:
         key = fh.read()
     json.loads(key)  # a key file that is no JSON fails here, not as an empty listing
-    parent = env["GDRIVE_TEST_PARENT_ID"]
+    user = env["GWS_TEST_MAILBOXES"].split(",")[0].strip()
+    mapping = {"gdrive_auth": "service_account", "gdrive_subject": user}
     probe = SimpleNamespace(
-        id="gd-live",
-        path=f"gdrive://{parent}",
-        password=key,
-        username="",
-        database="",
-        mapping={"gdrive_auth": "service_account"},
+        id="gd-live", path="gdrive://root", password=key, username="", database="", mapping=mapping
     )
-    opts = drive_storage_options(probe)  # the transport reads with drive.readonly
+    opts = drive_storage_options(probe)  # the transport reads as the user, with drive.readonly
     client = opts["client"]
+    writer = ApiAuthGoogleServiceAccount(key=key, subject=user, scopes=[DRIVE_SCOPE])
 
-    def token() -> str:  # the run's own folder is written with the full drive scope
-        return service_account_token(key, [DRIVE_SCOPE])
-
-    all_drives = {"supportsAllDrives": "true"}
+    def token() -> str:  # the run's own folder is written as the user, with the full drive scope
+        return access_token(writer)
 
     def call(method: str, url: str, **kw) -> httpx.Response:
         resp = client.request(method, url, headers={"Authorization": f"Bearer {token()}"}, **kw)
@@ -289,11 +290,10 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
     folder = call(
         "POST",
         f"{DRIVE_API}/files",
-        params=all_drives,
         json={
             "name": RUN,
             "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent],
+            "parents": ["root"],
             "description": STAMP,
         },
     ).json()
@@ -301,7 +301,6 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
         inner = call(
             "POST",
             f"{DRIVE_API}/files",
-            params=all_drives,
             json={
                 "name": INNER,
                 "mimeType": "application/vnd.google-apps.folder",
@@ -312,7 +311,7 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
         call(
             "POST",
             "https://www.googleapis.com/upload/drive/v3/files",
-            params={"uploadType": "multipart", **all_drives},
+            params={"uploadType": "multipart"},
             files={
                 "metadata": ("metadata", metadata, "application/json; charset=UTF-8"),
                 "file": ("orders.csv", CSV, "text/csv"),
@@ -324,27 +323,19 @@ def test_gdrive_folder_csv_reads_as_the_file_does(tmp_path):
             tmp_path, found, f"gdrive://{folder['id']}/{INNER}/orders.csv", opts
         )
         _engine_reads_as_the_file_does(
-            Source(
-                id="gd-live",
-                type=SourceType.files,
-                path=root,
-                password=key,
-                mapping={"gdrive_auth": "service_account"},
-            )
+            Source(id="gd-live", type=SourceType.files, path=root, password=key, mapping=mapping)
         )
     finally:
 
         def delete() -> None:
             client.delete(
                 f"{DRIVE_API}/files/{folder['id']}",
-                params=all_drives,
                 headers={"Authorization": f"Bearer {token()}"},
             ).raise_for_status()
 
         def read_back() -> None:
             resp = client.get(
                 f"{DRIVE_API}/files/{folder['id']}",
-                params=all_drives,
                 headers={"Authorization": f"Bearer {token()}"},
             )
             none_remain("the run's Drive folder", [folder["id"]] if resp.status_code != 404 else [])

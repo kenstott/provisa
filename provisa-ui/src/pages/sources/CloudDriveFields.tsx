@@ -16,6 +16,7 @@ import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import {
   GDRIVE_AUTH,
   GDRIVE_OAUTH,
+  GDRIVE_SUBJECT,
   gdriveAuth,
   gdriveAuthKinds,
   REFRESH_TOKEN,
@@ -80,6 +81,7 @@ export function CloudDriveFields({
                   ...authFields,
                   [GDRIVE_AUTH]: v ?? "",
                   [REFRESH_TOKEN]: "",
+                  [GDRIVE_SUBJECT]: "",
                 });
                 setForm({ ...form, username: "", password: "" });
               }}
@@ -127,19 +129,36 @@ export function CloudDriveFields({
               </FormField>
             </FieldGroup>
           ) : (
-            <FormField
-              section="authentication"
-              size="long"
-              help={t("sourceFormFieldsExtended.gdriveServiceAccountKeyHint")}
-            >
-              <PasswordInput
-                required
-                label={t("sourceFormFieldsExtended.gdriveServiceAccountKey")}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                data-testid="files-gdrive-key-input"
-              />
-            </FormField>
+            <FieldGroup>
+              <FormField
+                section="authentication"
+                size="long"
+                help={t("sourceFormFieldsExtended.gdriveServiceAccountKeyHint")}
+              >
+                <PasswordInput
+                  required
+                  label={t("sourceFormFieldsExtended.gdriveServiceAccountKey")}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  data-testid="files-gdrive-key-input"
+                />
+              </FormField>
+              {/* REQ-2280: domain-wide delegation, the service account acting as this user. */}
+              <FormField
+                section="authentication"
+                size="medium"
+                help={t("sourceFormFieldsExtended.gdriveSubjectHint")}
+              >
+                <TextInput
+                  label={t("sourceFormFieldsExtended.gdriveSubject")}
+                  value={authFields[GDRIVE_SUBJECT] ?? ""}
+                  onChange={(e) =>
+                    setAuthFields({ ...authFields, [GDRIVE_SUBJECT]: e.target.value })
+                  }
+                  data-testid="files-gdrive-subject-input"
+                />
+              </FormField>
+            </FieldGroup>
           )}
         </>
       )}

@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth (token di aggiornamento)",
     "gdriveServiceAccountKey": "Chiave dell'account di servizio (JSON)",
     "gdriveServiceAccountKeyHint": "Condividi la cartella con l'indirizzo email dell'account di servizio: un account di servizio non ha spazio di archiviazione proprio.",
-    "gdriveRefreshToken": "Token di aggiornamento"
+    "gdriveRefreshToken": "Token di aggiornamento",
+    "gdriveSubject": "Agisce come utente (facoltativo)",
+    "gdriveSubjectHint": "Con la delega a livello di dominio, l'account di servizio legge il Drive di questo utente Workspace. Lascia vuoto per leggere come l'account di servizio stesso."
   }
 }

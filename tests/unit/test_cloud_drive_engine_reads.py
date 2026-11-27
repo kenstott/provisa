@@ -80,6 +80,40 @@ def test_gdrive_is_read_by_the_adapter_as_its_service_account():
     assert operand["glob"] == "*.xlsx"
 
 
+USER = "ana@example.com"
+
+
+def test_gdrive_is_read_by_the_adapter_as_the_workspace_user_its_service_account_acts_as():
+    # REQ-2280 (amended 2026-11-26): a service account with domain-wide delegation acts as the
+    # Workspace user the source names; calcite engine-v0.131.0's gdrive storageConfig takes it as
+    # ``subject`` (the JWT ``sub`` claim) and reads with its default drive.readonly scope.
+    operand = _operand(
+        _files(
+            f"gdrive://{FOLDER}/Sales/*.xlsx",
+            password=KEY,
+            mapping={"gdrive_auth": "service_account", "gdrive_subject": USER},
+        )
+    )
+    assert operand["storageConfig"] == {
+        "folderId": FOLDER,
+        "serviceAccountKey": KEY,
+        "subject": USER,
+    }
+
+
+def test_a_gdrive_subject_is_refused_by_name_with_an_oauth_sign_in():
+    # The adapter refuses subject with refresh-token sign-in; the source says so first, by name.
+    with pytest.raises(DriveCredentialsMissing, match="gdrive_subject"):
+        _operand(
+            _files(
+                f"gdrive://{FOLDER}/*.csv",
+                username="cid",
+                password="sec",
+                mapping={"gdrive_auth": "oauth", "refresh_token": "rt", "gdrive_subject": USER},
+            )
+        )
+
+
 def test_gdrive_is_read_by_the_adapter_with_an_oauth_refresh_token():
     operand = _operand(
         _files(
@@ -204,7 +238,7 @@ def test_trino_reads_onedrive_with_the_same_storage_config_as_the_pgwire_bundle(
         password="sec",
     )
     details = _trino(source)
-    # The trino-file plugin (calcite engine-v0.130.0, storage-config) strips the scheme and reads
+    # The trino-file plugin (calcite engine-v0.130.0+, storage-config) strips the scheme and reads
     # the rest within the drive, so the owner moves from the path into the storage config.
     assert details["glob"] == "onedrive://Reports/2026/*.csv"
     assert json.loads(details["storage-config"]) == _operand(source)["storageConfig"]
@@ -227,6 +261,23 @@ def test_trino_reads_gdrive_rooted_at_its_folder_id():
     details = _trino(source)
     assert details["glob"] == "gdrive://Sales/*.xlsx"
     assert json.loads(details["storage-config"]) == {"folderId": FOLDER, "serviceAccountKey": KEY}
+    assert json.loads(details["storage-config"]) == _operand(source)["storageConfig"]
+
+
+def test_trino_reads_gdrive_as_the_workspace_user_with_the_same_storage_config():
+    import json
+
+    source = _files(
+        f"gdrive://{FOLDER}/Sales/*.xlsx",
+        password=KEY,
+        mapping={"gdrive_auth": "service_account", "gdrive_subject": USER},
+    )
+    details = _trino(source)
+    assert json.loads(details["storage-config"]) == {
+        "folderId": FOLDER,
+        "serviceAccountKey": KEY,
+        "subject": USER,
+    }
     assert json.loads(details["storage-config"]) == _operand(source)["storageConfig"]
 
 
@@ -402,17 +453,18 @@ def test_the_crawl_preview_signs_in_with_the_fields_given(monkeypatch):
 def test_trino_file_plugin_is_the_first_release_that_takes_storage_config():
     import tests.trino_plugins as pins
 
-    # calcite engine-v0.130.0 (PR #1173) added the trino-file storage-config property.
-    assert pins.plugin_version("trino-file") == "0.130.0"
+    # calcite engine-v0.130.0 (PR #1173) added the trino-file storage-config property;
+    # engine-v0.131.0 its gdrive ``subject`` and ``scope`` keys (domain-wide delegation).
+    assert pins.plugin_version("trino-file") == "0.131.0"
 
 
-def test_pgwire_bundles_and_govdata_record_are_at_engine_v0_130_0():
+def test_pgwire_bundles_and_govdata_record_are_at_engine_v0_131_0():
     import json
     from pathlib import Path
 
     import provisa.govdata as govdata
     from provisa.runtime_deps import pgwire_bundles
 
-    assert pgwire_bundles.RELEASE_TAG == "engine-v0.130.0"
+    assert pgwire_bundles.RELEASE_TAG == "engine-v0.131.0"
     record = json.loads((Path(govdata.__file__).parent / "bundle_schemas.json").read_text())
     assert record["release"] == pgwire_bundles.RELEASE_TAG

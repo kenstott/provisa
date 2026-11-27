@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth (Aktualisierungstoken)",
     "gdriveServiceAccountKey": "Dienstkontoschlüssel (JSON)",
     "gdriveServiceAccountKeyHint": "Geben Sie den Ordner für die E-Mail-Adresse des Dienstkontos frei: Ein Dienstkonto hat keinen eigenen Speicher.",
-    "gdriveRefreshToken": "Aktualisierungstoken"
+    "gdriveRefreshToken": "Aktualisierungstoken",
+    "gdriveSubject": "Handelt als Benutzer (optional)",
+    "gdriveSubjectHint": "Mit domänenweiter Delegierung liest das Dienstkonto das Drive dieses Workspace-Benutzers. Leer lassen, um als das Dienstkonto selbst zu lesen."
   }
 }

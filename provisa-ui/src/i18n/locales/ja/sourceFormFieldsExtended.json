@@ -240,6 +240,8 @@
     "gdriveAuth_oauth": "OAuth（リフレッシュ トークン）",
     "gdriveServiceAccountKey": "サービス アカウント キー（JSON）",
     "gdriveServiceAccountKeyHint": "フォルダーをサービス アカウントのメールアドレスと共有してください。サービス アカウントには独自のストレージがありません。",
-    "gdriveRefreshToken": "リフレッシュ トークン"
+    "gdriveRefreshToken": "リフレッシュ トークン",
+    "gdriveSubject": "代理ユーザー（任意）",
+    "gdriveSubjectHint": "ドメイン全体の委任により、サービス アカウントはこの Workspace ユーザーのドライブを読み取ります。空欄の場合はサービス アカウント自身として読み取ります。"
   }
 }

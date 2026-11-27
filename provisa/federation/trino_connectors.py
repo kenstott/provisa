@@ -596,7 +596,7 @@ class TrinoFilesConnector(_TrinoConnector):
         from provisa.file_source.drive_operand import drive_adapter_operand
 
         # REQ-2280: a onedrive:// or gdrive:// glob is read live by the adapter's drive storage
-        # provider. The trino-file plugin (calcite engine-v0.130.0) takes the adapter's
+        # provider. The trino-file plugin (calcite engine-v0.131.0) takes the adapter's
         # storageConfig as its ``storage-config`` property (the same keys the pgwire bundle is
         # given) and reads the glob past its scheme within the drive, so the drive's owner (or root
         # folder id) leaves the glob for the storage config.
