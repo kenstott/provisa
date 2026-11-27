@@ -59,8 +59,10 @@ def _source_sql(*statements: str) -> None:
 
 
 def _config() -> dict:
-    # "viewer" is a standard role a config may not define (REQ-2155); the reader is a custom role.
-    readers = [_ADMIN, "ctc_reader"]
+    # The member's default offer is viewer's (DEFAULT_OFFER, REQ-2180): its contract holds the
+    # columns viewer reads, so both are visible to it. viewer is a standard role, seeded by
+    # init_schema, which a config may not define (REQ-2155).
+    readers = [_ADMIN, "viewer"]
     return {
         "federation_engine": "duckdb",
         "auth": {
@@ -70,16 +72,7 @@ def _config() -> dict:
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
-        "roles": [
-            {
-                "id": r,
-                "description": f"{r} role.",
-                "capabilities": ["usage"],
-                "domain_access": ["*"],
-            }
-            for r in readers
-            if r != _ADMIN  # org_admin is a standard role, seeded by init_schema (REQ-2155)
-        ],
+        "roles": [],  # org_admin and viewer are standard roles, seeded by init_schema (REQ-2155)
         "domains": [{"id": "sales", "description": "the product's member"}],
         "sources": [
             {
