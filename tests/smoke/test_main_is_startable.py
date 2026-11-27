@@ -803,7 +803,7 @@ def test_source_openapi(instance: Instance):
 
 
 def test_source_parquet(instance: Instance):
-    rows = _sql_rows(instance, "SELECT sku, name FROM default.products WHERE id = 1")
+    rows = _sql_rows(instance, "SELECT sku, name FROM main.products WHERE id = 1")
     assert rows == [{"sku": "WIDGET-A", "name": "Widget Alpha"}]
 
 
