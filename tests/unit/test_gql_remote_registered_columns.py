@@ -53,13 +53,13 @@ _REGISTERED = {
     "source_id": "graphql-demo",
     "cache_ttl": 300,
     "columns": [
-        {"column_name": "id", "data_type": "integer"},
+        {"column_name": "id", "data_type": "integer", "gql_selection": None},
         {
             "column_name": "employee_id",
             "data_type": "integer",
             "gql_selection": "employee_id: employee { id }",
         },
-        {"column_name": "day_of_week", "data_type": "varchar"},
+        {"column_name": "day_of_week", "data_type": "varchar", "gql_selection": None},
     ],
 }
 
@@ -152,3 +152,67 @@ def test_every_registered_graphql_demo_column_is_a_field_or_says_how_it_is_read(
                 f"type and has no gql_selection: {sorted(fields)}"
             )
     assert checked, f"{path}: no graphql-demo column was checked"
+
+
+def _registry_row():
+    """The registered schedules table as the registry view reads it (``fetch_tables``' row)."""
+    from collections import defaultdict
+
+    def column(name, data_type, selection=None):
+        return defaultdict(
+            lambda: None, column_name=name, data_type=data_type, gql_selection=selection
+        )
+
+    row = defaultdict(lambda: None)
+    row.update(
+        id=312,
+        source_id="graphql-demo",
+        schema_name="graphql",
+        table_name="schedules",
+        role_ttl={},
+        columns=[
+            column("id", "integer"),
+            column("employee_id", "integer", "employee_id: employee { id }"),
+            column("day_of_week", "varchar"),
+        ],
+    )
+    return row
+
+
+def test_the_registry_view_carries_a_registered_columns_selection():
+    """The landing reads its table from the registry view; a column there without its selection
+    is asked of the remote by its own name."""
+    from provisa.federation.registry_view import _build_registered_tables
+
+    (table,) = _build_registered_tables([_registry_row()])
+    assert {c.name: c.gql_selection for c in table.columns} == {
+        "id": None,
+        "employee_id": "employee_id: employee { id }",
+        "day_of_week": None,
+    }
+
+
+async def test_the_landing_reads_a_registered_column_through_its_selection(monkeypatch):
+    """The source loader (a replica's landing) builds its query from the registered columns: the
+    endpoint's ``Schedule`` lists no ``employee_id``, and the model reads it through ``employee``."""
+    from provisa.core import secrets_providers
+    from provisa.events.source_loader import make_graphql_remote_loader
+    from provisa.federation.registry_view import _build_registered_tables
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+    asked: list[list[str]] = []
+
+    async def remote(*, columns, **kwargs):
+        asked.append(list(columns))
+        return RemoteAnswer([{"id": 1, "employee_id": 7, "day_of_week": "Monday"}])
+
+    monkeypatch.setattr("provisa.graphql_remote.executor.execute_remote", remote)
+    gql_sources = {
+        "graphql-demo": {"url": "https://example.test/graphql", "tables": [_INTROSPECTED]}
+    }
+    (table,) = _build_registered_tables([_registry_row()])
+    load = make_graphql_remote_loader(gql_sources, max_rows=500, page_size=100)
+    source = SimpleNamespace(id="graphql-demo", type=SimpleNamespace(value="graphql_remote"))
+    await load(source, table)
+    assert "employee_id: employee { id }" in asked[0]
+    assert not any("employeeId" in s for s in asked[0]), asked[0]
