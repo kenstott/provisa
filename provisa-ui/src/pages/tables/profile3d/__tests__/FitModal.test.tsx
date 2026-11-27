@@ -23,9 +23,13 @@ describe("the fit modal", () => {
       </FitModal>,
     );
     const inside = await screen.findByTestId("inside");
-    const body = inside.closest(".mantine-Modal-body") as HTMLElement;
+    // The shared dialog layout (ModalLayout, REQ-2277 rule 10) makes the content a column that
+    // does not scroll (App.css `.modal-layout__content`); `fill` keeps its body from scrolling as a
+    // whole (`.modal-layout__scroll--fill`), so the view takes the height the header leaves.
+    const scroll = inside.closest("[data-modal-scroll]") as HTMLElement;
     const content = inside.closest(".mantine-Modal-content") as HTMLElement;
-    expect(content).toHaveStyle({ height: "95dvh", overflow: "hidden", display: "flex" });
-    expect(body).toHaveStyle({ flex: "1", minHeight: "0", overflow: "hidden", display: "flex" });
+    expect(content).toHaveClass("modal-layout__content");
+    expect(content).toHaveStyle({ height: "95dvh" });
+    expect(scroll).toHaveClass("modal-layout__scroll", "modal-layout__scroll--fill");
   });
 });

@@ -225,6 +225,15 @@ describe("modal guard (REQ-2277 rule 10)", () => {
     expect(checkModalRules("x.tsx", src)).toEqual([]);
   });
 
+  it("holds the buttons of a component of the same file that a dialog renders", () => {
+    const src = `function Body() { return <Group><Button>Apply</Button></Group>; }
+      function Row() { return <Button>Elsewhere</Button>; }
+      export const X = () => <ModalLayout opened onClose={() => {}}><Body /></ModalLayout>;`;
+    expect(checkModalRules("x.tsx", src).map((v) => [v.rule, v.line])).toEqual([
+      ["button-in-content", 1],
+    ]);
+  });
+
   it("holds every button of a dialog's content file", () => {
     const src = `export const Body = () => <Stack><Button>Apply</Button></Stack>;`;
     expect(checkModalRules("x.tsx", src).map((v) => v.rule)).toEqual([]);

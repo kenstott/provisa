@@ -132,12 +132,53 @@ export function checkModalRules(
     }
   }
 
+  // The components of this file a dialog renders, and those they render in turn: their buttons
+  // are the dialog's too.
+  const components = new Map<string, ts.Node>();
+  const nameOf = (n: ts.Node): string | undefined => {
+    if (ts.isFunctionDeclaration(n) && n.name) return n.name.text;
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      const init = n.initializer;
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) return n.name.text;
+    }
+    return undefined;
+  };
+  const collect = (n: ts.Node) => {
+    const name = nameOf(n);
+    if (name !== undefined && /^[A-Z]/.test(name)) components.set(name, n);
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+  const rendered = (root: ts.Node, into: Set<string>) => {
+    const walk = (n: ts.Node) => {
+      if (isJsxEl(n) && components.has(tagOf(n))) into.add(tagOf(n));
+      ts.forEachChild(n, walk);
+    };
+    ts.forEachChild(root, walk);
+  };
+  const dialogComponents = new Set<string>();
+  const findDialogs = (n: ts.Node) => {
+    if (isJsxEl(n) && DIALOGS.has(tagOf(n))) rendered(n, dialogComponents);
+    ts.forEachChild(n, findDialogs);
+  };
+  findDialogs(sf);
+  for (let grew = true; grew;) {
+    const before = dialogComponents.size;
+    for (const name of [...dialogComponents]) rendered(components.get(name)!, dialogComponents);
+    grew = dialogComponents.size > before;
+  }
+
   const excepted = (n: ts.Node) =>
     (options.contentButtons ?? []).some((marker) => n.getText().includes(marker));
 
   const checkButton = (n: JsxEl) => {
     let inDialog = options.dialogContent === true;
     for (let p: ts.Node | undefined = n.parent; p; p = p.parent) {
+      const name = nameOf(p);
+      if (name !== undefined && dialogComponents.has(name)) {
+        inDialog = true;
+        break;
+      }
       if (!isJsxEl(p)) continue;
       const tag = tagOf(p);
       if (tag === "FormFooter" || CONTENT_PLACES.has(tag)) return;
