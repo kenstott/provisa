@@ -1002,6 +1002,13 @@
       "reason_required": "建議須說明其原因。",
       "no_recipient": "網域 {{domain}} 沒有可接收建議的數據產品擁有者或數據管家。",
       "not_a_recipient": "網域 {{domain}} 的建議由其數據管家和數據產品擁有者閱讀。"
+    },
+    "column_rules": {
+      "database_unavailable": "無法連接控制平面",
+      "right_not_everywhere": "欄位規則作用於所有網域；需要在所有網域中擁有 {{right}}",
+      "invalid": "欄位規則無效：{{reason}}",
+      "not_found": "沒有欄位規則 {{rule}}",
+      "tag_not_found": "找不到標籤 {{tag}}"
     }
   }
 }

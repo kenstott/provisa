@@ -25,7 +25,7 @@ data-integrity fault, not something to pass through ungoverned. An action that d
 column contract returns a scalar (or nothing) and has no columns to bind; it is returned as is.
 """
 
-# Requirements: REQ-1679
+# Requirements: REQ-1679, REQ-2278
 
 from __future__ import annotations
 
@@ -165,13 +165,26 @@ def _governance_context(
     # shape (REQ-1679): it is read by the roles the command itself is assigned to (REQ-2153: a
     # list names its roles). A contract column declares no scope, so the rule reads it as a
     # domain column.
+    # REQ-2278: a tag- or classification-keyed column rule reaching the column narrows its grant
+    # and floors its masks through the one evaluator a table column goes through, once the grant
+    # is folded down the role chains; the stricter result holds.
+    from provisa.security.column_rules import govern_column
+
+    ruled = state.ruled_columns
     domain_id = action["domain_id"]
     reaches = reaches_domain(role["domain_access"], domain_id)
     visible: set[str] = set()
+    masks: dict[str, list[dict]] = {}
     for c in cols:
         declared = c.get("visible_to")
         column = {"visible_to": list(action["visible_to"] if declared is None else declared)}
         expand_grants([column], chains)
+        column = govern_column(
+            {**column, "masks": c["masks"]},
+            ruled.get(("command_column", name, c["name"]), ()),
+            chains,
+        )
+        masks[c["name"]] = column["masks"]
         if column_served({"id": role_id}, domain_id, column, reaches=reaches):
             visible.add(c["name"])
         else:
@@ -182,7 +195,7 @@ def _governance_context(
     reader = reader_chain(state, role_id)
     for c in cols:
         dtype = c.get("type") or "varchar"
-        rule = resolve(c["masks"], reader, dtype)
+        rule = resolve(masks[c["name"]], reader, dtype)
         if rule is None:
             continue
         validate_masking_rule(rule, c["name"], dtype, True)

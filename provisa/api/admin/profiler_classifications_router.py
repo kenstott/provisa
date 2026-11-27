@@ -33,7 +33,7 @@ registering a table, a withdrawn one as well as one in service -- and shows hint
 caller is served.
 """
 
-# Requirements: REQ-2147, REQ-1159
+# Requirements: REQ-2147, REQ-1159, REQ-2278
 
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
+from provisa.api.admin.column_rules_router import keyed_by
 from provisa.api.admin.table_read import refuse_unparameterized, table_for_steward
 from provisa.api.errors import ApiError
 from provisa.api.engine_error_names import client_value
@@ -204,6 +205,13 @@ async def decide_classification(
                 exc.result.message,
                 **(exc.result.params or {}),
             ) from exc
+        # REQ-2278: a column classified (and, for a sensitive kind, marked pii) comes under a column
+        # rule keyed on either at once.
+        ruled = await keyed_by(conn, tags=("pii",), kinds=(kind.id,))
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     if accepted is None:
         return {"status": body.status}
     return {
@@ -239,6 +247,11 @@ async def forget_classification(
                 column=body.physicalColumn,
                 kind=kind.id,
             )
+        ruled = await keyed_by(conn, kinds=(kind.id,))  # REQ-2278: the column is released at once
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     return {"ok": True}
 
 
@@ -324,6 +337,11 @@ async def decide_command_classification(
                 evidence=body.evidence,
                 by=_caller(request),
             )
+        ruled = await keyed_by(conn, tags=("pii",), kinds=(kind.id,))  # REQ-2278
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     return {"status": body.status}
 
 
@@ -346,6 +364,11 @@ async def forget_command_classification(
                 column=body.physicalColumn,
                 kind=kind.id,
             )
+        ruled = await keyed_by(conn, kinds=(kind.id,))  # REQ-2278: the column is released at once
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     return {"ok": True}
 
 

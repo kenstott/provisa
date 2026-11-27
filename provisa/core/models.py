@@ -1460,6 +1460,27 @@ class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
         return value
 
 
+class ColumnRuleModel(BaseModel):  # REQ-2278
+    """A column rule keyed on a tag or a classification kind, never both: for ``role_id`` and the
+    roles descending from it, every column carrying the key -- a table's or a command's output
+    column -- is hidden (``hide``) or read through ``mask`` (``mask``; no mask: completely
+    masked)."""
+
+    tag_id: str | None = None
+    classification: str | None = None
+    role_id: str
+    action: Literal["hide", "mask"]
+    mask: Mask | None = None
+
+    @model_validator(mode="after")
+    def _one_key_and_mask_of_mask(self) -> "ColumnRuleModel":
+        if (self.tag_id is None) == (self.classification is None):
+            raise ValueError("a column rule is keyed on a tag or a classification, exactly one")
+        if self.action == "hide" and self.mask is not None:
+            raise ValueError("a hide rule takes no mask")
+        return self
+
+
 class ObjectField(BaseModel):
     name: str
     type: str = "string"  # provisa scalar type: string, integer, number, boolean, object

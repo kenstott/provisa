@@ -132,6 +132,7 @@ def state(monkeypatch):
     held = SimpleNamespace(
         masking_rules={},
         meta_roles={},
+        ruled_columns={},  # REQ-2278: no column rule rules these tables
         # prod: no data mode, so no column is faked for every role (REQ-1942)
         _active_runtime=lambda: SimpleNamespace(data_mode=None, env="prod", data_refusal=None),
     )
