@@ -69,6 +69,9 @@ jobs:
       - uses: ./.github/actions/trino-plugins
         with:
           phase: prime
+      - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
 
   playwright:
     name: Playwright Trino lane
@@ -77,6 +80,7 @@ jobs:
     with:
       name: ui-trino
       trino-plugins: true
+      zaychik-image: true
       # Trino's healthcheck start_period alone is 120s, and the Trino-engine backend's
       # register_system_catalogs() gets a 300s webServer timeout on a cold JVM;
       # source-to-query-olap-lake-trino.spec.ts's druid case alone budgets a 900s beforeAll for
