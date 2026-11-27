@@ -273,7 +273,7 @@ def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
     assert pins._TRINO_PLUGIN_VERSIONS == {
         "trino-salesforce": "0.108.0",
         "trino-cloudops": "0.108.0",
-        "trino-file": "0.131.0",
+        "trino-file": "0.131.1",
     }
     assert set(pins._TRINO_PLUGIN_VERSIONS) <= set(pins._TRINO_PLUGINS)
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
@@ -298,8 +298,8 @@ def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
         f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar.part",
         f"{base}/trino-cloudops/0.108.0/trino-cloudops-0.108.0.jar"
         f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar.part",
-        f"{base}/trino-file/0.131.0/trino-file-0.131.0.jar"
-        f" -> {tmp_path}/trino-file/trino-file-0.131.0.jar.part",
+        f"{base}/trino-file/0.131.1/trino-file-0.131.1.jar"
+        f" -> {tmp_path}/trino-file/trino-file-0.131.1.jar.part",
     ]
 
 

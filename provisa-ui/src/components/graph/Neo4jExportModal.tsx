@@ -9,7 +9,9 @@
 // permission from the copyright holder.
 
 import { useState } from "react";
-import { Alert, Button, Group, Modal, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
+import { FormFooter } from "../form/FormLayout";
 import { useTranslation } from "react-i18next";
 import type { GNode, GEdge } from "./graph-model";
 import { buildCypherScript, exportToNeo4j, downloadBlob } from "./graph-export";
@@ -58,7 +60,7 @@ export function Neo4jExportModal({ nodes, edges, onClose }: Neo4jExportModalProp
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("neo4jExportModal.title")}
@@ -119,21 +121,24 @@ export function Neo4jExportModal({ nodes, edges, onClose }: Neo4jExportModalProp
           </Alert>
         )}
 
-        <Group justify="flex-end">
+        <FormFooter
+          action={
+            <Button
+              onClick={handleExportToServer}
+              loading={status === "exporting"}
+              data-testid="neo4j-export-btn"
+            >
+              {status === "exporting"
+                ? t("neo4jExportModal.exporting")
+                : t("neo4jExportModal.exportToServer")}
+            </Button>
+          }
+        >
           <Button variant="default" onClick={onClose} data-testid="neo4j-close-btn">
             {t("neo4jExportModal.close")}
           </Button>
-          <Button
-            onClick={handleExportToServer}
-            loading={status === "exporting"}
-            data-testid="neo4j-export-btn"
-          >
-            {status === "exporting"
-              ? t("neo4jExportModal.exporting")
-              : t("neo4jExportModal.exportToServer")}
-          </Button>
-        </Group>
+        </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

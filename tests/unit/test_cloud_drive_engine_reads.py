@@ -85,7 +85,7 @@ USER = "ana@example.com"
 
 def test_gdrive_is_read_by_the_adapter_as_the_workspace_user_its_service_account_acts_as():
     # REQ-2280 (amended 2026-11-26): a service account with domain-wide delegation acts as the
-    # Workspace user the source names; calcite engine-v0.131.0's gdrive storageConfig takes it as
+    # Workspace user the source names; calcite engine-v0.131.1's gdrive storageConfig takes it as
     # ``subject`` (the JWT ``sub`` claim) and reads with its default drive.readonly scope.
     operand = _operand(
         _files(
@@ -454,8 +454,8 @@ def test_trino_file_plugin_is_the_first_release_that_takes_storage_config():
     import tests.trino_plugins as pins
 
     # calcite engine-v0.130.0 (PR #1173) added the trino-file storage-config property;
-    # engine-v0.131.0 its gdrive ``subject`` and ``scope`` keys (domain-wide delegation).
-    assert pins.plugin_version("trino-file") == "0.131.0"
+    # engine-v0.131.1 its gdrive ``subject`` and ``scope`` keys (domain-wide delegation).
+    assert pins.plugin_version("trino-file") == "0.131.1"
 
 
 def test_pgwire_bundles_and_govdata_record_are_at_engine_v0_131_0():
@@ -465,6 +465,6 @@ def test_pgwire_bundles_and_govdata_record_are_at_engine_v0_131_0():
     import provisa.govdata as govdata
     from provisa.runtime_deps import pgwire_bundles
 
-    assert pgwire_bundles.RELEASE_TAG == "engine-v0.131.0"
+    assert pgwire_bundles.RELEASE_TAG == "engine-v0.131.1"
     record = json.loads((Path(govdata.__file__).parent / "bundle_schemas.json").read_text())
     assert record["release"] == pgwire_bundles.RELEASE_TAG

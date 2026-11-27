@@ -10,7 +10,9 @@
 
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Anchor, Button, Code, Group, Modal, Stack, Text } from "@mantine/core";
+import { Anchor, Button, Code, Group, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
+import { FormFooter } from "./form/FormLayout";
 import { Globe, Palette } from "lucide-react";
 import { CopyButton } from "./CopyButton";
 import { BrandMark } from "./BrandMark";
@@ -39,7 +41,7 @@ export function OrgAddressModal({
   const navigate = useNavigate();
 
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       centered
@@ -77,10 +79,13 @@ export function OrgAddressModal({
         </Group>
 
         {/* Actions start where the reading does: the one that finishes first. */}
-        <Group justify="flex-start">
-          <Button data-testid="org-address-done" onClick={onClose}>
-            {t("orgAddress.doneButton")}
-          </Button>
+        <FormFooter
+          action={
+            <Button data-testid="org-address-done" onClick={onClose}>
+              {t("orgAddress.doneButton")}
+            </Button>
+          }
+        >
           <Button
             variant="light"
             data-testid="org-address-brand"
@@ -91,8 +96,8 @@ export function OrgAddressModal({
           >
             {t("orgAddress.brandingButton")}
           </Button>
-        </Group>
+        </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

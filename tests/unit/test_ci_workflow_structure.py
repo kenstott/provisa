@@ -3112,3 +3112,95 @@ def test_the_apt_update_helper_drops_the_microsoft_source_before_it_updates():
     assert r"packages\.microsoft\.com" in text  # the helper greps for it as a regex
     assert removal < re.search(r"apt-get[^\n]*\bupdate\b", text).start()
     assert os.access(_APT_UPDATE_HELPER, os.X_OK)
+
+
+# ---- the zaychik image: loaded by every lane that starts it, built only when absent ----------
+
+_ZAYCHIK_ACTION = "./.github/actions/zaychik-image"
+
+
+def _action_phase(step: dict) -> str | None:
+    if step.get("uses") != _ZAYCHIK_ACTION:
+        return None
+    return (step.get("with") or {}).get("phase")
+
+
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
+
+
+def test_no_compose_service_builds_on_every_up_and_zaychik_builds_only_when_missing():
+    """Run 45466227019: a NixOS core lane rebuilt zaychik (mvn go-offline) and Maven Central
+    answered 429. `pull_policy: build` is a rebuild on every `up`; zaychik is `missing`: the image
+    a lane loaded is used, the build runs only when it is absent."""
+    for path in sorted(REPO.glob("docker-compose*.yml")):
+        for svc, body in (yaml.safe_load(path.read_text()).get("services") or {}).items():
+            assert body.get("pull_policy") != "build", f"{path.name}:{svc}"
+    core = yaml.safe_load((REPO / "docker-compose.core.yml").read_text())["services"]["zaychik"]
+    assert core["pull_policy"] == "missing"
+    assert core["image"] == "zaychik:latest"
+
+
+def test_the_trino_stack_script_builds_zaychik_only_when_the_image_is_absent():
+    text = (REPO / "scripts/ci/lanes/trino-stack-prepare.sh").read_text()
+    lines = [
+        ln.strip() for ln in text.splitlines() if "build zaychik" in ln and ln.strip()[0] != "#"
+    ]
+    assert len(lines) == 1, lines
+    assert lines[0].startswith("docker image inspect zaychik:latest"), lines[0]
+    assert "||" in lines[0], lines[0]
+
+
+def test_every_lane_that_starts_the_trino_stack_loads_the_primed_zaychik_image():
+    """A caller of lane.yml that mounts the Trino plugins starts the core stack: it passes
+    zaychik-image and needs a job that primes the image."""
+    seen = 0
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for name, job in jobs.items():
+            given = job.get("with") or {}
+            if (
+                job.get("uses") != "./.github/workflows/lane.yml"
+                or given.get("trino-plugins") is not True
+            ):
+                continue
+            seen += 1
+            where = f"{path.name}:{name}"
+            assert given.get("zaychik-image") is True, where
+            needs = job.get("needs") or []
+            needs = [needs] if isinstance(needs, str) else needs
+            primed = [
+                n
+                for n in needs
+                if any(_action_phase(s) == "prime" for s in (jobs[n].get("steps") or []))
+            ]
+            assert primed, f"{where} needs no job that primes the zaychik image"
+    assert seen >= 4
+
+
+def test_a_job_that_runs_the_trino_stack_script_restores_the_zaychik_image_first():
+    def order(steps):
+        return [
+            ("restore" if _action_phase(s) == "restore" else "run")
+            for s in steps
+            if _action_phase(s) == "restore" or "trino-stack-prepare.sh" in (s.get("run") or "")
+        ]
+
+    jobs = _workflow("conformance-functions.yml")["jobs"]["probe"]["steps"]
+    assert order(jobs) == ["restore", "run"]
+    assert [_action_phase(s) for s in jobs if _action_phase(s)] == ["prime", "restore"]
+
+
+def test_the_nixos_lane_loads_the_primed_zaychik_image_into_the_guest():
+    jobs = _workflow("nixos.yml")["jobs"]
+    lane = jobs["lane"]
+    needs = lane["needs"]
+    assert any(
+        _action_phase(s) == "prime" for n in needs if n in jobs for s in jobs[n].get("steps") or []
+    ), needs
+    steps = lane["steps"]
+    texts = [(s.get("run") or "") for s in steps]
+    restore = next(i for i, s in enumerate(steps) if _action_phase(s) == "restore")
+    load = next(i for i, t in enumerate(texts) if "docker load" in t and "vm-run" in t)
+    run_lane = next(i for i, t in enumerate(texts) if "run_lane.py" in t)
+    assert restore < load < run_lane

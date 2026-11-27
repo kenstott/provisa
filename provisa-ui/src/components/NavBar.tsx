@@ -11,7 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
-import { ActionIcon, Badge, Button, Checkbox, Menu, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Checkbox, Menu, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
 import { BrandMark } from "./BrandMark";
@@ -401,7 +402,7 @@ export function NavBar() {
           onClose={() => setWhatsNewOpen(false)}
         />
       )}
-      <Modal
+      <ModalLayout
         opened={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         title={t("navBar.sandboxExitTitle")}
@@ -427,7 +428,7 @@ export function NavBar() {
             </Button>
           </FormFooter>
         </Stack>
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

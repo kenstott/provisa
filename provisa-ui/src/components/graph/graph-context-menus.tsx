@@ -8,11 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useId } from "react";
 import {
   Button,
   Group,
-  Modal,
   NumberInput,
   SegmentedControl,
   Select,
@@ -22,10 +21,11 @@ import {
   TextInput,
   UnstyledButton,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { labelColor, PALETTE } from "./graph-model";
 import type { RelLineOverride } from "./graph-model";
-import { CancelButton } from "../form/CancelButton";
+import { FormFooter } from "../form/FormLayout";
 
 // ── Context menu state ──────────────────────────────────────────────────────────
 export interface ContextMenuState {
@@ -322,19 +322,20 @@ export function NativeFilterModal({
     Object.fromEntries(filterColumns.map((c) => [c.name, ""])),
   );
 
+  const formId = useId();
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onConfirm(values);
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onCancel}
       title={t("graphContextMenus.filterParametersTitle", { label })}
       centered
     >
-      <form onSubmit={handleSubmit}>
+      <form id={formId} onSubmit={handleSubmit}>
         <Stack gap="sm">
           {filterColumns.map((col) => (
             <TextInput
@@ -346,12 +347,17 @@ export function NativeFilterModal({
               autoFocus={filterColumns[0].name === col.name}
             />
           ))}
-          <Group justify="flex-end" mt="md">
-            <CancelButton onClick={onCancel} />
-            <Button type="submit">{t("graphContextMenus.run")}</Button>
-          </Group>
+          {/* REQ-2277 rule 10: in the dialog's bar, outside the form, so Run names the form. */}
+          <FormFooter
+            onCancel={onCancel}
+            action={
+              <Button type="submit" form={formId}>
+                {t("graphContextMenus.run")}
+              </Button>
+            }
+          />
         </Stack>
       </form>
-    </Modal>
+    </ModalLayout>
   );
 }

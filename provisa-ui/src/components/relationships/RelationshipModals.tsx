@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Button, Checkbox, Modal, NumberInput, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Checkbox, NumberInput, Stack, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import type { Relationship } from "../../types/admin";
@@ -22,7 +23,7 @@ interface ConflictModalProps {
 export function ConflictModal({ rel, onClose }: ConflictModalProps) {
   const { t } = useTranslation();
   return (
-    <Modal opened onClose={onClose} title={t("relationshipModals.conflictTitle")} centered>
+    <ModalLayout opened onClose={onClose} title={t("relationshipModals.conflictTitle")} centered>
       <Stack gap="sm">
         <Text size="sm" c="dimmed">
           {t("relationshipModals.conflictIntro")}
@@ -77,7 +78,7 @@ export function ConflictModal({ rel, onClose }: ConflictModalProps) {
           }
         />
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }
 

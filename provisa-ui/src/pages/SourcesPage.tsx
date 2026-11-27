@@ -1636,11 +1636,8 @@ export function SourcesPage() {
   );
   const working =
     setup !== null && selectedSource !== null && setup.sourceId === selectedSource.id ? (
-      <PanelWorking
-        back={t("sourceSetup.finishLater")}
-        onBack={() => setSetup(null)}
-        testId="source-setup-finish-later"
-      >
+      // REQ-2234: no way back of its own: Finish later is in the setup's command bar (the head).
+      <div className="split-pane__working">
         <SourceSetupStepper
           sourceId={selectedSource.id}
           outcomes={selectedSource.setupOutcomes}
@@ -1657,7 +1654,7 @@ export function SourcesPage() {
             setSetup(null);
           }}
         />
-      </PanelWorking>
+      </div>
     ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}

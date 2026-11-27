@@ -15,7 +15,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Loader, Modal, Table } from "@mantine/core";
+import { Alert, Badge, Loader, Table } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { ListEmpty, ListHead, ListRow, ListTable } from "../../components/list/ListTable";
 import { tableSuggestions, type Suggestion } from "../../api/productSuggestions";
 import { errorText, keyOf, type SuggestedTable } from "./suggestionCounts";
@@ -65,17 +66,19 @@ export function TableSuggestionsModal({
 }) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={table !== null}
       onClose={onClose}
       size="xl"
       title={
-        table ? t("suggestProduct.listTitle", { table: keyOf(table.domainId, table.tableName) }) : ""
+        table
+          ? t("suggestProduct.listTitle", { table: keyOf(table.domainId, table.tableName) })
+          : ""
       }
       data-testid="table-suggestions-modal"
     >
       {table && <SuggestionsList key={keyOf(table.domainId, table.tableName)} table={table} />}
-    </Modal>
+    </ModalLayout>
   );
 }
 

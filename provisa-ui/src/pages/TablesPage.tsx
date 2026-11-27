@@ -29,11 +29,11 @@ import {
   Button,
   Group,
   Menu,
-  Modal,
   Table,
   Text,
   TextInput,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { ErdFocusActions } from "../components/erd/ErdFocusActions";
 import { ErdToggle } from "../components/erd/ErdToggle";
 import { ErdView } from "../components/erd/ErdView";
@@ -1750,7 +1750,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       >
         {panelBody}
       </SplitPane>
-      <Modal
+      <ModalLayout
         opened={regenTable !== null}
         onClose={() => setRegenTable(null)}
         title={translate("tablesPage.runNowModalTitle", {
@@ -1784,9 +1784,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             }
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
       {/* REQ-1484: advisory — the estate's dependents are listed, the administrator decides. */}
-      <Modal
+      <ModalLayout
         opened={pendingDependents !== null}
         onClose={() => setPendingDependents(null)}
         title={translate("tablesPage.dependentsTitle")}
@@ -1817,16 +1817,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </div>
         ))}
         {/* The action first, at the start of the row; the way back to the form follows. */}
-        <Group justify="flex-start" mt="md">
-          <DestructiveConfirmButton
-            testId="column-dependents-confirm"
-            onClick={() => {
-              setPendingDependents(null);
-              void performSaveEdit();
-            }}
-          >
-            {translate("tablesPage.dependentsConfirm")}
-          </DestructiveConfirmButton>
+        <FormFooter
+          action={
+            <DestructiveConfirmButton
+              testId="column-dependents-confirm"
+              onClick={() => {
+                setPendingDependents(null);
+                void performSaveEdit();
+              }}
+            >
+              {translate("tablesPage.dependentsConfirm")}
+            </DestructiveConfirmButton>
+          }
+        >
           <Button
             variant="default"
             onClick={() => setPendingDependents(null)}
@@ -1834,8 +1837,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           >
             {translate("tablesPage.dependentsCancel")}
           </Button>
-        </Group>
-      </Modal>
+        </FormFooter>
+      </ModalLayout>
       <NativeParamsModal
         key={profileParamsTable?.id ?? "none"}
         table={profileParamsTable}

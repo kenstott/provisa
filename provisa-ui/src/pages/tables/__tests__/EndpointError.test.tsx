@@ -13,6 +13,12 @@
 // its read and edit views.
 
 import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { render, renderInForm, screen } from "../../../test-utils/render";
 import type { RegisteredTable, Source } from "../../../types/admin";
 import { EndpointErrorMark } from "../EndpointErrorMark";

@@ -11,7 +11,8 @@
 // What's new in the release this UI was built with (lib/releaseNotes.ts).
 
 import { useTranslation } from "react-i18next";
-import { List, Modal, Stack, Text, Title } from "@mantine/core";
+import { List, Stack, Text, Title } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import type { ReleaseNotes } from "../lib/releaseNotes";
 
 export function WhatsNewModal({
@@ -26,7 +27,7 @@ export function WhatsNewModal({
   const { t } = useTranslation();
   const empty = notes.features.length === 0 && notes.changes.length === 0;
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       size="lg"
@@ -78,6 +79,6 @@ export function WhatsNewModal({
           </Stack>
         )}
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

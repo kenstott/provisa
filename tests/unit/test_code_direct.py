@@ -127,6 +127,22 @@ def test_an_argument_is_the_statements_condition_on_the_tables_parameter():
     assert residual.nf_given(sql, "duckdb", "scores") == {"as_of": "2026", "top": 3}
 
 
+def test_an_argument_pinned_to_byte_order_is_its_literal():
+    """An engine that attached the host sends a text literal as ``'a' COLLATE "C"`` (DuckDB's
+    postgres scanner): it is still the parameter's value, and still a filter on a column."""
+    sql = 'SELECT "id" FROM "s"."scores" WHERE "_nf_as_of" = \'2026\' COLLATE "C" AND "region" = \'EU\' COLLATE "C"'
+    assert residual.nf_given(sql, "postgres", "scores") == {"as_of": "2026"}
+    context = residual.read_context(sql, "postgres", "scores", ["id", "region"])
+    assert [(f["column"], f["op"], f["value"]) for f in context["filters"]] == [
+        ("region", "eq", "EU")
+    ]
+
+
+def test_an_argument_under_another_collation_is_not_given():
+    sql = "SELECT id FROM s.scores WHERE _nf_as_of = '2026' COLLATE \"de_DE\""
+    assert residual.nf_given(sql, "postgres", "scores") == {}
+
+
 def test_an_argument_is_read_through_the_governed_relation_it_stands_outside():
     """Governance reads a table through a relation and leaves the statement's WHERE outside it
     (REQ-039): the function took no argument, and its code failed for want of one (run 42547702417,

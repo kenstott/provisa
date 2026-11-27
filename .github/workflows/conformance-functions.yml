@@ -224,6 +224,20 @@ jobs:
         with:
           phase: prime
 
+      # The stack script builds zaychik only when absent: primed here (a cache hit, or one build)
+      # and loaded, so Maven Central is not asked for it on every run.
+      - name: Prime the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+
+      - name: Restore the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the
       # address the other side dials: playwright.config.ts's Trino webServer, name for name. The

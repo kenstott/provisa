@@ -379,8 +379,13 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     );
     // A step in the source's own panel, not a dialog over the page.
     expect(panel()).toContainElement(screen.getByTestId("register-tables-field"));
-    expect(panel()).toContainElement(screen.getByTestId("source-setup-skip-tables"));
-    expect(panel()).toContainElement(screen.getByTestId("source-setup-finish-later"));
+    // REQ-2234: its choices are the panel's command bar: the form's Register, then Finish later.
+    // It cannot be skipped, and has no Cancel.
+    const head = within(screen.getByTestId("sources-split-actions"));
+    expect(head.getByTestId("register-many-tables-submit")).toBeInTheDocument();
+    expect(head.getByTestId("source-setup-finish-later")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-setup-skip")).toBeNull();
+    expect(screen.queryByTestId("register-table-cancel")).toBeNull();
   });
 });
 
