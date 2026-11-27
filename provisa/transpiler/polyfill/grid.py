@@ -353,11 +353,12 @@ _Kept = tuple[tuple[Feature, ...], _Found]
 
 
 def _rewrites_of(rules: list[tuple[Feature, Rule]], column: str) -> _Found:
-    """The rules of ``rules`` whose form on ``column`` is a rewrite function, in their order."""
+    """The rules of ``rules`` whose form on ``column`` is a rewrite function, in their order; one
+    that keeps the old table's form answers nothing, and is left out."""
     return tuple(
         (feature, rule, form)
         for feature, rule in rules
-        if isinstance(form := rule.forms.get(column), Rewrite)
+        if isinstance(form := rule.forms.get(column), Rewrite) and not form.keeps_old
     )
 
 

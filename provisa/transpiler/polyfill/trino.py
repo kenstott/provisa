@@ -58,7 +58,7 @@ def kept(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 
 #: The form of a dialect that keeps the old table's.
-KEPT = Rewrite(kept)
+KEPT = Rewrite(kept, keeps_old=True)
 
 
 def trino_only(trino: Form) -> dict[str, Form]:
