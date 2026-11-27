@@ -21,6 +21,7 @@
     "analyze": "分析",
     "analyzing": "分析中…",
     "analyzeTitle": "このステートメントに対するエンジンのプランを、Provisa の最適化を明示して表示します",
+    "analyzeWhich": "どのステートメントを分析しますか?",
     "saveViewTitle": "現在のSQLをビュー「{{tableName}}」の定義として保存",
     "saving": "保存中…",
     "updateView": "「{{tableName}}」を更新",
