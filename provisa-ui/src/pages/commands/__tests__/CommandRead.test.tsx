@@ -98,14 +98,8 @@ describe("a function's read view", () => {
       ["Description", "Refunds an order"],
       ["Arguments", "order_id: Int"],
     ]);
-    expect(fields("function-read-columns-card")).toEqual([
-      ["Visible to (roles, comma-separated; blank = everyone)", "finance"],
-      ["Mask", "1. auditor: Unmasked · 2. Everyone: regex \\d{12} → ****"],
-    ]);
-    expect(fields("function-read-columns-status")).toEqual([
-      ["Visible to (roles, comma-separated; blank = everyone)", "all"],
-      ["Mask", "None"],
-    ]);
+    // A dataset's columns are on the Columns tab, not under the command's own fields.
+    expect(screen.queryByTestId("function-read-columns-card")).toBeNull();
   });
 
   it("shows a source procedure's source, schema and function, and no binding", () => {

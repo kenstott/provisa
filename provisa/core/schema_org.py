@@ -804,7 +804,7 @@ tag_assignments = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'command_column', 'product', "
         "'term', 'rls_rule', 'role', 'metric')",
         name="tag_assignments_object_type_check",
     ),
@@ -963,12 +963,17 @@ glossary_term_refs = Table(
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
-    Column(
-        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
-    ),
+    Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
+    # REQ-1159 (amended 2026-11-25): a command's output column, named by the command (no FK: a
+    # command's registry splits across two tables) and the column. A ref names one owner.
+    Column("command_name", Text),
     Column("column_name", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
+    UniqueConstraint("command_name", "column_name"),
+    CheckConstraint(
+        "(table_id IS NULL) <> (command_name IS NULL)", name="glossary_term_refs_one_owner"
+    ),
 )
 
 # Closed, enum-typed relationship set — free-form edge types are not permitted (REQ-1387).
@@ -1964,17 +1969,26 @@ profiler_constraints = Table(
 profiler_classifications = Table(
     "profiler_classifications",
     metadata,
-    Column(
-        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
-    ),
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
+    # REQ-1159 (amended 2026-11-25): a steward's classification of a command's output column, named
+    # by the command and the column; no profile run reads one. A decision names one owner.
+    Column("command_name", Text),
     Column("physical_column", Text, nullable=False),  # the column's registered name
     Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
     Column("status", Text, nullable=False),  # accepted | rejected
     Column("evidence", Text, nullable=False),  # the suggestion's evidence when it was decided
-    Column("run_id", Text, nullable=False),  # the run that suggested it
+    Column("run_id", Text),  # the run that suggested it; NULL exactly for a command's column
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+    UniqueConstraint("table_id", "physical_column", "kind"),
+    UniqueConstraint("command_name", "physical_column", "kind"),
+    CheckConstraint(
+        "(table_id IS NULL) <> (command_name IS NULL)", name="profiler_classifications_one_owner"
+    ),
+    CheckConstraint(
+        "(run_id IS NULL) = (table_id IS NULL)", name="profiler_classifications_run_of_table"
+    ),
 )
 
 # REQ-2147 (CONTAINED VALUES ARE HINTS): a scan of a table's text columns for sensitive kinds held

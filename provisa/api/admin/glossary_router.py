@@ -393,6 +393,8 @@ async def get_term(request: Request, term_id: int) -> dict:
     reader = reader_for_request(request)
     term["refs"] = [r for r in term["refs"] if reader.column(r["table_id"], r["column_name"])]
     term["ref_count"] = len(term["refs"])
+    # REQ-1159: and the command output columns of the commands it reads.
+    term["command_refs"] = [r for r in term["command_refs"] if reader.command(r["command_name"])]
     term["table_count"] = sum(1 for t in grounds if reader.column(t["table_id"], None))
     return _with_class_refusal(term)
 
@@ -1171,6 +1173,75 @@ async def move_ref(request: Request) -> dict:
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
     return {"ok": True, **moved, "tag_changes": changes}  # REQ-2145
+
+
+# REQ-1159 (amended 2026-11-25): a command's output column means a term as a table column does.
+
+
+async def _readable_command(request: Request, conn: "Connection", name: str) -> Any:
+    """The command, in a domain the caller acts in and one it reads; else answered as missing."""
+    from provisa.api.admin.command_columns import command_output
+    from provisa.api.admin.read_rights import reader_for_request
+
+    command = await command_output(conn, name)
+    if not reader_for_request(request).command(name):
+        raise ApiError(404, "actions.command_not_found", f"No command {name!r}", command=name)
+    _require_domain(request, command.domain_id)
+    return command
+
+
+@router.get("/commands/{name}/terms")
+async def command_column_terms(request: Request, name: str) -> dict:
+    """The term each of the command's output columns means, by column."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _readable_command(request, _conn, name)
+        return {"terms": await glossary_repo.command_column_terms(_conn, name)}
+
+
+@router.put("/commands/{name}/columns/{column}/term")
+async def ground_command_column(request: Request, name: str, column: str) -> dict:
+    """Make a term the meaning of one of the command's output columns."""
+    from provisa.api.admin.command_columns import require_output_column
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        require_output_column(await _readable_command(request, _conn, name), column)
+        term_id = int(body["term_id"])
+        await _require_term_curatable(_conn, term_id, request)
+        try:
+            await glossary_repo.ground_command_column(_conn, term_id, name, column)
+        except glossary_repo.TermIsClass as exc:
+            from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+            said, tables = await told_glossary_refusal(_conn, reader_for_request(request), exc)
+            raise ApiError(
+                409, "glossary.term_is_class", said, term=exc.term, tables=tables
+            ) from exc
+    await _notify(org_id, "ontology command column grounded")
+    return {"ok": True}
+
+
+@router.delete("/commands/{name}/columns/{column}/term")
+async def unground_command_column(request: Request, name: str, column: str) -> dict:
+    """Take the term off one of the command's output columns."""
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _readable_command(request, _conn, name)
+        if not await glossary_repo.unground_command_column(_conn, name, column):
+            raise ApiError(404, "glossary.ref_not_found", "no term for that column")
+    await _notify(org_id, "ontology command column ungrounded")
+    return {"ok": True}
 
 
 @router.post("/terms/{term_id}/edges")

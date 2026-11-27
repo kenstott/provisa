@@ -932,7 +932,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'command_column', 'product', 'term', 'rls_rule', 'role', 'metric')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -990,7 +990,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'command_column', 'product', 'term', 'rls_rule', 'role', 'metric'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1215,13 +1215,19 @@ END $$;
 -- (table_columns.id is NOT stable: the table upsert replaces column rows wholesale).
 -- Each physical field belongs to exactly one term. Table deletion cascades the refs;
 -- the glossary sweep then applies the remove-or-deprecate rule to newly refless terms.
+-- REQ-1159 (amended 2026-11-25): a command's output column is held the same way, named by the
+-- command (command_name, no FK: a command's registry splits across two tables) and the column; a
+-- ref names a table or a command, never both.
 CREATE TABLE IF NOT EXISTS glossary_term_refs (
-    id          SERIAL PRIMARY KEY,
-    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
-    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
-    column_name TEXT NOT NULL,
-    tenant_id   UUID,
-    UNIQUE (table_id, column_name)
+    id           SERIAL PRIMARY KEY,
+    term_id      INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    table_id     INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    command_name TEXT,
+    column_name  TEXT NOT NULL,
+    tenant_id    UUID,
+    UNIQUE (table_id, column_name),
+    UNIQUE (command_name, column_name),
+    CONSTRAINT glossary_term_refs_one_owner CHECK ((table_id IS NULL) <> (command_name IS NULL))
 );
 
 -- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
@@ -2098,16 +2104,25 @@ DO $$ BEGIN
 END $$;
 
 -- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+-- REQ-1159 (amended 2026-11-25): and a steward's classification of a command's output column, named
+-- by the command (command_name) and the column, which no profile run reads (run_id NULL). A decision
+-- names a table or a command, never both.
 CREATE TABLE IF NOT EXISTS profiler_classifications (
-    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    id               SERIAL PRIMARY KEY,
+    table_id         INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    command_name     TEXT,
     physical_column  TEXT NOT NULL,
     kind             TEXT NOT NULL,
     status           TEXT NOT NULL,
     evidence         TEXT NOT NULL,
-    run_id           TEXT NOT NULL,
+    run_id           TEXT,
     decided_by       TEXT,
     decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (table_id, physical_column, kind)
+    UNIQUE (table_id, physical_column, kind),
+    UNIQUE (command_name, physical_column, kind),
+    CONSTRAINT profiler_classifications_one_owner
+        CHECK ((table_id IS NULL) <> (command_name IS NULL)),
+    CONSTRAINT profiler_classifications_run_of_table CHECK ((run_id IS NULL) = (table_id IS NULL))
 );
 
 -- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive

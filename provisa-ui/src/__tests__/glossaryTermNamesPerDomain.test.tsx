@@ -94,6 +94,7 @@ const REVENUE: GlossaryTermSummary = {
   domains: [],
 };
 const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
+  command_refs: [],
   ...term,
   refs: [],
   edges_out: [],

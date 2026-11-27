@@ -111,6 +111,24 @@ const CASES: Case[] = [
     own: { tagId: "certified", objectType: "section", documentId: 9, sectionPage: 3 },
     other: { tagId: "certified", objectType: "section", documentId: 9, sectionPage: 4 },
   },
+  {
+    // REQ-1159 (amended 2026-11-25): a command's output column, by its command and its name.
+    name: "a command's output column",
+    props: { objectType: "command_column", commandName: "lookup", columnName: "ssn" },
+    target: { objectType: "command_column", commandName: "lookup", columnName: "ssn" },
+    own: {
+      tagId: "certified",
+      objectType: "command_column",
+      commandName: "lookup",
+      columnName: "ssn",
+    },
+    other: {
+      tagId: "certified",
+      objectType: "command_column",
+      commandName: "lookup",
+      columnName: "region",
+    },
+  },
 ];
 
 describe.each(CASES)("the tag chip on $name", ({ props, target, own, other }) => {
@@ -118,9 +136,9 @@ describe.each(CASES)("the tag chip on $name", ({ props, target, own, other }) =>
     assignSpy.mockClear();
     unassignSpy.mockClear();
     mockTags = [
-      tag("certified", ["product", "term", "document", "section"]),
+      tag("certified", ["product", "term", "document", "section", "command_column"]),
       tag("finance", ["table"]),
-      tag("reviewed", ["product", "term", "document", "section"]),
+      tag("reviewed", ["product", "term", "document", "section", "command_column"]),
     ];
     mockAssignments = [];
   });

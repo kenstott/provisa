@@ -1711,6 +1711,8 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "column": model.table_id is not None and model.column_name,
         "relationship": model.relationship_id,
         "command": model.command_name,
+        # REQ-1159: an output column of a command, named by the command and the column.
+        "command_column": model.command_name is not None and model.column_name,
         "term": model.term_id,  # REQ-2145
         "product": model.product_id,  # REQ-1634
         "document": model.document_id,  # REQ-2208
@@ -1795,6 +1797,7 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     term_id: int | None = None,
     product_id: str | None = None,
     rule_domains: set[str] | None = None,
+    command: Any = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
@@ -1833,6 +1836,14 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
         # REQ-2208: the library's curator; tag_target_domains placed it in the document's domains.
         # A sensitive tag hides nothing on a document: no value of it is served by a column.
         require_capability(info, "glossary_rw")
+        return
+    if tag_row["sensitive"] and object_type == "command_column":  # REQ-1159
+        # A sensitive tag on a command's output column hides its values as on a table column's:
+        # sensitive_data in the command's domain.
+        from provisa.api.admin.domain_guard import tag_target_domains
+
+        assert command is not None  # _assignment_target_problem: it names its command
+        require_right_in_domains(info, SENSITIVE_DATA, await tag_target_domains(conn, command))
         return
     if not (tag_row["sensitive"] and object_type == "column"):
         require_capability(info, "table_registration")
@@ -1896,6 +1907,7 @@ async def _require_assignment_editor(
         model.term_id,
         model.product_id,
         await _rule_domains_of(conn, model),
+        model,
     )
     return None
 
@@ -4618,6 +4630,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.term_id,
                 model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
+                model,
             )
             for citation in citations or []:  # REQ-2208: a document the caller reads
                 refused = await _unread_document(
@@ -4693,6 +4706,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.term_id,
                     input.product_id,
                     await _rule_domains_of(cast("Connection", conn), model),
+                    model,
                 )
             if model.object_type == "column":  # REQ-2145
                 from provisa.core.term_tags import inherited_from

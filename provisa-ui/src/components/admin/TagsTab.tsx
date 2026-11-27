@@ -81,6 +81,7 @@ import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { TagDependents, TagWhereApplied } from "./TagUses";
 import { dependentsSummary, whereAppliedSummary } from "../../lib/tagUseSummary";
 import { EntityLink } from "../EntityLink";
+import { CommandColumnTags } from "./CommandColumnTags";
 
 const PAGE_SIZE = 50;
 
@@ -92,6 +93,7 @@ const SCOPES: TagObjectType[] = [
   "column",
   "relationship",
   "command",
+  "command_column", // REQ-1159
   "product",
   "term",
   "rls_rule",
@@ -962,6 +964,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 />
               </Group>
             )}
+            {/* REQ-1159: a command's output columns are tagged here, where the scope names them. */}
+            {!readOnly && scope === "command_column" && <CommandColumnTags />}
           </>
         }
       >

@@ -339,6 +339,11 @@ REFERENCES: tuple[Reference, ...] = (
     _part("data_product_commands", "command_name", "command"),
     _part("rls_rules", "action_name", "webhook"),
     _part("tag_assignments", "command_name", "webhook"),
+    # REQ-1159 (amended 2026-11-25): its output columns' terms and classifications.
+    _part("glossary_term_refs", "command_name", "command"),
+    _part("glossary_term_refs", "command_name", "webhook"),
+    _part("profiler_classifications", "command_name", "command"),
+    _part("profiler_classifications", "command_name", "webhook"),
     # --- to a data product ---------------------------------------------------------------------
     # REQ-1634: a product's member tables and commands block it; a membership row is a part of its
     # member, and goes with it.
