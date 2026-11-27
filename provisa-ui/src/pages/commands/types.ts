@@ -82,6 +82,10 @@ export interface FormState {
   // table while this is on; null for a function with no table form, or one not yet registered
   // (registration sets it).
   exposedAsTable: boolean | null;
+  // REQ-1159 (amended 2026-11-27), REQ-1993: a "Code (entered)" command's Python, kept as the
+  // entered code of the code source of the command's name, and its dependency lines.
+  enteredCode: string;
+  enteredDependencies: string;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -94,6 +98,9 @@ export const IMPL_KINDS = [
   { value: "http", label: "HTTP endpoint" },
   { value: "grpc", label: "gRPC service" },
   { value: "python", label: "Python (in-process)" },
+  // REQ-1159 (amended 2026-11-27): Python written here, kept as entered code (REQ-1993) and run
+  // sandboxed; its arguments and columns are the declared function's.
+  { value: "code_entered", label: "Code (entered)" },
   // REQ-2001: a Provisa SQL statement, governed and run as the caller.
   { value: "statement", label: "Provisa SQL statement" },
   // REQ-2168: a function written as a SQL expression template, pushed down with the query.
@@ -169,6 +176,8 @@ export const EMPTY_FORM: FormState = {
   outputColumns: [],
   languageBindings: {},
   exposedAsTable: null,
+  enteredCode: "",
+  enteredDependencies: "",
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the
@@ -253,3 +262,40 @@ export function isSnowflakeOperation(sourceType: string | undefined, functionNam
 // REQ-2131: the schema a code source's @columns functions are offered and registered under.
 // A code source offers functions to pick, registered as column transforms.
 export const CODE_SCHEMA: Record<string, string> = { node: "code", python: "code" };
+
+// REQ-1159 (amended 2026-11-27): the form's "Code (entered)" implementation. Saved, it is a code
+// source of the command's name holding the code as entered code (REQ-1993) and the command
+// registered on it as its declared @query or @command (code_command, REQ-2226).
+export const CODE_ENTERED = "code_entered";
+// The registered command's implementation kind and schema (codesource/commands.py).
+export const CODE_COMMAND = "code_command";
+export const CODE_COMMAND_SCHEMA = "code";
+// The language entered code is written in from the command form.
+export const ENTERED_CODE_TYPE = "python";
+
+/** The entered code a code source's mapping holds, or null when it holds code of another kind. */
+export function enteredCodeOf(
+  mappingJson: string | null | undefined,
+): { source: string; dependencies: string[] } | null {
+  if (!mappingJson) return null;
+  const { code } = JSON.parse(mappingJson) as {
+    code: { kind: string; source: string; dependencies?: string[] };
+  };
+  if (code.kind !== "entered") return null;
+  // A mapping with no dependency list has none (codesource/entered.dependencies_of).
+  return { source: code.source, dependencies: code.dependencies ?? [] };
+}
+
+/** REQ-1159 (amended 2026-11-27): each argument with its kind: a value, or a relation (a table
+ *  reference its service reads, or a result set it is given). An argument that names no kind is
+ *  a value: column_value is the kind's declared default (REQ-885, models.FunctionArgument). */
+export const argumentsText = (list: readonly ActionArg[], t: (key: string) => string) =>
+  list.length > 0
+    ? list
+        .map(
+          (a) =>
+            `${a.name}: ${a.type} (${t(`commandsPage.argKind.${a.argKind ?? "column_value"}`)})` +
+            ("default" in a ? ` = ${JSON.stringify(a.default)}` : ""),
+        )
+        .join(", ")
+    : null;

@@ -11518,5 +11518,8 @@
   "it/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "it/yourData.json::yourData.rest": "REST",
   "it/yourData.json::yourData.sql": "SQL",
-  "it/yourData.json::yourData.title": "Your data"
+  "it/yourData.json::yourData.title": "Your data",
+  "it/commandFormFields.json::commandFormFields.enteredCodeHint": "Python kept with the model and run sandboxed. Tag the function the command calls with @query (it reads) or @command (it writes); type its parameters and its result.",
+  "it/commandFormFields.json::commandFormFields.enteredFunctionHint": "The function in the code that this command calls.",
+  "it/commandFormFields.json::commandFormFields.enteredDeclarationHint": "Read from the function's declaration each time the command is saved."
 }
