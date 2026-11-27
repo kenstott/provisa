@@ -414,7 +414,14 @@ describe("each builder writes only the descriptor's keys", () => {
 
   it("a file crawler's workbook hints", () => {
     const fields = withExcelHints({}, { counts: { header_rows: 2 }, entries: [] });
-    mapping("files", filesMappingJson(null, fields));
+    mapping("files", filesMappingJson(null, fields, "file://"));
+  });
+
+  it("a gdrive:// file crawler's sign-in, each way it signs in (REQ-2280)", () => {
+    for (const auth of ["service_account", "oauth"]) {
+      const fields = { gdrive_auth: auth, refresh_token: "${secret:GDRIVE_REFRESH}" };
+      mapping("files", filesMappingJson(null, fields, "gdrive://"), `gdrive ${auth}`);
+    }
   });
 });
 

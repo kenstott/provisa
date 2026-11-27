@@ -11,9 +11,11 @@
 """Integration: a nested GraphQL read over a ClickHouse table on the pg engine, read once.
 
 The bench's federated_join took 10 s over 1000 root rows: the field compiled to a correlated
-subquery and PostgreSQL ran its foreign scan once per row. Through the real compile, governance
-and transpile, on an embedded Postgres attached to a real ClickHouse server, the two statements
-answer the same and ClickHouse's own query log counts the reads.
+subquery and PostgreSQL ran its foreign scan once per row. A relationship field now compiles to
+one grouped read joined by key (#362), and the outer key bound is propagated onto that read's own
+rows (REQ-1880). Through the real compile, governance and transpile, on an embedded Postgres
+attached to a real ClickHouse server, the statement with and without the propagated bound answer
+the same, and ClickHouse's own query log counts the reads and the rows that left it.
 """
 
 # Requirements: REQ-1880, REQ-1911
@@ -223,17 +225,22 @@ def _run(
     attached: str,
     sql: str,
     params: list,
-    read_once: bool,
-) -> tuple[list, str, float, int]:
-    """The answer, the statement that gave it, its milliseconds, and ClickHouse's reads for it."""
+    propagate: bool,
+) -> tuple[list, str, float, int, int]:
+    """The answer, the statement that gave it, its milliseconds, and ClickHouse's reads for it
+    with the rows those reads returned."""
     column_types = {
         (_LOCAL, "orders", "order_id"): "integer",
         (attached, _EVENTS, "order_id"): "integer",
         (attached, _STATUS, "order_id"): "integer",
     }
     eligible = {(attached, _EVENTS), (attached, _STATUS)}
-    bound = propagate_literal_join_predicates(
-        sql, "postgres", eligible, column_types, allow_params=True, read_once=read_once
+    bound = (
+        propagate_literal_join_predicates(
+            sql, "postgres", eligible, column_types, allow_params=True
+        )
+        if propagate
+        else sql
     )
     physical = transpile(bound, "postgres", generated=False)
     mark = client.command("SELECT now64(6)")
@@ -241,14 +248,12 @@ def _run(
     rows = runtime.run_sync(physical, params).rows
     elapsed = (time.perf_counter() - started) * 1000
     client.command("SYSTEM FLUSH LOGS")
-    reads = int(
-        client.command(
-            "SELECT count() FROM system.query_log WHERE type = 'QueryFinish' "
-            f"AND event_time_microseconds >= toDateTime64('{mark}', 6) "
-            f"AND query LIKE '%{_EVENTS}%' AND query NOT LIKE '%system.query_log%'"
-        )
-    )
-    return rows, physical, elapsed, reads
+    reads, returned = client.query(
+        "SELECT count(), sum(result_rows) FROM system.query_log WHERE type = 'QueryFinish' "
+        f"AND event_time_microseconds >= toDateTime64('{mark}', 6) "
+        f"AND query LIKE '%{_EVENTS}%' AND query NOT LIKE '%system.query_log%'"
+    ).result_rows[0]
+    return rows, physical, elapsed, int(reads), int(returned)
 
 
 def _answer(rows: list) -> dict:
@@ -262,19 +267,30 @@ def test_a_nested_read_reaches_clickhouse_once_and_answers_the_same(engine, clic
     attached = live_view_schema("ch_nested_src", "default").lower()
     sql, params = _statement(attached)
 
-    before, before_sql, before_ms, before_reads = _run(
-        engine, clickhouse, attached, sql, params, read_once=False
+    before, before_sql, before_ms, before_reads, before_rows = _run(
+        engine, clickhouse, attached, sql, params, propagate=False
     )
-    after, after_sql, after_ms, after_reads = _run(
-        engine, clickhouse, attached, sql, params, read_once=True
+    after, after_sql, after_ms, after_reads, after_rows = _run(
+        engine, clickhouse, attached, sql, params, propagate=True
     )
 
     with capsys.disabled():
-        print(f"\nbefore: {before_ms:.0f} ms, {before_reads} ClickHouse reads: {before_sql}")
-        print(f"after: {after_ms:.0f} ms, {after_reads} ClickHouse reads: {after_sql}")
+        print(
+            f"\nbefore: {before_ms:.0f} ms, {before_reads} ClickHouse reads, "
+            f"{before_rows} rows: {before_sql}"
+        )
+        print(
+            f"after: {after_ms:.0f} ms, {after_reads} ClickHouse reads, "
+            f"{after_rows} rows: {after_sql}"
+        )
 
-    assert before_reads >= _ORDERS
+    # One read either way: the field is a grouped read joined by key, never one per root row.
+    assert before_reads == 1
     assert after_reads == 1
+    # Unbounded, the read returns events of every order; bounded, only those of the orders read.
+    bound_rows = 3 * _ORDERS
+    assert before_rows > bound_rows
+    assert 0 < after_rows <= bound_rows
     assert len(after) == _ORDERS
     assert _answer(after) == _answer(before)
     answer = _answer(after)

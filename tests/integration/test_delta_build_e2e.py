@@ -129,55 +129,72 @@ def _store_ids(store: Path):
         con.close()
 
 
-def _last_build(srv) -> dict | None:
+def _builds_since(srv, after_id: int) -> list[dict]:
+    """The inc_orders builds that ended after build-log row ``after_id``, oldest first, read from
+    ``ops.replica_build_log`` (REQ-1915): one row a build, so every build is seen, not only the
+    latest one."""
     r = httpx.post(
-        f"{srv.base_url}/admin/graphql",
+        f"{srv.base_url}/data/sql",
         json={
-            "query": "{ replicaBuilds { builds { tableName state method rowsCopied completedAt "
-            "deltaSkipped lastError lastErrorCode } } }"
+            "sql": 'SELECT id, outcome, method, rows_copied FROM "ops"."replica_build_log" '
+            f"WHERE source_id = 'src' AND table_name = 'inc_orders' AND id > {after_id} "
+            "ORDER BY id",
+            "role": _ROLE,
         },
         headers={"X-Provisa-Role": _ROLE},
         timeout=srv.request_timeout + 10,
     )
     assert r.status_code == 200, r.text
-    builds = [
-        b for b in r.json()["data"]["replicaBuilds"]["builds"] if b["tableName"] == "inc_orders"
-    ]
-    return builds[0] if builds else None
+    return r.json()["data"]["sql"]
 
 
-def _wait(srv, store, want: dict[int, int], *, seconds: float = 120) -> dict:
-    """Poke the build runner and poll the store until the replica holds exactly ``want``; return the
-    last build record. Raises on timeout."""
+def _last_build_id(srv) -> int:
+    builds = _builds_since(srv, 0)
+    return max((int(b["id"]) for b in builds), default=0)
+
+
+def _wait(srv, store, want: dict[int, int], after_id: int, *, seconds: float = 120) -> list[dict]:
+    """Poll the store until the replica holds exactly ``want``, then the build log until the build
+    that carried the change has ended; return every build that ended after ``after_id``.
+
+    The table's 1-second TTL has the runner rebuild it about every second on its own, so the
+    table's LATEST build is usually an empty delta that ran after the one that carried the change
+    (and the store is written before that build's record is): only the log shows which build
+    carried it."""
     import duckdb
 
     deadline = time.monotonic() + seconds
-    seen = (_last_build(srv) or {}).get("completedAt")
     while True:
-        # The store is read BEFORE the next poke, and a poke is made only once the build the last
-        # one requested has completed: a poke while a build is running, or after the build that
-        # produced ``want``, starts another (an empty delta once the cursor has caught up), and the
-        # record read below is the table's latest build, so it would report that one's 0 rows.
         try:
             got = _store_ids(store)
         except duckdb.IOException:
             got = None
         if got == want:
-            return _last_build(srv) or {}
+            break
+        builds = _builds_since(srv, after_id)
         assert time.monotonic() < deadline, (
-            f"timed out: replica holds {got}, want {want}; last build: {_last_build(srv)}"
+            f"timed out: replica holds {got}, want {want}; builds since: {builds}"
         )
         _poke(srv)
-        while True:
-            build = _last_build(srv) or {}
-            if build.get("completedAt") != seen:
-                seen = build.get("completedAt")
-                break
-            assert time.monotonic() < deadline, (
-                f"timed out waiting for a build: replica holds {got}, want {want}; "
-                f"last build: {build}"
-            )
-            time.sleep(1)
+        time.sleep(1)
+    while True:
+        builds = _builds_since(srv, after_id)
+        if any(b["rows_copied"] for b in builds):
+            return builds
+        assert time.monotonic() < deadline, (
+            f"timed out waiting for the build that carried {want} to be logged: {builds}"
+        )
+        time.sleep(1)
+
+
+def _assert_one_delta_row(builds: list[dict]) -> None:
+    """Every build since the change was a delta, none failed, and exactly one of them read a row:
+    the changed one -- never the whole table."""
+    assert all(b["outcome"] == "completed" for b in builds), builds
+    assert all(b["method"] == "delta" for b in builds), builds
+    carried = [b for b in builds if b["rows_copied"]]
+    assert len(carried) == 1, builds
+    assert int(carried[0]["rows_copied"]) == 1, builds  # only the delta row, not the whole table
 
 
 def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databases):
@@ -211,24 +228,21 @@ def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databas
             _admin(srv, 'updateSourceReplicate(sourceId: "src", replicate: 0)')
 
             # First build is a whole copy (no cursor yet); the replica serves the two seed rows.
-            _wait(srv, store, {1: 10, 2: 20})
+            _wait(srv, store, {1: 10, 2: 20}, 0)
 
             # INSERT: a delta carries only the new row.
+            mark = _last_build_id(srv)
             pg.update_source("INSERT INTO inc_orders VALUES (3, 30, 3, false)")
-            b = _wait(srv, store, {1: 10, 2: 20, 3: 30})
-            assert b.get("method") == "delta", b
-            assert b.get("rowsCopied") == 1, b  # only the delta row was read, not the whole table
+            _assert_one_delta_row(_wait(srv, store, {1: 10, 2: 20, 3: 30}, mark))
 
             # UPDATE: a delta carries only the changed row.
+            mark = _last_build_id(srv)
             pg.update_source("UPDATE inc_orders SET amount = 111, updated_at = 4 WHERE id = 1")
-            b = _wait(srv, store, {1: 111, 2: 20, 3: 30})
-            assert b.get("method") == "delta", b
-            assert b.get("rowsCopied") == 1, b
+            _assert_one_delta_row(_wait(srv, store, {1: 111, 2: 20, 3: 30}, mark))
 
             # TOMBSTONE: the flagged row deletes its key from the replica, via one delta row.
+            mark = _last_build_id(srv)
             pg.update_source("UPDATE inc_orders SET is_deleted = true, updated_at = 5 WHERE id = 2")
-            b = _wait(srv, store, {1: 111, 3: 30})
-            assert b.get("method") == "delta", b
-            assert b.get("rowsCopied") == 1, b
+            _assert_one_delta_row(_wait(srv, store, {1: 111, 3: 30}, mark))
         finally:
             srv.stop_process()

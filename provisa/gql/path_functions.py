@@ -471,8 +471,12 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             # A walk from an end the model places takes the model's relationships (REQ-348).
             src_node, tgt_node = src_bound, tgt_bound
         if not src_node.labels and not tgt_node.labels:
-            # REQ-348: a path search starts from a bound or labelled end; both free is refused.
-            raise CypherTranslateError(UNLABELLED_ENDS)
+            # REQ-348: a path search starts from a bound or labelled end; both free is refused,
+            # unless the walk's relationship types place both ends on one label (_placed_by_types).
+            placed = self._placed_by_types(rel)
+            if placed is None:
+                raise CypherTranslateError(UNLABELLED_ENDS)
+            src_node = dataclasses.replace(src_node, labels=[placed])
         # The walk starts from the end the statement holds, or else from a labelled one: an end
         # held already is joined where it is read, and the other is whatever the walk reaches.
         src_held = bool(src_node.variable and src_node.variable in held)
@@ -580,6 +584,23 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 )
             values[key] = self._lower_expr(value)  # type: ignore[attr-defined]
         return values
+
+    def _placed_by_types(self, rel: RelPattern | None) -> str | None:
+        """The one label a model walk's relationship types reach, which places both its free ends
+        (``(t)-[:KIND_OF|PART_OF*]-(n)`` walks only Terms, as Neo4j's would); None when the walk
+        names no type, runs in a graph session (whose own relationships may reach other nodes),
+        or its types reach several labels."""
+        if rel is None or not rel.types or self._lm.session_walk is not None:
+            return None
+        labels = {
+            label
+            for r in _filter_allowed_rels(self._lm, list(rel.types))
+            for label in (r.source_label, r.target_label)
+        }
+        if len(labels) != 1:
+            return None
+        (label,) = labels
+        return label if label in self._lm.nodes else None
 
     def _on_model(self, node: NodePattern) -> bool:
         """Whether ``node``'s labels place it on the model graph: a table's, or a domain's."""

@@ -59,6 +59,8 @@ import {
 import "./JsonApiPage.css";
 import { Tip } from "../components/Tip";
 import { ParamsSection } from "./jsonapi/ParamsSection";
+import { CommandCallPanel } from "./jsonapi/CommandCallPanel";
+import { useCommandCall } from "./jsonapi/useCommandCall";
 import { dataColumnsOf, useJsonApiParams } from "./jsonapi/useJsonApiParams";
 import { getStoredJson, setStored } from "../lib/browserStorage";
 
@@ -74,6 +76,8 @@ export function JsonApiPage() {
   // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
   const roleId = actingRoles ?? "";
   const { checkedDomains } = useDomainFilter();
+  // REQ-1159: a command's call handed over by its Query it line replaces the table explorer.
+  const command = useCommandCall(roleId, (name) => t("jsonApiPage.commandNotJson", { name }));
   // A JSON:API URL handed to the page (NL "Open in JSON:API", Polly), whether the page was just
   // opened or already open. Each hand-off has its own sequence number: its pickers are seeded once
   // and it is run once.
@@ -83,6 +87,7 @@ export function JsonApiPage() {
   useNavPayload<{ jsonapiUrl?: string; autoRun?: boolean }>((payload) => {
     if (!payload.jsonapiUrl) return;
     const handed = payload.jsonapiUrl;
+    command.close();
     // The answer on screen is the last request's; this one's replaces it once it is in.
     setParsedDoc(null);
     setActiveUrl("");
@@ -584,6 +589,20 @@ export function JsonApiPage() {
     error: error || null,
     rows: resultMeta?.count ?? null,
     total: resultMeta?.total ?? null,
+    command: command.call && {
+      name: command.call.name,
+      method: command.call.write ? "POST" : "GET",
+      url: command.url,
+      arguments: Object.fromEntries(command.fields.map((f) => [f.name, f.text])),
+      status: command.error
+        ? "failed"
+        : command.running
+          ? "running"
+          : command.doc
+            ? "answered"
+            : "idle",
+      error: command.error || null,
+    },
   });
 
   const fieldsSummary =
@@ -609,6 +628,8 @@ export function JsonApiPage() {
         ? t("jsonApiPage.resultCountOfTotal", { count: resultMeta.count, total: resultMeta.total })
         : t("jsonApiPage.resultCount", { count: resultMeta.count })
     : null;
+
+  if (command.call !== null) return <CommandCallPanel state={command} />;
 
   return (
     <div className="jsonapi-page page">

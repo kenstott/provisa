@@ -16,7 +16,7 @@ Junction-backed edges (MEMBER_TABLES, PRODUCT, the term edges) and FK edges alik
 read from either end, a subpattern (a pattern comprehension, EXISTS) over a self-referential type
 read either way, and a free end of a type several tables carry."""
 
-# Requirements: REQ-345, REQ-347, REQ-575, REQ-1586, REQ-1634
+# Requirements: REQ-345, REQ-347, REQ-348, REQ-575, REQ-1586, REQ-1634
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from provisa.cypher.parser import parse_cypher
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
+from provisa.gql.translator_types import CypherTranslateError
 
 _DOMAIN_ACCESS = ["*", "meta", "ontology", "ops"]
 
@@ -673,7 +674,8 @@ def _whole_paths(meta, cypher: str) -> list:
     """Each row's path as (its nodes' keys, its relationships as (start, end, startNode's key,
     endNode's key, identity)); None for a null path."""
     got = []
-    for (p,) in _rows(meta, cypher):
+    # An unbounded walk also says whether it was cut at the depth limit (__cut).
+    for p, *_cut in _rows(meta, cypher):
         path = _json(p)
         got.append(
             None
@@ -829,3 +831,170 @@ def test_a_two_hop_recursive_path_is_in_pattern_order_with_each_relationship_as_
     chain, cypher, expected
 ):
     assert _whole_paths(chain, cypher) == sorted(expected, key=repr)
+
+
+# --- a variable-length walk over several relationship types -----------------------------------
+# Neo4j: [:A|B*] takes, at every hop, a relationship of any of the types. Junction (one table, told
+# apart by its type column): 1 KIND_OF 2, 2 PART_OF 3; 3 RELATED_TO 4 is of no type walked. FK: 20
+# CHECKS 21, 21 PROFILED_TABLE 22. Mixed: product 200 has MEMBER_TABLES 20 and 22 (junction); 22
+# has SOURCE 3 (FK).
+
+
+@pytest.fixture(scope="module")
+def alternation(meta):
+    lm, _seeded = meta
+    con = _connect(_columns())
+    for term in (1, 2, 3, 4):
+        _insert(con, "_terms", id=term, name=f"t{term}")
+    for src, tgt, rel_type in ((1, 2, "KIND_OF"), (2, 3, "PART_OF"), (3, 4, "RELATED_TO")):
+        _insert(con, "_term_edges", from_term_id=src, to_term_id=tgt, rel_type=rel_type)
+    _insert(con, "sources", id=3, name="s3")
+    _insert(con, "registered_tables", id=20, name="a", checked_table_id=21)
+    _insert(con, "registered_tables", id=21, name="b", profiled_table_id=22)
+    _insert(con, "registered_tables", id=22, name="c", source_id=3)
+    _insert(con, "data_products", id=200, name="p")
+    _insert(con, "data_product_tables", product_id=200, table_id=20)
+    _insert(con, "data_product_tables", product_id=200, table_id=22)
+    return lm, con
+
+
+_KIND_OF = ("KIND_OF", 1, 2)
+_PART_OF = ("PART_OF", 2, 3)
+_TERM_WALKS = [
+    _whole((1, 2), _KIND_OF),
+    _whole((1, 2, 3), _KIND_OF, _PART_OF),
+    _whole((2, 3), _PART_OF),
+]
+_TERM_WALKS_BACK = [
+    _whole((2, 1), _KIND_OF),
+    _whole((3, 2), _PART_OF),
+    _whole((3, 2, 1), _PART_OF, _KIND_OF),
+]
+_CHECKS = ("CHECKS", 20, 21)
+_PROFILED = ("PROFILED_TABLE", 21, 22)
+
+_ALTERNATION_PATHS = {
+    # Self-referential, of one junction: a recursive walk.
+    "junction-self-forward": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF|PART_OF*1..2]->(b:Ontology:Terms) RETURN p",
+        _TERM_WALKS,
+    ),
+    "junction-self-reversed": (
+        "MATCH p = (a:Ontology:Terms)<-[:KIND_OF|PART_OF*1..2]-(b:Ontology:Terms) RETURN p",
+        _TERM_WALKS_BACK,
+    ),
+    "junction-self-undirected": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF|PART_OF*1..2]-(b:Ontology:Terms) RETURN p",
+        _TERM_WALKS + _TERM_WALKS_BACK,
+    ),
+    # Self-referential, of two FKs.
+    "fk-self-forward": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS|PROFILED_TABLE*1..2]->"
+        "(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((20, 21), _CHECKS),
+            _whole((20, 21, 22), _CHECKS, _PROFILED),
+            _whole((21, 22), _PROFILED),
+        ],
+    ),
+    "fk-self-reversed": (
+        "MATCH p = (a:Meta:RegisteredTables)<-[:CHECKS|PROFILED_TABLE*1..2]-"
+        "(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((21, 20), _CHECKS),
+            _whole((22, 21), _PROFILED),
+            _whole((22, 21, 20), _PROFILED, _CHECKS),
+        ],
+    ),
+    "fk-self-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS|PROFILED_TABLE*1..2]-"
+        "(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((20, 21), _CHECKS),
+            _whole((20, 21, 22), _CHECKS, _PROFILED),
+            _whole((21, 20), _CHECKS),
+            _whole((21, 22), _PROFILED),
+            _whole((22, 21), _PROFILED),
+            _whole((22, 21, 20), _PROFILED, _CHECKS),
+        ],
+    ),
+    # Between two types, a junction then an FK: flat joins.
+    "mixed-flat-forward": (
+        "MATCH p = (d:Meta:DataProducts)-[:MEMBER_TABLES|SOURCE*1..2]->(s:Meta:Sources) RETURN p",
+        [_whole((200, 22, 3), ("MEMBER_TABLES", 200, 22), ("SOURCE", 22, 3))],
+    ),
+    "mixed-flat-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:MEMBER_TABLES|SOURCE*1..2]-(d:Meta:DataProducts) RETURN p",
+        [_whole((3, 22, 200), ("SOURCE", 22, 3), ("MEMBER_TABLES", 200, 22))],
+    ),
+    "mixed-flat-undirected": (
+        "MATCH p = (s:Meta:Sources)-[:MEMBER_TABLES|SOURCE*1..2]-(d:Meta:DataProducts) RETURN p",
+        [_whole((3, 22, 200), ("SOURCE", 22, 3), ("MEMBER_TABLES", 200, 22))],
+    ),
+    # An FK and a junction in one recursive walk.
+    "mixed-recursive-forward": (
+        "MATCH p = (d:Meta:DataProducts)-[:MEMBER_TABLES|CHECKS*1..2]->"
+        "(t:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((200, 20), ("MEMBER_TABLES", 200, 20)),
+            _whole((200, 20, 21), ("MEMBER_TABLES", 200, 20), _CHECKS),
+            _whole((200, 22), ("MEMBER_TABLES", 200, 22)),
+        ],
+    ),
+    "mixed-recursive-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS|MEMBER_TABLES*1..2]-"
+        "(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((20, 21), _CHECKS),
+            _whole((21, 20), _CHECKS),
+            _whole((20, 200, 22), ("MEMBER_TABLES", 200, 20), ("MEMBER_TABLES", 200, 22)),
+            _whole((22, 200, 20), ("MEMBER_TABLES", 200, 22), ("MEMBER_TABLES", 200, 20)),
+        ],
+    ),
+    # Ends the pattern names no label of, which every type walked places on one label.
+    "free-ends-undirected": (
+        "MATCH p = (t)-[:KIND_OF|PART_OF*]-(n) RETURN p",
+        _TERM_WALKS + _TERM_WALKS_BACK,
+    ),
+    "free-ends-forward": (
+        "MATCH p = (t)-[:KIND_OF|PART_OF*1..2]->(n) RETURN p",
+        _TERM_WALKS,
+    ),
+    "free-ends-reversed": (
+        "MATCH p = (t)<-[:KIND_OF|PART_OF*1..2]-(n) RETURN p",
+        _TERM_WALKS_BACK,
+    ),
+    "free-ends-fk": (
+        "MATCH p = (a)-[:CHECKS|PROFILED_TABLE*1..2]->(b) RETURN p",
+        [
+            _whole((20, 21), _CHECKS),
+            _whole((20, 21, 22), _CHECKS, _PROFILED),
+            _whole((21, 22), _PROFILED),
+        ],
+    ),
+    # A start an earlier clause binds.
+    "bound-start": (
+        "MATCH (t:Ontology:Terms) WHERE t.id = 1 MATCH p = (t)-[:KIND_OF|PART_OF*]-(n) RETURN p",
+        [_whole((1, 2), _KIND_OF), _whole((1, 2, 3), _KIND_OF, _PART_OF)],
+    ),
+    "bound-start-optional": (
+        "MATCH (t:Ontology:Terms) WHERE t.id = 4 "
+        "OPTIONAL MATCH p = (t)-[:KIND_OF|PART_OF*]-(n) RETURN p",
+        [None],
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("cypher", "expected"), _ALTERNATION_PATHS.values(), ids=_ALTERNATION_PATHS.keys()
+)
+def test_a_variable_length_walk_takes_any_of_its_relationship_types_at_every_hop(
+    alternation, cypher, expected
+):
+    assert _whole_paths(alternation, cypher) == sorted(expected, key=repr)
+
+
+def test_a_walk_between_free_ends_whose_types_reach_several_labels_is_refused_by_name(meta):
+    lm, _con = meta
+    with pytest.raises(CypherTranslateError, match="labeled source and target nodes"):
+        _sql(lm, "MATCH p = (a)-[:MEMBER_TABLES|SOURCE*1..2]-(b) RETURN p")
