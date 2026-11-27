@@ -71,6 +71,7 @@
           <input type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Email address" required />
           <input type="tel" name="phone" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone (optional)" />
           <input type="text" name="machine_id" placeholder="Machine ID (from `provisa license status`)" aria-label="Machine ID" required />
+          <label class="signup-check"><input type="checkbox" name="releases" /> Also email me when a new Provisa release ships</label>
           <button type="submit" class="btn btn-primary">Register</button>
         </div>
         <!-- honeypot: hidden from users; bots fill it and get silently dropped -->
@@ -136,7 +137,7 @@
         status.className = 'signup-status';
         const data = {};
         for (const el of form.elements) {
-          if (el.name && el.name !== 'website') data[el.name] = el.value.trim();
+          if (el.name && el.name !== 'website') data[el.name] = el.type === 'checkbox' ? el.checked : el.value.trim();
         }
         data.website = form.website.value;
         btn.disabled = true;
