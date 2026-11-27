@@ -194,6 +194,7 @@
     "colGqlAlias": "GQLエイリアス",
     "colSteward": "スチュワード",
     "noDomains": "ドメインが定義されていません",
+    "noDomainsMatch": "フィルターに一致するドメインはありません",
     "deleteDomain": "ドメイン {{id}} を削除",
     "resolveSteward": "ドメイン {{id}} のスチュワードを表示",
     "pageIndicator": "ページ {{page}} / {{total}}",

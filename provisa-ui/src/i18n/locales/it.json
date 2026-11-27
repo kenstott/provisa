@@ -4,6 +4,7 @@
     "cancel": "Annulla",
     "stop": "Interrompi",
     "stopped": "Interrotta",
+    "noQuery": "Non c’è nessuna query da eseguire.",
     "stopQuery": "Interrompi la query",
     "save": "Salva",
     "delete": "Elimina",

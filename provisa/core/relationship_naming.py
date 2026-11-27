@@ -50,6 +50,79 @@ def disambiguated(base: str, column: str, table: str, taken: Iterable[str]) -> s
     raise RelationshipNameTaken("generated", names[-1], names[-1])
 
 
+#: The longest relationship id built from its ends: the longest unquoted SQL identifier.
+_ENDS_ID_LIMIT = 63
+_DIGEST_LENGTH = 8
+
+
+def _digest(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:_DIGEST_LENGTH]
+
+
+def _id_part(name: str) -> str:
+    """``name`` as one part of an id: lower case, accents dropped, every run of other characters
+    one underscore, none leading or trailing."""
+    import re
+    import unicodedata
+
+    latin = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    part = re.sub(r"[^a-z0-9]+", "_", latin.lower()).strip("_")
+    if part:
+        return part
+    # REQ-415: a name with no Latin letter or digit (one written in another script) has no
+    # spelling in an unquoted identifier; it is spelled by a digest of itself, so two such names
+    # still give two ids.
+    return f"n{_digest(name)}"
+
+
+def ends_id(source_table: str, source_column: str, target_table: str, target_column: str) -> str:
+    """The id a relationship found by discovery takes from its ends (REQ-415):
+    ``<source table>__<source column>__to__<target table>__<target column>``, each part
+    normalised (:func:`_id_part`), the target column left out where it is named as the source
+    column. It is an unquoted SQL identifier: one that would start with a digit is prefixed
+    ``rel_``, and one over the identifier limit is cut and ends in a digest of the whole, so two
+    long ids cut alike stay apart."""
+    from provisa.compiler.naming import name_problems
+
+    source_col, target_col = _id_part(source_column), _id_part(target_column)
+    parts = [_id_part(source_table), source_col, "to", _id_part(target_table)]
+    if target_col != source_col:
+        parts.append(target_col)
+    built = "__".join(parts)
+    if built[0].isdigit():
+        built = f"rel_{built}"
+    if len(built) > _ENDS_ID_LIMIT:
+        keep = _ENDS_ID_LIMIT - _DIGEST_LENGTH - 1
+        built = f"{built[:keep].rstrip('_')}_{_digest(built)}"
+    problems = name_problems(built, "sql")
+    assert not problems, f"relationship id {built!r} built from its ends: {problems}"
+    return built
+
+
+def discovered_id(
+    source_table: str,
+    source_column: str,
+    target_table: str,
+    target_column: str,
+    taken: Iterable[str],
+) -> str:
+    """:func:`ends_id`, or where an id in ``taken`` is it (compared without case), that id with
+    the first short suffix ``_2``, ``_3`` ... none in ``taken`` is, still within the limit."""
+    base = ends_id(source_table, source_column, target_table, target_column)
+    held = {t.casefold() for t in taken}
+    if base.casefold() not in held:
+        return base
+    n = 2
+    while True:
+        suffix = f"_{n}"
+        name = f"{base[: _ENDS_ID_LIMIT - len(suffix)].rstrip('_')}{suffix}"
+        if name.casefold() not in held:
+            return name
+        n += 1
+
+
 @dataclass(frozen=True)
 class Generated:
     """A relationship about to be saved under generated names. ``rel_id`` is its id, made unique

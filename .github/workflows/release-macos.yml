@@ -105,7 +105,7 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
-      # build-dmg.sh exports uv.lock's pins as the native runtime's pip constraints.
+      # build-dmg.sh installs uv.lock's set, exported by uv, into the native runtime.
       - name: Install uv
         uses: ./.github/actions/setup-python
         with:

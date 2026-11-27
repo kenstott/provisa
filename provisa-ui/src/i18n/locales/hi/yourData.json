@@ -11,7 +11,6 @@
     "mcp": "MCP टूल कॉल",
     "copy": "{{what}} कॉपी करें",
     "close": "बंद करें",
-    "createRelationships": "संबंध बनाएँ",
     "relationshipsCreated_one": "{{count}} संबंध बनाया गया।",
     "relationshipsCreated_other": "{{count}} संबंध बनाए गए।"
   }

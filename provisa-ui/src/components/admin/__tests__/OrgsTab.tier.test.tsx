@@ -13,6 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
+import { expectFilterFindsEveryCell } from "../../../test-utils/listFilter";
 
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
@@ -53,6 +54,21 @@ describe("an org's tier in Admin > Orgs", () => {
     });
     expect(screen.getByTestId("org-tier-acme")).toBeInTheDocument();
     expect(screen.queryByTestId("org-tier-globex")).toBeNull();
+  });
+
+  it("finds each org by every text its row shows", async () => {
+    render(<OrgsTab title="Admin — Orgs" />);
+    await screen.findByTestId("org-tier-globex");
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("orgs-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<OrgsTab title="Admin — Orgs" />);
+    await screen.findByTestId("org-tier-globex");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-org" } });
+    expect(screen.getByTestId("orgs-empty")).toHaveTextContent("No organizations match the filter");
   });
 
   it("shows each org's stored tier, and none as not set", async () => {

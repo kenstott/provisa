@@ -48,6 +48,7 @@
     "colAssignments": "Zuweisungen",
     "colActions": "Aktionen",
     "empty": "Keine Tags für diesen Bereich",
+    "noMatch": "Keine Tags entsprechen dem Filter",
     "systemTag": "System-Tag (schreibgeschützt)",
     "editTag": "Tag {{id}} bearbeiten",
     "deleteTag": "Tag {{id}} löschen",

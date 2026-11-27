@@ -22,6 +22,7 @@
     "colProvider": "Accesso",
     "colOrgAdmin": "Amministratore org",
     "noMembers": "Nessun membro al momento.",
+    "noMembersMatch": "Nessun membro corrisponde al filtro.",
     "yes": "Sì",
     "no": "No",
     "promote": "Rendi amministratore org",

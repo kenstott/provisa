@@ -45,6 +45,7 @@ import {
 import { fetchContextClassification, type ContextPlace } from "../../api/contextViews";
 import { useCapability } from "../../hooks/useCapability";
 import { ContextPlaces } from "../ContextPlaces";
+import { contextPlaceTexts } from "../contextPlaceTexts";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { DetailFields } from "../detail/DetailFields";
@@ -180,9 +181,27 @@ export function ClassificationKindsTab({
   const enabledLabel = (k: KindRow) =>
     t(k.enabled ? "contextViews.enabled" : "contextViews.disabled");
 
+  const detectedTexts = (k: KindRow) => {
+    const { places, hidden } = detectedOn(k);
+    return contextPlaceTexts(places, hidden, t);
+  };
   const open = kinds?.find((k) => k.id === detail.id) ?? null;
   const shown = (kinds ?? []).filter((k) =>
-    matchesQuery([k.id, kindLabel(k), testText(k)], search),
+    // Every text a kind's row shows, and its id.
+    matchesQuery(
+      [
+        k.id,
+        kindLabel(k),
+        k.custom ? t("classificationKinds.custom") : "",
+        k.sensitive ? t("classificationKinds.sensitive") : "",
+        testText(k),
+        `${Math.round(k.threshold * 100)}%`,
+        maskLabel(k),
+        enabledLabel(k),
+        ...(detections ? detectedTexts(k) : []),
+      ],
+      search,
+    ),
   );
 
   const closeForm = () => {
@@ -567,7 +586,8 @@ export function ClassificationKindsTab({
             // The table's own scroller is the list's direct child, so the list scrolls inside its
             // pane and its header stays under the panel's head (App.css .split-pane__list).
             <SortGroupTable
-              testId="classification-kinds"
+              testId="classification-kinds-list"
+              emptyTestId="classification-kinds-empty"
               testPrefix="classification-kinds"
               minWidth={640}
               rows={shown}

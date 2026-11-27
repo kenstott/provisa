@@ -4,6 +4,7 @@
     "cancel": "取消",
     "stop": "停止",
     "stopped": "已停止",
+    "noQuery": "没有可运行的查询。",
     "stopQuery": "停止查询",
     "save": "保存",
     "delete": "删除",

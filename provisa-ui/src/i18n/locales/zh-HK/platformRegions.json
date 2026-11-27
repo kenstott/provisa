@@ -9,6 +9,7 @@
     "detailPanel": "平台區域詳情",
     "colRegion": "區域",
     "none": "平台未宣告任何區域。",
+    "noMatch": "沒有符合篩選條件的區域。",
     "edit": "編輯",
     "remove": "移除",
     "taken": "已存在名為 {{id}} 的區域。",

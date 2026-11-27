@@ -29,7 +29,7 @@ source's is (binary wheels only), on the interpreter this Provisa runs on.
 
 RUN. Each source gets a host of its own: the code host front end (provisa/codehost/front.py), run
 by this Provisa's interpreter, with the Python host program on the project's environment. Its state
--- its identity, its pairing and the script it was given -- is under the data directory, and the
+-- its identity and its pairing -- is under the data directory, and the
 source is paired with it on loopback exactly as with a host its operator runs. After a restart of
 Provisa the host is started again from its state, on the port the source keeps
 (:func:`ensure_running`). A host that fails to start fails the source by name. A deleted source's
@@ -330,16 +330,8 @@ def _command(work: Path, built: Install, port: int) -> list[str]:
     ]  # fmt: skip
 
 
-def script_value(row: dict) -> str:
-    """The ``@requires`` value that is the connector's script (its standard file says which)."""
-    found = [r["name"] for r in row["requires"] if r.get("script")]
-    if len(found) != 1:
-        raise NativeHostFailed(f"the Spark connector names {len(found)} script values, not one")
-    return found[0]
-
-
-def _environment(work: Path, hashed: str, script: str) -> dict[str, str]:
-    from provisa.codehost.front import BIND_ENV, SCRIPT_ENV
+def _environment(work: Path, hashed: str) -> dict[str, str]:
+    from provisa.codehost.front import BIND_ENV
     from provisa.python.host import DISCOVERED_ENV
 
     return {
@@ -348,7 +340,6 @@ def _environment(work: Path, hashed: str, script: str) -> dict[str, str]:
         "PROVISA_CODE_HASH": hashed,
         DISCOVERED_ENV: "{}",
         "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),
-        SCRIPT_ENV: script,
     }
 
 
@@ -382,9 +373,7 @@ def _await_listening(process: subprocess.Popen, log: Path, offset: int) -> tuple
         time.sleep(0.2)
 
 
-def _launch(
-    work: Path, built: Install, hashed: str, script: str, port: int
-) -> tuple[_Host, str | None]:
+def _launch(work: Path, built: Install, hashed: str, port: int) -> tuple[_Host, str | None]:
     from provisa.codesource.image_build import _names_text  # pyright: ignore[reportPrivateUsage]
     from provisa.codesource.manifest import manifest_from_json
     from provisa.codesource.names import name_tables
@@ -398,7 +387,7 @@ def _launch(
         process = subprocess.Popen(  # noqa: S603  # nosec B603 - code-built arguments
             _command(work, built, port),
             cwd=str(work),
-            env=_environment(work, hashed, script),
+            env=_environment(work, hashed),
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=subprocess.STDOUT,
@@ -431,7 +420,7 @@ def start_for_join(org_id: str, source_id: str, row: dict) -> Started:
             _stop_process(earlier.process)
         if work.exists():
             shutil.rmtree(work)
-        host, pairing = _launch(work, built, hashed, script_value(row), 0)
+        host, pairing = _launch(work, built, hashed, 0)
         if pairing is None:
             _stop_process(host.process)
             raise NativeHostFailed("the Spark connector's new host printed no pairing code")
@@ -439,7 +428,7 @@ def start_for_join(org_id: str, source_id: str, row: dict) -> Started:
     return Started(LOOPBACK, host.port, pairing, labels(hashed, built.manifest))
 
 
-def ensure_running(org_id: str, source_id: str, hashed: str, script: str, port: int) -> None:
+def ensure_running(org_id: str, source_id: str, hashed: str, port: int) -> None:
     """The source's host running on ``port``: started again from its state when it is not (a
     restart of Provisa ends it). Its state holds its pairing, so it is not paired again."""
     work = state_dir(org_id, source_id)
@@ -453,7 +442,7 @@ def ensure_running(org_id: str, source_id: str, hashed: str, script: str, port: 
                 "create the source again",
                 source=source_id,
             )
-        host, pairing = _launch(work, install(hashed), hashed, script, port)
+        host, pairing = _launch(work, install(hashed), hashed, port)
         if pairing is not None:
             _stop_process(host.process)
             raise NativeHostFailed(
@@ -510,7 +499,6 @@ __all__ = [
     "is_native",
     "platform_rows",
     "running",
-    "script_value",
     "start_for_join",
     "state_dir",
     "stop",

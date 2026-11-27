@@ -39,6 +39,8 @@
     "colTimeout": "Tiempo de espera",
     "noFunctions": "No hay funciones registradas",
     "noWebhooks": "No hay webhooks registrados",
+    "noFunctionsMatch": "Ninguna función coincide con el filtro",
+    "noWebhooksMatch": "Ningún webhook coincide con el filtro",
     "customSchema": "conjunto de datos",
     "dash": "—",
     "all": "todos",

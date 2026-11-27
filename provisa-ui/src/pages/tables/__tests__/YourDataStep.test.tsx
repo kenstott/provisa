@@ -15,7 +15,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { render, screen, waitFor } from "../../../test-utils/render";
 import type { TableAccess } from "../../../hooks/useTableQueries";
 
@@ -68,13 +68,24 @@ function QueryPage() {
   return <pre data-testid="query-page">{(location.state as { query: string }).query}</pre>;
 }
 
+// The page holding the step opens the query explorer on the query it is handed.
+function Step(props: Omit<Parameters<typeof YourDataStep>[0], "onOpenQuery">) {
+  const navigate = useNavigate();
+  return (
+    <YourDataStep
+      {...props}
+      onOpenQuery={(graphql) => navigate("/query", { state: { query: graphql } })}
+    />
+  );
+}
+
 function renderStep(refused: { tableName: string; message: string }[] = []) {
   render(
     <Routes>
       <Route
         path="/"
         element={
-          <YourDataStep
+          <Step
             registered={{
               tableIds: [11, 12],
               refused: refused.map((r) => ({

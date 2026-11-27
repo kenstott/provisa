@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Keine RLS-Regeln definiert.",
     "noRulesMatchFilter": "Keine Regeln entsprechen dem aktuellen Filter.",
+    "noRolesMatch": "Keine Rollen entsprechen dem Filter.",
     "purposeTitle": "Wozu RLS-Regeln dienen",
     "purposeBody": "Eine Regel für Sicherheit auf Zeilenebene ist ein SQL-Prädikat, das an eine Rolle und einen Geltungsbereich gebunden ist. Der Server verknüpft es vor der Ausführung per AND mit der Abfrage, bei Lese- und Schreibzugriffen und auf jeder Schnittstelle. Eine Rolle sieht also nur die Zeilen, die ihre Regel erlaubt, unabhängig vom verwendeten Client.",
     "purposeAdd": "Beschränken Sie eine Regel auf eine einzelne Tabelle oder auf eine ganze Domäne, sodass sie jede Tabelle darin abdeckt; gilt beides, gewinnt für diese Tabelle die Tabellenregel. Eine Regel auf einem Tag deckt jede Tabelle ab, die das Tag trägt, jetzt und künftig, und wird zur eigenen Regel der Tabelle hinzugefügt. Ein Tag kann also nur einschränken, was eine Rolle liest. Regeln benennen Rollen; um zu ändern, was jemand sehen kann, ändern Sie die Rolle, die die Person innehat.",

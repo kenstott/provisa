@@ -16,7 +16,6 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { Alert, Button, Code, Group, Stack, Tabs, Text } from "@mantine/core";
 import { GovernedTableViewer } from "../../components/GovernedTableViewer";
 import { CopyButton } from "../../components/CopyButton";
@@ -39,9 +38,16 @@ function AccessMethod({ label, text, testId }: { label: string; text: string; te
   );
 }
 
-function TableData({ table, role }: { table: ListedTable; role: string | null }) {
+function TableData({
+  table,
+  role,
+  onOpenQuery,
+}: {
+  table: ListedTable;
+  role: string | null;
+  onOpenQuery: (graphql: string) => void;
+}) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { access, error } = useTableAccess(table.id, role);
   return (
     <Stack gap="md">
@@ -49,7 +55,7 @@ function TableData({ table, role }: { table: ListedTable; role: string | null })
       <Group gap="xs">
         <Button
           disabled={access === null}
-          onClick={() => access && navigate("/query", { state: { query: access.graphql } })}
+          onClick={() => access && onOpenQuery(access.graphql)}
           data-testid="your-data-open-query"
         >
           {t("yourData.openQuery")}
@@ -93,9 +99,13 @@ function TableData({ table, role }: { table: ListedTable; role: string | null })
 export function YourDataStep({
   registered,
   role,
+  onOpenQuery,
 }: {
   registered: Registered;
   role: string | null;
+  /** The query explorer opened on a table's query ready to run (REQ-2262: source setup records
+   * its Query outcome first). */
+  onOpenQuery: (graphql: string) => void;
 }) {
   const { t } = useTranslation();
   const { tables } = useTables();
@@ -135,7 +145,7 @@ export function YourDataStep({
           </Tabs.List>
           {shown.map((tbl) => (
             <Tabs.Panel key={tbl.id} value={String(tbl.id)} pt="sm">
-              <TableData table={tbl} role={role} />
+              <TableData table={tbl} role={role} onOpenQuery={onOpenQuery} />
             </Tabs.Panel>
           ))}
         </Tabs>
