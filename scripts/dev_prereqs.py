@@ -109,6 +109,14 @@ def findings(
     return out
 
 
+HOMEBREW_INSTALLER = "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+DOCKER_DESKTOP_URL = "https://www.docker.com/products/docker-desktop/"
+
+
+def _brew_prefix(arch: str) -> str:
+    return "/opt/homebrew" if arch == "arm64" else "/usr/local"
+
+
 def _arch() -> str:
     return "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "amd64"
 
@@ -132,31 +140,26 @@ def install_command(tool: str, pin: str | None, system: str, have_brew: bool) ->
         major = (pin or "24").split(".")[0]
         if mac and have_brew:
             return f"brew install node@{major} && brew link --overwrite --force node@{major}"
-        if mac:
-            raise ValueError(
-                "Node on macOS without Homebrew: install Homebrew (https://brew.sh) or Node "
-                f"{pin} from https://nodejs.org"
-            )
+        # No-sudo tarball into ~/.local/node: Linux, and macOS without Homebrew.
         node_arch = "arm64" if arch == "arm64" else "x64"
+        node_os = "darwin" if mac else "linux"
         return (
-            f"mkdir -p ~/.local/node && curl -fsSL https://nodejs.org/dist/v{pin}/node-v{pin}-linux-{node_arch}.tar.xz"
+            f"mkdir -p ~/.local/node && curl -fsSL https://nodejs.org/dist/v{pin}/node-v{pin}-{node_os}-{node_arch}.tar.xz"
             " | tar -xJ --strip-components=1 -C ~/.local/node"
         )
     if tool == "go":
         if mac and have_brew:
             return "brew install go"
-        if mac:
-            raise ValueError(
-                f"Go on macOS without Homebrew: install Homebrew (https://brew.sh) or Go {pin} from https://go.dev/dl"
-            )
-        return f"rm -rf ~/.local/go && mkdir -p ~/.local && curl -fsSL https://go.dev/dl/go{pin}.linux-{arch}.tar.gz | tar -xz -C ~/.local"
+        go_os = "darwin" if mac else "linux"
+        return f"rm -rf ~/.local/go && mkdir -p ~/.local && curl -fsSL https://go.dev/dl/go{pin}.{go_os}-{arch}.tar.gz | tar -xz -C ~/.local"
     if tool == "docker":
         if mac:
-            if not have_brew:
-                raise ValueError(
-                    "Docker on macOS without Homebrew: install Docker Desktop from https://docker.com"
-                )
-            return "brew install --cask docker"
+            if have_brew:
+                return "brew install --cask docker"
+            return (
+                f'/bin/bash -c "$(curl -fsSL {HOMEBREW_INSTALLER})" && '
+                f'eval "$({_brew_prefix(arch)}/bin/brew shellenv)" && brew install --cask docker'
+            )
         return "curl -fsSL https://get.docker.com | sh"
     raise ValueError(f"unknown tool {tool}")
 
@@ -183,6 +186,18 @@ def plan(
             if f.status == "missing"
             else f"too old ({'.'.join(map(str, f.found))}, need {f.pin})"
         )
+        if f.tool == "docker" and system == "Darwin" and not have_brew:
+            # Docker needs Homebrew here. The Homebrew installer prompts for the password itself, so
+            # it is offered only interactively: --yes leaves Docker to a manual install.
+            offer = (
+                f"docker is {what}, and Homebrew is not installed. Install Homebrew with its "
+                f"official installer (it asks for your password), then Docker Desktop with it?"
+            )
+            if assume_yes or not ask(offer):
+                unresolved.append(f)
+                continue
+            installs.append((f.tool, cmd))
+            continue
         if assume_yes or ask(f"{f.tool} is {what}. Install with `{cmd}`?"):
             installs.append((f.tool, cmd))
         else:
@@ -219,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         note = f"{f.tool}{need} is {f.status}"
         if f.optional:
             print(f"note: {note}; it is needed only for container tests and the demo stacks")
+            if system == "Darwin" and not have_brew:
+                print(f"note: download Docker Desktop from {DOCKER_DESKTOP_URL}")
         else:
             print(
                 f"error: {note}; install it (see docs/quickstart.md) or rerun with --yes",
