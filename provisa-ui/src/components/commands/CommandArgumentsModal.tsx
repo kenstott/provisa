@@ -19,7 +19,6 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button, Group, Radio, Select, TextInput, Textarea } from "@mantine/core";
 import type { ActionArg } from "../../api/actions";
-import type { SqlNamedTable } from "../../naming";
 import { ModalLayout } from "../modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
@@ -31,10 +30,12 @@ import {
 } from "./commandQueries";
 import {
   RELATION_ROW_CAP,
+  fittingTables,
   queryValue,
   relationSources,
   rowsValue,
   tableValue,
+  type ArgTable,
   type RelationSource,
 } from "./relationArg";
 
@@ -47,8 +48,8 @@ interface Draft {
   rows: string;
 }
 
-const tableKey = (tb: SqlNamedTable) => `${tb.domainId}.${tb.tableName}`;
-const tableLabel = (tb: SqlNamedTable) => `${tb.domainId}.${tb.alias || tb.tableName}`;
+const tableKey = (tb: ArgTable) => `${tb.domainId}.${tb.tableName}`;
+const tableLabel = (tb: ArgTable) => `${tb.domainId}.${tb.alias || tb.tableName}`;
 
 /** What a draft gives for its argument, to say whether it was given at all. */
 function given(arg: ActionArg, d: Draft): string | null {
@@ -97,8 +98,8 @@ export function CommandArgumentsModal({
 }: {
   call: CommandCall;
   surface: CommandSurface;
-  /** The tables the acting role reads: a relation argument picks one of them. */
-  tables: readonly SqlNamedTable[];
+  /** The tables the acting role reads: a relation argument picks one of those that fit it. */
+  tables: readonly ArgTable[];
   onOpen: (values: Record<string, ArgValue>) => void;
   onClose: () => void;
 }) {
@@ -127,7 +128,7 @@ export function CommandArgumentsModal({
     if (text === null || text.trim() === "") return null;
     if (!isRelationArg(a)) return scalarRead(a, d.text, t);
     if (d.source === "table") {
-      const tb = tables.find((x) => tableKey(x) === d.table);
+      const tb = fittingTables(a, tables).find((x) => tableKey(x) === d.table);
       if (!tb) return { problem: t("commandQuery.notReadable", { name: a.name }) };
       return { value: tableValue(a, tb) };
     }
@@ -198,6 +199,10 @@ export function CommandArgumentsModal({
             );
           }
           const sources = relationSources(a);
+          const fits = fittingTables(a, tables);
+          // REQ-1159 (amended 2026-11-27): the declared columns no table the role reads has.
+          const declared = a.argKind === "result_set" && a.columns?.length ? a.columns : null;
+          const unmet = declared !== null && fits.length === 0 ? declared : null;
           return (
             <Fragment key={a.name}>
               {sources.length > 1 && (
@@ -219,13 +224,20 @@ export function CommandArgumentsModal({
               {d.source === "table" && (
                 <FormField
                   size="medium"
-                  hint={t("commandQuery.tableHint", { cap: RELATION_ROW_CAP })}
+                  hint={
+                    unmet
+                      ? t("commandQuery.noTableFits", {
+                          columns: unmet.map((c) => `${c.name} ${c.type}`).join(", "),
+                        })
+                      : t("commandQuery.tableHint", { cap: RELATION_ROW_CAP })
+                  }
                 >
                   <Select
                     label={a.name}
-                    data={tables.map((tb) => ({ value: tableKey(tb), label: tableLabel(tb) }))}
+                    data={fits.map((tb) => ({ value: tableKey(tb), label: tableLabel(tb) }))}
                     value={d.table}
                     onChange={(v) => set(a.name, { table: v })}
+                    disabled={unmet !== null}
                     searchable
                     data-testid={`command-arg-${a.name}-table`}
                     {...controlProps(a)}

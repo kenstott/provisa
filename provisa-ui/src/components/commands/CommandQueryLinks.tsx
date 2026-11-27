@@ -17,10 +17,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { rootKey } from "../../api/metaGraph";
-import type { SqlNamedTable } from "../../naming";
 import { QuerySurfaceRow } from "../relationships/RelationshipQueryLinks";
 import { useRelationshipSurfaces } from "../relationships/useRelationshipSurfaces";
 import { CommandArgumentsModal } from "./CommandArgumentsModal";
+import type { ArgTable } from "./relationArg";
 import {
   commandQueryLink,
   commandSurfaces,
@@ -39,7 +39,7 @@ export function CommandQueryLinks({
   /** The role Explore runs as: the surfaces are the ones it is served the command on. */
   actingRole: string | null;
   /** The registered tables; a relation argument picks one the acting role reads. */
-  tables: readonly SqlNamedTable[];
+  tables: readonly ArgTable[];
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();

@@ -1219,6 +1219,7 @@
   "nl/commandQuery.json::commandQuery.givenAs": "How {{name}} is given",
   "nl/commandQuery.json::commandQuery.linkLabel": "Call {{name}} in {{surface}}",
   "nl/commandQuery.json::commandQuery.missing": "Not given: {{names}}",
+  "nl/commandQuery.json::commandQuery.noTableFits": "No table you can read has the columns {{columns}}.",
   "nl/commandQuery.json::commandQuery.notBoolean": "{{name}} is not true or false",
   "nl/commandQuery.json::commandQuery.notJson": "{{name}} is not JSON",
   "nl/commandQuery.json::commandQuery.notNumber": "{{name}} is not a number",
