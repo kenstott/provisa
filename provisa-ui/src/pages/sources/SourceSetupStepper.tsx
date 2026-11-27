@@ -11,21 +11,22 @@
 // REQ-2234 / REQ-2262: a source's setup, one flow from connecting it to querying it, shown with
 // the same step strip wherever it is reached: right after the source is saved, or later from the
 // source's read view. Connect source, Register tables, Your data, Discover relationships. A step is
-// done (a check, pressed to go back to it), current, or not yet reached. A step is done once it has
-// an outcome -- recorded per source on the server, shared by every user and environment -- or once
-// it has produced its object (tables registered, a relationship touching them).
+// done once it has an outcome -- recorded per source on the server, shared by every user and
+// environment -- or once it has produced its object (tables registered, a relationship touching
+// them).
 //
-// On the read view the strip carries one line for the current step; opened (the panel's working
-// surface, as it is after a save) the step's own content follows the strip: Register Table with the
-// source chosen and its tables that need no input already picked; Your data, the registered tables'
-// rows with a query ready to open; the relationship review. Each step offers one way past it:
-// Register tables beside Skip; Your data finishes on opening the query explorer (recorded before
-// it opens, so returning resumes at the next step) or Done; Discover relationships finishes either
-// way after a run (found or none found) and offers Skip before one. Finish later leaves the flow
-// with nothing recorded; Finish setup, at the strip's end, closes every remaining step as skipped.
-// With every step decided the strip collapses to one "Setup complete" line with Run setup again; it
-// never reopens on its own, but tables registered since, related to nothing, show as a one-line
-// hint on that line.
+// The strip shows progress only -- done, skipped, current -- and holds no buttons: pressing a done
+// step or the current one opens the flow on it. Opened (the panel's working surface, as it is after
+// a save) the step's content follows the strip and its choices are the panel's command bar (its
+// pinned head, PanelActions): the step's primary action, Skip step where the step may be skipped,
+// and Finish later at the end. Register tables' primary is the form's own Register N tables, and it
+// has no Skip step: the later steps read the tables it registers. Your data has Done (opening the
+// query explorer from it decides it too, recorded before it opens, so returning resumes at the next
+// step) and Skip step. Discover relationships has Create relationships (a review, decided either
+// way after a run, found or none found) and Skip step. Finish later closes the flow and keeps what
+// is recorded. With every step decided the strip collapses to one "Setup complete" line with Run
+// setup again; it never reopens on its own, but tables registered since, related to nothing, show
+// as a one-line hint on that line.
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -40,7 +41,6 @@ import {
   useRoles,
   useSources,
   useSuggestTableAlias,
-  useTableAccess,
   useTableDetails,
   useTables,
 } from "../../hooks/useAdminQueries";
@@ -50,12 +50,13 @@ import {
   type SetupOutcomesWrite,
 } from "../../hooks/useSourceSetupOutcomes";
 import { StepStrip } from "../../components/StepStrip";
+import { PanelActions } from "../../components/list/SplitPane";
 import { RelationshipReview } from "../../components/relationships/RelationshipReview";
 import { RegisterTableForm } from "../tables/RegisterTableForm";
 import { YourDataStep } from "../tables/YourDataStep";
 import { registeredOf, type Registered } from "../tables/useManyTables";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
-import type { Relationship, SourceSetupOutcomes, TableRow } from "../../types/admin";
+import type { Relationship, SourceSetupOutcomes } from "../../types/admin";
 
 const CONNECT = 0;
 const REGISTER = 1;
@@ -67,43 +68,13 @@ function touches(r: Relationship, ids: Set<number>): boolean {
   return ids.has(r.sourceTableId) || (r.targetTableId !== null && ids.has(r.targetTableId));
 }
 
-function QueryHandOff({
-  table,
-  role,
-  onOpen,
-}: {
-  table: TableRow;
-  role: string | null;
-  onOpen: (graphql: string) => void;
-}) {
-  const { t } = useTranslation();
-  const { access } = useTableAccess(table.id, role);
-  return (
-    <>
-      <Text size="sm" c="dimmed">
-        {t("sourceSetup.queryHint", { table: table.alias || table.tableName })}
-      </Text>
-      <Button
-        size="compact-sm"
-        disabled={access === null}
-        onClick={() => access && onOpen(access.graphql)}
-        data-testid="source-setup-query"
-      >
-        {t("sourceSetup.queryAction")}
-      </Button>
-    </>
-  );
-}
-
 /** Register tables, opened: Register Table with the source chosen, as the Tables page's form. */
 function RegisterStep({
   sourceId,
   onRegistered,
-  onCancel,
 }: {
   sourceId: string;
   onRegistered: (outcomes: TableRegistrationOutcome[]) => void;
-  onCancel: () => void;
 }) {
   const navigate = useNavigate();
   const { domainAccess } = useAuth();
@@ -130,7 +101,7 @@ function RegisterStep({
       // A table registered on its own: its settings follow in the table editor, as on the Tables
       // page.
       onContinue={(registration) => navigate("/tables", { state: { createTable: registration } })}
-      onCancel={onCancel}
+      // No Cancel: the flow's command bar has Finish later.
       onProductsRegistered={() => navigate("/data-products")}
       setError={setError}
       problem={error}
@@ -159,7 +130,7 @@ export function SourceSetupStepper({
   onConnect: () => void;
   /** Open the flow, on a done step gone back to or (null) on the current one. */
   onOpen: (step: number | null) => void;
-  /** Leave the opened flow: Finish later, or every step decided. */
+  /** Leave the opened flow, keeping what is recorded: Finish later, or every step decided. */
   onClose: () => void;
   /** Discover relationships is decided by a review, with how many relationships it created. */
   onRelated: (count: number) => void;
@@ -230,7 +201,7 @@ export function SourceSetupStepper({
   };
   /** Your data decided: the steps it passes are recorded as they show. Discover relationships,
    * passed without a decision (nothing to relate, or not permitted), is closed with it. */
-  const decideQuery = (query: "opened" | "done", then?: () => void) =>
+  const decideQuery = (query: "opened" | "done" | "skipped", then?: () => void) =>
     record(
       {
         tables: tablesOutcome,
@@ -241,12 +212,6 @@ export function SourceSetupStepper({
     );
   const openQuery = (graphql: string) =>
     decideQuery("opened", () => navigate("/query", { state: { query: graphql } }));
-  const finishSetup = () =>
-    record({
-      tables: tablesOutcome ?? "skipped",
-      relationships: relateClosed,
-      query: outcomes.query ?? "skipped",
-    });
   const onRegistered = (answers: TableRegistrationOutcome[]) => {
     setRegistered(registeredOf(answers));
     setViewing(null);
@@ -348,33 +313,13 @@ export function SourceSetupStepper({
   // current one.
   const shown = open && viewing !== null && viewing < active ? viewing : active;
   const skippedText = t("sourceSetup.skipped");
-  const goBack = (to: number) => {
+  // A step in the strip opens it: Connect is the source's edit form; any other done step, or the
+  // current one, opens the flow on it.
+  const openStep = (to: number) => {
     if (to === CONNECT) onConnect();
-    else if (to === RELATE) {
-      if (mayRelate && own.length > 0) setReviewing(own.map((tbl) => tbl.id));
-    } else if (open) setViewing(to);
-    else onOpen(to);
+    else if (open) setViewing(to === active ? null : to);
+    else onOpen(to === active ? null : to);
   };
-  const skip = (key: keyof SetupOutcomesWrite, write: SetupOutcomesWrite) => (
-    <Button
-      size="compact-sm"
-      variant="default"
-      onClick={() => record(write)}
-      data-testid={`source-setup-skip-${key}`}
-    >
-      {t("sourceSetup.skip")}
-    </Button>
-  );
-  const done = (
-    <Button
-      size="compact-sm"
-      variant="default"
-      onClick={() => decideQuery("done")}
-      data-testid="source-setup-done"
-    >
-      {t("sourceSetup.done")}
-    </Button>
-  );
   const relateNote = shown === YOUR_DATA && relationshipsOutcome === null && relatePassed && (
     <Text size="sm" c="dimmed" data-testid="source-setup-relate-note">
       {nothingToRelate
@@ -387,116 +332,97 @@ export function SourceSetupStepper({
     tableIds: own.map((tbl) => tbl.id),
     refused: [],
   };
+  // The command bar, while opened: the current step's primary action and Skip step (a done step
+  // gone back to is not decided again), then Finish later. Register tables' primary is its form's.
+  const current = shown === active;
+  const commandBar = open && (
+    <PanelActions>
+      {current && shown === YOUR_DATA && (
+        <>
+          <Button onClick={() => decideQuery("done")} data-testid="source-setup-done">
+            {t("sourceSetup.done")}
+          </Button>
+          <Button onClick={() => decideQuery("skipped")} data-testid="source-setup-skip">
+            {t("sourceSetup.skipStep")}
+          </Button>
+        </>
+      )}
+      {current && shown === RELATE && (
+        <>
+          <Button
+            onClick={() => setReviewing(own.map((tbl) => tbl.id))}
+            data-testid="source-setup-relate"
+          >
+            {t("sourceSetup.createRelationships")}
+          </Button>
+          <Button
+            onClick={() =>
+              record({ tables: tablesOutcome, relationships: "skipped", query: outcomes.query })
+            }
+            data-testid="source-setup-skip"
+          >
+            {t("sourceSetup.skipStep")}
+          </Button>
+        </>
+      )}
+      <Button
+        className="panel-head-end"
+        onClick={onClose}
+        data-testid="source-setup-finish-later"
+      >
+        {t("sourceSetup.finishLater")}
+      </Button>
+    </PanelActions>
+  );
 
   return (
     <Stack gap="xs" data-testid="source-setup-stepper" data-active={active} data-shown={shown}>
-      <Group gap="sm" wrap="nowrap" align="flex-start">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <StepStrip
-            steps={[
-              { key: "connect", label: t("sourceSetup.connect") },
-              {
-                key: "register",
-                label: t("sourceSetup.register"),
-                description:
-                  own.length > 0
-                    ? t("sourceSetup.tablesCount", { count: own.length })
-                    : tablesOutcome === "skipped"
-                      ? skippedText
-                      : undefined,
-              },
-              {
-                key: "yourData",
-                label: t("sourceSetup.yourData"),
-                description: outcomes.query === "skipped" ? skippedText : undefined,
-              },
-              {
-                key: "relate",
-                label: t("sourceSetup.relate"),
-                description:
-                  relationshipsOutcome === "skipped"
-                    ? skippedText
-                    : relationshipsOutcome === "none_found" ||
-                        (relationshipsOutcome === null && nothingToRelate && active > REGISTER)
-                      ? t("sourceSetup.nothingToRelate")
-                      : relationshipsOutcome === null && !mayRelate && active > REGISTER
-                        ? t("sourceSetup.relateNotAllowed")
-                        : undefined,
-              },
-            ]}
-            active={active}
-            onStepClick={goBack}
-            label={t("sourceSetup.label")}
-            testId="source-setup-step"
-          />
+      <StepStrip
+        steps={[
+          { key: "connect", label: t("sourceSetup.connect") },
+          {
+            key: "register",
+            label: t("sourceSetup.register"),
+            description:
+              own.length > 0
+                ? t("sourceSetup.tablesCount", { count: own.length })
+                : tablesOutcome === "skipped"
+                  ? skippedText
+                  : undefined,
+          },
+          {
+            key: "yourData",
+            label: t("sourceSetup.yourData"),
+            description: outcomes.query === "skipped" ? skippedText : undefined,
+          },
+          {
+            key: "relate",
+            label: t("sourceSetup.relate"),
+            description:
+              relationshipsOutcome === "skipped"
+                ? skippedText
+                : relationshipsOutcome === "none_found" ||
+                    (relationshipsOutcome === null && nothingToRelate && active > REGISTER)
+                  ? t("sourceSetup.nothingToRelate")
+                  : relationshipsOutcome === null && !mayRelate && active > REGISTER
+                    ? t("sourceSetup.relateNotAllowed")
+                    : undefined,
+          },
+        ]}
+        active={active}
+        onStepClick={openStep}
+        currentSelectable
+        label={t("sourceSetup.label")}
+        testId="source-setup-step"
+      />
+      {open && shown === REGISTER && (
+        <div data-testid="source-setup-register-step">
+          <RegisterStep sourceId={sourceId} onRegistered={onRegistered} />
         </div>
-        <Button
-          size="compact-sm"
-          variant="subtle"
-          onClick={finishSetup}
-          data-testid="source-setup-finish"
-        >
-          {t("sourceSetup.finish")}
-        </Button>
-      </Group>
-      {shown === REGISTER && !open && (
-        <Group gap="sm" wrap="nowrap">
-          <Text size="sm" c="dimmed">
-            {t("sourceSetup.registerHint")}
-          </Text>
-          <Button size="compact-sm" onClick={() => onOpen(null)} data-testid="source-setup-register">
-            {t("sourceSetup.registerAction")}
-          </Button>
-          {skip("tables", {
-            tables: "skipped",
-            relationships: outcomes.relationships,
-            query: outcomes.query,
-          })}
-        </Group>
       )}
-      {shown === REGISTER && open && (
-        <Stack gap="xs" data-testid="source-setup-register-step">
-          {active === REGISTER && (
-            <Group gap="sm" wrap="nowrap">
-              {skip("tables", {
-                tables: "skipped",
-                relationships: outcomes.relationships,
-                query: outcomes.query,
-              })}
-            </Group>
-          )}
-          <RegisterStep sourceId={sourceId} onRegistered={onRegistered} onCancel={onClose} />
-        </Stack>
-      )}
-      {shown === YOUR_DATA && !open && (
-        <Stack gap={4}>
-          {relateNote}
-          <Group gap="sm" wrap="nowrap">
-            {own.length > 0 ? (
-              <>
-                <QueryHandOff table={own[0]} role={actingRoles} onOpen={openQuery} />
-                <Button
-                  size="compact-sm"
-                  variant="default"
-                  onClick={() => onOpen(null)}
-                  data-testid="source-setup-your-data"
-                >
-                  {t("sourceSetup.yourDataAction")}
-                </Button>
-              </>
-            ) : (
-              <Text size="sm" c="dimmed">
-                {t("sourceSetup.nothingToQueryHint")}
-              </Text>
-            )}
-            {done}
-          </Group>
-        </Stack>
-      )}
-      {shown === YOUR_DATA && open && (
+      {open && shown === YOUR_DATA && (
         <Stack gap="xs">
           {relateNote}
-          {active === YOUR_DATA && <Group gap="sm">{done}</Group>}
           {yourData.tableIds.length > 0 || yourData.refused.length > 0 ? (
             <YourDataStep registered={yourData} role={actingRoles} onOpenQuery={openQuery} />
           ) : (
@@ -506,25 +432,12 @@ export function SourceSetupStepper({
           )}
         </Stack>
       )}
-      {shown === RELATE && (
-        <Group gap="sm" wrap="nowrap">
-          <Text size="sm" c="dimmed">
-            {t("sourceSetup.relateHint")}
-          </Text>
-          <Button
-            size="compact-sm"
-            onClick={() => setReviewing(own.map((tbl) => tbl.id))}
-            data-testid="source-setup-relate"
-          >
-            {t("sourceSetup.relateAction")}
-          </Button>
-          {skip("relationships", {
-            tables: tablesOutcome,
-            relationships: "skipped",
-            query: outcomes.query,
-          })}
-        </Group>
+      {open && shown === RELATE && (
+        <Text size="sm" c="dimmed">
+          {t("sourceSetup.relateHint")}
+        </Text>
       )}
+      {commandBar}
       {failed}
       {review}
     </Stack>
