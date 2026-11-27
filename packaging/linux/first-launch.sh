@@ -1291,9 +1291,12 @@ write_env_file() {
       set_keys+="${var} "
     fi
   done
-  # REQ-1296: the bootstrap org id is 'root'. Written on every run, replacing any earlier value.
-  printf 'ORG_ID=root\n' >> "$merged"
-  set_keys+="ORG_ID "
+  # REQ-1296: a new install's bootstrap org id is 'root'. An env file that already has an ORG_ID
+  # line keeps it: an existing install keeps its org (maintainer decision 2026-11-27).
+  if [ ! -f "$env_file" ] || ! grep -q '^ORG_ID=' "$env_file"; then
+    printf 'ORG_ID=root\n' >> "$merged"
+    set_keys+="ORG_ID "
+  fi
   if [ -f "$env_file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       key="${line%%=*}"

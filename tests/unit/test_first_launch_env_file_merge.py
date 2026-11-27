@@ -101,9 +101,20 @@ def test_a_first_run_writes_only_what_it_was_given(tmp_path):
     assert _keys(env_file) == {
         "PROVISA_IDP": "keycloak",
         "PROVISA_MULTITENANCY": "true",
-        "ORG_ID": "root",  # REQ-1296: always written
+        "ORG_ID": "root",  # REQ-1296: a fresh file gets root
     }
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+
+
+def test_a_rerun_keeps_an_existing_org_id(tmp_path):
+    env_file = tmp_path / "provisa.env"
+    env_file.write_text("ORG_ID=default\nPROVISA_IDP=firebase\n")
+    env_file.chmod(0o600)
+
+    _write(env_file, {"PROVISA_IDP": "firebase"})
+
+    assert _keys(env_file)["ORG_ID"] == "default"
+    assert env_file.read_text().count("ORG_ID=") == 1
 
 
 def test_install_systemd_writes_the_environment_file_through_the_merge():

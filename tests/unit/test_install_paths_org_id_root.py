@@ -45,12 +45,9 @@ def test_install_host_env_file_sets_org_id_root():
     assert "ORG_ID=root" in done.stdout.splitlines()
 
 
-def test_first_launch_env_file_sets_org_id_root_over_an_earlier_value(tmp_path):
+def _first_launch_write(env_file: Path) -> list[str]:
     start = _FIRST_LAUNCH.index("write_env_file() {")
     fn = _FIRST_LAUNCH[start : _FIRST_LAUNCH.index("\n}\n", start) + 3]
-    env_file = tmp_path / "provisa.env"
-    env_file.write_text("ORG_ID=default\nPROVISA_ENGINE=duckdb\n")
-    env_file.chmod(0o600)
     done = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", fn + 'write_env_file "$1"\n', "_", str(env_file)],
         env={"PATH": os.environ["PATH"]},
@@ -58,9 +55,21 @@ def test_first_launch_env_file_sets_org_id_root_over_an_earlier_value(tmp_path):
         text=True,
     )
     assert done.returncode == 0, done.stderr
-    lines = env_file.read_text().splitlines()
+    return env_file.read_text().splitlines()
+
+
+def test_first_launch_env_file_sets_org_id_root_on_a_fresh_file(tmp_path):
+    lines = _first_launch_write(tmp_path / "provisa.env")
     assert lines.count("ORG_ID=root") == 1
-    assert not any(line.startswith("ORG_ID=") and line != "ORG_ID=root" for line in lines)
+
+
+def test_first_launch_env_file_keeps_an_existing_org_id(tmp_path):
+    env_file = tmp_path / "provisa.env"
+    env_file.write_text("ORG_ID=default\nPROVISA_ENGINE=duckdb\n")
+    env_file.chmod(0o600)
+    lines = _first_launch_write(env_file)
+    assert lines.count("ORG_ID=default") == 1
+    assert not any(line.startswith("ORG_ID=") and line != "ORG_ID=default" for line in lines)
     assert "PROVISA_ENGINE=duckdb" in lines
 
 
