@@ -931,9 +931,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # list object is what lets a later-appended processor's pending work actually get drained by
         # the tick job registered below — the tick job's closure holds this exact list, not a copy.
         state.event_loop_processors = processors
-        # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
-        # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
-        # REFRESHED by the poll/push events.
+        # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot job.
+        # REQ-1632: it copies no rows into a replica -- the boot reconcile kept each matching one
+        # and created each missing one empty -- and the poll/push events fill and refresh them.
         # REQ-1266: wired under the org bound by the boot or build_org_runtime — its job ids carry
         # the org and each fire binds it. db/processors already carry this org's tenant plane.
         from provisa.core.change_signal import is_push
@@ -958,7 +958,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             or (spec.poll_seconds is not None and spec.probe_factory is not None)
         }
         log.info(
-            "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
+            "event loop wired: %d node(s) on the scheduler (boot + refresh scheduled)",
             len(processors),
         )
         return len(processors)

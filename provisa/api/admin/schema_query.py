@@ -1650,9 +1650,11 @@ class Query:  # REQ-021, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as config_conn, _bound_to_request_org():
-            path = await source_files_path(config_conn, source_id)
+            path, storage_options = await source_files_path(config_conn, source_id)
         # A glob that cannot be read, or picked tables no glob covers, is the query's error.
-        out = await asyncio.to_thread(file_glob_preview, path, glob or None, tables)
+        out = await asyncio.to_thread(
+            file_glob_preview, path, glob or None, tables, storage_options
+        )
         return FileGlobPreviewType(
             glob=out["glob"],
             files=[CombinedFileType(**f) for f in out["files"]],
@@ -1674,18 +1676,38 @@ class Query:  # REQ-021, REQ-042
         simple_links: bool = True,
         same_domain: bool = True,
         exclude_pattern: Optional[str] = None,
-    ) -> CrawlResultType:  # REQ-1785
+        database: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        mapping_json: Optional[str] = None,
+    ) -> CrawlResultType:  # REQ-1785, REQ-2280
         """Preview a file-connector crawl before a source is created/registered.
 
         Wraps ``provisa.file_source.crawler.crawl_directory``. The three HTTP-only
         settings (``simple_links``, ``same_domain``, ``exclude_pattern``) are ignored
         for local/S3/FTP/SFTP roots. Replaces the REST-only ``POST /admin/sources/crawl``
         endpoint (crawl_router.py), which has no frontend consumer, for GraphQL-schema
-        consistency with every other admin operation.
+        consistency with every other admin operation. A onedrive:// or gdrive:// path signs in
+        with the source's fields as the source will hold them (``database``, ``username``,
+        ``password``, ``mapping_json``; secrets as typed or vault references), REQ-2280.
         """
         require_capability(info, "source_registration")
+        import json as _json
+
+        from provisa.file_source.cloud_drive import drive_storage_options
         from provisa.file_source.crawler import crawl_directory
 
+        async with _bound_to_request_org():
+            storage_options = drive_storage_options(
+                {
+                    "id": "crawl preview",
+                    "path": path,
+                    "database": database,
+                    "username": username,
+                    "password": password,
+                    "mapping": _json.loads(mapping_json or "{}"),
+                }
+            )
         discovered = crawl_directory(
             path,
             depth,
@@ -1694,6 +1716,7 @@ class Query:  # REQ-021, REQ-042
             simple_links=simple_links,
             same_domain=same_domain,
             exclude_pattern=exclude_pattern,
+            storage_options=storage_options,
         )
         total_tables = sum(len(entry["tables"]) for entry in discovered)
         return CrawlResultType(

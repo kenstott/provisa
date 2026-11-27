@@ -590,17 +590,32 @@ class TrinoFilesConnector(_TrinoConnector):
             raise ValueError(
                 f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
             )
+        glob = resolve_secrets(source.path)
+        import json
+
+        from provisa.file_source.drive_operand import drive_adapter_operand
+
+        # REQ-2280: a onedrive:// or gdrive:// glob is read live by the adapter's drive storage
+        # provider. The trino-file plugin (calcite engine-v0.131.1) takes the adapter's
+        # storageConfig as its ``storage-config`` property (the same keys the pgwire bundle is
+        # given) and reads the glob past its scheme within the drive, so the drive's owner (or root
+        # folder id) leaves the glob for the storage config.
+        drive = drive_adapter_operand(source, glob)
+        storage_config = None
+        if drive is not None:
+            glob = f"{drive['storageType']}://{drive['directory']}"
+            storage_config = json.dumps(drive["storageConfig"], sort_keys=True)
         details = {
-            "glob": resolve_secrets(source.path),
+            "glob": glob,
             "recursive": "true",
             "schema-name": source.id.replace("-", "_"),
             "execution-engine": "DUCKDB",
             "case-insensitive-name-matching": "true",
         }
+        if storage_config is not None:
+            details["storage-config"] = storage_config
         # REQ-1960/REQ-1730: the same crawl operand the pgwire bundle is given, as the catalog's
         # one JSON-valued ``crawl`` property; the glob is then the directory its files land in.
-        import json
-
         from provisa.file_source.crawl import crawl_operand
 
         crawl = crawl_operand(source.id, source.mapping)

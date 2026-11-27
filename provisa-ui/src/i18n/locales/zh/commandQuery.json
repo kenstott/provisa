@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{surface}} 中的 {{name}}",
+    "linkLabel": "在 {{surface}} 中调用 {{name}}",
+    "open": "打开",
+    "givenAs": "{{name}} 的提供方式",
+    "sourceTable": "表",
+    "sourceQuery": "查询",
+    "sourceRows": "行",
+    "tableHint": "您可读取的表；传入其前 {{cap}} 行。",
+    "queryHint": "传入其前 {{cap}} 行。",
+    "rowsHint": "首行为列名的 CSV，或对象组成的 JSON 数组；最多 {{cap}} 行。",
+    "missing": "未提供：{{names}}",
+    "notNumber": "{{name}} 不是数字",
+    "notBoolean": "{{name}} 既不是 true 也不是 false",
+    "notJson": "{{name}} 不是 JSON",
+    "notRows": "{{name}}：请粘贴首行为列名的 CSV，或对象组成的 JSON 数组",
+    "overCap": "{{name}}：最多 {{cap}} 行",
+    "notReadable": "{{name}}：所选的表不是您可读取的表"
+  }
+}

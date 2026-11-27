@@ -51,6 +51,7 @@ import {
 } from "../../hooks/useSourceSetupOutcomes";
 import { StepStrip } from "../../components/StepStrip";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelBody, PanelStrip } from "../../components/list/PanelBody";
 import { RelationshipReview } from "../../components/relationships/RelationshipReview";
 import { RegisterTableForm } from "../tables/RegisterTableForm";
 import { YourDataStep } from "../tables/YourDataStep";
@@ -365,73 +366,69 @@ export function SourceSetupStepper({
           </Button>
         </>
       )}
-      <Button
-        className="panel-head-end"
-        onClick={onClose}
-        data-testid="source-setup-finish-later"
-      >
+      <Button className="panel-head-end" onClick={onClose} data-testid="source-setup-finish-later">
         {t("sourceSetup.finishLater")}
       </Button>
     </PanelActions>
   );
 
   return (
-    <Stack gap="xs" data-testid="source-setup-stepper" data-active={active} data-shown={shown}>
-      <StepStrip
-        steps={[
-          { key: "connect", label: t("sourceSetup.connect") },
-          {
-            key: "register",
-            label: t("sourceSetup.register"),
-            description:
-              own.length > 0
-                ? t("sourceSetup.tablesCount", { count: own.length })
-                : tablesOutcome === "skipped"
-                  ? skippedText
-                  : undefined,
-          },
-          {
-            key: "yourData",
-            label: t("sourceSetup.yourData"),
-            description: outcomes.query === "skipped" ? skippedText : undefined,
-          },
-          {
-            key: "relate",
-            label: t("sourceSetup.relate"),
-            description:
-              relationshipsOutcome === "skipped"
-                ? skippedText
-                : relationshipsOutcome === "none_found" ||
-                    (relationshipsOutcome === null && nothingToRelate && active > REGISTER)
-                  ? t("sourceSetup.nothingToRelate")
-                  : relationshipsOutcome === null && !mayRelate && active > REGISTER
-                    ? t("sourceSetup.relateNotAllowed")
+    <PanelBody data-testid="source-setup-stepper" data-active={active} data-shown={shown}>
+      <PanelStrip>
+        <StepStrip
+          steps={[
+            { key: "connect", label: t("sourceSetup.connect") },
+            {
+              key: "register",
+              label: t("sourceSetup.register"),
+              description:
+                own.length > 0
+                  ? t("sourceSetup.tablesCount", { count: own.length })
+                  : tablesOutcome === "skipped"
+                    ? skippedText
                     : undefined,
-          },
-        ]}
-        active={active}
-        onStepClick={openStep}
-        currentSelectable
-        label={t("sourceSetup.label")}
-        testId="source-setup-step"
-      />
+            },
+            {
+              key: "yourData",
+              label: t("sourceSetup.yourData"),
+              description: outcomes.query === "skipped" ? skippedText : undefined,
+            },
+            {
+              key: "relate",
+              label: t("sourceSetup.relate"),
+              description:
+                relationshipsOutcome === "skipped"
+                  ? skippedText
+                  : relationshipsOutcome === "none_found" ||
+                      (relationshipsOutcome === null && nothingToRelate && active > REGISTER)
+                    ? t("sourceSetup.nothingToRelate")
+                    : relationshipsOutcome === null && !mayRelate && active > REGISTER
+                      ? t("sourceSetup.relateNotAllowed")
+                      : undefined,
+            },
+          ]}
+          active={active}
+          onStepClick={openStep}
+          currentSelectable
+          label={t("sourceSetup.label")}
+          testId="source-setup-step"
+        />
+      </PanelStrip>
       {open && shown === REGISTER && (
         <div data-testid="source-setup-register-step">
           <RegisterStep sourceId={sourceId} onRegistered={onRegistered} />
         </div>
       )}
-      {open && shown === YOUR_DATA && (
-        <Stack gap="xs">
-          {relateNote}
-          {yourData.tableIds.length > 0 || yourData.refused.length > 0 ? (
-            <YourDataStep registered={yourData} role={actingRoles} onOpenQuery={openQuery} />
-          ) : (
-            <Text size="sm" c="dimmed">
-              {t("sourceSetup.nothingToQueryHint")}
-            </Text>
-          )}
-        </Stack>
-      )}
+      {open && shown === YOUR_DATA && relateNote}
+      {open &&
+        shown === YOUR_DATA &&
+        (yourData.tableIds.length > 0 || yourData.refused.length > 0 ? (
+          <YourDataStep registered={yourData} role={actingRoles} onOpenQuery={openQuery} />
+        ) : (
+          <Text size="sm" c="dimmed">
+            {t("sourceSetup.nothingToQueryHint")}
+          </Text>
+        ))}
       {open && shown === RELATE && (
         <Text size="sm" c="dimmed">
           {t("sourceSetup.relateHint")}
@@ -440,6 +437,6 @@ export function SourceSetupStepper({
       {commandBar}
       {failed}
       {review}
-    </Stack>
+    </PanelBody>
   );
 }

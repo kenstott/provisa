@@ -29,9 +29,12 @@ interprets a token, only compares stored vs. fresh.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.core.change_signal import APPEND, REPLACE
+
+if TYPE_CHECKING:
+    from provisa.file_source.files_glob import StorageOptions
 
 # -- the axis ------------------------------------------------------------------
 WATERMARK = "watermark"
@@ -172,15 +175,18 @@ async def sql_count_token(query_scalar: QueryScalar, ref: str) -> str | None:
     return None if value is None else str(value)
 
 
-async def glob_token(source_path: str, file_glob: str) -> str | None:
+async def glob_token(
+    source_path: str, file_glob: str, storage_options: StorageOptions = None
+) -> str | None:
     """The files-glob change token (REQ-788): the matched files' count, latest mtime and total
-    size. None when the glob cannot be stat'd this call (→ TTL degrade)."""
+    size. None when the glob cannot be stat'd this call (→ TTL degrade). A onedrive:// or
+    gdrive:// path is stat'd with ``storage_options``, its source's sign-in (REQ-2280)."""
     import asyncio
 
     from provisa.file_source.files_glob import glob_freshness_token, stat_matched_files
 
     try:
-        stats = await asyncio.to_thread(stat_matched_files, source_path, file_glob)
+        stats = await asyncio.to_thread(stat_matched_files, source_path, file_glob, storage_options)
     except OSError:
         return None
     return glob_freshness_token(stats)
@@ -239,6 +245,7 @@ def build_probe(
     source_path: str | None = None,
     file_glob: str | None = None,
     loader_probe: Transport | None = None,
+    storage_options: StorageOptions = None,
 ) -> Transport:
     """Build the ``freshness_token`` transport for a node from its ``probe_type`` (REQ-982).
 
@@ -255,7 +262,7 @@ def build_probe(
         return None
 
     if file_glob and source_path:  # REQ-788: a files-glob table probes its matched files
-        return lambda: glob_token(source_path, file_glob)
+        return lambda: glob_token(source_path, file_glob, storage_options)
 
     if probe_type == WATERMARK:
         if query_scalar is None or ref is None or watermark_column is None:
