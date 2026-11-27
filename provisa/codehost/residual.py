@@ -213,6 +213,16 @@ class _NotLiteral(Exception):
     pass
 
 
+#: The collations that compare text by its bytes, as a statement without one compares it.
+_BYTE_ORDER = frozenset({"c", "posix", "ucs_basic"})
+
+
+def _byte_order(collation: exp.Expr) -> bool:
+    return isinstance(collation, (exp.Identifier, exp.Column, exp.Literal)) and (
+        collation.name.lower() in _BYTE_ORDER
+    )
+
+
 def _value(node: exp.Expr) -> Any:
     """A literal's Python value: a string, a number, a boolean, a date or timestamp literal."""
     if isinstance(node, exp.Neg):
@@ -220,6 +230,10 @@ def _value(node: exp.Expr) -> Any:
         if isinstance(inner, (int, float, Decimal)):
             return -inner
         raise _NotLiteral
+    if isinstance(node, exp.Collate) and _byte_order(node.expression):
+        # An engine that attached the host pins a text literal to byte order (DuckDB's postgres
+        # scanner sends ``'a' COLLATE "C"``): the value is the literal's, compared as written.
+        return _value(node.this)
     if isinstance(node, exp.Boolean):
         return node.this
     if isinstance(node, exp.Literal):
