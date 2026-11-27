@@ -49,7 +49,7 @@ vi.mock("../../../api/admin", async (importOriginal) => ({
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
-function renderForm(domainHints: string[]) {
+function renderForm(domainHints: string[], { cancel = true }: { cancel?: boolean } = {}) {
   registerTables
     .mockReset()
     .mockResolvedValue([
@@ -66,7 +66,7 @@ function renderForm(domainHints: string[]) {
       roles={[{ id: "admin" } as never]}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
       onContinue={vi.fn()}
-      onCancel={() => {}}
+      onCancel={cancel ? () => {} : undefined}
       onProductsRegistered={vi.fn()}
       onRegisteredMany={vi.fn()}
       setError={vi.fn()}
@@ -123,5 +123,21 @@ describe("RegisterTableForm asks only what names the tables", () => {
       ["id", "integer"],
       ["name", "varchar"],
     ]);
+  });
+});
+
+describe("RegisterTableForm in the setup flow", () => {
+  // REQ-2234: the setup flow's command bar has Finish later and no Cancel; the form given no
+  // onCancel offers none, and keeps its Register.
+  it("offers no Cancel when it is given none, and keeps Register", async () => {
+    renderForm(["sales"], { cancel: false });
+    await openTables();
+    expect(screen.queryByTestId("register-table-cancel")).toBeNull();
+    expect(submitTables()).toBeInTheDocument();
+  });
+
+  it("offers Cancel on the Tables page", async () => {
+    renderForm(["sales"]);
+    expect(await screen.findByTestId("register-table-cancel")).toBeInTheDocument();
   });
 });

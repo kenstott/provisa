@@ -126,8 +126,9 @@ if [ "$pull_splunk" = "pull-splunk" ]; then
   _pull_with_retry docker pull splunk/splunk:latest
 fi
 
-# zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
-docker compose -f docker-compose.core.yml build zaychik
+# zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest). A lane loads the primed
+# image (.github/actions/zaychik-image) first; the build runs only when it is absent.
+docker image inspect zaychik:latest > /dev/null 2>&1 || docker compose -f docker-compose.core.yml build zaychik
 
 # trino-worker stays at replicas: 0 — the coordinator alone answers this lane's queries and
 # a second JVM would compete for RAM with Trino's 7g limit, the Vite dev server's 4 GB heap

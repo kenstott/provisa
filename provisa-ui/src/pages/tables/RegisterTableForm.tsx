@@ -127,8 +127,9 @@ interface RegisterTableFormProps {
    * registers it.
    */
   onContinue: (registration: Registration) => void;
-  /** Closes the form without registering anything. */
-  onCancel: () => void;
+  /** Closes the form without registering anything. Absent in source setup (REQ-2234): its
+   * command bar has Finish later, not Cancel, so the form offers no Cancel there. */
+  onCancel?: () => void;
   /** REQ-2228: a dbt source's public models were registered and these draft products created. */
   onProductsRegistered: (productIds: string[]) => void;
   setError: (e: string | null) => void;

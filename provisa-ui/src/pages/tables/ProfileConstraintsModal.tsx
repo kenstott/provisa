@@ -16,7 +16,6 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   ScrollArea,
   Select,
   Table,
@@ -24,6 +23,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import {
   decideConstraint,
   exportConstraint,
@@ -154,7 +154,7 @@ export function ProfileConstraintsModal({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       size="90%"
@@ -331,6 +331,6 @@ export function ProfileConstraintsModal({
           </Table.Tbody>
         </Table>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

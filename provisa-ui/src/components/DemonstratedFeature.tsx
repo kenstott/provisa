@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useState, type ReactNode } from "react";
-import { Alert, Badge, Box, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Box, Button, Group, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
@@ -64,7 +65,7 @@ export function DemonstratedFeature({ children, block, navigable, capability }: 
     return (
       <Box>
         {explained && (
-          <Modal
+          <ModalLayout
             opened={explaining}
             onClose={() => setExplaining(false)}
             title={t(`${purpose}.title`)}
@@ -86,7 +87,7 @@ export function DemonstratedFeature({ children, block, navigable, capability }: 
                 }
               />
             </Stack>
-          </Modal>
+          </ModalLayout>
         )}
         <Alert
           icon={<Info size={16} aria-hidden />}

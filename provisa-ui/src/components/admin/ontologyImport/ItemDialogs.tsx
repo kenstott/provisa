@@ -14,7 +14,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Modal, SegmentedControl, Select, TextInput, Textarea } from "@mantine/core";
+import { Alert, Button, SegmentedControl, Select, TextInput, Textarea } from "@mantine/core";
+import { ModalLayout } from "../../modal/ModalLayout";
 import { Plus } from "lucide-react";
 import {
   ALIGNMENT_TYPES,
@@ -59,7 +60,7 @@ export function EditItemDialog({
     }
   };
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("ontologyImport.editTitle", { name: item.name })}
@@ -101,7 +102,7 @@ export function EditItemDialog({
           saveProps={{ "data-testid": "ontology-item-save", disabled: !name.trim() }}
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }
 
@@ -166,7 +167,7 @@ export function AddAlignmentDialog({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("ontologyImport.addAlignmentTitle", { name: item.name })}
@@ -250,6 +251,6 @@ export function AddAlignmentDialog({
           }
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

@@ -11,7 +11,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Button, List, Modal, Stack, Text, Title } from "@mantine/core";
+import { Button, List, Stack, Text, Title } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { FormFooter } from "./form/FormLayout";
 import { getStored, removeStored } from "../lib/browserStorage";
 import { useAuth } from "../context/AuthContext";
@@ -62,7 +63,7 @@ export function PlatformAdminWelcomeModal() {
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={close}
       size="lg"
@@ -108,6 +109,6 @@ export function PlatformAdminWelcomeModal() {
           </Button>
         </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

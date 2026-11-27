@@ -97,15 +97,22 @@ def test_a_query_with_no_join_or_subquery_is_returned_untouched():
 
 
 _LIST_SQL = (
-    'SELECT "t0"."order_id", (SELECT json_agg(json_object(KEY \'s\' VALUE "t2"."status")) '
-    'FROM "perf_bench"."order_docs" AS "t2" WHERE "t2"."order_id" = "t0"."order_id") AS "d" '
-    'FROM "perf_bench"."orders" AS "t0" WHERE "t0"."order_id" >= $1 AND "t0"."order_id" <= $2'
+    'SELECT "t0"."order_id", COALESCE("t2_read"."_value", CAST(\'[]\' AS JSON)) AS "d" '
+    'FROM "perf_bench"."orders" AS "t0" LEFT JOIN (SELECT "t2"."order_id" AS "_key0", '
+    'json_agg(json_object(KEY \'s\' VALUE "t2"."status")) AS "_value" '
+    'FROM "perf_bench"."order_docs" AS "t2" GROUP BY "t2"."order_id") AS "t2_read" '
+    'ON "t2_read"."_key0" = "t0"."order_id" '
+    'WHERE "t0"."order_id" >= $1 AND "t0"."order_id" <= $2'
 )
 
 
 @pytest.mark.parametrize(
-    ("engine_name", "joined"), [("postgres", True), ("duckdb", False), ("trino", False)]
+    ("engine_name", "bounded"), [("postgres", True), ("duckdb", True), ("trino", False)]
 )
-def test_only_the_postgres_engine_reads_a_nested_field_once(engine_name, joined):
+def test_a_nested_fields_read_takes_the_bound_where_the_engine_binds_by_number(
+    engine_name, bounded
+):
+    """#362: every engine reads a nested field as one grouped read joined by key; the outer bound
+    reaches its rows where the engine binds a parameter by number."""
     out = asyncio.run(propagate_literal_predicates(_LIST_SQL, _state(engine_name)))
-    assert ("LEFT JOIN (" in out) is joined
+    assert ('"t2"."order_id" >= $1 AND "t2"."order_id" <= $2 GROUP BY' in out) is bounded, out

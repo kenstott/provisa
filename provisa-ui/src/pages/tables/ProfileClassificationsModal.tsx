@@ -10,18 +10,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Loader,
-  Modal,
-  ScrollArea,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Group, Loader, ScrollArea, Table, Text, Title } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import {
   decideClassification,
   fetchClassificationKinds,
@@ -185,7 +175,7 @@ export function ProfileClassificationsModal({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       size="90%"
@@ -323,6 +313,6 @@ export function ProfileClassificationsModal({
           </Table.Tbody>
         </Table>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

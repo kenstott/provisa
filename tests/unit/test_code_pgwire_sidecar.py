@@ -205,6 +205,23 @@ def test_duckdb_attaches_the_sidecar_and_reads_a_table(sidecar):
     ).fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]
 
 
+def test_duckdb_hands_the_function_a_text_condition_it_pins_to_byte_order(sidecar):
+    """DuckDB's attach sends a text literal as ``'acme' COLLATE "C"``: the function is still given
+    the condition, and the read answers its rows rather than none."""
+    import duckdb
+
+    db = duckdb.connect()
+    db.execute("LOAD postgres")
+    db.execute(f"ATTACH '{_dsn(sidecar.ports.pgwire_port)}' AS shop (TYPE postgres, READ_ONLY)")
+    assert db.execute(
+        "SELECT id, asked FROM shop.public.orders WHERE _nf_n = 4 AND \"customerName\" = 'acme' "
+        "ORDER BY id"
+    ).fetchall() == [
+        (1, "n=4;filters=customerName eq acme"),
+        (3, "n=4;filters=customerName eq acme"),
+    ]
+
+
 def test_clickhouse_mounts_the_sidecars_public_schema_and_reads_a_table(sidecar):
     # REQ-2267: ClickHouse's PostgreSQL database engine sends no options, so it names no schema
     # and mounts public, where the sidecar serves its source's functions.

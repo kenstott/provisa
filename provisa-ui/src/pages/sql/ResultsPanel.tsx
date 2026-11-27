@@ -14,7 +14,8 @@ import type { ResultRedirect } from "../../types/resultRedirect";
 import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Box, Button, Modal, Table, Tabs } from "@mantine/core";
+import { Badge, Box, Button, Table, Tabs } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { entityName } from "../../components/entityName";
 import { History, BarChart2, Maximize2 } from "lucide-react";
 import { ResultsGrid } from "./ResultsGrid";
@@ -250,15 +251,13 @@ export function ResultsPanel({
                 // REQ-1441: in the workbench the statement in the editor IS the construction.
                 provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
               />
-              <Modal
+              <ModalLayout
                 opened={resultsExpanded}
                 onClose={() => setResultsExpanded(false)}
                 size="90%"
                 title={t("sqlResultsPanel.resultsExpandTitle")}
-                styles={{
-                  content: { height: "90vh" },
-                  body: { height: "calc(90vh - 3.5rem)", overflow: "hidden" },
-                }}
+                fill
+                styles={{ content: { height: "90vh" } }}
               >
                 <ResultsGrid
                   grid={grid}
@@ -266,7 +265,7 @@ export function ResultsPanel({
                   rowsPartial={rowsPartial}
                   provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
                 />
-              </Modal>
+              </ModalLayout>
             </div>
           ))}
 
@@ -877,18 +876,16 @@ export function ResultsPanel({
 
               {/* REQ-1519: the same two panes at full size — a wide plan is unreadable in the
                   results strip, so the expand control reopens it in a 90% modal. */}
-              <Modal
+              <ModalLayout
                 opened={analyzeExpanded}
                 onClose={() => setAnalyzeExpanded(false)}
                 size="90%"
                 title={t("sqlResultsPanel.analyzeExpandTitle")}
-                styles={{
-                  content: { height: "90vh" },
-                  body: { height: "calc(90vh - 3.5rem)", overflow: "hidden" },
-                }}
+                fill
+                styles={{ content: { height: "90vh" } }}
               >
                 <AnalyzePanes plan={analyzePlan} fill />
-              </Modal>
+              </ModalLayout>
             </Box>
           ) : null)}
       </div>

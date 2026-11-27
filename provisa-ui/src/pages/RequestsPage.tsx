@@ -25,7 +25,6 @@ import {
   Badge,
   Button,
   Group,
-  Modal,
   Pagination,
   Select,
   Stack,
@@ -34,6 +33,7 @@ import {
   Text,
   VisuallyHidden,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { FilterInput } from "../components/admin/FilterInput";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -459,7 +459,7 @@ export function RequestsPage() {
         </Alert>
       )}
 
-      <Modal
+      <ModalLayout
         opened={rejectingId !== null}
         onClose={() => {
           setRejectingId(null);
@@ -491,7 +491,7 @@ export function RequestsPage() {
             }
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
 
       <SplitPane
         outOfList={detail.outOfList}

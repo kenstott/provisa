@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Button, Modal, Stack, Text } from "@mantine/core";
+import { Button, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 
@@ -19,7 +20,7 @@ export function OrgSelector() {
   const opened = !activeOrgId && orgMemberships.length > 1;
 
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={() => {}}
       title={t("orgSelector.title")}
@@ -41,6 +42,6 @@ export function OrgSelector() {
           </Button>
         ))}
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

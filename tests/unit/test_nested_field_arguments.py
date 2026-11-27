@@ -193,8 +193,8 @@ def test_each_nested_argument_is_applied_at_depth(meta, args, clause, depth):
 
 @pytest.mark.parametrize("depth", [2, 3])
 def test_a_nested_limit_holds_at_depth(meta, depth):
-    # A limit alone is applied by the aggregate subqueries, to each parent's rows.
-    assert "LIMIT 1" in _compiled(meta, _depth("(limit: 1)", depth)).sql
+    # A limit alone is applied by the grouped reads, to each parent's rows (#362).
+    assert '"_row" <= 1' in _compiled(meta, _depth("(limit: 1)", depth)).sql
     answer = _answer(meta, _depth("(limit: 1)", depth))
 
     def deepest(node, d):
