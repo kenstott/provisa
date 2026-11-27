@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 197c15db-c88a-4458-a395-97c0b729cba1
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The smoke check's own configuration (tests/smoke/smoke.yaml, REQ-1989) registers each file source's
 table where every engine reads it. The installed host runs the smoke on Trino, whose ``file`` catalog
 exposes a single-file csv/parquet source under the connector's fixed schema with the file's basename
