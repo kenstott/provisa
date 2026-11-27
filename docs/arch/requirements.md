@@ -13548,7 +13548,7 @@ Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER prot
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
-Platform super-admin is a seeded local break-glass account (username + bcrypt password via simple auth provider), created at install with an installation-generated random password. Password is not static (never admin/admin) and is surfaced via Terraform output or GCP cloud-init console log, never persisted in config. First login enforces password rotation. This account is SSO-independent and works when Firebase/OAuth is broken. It is the exclusive recovery/emergency access path for platform operators.
+Platform super-admin is a seeded local break-glass account (username + bcrypt password via simple auth provider), created at install with an installation-generated random password. Password is not static (never admin/admin) and is surfaced via Terraform output or GCP cloud-init console log, never persisted in config. First login enforces password rotation. This account is SSO-independent and works when Firebase/OAuth is broken. It is the exclusive recovery/emergency access path for platform operators. (Amended 2026-11-27 by the maintainer. The break-glass account holds platform_admin only; it never holds org_admin and reads no data. Reading an org's data goes through the audited, time-boxed elevation of [REQ-1261](#REQ-1261).)
 
 **Use case:** Ensures platform operators can always access the system for emergency recovery and initial setup, independent of external identity provider availability or misconfiguration. Seeded local admin provides break-glass access without relying on Firebase/OAuth uptime.
 
