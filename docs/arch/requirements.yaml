@@ -71055,7 +71055,7 @@
     statement against real data (tests/unit/test_sql_rewrite_propagate.py). (Amended 2026-10-29, READ ONCE
     ON POSTGRES:) On the postgres engine, a correlated json_agg or json_object subquery on an eligible target,
     bounded to a closed key set, is read once as a LEFT JOIN on a grouped read. An open key range stays
-    per row.'
+    per row. (Amended 2026-11-27 by the maintainer, audit decision 4. After #362, relationship fields are grouped reads on every engine, Postgres included, and literal join predicates propagate into them; the READ ONCE ON POSTGRES per-row read is superseded by this amendment.)'
   use_case: 'Originating context REQ-1871: live-verified via EXPLAIN that PgWrappersMongoDbConnector (the
     live-ATTACHed MongoDB FDW) pushes a literal predicate stated directly on its own table down to MongoDB,
     but never sees a join-derived one (no GetForeignPaths parameterized-path support). This was confirmed on both join orders. Without this rewrite, a query joining a small, cheaply-filtered table against a
