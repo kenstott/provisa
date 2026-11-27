@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bf909f79-6cb2-4fee-901f-118aa691ca8a
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The tables a server reads its statements with carry each column's ``gql_selection``.
 
 ``fetch_tables`` is what a running server holds as ``state.tables``: the registration a remote
