@@ -1034,8 +1034,12 @@ export function useSuggestTableAlias() {
       domainId: string,
       sourceId: string,
     ): Promise<string> => {
-      const { data } = await run({ variables: { tableName, domainId, sourceId } });
-      return data?.suggestTableAlias ?? tableName;
+      // REQ-2361: the alias is the naming authority's suggestion; the table's own name is no
+      // stand-in for it.
+      const { data, error } = await run({ variables: { tableName, domainId, sourceId } });
+      if (error) throw error;
+      if (!data) throw new Error("The server returned no table alias suggestion.");
+      return data.suggestTableAlias;
     },
     loading,
   };

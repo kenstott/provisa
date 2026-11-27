@@ -24,6 +24,8 @@ const table = {
   schemaName: "public",
   tableName: "orders",
   alias: null,
+  sqlSchema: "sales",
+  sqlName: "orders",
   description: "All orders",
   columns: [
     { id: 1, columnName: "id", computedSqlAlias: "id", alias: null, description: "Key", visibleTo: [] },
