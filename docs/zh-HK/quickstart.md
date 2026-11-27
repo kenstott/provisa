@@ -23,7 +23,7 @@ cd provisa
 ./setup.sh
 ```
 
-`setup.sh` 會建立 `.venv/`，透過 `pip install -e ".[dev]"` 安裝所有 Python 相依項目，並將 git hooks 設定至 `.githooks/`。
+`setup.sh` 會對照開發容器固定的版本（`.devcontainer/devcontainer.json`）檢查 uv、Rust、Node.js、Go 和 Docker，並提議安裝缺少或過舊的工具（`./setup.sh --yes` 會不經詢問直接安裝；Docker 為選用，只有容器測試和示範堆疊需要）。隨後它會把鎖定的 Python 相依項目同步至 `.venv/`（同時建置 Rust 編碼器），在 `provisa-ui` 中執行 `npm ci`，並將 git hooks 設定至 `.githooks/`。可以放心重複執行。
 
 ---
 
