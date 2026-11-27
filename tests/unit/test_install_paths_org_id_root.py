@@ -35,7 +35,7 @@ def test_install_host_env_file_sets_org_id_root():
             "-euo",
             "pipefail",
             "-c",
-            f"source {shlex.quote(str(script))}\nrender_env_file /c /d 8080\n",
+            f"source {shlex.quote(str(script))}\nrender_env_file /c /d 8080 5432 pw 9000 mpw 8480\n",
         ],
         env={"PATH": os.environ["PATH"]},
         capture_output=True,
@@ -90,3 +90,27 @@ def test_helm_values_set_org_id_root():
 def test_windows_native_launch_sets_org_id_root():
     ps1 = (_ROOT / "packaging/windows/provisa-native.ps1").read_text()
     assert "$e['ORG_ID'] = 'root'" in ps1
+
+
+def test_install_host_env_file_keeps_an_existing_org_id(tmp_path):
+    script = _ROOT / "scripts" / "install-host.sh"
+    env_file = tmp_path / "provisa.env"
+    env_file.write_text("ORG_ID=acme\nOTHER=1\n")
+    done = subprocess.run(
+        [
+            "bash",
+            "-euo",
+            "pipefail",
+            "-c",
+            f"source {shlex.quote(str(script))}\n"
+            f'org="$(existing_org_id {shlex.quote(str(env_file))})"\n'
+            'render_env_file /c /d 8080 5432 pw 9000 mpw 8480 "$org"\n',
+        ],
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    lines = done.stdout.splitlines()
+    assert lines.count("ORG_ID=acme") == 1
+    assert "ORG_ID=root" not in lines

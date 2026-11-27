@@ -2625,6 +2625,8 @@ _INSTALL_ARTIFACTS = (
     "provisa-notebook-dist",
     "provisa-duckdb-ext-wheels",
     "trino-plugins",
+    # REQ-2269 (amended 2026-11-26): Zaychik beside Trino, loaded from the amd64 core images.
+    "core-images-amd64-tarball",
 )
 
 
@@ -2679,6 +2681,15 @@ def test_the_install_artifacts_are_ones_the_dry_run_uploads():
         if str(s.get("uses", "")).startswith("actions/download-artifact@")
     ]
     assert downloads == ["trino-plugins"]
+    # core-images-amd64-tarball: the amd64 core images zip a dry run keeps in the run.
+    zipped = [
+        s
+        for s in prebuilt["package-core-images-amd64"]["steps"]
+        if str(s.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+    assert [s["with"]["name"] for s in zipped] == ["core-images-amd64-tarball"]
+    assert zipped[0]["with"]["path"] == "${{ needs.metadata.outputs.core_images_amd64_name }}"
+    assert zipped[0]["if"] == "${{ !inputs.publish }}"
     for step in _install_job()["steps"]:
         if str(step.get("uses", "")).startswith("actions/download-artifact@"):
             assert step["with"]["pattern"] == "{" + ",".join(_INSTALL_ARTIFACTS) + "}"
@@ -2705,6 +2716,14 @@ def test_the_install_leg_runs_install_host_on_a_clean_runner_before_anything_of_
         i for i, r in enumerate(runs) if "provisa-trino-plugins-${VERSION}.tar.gz" in r
     )
     assert assembled < install
+    # The core images go in beside them, named as the release names them and install-host.sh
+    # reads them on x86_64 (core_images_asset_name).
+    assert (
+        'cp "artifacts/core-images-amd64-tarball/provisa-core-images-amd64-${VERSION}.zip" assets/'
+        in runs[assembled]
+    )
+    action = (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    assert 'core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip"' in action
     # Dispatchable on its own, on the assets of a named dry run.
     dispatch = workflow[True]["workflow_dispatch"]["inputs"]
     assert set(dispatch) == {"version", "run_id"}

@@ -19,6 +19,15 @@
 # `current` link swapped, Trino replaced, the service restarted; the config, the control-plane data
 # and the Trino shared secret are kept.
 #
+# Beside Trino it starts the core services Trino needs, as docker-compose.core.yml does (REQ-2269,
+# amended 2026-11-26): PostgreSQL (the control plane; Trino's JDBC catalogs reach it over TCP),
+# MinIO (the object store of the otel and results catalogs) and the Zaychik Flight SQL proxy. Each
+# listens only on 127.0.0.1, keeps its data under --data-dir, and its secrets are generated once
+# and kept across upgrades.
+#
+# A file source's files (Parquet, CSV, SQLite) go under <data-dir>/files: Trino reads that directory
+# at the same path, and no other host path.
+#
 # Every function below is callable on its own: tests source this file (main runs only when it is
 # executed) and check the arguments and the rendered files.
 
@@ -36,6 +45,26 @@ INSTALL_HOST_DEFAULT_TRINO_HEAP_GB=5
 # The engine every Provisa stack runs (docker-compose.core.yml's trino service).
 INSTALL_HOST_DEFAULT_TRINO_IMAGE="trinodb/trino:481"
 INSTALL_HOST_DEFAULT_HEALTH_TIMEOUT=300
+INSTALL_HOST_DEFAULT_PG_PORT=5432
+INSTALL_HOST_DEFAULT_MINIO_PORT=9000
+INSTALL_HOST_DEFAULT_ZAYCHIK_PORT=8480
+# The core services' images, as docker-compose.core.yml names them.
+INSTALL_HOST_PG_IMAGE="pgvector/pgvector:pg16-trixie"
+INSTALL_HOST_MINIO_IMAGE="bitnamilegacy/minio:latest"
+INSTALL_HOST_MINIO_CLIENT_IMAGE="bitnamilegacy/minio-client:latest"
+# Zaychik is built by the release: provisa/zaychik:local inside its core-images asset (a dry run's
+# assets, and on aarch64 the published release's too: REQ-2269, amended 2026-11-26), or on x86_64
+# ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published (that image is amd64 only).
+INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE="provisa/zaychik:local"
+INSTALL_HOST_ZAYCHIK_IMAGE_FILE="zaychik-local.tar.gz"
+INSTALL_HOST_PG_CONTAINER="provisa-postgres"
+INSTALL_HOST_MINIO_CONTAINER="provisa-minio"
+INSTALL_HOST_ZAYCHIK_CONTAINER="provisa-zaychik"
+# The uid the MinIO image runs as (docker-compose.core.yml: Bitnami's non-root 1001).
+INSTALL_HOST_MINIO_UID=1001
+INSTALL_HOST_MINIO_USER="provisa"
+# The buckets docker-compose.core.yml's minio-init creates.
+INSTALL_HOST_MINIO_BUCKETS="provisa-otel provisa-results provisa-hive-s3"
 # uv builds the release's virtualenv and fetches its CPython 3.12 (provisa requires >=3.12,<3.13),
 # so the host needs no Python of its own. Pinned; downloaded from uv's GitHub releases.
 INSTALL_HOST_UV_VERSION="0.11.19"
@@ -48,6 +77,15 @@ INSTALL_HOST_TRINO_UID=1000
 # Directories Provisa writes Trino catalog side files into (provisa/core/trino_catalog_files.py),
 # each mounted into the engine at /etc/trino/<name>, as docker-compose.core.yml mounts them.
 INSTALL_HOST_TRINO_SIDE_DIRS="kafka kafka-client codehost-client redis"
+
+# docker-compose.core.yml's postgres healthcheck, as the container's shell runs it: healthy once it
+# serves this install's password, which it sets again over the local socket when signing in with
+# it fails.
+INSTALL_HOST_PG_HEALTH_CMD="$(
+  cat <<'PGHEALTH'
+pg_isready -U provisa && { PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U provisa -d provisa -tAc 'select 1' >/dev/null 2>&1 || printf '%s\n' "ALTER ROLE provisa PASSWORD :'pw';" | psql -v ON_ERROR_STOP=1 -q -U provisa -d provisa -v pw="$POSTGRES_PASSWORD"; }
+PGHEALTH
+)"
 
 info() { printf '[install-host] %s\n' "$*" >&2; }
 die() {
@@ -77,6 +115,9 @@ Options:
   --trino-port PORT      Trino coordinator port on the host (8080)
   --trino-heap-gb N      Trino JVM heap in GB (5)
   --trino-image IMAGE    Trino image (trinodb/trino:481)
+  --pg-port PORT         Control-plane PostgreSQL port on 127.0.0.1 (5432)
+  --minio-port PORT      MinIO port on 127.0.0.1 (9000)
+  --zaychik-port PORT    Zaychik Flight SQL proxy port on 127.0.0.1 (8480)
   --health-timeout SECS  How long the health check waits for each service (300)
   -h, --help             Show this help
 EOF
@@ -112,6 +153,9 @@ parse_args() {
   IH_TRINO_HEAP_GB="$INSTALL_HOST_DEFAULT_TRINO_HEAP_GB"
   IH_TRINO_IMAGE="$INSTALL_HOST_DEFAULT_TRINO_IMAGE"
   IH_HEALTH_TIMEOUT="$INSTALL_HOST_DEFAULT_HEALTH_TIMEOUT"
+  IH_PG_PORT="$INSTALL_HOST_DEFAULT_PG_PORT"
+  IH_MINIO_PORT="$INSTALL_HOST_DEFAULT_MINIO_PORT"
+  IH_ZAYCHIK_PORT="$INSTALL_HOST_DEFAULT_ZAYCHIK_PORT"
   IH_REMOTE_ARGS=()
   IH_HELP=false
 
@@ -129,7 +173,8 @@ parse_args() {
         continue
         ;;
       --version | --assets-dir | --repo | --prefix | --data-dir | --config-dir | --bind | \
-        --api-port | --ui-port | --trino-port | --trino-heap-gb | --trino-image | --health-timeout)
+        --api-port | --ui-port | --trino-port | --trino-heap-gb | --trino-image | --health-timeout | \
+        --pg-port | --minio-port | --zaychik-port)
         _require_value "$1" "$#"
         ;;
       *) die "unknown argument '$1' (see --help)" ;;
@@ -148,6 +193,9 @@ parse_args() {
       --trino-heap-gb) IH_TRINO_HEAP_GB="$2" ;;
       --trino-image) IH_TRINO_IMAGE="$2" ;;
       --health-timeout) IH_HEALTH_TIMEOUT="$2" ;;
+      --pg-port) IH_PG_PORT="$2" ;;
+      --minio-port) IH_MINIO_PORT="$2" ;;
+      --zaychik-port) IH_ZAYCHIK_PORT="$2" ;;
     esac
     IH_REMOTE_ARGS+=("$1" "$2")
     shift 2
@@ -161,9 +209,26 @@ parse_args() {
   _require_port --api-port "$IH_API_PORT"
   _require_port --ui-port "$IH_UI_PORT"
   _require_port --trino-port "$IH_TRINO_PORT"
+  _require_port --pg-port "$IH_PG_PORT"
+  _require_port --minio-port "$IH_MINIO_PORT"
+  _require_port --zaychik-port "$IH_ZAYCHIK_PORT"
   [ "$IH_API_PORT" != "$IH_UI_PORT" ] || die "--api-port and --ui-port must differ"
   [ "$IH_API_PORT" != "$IH_TRINO_PORT" ] && [ "$IH_UI_PORT" != "$IH_TRINO_PORT" ] ||
     die "--trino-port must differ from --api-port and --ui-port"
+  local flag port other
+  for flag in --pg-port --minio-port --zaychik-port; do
+    case "$flag" in
+      --pg-port) port="$IH_PG_PORT" ;;
+      --minio-port) port="$IH_MINIO_PORT" ;;
+      --zaychik-port) port="$IH_ZAYCHIK_PORT" ;;
+    esac
+    for other in "$IH_API_PORT" "$IH_UI_PORT" "$IH_TRINO_PORT"; do
+      [ "$port" != "$other" ] || die "$flag must differ from --api-port, --ui-port and --trino-port"
+    done
+  done
+  [ "$IH_PG_PORT" != "$IH_MINIO_PORT" ] && [ "$IH_PG_PORT" != "$IH_ZAYCHIK_PORT" ] &&
+    [ "$IH_MINIO_PORT" != "$IH_ZAYCHIK_PORT" ] ||
+    die "--pg-port, --minio-port and --zaychik-port must differ"
   [[ "$IH_TRINO_HEAP_GB" =~ ^[0-9]+$ ]] && [ "$IH_TRINO_HEAP_GB" -ge 1 ] ||
     die "--trino-heap-gb must be a whole number of GB, at least 1 (got '$IH_TRINO_HEAP_GB')"
   [[ "$IH_HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] && [ "$IH_HEALTH_TIMEOUT" -ge 1 ] ||
@@ -227,6 +292,30 @@ select_assets() {
   [ -z "$missing" ] || die "release ${tag} is missing asset(s):${missing}"
 }
 
+core_images_asset_name() {
+  # $1 tag, $2 machine. The release's core-images asset for the machine
+  # (.github/actions/release-metadata: core_images_amd64_name, core_images_name).
+  case "$2" in
+    x86_64 | amd64) printf 'provisa-core-images-amd64-%s.zip\n' "$1" ;;
+    aarch64 | arm64) printf 'provisa-core-images-%s.tar.gz\n' "$1" ;;
+    *) die "unsupported machine '$2': Provisa ships Linux wheels for x86_64 and aarch64" ;;
+  esac
+}
+
+zaychik_image() {
+  # $1 repo, $2 tag, $3 assets dir (empty: the published release), $4 machine (uname -m). Prints
+  # the Zaychik image the install runs: the one inside the release's core-images asset, or on
+  # x86_64 the published release's registry image (release-publish.yml pushes it for amd64 only).
+  if [ -n "$3" ]; then
+    printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE"
+    return 0
+  fi
+  case "$4" in
+    aarch64 | arm64) printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ;;
+    *) printf 'ghcr.io/%s/provisa-zaychik:%s\n' "${1%%/*}" "$2" ;;
+  esac
+}
+
 release_api_url() {
   # $1 repo, $2 tag
   printf 'https://api.github.com/repos/%s/releases/tags/%s\n' "$1" "$2"
@@ -265,17 +354,92 @@ EOF
 }
 
 render_env_file() {
-  # $1 config dir, $2 data dir, $3 trino port
+  # $1 config dir, $2 data dir, $3 trino port, $4 pg port, $5 pg password, $6 minio port,
+  # $7 minio password, $8 zaychik port, $9 org id. Holds the core services' secrets: written root-only.
+  local pg_url="postgresql+psycopg://provisa:$5@127.0.0.1:$4/provisa"
+  local s3="http://127.0.0.1:$6"
+  # REQ-2269: Trino's materializations land in this PostgreSQL. Named here because `provisa run`
+  # applies the native profile beneath this file, and that profile's store is an embedded DuckDB
+  # file, which Trino refuses at startup.
   cat <<EOF
 # Written by install-host.sh on every run; edit the script's flags, not this file.
 PROVISA_CONFIG=$1/provisa.yaml
 # REQ-1296: the bootstrap org id is 'root'; the resolver's own default is not an install's.
-ORG_ID=root
+# An existing install keeps the org its env file already names (existing_org_id).
+ORG_ID=${9:-root}
 TRINO_HOST=127.0.0.1
 TRINO_PORT=$3
 PROVISA_TRINO_ETC_DIR=$2/trino
 PROVISA_FAKE_KEY_DIR=$2/fake-key
+PLATFORM_DATABASE_URL=$pg_url
+TENANT_DATABASE_URL=$pg_url
+PROVISA_MATERIALIZE_URL=postgresql://provisa:$5@127.0.0.1:$4/provisa
+PROVISA_OTEL_S3_ENDPOINT=$s3
+PROVISA_OTEL_S3_ACCESS_KEY=$INSTALL_HOST_MINIO_USER
+PROVISA_OTEL_S3_SECRET_KEY=$7
+PROVISA_REDIRECT_ENDPOINT=$s3
+PROVISA_REDIRECT_BUCKET=provisa-results
+PROVISA_REDIRECT_ACCESS_KEY=$INSTALL_HOST_MINIO_USER
+PROVISA_REDIRECT_SECRET_KEY=$7
+ZAYCHIK_HOST=127.0.0.1
+ZAYCHIK_PORT=$8
 EOF
+}
+
+render_postgres_env() {
+  # $1 pg password. The postgres container's --env-file.
+  cat <<EOF
+POSTGRES_DB=provisa
+POSTGRES_USER=provisa
+POSTGRES_PASSWORD=$1
+EOF
+}
+
+render_minio_env() {
+  # $1 minio password. The minio and bucket-init containers' --env-file.
+  cat <<EOF
+MINIO_ROOT_USER=$INSTALL_HOST_MINIO_USER
+MINIO_ROOT_PASSWORD=$1
+EOF
+}
+
+existing_org_id() {
+  # $1 env file. Prints the ORG_ID it names, or nothing when the file or the line is absent, so
+  # render_env_file writes REQ-1296's 'root' only on a first install. Run before the file is rewritten.
+  [ -f "$1" ] || return 0
+  sed -n 's/^ORG_ID=//p' "$1" | head -1
+}
+
+generate_secret() {
+  head -c 48 /dev/urandom | base64 | tr -d '\n/+='
+}
+
+ensure_secret() {
+  # $1 secrets file, $2 key. Sets IH_SECRET to the key's value, generating and appending it when
+  # the file does not hold it yet: a secret is made once and kept across upgrades. Called directly,
+  # never in a command substitution (see fetch_assets).
+  local value
+  value="$(sed -n "s/^$2=//p" "$1" | head -1)"
+  if [ -z "$value" ]; then
+    value="$(generate_secret)"
+    [ -n "$value" ] || die "could not generate $2"
+    printf '%s=%s\n' "$2" "$value" >>"$1"
+  fi
+  IH_SECRET="$value"
+}
+
+ensure_core_secrets() {
+  # $1 config dir. Sets IH_PG_PASSWORD and IH_MINIO_PASSWORD from $1/secrets.env (root-only).
+  local file="$1/secrets.env"
+  (
+    umask 077
+    touch "$file"
+  )
+  chmod 0600 "$file"
+  ensure_secret "$file" PROVISA_PG_PASSWORD
+  IH_PG_PASSWORD="$IH_SECRET"
+  ensure_secret "$file" PROVISA_MINIO_ROOT_PASSWORD
+  IH_MINIO_PASSWORD="$IH_SECRET"
 }
 
 render_systemd_unit() {
@@ -329,6 +493,13 @@ ensure_trino_exchange_dir() {
   install -d -m 0700 -o "$INSTALL_HOST_TRINO_UID" -g "$INSTALL_HOST_TRINO_UID" "$1/trino-exchange"
 }
 
+ensure_files_dir() {
+  # $1 data dir. Where a file source's files go on this host (a Parquet or CSV source's path): Provisa
+  # hands Trino a file source's directory as the host path it names, and Trino runs in Docker, so
+  # trino_run_args mounts this directory at its own path. The service user writes it; Trino reads it.
+  install -d -m 0755 -o "$INSTALL_HOST_USER" -g "$INSTALL_HOST_USER" "$1/files"
+}
+
 render_trino_exchange_properties() {
   cat <<'EOF'
 exchange-manager.name=filesystem
@@ -376,10 +547,61 @@ trino_run_args() {
   done
   printf '%s\n' -v "$data/fake-key:/etc/provisa/fake-key:ro"
   printf '%s\n' -v "$data/trino-exchange:/data/provisa/exchange"
+  # File sources under the install's files directory, at the path Provisa names them by.
+  printf '%s\n' -v "$data/files:$data/files:ro"
   for name in "$@"; do
     printf '%s\n' -v "$plugins/$name:/usr/lib/trino/plugin/$name:ro"
   done
   printf '%s\n' "$image"
+}
+
+postgres_run_args() {
+  # $1 config dir, $2 data dir, $3 port, $4 image. The control-plane PostgreSQL, as
+  # docker-compose.core.yml's postgres runs it, published on 127.0.0.1 only.
+  printf '%s\n' -d --name "$INSTALL_HOST_PG_CONTAINER" --restart unless-stopped
+  printf '%s\n' -p "127.0.0.1:$3:5432"
+  printf '%s\n' --env-file "$1/core/postgres.env"
+  printf '%s\n' -v "$2/postgres:/var/lib/postgresql/data"
+  printf '%s\n' --health-cmd "$INSTALL_HOST_PG_HEALTH_CMD" --health-interval 5s --health-timeout 5s \
+    --health-retries 30 --health-start-period 60s
+  printf '%s\n' "$4" postgres -c wal_level=logical -c max_replication_slots=10 -c max_wal_senders=10
+}
+
+minio_run_args() {
+  # $1 config dir, $2 data dir, $3 port, $4 image. MinIO (REQ-815), as docker-compose.core.yml's
+  # minio runs it, its API published on 127.0.0.1 only.
+  printf '%s\n' -d --name "$INSTALL_HOST_MINIO_CONTAINER" --restart unless-stopped
+  printf '%s\n' -p "127.0.0.1:$3:9000"
+  printf '%s\n' --env-file "$1/core/minio.env"
+  printf '%s\n' -v "$2/minio:/bitnami/minio/data"
+  printf '%s\n' --health-cmd "mc ready local" --health-interval 5s --health-timeout 5s \
+    --health-retries 30 --health-start-period 60s
+  printf '%s\n' "$4" server /bitnami/minio/data --console-address ":9001"
+}
+
+minio_buckets_args() {
+  # $1 config dir, $2 port, $3 image. docker-compose.core.yml's minio-init: the buckets the otel
+  # and results catalogs and the Hive S3 warehouse use, created when missing.
+  local bucket script
+  # Expanded by the container's shell, which has them from the env file.
+  # shellcheck disable=SC2016
+  script='mc alias set local http://127.0.0.1:'"$2"' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"'
+  for bucket in $INSTALL_HOST_MINIO_BUCKETS; do
+    script="$script && mc mb --ignore-existing local/$bucket"
+  done
+  printf '%s\n' --rm --network host --env-file "$1/core/minio.env" --entrypoint /bin/sh "$3" -c "$script"
+}
+
+zaychik_run_args() {
+  # $1 trino port, $2 zaychik port, $3 image. The Flight SQL proxy, as docker-compose.core.yml's
+  # zaychik runs it; on the host network beside Trino, listening on 127.0.0.1 only.
+  printf '%s\n' -d --name "$INSTALL_HOST_ZAYCHIK_CONTAINER" --restart unless-stopped --network host
+  printf '%s\n' -e TF_TRINO_HOST=127.0.0.1 -e "TF_TRINO_PORT=$1" -e TF_TRINO_SSL=false
+  printf '%s\n' -e TF_FLIGHT_HOST=127.0.0.1 -e "TF_FLIGHT_PORT=$2" -e TF_FLIGHT_SSL=false
+  printf '%s\n' -e TF_FLIGHT_AUTH_TYPE=trino -e TF_FLIGHT_BATCH_SIZE=10000 -e TF_TRINO_ALLOWED_SERVERS=
+  printf '%s\n' --health-cmd "timeout 2 bash -c '</dev/tcp/127.0.0.1/$2' || exit 1" \
+    --health-interval 5s --health-timeout 3s --health-retries 24 --health-start-period 20s
+  printf '%s\n' "$3"
 }
 
 remote_command() {
@@ -515,13 +737,29 @@ write_files() {
     install -d -m 0755 -o "$INSTALL_HOST_USER" -g "$INSTALL_HOST_USER" "$data/trino/$side"
   done
   ensure_trino_exchange_dir "$data"
+  ensure_files_dir "$data"
+  # The core services' data and their secrets' files. PostgreSQL's entrypoint takes its data
+  # directory over itself; MinIO's image runs as its own non-root uid.
+  install -d -m 0700 "$cfg/core" "$data/postgres"
+  install -d -m 0700 -o "$INSTALL_HOST_MINIO_UID" -g "$INSTALL_HOST_MINIO_UID" "$data/minio"
+  ensure_core_secrets "$cfg"
+  local org_id
+  org_id="$(existing_org_id "$cfg/provisa.env")"
+  (
+    umask 077
+    render_postgres_env "$IH_PG_PASSWORD" >"$cfg/core/postgres.env"
+    render_minio_env "$IH_MINIO_PASSWORD" >"$cfg/core/minio.env"
+    render_env_file "$cfg" "$data" "$IH_TRINO_PORT" "$IH_PG_PORT" "$IH_PG_PASSWORD" \
+      "$IH_MINIO_PORT" "$IH_MINIO_PASSWORD" "$IH_ZAYCHIK_PORT" "$org_id" >"$cfg/provisa.env"
+  )
+  # An earlier release wrote provisa.env world-readable; it holds the core services' secrets now.
+  chmod 0600 "$cfg/provisa.env" "$cfg/core/postgres.env" "$cfg/core/minio.env"
   if [ ! -f "$cfg/provisa.yaml" ]; then
     render_config_yaml "$IH_TRINO_PORT" >"$cfg/provisa.yaml"
   else
     info "keeping the existing $cfg/provisa.yaml"
   fi
   chown "$INSTALL_HOST_USER:$INSTALL_HOST_USER" "$cfg/provisa.yaml"
-  render_env_file "$cfg" "$data" "$IH_TRINO_PORT" >"$cfg/provisa.env"
   render_trino_config_properties "$IH_TRINO_PORT" >"$cfg/trino/config.properties"
   render_trino_jvm_config "$IH_TRINO_HEAP_GB" >"$cfg/trino/jvm.config"
   render_trino_node_properties >"$cfg/trino/node.properties"
@@ -546,6 +784,92 @@ start_trino() {
   docker pull "$IH_TRINO_IMAGE" >/dev/null
   docker rm -f "$INSTALL_HOST_TRINO_CONTAINER" >/dev/null 2>&1 || true
   docker run "${args[@]}" >/dev/null
+}
+
+_container_healthy() {
+  # $1 container. True when its health check (docker run --health-cmd) reports healthy.
+  [ "$(docker inspect -f '{{.State.Health.Status}}' "$1" 2>/dev/null)" = "healthy" ]
+}
+
+_replace_container() {
+  # $1 container, then its `docker run` arguments. An earlier install's container is replaced;
+  # its data lives in a host directory and is kept.
+  local name="$1"
+  shift
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker run "$@" >/dev/null
+}
+
+start_core() {
+  # PostgreSQL and MinIO, each healthy before anything that signs in to it starts (compose's
+  # service_healthy), then the buckets minio-init creates.
+  local args=() image
+  for image in "$INSTALL_HOST_PG_IMAGE" "$INSTALL_HOST_MINIO_IMAGE" "$INSTALL_HOST_MINIO_CLIENT_IMAGE"; do
+    info "pulling $image"
+    docker pull "$image" >/dev/null
+  done
+  mapfile -t args < <(postgres_run_args "$IH_CONFIG_DIR" "$IH_DATA_DIR" "$IH_PG_PORT" "$INSTALL_HOST_PG_IMAGE")
+  _replace_container "$INSTALL_HOST_PG_CONTAINER" "${args[@]}"
+  mapfile -t args < <(minio_run_args "$IH_CONFIG_DIR" "$IH_DATA_DIR" "$IH_MINIO_PORT" "$INSTALL_HOST_MINIO_IMAGE")
+  _replace_container "$INSTALL_HOST_MINIO_CONTAINER" "${args[@]}"
+  _wait_for "$IH_HEALTH_TIMEOUT" _container_healthy "$INSTALL_HOST_PG_CONTAINER" ||
+    die "PostgreSQL container ${INSTALL_HOST_PG_CONTAINER} was not healthy within ${IH_HEALTH_TIMEOUT}s (docker logs ${INSTALL_HOST_PG_CONTAINER})"
+  _wait_for "$IH_HEALTH_TIMEOUT" _container_healthy "$INSTALL_HOST_MINIO_CONTAINER" ||
+    die "MinIO container ${INSTALL_HOST_MINIO_CONTAINER} was not healthy within ${IH_HEALTH_TIMEOUT}s (docker logs ${INSTALL_HOST_MINIO_CONTAINER})"
+  mapfile -t args < <(minio_buckets_args "$IH_CONFIG_DIR" "$IH_MINIO_PORT" "$INSTALL_HOST_MINIO_CLIENT_IMAGE")
+  docker run "${args[@]}" >/dev/null || die "creating the MinIO buckets (${INSTALL_HOST_MINIO_BUCKETS}) failed"
+}
+
+load_zaychik_image() {
+  # $1 the release's assets directory on this host. Sets IH_ZAYCHIK_IMAGE: loaded from the
+  # release's core-images asset (the one in --assets-dir, or on aarch64 the published release's,
+  # downloaded into $1 and removed once loaded: it carries every core image and only Zaychik is
+  # taken from it), or on x86_64 pulled from the published release's registry image.
+  local machine name file downloaded=false
+  machine="$(uname -m)"
+  IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_REPO" "$IH_VERSION" "$IH_ASSETS_DIR" "$machine")"
+  if [ "$IH_ZAYCHIK_IMAGE" != "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ]; then
+    info "pulling $IH_ZAYCHIK_IMAGE"
+    docker pull "$IH_ZAYCHIK_IMAGE" >/dev/null || die "pulling $IH_ZAYCHIK_IMAGE failed"
+    return 0
+  fi
+  name="$(core_images_asset_name "$IH_VERSION" "$machine")"
+  [ -n "$name" ] || die "no core-images asset for machine $machine"
+  if [ -n "$IH_ASSETS_DIR" ]; then
+    file="$IH_ASSETS_DIR/$name"
+    [ -f "$file" ] || die "--assets-dir $IH_ASSETS_DIR lacks $name, the release's core images (Zaychik)"
+  else
+    file="$1/$name"
+    mkdir -p "$1"
+    info "downloading $name"
+    curl -fL --retry 3 --retry-delay 5 -o "$file.part" \
+      "$(release_download_url "$IH_REPO" "$IH_VERSION" "$name")" ||
+      die "download of $name from release $IH_VERSION failed"
+    mv "$file.part" "$file"
+    downloaded=true
+  fi
+  info "loading $IH_ZAYCHIK_IMAGE from $name"
+  case "$file" in
+    *.zip)
+      command -v unzip >/dev/null 2>&1 || die "required command 'unzip' is not installed"
+      unzip -p "$file" "$INSTALL_HOST_ZAYCHIK_IMAGE_FILE" | docker load >/dev/null ||
+        die "loading $INSTALL_HOST_ZAYCHIK_IMAGE_FILE from $name failed"
+      ;;
+    *)
+      tar -xzOf "$file" "./$INSTALL_HOST_ZAYCHIK_IMAGE_FILE" | docker load >/dev/null ||
+        die "loading $INSTALL_HOST_ZAYCHIK_IMAGE_FILE from $name failed"
+      ;;
+  esac
+  [ "$downloaded" = false ] || rm -f "$file"
+}
+
+start_zaychik() {
+  # After Trino reports started (compose: zaychik depends on trino being healthy).
+  local args=()
+  _wait_for "$IH_HEALTH_TIMEOUT" _trino_started ||
+    die "Trino at http://127.0.0.1:${IH_TRINO_PORT}/v1/info did not report started within ${IH_HEALTH_TIMEOUT}s, so Zaychik was not started (docker logs ${INSTALL_HOST_TRINO_CONTAINER})"
+  mapfile -t args < <(zaychik_run_args "$IH_TRINO_PORT" "$IH_ZAYCHIK_PORT" "$IH_ZAYCHIK_IMAGE")
+  _replace_container "$INSTALL_HOST_ZAYCHIK_CONTAINER" "${args[@]}"
 }
 
 start_provisa() {
@@ -597,7 +921,12 @@ _ui_up() {
 
 health_check() {
   # Names each check that failed and returns non-zero when any did.
-  local failed=() t="$IH_HEALTH_TIMEOUT"
+  local failed=() t="$IH_HEALTH_TIMEOUT" core
+  for core in "PostgreSQL:$INSTALL_HOST_PG_CONTAINER" "MinIO:$INSTALL_HOST_MINIO_CONTAINER" \
+    "Zaychik:$INSTALL_HOST_ZAYCHIK_CONTAINER"; do
+    _wait_for "$t" _container_healthy "${core#*:}" ||
+      failed+=("${core%%:*} container ${core#*:} is not healthy (docker logs ${core#*:})")
+  done
   [ "$(docker inspect -f '{{.State.Running}}' "$INSTALL_HOST_TRINO_CONTAINER" 2>/dev/null)" = "true" ] ||
     failed+=("Trino container ${INSTALL_HOST_TRINO_CONTAINER} is not running (docker logs ${INSTALL_HOST_TRINO_CONTAINER})")
   _wait_for "$t" _trino_started ||
@@ -619,7 +948,7 @@ health_check() {
     done
     return 1
   fi
-  info "health check passed: Provisa $IH_VERSION on http://${IH_BIND}:${IH_UI_PORT} (API ${IH_API_PORT}), Trino on ${IH_TRINO_PORT}"
+  info "health check passed: Provisa $IH_VERSION on http://${IH_BIND}:${IH_UI_PORT} (API ${IH_API_PORT}), Trino on ${IH_TRINO_PORT}; PostgreSQL ${IH_PG_PORT}, MinIO ${IH_MINIO_PORT}, Zaychik ${IH_ZAYCHIK_PORT} on 127.0.0.1"
 }
 
 # ── Entry ────────────────────────────────────────────────────────────────────
@@ -634,8 +963,11 @@ install_local() {
   ensure_uv
   install_provisa "$assets" "${names[@]}"
   install_trino_plugins "$tarball"
+  load_zaychik_image "$assets"
   write_files
+  start_core
   start_trino
+  start_zaychik
   start_provisa
   health_check
   prune_old_venvs

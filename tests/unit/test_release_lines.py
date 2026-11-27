@@ -108,6 +108,10 @@ def _states(monkeypatch, gate, bad: dict[str, str]) -> None:
     monkeypatch.setattr(
         gate, "run_state", lambda workflow, branch, sha: bad.get(workflow, "completed success u")
     )
+    # No green run on an earlier commit: these tests judge the runs on the cut commit alone
+    # (tests/unit/test_release_gate_ancestor.py covers runs accepted from an ancestor).
+    monkeypatch.setattr(gate, "load_accepts", lambda repo: {})
+    monkeypatch.setattr(gate, "ancestor_run", lambda *args: (None, "no green run on an ancestor"))
 
 
 _GATE_ARGS = ["--branch", "release/v", "--sha", "abc"]
