@@ -16,7 +16,10 @@ started before they answer logs "graphql-demo auto-registration failed" and serv
 that source until the next start. The launchers: the native demo (start-ui-install.sh --demo and
 start-ui.sh, through demo/run-demo-servers.sh), the compose demo overlay
 (packaging/linux/first-launch.sh write_demo_overlay), and the smoke harness
-(tests/smoke/test_main_is_startable.py)."""
+(tests/smoke/test_main_is_startable.py).
+
+run-demo-servers.sh signals only the servers its own pid files name, never a process found on a
+port: another checkout's demo servers on the same ports belong to another instance."""
 
 # Requirements: REQ-1989, REQ-1468
 
@@ -71,9 +74,13 @@ http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 """
 
 # Holds a port and ignores SIGTERM: an earlier server that has not let go of its port yet.
-_STUBBORN = r"""
+_IGNORE_TERM = "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+_STUBBORN = (
+    r"""
 import signal, socket, sys, time
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
+"""
+    + _IGNORE_TERM
+    + r"""
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(("127.0.0.1", int(sys.argv[1])))
@@ -81,6 +88,7 @@ s.listen()
 print("listening", flush=True)
 time.sleep(600)
 """
+)
 
 
 def _fake_python(tmp_path: Path) -> Path:
@@ -130,7 +138,7 @@ def demo_servers(tmp_path):
     for env in started:
         for pidfile in (tmp_path / "logs").glob("*.pid"):
             try:
-                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+                os.kill(int(pidfile.read_text().splitlines()[0]), signal.SIGKILL)
             except ProcessLookupError:
                 pass  # already gone
         subprocess.run(
@@ -167,15 +175,58 @@ def test_a_grpc_demo_that_never_listens_fails_the_start_by_name(demo_servers):
     assert "Demo server grpc-server did not answer in 2s" in done.stderr, done.stderr
 
 
-def test_an_earlier_server_still_on_the_port_fails_the_start_by_name(demo_servers):
-    """An earlier graphql-demo still listening would answer the readiness probe in place of the new
-    one, which then fails to bind; the start waits for the port to be let go, and fails if not."""
-    gql = demo_servers.ports[1]
-    holder = subprocess.Popen(
-        [sys.executable, "-c", _STUBBORN, str(gql)], stdout=subprocess.PIPE, text=True
+def _started_at(pid: int) -> str:
+    """The start time run-demo-servers.sh records for a pid (ps lstart, as $(...) captures it)."""
+    out = subprocess.run(
+        ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, check=True
     )
+    return out.stdout.rstrip("\n")
+
+
+def _write_pidfile(tmp_path: Path, name: str, pid: int, started: str) -> Path:
+    logs = tmp_path / "logs"
+    logs.mkdir(exist_ok=True)
+    pidfile = logs / f"{name}.pid"
+    pidfile.write_text(f"{pid}\n{started}\n")
+    return pidfile
+
+
+def _alive(pid: int) -> bool:
     try:
-        assert holder.stdout is not None and holder.stdout.readline().strip() == "listening"
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _stop(tmp_path: Path, ports: list[int]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(_RUN_DEMO_SERVERS), "stop"],
+        env=_env(tmp_path, ports, 5),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def _hold(port: int, ignore_term: bool = True) -> subprocess.Popen:
+    code = _STUBBORN if ignore_term else _STUBBORN.replace(_IGNORE_TERM, "")
+    holder = subprocess.Popen(
+        [sys.executable, "-c", code, str(port)], stdout=subprocess.PIPE, text=True
+    )
+    assert holder.stdout is not None and holder.stdout.readline().strip() == "listening"
+    return holder
+
+
+def test_an_earlier_server_still_on_the_port_fails_the_start_by_name(demo_servers, tmp_path):
+    """An earlier graphql-demo this checkout started, still listening, would answer the readiness
+    probe in place of the new one, which then fails to bind; the start signals it, waits for the
+    port to be let go, and fails if not."""
+    gql = demo_servers.ports[1]
+    holder = _hold(gql)
+    try:
+        _write_pidfile(tmp_path, "graphql-server", holder.pid, _started_at(holder.pid))
         done = demo_servers(2)
         assert done.returncode != 0, done.stdout + done.stderr
         assert (
@@ -185,6 +236,102 @@ def test_an_earlier_server_still_on_the_port_fails_the_start_by_name(demo_server
     finally:
         holder.kill()
         holder.wait()
+
+
+def test_a_port_held_by_a_process_this_checkout_did_not_start_fails_the_start_and_survives(
+    demo_servers, tmp_path
+):
+    """Another checkout's graphql-demo on the port: start names it, fails, and leaves it running;
+    stop leaves it running too."""
+    gql = demo_servers.ports[1]
+    foreign = _hold(gql, ignore_term=False)
+    try:
+        done = demo_servers(2)
+        assert done.returncode != 0, done.stdout + done.stderr
+        assert (
+            f"Demo server graphql-server: port {gql} is held by another process (pid {foreign.pid})"
+            in done.stderr
+        ), done.stderr
+        assert foreign.poll() is None, "start signalled a process it did not start"
+        stopped = _stop(tmp_path, demo_servers.ports)
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+        time.sleep(0.5)
+        assert foreign.poll() is None, "stop signalled a process it did not start"
+        socket.create_connection(("127.0.0.1", gql), timeout=2).close()
+    finally:
+        foreign.kill()
+        foreign.wait()
+
+
+def test_stop_signals_only_the_servers_its_pid_files_name(demo_servers, tmp_path):
+    done = demo_servers(15)
+    assert done.returncode == 0, done.stdout + done.stderr
+    logs = tmp_path / "logs"
+    owned = {
+        name: int((logs / f"{name}.pid").read_text().splitlines()[0])
+        for name in ("petstore-server", "graphql-server", "grpc-server")
+    }
+    (spare,) = lease_ports(1)
+    bystander = _hold(spare, ignore_term=False)
+    try:
+        stopped = _stop(tmp_path, demo_servers.ports)
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+        deadline = time.monotonic() + 10
+        while any(_alive(pid) for pid in owned.values()) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not [name for name, pid in owned.items() if _alive(pid)]
+        assert not list(logs.glob("*.pid"))
+        assert bystander.poll() is None
+    finally:
+        bystander.kill()
+        bystander.wait()
+
+
+def test_a_pid_file_whose_process_is_gone_signals_nothing(demo_servers, tmp_path):
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    started = _started_at(gone.pid)
+    gone.wait()
+    pidfile = _write_pidfile(tmp_path, "petstore-server", gone.pid, started)
+    stopped = _stop(tmp_path, demo_servers.ports)
+    assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+    assert f"pid file {pidfile} names no process this checkout started" in stopped.stderr
+    assert not pidfile.exists()
+
+
+@pytest.mark.parametrize("recorded", ["Thu Jan  1 00:00:00 1970", None])
+def test_a_pid_file_whose_pid_now_names_another_process_signals_nothing(
+    demo_servers, tmp_path, recorded
+):
+    """The pid was reused: the process it names now started at another time than the one recorded
+    (or the file records no start time), so it is not this checkout's server."""
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    try:
+        pidfile = tmp_path / "logs" / "graphql-server.pid"
+        if recorded is None:
+            pidfile.parent.mkdir(exist_ok=True)
+            pidfile.write_text(f"{other.pid}\n")
+        else:
+            _write_pidfile(tmp_path, "graphql-server", other.pid, recorded)
+        stopped = _stop(tmp_path, demo_servers.ports)
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+        assert "names no process this checkout started" in stopped.stderr
+        time.sleep(0.5)
+        assert other.poll() is None, "stop signalled a reused pid"
+        assert not pidfile.exists()
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_no_launcher_kills_a_demo_server_by_port():
+    script = _RUN_DEMO_SERVERS.read_text()
+    assert "pkill" not in script and "killall" not in script and "fuser" not in script
+    assert not re.search(r"lsof[^\n]*\|\s*xargs\s+kill", script)
+    for launcher in ("start-ui-install.sh", "start-ui.sh"):
+        for port_var in ("PET_PORT", "GQL_PORT", "GRPC_PORT", "18080", "4000", "50071"):
+            for line in (_REPO / launcher).read_text().splitlines():
+                if port_var in line:
+                    assert "kill" not in line, (launcher, line)
 
 
 @pytest.mark.parametrize("launcher", ["start-ui-install.sh", "start-ui.sh"])
