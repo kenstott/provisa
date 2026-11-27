@@ -9,6 +9,7 @@
     "detailPanel": "Platform region details",
     "colRegion": "Region",
     "none": "The platform declares no regions.",
+    "noMatch": "No regions match the filter.",
     "edit": "Edit",
     "remove": "Remove",
     "taken": "A region named {{id}} already exists.",

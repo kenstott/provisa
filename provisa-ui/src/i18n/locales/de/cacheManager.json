@@ -21,6 +21,7 @@
       "clients": "Clients",
       "opsPerSec": "Ops/Sek.",
       "filterPlaceholder": "Nach Tabelle oder Domäne filtern…",
+      "noMatch": "Keine Tabellen entsprechen dem Filter.",
       "purgeAll": "Gesamten Cache leeren",
       "purging": "Wird geleert...",
       "table": "Tabelle",

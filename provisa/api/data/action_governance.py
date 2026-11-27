@@ -25,7 +25,7 @@ data-integrity fault, not something to pass through ungoverned. An action that d
 column contract returns a scalar (or nothing) and has no columns to bind; it is returned as is.
 """
 
-# Requirements: REQ-1679
+# Requirements: REQ-1679, REQ-2278
 
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.compiler.rls import rule_text
+from provisa.core.models import queried_name
 
 from provisa.api.errors import ApiError
 
@@ -164,13 +165,26 @@ def _governance_context(
     # shape (REQ-1679): it is read by the roles the command itself is assigned to (REQ-2153: a
     # list names its roles). A contract column declares no scope, so the rule reads it as a
     # domain column.
+    # REQ-2278: a tag- or classification-keyed column rule reaching the column narrows its grant
+    # and floors its masks through the one evaluator a table column goes through, once the grant
+    # is folded down the role chains; the stricter result holds.
+    from provisa.security.column_rules import govern_column
+
+    ruled = state.ruled_columns
     domain_id = action["domain_id"]
     reaches = reaches_domain(role["domain_access"], domain_id)
     visible: set[str] = set()
+    masks: dict[str, list[dict]] = {}
     for c in cols:
         declared = c.get("visible_to")
         column = {"visible_to": list(action["visible_to"] if declared is None else declared)}
         expand_grants([column], chains)
+        column = govern_column(
+            {**column, "masks": c["masks"]},
+            ruled.get(("command_column", name, c["name"]), ()),
+            chains,
+        )
+        masks[c["name"]] = column["masks"]
         if column_served({"id": role_id}, domain_id, column, reaches=reaches):
             visible.add(c["name"])
         else:
@@ -181,7 +195,7 @@ def _governance_context(
     reader = reader_chain(state, role_id)
     for c in cols:
         dtype = c.get("type") or "varchar"
-        rule = resolve(c["masks"], reader, dtype)
+        rule = resolve(masks[c["name"]], reader, dtype)
         if rule is None:
             continue
         validate_masking_rule(rule, c["name"], dtype, True)
@@ -227,12 +241,19 @@ async def govern_action_rows(
     gov, enforcement = _governance_context(action, cols, role_id, state)
     rel = relation_name(action["name"])
     # REQ-039: the read names only the columns the role is served -- a column it is not served
-    # does not exist in its governed relation. The governed relation exposes each served column
-    # under its own name, masked or not. REQ-913: the statement is built as an expression.
+    # does not exist in its governed relation. The governed relation exposes each served column,
+    # masked or not, under the name consumers query it by (REQ-1159: its alias, else its name).
+    # REQ-913: the statement is built as an expression.
     served = gov.visible_columns[synthetic_table_id(action["name"])]
-    read = exp.select(*(exp.column(n, quoted=True) for n in names if n in served)).from_(
-        exp.table_(rel, quoted=True)
-    )
+    read = exp.select(
+        *(
+            exp.alias_(exp.column(c["name"], quoted=True), queried_name(c), quoted=True)
+            if c.get("alias")
+            else exp.column(c["name"], quoted=True)
+            for c in cols
+            if c["name"] in served
+        )
+    ).from_(exp.table_(rel, quoted=True))
     governed = with_values_ctes(govern(read, gov), {rel: InlineRows(rows=rows, column_names=names)})
     from provisa.core.request_context import session_vars_for
 

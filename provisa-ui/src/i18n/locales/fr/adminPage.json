@@ -194,6 +194,7 @@
     "colGqlAlias": "Alias GQL",
     "colSteward": "Intendant",
     "noDomains": "Aucun domaine défini",
+    "noDomainsMatch": "Aucun domaine ne correspond au filtre",
     "deleteDomain": "Supprimer le domaine {{id}}",
     "resolveSteward": "Afficher qui est intendant du domaine {{id}}",
     "pageIndicator": "Page {{page}} / {{total}}",

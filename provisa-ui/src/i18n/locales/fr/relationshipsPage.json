@@ -43,6 +43,7 @@
     "suggestHelpTitle": "Relations suggérées",
     "suggestHelpBody": "Parcourt les tables enregistrées de tous les domaines à la recherche de jointures probables et les liste comme candidates. Rien n'est déclaré tant que vous n'en acceptez pas une, et une candidate rejetée reste hors de la liste jusqu'à ce que vous effaciez les rejets.",
     "empty": "Aucune relation enregistrée pour le moment.",
+    "noMatch": "Aucune relation ne correspond au filtre.",
     "detailPanel": "Détails de la relation",
     "panelNewRelationship": "Nouvelle relation",
     "backToRelationship": "Retour à {{id}}"

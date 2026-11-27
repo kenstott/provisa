@@ -23,7 +23,6 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   Group,
   Modal,
   MultiSelect,
@@ -52,15 +51,21 @@ import { DescriptionField } from "../../pages/tables/DescriptionField";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
-import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
 import { GlossaryRelationships } from "./GlossaryRelationships";
 import { TagLossSummary } from "./TagLossSummary";
 import { tagLossTitle } from "./tagLoss";
 import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
-import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./termDraft";
-import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
-import { refusalError } from "../../i18n/serverMessage";
+import {
+  changes,
+  commandColumnKey,
+  commandColumnOf,
+  draftOf,
+  type Change,
+  type TermDraft,
+} from "./termDraft";
+import { useCommandOutputColumns } from "../../hooks/useCommandOutputColumns";
 import { useViewDomains } from "../../lib/viewDomains";
 import { type TermOption } from "./termLabel";
 
@@ -106,19 +111,6 @@ export function TermEditForm({
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
   const [draft, setDraft] = useState<TermDraft | null>(null);
   const [owners, setOwners] = useState<Map<string, ColumnTerm> | null>(null);
-  const { assignTag } = useAssignTag();
-  const { unassignTag } = useUnassignTag();
-  // The term's own tags, marked and unmarked as the tag picker does; a refusal is said by Save.
-  const termTags: TermTags = {
-    mark: async (tagId) => {
-      const r = await assignTag({ tagId, objectType: "term", termId: term.id });
-      if (!r.success) throw refusalError(r);
-    },
-    unmark: async (tagId) => {
-      const r = await unassignTag({ tagId, objectType: "term", termId: term.id });
-      if (!r.success) throw refusalError(r);
-    },
-  };
   // REQ-1387: the bound tables the last draft read no samples from.
   const [unsampled, setUnsampled] = useState<string[]>([]);
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
@@ -190,6 +182,22 @@ export function TermEditForm({
     }
     return out.sort((a, b) => a.label.localeCompare(b.label));
   }, [tables, own, owners]);
+  // REQ-1159: every command's declared output columns, and those this term already holds.
+  const { columns: commandOutputs } = useCommandOutputColumns();
+  const commandColumnOptions = useMemo(() => {
+    const keys = new Set(
+      (commandOutputs ?? []).map((c) =>
+        commandColumnKey({ command_name: c.command, column_name: c.column }),
+      ),
+    );
+    for (const r of term.command_refs) keys.add(commandColumnKey(r));
+    return [...keys]
+      .map((key) => {
+        const ref = commandColumnOf(key);
+        return { value: key, label: `${ref.command_name}.${ref.column_name}` };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [commandOutputs, term.command_refs]);
   const tableOptions = useMemo(
     () =>
       tables
@@ -221,7 +229,9 @@ export function TermEditForm({
       (r) =>
         !keys.has(columnKey(r.table_id, r.column_name)) &&
         draft.moves[columnKey(r.table_id, r.column_name)] === undefined,
-    ) || draft.claims.length > 0;
+    ) ||
+    draft.claims.length > 0 ||
+    draft.commandColumns.length > 0; // REQ-1159: a command's output column is a column too
   const role = draft.tables.length > 0 ? "class" : keepsColumns ? "property" : "concept";
   const said = (field: Change["field"]) =>
     refused?.field === field ? (
@@ -237,7 +247,7 @@ export function TermEditForm({
     setRefused(null);
     let removed = false;
     let done = true;
-    const list = changes(term, read.tables, draft, termTags);
+    const list = changes(term, read.tables, draft);
     try {
       for (let i = start; i < list.length; i++) {
         const change = list[i];
@@ -381,36 +391,6 @@ export function TermEditForm({
             />
           </Stack>
         </FormField>
-        <FormChecks>
-          <FormField size="short" help={t("glossaryTab.excludeFromExportHelp")}>
-            <Checkbox
-              label={t("glossaryTab.excludeFromExportLabel")}
-              checked={draft.exportExcluded}
-              onChange={(e) => set({ exportExcluded: e.currentTarget.checked })}
-              data-testid="glossary-export-excluded-checkbox"
-            />
-          </FormField>
-          {/* REQ-2145: pii on a Property covers every column it means; a Class or a Concept holds
-              none to cover, and a draft governs nothing until it is defined. */}
-          <FormField
-            size="short"
-            help={
-              role !== "property"
-                ? t("glossaryTab.piiPropertyOnly")
-                : !draft.definition.trim()
-                  ? t("serverErrors.tag.term_not_live", { term: draft.name.trim() })
-                  : t("glossaryTab.piiHelp")
-            }
-          >
-            <Checkbox
-              label={t("glossaryTab.piiLabel")}
-              checked={draft.pii}
-              disabled={role !== "property" || (!draft.definition.trim() && !draft.pii)}
-              onChange={(e) => set({ pii: e.currentTarget.checked })}
-              data-testid="glossary-pii-checkbox"
-            />
-          </FormField>
-        </FormChecks>
         {domainsEnabled && term.is_abstract && (
           <FormField size="medium">
             <MultiSelect
@@ -559,6 +539,22 @@ export function TermEditForm({
           </FormField>
         </FormLayout>
       )}
+      {/* REQ-1159 (amended 2026-11-25): a command's output column means a term as a table's does. */}
+      {role !== "class" && (
+        <FormLayout>
+          <FormField size="long" hint={t("glossaryTab.commandColumnsHint")}>
+            <MultiSelect
+              label={t("glossaryTab.commandColumns")}
+              data={commandColumnOptions}
+              value={draft.commandColumns}
+              onChange={(keys) => set({ commandColumns: keys })}
+              searchable
+              clearable
+              data-testid="glossary-command-columns"
+            />
+          </FormField>
+        </FormLayout>
+      )}
       {said("columns")}
 
       <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
@@ -691,7 +687,9 @@ export function TermEditForm({
       {said("experts")}
 
       <FormLayout>
+        {/* Save and Cancel in the panel's head beside the term's name, as on the Tables panel. */}
         <FormFooter
+          panel
           onSave={() => save()}
           onCancel={onCancel}
           saving={saving}

@@ -5,6 +5,7 @@
     "newMetric": "+ Metric",
     "loading": "Loading...",
     "empty": "No metrics registered yet.",
+    "noMatch": "No metrics match the filter.",
     "colName": "Name",
     "colExpression": "Expression",
     "colDatatype": "Datatype",

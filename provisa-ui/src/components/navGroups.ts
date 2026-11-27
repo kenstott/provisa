@@ -305,7 +305,7 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
-      // REQ-2225: where a Spark script runs and is validated when its source names no cluster.
+      // REQ-2225: the cluster a Spark source connects to when it names no cluster.
       {
         to: "/admin/spark-cluster",
         labelKey: "navBar.itemSparkCluster",

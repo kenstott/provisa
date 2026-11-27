@@ -120,6 +120,8 @@ export function TagControl({
         return a.relationshipId === relationshipId;
       case "command":
         return a.commandName === commandName;
+      case "command_column": // REQ-1159: a command's output column
+        return a.commandName === commandName && a.columnName === columnName;
       case "product":
         return a.productId === productId;
       case "term":
@@ -147,6 +149,7 @@ export function TagControl({
     column: `${tableId}-${columnName}`,
     relationship: relationshipId,
     command: commandName,
+    command_column: `${commandName}-${columnName}`,
     product: productId,
     term: termId,
     rls_rule: rlsRuleId,
@@ -165,6 +168,9 @@ export function TagControl({
     column: known(tableId, columnName) ? `column:${tableId}:${columnName}` : null,
     relationship: known(relationshipId) ? `relationship:${relationshipId}` : null,
     command: known(commandName) ? `command:${commandName}` : null,
+    command_column: known(commandName, columnName)
+      ? `command_column:${commandName}:${columnName}`
+      : null,
     product: known(productId) ? `product:${productId}` : null,
     term: known(termId) ? `term:${termId}` : null,
     rls_rule: known(rlsRuleId) ? `rls_rule:${rlsRuleId}` : null,
@@ -219,9 +225,10 @@ export function TagControl({
     objectType,
     sourceId: objectType === "source" ? sourceId : undefined,
     tableId: objectType === "table" || objectType === "column" ? tableId : undefined,
-    columnName: objectType === "column" ? columnName : undefined,
+    columnName: objectType === "column" || objectType === "command_column" ? columnName : undefined,
     relationshipId: objectType === "relationship" ? relationshipId : undefined,
-    commandName: objectType === "command" ? commandName : undefined,
+    commandName:
+      objectType === "command" || objectType === "command_column" ? commandName : undefined,
     productId: objectType === "product" ? productId : undefined,
     termId: objectType === "term" ? termId : undefined,
     documentId: objectType === "document" || objectType === "section" ? documentId : undefined,

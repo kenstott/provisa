@@ -194,6 +194,7 @@
     "colGqlAlias": "GQL-alias",
     "colSteward": "Data steward",
     "noDomains": "Geen domeinen gedefinieerd",
+    "noDomainsMatch": "Geen domeinen komen overeen met het filter",
     "deleteDomain": "Domein {{id}} verwijderen",
     "resolveSteward": "Tonen wie data steward is van domein {{id}}",
     "pageIndicator": "Pagina {{page}} / {{total}}",

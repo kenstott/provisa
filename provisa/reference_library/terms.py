@@ -19,7 +19,10 @@ the indexed cosine search for the terms nearest a question.
 
 A term cites a library passage when a scan of the passage's document found the term there and a
 steward accepted the draft as the term or merged it into the term (REQ-2179): the draft's source
-passages are the term's citations (:func:`citations`). A draft still awaiting review cites nothing.
+passages are the term's citations (:func:`citations`). A draft still awaiting review cites nothing;
+one proposing a merge into a term is shown on the term's panel as proposed (:func:`term_citations`).
+A steward also picks a document or a section of one for a term on its panel: that citation is kept
+as a tag's is (provisa.reference_library.citations, kind ``term``).
 """
 
 # Requirements: REQ-2185
@@ -30,15 +33,17 @@ import hashlib
 import json
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import and_, delete, or_, select, text, update
 
 from provisa.core import pgvector
 from provisa.core.schema_org import glossary_term_drafts as drafts_t
 from provisa.core.schema_org import glossary_term_scans as scans_t
 from provisa.core.schema_org import glossary_term_vectors as vectors_t
 from provisa.core.schema_org import glossary_terms as terms_t
+from provisa.core.schema_org import reference_documents as documents_t
+from provisa.reference_library import citations as cites
 from provisa.reference_library import store
 from provisa.reference_library.library import Embedder
 
@@ -226,10 +231,41 @@ def same_text(quote: str, passage: str) -> bool:
     return _spaced(quote) in _spaced(passage)
 
 
+def _placed(
+    held: Sequence[tuple[int, str | None, int | None, str]], cited: Mapping[str, Any]
+) -> tuple[int, str | None, int | None, str]:
+    """Where a cited passage's words are now (ordinal, section, page) and the citation's state. A
+    quote is looked for where it was cited and then everywhere in the document, so a passage that
+    only moved follows silently; one whose words are gone is flagged, at where it was."""
+    quote = cited.get("quote") or ""
+    ordinal = int(cited["ordinal"])
+    at_place = [p for p in held if p[0] == ordinal and same_text(quote, p[3])]
+    anywhere = at_place or [p for p in held if same_text(quote, p[3])]
+    if anywhere:
+        now = anywhere[0]
+        return now[0], now[1], now[2], CURRENT
+    return ordinal, cited.get("section"), cited.get("page"), DRIFTED
+
+
+def _first_ordinal(
+    held: Sequence[tuple[int, str | None, int | None, str]], c: cites.Citation
+) -> int:
+    """The ordinal of the first passage of the section a picked citation names (the document's
+    first for the whole of it), so it sorts among the passages scans cited."""
+    for ordinal, section, page, _text in held:
+        if c.section_heading is not None and section == c.section_heading:
+            return ordinal
+        if c.section_heading is None and c.section_page is not None and page == c.section_page:
+            return ordinal
+        if c.section_heading is None and c.section_page is None:
+            return ordinal
+    return 0
+
+
 async def cited_by(conn: Connection, document_id: int) -> list[CitedBy]:
-    """The terms citing the document, each citation with its state. A quote is looked for where it
-    was cited and then everywhere in the document, so a passage that only moved follows silently;
-    one whose words are gone is flagged. In term order, then passage order."""
+    """The terms citing the document, each citation with its state: the passages scans found
+    the term in (:func:`_placed`), and the sections stewards picked for it on its panel, whose
+    section's changed or vanished text flags them as drifted. In term order, then passage order."""
     rows = (
         await conn.execute_core(
             select(terms_t.c.id, terms_t.c.name, drafts_t.c.payload)
@@ -238,7 +274,8 @@ async def cited_by(conn: Connection, document_id: int) -> list[CitedBy]:
             .where(drafts_t.c.status.in_(CITING), scans_t.c.document_id == document_id)
         )
     ).fetchall()
-    if not rows:
+    picked = [c for c in await cites.citing(conn, document_id) if c.citer_kind == cites.TERM]
+    if not rows and not picked:
         return []
     held = await store.passages(conn, document_id)
     seen: set[tuple[int, str]] = set()
@@ -246,25 +283,186 @@ async def cited_by(conn: Connection, document_id: int) -> list[CitedBy]:
     for term_id, name, payload in rows:
         for cited in json.loads(payload).get("passages", []):
             quote = cited.get("quote") or ""
-            ordinal = int(cited["ordinal"])
             if (int(term_id), _spaced(quote)) in seen:
                 continue
             seen.add((int(term_id), _spaced(quote)))
-            at_place = [p for p in held if p[0] == ordinal and same_text(quote, p[3])]
-            anywhere = at_place or [p for p in held if same_text(quote, p[3])]
-            if anywhere:
-                now = anywhere[0]
-                found.append(CitedBy(term_id, name, now[0], now[1], now[2], quote, CURRENT))
-            else:
-                found.append(
-                    CitedBy(
-                        term_id,
-                        name,
-                        ordinal,
-                        cited.get("section"),
-                        cited.get("page"),
-                        quote,
-                        DRIFTED,
+            ordinal, section, page, state = _placed(held, cited)
+            found.append(CitedBy(int(term_id), name, ordinal, section, page, quote, state))
+    if picked:
+        names = dict(
+            (
+                await conn.execute_core(
+                    select(terms_t.c.id, terms_t.c.name).where(
+                        terms_t.c.id.in_(sorted({int(c.object_key) for c in picked}))
                     )
                 )
+            ).fetchall()
+        )
+        for c in picked:
+            term_id = int(c.object_key)
+            found.append(
+                CitedBy(
+                    term_id,
+                    names[term_id],
+                    _first_ordinal(held, c),
+                    c.section_heading,
+                    c.section_page,
+                    "",
+                    CURRENT if c.state == cites.CURRENT else DRIFTED,
+                )
+            )
     return sorted(found, key=lambda c: (c.term.casefold(), c.ordinal))
+
+
+#: A term's citation that is its: a scan's passage of an accepted or merged draft, or a section a
+#: steward picked.
+ACCEPTED = "accepted"
+#: A passage a scan's draft still awaiting review proposes merging into the term.
+PROPOSED = "proposed"
+#: Found by a scan of the document (a draft's passage).
+SCAN = "scan"
+#: Picked for the term on its panel (reference_citations, kind ``term``).
+PICKED = "picked"
+
+
+@dataclass(frozen=True)
+class TermCitation:
+    """One document passage or section a term cites, or a draft proposes it cite.
+
+    ``state`` is :data:`CURRENT`, :data:`DRIFTED` or, for a picked section whose document or
+    section is gone, ``broken`` (cites.BROKEN). A scan's citation names its ``draft_id``,
+    passage ``ordinal`` and ``quote``; a picked one its ``cite_key``. ``domains`` are the scan's
+    for a scan's citation (who may read the draft), empty for a picked one."""
+
+    origin: str
+    status: str
+    document_id: int | None
+    document_title: str
+    section_heading: str | None
+    section_page: int | None
+    state: str
+    quote: str | None
+    ordinal: int | None
+    draft_id: int | None
+    cite_key: str | None
+    cited_by: str | None
+    domains: tuple[str, ...]
+
+    @property
+    def key(self) -> str:
+        """The citation's name in the term's list."""
+        if self.origin == SCAN:
+            return f"scan:{self.draft_id}:{self.ordinal}:{_spaced(self.quote or '')}"
+        return f"picked:{self.cite_key}"
+
+
+async def term_citations(conn: Connection, term_id: int) -> list[TermCitation]:
+    """What the term cites: the passages its accepted or merged drafts were found in, and the
+    passages of drafts awaiting review that propose merging into it (:data:`PROPOSED`), each read
+    against its document as held now (:func:`_placed`); and the sections picked for it on its
+    panel, each with its state. In document title order, then passage order."""
+    rows = (
+        await conn.execute_core(
+            select(
+                drafts_t.c.id,
+                drafts_t.c.status,
+                drafts_t.c.payload,
+                drafts_t.c.decided_by,
+                scans_t.c.document_id,
+                documents_t.c.title,
+                scans_t.c.domains,
+            )
+            .join(scans_t, drafts_t.c.scan_id == scans_t.c.id)
+            .join(documents_t, documents_t.c.id == scans_t.c.document_id)
+            .where(
+                or_(
+                    and_(drafts_t.c.term_id == term_id, drafts_t.c.status.in_(CITING)),
+                    and_(
+                        drafts_t.c.match_term_id == term_id,
+                        drafts_t.c.status == "draft",
+                        drafts_t.c.proposal == "merge",
+                    ),
+                ),
+            )
+            .order_by(drafts_t.c.id)
+        )
+    ).fetchall()
+    held: dict[int, list[tuple[int, str | None, int | None, str]]] = {}
+    found: list[TermCitation] = []
+    seen: set[tuple[str, int, str]] = set()
+    for draft_id, status, payload, decided_by, document_id, title, domains in rows:
+        if document_id not in held:
+            held[document_id] = await store.passages(conn, document_id)
+        status_of = ACCEPTED if status in CITING else PROPOSED
+        for cited in json.loads(payload).get("passages", []):
+            quote = cited.get("quote") or ""
+            ordinal, section, page, state = _placed(held[document_id], cited)
+            if (status_of, document_id, _spaced(quote)) in seen:
+                continue
+            seen.add((status_of, document_id, _spaced(quote)))
+            found.append(
+                TermCitation(
+                    origin=SCAN,
+                    status=status_of,
+                    document_id=int(document_id),
+                    document_title=title,
+                    section_heading=section or None,
+                    section_page=page,
+                    state=state,
+                    quote=quote,
+                    ordinal=ordinal,
+                    draft_id=int(draft_id),
+                    cite_key=None,
+                    cited_by=decided_by if status_of == ACCEPTED else None,
+                    domains=tuple(json.loads(domains)),
+                )
+            )
+    for c in await cites.of_object(conn, cites.TERM, cites.term_key(term_id)):
+        found.append(
+            TermCitation(
+                origin=PICKED,
+                status=ACCEPTED,
+                document_id=c.document_id,
+                document_title=c.document_title,
+                section_heading=c.section_heading,
+                section_page=c.section_page,
+                state=c.state,
+                quote=None,
+                ordinal=None,
+                draft_id=None,
+                cite_key=cites.citation_key(c),
+                cited_by=c.cited_by,
+                domains=(),
+            )
+        )
+    return sorted(
+        found,
+        key=lambda c: (c.status != ACCEPTED, c.document_title.casefold(), c.ordinal or 0),
+    )
+
+
+async def drop_passage(conn: Connection, term_id: int, draft_id: int, quote: str) -> bool:
+    """Take a scan's citation off the term: the passage quoting ``quote`` leaves the passages of
+    the term's accepted or merged draft ``draft_id``. False when that draft is not the term's or
+    cites no such passage."""
+    row = (
+        await conn.execute_core(
+            select(drafts_t.c.payload).where(
+                drafts_t.c.id == draft_id,
+                drafts_t.c.term_id == term_id,
+                drafts_t.c.status.in_(CITING),
+            )
+        )
+    ).fetchone()
+    if row is None:
+        return False
+    payload = json.loads(row[0])
+    passages = payload.get("passages", [])
+    kept = [p for p in passages if _spaced(p.get("quote") or "") != _spaced(quote)]
+    if len(kept) == len(passages):
+        return False
+    payload["passages"] = kept
+    await conn.execute_core(
+        update(drafts_t).where(drafts_t.c.id == draft_id).values(payload=json.dumps(payload))
+    )
+    return True

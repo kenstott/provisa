@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "Waar een Spark-script draait en wordt gevalideerd als de bron geen eigen cluster noemt. Heeft een bron een eigen cluster, dan wordt altijd dat cluster gebruikt.",
+    "help": "Het cluster waarmee een Spark-bron verbinding maakt als de bron geen eigen cluster noemt. Heeft een bron een eigen cluster, dan wordt altijd dat cluster gebruikt.",
     "address": "Spark Connect-adres",
     "addressHelp": "Het Spark Connect-adres van het cluster, bijvoorbeeld sc://spark.example.com:15002. Laat het token erbuiten: bewaar het token als secret en noem het hieronder.",
     "credential": "Token-secret",
@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Verbinden via TLS. Een token wordt alleen via TLS verzonden, dus een token opgeven zet TLS aan.",
     "userId": "Gebruikers-ID",
-    "userIdHelp": "De gebruiker waaronder het cluster het script uitvoert, als het daarom vraagt. Optioneel.",
+    "userIdHelp": "De gebruiker waaronder het cluster het werk van een sessie uitvoert, als het daarom vraagt. Optioneel.",
     "badHost": "Een hostnaam of adres, zonder sc://, poort of pad",
     "badPort": "Een poort van 1 tot 65535",
     "badToken": "Een secret-verwijzing, zoals ${secret:spark_token}",

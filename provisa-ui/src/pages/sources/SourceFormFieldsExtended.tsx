@@ -53,9 +53,7 @@ import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
 import { sourceFormLanded } from "./loadManagement";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
-import { connectorScript, fixedFormKeys } from "./connector";
-import { ScriptValidationPanel } from "./ScriptValidationPanel";
-import { useAuth } from "../../context/AuthContext";
+import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -180,9 +178,6 @@ export function SourceFormFieldsExtended({
   // A kind whose tables land cannot be created without its Cache TTL (sourceKind).
   const landsWithTtl = useCacheTtlRequired(form.type);
   const { t } = useTranslation();
-  const { activeOrgId } = useAuth();
-  // REQ-2225: a saved Spark source's script, which its form validates.
-  const heldScript = heldBy ? connectorScript(heldBy, authFields) : null;
   const namingConventions = useNamingConventions();
   const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
@@ -695,13 +690,6 @@ export function SourceFormFieldsExtended({
         )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
-      )}
-      {heldBy && editingSourceId && activeOrgId && heldScript !== null && (
-        <ScriptValidationPanel // REQ-2225
-          orgId={activeOrgId}
-          sourceId={editingSourceId}
-          script={heldScript}
-        />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}

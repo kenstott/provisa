@@ -16,5 +16,5 @@ export const BINDING_LANGUAGES = ["sql", "cypher", "graphql", "rest", "mcp", "sp
 export type BindingLanguage = (typeof BINDING_LANGUAGES)[number];
 export type LanguageBindings = Partial<Record<BindingLanguage, LanguageBinding>>;
 
-export const COMMAND_SECTIONS = ["command", "bindings"] as const;
+export const COMMAND_SECTIONS = ["command", "bindings", "columns"] as const;
 export type CommandSection = (typeof COMMAND_SECTIONS)[number];

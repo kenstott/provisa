@@ -498,10 +498,7 @@ _SPARK_NOTE = (
 #: What a built-in source type's host requires, as its connector file states it
 #: (connectors/spark/connector.yaml ``requires``): name, required, note.
 BUILTIN_HOST_REQUIRES: dict[str, tuple[tuple[str, bool, str], ...]] = {
-    "spark": (
-        ("script", True, "the annotated PySpark script, as text"),
-        ("cluster", False, "the Spark cluster; left out, the organization's default"),
-    ),
+    "spark": (("cluster", False, "the Spark cluster; left out, the organization's default"),),
 }
 
 

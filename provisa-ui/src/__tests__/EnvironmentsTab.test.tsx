@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import type { BranchSync, Environment } from "../api/environments";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 import { notifications } from "@mantine/notifications";
 
 // The notification host is not mounted in these renders, so what a notification SAYS is read off
@@ -178,6 +179,35 @@ async function openEnv(name: string) {
   fireEvent.click(await screen.findByTestId(`env-row-${name}`));
   await screen.findByTestId(`env-read-${name}`);
 }
+
+describe("EnvironmentsTab filter", () => {
+  it("finds each environment by every text its row shows", async () => {
+    mockList.mockResolvedValue([
+      env("prod", { protected: true, expires_at: "2027-01-01" }),
+      env("dev", { drifted: true, created_by: "ada", expired_kept_by: { view: 1 } }),
+    ]);
+    mockSync.mockResolvedValue({
+      remote_configured: true,
+      branches: { prod: syncOf(), dev: syncOf({ ahead: 2 }) },
+    });
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-sync-dev");
+    await expectFilterFindsEveryCell(screen.getByTestId("environments-filter"), () =>
+      screen.getByTestId("environments-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-row-dev");
+    fireEvent.change(screen.getByTestId("environments-filter"), {
+      target: { value: "no-such-environment" },
+    });
+    expect(screen.getByTestId("environments-empty")).toHaveTextContent(
+      "No environments match the filter.",
+    );
+  });
+});
 
 describe("EnvironmentsTab", () => {
   it("opens an environment's panel from its row, by its deep link", async () => {
@@ -696,15 +726,33 @@ describe("EnvironmentsTab", () => {
 
   it("will not merge until the comment is written", async () => {
     // REQ-1550: the merge lands as one squashed commit, so a blank comment would leave the range
-    // of work with no account of itself. The server refuses it; the button does not offer it.
+    // of work with no account of itself. The server refuses it; pressing Merge without one marks
+    // the comment and sends nothing (REQ-1968: the button is never disabled by the empty field).
     render(<EnvironmentsTab title="Admin — Environments" />);
     await openEnv("dev");
     fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
-    expect(await screen.findByTestId("env-merge-run")).toBeDisabled();
+    const run = await screen.findByTestId("env-merge-run");
+    expect(run).toBeEnabled();
     fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "   " } });
-    expect(screen.getByTestId("env-merge-run")).toBeDisabled();
+    fireEvent.click(run);
+    expect(screen.getByTestId("env-merge-message")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByTestId("env-merge-review"));
+    expect(mockMerge).not.toHaveBeenCalled();
+    expect(mockReview).not.toHaveBeenCalled();
     fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "ship it" } });
-    expect(screen.getByTestId("env-merge-run")).toBeEnabled();
+    expect(screen.getByTestId("env-merge-message")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("marks a missing name when Create is pressed, and creates nothing", async () => {
+    // REQ-1968: Create is never disabled by the empty name; pressing it marks the name.
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    fireEvent.click(await screen.findByTestId("env-create-open"));
+    const create = await screen.findByTestId("env-create");
+    expect(create).toBeEnabled();
+    fireEvent.click(create);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId("env-new-name")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("env-new-name")).toHaveFocus();
   });
 
   it("offers deleting the remote branch only underneath deleting the environment", async () => {
@@ -781,8 +829,13 @@ describe("EnvironmentsTab", () => {
     await openEnv("prod");
     fireEvent.click(await screen.findByTestId("env-panel-merge-prod"));
     expect(await screen.findByTestId("env-merge-no-target")).toBeInTheDocument();
-    expect(screen.getByTestId("env-merge-run")).toBeDisabled();
-    expect(screen.getByTestId("env-merge-preview-run")).toBeDisabled();
+    // REQ-1968: pressing Preview or Merge marks the missing target and sends nothing.
+    fireEvent.click(screen.getByTestId("env-merge-preview-run"));
+    expect(mockPreview).not.toHaveBeenCalled();
+    expect(screen.getByTestId("env-merge-into")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "ship it" } });
+    fireEvent.click(screen.getByTestId("env-merge-run"));
+    expect(mockMerge).not.toHaveBeenCalled();
   });
 
   it("explains the two choices that decide how an environment behaves", async () => {

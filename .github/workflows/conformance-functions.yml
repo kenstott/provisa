@@ -176,7 +176,7 @@ jobs:
         if: matrix.pip != '' || matrix.apt != ''
         run: |
           if [ -n "${{ matrix.apt }}" ]; then
-            sudo apt-get -o DPkg::Lock::Timeout=300 update -q
+            scripts/ci/apt-update.sh -o DPkg::Lock::Timeout=300
             sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q ${{ matrix.apt }}
           fi
           if [ -n "${{ matrix.pip }}" ]; then

@@ -385,6 +385,7 @@ def _run_install_cloned(
         user_attributes=None,
         masking_rules=None,
         masked_columns=None,
+        ruled_columns={},  # REQ-2278: the runtime's column rules, copied as masked_columns is
         tracked_functions=None,
         tracked_webhooks=None,
         column_transforms=None,
@@ -672,6 +673,7 @@ def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
         user_attributes=None,
         masking_rules=None,
         masked_columns=None,
+        ruled_columns={},  # REQ-2278: the runtime's column rules, copied as masked_columns is
         tracked_functions=None,
         tracked_webhooks=None,
         column_transforms=None,

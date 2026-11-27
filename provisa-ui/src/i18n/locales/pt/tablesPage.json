@@ -78,6 +78,7 @@
     "erdHelpBody": "Desenha as tabelas registradas e os relacionamentos declarados entre elas, para que você veja quais junções existem antes de escrever uma consulta. É somente leitura: filtre por domínio e exporte o diagrama como PNG ou SVG.",
     "purposeModel": "+ Modelo declara uma entidade ou um fato, os blocos de construção de um esquema estrela e de um Data Vault. Ele registra a exibição materializada, seu Time Travel e os relacionamentos com as entidades em que se baseia.",
     "empty": "Nenhuma tabela registrada ainda.",
+    "noMatch": "Nenhuma tabela corresponde ao filtro.",
     "resizeDetail": "Redimensionar o painel de detalhes",
     "detailPanel": "Detalhes da tabela",
     "closeDetail": "Fechar o painel de detalhes",

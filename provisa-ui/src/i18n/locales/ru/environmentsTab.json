@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "Окружения",
+    "noEnvironments": "Окружений пока нет.",
+    "noMatch": "Нет окружений, соответствующих фильтру.",
     "tabRequests": "Запросы на слияние",
     "tabRepository": "Репозиторий",
     "tabIntegration": "Интеграция",

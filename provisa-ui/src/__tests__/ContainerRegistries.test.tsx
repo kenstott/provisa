@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const auth = vi.hoisted(() => ({
   capabilities: ["org_settings"] as string[],
@@ -66,6 +67,35 @@ describe("Admin › Container registries", () => {
       (i) => i.to === "/admin/container-registries",
     );
     expect(item?.capability).toBe("org_settings");
+  });
+
+  it("finds each entry by every text its row shows", async () => {
+    list.mockResolvedValue([
+      GHCR,
+      {
+        ...GHCR,
+        id: "r2",
+        address: "registry.internal:5000/data",
+        username: "pusher",
+        default: false,
+      },
+    ]);
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    await screen.findByTestId("container-registry-r2");
+    await expectFilterFindsEveryCell(screen.getByTestId("container-registries-filter"), () =>
+      screen.getByTestId("container-registries-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    await screen.findByTestId("container-registry-r1");
+    fireEvent.change(screen.getByTestId("container-registries-filter"), {
+      target: { value: "no-such-registry" },
+    });
+    expect(screen.getByTestId("container-registries-empty")).toHaveTextContent(
+      "No container registries match the filter.",
+    );
   });
 
   it("lists each entry, a row opening its fields as they were entered", async () => {

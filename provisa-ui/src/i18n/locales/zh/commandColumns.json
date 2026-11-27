@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "此命令未声明任何输出列。",
+    "hint": "未列出角色的列，由被分配该命令的角色读取。",
+    "governanceTitle": "标签、术语和分类",
+    "editTags": "在“标签”页面编辑标签",
+    "editTerms": "在术语表中编辑术语",
+    "colColumn": "列",
+    "colTags": "标签",
+    "colTerm": "术语",
+    "colClassification": "分类"
+  }
+}

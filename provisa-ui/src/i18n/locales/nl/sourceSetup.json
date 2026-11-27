@@ -4,7 +4,7 @@
     "connect": "Bron verbinden",
     "register": "Tabellen registreren",
     "relate": "Relaties ontdekken",
-    "query": "Query",
+    "yourData": "Je gegevens",
     "tablesCount_one": "{{count}} tabel",
     "tablesCount_other": "{{count}} tabellen",
     "registerHint": "Registreer de tabellen van deze bron om ze te bevragen.",
@@ -17,6 +17,16 @@
     "relateNotAllowedHint": "Voor het maken van relaties is het recht om relaties te maken nodig. Ga verder en bevraag de tabellen.",
     "queryHint": "Opent de query-explorer met een startquery op {{table}}.",
     "queryAction": "Startquery openen",
-    "complete": "Instellen voltooid"
+    "complete": "Instellen voltooid",
+    "skip": "Overslaan",
+    "skipped": "Overgeslagen",
+    "done": "Klaar",
+    "finish": "Instellen voltooien",
+    "runAgain": "Instellen opnieuw uitvoeren",
+    "nothingToQueryHint": "Er zijn geen tabellen geregistreerd om te bevragen.",
+    "newTablesHint_one": "{{count}} tabel die na het instellen is geregistreerd, heeft geen relatie.",
+    "newTablesHint_other": "{{count}} tabellen die na het instellen zijn geregistreerd, hebben geen relatie.",
+    "yourDataAction": "Je gegevens tonen",
+    "finishLater": "Later voltooien"
   }
 }

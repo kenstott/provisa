@@ -6,11 +6,22 @@
     "nowhere": "Nowhere",
     "hiddenPlaces_one": "{{count}} more you cannot read",
     "hiddenPlaces_other": "{{count}} more you cannot read",
-    "rowFilters_one": "{{count}} row filter",
-    "rowFilters_other": "{{count}} row filters",
-    "classifiedAs": "Assigned by classification: {{kind}}",
     "noDependents": "Nothing",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "objectCount_one": "{{count}} object",
+    "objectCount_other": "{{count}} objects",
+    "sourceCount_one": "{{count}} source",
+    "sourceCount_other": "{{count}} sources",
+    "objectsInSources": "{{objects}} in {{sources}}",
+    "classificationCount_one": "{{count}} classification",
+    "classificationCount_other": "{{count}} classifications",
+    "rowRuleCount_one": "{{count}} row rule",
+    "rowRuleCount_other": "{{count}} row rules",
+    "groupTables": "Tables ({{count}})",
+    "groupColumns": "Columns ({{count}})",
+    "groupClassification": "Assigned by classification ({{count}})",
+    "groupRowRules": "Row rules ({{count}})",
+    "filterClassifications": "Filter classifications"
   }
 }

@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} אינו ברשימה",
+    "why": "הקישור מציין אותו, אבל {{reasons}}.",
+    "bySearch": "החיפוש „{{search}}” משמיט אותו",
+    "byFilter": "המסנן {{filter}} משמיט אותו",
+    "byDomain": "הדומיין שלו ({{domains}}) אינו בתצוגה",
+    "clearSearch": "ניקוי החיפוש",
+    "clearFilter": "ניקוי המסנן {{filter}}",
+    "addDomain": "הוספת {{domains}} לתצוגה",
+    "showAll": "הצגה ברשימה",
+    "dismiss": "סגירה",
+    "byTab": "הלשונית {{tab}} אינה מציגה אותו",
+    "openTab": "הצגת הלשונית {{tab}}"
+  }
+}

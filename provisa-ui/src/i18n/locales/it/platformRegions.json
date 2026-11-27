@@ -9,6 +9,7 @@
     "detailPanel": "Dettagli della regione della piattaforma",
     "colRegion": "Regione",
     "none": "La piattaforma non dichiara regioni.",
+    "noMatch": "Nessuna regione corrisponde al filtro.",
     "edit": "Modifica",
     "remove": "Rimuovi",
     "taken": "Esiste già una regione di nome {{id}}.",

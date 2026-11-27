@@ -194,6 +194,7 @@
     "colGqlAlias": "GQL 別名",
     "colSteward": "數據管家",
     "noDomains": "未定義任何網域",
+    "noDomainsMatch": "沒有符合篩選條件的網域",
     "deleteDomain": "刪除網域 {{id}}",
     "resolveSteward": "顯示誰是網域 {{id}} 的數據管家",
     "pageIndicator": "第 {{page}} / {{total}} 頁",

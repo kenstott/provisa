@@ -64,7 +64,7 @@ import { seedSource } from "../sourceSeed";
 import type { Source } from "../../../types/admin";
 
 /** Whether the descriptor lists `key`: by name, as a part of a dotted name (`settings` of
- * `settings.script`), or under a placeholder (`capabilities.duckdb` of `capabilities.<engine>`). */
+ * `settings.cluster`), or under a placeholder (`capabilities.duckdb` of `capabilities.<engine>`). */
 function listed(keys: string[], key: string): boolean {
   return keys.some(
     (name) =>
@@ -308,14 +308,13 @@ describe("each builder writes only the descriptor's keys", () => {
       digest: "",
       code_hash: "",
       arch: "amd64",
-      requires: [{ name: "token", secret: true }, { name: "script" }, { name: "cluster" }],
+      requires: [{ name: "token", secret: true }, { name: "cluster" }],
       description: "",
       icon: "",
       settings: [],
     };
     const fields = {
       [requiredField("token")]: "token",
-      [requiredField("script")]: "print(1)",
       [requiredField("cluster")]: "c1",
       connector_host: "h",
       connector_port: "7000",
@@ -437,6 +436,7 @@ const saved = (type: string, settings: Partial<Source>): Source => ({
   dialect: null,
   isSystem: false,
   withdrawn: false,
+  setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   cacheEnabled: true,
   cacheTtl: null,
   replicate: null,

@@ -6,11 +6,22 @@
     "nowhere": "无",
     "hiddenPlaces_one": "另有 {{count}} 项您无权读取",
     "hiddenPlaces_other": "另有 {{count}} 项您无权读取",
-    "rowFilters_one": "{{count}} 个行筛选器",
-    "rowFilters_other": "{{count}} 个行筛选器",
-    "classifiedAs": "由分类指定：{{kind}}",
     "noDependents": "无",
     "enabled": "已启用",
-    "disabled": "已停用"
+    "disabled": "已停用",
+    "objectCount_one": "{{count}} 个对象",
+    "objectCount_other": "{{count}} 个对象",
+    "sourceCount_one": "{{count}} 个数据源",
+    "sourceCount_other": "{{count}} 个数据源",
+    "objectsInSources": "{{sources}}中的{{objects}}",
+    "classificationCount_one": "{{count}} 个分类",
+    "classificationCount_other": "{{count}} 个分类",
+    "rowRuleCount_one": "{{count}} 条行规则",
+    "rowRuleCount_other": "{{count}} 条行规则",
+    "groupTables": "表 ({{count}})",
+    "groupColumns": "列 ({{count}})",
+    "groupClassification": "由分类指定 ({{count}})",
+    "groupRowRules": "行规则 ({{count}})",
+    "filterClassifications": "筛选分类"
   }
 }

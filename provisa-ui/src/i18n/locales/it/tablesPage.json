@@ -78,6 +78,7 @@
     "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra di esse, così si vede quali join esistono prima di scrivere una query. È in sola lettura: filtrare per dominio ed esportare il diagramma in PNG o SVG.",
     "purposeModel": "+ Modello dichiara un'entità o un fatto, i mattoni di uno schema a stella e di un Data Vault. Registra la vista materializzata, il suo Time Travel e le relazioni con le entità su cui si basa.",
     "empty": "Nessuna tabella registrata.",
+    "noMatch": "Nessuna tabella corrisponde al filtro.",
     "resizeDetail": "Ridimensiona il pannello dei dettagli",
     "detailPanel": "Dettagli della tabella",
     "closeDetail": "Chiudi il pannello dei dettagli",

@@ -138,6 +138,7 @@ export function sourceOf(type: string, extra: Partial<Source> = {}): Source {
     rowFetchByKeys: false,
     isSystem: false,
     withdrawn: false,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
     cdc: null,
     ...extra,
   };

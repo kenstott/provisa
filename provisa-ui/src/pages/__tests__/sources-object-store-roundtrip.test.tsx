@@ -50,6 +50,7 @@ function source(overrides: Partial<Source>): Source {
     cacheEnabled: true,
     cacheTtl: 300,
     ...overrides,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   } as unknown as Source;
 }
 

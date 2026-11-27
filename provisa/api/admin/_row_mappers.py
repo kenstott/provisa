@@ -28,8 +28,12 @@ from provisa.api.admin.types import (
     RoleRateLimitType,
     RoleType,
     SessionVarType,
+    SetupQueryOutcome,
+    SetupRelationshipsOutcome,
+    SetupTablesOutcome,
     SourceCdcConfigType,
     SourceInput,
+    SourceSetupOutcomesType,
     SourceType,
 )
 
@@ -153,6 +157,22 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         change_signal=row.get("change_signal") or "ttl",  # REQ-929
         is_system=bool(row.get("is_system", False)),
         cdc=_cdc_from_row(row) if connection else None,
+        setup_outcomes=setup_outcomes_type(row["setup_outcomes"]),  # REQ-2262
+    )
+
+
+def setup_outcomes_type(stored: dict) -> SourceSetupOutcomesType:  # REQ-2262
+    """A ``sources.setup_outcomes`` value as the API reads it."""
+    from provisa.core.models import SourceSetupOutcomes
+
+    held = SourceSetupOutcomes.model_validate(stored)
+    return SourceSetupOutcomesType(
+        tables=SetupTablesOutcome(held.tables) if held.tables else None,
+        relationships=(
+            SetupRelationshipsOutcome(held.relationships) if held.relationships else None
+        ),
+        query=SetupQueryOutcome(held.query) if held.query else None,
+        decided_at=held.decided_at,
     )
 
 

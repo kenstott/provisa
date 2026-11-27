@@ -49,7 +49,7 @@ def _no_owner_rewrite(monkeypatch):
     (effective_store.write_person). That rewrite reads the org's model tables, which this fake
     pool does not hold; who owns what is tested over a real store in test_owner_roles."""
 
-    async def _unread(_conn) -> None:
+    async def _unread(_conn, _principal: str | None = None) -> None:
         return None
 
     monkeypatch.setattr("provisa.entitlements.owners.write_object_owners", _unread)

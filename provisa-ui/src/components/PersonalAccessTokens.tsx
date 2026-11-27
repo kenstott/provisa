@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
+import { useRequiredFields } from "./form/useRequiredFields";
 import {
   issuePersonalAccessToken,
   listPersonalAccessTokens,
@@ -56,6 +57,8 @@ export function PersonalAccessTokens() {
   const [expiresInDays, setExpiresInDays] = useState<number | "">("");
   const [issuing, setIssuing] = useState(false);
   const [minted, setMinted] = useState<string | null>(null);
+  // REQ-1968: a name and at least one role are required, checked when Issue is pressed.
+  const required = useRequiredFields({ name, scopes });
 
   const load = useCallback(
     () =>
@@ -70,6 +73,7 @@ export function PersonalAccessTokens() {
   }, [load]);
 
   async function handleIssue() {
+    if (!required.validate()) return;
     setIssuing(true);
     setError(null);
     try {
@@ -82,6 +86,7 @@ export function PersonalAccessTokens() {
       setName("");
       setScopes([]);
       setExpiresInDays("");
+      required.reset();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -149,6 +154,7 @@ export function PersonalAccessTokens() {
         <FormField size="medium">
           <TextInput
             label={t("userProfileModal.patName")}
+            {...required.field("name")}
             value={name}
             onChange={(e) => setName(e.currentTarget.value)}
             data-testid="profile-pat-name"
@@ -161,7 +167,7 @@ export function PersonalAccessTokens() {
             options={availableRoles.map((r) => ({ id: r.id, label: r.id }))}
             value={scopes}
             onChange={setScopes}
-            required
+            {...required.field("scopes")}
           />
         </FormField>
         <FormField size="short">
@@ -176,11 +182,7 @@ export function PersonalAccessTokens() {
         </FormField>
         <FormFooter
           action={
-            <Button
-              disabled={!name.trim() || scopes.length === 0 || issuing}
-              onClick={handleIssue}
-              data-testid="profile-pat-issue"
-            >
+            <Button disabled={issuing} onClick={handleIssue} data-testid="profile-pat-issue">
               {issuing ? t("userProfileModal.patIssuing") : t("userProfileModal.patIssue")}
             </Button>
           }

@@ -18,6 +18,7 @@ import { READ_WAIT_NO_ROWS } from "./ReadWaitField";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { namingConventionLabel } from "../../hooks/useNamingConventions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
+import { entityName } from "../../components/entityName";
 import { useSourceKind } from "../sources/sourceKind";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
 import {
@@ -41,6 +42,7 @@ import { QueryLinkRow } from "../../components/relationships/RelationshipQueryLi
 import { useRelationshipSurfaces } from "../../components/relationships/useRelationshipSurfaces";
 import { tableAggregateLinks, tableQueryLinks } from "../../components/relationships/tableQueries";
 import { checkersField, uniquesField, useContractFields } from "./qualityReadFields";
+import { IdentityParameters } from "./IdentityParameters";
 
 // A table's sections read-only: the read view shows them, and so does the edit form to a caller
 // who may change only how columns are hidden. Each lists the fields its edit tab has, in the same
@@ -116,10 +118,10 @@ export function IdentityRead({
     ? namingConventionLabel(t, table.gqlNamingConvention)
     : t("tablesPage.inheritSource");
   const fields: DetailField[] = [
-    { label: t("tableSections.source"), value: table.sourceId },
+    { label: t("tableSections.source"), value: entityName("source", table.sourceId) },
     { label: t("tableSections.schema"), value: table.schemaName },
     { label: t("tableSections.table"), value: table.tableName },
-    { label: t("tableSections.domain"), value: table.domainId },
+    { label: t("tableSections.domain"), value: entityName("domain", table.domainId) },
     {
       label: t("tableEditForm.sqlAliasLabel"),
       value: table.alias ?? null,
@@ -203,6 +205,8 @@ export function IdentityRead({
         heading={t("relationshipRow.queryLinks.heading")}
         testIdPrefix="table-identity"
       />
+      {/* REQ-1986: a parameterized table's parameters, under the links whose queries carry them. */}
+      <IdentityParameters columns={table.columns} />
       <DetailFields fields={fields} testId="table-identity" />
     </>
   );

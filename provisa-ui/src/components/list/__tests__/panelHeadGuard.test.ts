@@ -19,6 +19,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { headParts } from "./panelParts";
 
 const SRC = join(__dirname, "..", "..", "..");
 
@@ -28,22 +29,6 @@ function sources(dir: string): string[] {
     if (statSync(path).isDirectory()) return name === "__tests__" ? [] : sources(path);
     return /\.tsx$/.test(name) && !/\.test\.tsx$/.test(name) ? [path] : [];
   });
-}
-
-/** The text of the JSX element that opens at `start`, to its own `/>` or closing tag. */
-function element(text: string, start: number, name: string): string {
-  let depth = 0;
-  for (let i = start; i < text.length; i += 1) {
-    const c = text[i];
-    if (c === "{") depth += 1;
-    else if (c === "}") depth -= 1;
-    else if (depth === 0 && text.startsWith("/>", i)) return text.slice(start, i + 2);
-    else if (depth === 0 && c === ">") {
-      const end = text.indexOf(`</${name}>`, i);
-      return text.slice(start, end < 0 ? text.length : end);
-    }
-  }
-  return text.slice(start);
 }
 
 /** The element's own props: the opening tag at `start`, without what its `{...}` props hold. */
@@ -69,23 +54,6 @@ export function ownStyled(jsx: string): string[] {
     if (own) found.push(`<${tag[1]} ${[...new Set(own)].join(" ")}…>`);
   }
   return found;
-}
-
-/** The parts of a file that are rendered in a panel's head. */
-export function headParts(text: string): string[] {
-  const parts: string[] = [];
-  for (const m of text.matchAll(/<PanelActions>/g))
-    parts.push(element(text, m.index, "PanelActions"));
-  for (const m of text.matchAll(/<FormFooter\b/g)) {
-    const footer = element(text, m.index, "FormFooter");
-    if (
-      /^<FormFooter[^>]*?\n?\s+panel\b/.test(footer) ||
-      /\spanel(\s|=|\/|>)/.test(footer.split("action=")[0])
-    ) {
-      parts.push(footer);
-    }
-  }
-  return parts;
 }
 
 describe("the rule itself", () => {

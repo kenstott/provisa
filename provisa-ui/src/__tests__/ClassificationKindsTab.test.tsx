@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const api = vi.hoisted(() => ({
   fetchClassificationKinds: vi.fn(),
@@ -63,6 +64,29 @@ describe("ClassificationKindsTab", () => {
     expect(ssn).toHaveTextContent("90%");
     expect(ssn).toHaveTextContent("SSN, last 4");
     expect(screen.getByTestId("classification-kind-city")).toHaveTextContent("None");
+  });
+
+  it("finds each kind by every text its row shows", async () => {
+    api.fetchClassificationKinds.mockResolvedValue({
+      kinds: [KINDS[0], { ...KINDS[1], threshold: 0.75, enabled: false }],
+    });
+    render(<ClassificationKindsTab title="Classification" />);
+    await screen.findByTestId("classification-kind-city");
+    await expectFilterFindsEveryCell(screen.getByTestId("classification-kinds-filter"), () =>
+      screen.getByTestId("classification-kinds-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
+    render(<ClassificationKindsTab title="Classification" />);
+    await screen.findByTestId("classification-kind-city");
+    fireEvent.change(screen.getByTestId("classification-kinds-filter"), {
+      target: { value: "no-such-kind" },
+    });
+    expect(screen.getByTestId("classification-kinds-empty")).toHaveTextContent(
+      "No kinds match the filter",
+    );
   });
 
   it("disables a kind, sending every kind left enabled", async () => {

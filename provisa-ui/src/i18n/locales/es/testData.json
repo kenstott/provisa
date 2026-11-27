@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "Valor ficticio",
+    "template": "Plantilla JSON",
+    "templateHint": "El objeto que muestra cada fila: cada campo es un valor ficticio como email() o uniform(min=1, max=9)::integer, un objeto anidado, una matriz de longitud fija o un literal entre comillas dobles para un campo que no varía",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "Regla sintética",
     "stable": "Estable",
     "stableHint": "El mismo valor ficticio en cada motor y en cada región",

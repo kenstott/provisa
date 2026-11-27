@@ -38,7 +38,6 @@ import {
   type ContainerRegistry,
 } from "../../api/containerRegistries";
 import { useAuth } from "../../context/AuthContext";
-import { matchesQuery } from "../../lib/searchItems";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { FormChecks, FormField, FormFooter, FormLayout, FormRead } from "../form/FormLayout";
@@ -49,6 +48,7 @@ import { PanelDuplicate } from "../list/PanelDuplicate";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
 
@@ -82,9 +82,25 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
   const [kept, setKept] = useState<ContainerRegistry[] | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useUrlFilter();
+  // REQ-2277 rule 9: a registry is open only while the search shows its row.
+  const narrowings = [
+    searchNarrowing<ContainerRegistry>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a registry's row shows.
+      (r) => [r.address, r.username, r.default ? t("detailFields.yes") : ""],
+    ),
+  ];
   const detail = useRememberedDetail(
     "containerRegistries",
-    kept === null ? null : kept.map((r) => r.id),
+    detailListOf(
+      t,
+      kept,
+      (r) => r.id,
+      (r) => r.address,
+      narrowings,
+    ),
   );
   const [mode, setMode] = useState<Mode>(null);
   const [draft, setDraft] = useState<Draft>(BLANK);
@@ -122,7 +138,7 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
   if (!kept || !activeOrgId) return null;
 
   const open = kept.find((r) => r.id === detail.id) ?? null;
-  const shown = kept.filter((r) => matchesQuery([r.address, r.username], search));
+  const shown = shownBy(kept, narrowings);
 
   const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const openForm = (next: Mode, from: Draft) => {
@@ -315,6 +331,7 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           {t("containerRegistries.help")}
         </Text>
         <SplitPane
+          outOfList={detail.outOfList}
           testId="container-registries-split"
           storageKey="provisa.containerRegistries.detailWidth"
           title={panelTitle}
@@ -334,6 +351,8 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           list={
             <SortGroupTable
               testPrefix="container-registries"
+              testId="container-registries-list"
+              emptyTestId="container-registries-empty"
               rows={shown}
               columns={[
                 {
@@ -356,7 +375,10 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
               headers={[{ col: "address" }, { col: "username" }, { col: "default" }]}
               colSpan={3}
               rowKey={(r) => r.id}
-              empty={t("containerRegistries.none")}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("containerRegistries.none") : t("containerRegistries.noMatch")
+              }
               render={(r) => (
                 <ListRow
                   key={r.id}

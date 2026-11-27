@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Kolomregels",
+    "hint": "Elke regel verbergt of maskeert elke kolom met deze sleutel voor een rol en de rollen die ervan erven, zowel kolommen van een tabel als uitvoerkolommen van een opdracht. De eigen zichtbaarheid en maskers van een kolom blijven gelden; het strengere resultaat geldt.",
+    "none": "Geen kolomregel.",
+    "colRole": "Rol",
+    "colEffect": "Effect",
+    "hidden": "Verborgen",
+    "maskedCompletely": "Volledig gemaskeerd",
+    "maskedAs": "Gemaskeerd: {{mask}}",
+    "remove": "Regel voor {{role}} verwijderen",
+    "roleLabel": "Rol",
+    "actionLabel": "Effect",
+    "actionHide": "Verbergen",
+    "actionMask": "Maskeren",
+    "maskLabel": "Masker",
+    "maskComplete": "Volledig gemaskeerd",
+    "constantLabel": "Constante waarde",
+    "patternLabel": "Patroon",
+    "replaceLabel": "Vervanging",
+    "add": "Regel toevoegen"
+  }
+}

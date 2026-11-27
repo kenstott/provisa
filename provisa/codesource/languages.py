@@ -85,7 +85,7 @@ LANGUAGES: dict[str, CodeLanguage] = {
         CodeLanguage(
             "rust", ("rust",), "cargo", True, "provisa.rustlang.prepare", "provisa.rustlang.image"
         ),
-        # REQ-2225: Spark, one annotated PySpark script run by the Spark host (connectors/spark)
+        # REQ-2225: Spark, a connection to a cluster, joined to the Spark host (connectors/spark)
         # on the pinned CPython; a source of it is made by joining that host, never in dev mode.
         CodeLanguage(
             "spark", ("python",), "pypi", True, "provisa.python.prepare", "provisa.python.image"

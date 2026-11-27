@@ -1272,6 +1272,14 @@ class AppState:
         self._active_runtime().masking_rules = value
 
     @property
+    def ruled_columns(self) -> dict[Any, Any]:  # REQ-2278
+        return self._active_runtime().ruled_columns
+
+    @ruled_columns.setter
+    def ruled_columns(self, value: dict[Any, Any]) -> None:
+        self._active_runtime().ruled_columns = value
+
+    @property
     def masked_columns(self) -> list[tuple[int, str, list[dict], str]]:
         return self._active_runtime().masked_columns
 
@@ -1396,30 +1404,11 @@ class AppState:
         self.deployment_cache_default_ttl = int(value)
 
 
-state = AppState()
-
-
-def _stop_retired_runtime_listeners(runtime: OrgRuntime) -> None:
-    """REQ-1733: a retired runtime's push listeners stop with it; its org's next build wires
-    them again (``push_wiring.stop_runtime_listeners``)."""
-    from provisa.events.push_wiring import stop_runtime_listeners
-
-    stop_runtime_listeners(state, runtime.org_id, runtime.env)
-
-
-retire_hooks.append(_stop_retired_runtime_listeners)
-
-# REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
-# platform config through core.request_context, never by importing this module.
-from provisa.core import model_row_rules  # noqa: E402
-from provisa.core.request_context import (  # noqa: E402
-    register_active_engine_url_provider,
-    register_org_overrides_provider,
-    register_org_store_provider,
-    register_platform_config_provider,
-)
-from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
-
+# REQ-2269: the engine layer reads the persisted platform config through core.request_context
+# (REQ-1678). Registered before ``state = AppState()`` below, which builds the deployment's engine:
+# registered after it, the config's ``federation_engine`` was never read for that engine, so an
+# install whose config names its engine (install-host.sh: trino) ran the embedded default.
+from provisa.core.request_context import register_platform_config_provider  # noqa: E402
 
 # The platform config as last read, with the config generation it was read under. Asked on request
 # paths (engine selection, the materialize-store URL), so it is answered from memory and replaced
@@ -1440,6 +1429,33 @@ def _read_platform_config() -> dict:
     config = _config_io.read_config() or {}
     _platform_config_held = (generation, config)
     return config
+
+
+register_platform_config_provider(_read_platform_config)
+
+
+state = AppState()
+
+
+def _stop_retired_runtime_listeners(runtime: OrgRuntime) -> None:
+    """REQ-1733: a retired runtime's push listeners stop with it; its org's next build wires
+    them again (``push_wiring.stop_runtime_listeners``)."""
+    from provisa.events.push_wiring import stop_runtime_listeners
+
+    stop_runtime_listeners(state, runtime.org_id, runtime.env)
+
+
+retire_hooks.append(_stop_retired_runtime_listeners)
+
+# REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
+# platform config through core.request_context, never by importing this module.
+from provisa.core import model_row_rules  # noqa: E402
+from provisa.core.request_context import (  # noqa: E402
+    register_active_engine_url_provider,
+    register_org_overrides_provider,
+    register_org_store_provider,
+)
+from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
 
 
 register_active_engine_url_provider(lambda: state.active_engine_url)
@@ -1465,7 +1481,6 @@ def _acting_org_overrides() -> dict:
 
 register_org_overrides_provider(_acting_org_overrides)
 register_org_store_provider(_org_store_of)
-register_platform_config_provider(_read_platform_config)
 
 
 def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188
@@ -3324,6 +3339,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     # cloned envs.
     _rt.masking_rules = prod_rt.masking_rules
     _rt.masked_columns = prod_rt.masked_columns
+    _rt.ruled_columns = prod_rt.ruled_columns  # REQ-2278
     if _rt.data_mode == TEST_FAKE:
         async with state.model_db.acquire() as conn:
             await _load_masking_rules(
@@ -3864,6 +3880,14 @@ async def _rebuild_schemas_impl(
         # role would once it is put back.
         expand_column_grants([*tables, *withdrawn_tables], role_chains_by_id)
         narrow_own_domain_grants([*tables, *withdrawn_tables], roles)
+        # REQ-2278: a tag- or classification-keyed column rule hides its columns from its role and
+        # the roles descending from it, once the grants are folded down the chains; its masks
+        # are added as the masking rules load (app_loaders._load_masking_rules).
+        from provisa.core.repositories import column_rule as _column_rule_repo
+        from provisa.security.column_rules import hide_ruled_tables
+
+        state.ruled_columns = await _column_rule_repo.ruled_columns(_pg)
+        hide_ruled_tables([*tables, *withdrawn_tables], state.ruled_columns, role_chains_by_id)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
@@ -5927,6 +5951,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_classifications_router)
+    from provisa.api.admin.column_rules_router import (  # REQ-2278
+        router as column_rules_router,
+    )
+
+    app.include_router(column_rules_router)
     from provisa.api.admin.erd_layouts_router import router as erd_layouts_router  # REQ-2189
 
     app.include_router(erd_layouts_router)
@@ -6161,6 +6190,8 @@ def create_app() -> FastAPI:
     from provisa.core import request_deadline as _request_deadline
     from provisa.core.limits import bound_request_transport, http_transport_for_path
     from provisa.core.request_thread import client_watch
+    from provisa.executor.local_results import bound_request_base
+    from starlette.requests import Request as _StarletteRequest
 
     class _RequestTransportMiddleware:
         def __init__(self, inner: Any) -> None:
@@ -6170,12 +6201,15 @@ def create_app() -> FastAPI:
             if scope["type"] != "http":
                 await self._inner(scope, receive, send)
                 return
+            # REQ-1191: a result kept on this server is answered at this request's own base URI.
+            base_uri = str(_StarletteRequest(scope).base_url)
             transport = http_transport_for_path(scope.get("path", ""))
             if transport is None:
-                with bound_request_transport(None):
+                with bound_request_transport(None), bound_request_base(base_uri):
                     await self._inner(scope, receive, send)
                 return
             with (
+                bound_request_base(base_uri),
                 bound_request_transport(transport),
                 _request_deadline.request(transport) as deadline,
             ):

@@ -134,17 +134,21 @@ describe("glossary domain filter", () => {
     });
     // The declaration is required in multi-domain mode: an unscoped term is reachable by every
     // glossary-right holder, so minting one with no domains would be a way around the gate.
+    // REQ-1968: Create is never disabled by it; pressing it marks the empty domains and refuses.
     const save = screen.getByTestId("glossary-add-save-btn");
-    expect(save).toBeDisabled();
-
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(mockCreate).not.toHaveBeenCalled();
     const input = screen.getByTestId("glossary-add-domains-input");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+
     fireEvent.click(input);
     const listbox = document.getElementById(
       input.getAttribute("aria-controls") as string,
     ) as HTMLElement;
     fireEvent.click(within_(listbox, "sales"));
 
-    await waitFor(() => expect(save).not.toBeDisabled());
+    await waitFor(() => expect(input).not.toHaveAttribute("aria-invalid", "true"));
     fireEvent.click(save);
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({ name: "Customer", domains: ["sales"] }),

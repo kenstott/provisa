@@ -21,6 +21,7 @@
       "clients": "Clients",
       "opsPerSec": "Ops/s",
       "filterPlaceholder": "Filtrer par table ou domaine…",
+      "noMatch": "Aucune table ne correspond au filtre.",
       "purgeAll": "Purger tout le cache",
       "purging": "Purge en cours…",
       "table": "Table",

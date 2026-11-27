@@ -9,6 +9,12 @@
     "scope_column": "Spalte",
     "scope_relationship": "Beziehung",
     "scope_command": "Befehl",
+    "scope_command_column": "Befehlsspalte",
+    "commandColumnsTitle": "Ausgabespalten von Befehlen",
+    "commandColumnsNone": "Kein Befehl deklariert Ausgabespalten.",
+    "colCommand": "Befehl",
+    "colOutputColumn": "Ausgabespalte",
+    "colTags": "Tags",
     "scope_product": "Datenprodukt",
     "scope_term": "Glossarbegriff",
     "scope_rls_rule": "Zeilenregel",
@@ -40,8 +46,6 @@
     "policy_required": "Erforderlich",
     "requiredLabel": "Erforderlich",
     "requiredDesc": "Jedes Objekt der unter „Gilt für“ genannten Arten muss dieses Tag tragen. Fehlt es, erscheint das Objekt im Tag-Bericht als fehlend.",
-    "reasonPolicyBadge": "Begründung: {{policy}}",
-    "expiresPolicyBadge": "Ablauf: {{policy}}",
     "createButton": "Tag erstellen",
     "saveButton": "Tag speichern",
     "colId": "ID",
@@ -65,6 +69,8 @@
     "purposeAria": "Über Tags",
     "outsideTitle": "Zuweisungen außerhalb der erlaubten Domänen",
     "outsideBody": "Das Speichern hat diese Zuweisungen behalten. Entfernen Sie das Tag von einem Objekt, zu dem es nicht mehr gehört.",
-    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}",
+    "templateSection": "Vorlage",
+    "noMatch": "Keine Tags entsprechen dem Filter"
   }
 }
