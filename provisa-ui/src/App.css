@@ -3251,3 +3251,49 @@ main {
 .panel-body > .panel-strip:empty + * {
   margin-top: 0;
 }
+
+/* REQ-2277 rule 10: the one dialog layout (components/modal/ModalLayout.tsx). The dialog is at most
+ * the window's height; its title stays at the top, its content scrolls, and its buttons sit in a
+ * fixed bar at its bottom, outside the scrolling content. */
+.modal-layout__content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-layout__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.modal-layout__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mb-padding, var(--mantine-spacing-md));
+  padding-top: 0;
+}
+.modal-layout__body:only-child .modal-layout__scroll {
+  padding-top: var(--mb-padding, var(--mantine-spacing-md));
+}
+.modal-layout__scroll--fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-layout__scroll.modal-layout__scroll--flush {
+  padding: 0;
+}
+.modal-layout__bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem var(--mb-padding, var(--mantine-spacing-md));
+  border-top: 1px solid var(--border);
+  background: var(--mantine-color-body);
+}
+.modal-layout__bar:empty {
+  display: none;
+}

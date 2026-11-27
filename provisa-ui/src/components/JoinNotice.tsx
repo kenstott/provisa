@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Alert, Button, List, Loader, Modal, Stack, Text } from "@mantine/core";
+import { Alert, Button, List, Loader, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
@@ -135,7 +136,7 @@ export function JoinNotice() {
   }
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={() => {}}
       title={
@@ -203,6 +204,6 @@ export function JoinNotice() {
           )}
         </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

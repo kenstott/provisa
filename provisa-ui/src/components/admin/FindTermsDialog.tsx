@@ -25,7 +25,6 @@ import {
   Button,
   FileInput,
   Group,
-  Modal,
   MultiSelect,
   SegmentedControl,
   Select,
@@ -35,6 +34,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { RotateCw, ScanSearch } from "lucide-react";
 import {
   fetchScannableDocuments,
@@ -586,7 +586,7 @@ export function FindTermsDialog({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("findTerms.title")}
@@ -627,6 +627,6 @@ export function FindTermsDialog({
           </Stack>
         </Stack>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

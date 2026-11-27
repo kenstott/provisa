@@ -24,7 +24,6 @@ import {
   Badge,
   Button,
   Group,
-  Modal,
   MultiSelect,
   Select,
   Stack,
@@ -33,6 +32,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Trash2 } from "lucide-react";
 import {
   generateGlossaryDefinition,
@@ -698,7 +698,7 @@ export function TermEditForm({
         />
       </FormLayout>
       {loss && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setLoss(null)}
           title={tagLossTitle(t, loss.columns, loss.into)}
@@ -715,7 +715,7 @@ export function TermEditForm({
               void onSaved(false, false);
             }}
           />
-        </Modal>
+        </ModalLayout>
       )}
     </Stack>
   );

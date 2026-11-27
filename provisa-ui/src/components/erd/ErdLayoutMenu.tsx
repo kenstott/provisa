@@ -14,7 +14,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Button, Group, Menu, Modal, TextInput } from "@mantine/core";
+import { Badge, Button, Group, Menu, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Check, ChevronDown } from "lucide-react";
 import type { SavedLayoutName } from "../../api/erdLayouts";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -36,7 +37,7 @@ function SaveAsDialog({
   const trimmed = name.trim();
   const clash = taken.includes(trimmed);
   return (
-    <Modal opened onClose={onClose} title={t("erdLayouts.saveAsTitle")} centered>
+    <ModalLayout opened onClose={onClose} title={t("erdLayouts.saveAsTitle")} centered>
       <FormLayout>
         <FormField size="medium">
           <TextInput
@@ -55,7 +56,7 @@ function SaveAsDialog({
           saveProps={{ disabled: trimmed === "" || clash, "data-testid": "erd-layout-save-as-ok" }}
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }
 

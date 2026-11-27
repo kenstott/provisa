@@ -16,7 +16,6 @@ import {
   Button,
   Collapse,
   Group,
-  Modal,
   Pagination,
   Stack,
   Table,
@@ -25,6 +24,7 @@ import {
   PasswordInput,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import { ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
@@ -421,7 +421,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
         </Group>
       )}
 
-      <Modal
+      <ModalLayout
         opened={removing !== null}
         onClose={() => setRemoving(null)}
         title={t(
@@ -456,7 +456,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
             }
           />
         </Stack>
-      </Modal>
+      </ModalLayout>
     </Stack>
   );
 }

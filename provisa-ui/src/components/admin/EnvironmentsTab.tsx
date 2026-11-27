@@ -17,7 +17,6 @@ import {
   Checkbox,
   Group,
   List,
-  Modal,
   Select,
   Stack,
   Tabs,
@@ -25,6 +24,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import { GitBranch, X } from "lucide-react";
 import { PageTitle } from "../PageTitle";
@@ -879,7 +879,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
           </Tabs.Panel>
         </Tabs>
 
-        <Modal
+        <ModalLayout
           opened={mergeSource !== null}
           onClose={() => setMergeSource(null)}
           title={t("environmentsTab.mergeTitle", { env: mergeSource?.name })}
@@ -1056,7 +1056,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
               </Tip>
             </FormFooter>
           </FormLayout>
-        </Modal>
+        </ModalLayout>
 
         {inUse && (
           <DependentsDialog
@@ -1065,7 +1065,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
             onClose={() => setInUse(null)}
           />
         )}
-        <Modal
+        <ModalLayout
           opened={deleteTarget !== null}
           onClose={() => setDeleteTarget(null)}
           title={t("environmentsTab.deleteTitle", { env: deleteTarget?.name })}
@@ -1113,7 +1113,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
               }
             />
           </FormLayout>
-        </Modal>
+        </ModalLayout>
       </Stack>
     </>
   );
