@@ -260,12 +260,18 @@ async def _announce_ready(
 KEEP_ALIVE_SECONDS = 620
 
 
+_WILDCARD_BINDS = frozenset({"0.0.0.0", "::", ""})  # nosec B104 - compared, never bound
+
+
 def _name_local_address(host: str, api_port: int) -> None:
     """REQ-2135: a local start names the address its API listens on; the boot stores it as
     server.public_url when that is unset (provisa/core/local_install.py)."""
     from provisa.core.local_install import LOCAL_ADDRESS_ENV
 
-    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{host}:{api_port}")
+    # A wildcard bind (every address) is no address a client names; on this host the server it
+    # starts is reached as localhost (release 513's installed host stored http://0.0.0.0:8000).
+    address = "localhost" if host in _WILDCARD_BINDS else host
+    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{address}:{api_port}")
 
 
 async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:

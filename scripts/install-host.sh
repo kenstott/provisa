@@ -25,6 +25,9 @@
 # listens only on 127.0.0.1, keeps its data under --data-dir, and its secrets are generated once
 # and kept across upgrades.
 #
+# A file source's files (Parquet, CSV, SQLite) go under <data-dir>/files: Trino reads that directory
+# at the same path, and no other host path.
+#
 # Every function below is callable on its own: tests source this file (main runs only when it is
 # executed) and check the arguments and the rendered files.
 
@@ -480,6 +483,13 @@ ensure_trino_exchange_dir() {
   install -d -m 0700 -o "$INSTALL_HOST_TRINO_UID" -g "$INSTALL_HOST_TRINO_UID" "$1/trino-exchange"
 }
 
+ensure_files_dir() {
+  # $1 data dir. Where a file source's files go on this host (a Parquet or CSV source's path): Provisa
+  # hands Trino a file source's directory as the host path it names, and Trino runs in Docker, so
+  # trino_run_args mounts this directory at its own path. The service user writes it; Trino reads it.
+  install -d -m 0755 -o "$INSTALL_HOST_USER" -g "$INSTALL_HOST_USER" "$1/files"
+}
+
 render_trino_exchange_properties() {
   cat <<'EOF'
 exchange-manager.name=filesystem
@@ -527,6 +537,8 @@ trino_run_args() {
   done
   printf '%s\n' -v "$data/fake-key:/etc/provisa/fake-key:ro"
   printf '%s\n' -v "$data/trino-exchange:/data/provisa/exchange"
+  # File sources under the install's files directory, at the path Provisa names them by.
+  printf '%s\n' -v "$data/files:$data/files:ro"
   for name in "$@"; do
     printf '%s\n' -v "$plugins/$name:/usr/lib/trino/plugin/$name:ro"
   done
@@ -715,6 +727,7 @@ write_files() {
     install -d -m 0755 -o "$INSTALL_HOST_USER" -g "$INSTALL_HOST_USER" "$data/trino/$side"
   done
   ensure_trino_exchange_dir "$data"
+  ensure_files_dir "$data"
   # The core services' data and their secrets' files. PostgreSQL's entrypoint takes its data
   # directory over itself; MinIO's image runs as its own non-root uid.
   install -d -m 0700 "$cfg/core" "$data/postgres"

@@ -1047,3 +1047,24 @@ def test_the_install_starts_the_core_services_before_trino_and_zaychik_after():
         "start_zaychik",
         "start_provisa",
     ]
+
+
+def test_trino_reads_the_installs_files_directory_at_the_path_provisa_names_it(tmp_path):
+    # Release 513's installed-host smoke: a Parquet source's directory is a host path Provisa
+    # hands Trino as-is (pgwire_replica: the adapter's "directory" operand), and Trino runs in
+    # Docker, so a file outside every mount failed "Directory does not exist" and the query
+    # "Schema 'default' does not exist". The install's files directory is mounted at its own path.
+    from tests.smoke.installed_config import installed_files_dir
+
+    files = installed_files_dir(Path("/srv/data"))
+    args = _ok(
+        "trino_run_args /srv/etc /srv/data /srv/provisa/trino/plugins trinodb/trino:481 trino-file"
+    ).splitlines()
+    mounts = [args[i + 1] for i, a in enumerate(args) if a == "-v"]
+    assert f"{files}:{files}:ro" in mounts
+    calls = tmp_path / "install.calls"
+    _ok(
+        f'install() {{ printf "%s\\n" "$*" >> {shlex.quote(str(calls))}; }}\n'
+        "ensure_files_dir /srv/data"
+    )
+    assert calls.read_text().splitlines() == [f"-d -m 0755 -o provisa -g provisa {files}"]

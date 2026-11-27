@@ -59,7 +59,7 @@ import pytest
 from tests.integration import mcp_pin
 from tests.integration.mcp_pin import principal_env, seat_principal
 from tests.port_lease import lease_ports
-from tests.smoke.installed_config import write_installed_smoke_config
+from tests.smoke.installed_config import installed_files_dir, write_installed_smoke_config
 
 pytestmark = [pytest.mark.isolated]
 
@@ -421,9 +421,17 @@ def _installed_config(install: _Install, root: Path) -> Path:
 
     installed = yaml.safe_load(_root(["cat", str(install.config_dir / "provisa.yaml")]))
     assert installed.get("federation_engine") == "trino", installed
-    smoke = write_installed_smoke_config(root, installed)
-    shutil.copytree(REPO / "demo" / "files", root / "demo" / "files")
-    return smoke
+    return write_installed_smoke_config(root, installed)
+
+
+def _installed_demo_files(install: _Install, root: Path) -> Path:
+    """The demo's files, copied where the service's user and the install's Trino both read them:
+    under the install's files directory, which Trino reads at the same path (Trino runs in Docker,
+    and a Parquet source's directory is handed to it as the host path)."""
+    demo = installed_files_dir(install.data_dir) / root.name
+    _root(["cp", "-r", str(REPO / "demo" / "files"), str(demo)])
+    _root(["chmod", "-R", "a+rX", str(demo)])
+    return demo
 
 
 def _restart_service(install: _Install) -> float:
@@ -456,7 +464,7 @@ def _journal(since: float) -> str:
 def _installed_instance() -> Iterator[Instance]:
     install = _Install.from_env()
     root = Path(tempfile.mkdtemp(prefix="provisa-smoke-", dir="/tmp"))
-    # The service's user reads the configuration and the demo's files from here.
+    # The service's user reads the configuration from here.
     root.chmod(0o755)
     log_dir = Path(os.environ.get("PROVISA_SMOKE_LOG_DIR", str(root / "logs")))
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -465,9 +473,11 @@ def _installed_instance() -> Iterator[Instance]:
     processes: list[subprocess.Popen] = []
     base = {k: v for k, v in os.environ.items() if not k.startswith(("PROVISA_", "PG_", "TENANT_"))}
     dropped_in = source_started = False
+    demo_files: Path | None = None
     try:
         _python(["demo/files/create_demo_files.py"], base)
         config = _installed_config(install, root)
+        demo_files = _installed_demo_files(install, root)
         seed = root / "seed.sql"
         seed.write_text(_SEED_SOURCE_PG)
         seed.chmod(0o644)
@@ -487,7 +497,7 @@ def _installed_instance() -> Iterator[Instance]:
         env = {
             **_app_env(sides, install.api, grpc_port, flight, pgwire, mcp, bolt),
             "PROVISA_CONFIG": str(config),
-            "PROVISA_DEMO_DIR": str(root / "demo" / "files"),
+            "PROVISA_DEMO_DIR": str(demo_files),
         }
         smoke_env = root / "smoke.env"
         smoke_env.write_text("".join(f"{k}={v}\n" for k, v in env.items()))
@@ -554,6 +564,8 @@ def _installed_instance() -> Iterator[Instance]:
             _as_service(
                 install, ["-m", "provisa.core.control_plane_pg", "stop", str(source_dir)], root
             )
+        if demo_files is not None:
+            _root(["rm", "-rf", str(demo_files)])
         shutil.rmtree(root)
 
 

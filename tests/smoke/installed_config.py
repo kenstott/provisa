@@ -22,6 +22,12 @@ REPO = Path(__file__).resolve().parents[2]
 CONFIG = "tests/smoke/smoke.yaml"
 
 
+def installed_files_dir(data_dir: Path) -> Path:
+    """The install's files directory: scripts/install-host.sh mounts it into the Trino container at
+    this same path, so a file source Provisa names under it is one Trino reads."""
+    return data_dir / "files"
+
+
 def installed_smoke_config(installed: dict) -> dict:
     """The smoke configuration as one file, on the engine the install's provisa.yaml names.
 
