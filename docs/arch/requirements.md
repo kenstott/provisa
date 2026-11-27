@@ -9926,7 +9926,7 @@ The source-creation type dropdown displays the UNION of all possible source type
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Source replicas are built at boot by posting replace events for each source, and refreshed by events based on their cache_ttl cadence or push listeners.
+Source replicas are built at boot by posting replace events for each source, and refreshed by events based on their cache_ttl cadence or push listeners. (Amended 2026-11-27 by the lead after [REQ-1632](#REQ-1632). Boot posts a boot event only for nodes that hold no replica (watched live tables, push sources), so the views over them get their first build. Replicas are kept as they are or created empty by the boot reconcile ([REQ-1632](#REQ-1632)) and are filled by their regular refresh; boot never reloads a replica in full.)
 
 **Use case:** Ensures all source data is available immediately at startup and stays current during runtime through event-driven updates.
 
