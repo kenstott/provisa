@@ -380,7 +380,7 @@ All roles receive sampled results capped at DEFAULT_SAMPLE_SIZE (default: 100 ro
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-The gRPC approval hook maintains a single persistent channel per Provisa instance (one grpc.aio channel reused across all calls to that endpoint), reducing connection overhead for high-throughput co-located policy services.
+The gRPC approval hook maintains a single persistent channel per Provisa instance (one grpc.aio channel reused across all calls to that endpoint), reducing connection overhead for high-throughput co-located policy services. (Amended 2026-11-27 by the lead after NIXOS-RERUN-3; the persistent channel is one gRPC channel per hook instance, safe to call from every request thread's event loop; it is not tied to the event loop that created it, so the earlier one-grpc.aio-channel wording is superseded. Behaviour is unchanged, one channel reused across all calls to that endpoint.)
 
 **Use case:** Persistent gRPC channel eliminates per-call connection overhead for high-volume approval checks against a co-located policy service.
 
