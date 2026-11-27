@@ -28335,3 +28335,17 @@ Split 2026-11-27 from [REQ-194](#REQ-194) (naming authority) after verification.
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2362 · Marketing & Presence {#REQ-2362}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Release emails on provisa.dev with double opt-in. A visitor gives a first name and email on the home page, or ticks an optional, unticked box on the license form. The address joins the Resend release segment only after its confirmation link is clicked (the license confirmation link for the box), and the link expires after 48 hours. Release emails are Resend Broadcasts to that segment, so each carries an unsubscribe link and unsubscribed contacts are skipped. Signups made on the original form were never confirmed and are not added automatically.
+
+**Use case:** People who evaluate Provisa hear about new releases without watching GitHub, and only addresses whose owners confirmed are emailed.
+
+**Code:** `site/index.html`, `site/register.html`, `site/functions/api/subscribe.js`, `site/functions/api/subscribe/confirm.js`, `site/functions/api/register.js`, `site/functions/api/register/confirm.js`, `site/functions/_lib/releases.js`, `site/schema.sql`, `site/wrangler.jsonc`, `site/privacy.html`, `site/README.md`
+
+**Tests:** —

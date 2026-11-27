@@ -1,5 +1,9 @@
--- D1 schema for the mailing-list signup. Apply once after creating the database:
+-- D1 schema for the release-email signup and license registration. Apply after creating the
+-- database, and again whenever a table is added (CREATE TABLE IF NOT EXISTS is idempotent):
 --   wrangler d1 execute provisa-subscribers --remote --file=site/schema.sql
+
+-- Legacy: rows from the original "Keep me posted" form, which never confirmed the address.
+-- Nothing writes here since REQ-2362; release signups live in release_signups below.
 CREATE TABLE IF NOT EXISTS subscribers (
   email      TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
@@ -23,4 +27,17 @@ CREATE TABLE IF NOT EXISTS license_registrations (
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   confirmed_at  TEXT,
   UNIQUE (email, machine_id)
+);
+
+-- Double opt-in release-email signup (REQ-2362). `token` is the confirmation-link secret; a
+-- signup joins the Resend release list only once confirmed. One row per email: signing up again
+-- replaces the token. `license_token` is set when the signup came from the license form's
+-- release box, whose license confirmation link confirms it too.
+CREATE TABLE IF NOT EXISTS release_signups (
+  token          TEXT PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,
+  name           TEXT NOT NULL,
+  license_token  TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  confirmed_at   TEXT
 );
