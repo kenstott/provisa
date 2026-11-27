@@ -137,12 +137,25 @@ def _reads_as_the_file_does(tmp_path, found: list[dict], url: str, opts: dict) -
         assert pac.read_csv(f).equals(pac.read_csv(str(local)))
 
 
+def _print_server_log() -> None:
+    """The end of the source's connector server's own log, so a failed read shows what the
+    server's file adapter saw (the log is in the org's folder on this node)."""
+    for log in org_files.folder("req2280_live").glob(
+        f"nodes/*/pgwire/*/od-live/{pr.SERVER_LOG_NAME}"
+    ):
+        print(f"--- {log} (last 150 lines)")
+        print("\n".join(log.read_text(errors="replace").splitlines()[-150:]))
+
+
 def _engine_reads_as_the_file_does(source: Source) -> None:
     """The source's Calcite pgwire server reads ``orders`` live from the drive (the file adapter's
     drive storage provider, signed in with the source's fields) and answers the file's rows."""
     replica = pr.ConnectorReplica(source)
     try:
         rows = asyncio.run(replica.load("orders"))
+    except Exception:
+        _print_server_log()
+        raise
     finally:
         replica.close()
     assert sorted(rows, key=lambda r: r["id"]) == ROWS
