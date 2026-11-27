@@ -633,6 +633,8 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-1296: the bootstrap org id, written as root into the env_file by write_env_file.
+      ORG_ID: "\${ORG_ID:-}"
       # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
       # only under it (provisa/security/sni.py); unset, no host names an org.
       VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
@@ -1289,6 +1291,9 @@ write_env_file() {
       set_keys+="${var} "
     fi
   done
+  # REQ-1296: the bootstrap org id is 'root'. Written on every run, replacing any earlier value.
+  printf 'ORG_ID=root\n' >> "$merged"
+  set_keys+="ORG_ID "
   if [ -f "$env_file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       key="${line%%=*}"
