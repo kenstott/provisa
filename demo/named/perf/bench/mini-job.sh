@@ -10,6 +10,7 @@
 set -uo pipefail
 source ~/step.sh
 ROUNDS=${ROUNDS:-2}
+STAGE_SPANS=${STAGE_SPANS:-}
 SRC=~/src
 
 setup() {
@@ -28,7 +29,7 @@ round() {
   cd "$SRC"
   . "$HOME/.cargo/env"
   .venv/bin/python demo/named/perf/bench/harness_trial.py \
-    --engine duckdb --engine pg --engine trino --output-dir ~/out/"$1"
+    --engine duckdb --engine pg --engine trino --output-dir ~/out/"$1" ${STAGE_SPANS:+--stage-spans}
 }
 
 step setup setup

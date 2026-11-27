@@ -4,7 +4,7 @@
 # must agree across transports; bench_sanity.py writes each engine's timing flags. Timings are
 # internal and never published.
 #
-#   demo/named/perf/bench/mini.sh [--ref SHA|origin/main] [--rounds N] [--machine n2-standard-8]
+#   demo/named/perf/bench/mini.sh [--ref SHA|origin/main] [--rounds N] [--machine n2-standard-8] [--stage-spans]
 #
 # The VM is created, used and deleted by spot-bench.sh (Spot, 4 h max run, termination DELETE, a
 # trap that deletes it on any exit and lists instances and disks afterwards). It is labelled
@@ -19,9 +19,9 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SPOT_BENCH=${SPOT_BENCH:-$HOME/.provisa-agent/lead/spot-template/spot-bench.sh}
 PROJECT=${PROJECT:-provisa-test-473}
-REF=origin/main; ROUNDS=2; MACHINE=n2-standard-8
+REF=origin/main; ROUNDS=2; MACHINE=n2-standard-8; STAGE_SPANS=
 while [ $# -gt 0 ]; do case $1 in
-  --ref) REF=$2; shift 2;; --rounds) ROUNDS=$2; shift 2;; --machine) MACHINE=$2; shift 2;;
+  --ref) REF=$2; shift 2;; --rounds) ROUNDS=$2; shift 2;; --machine) MACHINE=$2; shift 2;; --stage-spans) STAGE_SPANS=1; shift;;
   *) echo "bad arg $1"; exit 2;; esac; done
 DATE=$(date +%Y%m%d)
 NAME=provisa-bench-mini-$DATE-$(date +%H%M%S)
@@ -29,7 +29,7 @@ OUT=${OUT:-$HOME/provisa-agent-logs/mini-bench-$DATE-$(date +%H%M%S)}
 mkdir -p "$OUT"
 # ROUNDS reaches the job through its own first line: spot-bench.sh passes only REF.
 JOB=$OUT/mini-job.sh
-{ echo "ROUNDS=$ROUNDS"; cat "$HERE/mini-job.sh"; } > "$JOB"
+{ echo "ROUNDS=$ROUNDS"; echo "STAGE_SPANS=$STAGE_SPANS"; cat "$HERE/mini-job.sh"; } > "$JOB"
 
 # Label the VM once it exists; spot-bench.sh picks the zone.
 (
