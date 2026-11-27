@@ -127,7 +127,9 @@ def test_a_relationship_s_condition_in_a_nested_where_correlates_with_the_nested
         schema_and_ctx,
         '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
     )
-    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" "t1" WHERE' in q.sql
+    # REQ-2174: applied inside the field's grouped read, to the rows it groups.
+    assert 'FROM "public"."orders" "t1" WHERE EXISTS' in q.sql
+    assert 'GROUP BY "t1"."customer_id"' in q.sql
     assert (
         'EXISTS (SELECT 1 FROM "public"."customers" "w1" WHERE "w1"."id" = "t1"."customer_id"'
         ' AND ("w1"."name" = $1))'
@@ -155,7 +157,8 @@ def test_a_nested_where_without_a_relationship_reads_its_rows_under_the_alias(sc
     q = _compiled(
         schema_and_ctx, '{ customers { id orders(where: { status: { eq: "open" } }) { id } } }'
     )
-    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" "t1" WHERE' in q.sql
+    # REQ-2174: the grouped read keeps the rows it groups, read under the field's alias.
+    assert 'FROM "public"."orders" "t1" WHERE "t1"."status" = $1 GROUP BY' in q.sql
 
 
 def test_an_empty_or_holds_for_no_row_and_an_empty_and_for_every_row(schema_and_ctx):

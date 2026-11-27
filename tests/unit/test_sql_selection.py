@@ -221,6 +221,7 @@ def _read(cardinality: str, query: str = "{ x { name } }", **overrides):
         2,
         _sources(),
         None,
+        collector=ParamCollector(),
     )
 
 
@@ -270,6 +271,7 @@ def _kv(jm: JoinMeta, query: str = "{ x { children { name } } }"):
         _sources(),
         None,
         joins,
+        collector=ParamCollector(),
     )
     return kv, joins, counter
 
@@ -318,6 +320,7 @@ def test_build_rel_json_kv_target_expr_and_virtual_column():
         _sources(),
         None,
         joins,
+        collector=ParamCollector(),
     )
     assert "CONCAT(" in joins[0]
 
@@ -336,6 +339,7 @@ def test_build_rel_json_kv_gql_json_blob_column():
         _sources(),
         None,
         [],
+        collector=ParamCollector(),
     )
     assert "json_object(KEY 'a' VALUE" in kv[0]
 
@@ -354,6 +358,7 @@ def test_build_rel_json_kv_plain_scalar_column():
         _sources(),
         None,
         [],
+        collector=ParamCollector(),
     )
     assert kv == ['KEY \'name\' VALUE "t0"."nm"']
 
