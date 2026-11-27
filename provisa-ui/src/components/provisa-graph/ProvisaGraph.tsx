@@ -37,7 +37,7 @@ import {
 } from "./core";
 import { cyCanvas, type CyCanvas } from "./cyCanvas";
 import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
-import { flowLayout, flowParts, packUnder } from "./flow";
+import { flowLayout, flowParts, foldsLast, packUnder } from "./flow";
 import { GraphControls, type GraphCommandButton, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
 import { GroupResize } from "./GroupResize";
@@ -548,6 +548,7 @@ export function ProvisaGraph({
         // Lineage's: ELK left to right; what no line reaches packed under the rest.
         const { isolated } = flowParts(cy);
         const placed = () => {
+          foldsLast(cy);
           const rect = box.getBoundingClientRect();
           packUnder(cy, isolated, rect.height > 0 ? rect.width / rect.height : 1.6);
           fitClear(cy as unknown as CyInstance);

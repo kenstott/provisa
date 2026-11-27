@@ -57,6 +57,10 @@ export function flowLayout(eles: unknown) {
 /** What of the core the flow preset reads and moves. */
 interface FlowNode {
   id(): string;
+  parent(): FlowEles & { id(): string; empty(): boolean; children(): FlowEles };
+  children(): FlowEles;
+  position(): { x: number; y: number };
+  height(): number;
   isOrphan(): boolean;
   isParent(): boolean;
   ancestors(): ArrayLike<FlowNode>;
@@ -78,7 +82,7 @@ interface FlowEles {
   shift(by: { x: number; y: number }): void;
 }
 interface FlowCore {
-  nodes(): FlowEles;
+  nodes(selector?: string): FlowEles;
   edges(): { forEach(fn: (e: { source(): FlowNode; target(): FlowNode }) => void): void };
   getElementById(id: string): FlowNode & FlowEles;
   batch(fn: () => void): void;
@@ -145,4 +149,26 @@ export function packUnder(core: Core, ids: string[], aspectRatio: number): void 
       movable.shift({ x: x0 + to.x - b.x1, y: y0 + to.y - b.y1 });
     }
   });
+}
+
+/** The gap between two nodes of a group, as ELK spaces them (GROUP_OPTIONS). */
+const GROUP_NODE_GAP = 10;
+
+/** Each group's fold node (``kind: "more"``: the nodes it stands for are not drawn) moved under the
+ * group's other nodes: it has no line, so ELK may put it anywhere in the group's column. */
+export function foldsLast(core: Core): void {
+  const cy = core as unknown as FlowCore;
+  cy.batch(() =>
+    cy.nodes('[kind = "more"]').forEach((fold) => {
+      const group = fold.parent();
+      if (group.empty()) return;
+      let bottom = -Infinity;
+      group.children().forEach((n) => {
+        if (n.id() !== fold.id()) bottom = Math.max(bottom, n.position().y + n.height() / 2);
+      });
+      if (bottom === -Infinity) return;
+      const at = fold.position();
+      fold.shift({ x: 0, y: bottom + GROUP_NODE_GAP + fold.height() / 2 - at.y });
+    }),
+  );
 }
