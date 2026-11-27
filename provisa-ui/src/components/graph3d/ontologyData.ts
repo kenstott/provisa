@@ -348,12 +348,13 @@ function termSelection(s: QueryScope): Selection {
 
 /** The terms ``s`` reads, each once: those its filters keep, and under a search or a focus those
  * within its hop count of the matches or of the focus (any of several). All hops, which no fixed
- * filter expresses, keeps the matches or the focus alone, and its hops are walked (readOntology). */
-function rootWhere(s: QueryScope): Where | undefined {
+ * filter expresses, keeps the matches or the focus alone, and its hops are walked (readOntology).
+ * Without ``reach``, the matches or the focus alone at any hop count. */
+function rootWhere(s: QueryScope, reach: boolean): Where | undefined {
   const kept = termKept(s);
   const seed = seedWhere(s);
   const levels = termLevels(s);
-  const hops = Number.isFinite(levels) && s.layers.has("ontology") ? levels : 0;
+  const hops = reach && Number.isFinite(levels) && s.layers.has("ontology") ? levels : 0;
   return all([
     ...(kept ? [kept] : []),
     ...(s.orphans ? [] : [related(s)]),
@@ -363,7 +364,7 @@ function rootWhere(s: QueryScope): Where | undefined {
 
 function termsField(m: MetaReader, s: QueryScope): string | null {
   // REQ-2174 (amended 2026-11-27): one root field, its where the reach, each term read once.
-  return rootField(m, "_terms", termSelection(s), rootWhere(s));
+  return rootField(m, "_terms", termSelection(s), rootWhere(s, true));
 }
 
 /** REQ-2174: All's walk past its root -- ``ids``, the terms the last hop's edges reach that no hop
@@ -381,16 +382,16 @@ export function ontologyHopQuery(
   return field === null ? null : operation(`OntologyHop${hop}`, [field]);
 }
 
-/** REQ-2143: how many terms the view's query would read -- those within its hops of a search's
- * matches or a focus, else every term the filters keep -- read as their ids alone, before the graph
- * is. */
+/** REQ-2143: how many terms the view's query would read at its root -- the matches under a search
+ * or the focus, else every term the filters keep -- read as their ids alone, before the graph is.
+ * Its hops are not counted: what they draw past the budget is judged once read (loadOntology). */
 export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null {
   // Each term's domains with it: the overview counts the terms in each.
   const field = rootField(
     m,
     "_terms",
     { fields: ["id"], rels: { domains: { sel: { fields: ["domain_id"] } } } },
-    rootWhere(s),
+    rootWhere(s, false),
   );
   return field === null ? null : operation("OntologyCount", [field]);
 }
