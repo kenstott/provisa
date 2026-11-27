@@ -105,6 +105,8 @@ function Native-Env([string]$ControlPlaneUrl) {
   if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
   if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'org_admin' }
   # REQ-294: what the stage command filled at first launch (provisa.runtime_deps.stage_assets).
+  # REQ-1296: the bootstrap org id is 'root'.
+  $e['ORG_ID'] = 'root'
   $e['PROVISA_DUCKDB_EXT_DIR']     = Join-Path $ProvisaHome 'duckdb-ext'
   $e['PROVISA_RUNTIME_DEPS_CACHE'] = Join-Path $ProvisaHome 'runtime-deps'
   # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the claude_desktop_config

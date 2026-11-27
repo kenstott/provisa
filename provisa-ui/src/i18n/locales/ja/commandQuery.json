@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{surface}} で {{name}}",
+    "linkLabel": "{{surface}} で {{name}} を呼び出す",
+    "open": "開く",
+    "givenAs": "{{name}} の指定方法",
+    "sourceTable": "テーブル",
+    "sourceQuery": "クエリ",
+    "sourceRows": "行",
+    "tableHint": "読み取り可能なテーブル。先頭の {{cap}} 行が渡されます。",
+    "queryHint": "先頭の {{cap}} 行が渡されます。",
+    "rowsHint": "1 行目で列名を指定した CSV、またはオブジェクトの JSON 配列。最大 {{cap}} 行。",
+    "missing": "未指定: {{names}}",
+    "notNumber": "{{name}} は数値ではありません",
+    "notBoolean": "{{name}} は true でも false でもありません",
+    "notJson": "{{name}} は JSON ではありません",
+    "notRows": "{{name}}: 1 行目で列名を指定した CSV、またはオブジェクトの JSON 配列を貼り付けてください",
+    "overCap": "{{name}}: 最大 {{cap}} 行",
+    "notReadable": "{{name}}: 選択したテーブルは読み取り可能なテーブルではありません"
+  }
+}

@@ -12,8 +12,8 @@
 
 Every plan the one pipeline executes (pgwire, Flight SQL, /data/sql, gRPC, Bolt, REST, GraphQL)
 reads and writes the one response cache under ``cache.key.raw_sql_cache_key``. An entry holds the
-result, never a surface's own response shape, and is ONE Arrow IPC stream (zstd-compressed
-buffers) of one of two explicitly tagged kinds (schema metadata ``provisa.cache.kind``):
+result, never a surface's own response shape, and is ONE Arrow IPC stream (its buffers
+zstd-compressed once the result is large, ``_COMPRESS_FROM``) of one of two explicitly tagged kinds (schema metadata ``provisa.cache.kind``):
 
 * ``arrow`` — the result's record batches. A miss whose terminal had the engine's Arrow (the
   buffered chokepoint, pgwire's ENGINE sink, gRPC's stream, Flight SQL's Arrow terminal) keeps
@@ -83,6 +83,12 @@ _OURS = frozenset({_KIND, _ORIGIN, _TYPES, _NAMES, _FORMATS, _DECIMALS})
 
 _DATAROW = "datarow"
 _IPC_OPTIONS = pa.ipc.IpcWriteOptions(compression="zstd")
+_IPC_PLAIN = pa.ipc.IpcWriteOptions()
+# REQ-1867 (a hit is never slower than its miss): zstd compresses each buffer of each column on
+# its own, so a small result pays one decompression per buffer on every hit (a 26-column point
+# lookup: ~200 us of its ~230 us decode) to save a few hundred bytes. Results of fewer bytes than
+# this are kept uncompressed; the reader takes either form, and the decoded table is the same.
+_COMPRESS_FROM = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -103,8 +109,11 @@ class CacheEntry:
 def _encode(schema: pa.Schema, batches: Iterable[pa.RecordBatch], meta: dict[bytes, Any]) -> bytes:
     own = {k: v for k, v in (schema.metadata or {}).items() if k not in _OURS}
     tagged = schema.with_metadata({**own, **{k: json.dumps(v) for k, v in meta.items()}})
+    batches = list(batches)
+    size = sum(batch.get_total_buffer_size() for batch in batches)
+    options = _IPC_OPTIONS if size >= _COMPRESS_FROM else _IPC_PLAIN
     sink = pa.BufferOutputStream()
-    with pa.ipc.new_stream(sink, tagged, options=_IPC_OPTIONS) as writer:
+    with pa.ipc.new_stream(sink, tagged, options=options) as writer:
         for batch in batches:
             # The batch's schema metadata is the stream's: only its columns are written.
             writer.write_batch(pa.RecordBatch.from_arrays(batch.columns, schema=tagged))

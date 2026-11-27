@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} in {{surface}}",
+    "linkLabel": "Chiama {{name}} in {{surface}}",
+    "open": "Apri",
+    "givenAs": "Come viene fornito {{name}}",
+    "sourceTable": "Tabella",
+    "sourceQuery": "Query",
+    "sourceRows": "Righe",
+    "tableHint": "Una tabella che puoi leggere; vengono passate le sue prime {{cap}} righe.",
+    "queryHint": "Vengono passate le sue prime {{cap}} righe.",
+    "rowsHint": "CSV la cui prima riga nomina le colonne, oppure un array JSON di oggetti; al massimo {{cap}} righe.",
+    "missing": "Non fornito: {{names}}",
+    "notNumber": "{{name}} non è un numero",
+    "notBoolean": "{{name}} non è né true né false",
+    "notJson": "{{name}} non è JSON",
+    "notRows": "{{name}}: incolla un CSV la cui prima riga nomina le colonne, oppure un array JSON di oggetti",
+    "overCap": "{{name}}: al massimo {{cap}} righe",
+    "notReadable": "{{name}}: la tabella scelta non è una che puoi leggere"
+  }
+}

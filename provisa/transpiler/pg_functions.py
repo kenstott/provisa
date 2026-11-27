@@ -30,6 +30,8 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.errors import TokenError
+from sqlglot.tokens import TokenType
 
 from provisa.core.pg_error import raising
 from provisa.transpiler import function_macros, pg_syntax, pg_xml
@@ -1241,7 +1243,11 @@ def _call(node: exp.Expr) -> exp.Expr:
 
 
 #: What sqlglot's parser reads as syntax of its own (pg_syntax): PostgreSQL's calls of the name.
-_SYNTAX_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+_CONVERT = re.compile(r"\bconvert\s*\(", re.IGNORECASE)
+#: Every name readable writes again but json_object's, in any spelling.
+_HELD_NAMED = re.compile(r"varbit|varying|convert|to_hex", re.IGNORECASE)
+#: json_object, which pg_syntax reads as PostgreSQL's call only of an array (pg_syntax.of_array).
+_JSON_OBJECT = re.compile(r"\bjson_object\s*\(", re.IGNORECASE)
 _BIT_VARYING = re.compile(r"\bbit\s+varying\b", re.IGNORECASE)
 #: sqlglot reads to_hex as DuckDB's HEX of any value; a form's HEX of its bytes is written the same.
 _TO_HEX = re.compile(r"\"?\bto_hex\"?\s*\(", re.IGNORECASE)
@@ -1262,11 +1268,39 @@ class _HexKept(Postgres):
 _FORMS = {"convert": "pg_convert", "json_object": "pg_json_object", "to_hex": "pg_to_hex"}
 
 
+def _held_anywhere(pg_sql: str) -> bool:
+    """Whether :func:`readable` may have anything to write in ``pg_sql``: a call of convert or
+    to_hex, a bit varying, or a json_object call pg_syntax reads as PostgreSQL's. json_object of
+    keys and values is sqlglot's syntax, which readable leaves: the statement's tokens are read for
+    a call of an array, not its tree (the parse is the cost)."""
+    if any(p.search(pg_sql) for p in (_CONVERT, _BIT_VARYING, _TO_HEX)):
+        return True
+    if _JSON_OBJECT.search(pg_sql) is None:
+        return False
+    if _HELD_NAMED.search(pg_sql) is not None:
+        return True  # a name readable writes again, however written (quoted, qualified)
+    try:
+        tokens = _HexKept().tokenize(pg_sql)
+    except TokenError:
+        return True  # readable's parse raises it as it did
+    for at, token in enumerate(tokens):
+        if token.text.lower() != "json_object" or token.token_type == TokenType.STRING:
+            continue
+        after = [*tokens[at + 1 : at + 4], None, None]
+        if after[0] is None or after[0].token_type != TokenType.L_PAREN:
+            continue
+        if token.token_type != TokenType.VAR or (at and tokens[at - 1].token_type == TokenType.DOT):
+            return True  # quoted, or qualified: read by its tree
+        if pg_syntax.of_array(after[1], after[2]):
+            return True
+    return False
+
+
 def readable(pg_sql: str) -> str:
     """``pg_sql`` with a call of a function sqlglot reads as syntax its plain call of the form the
     engine has (pg_syntax reads each as PostgreSQL's call): a statement with none is left as it
     is. ``bit varying`` is the bit string the engine holds it as."""
-    if not any(p.search(pg_sql) for p in (_SYNTAX_CALLS, _BIT_VARYING, _TO_HEX)):
+    if not _held_anywhere(pg_sql):
         return pg_sql
     converted = False
     differs = False

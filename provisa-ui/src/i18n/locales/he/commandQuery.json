@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} ב-{{surface}}",
+    "linkLabel": "קריאה ל-{{name}} ב-{{surface}}",
+    "open": "פתיחה",
+    "givenAs": "כיצד {{name}} ניתן",
+    "sourceTable": "טבלה",
+    "sourceQuery": "שאילתה",
+    "sourceRows": "שורות",
+    "tableHint": "טבלה שמותר לך לקרוא; {{cap}} השורות הראשונות שלה מועברות.",
+    "queryHint": "{{cap}} השורות הראשונות שלה מועברות.",
+    "rowsHint": "CSV שהשורה הראשונה שלו נותנת שמות לעמודות, או מערך JSON של אובייקטים; לכל היותר {{cap}} שורות.",
+    "missing": "לא ניתן: {{names}}",
+    "notNumber": "{{name}} אינו מספר",
+    "notBoolean": "{{name}} אינו true או false",
+    "notJson": "{{name}} אינו JSON",
+    "notRows": "{{name}}: הדבק CSV שהשורה הראשונה שלו נותנת שמות לעמודות, או מערך JSON של אובייקטים",
+    "overCap": "{{name}}: לכל היותר {{cap}} שורות",
+    "notReadable": "{{name}}: הטבלה שנבחרה אינה טבלה שמותר לך לקרוא"
+  }
+}

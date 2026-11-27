@@ -94,6 +94,8 @@ in
       # An adapter server's Python starts its JVM through JPype, which finds libjvm.so by
       # JAVA_HOME or in /usr/lib/jvm, not in the JRE its own bundle ships.
       JAVA_HOME = pkgs.jdk21.home;
+      # REQ-1296: the bootstrap org id is 'root'.
+      ORG_ID = "root";
     };
     serviceConfig = {
       User = "provisa";
