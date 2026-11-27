@@ -13,13 +13,14 @@ import {
   Badge,
   Button,
   Group,
-  Modal,
   Paper,
   SimpleGrid,
   Stack,
   Text,
   UnstyledButton,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
+import { FormFooter } from "../components/form/FormLayout";
 import { Check } from "lucide-react";
 import type { TopicId } from "./tourSteps";
 
@@ -53,7 +54,7 @@ export function TourMenu({
 }) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       title={t("tour.menu.title")}
@@ -64,21 +65,17 @@ export function TourMenu({
       {/* The test id is on the menu's content: Mantine's Modal root has no box of its own, so a
           browser test reading it for visibility sees it hidden while the menu is on screen. */}
       <Stack gap="md" data-testid="tour-menu">
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <Text size="sm">{t("tour.menu.intro")}</Text>
-          {/* flexShrink 0: a shrinking flex item let Mantine's nowrap/ellipsis label clip to "Start the" */}
-          {onCore && (
-            <Button
-              variant="light"
-              size="xs"
-              onClick={onCore}
-              style={{ flexShrink: 0 }}
-              data-testid="tour-menu-core-tour"
-            >
-              {t("tour.menu.coreTour")}
-            </Button>
-          )}
-        </Group>
+        <Text size="sm">{t("tour.menu.intro")}</Text>
+        {/* REQ-2277 rule 10: the menu's own action, in the dialog's bar. */}
+        {onCore && (
+          <FormFooter
+            action={
+              <Button variant="light" onClick={onCore} data-testid="tour-menu-core-tour">
+                {t("tour.menu.coreTour")}
+              </Button>
+            }
+          />
+        )}
         {demo && (
           <UnstyledButton
             data-testid="tour-demo-track"
@@ -148,6 +145,6 @@ export function TourMenu({
           ))}
         </SimpleGrid>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

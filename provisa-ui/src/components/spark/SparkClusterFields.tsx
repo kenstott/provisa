@@ -17,7 +17,8 @@
 // Requirements: REQ-2225
 
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Modal, Switch, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Switch, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { putSecret } from "../../api/secrets";
 import { fetchSparkSource, type SparkClusterInUse } from "../../api/sparkCluster";
@@ -132,7 +133,7 @@ function PasteAddress({
   };
 
   return (
-    <Modal opened={opened} onClose={close} title={t("sparkCluster.pasteTitle")}>
+    <ModalLayout opened={opened} onClose={close} title={t("sparkCluster.pasteTitle")}>
       <FormLayout>
         {held === null ? (
           <FormField size="long" help={t("sparkCluster.pasteHelp")}>
@@ -180,7 +181,7 @@ function PasteAddress({
           </Button>
         </FormFooter>
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }
 

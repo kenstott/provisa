@@ -17,17 +17,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
-import {
-  Button,
-  ColorInput,
-  Group,
-  Image,
-  Modal,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from "@mantine/core";
+import { Button, ColorInput, Group, Image, Stack, Text, Textarea, TextInput } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import type { OrgBranding } from "../api/branding";
 import {
@@ -226,7 +217,7 @@ export function OrgBrandingSettings({
         </Button>
       </FormFooter>
 
-      <Modal
+      <ModalLayout
         opened={preview !== null}
         onClose={() => setPreview(null)}
         title={t("orgBranding.previewTitle")}
@@ -249,7 +240,7 @@ export function OrgBrandingSettings({
             />
           </Stack>
         )}
-      </Modal>
+      </ModalLayout>
     </FormLayout>
   );
 }

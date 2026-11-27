@@ -42,7 +42,7 @@ import {
 } from "@mantine/core";
 import { Pencil, X } from "lucide-react";
 import type { DiscoveryKind, RunProposal } from "../../api/admin";
-import { FormField, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
 import { ListActions, ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
@@ -67,7 +67,7 @@ interface ProposalsTableProps {
   state: RunProposalsState;
   tableDomainById: Record<string, string>;
   tableNameById: Record<string, string>;
-  /** The dialog's New run, shown beside Apply. */
+  /** The dialog's New run, shown after Apply in the dialog's button bar. */
   newRun: ReactNode;
 }
 
@@ -361,9 +361,11 @@ export function ProposalsTable({
         ) : (
           <span />
         )}
-        <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-          {newRun}
-          {proposals.length > 0 && (
+      </Group>
+      {/* REQ-2277 rule 10: Apply and the dialog's other actions sit in its button bar. */}
+      <FormFooter
+        action={
+          proposals.length > 0 && (
             <Button
               onClick={() => void state.apply(listedIds)}
               disabled={accepting + marking === 0}
@@ -372,9 +374,11 @@ export function ProposalsTable({
             >
               {applyLabel}
             </Button>
-          )}
-        </Group>
-      </Group>
+          )
+        }
+      >
+        {newRun}
+      </FormFooter>
       {proposals.length > 0 && active.length > 0 && (
         <Group gap="xs" mb="xs" data-testid="discover-filter-chips">
           {active.map((f) => (
