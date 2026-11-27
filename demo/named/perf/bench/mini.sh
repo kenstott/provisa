@@ -32,7 +32,7 @@ DATE=$(date +%Y%m%d)
 NAME=provisa-bench-mini-$DATE-$(date +%H%M%S)
 OUT=${OUT:-$HOME/provisa-agent-logs/mini-bench-$DATE-$(date +%H%M%S)}
 mkdir -p "$OUT"
-# ROUNDS and BASE_REF reach the job through its own first lines: spot-bench.sh passes only REF.
+# ROUNDS, BASE_REF and STAGE_SPANS reach the job through its own first lines: spot-bench.sh passes only REF.
 JOB=$OUT/mini-job.sh
 { printf 'ROUNDS=%q\nBASE_REF=%q\nSTAGE_SPANS=%q\n' "$ROUNDS" "$BASE" "$STAGE_SPANS"; cat "$HERE/mini-job.sh"; } > "$JOB"
 
