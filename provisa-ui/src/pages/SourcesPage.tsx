@@ -934,7 +934,11 @@ export function SourcesPage() {
           : authFields;
       const spMappingJson =
         form.type === "files"
-          ? filesMappingJson(editingSourceId ? editingSourceMappingJson : null, authFields)
+          ? filesMappingJson(
+              editingSourceId ? editingSourceMappingJson : null,
+              authFields,
+              filesTransport,
+            )
           : form.type === "data_profiler"
             ? profilerMappingJson(authFields) // REQ-1934
             : connector && CODE_SOURCE_TYPES.has(form.type)

@@ -23,6 +23,7 @@ from typing import Any
 
 from provisa.api.admin.types import MutationResult
 from provisa.api.engine_error_names import client_text
+from provisa.file_source.files_glob import StorageOptions
 
 log = logging.getLogger(__name__)
 
@@ -56,8 +57,13 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
             params={"table": model.table_name, "source": model.source_id},
         )
     try:
-        files = matched_files(resolve_secrets(source["path"] or ""), glob)
-        validate_glob_table(glob, files, columns_of_file)
+        from provisa.file_source.cloud_drive import drive_storage_options
+
+        options = drive_storage_options(source)  # REQ-2280: a onedrive:// or gdrive:// sign-in
+        files = matched_files(resolve_secrets(source["path"] or ""), glob, options)
+        validate_glob_table(
+            glob, files, lambda path: columns_of_file(path, storage_options=options)
+        )
     except (FileColumnsDiffer, FileOutsideSourceGlob, FileTypesDiffer) as exc:
         return MutationResult(
             success=False, message=str(exc), code=exc.code, params=dict(exc.params)
@@ -111,9 +117,10 @@ async def table_outside_source_glob_refusal(conn: Any, model: Any) -> MutationRe
     )
 
 
-def _files_of(source_path: str, glob: str) -> list[str]:
+def _files_of(source_path: str, glob: str, storage_options: StorageOptions = None) -> list[str]:
     """The readable files ``glob`` matches under the source's directory (directories and files
-    of no file-source type left out), as full paths."""
+    of no file-source type left out), as full paths. ``storage_options`` is a drive path's
+    sign-in (REQ-2280)."""
     import os
 
     from provisa.file_source.crawler import _source_type_for_path
@@ -125,20 +132,24 @@ def _files_of(source_path: str, glob: str) -> list[str]:
         return []
     return [
         f
-        for f in matched_files(source_path, glob)
+        for f in matched_files(source_path, glob, storage_options)
         if _source_type_for_path(f) is not None and (remote or os.path.isfile(f))
     ]
 
 
 def file_glob_preview(
-    source_path: str, glob: str | None, tables: list[str] | None
+    source_path: str,
+    glob: str | None,
+    tables: list[str] | None,
+    storage_options: StorageOptions = None,
 ) -> dict[str, Any]:
     """What one table over many files of a files source would be, before it is registered
     (REQ-788, COMBINING FILES IS ITS OWN ACTION): the glob (as typed, or derived from the listed
     ``tables`` picked), the files it matches (relative to the source directory, each with the
     listed table it is), the columns they all share, the files whose columns differ, and the
     files a derived glob matches besides the picked ones. A glob matching nothing answers no
-    files; a picked table naming no file is answered in ``unmatched_tables``."""
+    files; a picked table naming no file is answered in ``unmatched_tables``. A onedrive:// or
+    gdrive:// path is listed and read with ``storage_options``, its source's sign-in (REQ-2280)."""
     from provisa.file_source.files_glob import (
         column_agreement,
         columns_of_file,
@@ -155,9 +166,9 @@ def file_glob_preview(
     unmatched: list[str] = []
     extra: list[str] = []
     if glob:
-        matched = rel(_files_of(source_path, glob))
+        matched = rel(_files_of(source_path, glob, storage_options))
     else:
-        every = rel(_files_of(source_path, "**/*"))
+        every = rel(_files_of(source_path, "**/*", storage_options))
         picked: list[str] = []
         for name in tables or []:
             hits = [r for r in every if table_key(name) in file_keys(r)]
@@ -176,8 +187,10 @@ def file_glob_preview(
                 "unmatched_tables": unmatched,
                 "reference_table": None,
             }
-        glob, extra = derive_glob(picked, lambda g: list(rel(_files_of(source_path, g))))
-        matched = rel(_files_of(source_path, glob))
+        glob, extra = derive_glob(
+            picked, lambda g: list(rel(_files_of(source_path, g, storage_options)))
+        )
+        matched = rel(_files_of(source_path, glob, storage_options))
     for r in matched:
         if r not in table_of:
             table_of[r] = next(
@@ -188,7 +201,7 @@ def file_glob_preview(
     unreadable: list[dict] = []
     for r, full in matched.items():
         try:
-            per_file[r] = columns_of_file(full)
+            per_file[r] = columns_of_file(full, storage_options=storage_options)
         except (ValueError, OSError) as exc:
             unreadable.append(
                 {"file": r, "missing": [], "extra": [], "error": client_text(str(exc))}
@@ -207,14 +220,17 @@ def file_glob_preview(
     }
 
 
-async def source_files_path(conn: Any, source_id: str) -> str:
-    """A files source's path, its secrets resolved; refused by name for any other source."""
+async def source_files_path(conn: Any, source_id: str) -> tuple[str, StorageOptions]:
+    """A files source's path, its secrets resolved, and the storage options it is listed and
+    read with (a onedrive:// or gdrive:// sign-in, REQ-2280); refused by name for any other
+    source."""
     from provisa.core.repositories import source as source_repo
     from provisa.core.secrets import resolve_secrets
+    from provisa.file_source.cloud_drive import drive_storage_options
 
     source = await source_repo.get(conn, source_id)
     if source is None or source["type"] not in ("files", "csv", "parquet"):
         raise ValueError(
             f"source {source_id!r}: files are combined into one table only on a files source"
         )
-    return resolve_secrets(source["path"] or "")
+    return resolve_secrets(source["path"] or ""), drive_storage_options(source)

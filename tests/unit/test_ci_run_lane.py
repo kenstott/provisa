@@ -753,6 +753,95 @@ def test_the_microsoft_365_lane_selects_every_live_m365_test_and_the_warehouse_l
     assert not set(_M365_SECRETS) & set(_lanes_workflow()["jobs"]["warehouse"]["env"])
 
 
+_GWS_SECRETS = ("GWS_SERVICE_ACCOUNT_KEY_FILE", "GWS_TEST_MAILBOXES")
+
+
+def test_the_google_workspace_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secrets():
+    """REQ-2280 (maintainer 2026-11-26): the live Google Workspace tests run in their own on-demand
+    lane, like microsoft_365, never nightly. Its job reads the `live` environment's service
+    account key (written to a file, whose path the tests read) and test mailboxes, and a missing
+    one fails the lane by name."""
+    run_lane = _runner()
+    assert run_lane.LANES["google_workspace"].marker == "requires_google_workspace"
+    assert "google_workspace" in run_lane.LIVE and "google_workspace" not in run_lane.SUITE
+    assert "requires_google_workspace" not in run_lane.NO_CI_LANE
+    job = _lanes_workflow()["jobs"]["google_workspace"]
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_google_workspace) "
+        "&& needs.plan.outputs.google_workspace == 'true'"
+    )
+    assert job["environment"] == "live"
+    assert job["env"]["GWS_SERVICE_ACCOUNT_KEY"] == "${{ secrets.GWS_SERVICE_ACCOUNT_KEY_FILE }}"
+    assert job["env"]["GWS_TEST_MAILBOXES"] == "${{ secrets.GWS_TEST_MAILBOXES }}"
+    assert job["env"]["PYTEST_NO_DOCKER"] == "1"
+    steps = _job_steps("google_workspace")
+    (present,) = [s for s in steps if s.get("name") == "Credentials present"]
+    assert "GWS_SERVICE_ACCOUNT_KEY GWS_TEST_MAILBOXES" in present["run"]
+    assert "GWS_SERVICE_ACCOUNT_KEY_FILE=$RUNNER_TEMP/gws-key.json" in present["run"]
+    assert "google_workspace --junitxml results/google_workspace/junit.xml" in str(
+        [s.get("run") for s in steps]
+    )
+    import yaml
+
+    lanes = _lanes_workflow()
+    assert lanes[True]["workflow_call"]["inputs"]["include_google_workspace"]["default"] is False
+    caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
+    assert (
+        caller[True]["workflow_dispatch"]["inputs"]["include_google_workspace"]["default"] is False
+    )
+    assert caller["jobs"]["lanes"]["with"]["include_google_workspace"] == (
+        "${{ inputs.include_google_workspace || false }}"
+    )
+    for name in _GWS_SECRETS:
+        assert name in lanes[True]["workflow_call"]["secrets"]
+        assert caller["jobs"]["lanes"]["secrets"][name] == f"${{{{ secrets.{name} }}}}"
+    assert "google_workspace" in lanes["jobs"]["report"]["needs"]
+    assert not set(_GWS_SECRETS) & set(lanes["jobs"]["warehouse"]["env"])
+
+
+def test_a_targeted_gdrive_run_is_routed_to_the_google_workspace_lane_when_included(
+    monkeypatch, capsys
+):
+    run_lane = _runner()
+    test = (
+        "tests/integration/test_cloud_drive_transports_live.py"
+        "::test_gdrive_folder_csv_reads_as_the_file_does"
+    )
+    monkeypatch.setenv("PROVISA_LANE_TESTS", test)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,,")
+    with pytest.raises(ValueError) as refused:
+        run_lane.matrix("all")
+    assert "needs google_workspace" in str(refused.value)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,,google_workspace")
+    assert run_lane.matrix("all")["include"] == []
+    assert run_lane.routes(run_lane.runnable_lanes()) == {"google_workspace": [test]}
+    run_lane.main(["--has-targets", "google_workspace"])
+    assert capsys.readouterr().out.strip() == "true"
+
+
+def test_the_live_drive_tests_run_only_in_the_lane_holding_their_credentials():
+    """REQ-2280: the OneDrive test signs in to the M365 tenant, so only the microsoft_365 lane
+    selects it; the Google Drive test signs in to the Workspace domain (domain-wide delegation),
+    so only the google_workspace lane. Run 45862171059: the OneDrive test, marked
+    requires_microsoft_365 alone, was selected by core too, whose job has no M365 secret."""
+    run_lane = _runner()
+    path = "tests/integration/test_cloud_drive_transports_live.py"
+    want = {
+        f"{path}::test_onedrive_folder_csv_reads_as_the_file_does": ["microsoft_365"],
+        f"{path}::test_gdrive_folder_csv_reads_as_the_file_does": ["google_workspace"],
+    }
+    tests = run_lane.test_markers(path)
+    assert set(tests) == set(want)
+    for test, variants in tests.items():
+        for marks in variants:
+            lanes = [
+                lane
+                for lane in run_lane.LANES
+                if run_lane._in_lane(lane, path) and run_lane.selects(lane, marks)
+            ]
+            assert lanes == want[test], (test, lanes)
+
+
 def test_a_targeted_m365_run_is_routed_to_its_lane_only_when_the_dispatch_includes_it(
     monkeypatch, capsys
 ):
@@ -924,19 +1013,24 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         "nixos.yml:lane",
         "polly-bakeoff.yml:bakeoff",
     ], collecting
-    assert no_stack == ["integration-suite-lanes.yml:microsoft_365"], no_stack
+    assert no_stack == [
+        "integration-suite-lanes.yml:microsoft_365",
+        "integration-suite-lanes.yml:google_workspace",
+    ], no_stack
 
 
 @pytest.mark.parametrize(
-    "lane", ["warehouse", "salesforce", "athena", "servicenow", "microsoft_365"]
+    "lane", ["warehouse", "salesforce", "athena", "servicenow", "microsoft_365", "google_workspace"]
 )
 def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     # A targeted dispatch with include_warehouse ran the whole warehouse lane (~108 tests, 35+
     # minutes): the live jobs were not handed the run's named tests.
     job = _lanes_workflow()["jobs"][lane]
     assert job["env"]["PROVISA_LANE_TESTS"] == "${{ inputs.tests }}"
-    # microsoft_365 runs with PYTEST_NO_DOCKER: it restores and needs no plugin jars.
-    expected = "plan" if lane == "microsoft_365" else ["plan", "trino-plugins"]
+    # microsoft_365 and google_workspace run with PYTEST_NO_DOCKER: they need no plugin jars.
+    expected = (
+        "plan" if lane in ("microsoft_365", "google_workspace") else ["plan", "trino-plugins"]
+    )
     assert job["needs"] == expected
     assert job["if"].endswith(f"&& needs.plan.outputs.{lane} == 'true'")
     plan = _lanes_workflow()["jobs"]["plan"]
@@ -1219,7 +1313,14 @@ def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, 
 def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
     step = next(s for s in _lanes_workflow()["jobs"]["plan"]["steps"] if s.get("id") == "plan")
     assert "run_lane.py --has-targets cluster" in step["run"]
-    for lane in ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365"):
+    for lane in (
+        "warehouse",
+        "salesforce",
+        "athena",
+        "servicenow",
+        "microsoft_365",
+        "google_workspace",
+    ):
         assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
         assert f"outputs.{lane} }}}}" in str(_lanes_workflow()["jobs"]["plan"]["outputs"])
 
@@ -1286,7 +1387,7 @@ def test_a_variant_no_lane_selects_is_named_though_its_test_has_a_lane(runner, m
     ]
 
 
-@pytest.mark.parametrize("exempt", ["packaging", "requires_google_workspace", "requires_shopify"])
+@pytest.mark.parametrize("exempt", ["packaging", "requires_quickbooks", "requires_shopify"])
 def test_a_test_no_lane_selects_is_refused_unless_it_carries_a_no_ci_lane_marker(
     runner, monkeypatch, exempt
 ):

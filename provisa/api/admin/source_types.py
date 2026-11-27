@@ -38,7 +38,7 @@ their keys, required and secret flags, choices and defaults from this descriptor
 generated file); a UI test fails when a builder writes a key the descriptor does not list.
 """
 
-# Requirements: REQ-2114, REQ-1923, REQ-1984, REQ-2225
+# Requirements: REQ-2114, REQ-1923, REQ-1984, REQ-2225, REQ-2280
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -49,6 +49,11 @@ from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
 from provisa.core.paging import PaginationType
 from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
+from provisa.file_source.drive_operand import (
+    GDRIVE_AUTH_KINDS,
+    GDRIVE_SERVICE_ACCOUNT,
+    GDRIVE_SUBJECT,
+)
 from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
 from provisa.profiler.source import DRIFT_SEASONS
 from provisa.quickbooks.settings import ENVIRONMENTS as QUICKBOOKS_ENVIRONMENTS
@@ -661,10 +666,38 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _in(
             "path",
             required=True,
-            note="a directory or glob, or an ftp/sftp/s3/https/sharepoint:// address",
+            note="a directory or glob, or an ftp/sftp/s3/https/sharepoint/onedrive/gdrive:// "
+            "address",
         ),
-        _in("username", when="path=ftp|sftp|http|https|sharepoint"),
-        _in("password", secret=True, when="path=ftp|sftp|http|https|sharepoint"),
+        # REQ-2280: onedrive:// signs in as the SharePoint source does (tenant, client id and
+        # secret); gdrive:// as the Google Sheets source does (a service account key, or an
+        # OAuth client and the refresh token a person's approval issued).
+        _in("database", when="path=onedrive", required=True, note="the tenant id"),
+        _in(
+            "username",
+            when="path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+            note="the client id for onedrive:// and for gdrive:// with gdrive_auth=oauth",
+        ),
+        _in(
+            "password",
+            secret=True,
+            when="path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+            note="the client secret; for gdrive:// with gdrive_auth=service_account, the key",
+        ),
+        _map(
+            "gdrive_auth",
+            when="path=gdrive",
+            required=True,
+            choices=GDRIVE_AUTH_KINDS,
+            default=GDRIVE_SERVICE_ACCOUNT,
+        ),
+        _map("refresh_token", when="gdrive_auth=oauth", required=True, secret=True),
+        _map(
+            GDRIVE_SUBJECT,
+            when="gdrive_auth=service_account",
+            note="the Workspace user the service account acts as (domain-wide delegation); "
+            "none reads as the service account itself",
+        ),
         _map("excel_hints", note="how a workbook's sheets are read as tables"),
     ),
     "logs": (

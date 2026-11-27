@@ -21,6 +21,7 @@ source's path that share a column set); registration is where the operator accep
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 
 class FileColumnsDiffer(ValueError):
@@ -164,16 +165,29 @@ def split_source_path(source_path: str) -> tuple[str, str | None]:
     return f"{prefix}{directory}", "/".join(parts[first:])
 
 
-def _glob_paths(base: str, pattern: str) -> list[str]:
+#: The fsspec storage options a source's remote path is opened with
+#: (:func:`provisa.file_source.cloud_drive.drive_storage_options`, REQ-2280). None is a path that
+#: needs none: a local path, or a remote one whose credentials its URL or environment carries.
+StorageOptions = Mapping[str, Any] | None
+
+
+def remote_fs(url: str, storage_options: StorageOptions) -> tuple[Any, str]:
+    """The fsspec filesystem and path ``url`` names, opened with ``storage_options``."""
+    import fsspec
+
+    import provisa.file_source.cloud_drive  # noqa: F401  registers onedrive:// and gdrive://
+
+    return fsspec.core.url_to_fs(url, **(storage_options or {}))
+
+
+def _glob_paths(base: str, pattern: str, storage_options: StorageOptions = None) -> list[str]:
     """The files ``pattern`` matches under ``base``, sorted: :mod:`glob` for a local path,
     fsspec's own globbing for a URI. A directory is not a file of the match."""
     import glob as _glob
     import os
 
     if _is_uri(base):
-        import fsspec
-
-        fs, root = fsspec.core.url_to_fs(base)
+        fs, root = remote_fs(base, storage_options)
         proto = base.split("://", 1)[0]
         found = fs.glob(f"{root.rstrip('/')}/{pattern}", detail=True)
         return sorted(f"{proto}://{m}" for m, info in found.items() if info["type"] == "file")
@@ -181,25 +195,27 @@ def _glob_paths(base: str, pattern: str) -> list[str]:
     return sorted(m for m in found if os.path.isfile(m))
 
 
-def source_glob_files(source_path: str) -> list[str] | None:
+def source_glob_files(source_path: str, storage_options: StorageOptions = None) -> list[str] | None:
     """The files a files source's glob decides (REQ-788), sorted; None when the source's path is
     no glob (a directory or one file, whose files are not narrowed). An empty list is a glob that
     matches nothing; :func:`require_source_glob_matches` refuses it by name."""
     base, pattern = split_source_path(source_path)
     if pattern is None:
         return None
-    return _glob_paths(base, pattern)
+    return _glob_paths(base, pattern, storage_options)
 
 
-def require_source_glob_matches(source_path: str) -> None:
+def require_source_glob_matches(source_path: str, storage_options: StorageOptions = None) -> None:
     """Raise :class:`SourceGlobMatchesNothing` when the source's path is a glob that matches no
     file. A path with no glob is not checked here."""
-    files = source_glob_files(source_path)
+    files = source_glob_files(source_path, storage_options)
     if files is not None and not files:
         raise SourceGlobMatchesNothing(source_path)
 
 
-def matched_files(source_path: str, file_glob: str) -> list[str]:
+def matched_files(
+    source_path: str, file_glob: str, storage_options: StorageOptions = None
+) -> list[str]:
     """The files a table's ``file_glob`` matches, sorted. ``file_glob`` is evaluated under the
     source's directory: the directory of ``source_path`` when it names a file, the directory
     before the glob when it is itself a glob, else ``source_path`` itself when it is a directory.
@@ -216,9 +232,9 @@ def matched_files(source_path: str, file_glob: str) -> list[str]:
             base = source_path[:-1] if source_path.endswith("/") else source_path.rsplit("/", 1)[0]
         elif not os.path.isdir(source_path):
             base = os.path.dirname(source_path)
-    files = _glob_paths(base, file_glob)
+    files = _glob_paths(base, file_glob, storage_options)
     if source_glob is not None:
-        allowed = set(_glob_paths(base, source_glob))
+        allowed = set(_glob_paths(base, source_glob, storage_options))
         outside = next((f for f in files if f not in allowed), None)
         if outside is not None:
             raise FileOutsideSourceGlob(file_glob, outside, source_path)
@@ -239,7 +255,7 @@ def validate_glob_table(
     return require_same_columns(glob, {path: list(columns_of(path)) for path in files})
 
 
-def columns_of_file(path: str) -> list[str]:
+def columns_of_file(path: str, storage_options: StorageOptions = None) -> list[str]:
     """One file's column names, as the file-source introspector reads them (REQ-788). The file's
     own extension picks the reader (csv/parquet/sqlite), not the source's umbrella ``files`` type."""
     from provisa.file_source.crawler import _source_type_for_path
@@ -248,7 +264,12 @@ def columns_of_file(path: str) -> list[str]:
     file_type = _source_type_for_path(path)
     if file_type is None:
         raise ValueError(f"file {path!r} has no supported file-source type")
-    cfg = FileSourceConfig(id="_glob", source_type=file_type, path=path)
+    cfg = FileSourceConfig(
+        id="_glob",
+        source_type=file_type,
+        path=path,
+        options={"storage_options": storage_options},
+    )
     return [col["name"] for col in discover_schema(cfg)]
 
 
@@ -339,19 +360,19 @@ def glob_freshness_token(stats: list[tuple[str, float, int]]) -> str:
     return f"{count}:{max_mtime:.6f}:{total}"
 
 
-def stat_matched_files(source_path: str, file_glob: str) -> list[tuple[str, float, int]]:
+def stat_matched_files(
+    source_path: str, file_glob: str, storage_options: StorageOptions = None
+) -> list[tuple[str, float, int]]:
     """``(path, mtime, size)`` for each file the glob matches, sorted — the input to
     :func:`glob_freshness_token`. A local path is stat'd directly; an fsspec URI through its
     filesystem's ``info``."""
     import os
 
-    files = matched_files(source_path, file_glob)
+    files = matched_files(source_path, file_glob, storage_options)
     if _is_uri(source_path):
-        import fsspec
-
         out = []
         for f in files:
-            fs, path = fsspec.core.url_to_fs(f)
+            fs, path = remote_fs(f, storage_options)
             info = fs.info(path)
             out.append((f, float(info.get("mtime", 0) or 0), int(info.get("size", 0) or 0)))
         return out

@@ -14,6 +14,7 @@
 // source, for one workbook by its file name, and for one table by the name the reader gives it.
 
 /** Each count hint, with the value the reader uses when it is unset (null: it detects). */
+import { driveMapping, GDRIVE_KEYS } from "./cloudDrive";
 import { mappingKey } from "./descriptor";
 
 export const COUNT_HINTS = [
@@ -139,16 +140,22 @@ export function excelHintsMapping(hints: ExcelHints): Record<string, unknown> | 
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** A files source's mapping as saved: what it held before, with the hints the form holds. */
+/** A files source's mapping as saved: what it held before, with the hints the form holds and
+ * the sign-in its transport takes (REQ-2280: a gdrive:// source's). */
 export function filesMappingJson(
   previousMappingJson: string | null,
   fields: Record<string, string>,
+  transport: string,
 ): string {
   const previous = previousMappingJson
     ? (JSON.parse(previousMappingJson) as Record<string, unknown>)
     : {};
-  const { [EXCEL_HINTS]: _dropped, ...rest } = previous;
-  void _dropped;
+  const rest = Object.fromEntries(
+    Object.entries(previous).filter(([key]) => key !== EXCEL_HINTS && !GDRIVE_KEYS.includes(key)),
+  );
   const hints = excelHintsMapping(excelHintsOf(fields));
-  return JSON.stringify(hints ? { ...rest, [EXCEL_HINTS]: hints } : rest);
+  const drive = driveMapping(transport, fields);
+  return JSON.stringify(
+    hints ? { ...rest, ...drive, [EXCEL_HINTS]: hints } : { ...rest, ...drive },
+  );
 }
