@@ -21,6 +21,7 @@
     "analyze": "Analisar",
     "analyzing": "Analisando…",
     "analyzeTitle": "Mostrar o plano do motor para esta instrução, com as otimizações do Provisa destacadas",
+    "analyzeWhich": "Qual instrução analisar?",
     "saveViewTitle": "Salvar o SQL atual como a definição da exibição \"{{tableName}}\"",
     "saving": "Salvando…",
     "updateView": "Atualizar \"{{tableName}}\"",

@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2225: the organisation's default Spark cluster -- where a Spark script runs and is validated
-// when its source names no cluster of its own -- set by an organisation administrator, with a
+// REQ-2225: the organisation's default Spark cluster -- the cluster a Spark source connects to
+// when it names no cluster of its own -- set by an organisation administrator, with a
 // connection test.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";

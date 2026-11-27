@@ -39,6 +39,8 @@
     "colTimeout": "Tempo limite",
     "noFunctions": "Nenhuma função registrada",
     "noWebhooks": "Nenhum webhook registrado",
+    "noFunctionsMatch": "Nenhuma função corresponde ao filtro",
+    "noWebhooksMatch": "Nenhum webhook corresponde ao filtro",
     "customSchema": "conjunto de dados",
     "dash": "—",
     "all": "todos",

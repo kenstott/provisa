@@ -107,3 +107,34 @@ def test_a_key_the_engine_does_not_hold_is_refused_by_fingerprint(trino_conn):
 def test_a_method_the_engine_has_not_is_refused_by_name(trino_conn, key):
     with pytest.raises(trino.exceptions.TrinoUserError, match="no fake method nonesuch"):
         _one(trino_conn, "SELECT provisa_fake_method('nonesuch', '{}', 1, 5)")
+
+
+def _sql_text(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def test_trino_s_json_text_is_the_published_canonical_text(trino_conn):
+    """REQ-2279: provisa_json_text over text is digest.canonical_json, vector for vector."""
+    import json as _json
+
+    from provisa.fakes.digest import canonical_json
+
+    vectors = Path(__file__).resolve().parents[2] / (
+        "trino-functions/src/test/resources/json_canonical.json"
+    )
+    for given, canonical in _json.loads(vectors.read_text()):
+        assert canonical_json(given) == canonical
+        assert _one(trino_conn, f"SELECT provisa_json_text({_sql_text(given)})") == canonical
+
+
+def test_trino_digests_spaced_and_reordered_json_as_the_minified_text(trino_conn, key):
+    minified = '{"age":30,"email":"ann@example.com","tags":["a","b"]}'
+    stored = (
+        minified,
+        '{ "age" : 30 ,\n  "email" : "ann@example.com", "tags" : [ "a", "b" ] }',
+        '{"tags": ["a", "b"], "email": "ann@example.com", "age": 3.0e1}',
+    )
+    fp = fingerprint(key)
+    for text in stored:
+        sql = f"SELECT provisa_digest('{fp}', provisa_json_text(JSON_PARSE({_sql_text(text)})))"
+        assert _one(trino_conn, sql) == digest(key, minified), text

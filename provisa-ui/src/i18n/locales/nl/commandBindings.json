@@ -16,6 +16,7 @@
     "lang_graphql": "GraphQL",
     "lang_rest": "REST",
     "lang_mcp": "MCP",
-    "lang_sparql": "SPARQL"
+    "lang_sparql": "SPARQL",
+    "section_columns": "Kolommen"
   }
 }

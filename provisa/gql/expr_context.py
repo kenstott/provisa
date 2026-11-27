@@ -48,8 +48,10 @@ from provisa.gql.translator_types import (
     map_key_column,
 )
 from provisa.gql.translator_helpers import (  # REQ-1586
+    RelEndpoints,
     _make_junction_joins,
     edge_properties_column,
+    oriented_rel,
     refused_when_read,
     via_alias_for,
 )
@@ -269,9 +271,9 @@ def _label_names(nm: "NodeMapping", labels: list[str]) -> bool:
     )
 
 
-#: Meta key on the node object startNode(r) or endNode(r) lowers to (_path_endpoint): the
-#: (alias, NodeMapping) of the end it reads and the condition under which the relationship is
-#: absent (None where it never is), so a property of it reads the end's own column.
+#: Meta key on the node object startNode(r) or endNode(r) lowers to (_path_endpoint): the read of
+#: a property of it, by name, as the end's own column (oriented per row where the relationship
+#: matched either way) and null where the relationship is absent.
 ENDPOINT_OF = "provisa_endpoint"
 
 #: A graph function read from the JSON of a path or relationship a list holds or a WITH carries
@@ -349,11 +351,7 @@ class TranslatorExprContext:
         endpoint = obj.meta.get(ENDPOINT_OF)
         if endpoint is not None:
             # startNode(r).name, endNode(r).name: the end's own column, null where r is absent.
-            end_alias, end_nm, absent = endpoint
-            value = self._node_property(end_alias, end_nm, name)
-            if absent is None:
-                return value
-            return exp.Case(ifs=[exp.If(this=absent.copy(), true=exp.Null())], default=value)
+            return endpoint(name)
         if (
             isinstance(obj, exp.Column)
             and obj.table
@@ -1285,20 +1283,43 @@ class TranslatorExprContext:
         t = self._t
         endpoints = t._rel_var_endpoints.get(var)
         if endpoints:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
-            disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
-            alias, nm = disp_start if start else disp_end
-            absent = self.resolve_graph_absent(var)
+            either_way = t._rel_var_forward_when.get(var)
+
+            def end_of(ends: RelEndpoints) -> tuple[str, NodeMapping]:
+                src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+                disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
+                disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
+                return disp_start if start else disp_end
+
+            # Matched either way (REQ-348), the end as each row matched it, and null where the
+            # OPTIONAL hop matched nothing: oriented_rel's default is that relationship's only
+            # null guard.
+            absent = None if either_way is not None else self.resolve_graph_absent(var)
             if isinstance(absent, exp.Boolean) and not absent.this:
                 absent = None
-            node: exp.Expression = t._build_node_object_expr(alias, nm)
-            if absent is not None:
+
+            def guarded(value: exp.Expression) -> exp.Expression:
+                if absent is None:
+                    return value
                 # Of a relationship an OPTIONAL MATCH found none of, null: never the node the
                 # MATCH bound at its near end.
-                node = exp.Case(ifs=[exp.If(this=absent.copy(), true=exp.Null())], default=node)
+                return exp.Case(ifs=[exp.If(this=absent.copy(), true=exp.Null())], default=value)
+
+            node = guarded(
+                oriented_rel(
+                    endpoints,
+                    either_way,
+                    lambda ends: t._build_node_object_expr(*end_of(ends)),
+                )
+            )
             # What a property read of it resolves against (resolve_property).
-            node.meta[ENDPOINT_OF] = (alias, nm, absent)
+            node.meta[ENDPOINT_OF] = lambda name: guarded(
+                oriented_rel(
+                    endpoints,
+                    either_way,
+                    lambda ends: self._node_property(*end_of(ends), name),
+                )
+            )
             return node
         path_info = t._path_vars.get(var)
         if path_info:
@@ -1306,7 +1327,8 @@ class TranslatorExprContext:
             node_info = t._var_table.get(node_alias)
             if node_info and node_info[1] is not None:
                 node = t._build_node_object_expr(node_alias, node_info[1])
-                node.meta[ENDPOINT_OF] = (node_info[0], node_info[1], None)
+                end_alias, end_nm = node_info[0], node_info[1]
+                node.meta[ENDPOINT_OF] = lambda name: self._node_property(end_alias, end_nm, name)
                 return node
             return exp.Column(this=exp.Star(), table=exp.to_identifier(node_alias))
         if var in t._all_rels_rel_vars:
@@ -1411,19 +1433,30 @@ class TranslatorExprContext:
             return exp.Subquery(this=counted)
         return _anon("ARRAY", inner_select)  # COLLECT
 
+    def edge_object(self, name: str, ends: RelEndpoints) -> exp.Anonymous:
+        """The typed relationship ``name``'s edge object, between ``ends`` read as given."""
+        t = self._t
+        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+        edge = t._build_edge_object(
+            t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
+            src_alias,
+            src_nm,
+            tgt_alias,
+            tgt_nm,
+            is_reversed,
+            t._rel_var_via.get(name),
+        )
+        assert isinstance(edge, exp.Anonymous)
+        return edge
+
     def resolve_graph_element(self, name: str) -> exp.Expression | None:
         t = self._t
         endpoints = t._rel_var_endpoints.get(name)
         if endpoints is not None and name in t._rel_var_types:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            return t._build_edge_object(
-                t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
-                src_alias,
-                src_nm,
-                tgt_alias,
-                tgt_nm,
-                is_reversed,
-                t._rel_var_via.get(name),
+            return oriented_rel(
+                endpoints,
+                t._rel_var_forward_when.get(name),
+                lambda ends: self.edge_object(name, ends),
             )
         if name in t._path_vars:
             # A path as a value ([n, r, p], WITH p): its object, as RETURN p answers it.
@@ -1453,14 +1486,25 @@ class TranslatorExprContext:
             src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
             if is_reversed:
                 # Its ends as the relationship is registered: source first.
-                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+                src_nm, tgt_nm = tgt_nm, src_nm
             if name in t._rel_var_type_exprs:
                 raise CypherTranslateError(
                     f"{name} is one of several relationship types; compare it by type(...) and "
                     "its ends"
                 )
             kind = ("rel", t._rel_var_types[name], src_nm.table_name, tgt_nm.table_name)
-            return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
+
+            def registered_end(position: int) -> exp.Expression:
+                def key(ends: RelEndpoints) -> exp.Expression:
+                    s_alias, s_nm, t_alias, t_nm, reversed_ = ends
+                    pairs = [(s_alias, s_nm), (t_alias, t_nm)]
+                    if reversed_:
+                        pairs.reverse()
+                    return node_key(*pairs[position])
+
+                return oriented_rel(endpoints, t._rel_var_forward_when.get(name), key)
+
+            return kind, [registered_end(0), registered_end(1)]
         if name in t._rel_var_types:
             return None
         if name in t._path_vars:

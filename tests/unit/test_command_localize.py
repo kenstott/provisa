@@ -144,3 +144,23 @@ def test_large_result_uses_registrar_when_over_threshold():
     assert registered["call"] == ("enrich", 5, ["id", "embedding", "geo"])
     assert "tmp_enrich_rel" in tree.sql(dialect="duckdb")
     assert "VALUES" not in tree.sql(dialect="duckdb")
+
+
+def test_an_aliased_output_column_is_read_by_its_alias():
+    """REQ-1159 (amended 2026-11-25): the governed rows carry a column under its alias, the name
+    consumers query it by, so the localized relation names it so."""
+    commands = {
+        "enrich": {
+            "name": "enrich",
+            "output_columns": [
+                {"name": "id", "type": "integer"},
+                {"name": "geo", "type": "text", "alias": "region"},
+            ],
+        }
+    }
+    run, _ = _runner({"enrich": [{"id": 1, "region": "x"}]})
+    tree = sqlglot.parse_one("SELECT e.id, e.region FROM enrich('x') e", read="postgres")
+    import asyncio
+
+    asyncio.run(localize_commands(tree, commands, run, dialect="duckdb"))
+    assert duckdb.sql(tree.sql(dialect="duckdb")).fetchall() == [(1, "x")]

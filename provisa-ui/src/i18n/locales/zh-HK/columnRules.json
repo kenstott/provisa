@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "欄位規則",
+    "hint": "每條規則會對某個角色及繼承它的角色隱藏或遮罩帶有此鍵的每個欄位，表格的欄位與指令的輸出欄位同樣適用。欄位本身的可見性和遮罩設定仍然生效；以較嚴格的結果為準。",
+    "none": "沒有欄位規則。",
+    "colRole": "角色",
+    "colEffect": "效果",
+    "hidden": "已隱藏",
+    "maskedCompletely": "完全遮罩",
+    "maskedAs": "已遮罩：{{mask}}",
+    "remove": "移除 {{role}} 的規則",
+    "roleLabel": "角色",
+    "actionLabel": "效果",
+    "actionHide": "隱藏",
+    "actionMask": "遮罩",
+    "maskLabel": "遮罩方式",
+    "maskComplete": "完全遮罩",
+    "constantLabel": "常數值",
+    "patternLabel": "模式",
+    "replaceLabel": "取代",
+    "add": "新增規則"
+  }
+}

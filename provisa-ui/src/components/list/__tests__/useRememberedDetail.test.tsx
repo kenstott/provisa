@@ -32,7 +32,7 @@ function Where() {
 }
 
 function RelationshipsList({ listed }: { listed: readonly string[] | null }) {
-  const detail = useRememberedDetail("relationships", listed);
+  const detail = useRememberedDetail("relationships", { shown: listed, leftOut: () => null });
   return (
     <>
       <Table>

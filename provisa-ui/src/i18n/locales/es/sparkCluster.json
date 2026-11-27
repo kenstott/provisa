@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "Dónde se ejecuta y se valida un script de Spark cuando su origen no indica un clúster propio. Si un origen tiene su propio clúster, siempre se usa ese.",
+    "help": "El clúster al que se conecta un origen de Spark cuando no indica un clúster propio. Si un origen tiene su propio clúster, siempre se usa ese.",
     "address": "Dirección de Spark Connect",
     "addressHelp": "La dirección de Spark Connect del clúster, por ejemplo sc://spark.example.com:15002. No incluya el token en ella: guárdelo como secreto e indíquelo abajo.",
     "credential": "Secreto del token",
@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "Conectar mediante TLS. Un token solo se envía por TLS, así que indicar un token lo activa.",
     "userId": "ID de usuario",
-    "userIdHelp": "El usuario con el que el clúster ejecuta el script, si lo solicita. Opcional.",
+    "userIdHelp": "El usuario con el que el clúster ejecuta el trabajo de una sesión, si lo solicita. Opcional.",
     "badHost": "Un nombre de host o una dirección, sin sc://, puerto ni ruta",
     "badPort": "Un puerto de 1 a 65535",
     "badToken": "Una referencia a un secreto, como ${secret:spark_token}",

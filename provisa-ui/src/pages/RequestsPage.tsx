@@ -12,6 +12,7 @@ import { ListOrdered } from "lucide-react";
 import { DetailFields } from "../components/detail/DetailFields";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy, type Narrowing } from "../components/list/leftOut";
 import { useUrlFilter } from "../components/list/useUrlFilter";
 import { useRequiredFields } from "../components/form/useRequiredFields";
 import { PageTitle } from "../components/PageTitle";
@@ -38,7 +39,6 @@ import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/s
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { Tip } from "../components/Tip";
-import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
 import { RequestDeliverySetting } from "../components/admin/RequestDeliverySetting";
 
@@ -125,7 +125,45 @@ export function RequestsPage() {
   const [search, setSearch] = useUrlFilter();
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
-  const detail = useRememberedDetail("requests", loaded ? rows.map((r) => String(r.id)) : null);
+  // REQ-2277 rule 9: a request is open only while the list -- its tab's, under the search -- shows
+  // its row.
+  const tabOf = (r: CreationRequest) => (r.status === "pending" ? "pending" : "resolved");
+  const tabLabel = (which: "pending" | "resolved") =>
+    t(which === "pending" ? "requestsPage.tabPending" : "requestsPage.tabResolved");
+  const narrowings: (Narrowing<CreationRequest> | null)[] = [
+    {
+      hides: (r) => tabOf(r) !== tab,
+      reason: () => t("detailInList.byTab", { tab: tabLabel(tab) }),
+      action: (r) => t("detailInList.openTab", { tab: tabLabel(tabOf(r)) }),
+      bringIn: (r) => setTab(tabOf(r)),
+    },
+    searchNarrowing<CreationRequest>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a request's row shows.
+      (r) => [
+        String(r.id),
+        r.request_type,
+        r.requested_by,
+        new Date(r.created_at).toLocaleString(),
+        `${r.approvals.length} / ${r.required_approvals}`,
+        r.waiting_on.join(", "),
+        r.status,
+        r.rejection_reason,
+      ],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "requests",
+    detailListOf(
+      t,
+      loaded ? rows : null,
+      (r) => String(r.id),
+      (r) => `#${r.id} ${r.request_type}`,
+      narrowings,
+    ),
+  );
   const reasonRequired = useRequiredFields({ reason: rejectReason });
 
   const REASON_LABELS: Record<string, string> = {
@@ -199,14 +237,7 @@ export function RequestsPage() {
     }
   };
 
-  const displayRows =
-    tab === "pending"
-      ? rows.filter((r) => r.status === "pending")
-      : rows.filter((r) => r.status !== "pending");
-
-  const filtered = displayRows.filter((r) =>
-    matchesQuery([String(r.id), r.request_type, r.requested_by, r.status], search),
-  );
+  const filtered = shownBy(rows, narrowings);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   // REQ-1940: sort and group are the shared list mechanism.
@@ -463,6 +494,7 @@ export function RequestsPage() {
       </Modal>
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="requests-split"
         storageKey="provisa.requests.detailWidth"
         title={openRow !== null ? t("requestsPage.panelTitle", { id: openRow.id }) : ""}
@@ -477,7 +509,7 @@ export function RequestsPage() {
         }}
         list={
           <>
-            <ListTable minWidth={800}>
+            <ListTable minWidth={800} testId="requests-list">
               <ListHead
                 columns={[
                   { col: "id" },
@@ -493,7 +525,7 @@ export function RequestsPage() {
               />
               <Table.Tbody>
                 {filtered.length === 0 && (
-                  <ListEmpty colSpan={8}>
+                  <ListEmpty colSpan={8} testId="requests-empty">
                     {search
                       ? t("requestsPage.emptyFiltered", { tab })
                       : t("requestsPage.empty", { tab })}

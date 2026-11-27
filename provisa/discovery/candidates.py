@@ -14,12 +14,11 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.schema_org import registered_tables, relationship_candidates
+from provisa.core.schema_org import registered_tables, relationship_candidates, relationships
 from provisa.discovery.analyzer import RelationshipCandidate
 
 if TYPE_CHECKING:
@@ -131,16 +130,32 @@ async def accept(
             ).fetchall()
         }
         source, target = tables[int(row["source_table_id"])], tables[int(row["target_table_id"])]
-        suggested = row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
+        suggested = row.get("suggested_name")
         # REQ-415: a generated name is told apart from the names already registered; one a person
         # typed is never changed, and refused when taken. The run's result sends each proposal
         # with the name it shows, its suggested name: that name is the generated one, not typed.
+        if rel_id:
+            chosen, id_typed = rel_id, rel_id != suggested
+        elif suggested:
+            chosen, id_typed = suggested, False
+        else:
+            # Neither typed nor suggested: the id is built from the ends and made unique against
+            # the ids registered, so it is unique by construction (maintainer 2026-11-26).
+            taken = [r.id for r in (await conn.execute_core(select(relationships.c.id))).fetchall()]
+            chosen = relationship_naming.discovered_id(
+                source.table_name,
+                row["source_column"],
+                target.table_name,
+                row["target_column"],
+                taken,
+            )
+            id_typed = True
         (named,) = await relationship_naming.unique_names(
             conn,
             [
                 relationship_naming.Generated(
-                    rel_id=rel_id or suggested,
-                    id_typed=bool(rel_id) and rel_id != row.get("suggested_name"),
+                    rel_id=chosen,
+                    id_typed=id_typed,
                     source_table_id=int(row["source_table_id"]),
                     target_table_id=int(row["target_table_id"]),
                     source_column=row["source_column"],

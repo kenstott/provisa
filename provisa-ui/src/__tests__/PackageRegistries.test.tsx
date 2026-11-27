@@ -16,6 +16,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 import en from "../i18n/locales/en/packageRegistries.json";
 
 const auth = vi.hoisted(() => ({
@@ -78,6 +79,26 @@ describe("Admin › Package registries", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
     const item = items.find((i) => i.to === "/admin/package-registries");
     expect(item?.capability).toBe("org_settings");
+  });
+
+  it("finds each entry by every text its row shows", async () => {
+    list.mockResolvedValue([NPM, { ...GIT, kind: "pypi" as const, mirror: true }]);
+    render(<PackageRegistriesTab title="Package Registries" />);
+    await screen.findByTestId("package-registry-g1");
+    await expectFilterFindsEveryCell(screen.getByTestId("package-registries-filter"), () =>
+      screen.getByTestId("package-registries-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<PackageRegistriesTab title="Package Registries" />);
+    await screen.findByTestId("package-registry-r1");
+    fireEvent.change(screen.getByTestId("package-registries-filter"), {
+      target: { value: "no-such-registry" },
+    });
+    expect(screen.getByTestId("package-registries-empty")).toHaveTextContent(
+      "No package registries match the filter.",
+    );
   });
 
   it("lists every kind's entries in one list, a row opening the entry as entered", async () => {

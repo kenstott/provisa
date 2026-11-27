@@ -1493,7 +1493,7 @@ _find_payload() {
 }
 
 # ── Native tier: build a Python venv from the bundled interpreter + wheelhouse ─
-# Provisa always installs from the wheelhouse this AppImage carries (--no-index --find-links),
+# Provisa always installs from the wheelhouse this AppImage carries (--no-index),
 # online or not: the build that was downloaded. The wheelhouse holds every dependency, the CPU-only
 # torch among them (build-appimage.sh fetches it from PyTorch's CPU index), so no index is used.
 setup_native_venv() {
@@ -1520,7 +1520,6 @@ setup_native_venv() {
   info "Creating Python environment..."
   "${base}/bin/python3" -m venv "$venv"
   local pip="${venv}/bin/pip"
-  "$pip" install --quiet --upgrade pip 2>/dev/null || true
 
   local wheels
   wheels="$(_find_payload wheels '*.whl')" || {
@@ -1528,8 +1527,15 @@ setup_native_venv() {
     exit 1
   }
   info "Installing Provisa from the bundled wheels..."
-  # The embedded extra carries the vector extra (the default config's embedding model).
-  "$pip" install --quiet --no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy
+  # The wheelhouse is exactly uv.lock's set for this platform plus provisa and provisa-notebook
+  # (build-appimage.sh): every wheel in it is installed as it is, its locked pip among them, and
+  # nothing is resolved. The embedded extra carries the vector extra (the default config's
+  # embedding model). pip check proves the set is whole.
+  "$pip" install --quiet --no-index --no-deps "$wheels"/*.whl
+  "$pip" check || {
+    err "The bundled wheels do not make a consistent environment — reinstall Provisa."
+    exit 1
+  }
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
   "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."

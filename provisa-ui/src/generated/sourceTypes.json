@@ -2497,12 +2497,6 @@
           }
         },
         {
-          "name": "settings.script",
-          "at": "mappingJson",
-          "required": true,
-          "note": "the annotated PySpark script, as text"
-        },
-        {
           "name": "settings.cluster",
           "at": "mappingJson",
           "note": "the Spark cluster; left out, the organization's default"
@@ -2516,7 +2510,6 @@
       "note": "A Spark source joins the Spark host this installation carries (no host, port or pairing code): admin_request GET /admin/orgs/{org}/builtin-sources/spark returns the host and the cluster a source that names none runs on.",
       "mapping_json": [
         "connector_join",
-        "settings.script",
         "settings.cluster",
         "secrets"
       ],

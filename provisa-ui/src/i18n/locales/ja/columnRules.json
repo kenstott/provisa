@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "列ルール",
+    "hint": "各ルールは、このキーを持つすべての列を、ロールとそのロールを継承するロールに対して非表示またはマスクします。テーブルの列にもコマンドの出力列にも同じように適用されます。列自体の可視性とマスクも引き続き適用され、より厳しい結果が優先されます。",
+    "none": "列ルールはありません。",
+    "colRole": "ロール",
+    "colEffect": "効果",
+    "hidden": "非表示",
+    "maskedCompletely": "完全にマスク",
+    "maskedAs": "マスク: {{mask}}",
+    "remove": "{{role}} のルールを削除",
+    "roleLabel": "ロール",
+    "actionLabel": "効果",
+    "actionHide": "非表示にする",
+    "actionMask": "マスクする",
+    "maskLabel": "マスク",
+    "maskComplete": "完全にマスク",
+    "constantLabel": "定数値",
+    "patternLabel": "パターン",
+    "replaceLabel": "置換文字列",
+    "add": "ルールを追加"
+  }
+}

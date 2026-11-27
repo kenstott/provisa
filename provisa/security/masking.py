@@ -393,24 +393,65 @@ def synthetic_masks(  # REQ-2180, REQ-1494
     return [{"to": list(roles), "mask": mask}, *(masks or [{"to": None, "mask": None}])]
 
 
+def _own_and_floor(masks: list[dict]) -> tuple[list[dict], list[dict]]:
+    """A mask list split into the column's own entries and the floor entries column rules added
+    (REQ-2278, :data:`provisa.security.column_rules.FLOOR`)."""
+    from provisa.security.column_rules import FLOOR
+
+    own = [e for e in masks if not e.get(FLOOR)]
+    return own, [e for e in masks if e.get(FLOOR)]
+
+
+def _floor_rule(floor: list[dict], chain: list[str], data_type: str) -> MaskingRule | None:
+    """The floor a column rule sets for the reader (REQ-2278): the first floor entry it holds, its
+    mask, or completely masked when the rule names no mask. None: no rule masks it."""
+    i = entry_for(floor, chain)
+    if i is None:
+        return None
+    mask = floor[i].get("mask")
+    if mask is None:
+        return MaskingRule(mask_type=MaskType.constant, value=full_mask(data_type))
+    rule = rule_of(mask)
+    try:
+        validate_masking_rule(rule, "", data_type, True)
+    except MaskingValidationError:
+        # REQ-2278 with REQ-2142 (a mask fails closed): a rule keyed on a tag reaches columns of
+        # any type, and a mask that does not fit this one's (a regex on a number) reads it
+        # completely masked, never in clear.
+        return MaskingRule(mask_type=MaskType.constant, value=full_mask(data_type))
+    return rule
+
+
 def resolve(masks: list[dict], chain: list[str], data_type: str) -> MaskingRule | None:
     """The rule the reader reads a column of ``data_type`` through: the first entry it holds
     decides, and an entry with no mask leaves it unmasked. Once a column has any mask, a reader
-    holding no entry reads it completely masked: only an entry gives unmasked (REQ-2059)."""
+    holding no entry reads it completely masked: only an entry gives unmasked (REQ-2059).
+
+    REQ-2278: the column's own entries decide first; a reader they leave unmasked reads the column
+    through the floor a column rule sets for it, if any -- the stricter result holds."""
     if not masks:
         return None
-    i = entry_for(masks, chain)
-    if i is None:
-        return MaskingRule(mask_type=MaskType.constant, value=full_mask(data_type))
-    return None if masks[i].get("mask") is None else rule_of(masks[i]["mask"])
+    own, floor = _own_and_floor(masks)
+    if own:
+        i = entry_for(own, chain)
+        if i is None:
+            return MaskingRule(mask_type=MaskType.constant, value=full_mask(data_type))
+        if own[i].get("mask") is not None:
+            return rule_of(own[i]["mask"])
+    return _floor_rule(floor, chain, data_type)
 
 
 def masked_for(masks: list[dict], chain: list[str]) -> bool:
-    """Whether a reader reads a column with this list through any mask at all (REQ-2059)."""
+    """Whether a reader reads a column with this list through any mask at all (REQ-2059), a column
+    rule's floor included (REQ-2278)."""
     if not masks:
         return False
-    i = entry_for(masks, chain)
-    return i is None or masks[i].get("mask") is not None
+    own, floor = _own_and_floor(masks)
+    if own:
+        i = entry_for(own, chain)
+        if i is None or own[i].get("mask") is not None:
+            return True
+    return entry_for(floor, chain) is not None
 
 
 def columns_masked_for(

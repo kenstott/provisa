@@ -43,6 +43,7 @@
     "suggestHelpTitle": "Vorgeschlagene Beziehungen",
     "suggestHelpBody": "Durchsucht die registrierten Tabellen domänenübergreifend nach wahrscheinlichen Joins und listet sie als Kandidaten auf. Nichts wird deklariert, bevor Sie einen annehmen; ein abgelehnter Kandidat bleibt aus der Liste, bis Sie die Ablehnungen zurücksetzen.",
     "empty": "Noch keine Beziehungen registriert.",
+    "noMatch": "Keine Beziehungen entsprechen dem Filter.",
     "detailPanel": "Details der Beziehung",
     "panelNewRelationship": "Neue Beziehung",
     "backToRelationship": "Zurück zu {{id}}"

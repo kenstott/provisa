@@ -267,6 +267,7 @@ const DANGLING: GlossaryTermSummary = {
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...REVENUE,
   refs: [
     {
@@ -289,6 +290,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...CHURN,
   refs: [],
   edges_out: [],
@@ -302,6 +304,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
 const MARGIN_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...MARGIN,
   refs: [],
   edges_out: [],
@@ -556,7 +559,6 @@ describe("GlossaryTab", () => {
     expect(fields).toEqual([
       ["Name", "Margin"],
       ["Definition", t("glossaryTab.hoverNoDefinition")],
-      [t("glossaryTab.excludeFromExportLabel"), "No"],
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
@@ -715,17 +717,15 @@ describe("GlossaryTab", () => {
     expect(screen.getByTestId("glossary-item-3")).not.toHaveAttribute("data-deleting");
   });
 
-  it("sets export exclusion in the form, sent on Save", async () => {
+  it("toggles export exclusion in the panel's head, saved at once", async () => {
     mockUpdate.mockResolvedValue(undefined);
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await edit();
-    const checkbox = screen.getByTestId("glossary-export-excluded-checkbox");
-    expect(checkbox).not.toBeChecked();
-    fireEvent.click(checkbox);
-    expect(mockUpdate).not.toHaveBeenCalled();
-    save();
+    const toggle = await screen.findByTestId("glossary-export-excluded-toggle");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveAccessibleName(t("glossaryTab.excludeFromExportLabel"));
+    fireEvent.click(toggle);
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
@@ -841,29 +841,39 @@ describe("GlossaryTab", () => {
     );
   });
 
-  it("marks a property PII in Edit, and its panel says how many columns it marks", async () => {
+  it("marks a property PII from its panel's head, with the reason the tag requires", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await edit();
-    const pii = screen.getByTestId("glossary-pii-checkbox");
-    expect(pii).not.toBeDisabled();
+    const pii = await screen.findByTestId("glossary-pii-toggle");
+    expect(pii).toBeEnabled();
+    expect(pii).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(pii);
-    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, tags: [{ tag_id: "pii", reason: null }] });
-    save();
+    fireEvent.change(await screen.findByTestId("glossary-pii-reason"), {
+      target: { value: "Holds customer revenue" },
+    });
+    mockFetchTerm.mockResolvedValue({
+      ...REVENUE_DETAIL,
+      tags: [{ tag_id: "pii", reason: "Holds customer revenue" }],
+    });
+    fireEvent.click(screen.getByTestId("glossary-pii-apply"));
     await waitFor(() =>
-      expect(assignTag).toHaveBeenCalledWith({ tagId: "pii", objectType: "term", termId: 1 }),
+      expect(assignTag).toHaveBeenCalledWith({
+        tagId: "pii",
+        objectType: "term",
+        termId: 1,
+        reason: "Holds customer revenue",
+      }),
     );
-    expect(await screen.findByTestId("glossary-detail-pii")).toHaveTextContent(
-      t("glossaryTab.piiMarks", { count: 1 }),
+    await waitFor(() =>
+      expect(screen.getByTestId("glossary-pii-toggle")).toHaveAttribute("aria-pressed", "true"),
     );
   });
 
-  it("offers PII in Edit on a property only", async () => {
+  it("offers PII on a property only", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-2"));
-    await edit();
-    // A concept means no column: the box is off, its help saying why.
-    expect(screen.getByTestId("glossary-pii-checkbox")).toBeDisabled();
+    // A concept means no column: the toggle is off, its tip saying why.
+    await waitFor(() => expect(screen.getByTestId("glossary-pii-toggle")).toBeDisabled());
   });
 
   it("keeps the term open when a move left it with other refs", async () => {
@@ -989,7 +999,7 @@ describe("GlossaryTab", () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     const retire = await screen.findByTestId("glossary-retire-btn");
-    expect(retire).toHaveTextContent(t("glossaryTab.retire"));
+    expect(retire).toHaveAccessibleName(t("glossaryTab.retire"));
     fireEvent.click(retire);
 
     // It holds a column: it says what moves, and asks for a reason and a successor.

@@ -38,6 +38,9 @@ jobs:
       - uses: ./.github/actions/trino-plugins
         with:
           phase: prime
+      - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
 
   exasol:
     name: Exasol (source + pipeline e2e)
@@ -52,6 +55,7 @@ jobs:
       # The pinned Trino plugin jars, restored from the cache the trino-plugins job primed and
       # verified before the tests (release run 37874425655: HTTP 404 for a jar that exists).
       trino-plugins: true
+      zaychik-image: true
       prepare: scripts/ci/lanes/amd64-engines-prepare.sh
       # -o addopts="": the ini addopts carry the default-lane marker filter and
       # --ignore=tests/e2e; the modules are named explicitly here instead.

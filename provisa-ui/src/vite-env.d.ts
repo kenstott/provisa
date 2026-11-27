@@ -92,6 +92,7 @@ declare module "*.graphql" {
   export const WithdrawTable: DocumentNode;
   export const PutBackTable: DocumentNode;
   export const WithdrawSource: DocumentNode;
+  export const SetSourceSetupOutcomes: DocumentNode;
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
@@ -258,6 +259,7 @@ declare module "*.gql" {
   export const WithdrawTable: DocumentNode;
   export const PutBackTable: DocumentNode;
   export const WithdrawSource: DocumentNode;
+  export const SetSourceSetupOutcomes: DocumentNode;
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;

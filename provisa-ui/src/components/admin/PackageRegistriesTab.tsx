@@ -51,7 +51,6 @@ import {
   type RegistryKind,
 } from "../../api/packageRegistries";
 import { useAuth } from "../../context/AuthContext";
-import { matchesQuery } from "../../lib/searchItems";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { FormChecks, FormField, FormFooter, FormLayout, FormRead } from "../form/FormLayout";
@@ -61,6 +60,7 @@ import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useRememberedDetail } from "../list/useDetailParam";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
@@ -163,9 +163,29 @@ export function PackageRegistriesTab({ title }: { title: string }) {
   const [kept, setKept] = useState<PackageRegistry[] | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useUrlFilter();
+  const kindLabel = (k: RegistryKind) => t(`packageRegistries.kind_${k}`);
+  // Whether a registry is its kind's default, as its row says.
+  const isDefault = (r: PackageRegistry) =>
+    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
+  // REQ-2277 rule 9: a registry is open only while the search shows its row.
+  const narrowings = [
+    searchNarrowing<PackageRegistry>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a registry's row shows.
+      (r) => [kindLabel(r.kind), r.address, r.scope, isDefault(r)],
+    ),
+  ];
   const detail = useRememberedDetail(
     "packageRegistries",
-    kept === null ? null : kept.map((r) => r.id),
+    detailListOf(
+      t,
+      kept,
+      (r) => r.id,
+      (r) => r.address,
+      narrowings,
+    ),
   );
   const [mode, setMode] = useState<Mode>(null);
   const [draft, setDraft] = useState<Draft>(blank("npm"));
@@ -192,9 +212,8 @@ export function PackageRegistriesTab({ title }: { title: string }) {
   }
   if (!kept || !activeOrgId) return null;
 
-  const kindLabel = (k: RegistryKind) => t(`packageRegistries.kind_${k}`);
   const open = kept.find((r) => r.id === detail.id) ?? null;
-  const shown = kept.filter((r) => matchesQuery([r.address, r.scope, kindLabel(r.kind)], search));
+  const shown = shownBy(kept, narrowings);
 
   const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const openForm = (next: Mode, from: Draft) => {
@@ -379,9 +398,6 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           ? formView
           : readView(open)
         : null;
-  const isDefault = (r: PackageRegistry) =>
-    LABELS[r.kind].mirror !== null && r.mirror ? t("detailFields.yes") : t("detailFields.no");
-
   return (
     <>
       <div className="page-header">
@@ -408,6 +424,7 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           {t("packageRegistries.help")}
         </Text>
         <SplitPane
+          outOfList={detail.outOfList}
           testId="package-registries-split"
           storageKey="provisa.packageRegistries.detailWidth"
           title={panelTitle}
@@ -427,6 +444,8 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           list={
             <SortGroupTable
               testPrefix="package-registries"
+              testId="package-registries-list"
+              emptyTestId="package-registries-empty"
               rows={shown}
               columns={[
                 {
@@ -455,7 +474,10 @@ export function PackageRegistriesTab({ title }: { title: string }) {
               headers={[{ col: "kind" }, { col: "address" }, { col: "scope" }, { col: "default" }]}
               colSpan={4}
               rowKey={(r) => r.id}
-              empty={t("packageRegistries.none")}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("packageRegistries.none") : t("packageRegistries.noMatch")
+              }
               render={(r) => (
                 <ListRow
                   key={r.id}

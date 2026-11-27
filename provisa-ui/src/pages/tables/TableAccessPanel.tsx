@@ -19,6 +19,7 @@ import { Alert, Badge, Loader, Select, Table, Text } from "@mantine/core";
 import { FormField, FormLayout } from "../../components/form/FormLayout";
 import { fetchTableAccess, type TableAccess } from "../../api/roleRights";
 import { AccessCells, AccessHeads } from "../security/AccessCells";
+import { entityName } from "../../components/entityName";
 
 export function TableAccessPanel({ tableId }: { tableId: number | null }) {
   const { t } = useTranslation();
@@ -103,7 +104,7 @@ export function TableAccessPanel({ tableId }: { tableId: number | null }) {
                 <Table.Tr key={a.role} data-testid={`table-access-role-${a.role}`}>
                   <Table.Td>
                     <Text component="span" size="sm" ff="monospace">
-                      {a.role}
+                      {entityName("role", a.role)}
                     </Text>
                     {a.standard && (
                       <Badge size="xs" variant="light" ml={6}>

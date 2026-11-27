@@ -176,7 +176,7 @@ jobs:
         if: matrix.pip != '' || matrix.apt != ''
         run: |
           if [ -n "${{ matrix.apt }}" ]; then
-            sudo apt-get -o DPkg::Lock::Timeout=300 update -q
+            scripts/ci/apt-update.sh -o DPkg::Lock::Timeout=300
             sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q ${{ matrix.apt }}
           fi
           if [ -n "${{ matrix.pip }}" ]; then
@@ -223,6 +223,20 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
+
+      # The stack script builds zaychik only when absent: primed here (a cache hit, or one build)
+      # and loaded, so Maven Central is not asked for it on every run.
+      - name: Prime the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+
+      - name: Restore the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
 
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the

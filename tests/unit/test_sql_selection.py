@@ -18,8 +18,8 @@ from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_types import CompilationContext, JoinMeta, StatementSources, TableMeta
 from provisa.compiler.sql_selection import (
     _build_gql_selection,
-    _build_rel_json_expr,
     _build_rel_json_kv,
+    rel_read,
     _collect_nested_columns,
     _extract_json_blob_kv,
     _lateral_join,
@@ -200,84 +200,65 @@ def test_build_gql_selection_nested():
     assert out == "x { a { b } }"
 
 
-# --- _build_rel_json_kv / _build_rel_json_expr ----------------------------------
+# --- _build_rel_json_kv / rel_read ---------------------------------------------
 
 
-def test_build_rel_json_expr_many_to_one():
-    parent = _table(2, "children")
-    ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
-    fn = _field("{ x { name } }")
-    expr, counter = _build_rel_json_expr(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "t1",
-        "public.children t1",
-        '"t1"."id" = "t0"."x_id"',
-        "many-to-one",
-        None,
-        False,
-        1,
-        _sources(),
-    )
-    assert expr.startswith("(SELECT json_object(")
-    assert "LIMIT 1" in expr
-    assert counter == 1
-
-
-def test_build_rel_json_expr_one_to_many_no_limit():
-    parent = _table(2, "children")
-    ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
-    fn = _field("{ x { name } }")
-    expr, _ = _build_rel_json_expr(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "t1",
-        "public.children t1",
-        "TRUE",
-        "one-to-many",
-        None,
-        False,
-        1,
-        _sources(),
-    )
-    # A list field with no rows is [], not null (#286).
-    assert expr.startswith("COALESCE((SELECT json_agg(json_object(")
-    assert expr.endswith(", CAST('[]' AS JSON))")
-    assert "_sub" not in expr
-
-
-def test_build_rel_json_expr_one_to_many_with_agg_limit():
-    parent = _table(2, "children")
-    ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
-    fn = _field("{ x { name } }")
-    expr, _ = _build_rel_json_expr(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "t1",
-        "public.children t1",
-        "TRUE",
-        "one-to-many",
-        3,
-        False,
-        1,
-        _sources(),
-    )
-    assert "json_agg(_t)" in expr
-    assert "LIMIT 3" in expr
-    assert "_sub" in expr
-
-
-def test_build_rel_json_kv_source_constant_and_json_key():
+def _read(cardinality: str, query: str = "{ x { name } }", **overrides):
+    """rel_read of a relationship from widgets (t0) to children (t1), and the read's SQL."""
     child = _table(2, "children", field_name="children")
-    jm = _join(child, source_constant="pets", cardinality="many-to-one")
+    jm = _join(child, cardinality=cardinality, **overrides)
+    ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
+    fn = _field(query)
+    return rel_read(
+        fn,
+        jm,
+        ctx,
+        "t1",
+        '"t0"."id"',
+        '"t1"."widget_id"',
+        None,
+        False,
+        2,
+        _sources(),
+        None,
+    )
+
+
+def test_rel_read_many_to_one_is_the_head_of_each_keys_rows():
+    value, join, counter = _read("many-to-one")
+    assert value == '"t1_read"."_value"'
+    assert join.startswith('LEFT JOIN (SELECT "_key0", "_value" FROM (SELECT "t1"."widget_id"')
+    assert 'ROW_NUMBER() OVER (PARTITION BY "t1"."widget_id") AS "_row"' in join
+    assert 'WHERE "_row" = 1) "t1_read" ON "t1_read"."_key0" = "t0"."id"' in join
+    assert counter == 2
+
+
+def test_rel_read_one_to_many_no_limit_groups_each_keys_rows():
+    value, join, _ = _read("one-to-many")
+    # A list field with no rows is [], not null (#286).
+    assert value == 'COALESCE("t1_read"."_value", CAST(\'[]\' AS JSON))'
+    assert 'json_agg(json_object(KEY \'name\' VALUE "t1"."name")) AS "_value"' in join
+    assert 'GROUP BY "t1"."widget_id"' in join
+    assert "ROW_NUMBER" not in join
+
+
+def test_rel_read_one_to_many_with_limit_caps_each_keys_rows():
+    _value, join, _ = _read("one-to-many", default_limit=3)
+    assert 'json_agg("_rows"."_value") AS "_value"' in join
+    assert 'WHERE "_row" <= 3 GROUP BY "_key0"' in join
+
+
+def test_rel_read_unhandled_cardinality_raises():
+    import pytest
+
+    with pytest.raises(ValueError, match="unhandled relationship cardinality"):
+        _read("many-to-many")
+
+
+def _kv(jm: JoinMeta, query: str = "{ x { children { name } } }"):
     ctx = CompilationContext(joins={("Widget", "children"): jm})
-    fn = _field("{ x { children { name } } }")
+    fn = _field(query)
+    joins: list[str] = []
     kv, counter = _build_rel_json_kv(
         fn.selection_set.selections,
         ctx,
@@ -288,31 +269,26 @@ def test_build_rel_json_kv_source_constant_and_json_key():
         1,
         _sources(),
         None,
+        joins,
     )
+    return kv, joins, counter
+
+
+def test_build_rel_json_kv_source_constant():
+    child = _table(2, "children", field_name="children")
+    kv, joins, counter = _kv(_join(child, source_constant="pets", cardinality="many-to-one"))
     assert counter == 2
-    assert "'pets'" in kv[0]
+    assert kv == ['KEY \'children\' VALUE "t1_read"."_value"']
+    assert joins[0].endswith('"t1_read"."_key0" = VARCHAR \'pets\'')
 
 
 def test_build_rel_json_kv_source_json_key():
     child = _table(2, "children", field_name="children")
-    jm = _join(child, source_json_key="cid", cardinality="many-to-one")
-    ctx = CompilationContext(joins={("Widget", "children"): jm})
-    fn = _field("{ x { children { name } } }")
-    kv, _ = _build_rel_json_kv(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        _table(1, "widgets"),
-        "t0",
-        False,
-        1,
-        _sources(),
-        None,
-    )
-    assert "AS JSON)>>'cid'" in kv[0]
+    _kv_pairs, joins, _ = _kv(_join(child, source_json_key="cid", cardinality="many-to-one"))
+    assert 'CAST("t0"."id" AS JSON)->>\'cid\'' in joins[0]
 
 
-def test_build_rel_json_kv_source_expr_with_parent_src_val():
+def test_build_rel_json_kv_source_expr():
     child = _table(2, "children", field_name="children")
     jm = _join(
         child,
@@ -320,21 +296,9 @@ def test_build_rel_json_kv_source_expr_with_parent_src_val():
         source_column_type="varchar",
         cardinality="many-to-one",
     )
-    ctx = CompilationContext(joins={("Widget", "children"): jm})
-    fn = _field("{ x { children { name } } }")
-    kv, _ = _build_rel_json_kv(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        _table(1, "widgets"),
-        "t0",
-        False,
-        1,
-        _sources(),
-        None,
-        parent_src_val="'literal-parent-val'",
-    )
-    assert "literal-parent-val" in kv[0]
+    _kv_pairs, joins, _ = _kv(jm)
+    # The source's expression of the parent row, as the read is joined back to it.
+    assert '"t1_read"."_key0" = "t0"."custom"' in joins[0]
 
 
 def test_build_rel_json_kv_target_expr_and_virtual_column():
@@ -342,6 +306,7 @@ def test_build_rel_json_kv_target_expr_and_virtual_column():
     jm = _join(child, target_expr='CONCAT({alias}."a", {alias}."b")', cardinality="many-to-one")
     ctx = CompilationContext(joins={("Widget", "children"): jm})
     fn = _field("{ x { children { name } } }")
+    joins: list[str] = []
     kv, _ = _build_rel_json_kv(
         fn.selection_set.selections,
         ctx,
@@ -352,8 +317,9 @@ def test_build_rel_json_kv_target_expr_and_virtual_column():
         1,
         _sources(),
         None,
+        joins,
     )
-    assert "CONCAT(" in kv[0]
+    assert "CONCAT(" in joins[0]
 
 
 def test_build_rel_json_kv_gql_json_blob_column():
@@ -369,6 +335,7 @@ def test_build_rel_json_kv_gql_json_blob_column():
         1,
         _sources(),
         None,
+        [],
     )
     assert "json_object(KEY 'a' VALUE" in kv[0]
 
@@ -386,6 +353,7 @@ def test_build_rel_json_kv_plain_scalar_column():
         1,
         _sources(),
         None,
+        [],
     )
     assert kv == ['KEY \'name\' VALUE "t0"."nm"']
 
@@ -488,7 +456,11 @@ def test_collect_nested_columns_json_value_path():
         flat=False,
     )
     assert not has_lateral
-    assert any("json_agg(json_object(" in sp for sp in select_parts)
+    # The field is its grouped read's value, the read joined by key (#362).
+    assert select_parts == [
+        'COALESCE("t1_read"."_value", CAST(\'[]\' AS JSON)) AS "root__children"'
+    ]
+    assert len(join_clauses) == 1 and "json_agg(json_object(" in join_clauses[0]
     assert not any("ARRAY_AGG" in sp for sp in select_parts)
     assert (columns[0].field_name, columns[0].nested_in, columns[0].is_agg) == (
         "children",

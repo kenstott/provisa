@@ -194,3 +194,26 @@ export function resultIsPartial(
   const limit = statementLimit(sentSql);
   return limit !== null && limit > 0 && rowCount >= limit;
 }
+
+/**
+ * REQ-1519: how a statement is named in the Analyze picker: its first line that is not a comment
+ * (the `-- provisa-params` lines and other leading comments belong to the statement but do not
+ * name it). A statement is never comments alone: the split drops those.
+ */
+export function statementLabel(statement: string): string {
+  let rest = statement;
+  for (;;) {
+    rest = rest.trimStart();
+    if (rest.startsWith("--")) {
+      const end = rest.indexOf("\n");
+      rest = end < 0 ? "" : rest.slice(end + 1);
+    } else if (rest.startsWith("/*")) {
+      const end = rest.indexOf("*/");
+      rest = end < 0 ? "" : rest.slice(end + 2);
+    } else {
+      break;
+    }
+  }
+  const nl = rest.indexOf("\n");
+  return (nl < 0 ? rest : rest.slice(0, nl)).trim();
+}

@@ -4,6 +4,7 @@
     "cancel": "Cancel",
     "stop": "Stop",
     "stopped": "Stopped",
+    "noQuery": "There is no query to run.",
     "stopQuery": "Stop the query",
     "save": "Save",
     "delete": "Delete",

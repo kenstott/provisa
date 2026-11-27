@@ -17,6 +17,7 @@
 // replica load that follows registration.
 
 import { useEffect, useState, type ReactNode } from "react";
+import { PanelBody } from "../../components/list/PanelBody";
 import { Button, SegmentedControl, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
@@ -272,110 +273,112 @@ export function WikidataRegisterForm(props: Props) {
         : [];
 
   return (
-    <FormLayout data-tour="tables-form" className="form-card">
-      <FormIdentifiers>
-        {props.identifiers}
-        <FormField
-          size="long"
-          help={t("wikidataRegister.startersHint")}
-          data-testid="wikidata-starters-field"
-        >
-          <MultiSelect
-            label={t("wikidataRegister.starters")}
-            options={options}
-            value={picked}
-            onChange={setPicked}
-            placeholder={t("wikidataRegister.startersPlaceholder")}
-          />
-        </FormField>
-        <FormField size="long">
-          <SegmentedControl
-            aria-label={t("wikidataRegister.customLabel")}
-            value={mode}
-            onChange={(v) => chooseMode(v as CustomMode)}
-            data={[
-              { value: "none", label: t("wikidataRegister.customNone") },
-              { value: "class", label: t("wikidataTable.modeClass") },
-              { value: "sparql", label: t("wikidataRegister.customSparql") },
-            ]}
-            data-testid="wikidata-custom-mode"
-          />
-        </FormField>
-      </FormIdentifiers>
-      {mode === "class" && (
-        <WikidataClassPicker
-          language={props.language}
-          onUse={takeClassTable}
-          onChange={resetCustom}
-        />
-      )}
-      {hasQuery && (
-        <>
-          <FormField size="medium">
-            <TextInput
-              {...required.field("tableName")}
-              label={t("registerTableForm.neo4jTableNameLabel")}
-              value={tableName}
-              onChange={(e) => setTableName(e.currentTarget.value)}
-              data-testid="register-table-sparql-table-name"
-            />
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("registerTableForm.aliasLabel")}
-              value={alias}
-              onChange={(e) => setAlias(e.currentTarget.value)}
-              placeholder={t("registerTableForm.aliasPlaceholder")}
-              data-testid="register-table-alias"
-            />
-          </FormField>
-          <QueryTableFields
-            sourceType="sparql"
-            pipeline={false}
-            query={query}
-            setQuery={(q) => {
-              preview.clear();
-              setQuery(q);
-            }}
-            args={[]}
-            setArgs={() => undefined}
-            samples={{}}
-            setSamples={() => undefined}
-            previewing={preview.previewing}
-            canPreview={Boolean(query.trim())}
-            onPreview={() => void preview.run(query.trim())}
-            previewRows={preview.rows}
-            previewProblem={preview.problem}
-            columns={shownColumns}
-          />
-          <FormField size="full">
-            <Text size="sm" c="dimmed" data-testid="wikidata-custom-columns">
-              {shownColumns.length > 0
-                ? t("wikidataRegister.columns", {
-                    columns: shownColumns.map((c) => c.name).join(", "),
-                  })
-                : parsed.state === "refused"
-                  ? parsed.problem
-                  : t("wikidataRegister.columnsReading")}
-            </Text>
-          </FormField>
-        </>
-      )}
-      <FormFooter
-        panel
-        problem={props.problem}
-        onCancel={props.onCancel}
-        cancelProps={{ "data-testid": "register-table-cancel" }}
-        action={
-          <Button
-            onClick={() => void register()}
-            loading={registering}
-            data-testid="register-table-submit"
+    <PanelBody>
+      <FormLayout data-tour="tables-form" className="form-card">
+        <FormIdentifiers>
+          {props.identifiers}
+          <FormField
+            size="long"
+            help={t("wikidataRegister.startersHint")}
+            data-testid="wikidata-starters-field"
           >
-            {t("registerTableForm.continue")}
-          </Button>
-        }
-      />
-    </FormLayout>
+            <MultiSelect
+              label={t("wikidataRegister.starters")}
+              options={options}
+              value={picked}
+              onChange={setPicked}
+              placeholder={t("wikidataRegister.startersPlaceholder")}
+            />
+          </FormField>
+          <FormField size="long">
+            <SegmentedControl
+              aria-label={t("wikidataRegister.customLabel")}
+              value={mode}
+              onChange={(v) => chooseMode(v as CustomMode)}
+              data={[
+                { value: "none", label: t("wikidataRegister.customNone") },
+                { value: "class", label: t("wikidataTable.modeClass") },
+                { value: "sparql", label: t("wikidataRegister.customSparql") },
+              ]}
+              data-testid="wikidata-custom-mode"
+            />
+          </FormField>
+        </FormIdentifiers>
+        {mode === "class" && (
+          <WikidataClassPicker
+            language={props.language}
+            onUse={takeClassTable}
+            onChange={resetCustom}
+          />
+        )}
+        {hasQuery && (
+          <>
+            <FormField size="medium">
+              <TextInput
+                {...required.field("tableName")}
+                label={t("registerTableForm.neo4jTableNameLabel")}
+                value={tableName}
+                onChange={(e) => setTableName(e.currentTarget.value)}
+                data-testid="register-table-sparql-table-name"
+              />
+            </FormField>
+            <FormField size="medium">
+              <TextInput
+                label={t("registerTableForm.aliasLabel")}
+                value={alias}
+                onChange={(e) => setAlias(e.currentTarget.value)}
+                placeholder={t("registerTableForm.aliasPlaceholder")}
+                data-testid="register-table-alias"
+              />
+            </FormField>
+            <QueryTableFields
+              sourceType="sparql"
+              pipeline={false}
+              query={query}
+              setQuery={(q) => {
+                preview.clear();
+                setQuery(q);
+              }}
+              args={[]}
+              setArgs={() => undefined}
+              samples={{}}
+              setSamples={() => undefined}
+              previewing={preview.previewing}
+              canPreview={Boolean(query.trim())}
+              onPreview={() => void preview.run(query.trim())}
+              previewRows={preview.rows}
+              previewProblem={preview.problem}
+              columns={shownColumns}
+            />
+            <FormField size="full">
+              <Text size="sm" c="dimmed" data-testid="wikidata-custom-columns">
+                {shownColumns.length > 0
+                  ? t("wikidataRegister.columns", {
+                      columns: shownColumns.map((c) => c.name).join(", "),
+                    })
+                  : parsed.state === "refused"
+                    ? parsed.problem
+                    : t("wikidataRegister.columnsReading")}
+              </Text>
+            </FormField>
+          </>
+        )}
+        <FormFooter
+          panel
+          problem={props.problem}
+          onCancel={props.onCancel}
+          cancelProps={{ "data-testid": "register-table-cancel" }}
+          action={
+            <Button
+              onClick={() => void register()}
+              loading={registering}
+              data-testid="register-table-submit"
+            >
+              {t("registerTableForm.continue")}
+            </Button>
+          }
+        />
+      </FormLayout>
+    </PanelBody>
   );
 }

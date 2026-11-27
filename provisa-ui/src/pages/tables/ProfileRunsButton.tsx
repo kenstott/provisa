@@ -11,32 +11,27 @@
 // REQ-2123 (amended 2026-10-21): View Profile Runs in the table's read-only panel too, beside the
 // profiler it belongs to; it opens the same modal the edit panel's button does.
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Button } from "@mantine/core";
 import type { RegisteredTable } from "../../types/admin";
 import { ProfileRunsModal } from "./ProfileRunsModal";
+import { useProfileRunsParam } from "./useProfileRunsParam";
 
 export function ProfileRunsButton({ table }: { table: RegisteredTable }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  // REQ-2277: open is the URL's `?profile=`.
+  const runs = useProfileRunsParam();
   return (
     <Box px="0.75rem" py="0.5rem">
       <Button
         size="xs"
         variant="light"
         data-testid="table-read-view-profile-runs"
-        onClick={() => setOpen(true)}
+        onClick={() => runs.open()}
       >
         {t("profilerPanel.viewRuns")}
       </Button>
-      {open && (
-        <ProfileRunsModal
-          tableId={table.id}
-          tableName={table.tableName}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {runs.profile !== null && <ProfileRunsModal tableId={table.id} tableName={table.tableName} />}
     </Box>
   );
 }

@@ -82,6 +82,8 @@ const FIELD_PARENTS = new Set([
   "FormChecks",
   "CollapsibleSection",
   "FormFold",
+  // A wizard's step lays its fields out in a FormLayout of its own (WizardFrame.tsx).
+  "WizardStep",
 ]);
 /** Options of one choice: the group is the field, its boxes are not ticks of the form. */
 const CHOICE_GROUPS = new Set(["Checkbox.Group", "Radio.Group", "Switch.Group"]);

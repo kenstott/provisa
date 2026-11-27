@@ -39,7 +39,13 @@ from provisa.gql.label_map import (
     is_session_node,
 )
 from provisa.gql.ir import ReturnClause
-from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
+from provisa.gql.translator_helpers import (  # REQ-1586, REQ-348
+    EitherWay,
+    RelEndpoints,
+    junction_edge_fields,
+    oriented_rel,
+    via_column,
+)
 from provisa.gql.translator_types import NODE_COLUMN
 
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
@@ -349,7 +355,25 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         path_step_info = getattr(self, "_path_steps", {}).get(path_var)
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info
-            return self._build_path_json(step_nodes, step_edges)
+            path = self._build_path_json(
+                step_nodes, step_edges, getattr(self, "_path_step_either_way", {}).get(path_var)
+            )
+            if path_var not in getattr(self, "_optional_paths", set()):
+                return path
+            # An OPTIONAL MATCH's path that matched nothing is null, never a path of null nodes.
+            absent = exp.or_(
+                *(
+                    exp.Is(
+                        this=exp.Column(
+                            this=exp.Identifier(this=nm.id_column, quoted=True),
+                            table=exp.Identifier(this=alias),
+                        ),
+                        expression=exp.Null(),
+                    )
+                    for alias, nm in step_nodes
+                )
+            )
+            return exp.Case(ifs=[exp.If(this=absent, true=exp.Null())], default=path)
         one_node = self._zero_hop_paths().get(path_var)
         if one_node is not None:
             return self._one_node_path(one_node)
@@ -455,8 +479,14 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         self,
         step_nodes: list,
         step_edges: list,
+        step_ways: "list[EitherWay | None] | None" = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path."""
+        """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path.
+
+        ``step_ways`` (REQ-348): for each step edge one outer join matched either way, where it
+        matched forward and backward (either_way_joins). Its edge is oriented as each row matched
+        it, and the path is null where such a step matched neither way.
+        """
 
         def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             props = node_properties_json(alias, nm)
@@ -485,15 +515,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             is_reversed: bool = False,
             via: "tuple[str, JunctionMapping] | None" = None,
         ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if is_reversed:
+                # Traversed against its stored direction: the relationship as stored, its start
+                # the node it leaves and its end the node it enters (Neo4j), and its identity
+                # the same either way (as show-children names it).
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
             src_id_cast = node_key_text(src_alias, src_nm)
             tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
-            # When the edge is traversed in reverse of its canonical direction,
-            # use canonical order (canonical_src-canonical_tgt) for identity so it
-            # matches the identity produced by show-children (which always uses canonical direction).
-            if is_reversed:
-                identity_first, identity_second = tgt_id_cast, src_id_cast
-            else:
-                identity_first, identity_second = src_id_cast, tgt_id_cast
             identity = exp.DPipe(
                 this=exp.DPipe(
                     this=exp.DPipe(
@@ -501,11 +529,11 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                             this=_type_value(rel_type),
                             expression=exp.Literal.string(":"),
                         ),
-                        expression=identity_first,
+                        expression=src_id_cast,
                     ),
                     expression=exp.Literal.string("-"),
                 ),
-                expression=identity_second,
+                expression=tgt_id_cast,
             )
             if via is not None and via[1].identity_column is not None:
                 # REQ-2176: an edge of its own row is named by it, as a bare edge is.
@@ -545,14 +573,28 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             this="JSON_ARRAY",
             expressions=[_node_obj(alias, nm) for alias, nm in step_nodes],
         )
+        ways = step_ways or [None] * len(step_edges)
+
+        def _step_edge(edge: tuple, way: "EitherWay | None") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            rt, sa, snm, ta, tnm, rev, via = edge
+            if way is None:
+                return _edge_obj(rt, sa, snm, ta, tnm, rev, via)
+
+            def as_stored(ends: "RelEndpoints") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                # The relationship as stored, whichever end the pattern named first: its start
+                # the end it leaves.
+                s_alias, s_nm, t_alias, t_nm, reversed_ = ends
+                if reversed_:
+                    s_alias, s_nm, t_alias, t_nm = t_alias, t_nm, s_alias, s_nm
+                return _edge_obj(rt, s_alias, s_nm, t_alias, t_nm, False, via)
+
+            return oriented_rel((sa, snm, ta, tnm, rev), way, as_stored)
+
         edges_array = exp.Anonymous(
             this="JSON_ARRAY",
-            expressions=[
-                _edge_obj(rt, sa, snm, ta, tnm, rev, via)
-                for rt, sa, snm, ta, tnm, rev, via in step_edges
-            ],
+            expressions=[_step_edge(edge, way) for edge, way in zip(step_edges, ways, strict=True)],
         )
-        return exp.Anonymous(
+        path = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("nodes"),
@@ -563,6 +605,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 exp.Literal.number(len(step_edges)),
             ],
         )
+        matched = [exp.or_(fwd.copy(), bwd.copy()) for fwd, bwd in (w for w in ways if w)]
+        if not matched:
+            return path
+        return exp.Case(ifs=[exp.If(this=exp.and_(*matched), true=path)], default=exp.Null())
 
     def _every_rel_path_json(self, hops: "list[tuple[str, str, str]]") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """A path of hops each read from its own union (translator_every_rel): its nodes in the
@@ -635,17 +681,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         self._graph_vars[alias or expr_text] = graph_var_kind_edge
         endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
         if endpoints:
-            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            rel_type = self._rel_var_type_exprs.get(expr_text) or self._rel_var_types[expr_text]
-            edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                rel_type,
-                src_alias,
-                src_nm,
-                tgt_alias,
-                tgt_nm,
-                is_reversed,
-                self._rel_var_via.get(expr_text),  # REQ-1586
-            )
+            _, _, tgt_alias, tgt_nm, _ = endpoints
+            edge_expr: exp.Expression = self._temporal_context().resolve_graph_element(expr_text)  # pyright: ignore[reportPrivateImportUsage, reportAssignmentType]  # lib omits __all__; a typed relationship always resolves
             matched = getattr(self, "_rel_var_matched", {}).get(expr_text)
             if matched is not None:
                 # Between two nodes the statement holds (#303): an edge where its condition holds.

@@ -306,6 +306,7 @@
   "tests/integration/test_join_outside_relationships_every_surface.py": 38.4,
   "tests/integration/test_join_pattern_refresh_e2e.py": 61.6,
   "tests/integration/test_json_on_engines.py": 25.8,
+  "tests/integration/test_json_template_fake_e2e.py": 1.0,
   "tests/integration/test_json_udfs_against_postgres.py": 1.1,
   "tests/integration/test_jsonapi_integration.py": 0.1,
   "tests/integration/test_jsonapi_spec.py": 0.1,
@@ -569,7 +570,6 @@
   "tests/integration/test_spark_connector_e2e.py": 160.0,
   "tests/integration/test_spark_reads_e2e.py": 120.0,
   "tests/integration/test_spark_reads_jar_e2e.py": 240.0,
-  "tests/integration/test_spark_transform_mv_e2e.py": 300.0,
   "tests/integration/test_sparql_config_persist.py": 0.0,
   "tests/integration/test_sparql_endpoint.py": 0.0,
   "tests/integration/test_sparql_exec.py": 0.0,
@@ -597,6 +597,7 @@
   "tests/integration/test_system_forms_on_engines.py": 9.8,
   "tests/integration/test_system_roles_seed.py": 6.3,
   "tests/integration/test_table_delete_and_view_loop.py": 100.3,
+  "tests/integration/test_tag_column_rule_every_transport.py": 45.0,
   "tests/integration/test_tag_policy_views_e2e.py": 46.3,
   "tests/integration/test_tag_row_filter_every_transport.py": 43.1,
   "tests/integration/test_tags_report_e2e.py": 46.3,
@@ -782,10 +783,10 @@
   "tests/integration/test_neo4j_query_preview_e2e.py": 45.0,
   "tests/integration/test_sqlalchemy_dialect_scope_e2e.py": 40.0,
   "tests/integration/test_spark_default_cluster_e2e.py": 40.0,
-  "tests/integration/test_spark_resolver_e2e.py": 200.0,
-  "tests/integration/test_spark_script_validation_e2e.py": 200.0,
   "tests/integration/test_opengauss_bytea_like.py": 120.0,
   "tests/integration/test_demo_spark_cluster_e2e.py": 240.0,
-  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0
+  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0,
+  "tests/integration/test_node_tags_served.py": 30.0,
+  "tests/integration/test_relationship_fields_on_engines.py": 120.0
  }
 }

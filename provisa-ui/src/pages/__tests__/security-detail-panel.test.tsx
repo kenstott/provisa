@@ -13,9 +13,16 @@
 // under its own title; Escape never drops a form that is being typed into.
 
 import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 import { openNewRole } from "../../test-utils/securityRoles";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
   success: true,
@@ -25,7 +32,8 @@ const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 const role = (id: string, detailsHidden = false) => ({
   id,
   description: `What ${id} is for.`,
-  capabilities: [],
+  capabilities: id === "steward" ? ["data_residency", "manage_glossary"] : [],
+  residencyValues: ["eu"],
   demonstrated: [],
   domain_access: ["sales"],
   parents: [],
@@ -50,9 +58,9 @@ const RULES = [
     domainId: "sales",
     actionName: null,
     roleId: "steward",
-    filterExpr: "b",
-    rights: ["R"],
-    description: "B",
+    filterExpr: "region = 'emea'",
+    rights: ["R", "U"],
+    description: "Stewards read their region",
   },
 ];
 
@@ -102,7 +110,9 @@ const rowIn = (list: string, text: string) =>
 describe("the Security lists' search", () => {
   it("lists the roles matching every word of the search, or either side of or", () => {
     render(<SecurityRolesPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or locked" } });
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "analyst or locked" },
+    });
     const list = within(screen.getByTestId("roles-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.getByText("locked")).toBeInTheDocument();
@@ -111,10 +121,32 @@ describe("the Security lists' search", () => {
 
   it("lists the row rules matching every word of the search, or either side of or", () => {
     render(<SecurityRlsPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or payroll" } });
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "analyst or payroll" },
+    });
     const list = within(screen.getByTestId("rules-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.queryByText("steward")).toBeNull();
+  });
+
+  it("finds each role by every text its row shows", async () => {
+    render(<SecurityRolesPage />);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("roles-list"),
+    );
+  });
+
+  it("finds each row rule by every text its row shows", async () => {
+    render(<SecurityRlsPage />);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("rules-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties a list", () => {
+    render(<SecurityRolesPage />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-role" } });
+    expect(screen.getByTestId("roles-empty")).toHaveTextContent("No roles match the filter.");
   });
 });
 

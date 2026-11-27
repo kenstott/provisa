@@ -53,6 +53,7 @@ const SOURCES = [
     cacheTtl: 300,
     changeSignal: "ttl",
     mappingJson: null,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   } as unknown as Source,
 ];
 
