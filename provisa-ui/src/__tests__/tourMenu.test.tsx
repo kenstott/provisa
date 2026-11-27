@@ -86,8 +86,10 @@ describe("TourMenu", () => {
     );
     const button = screen.getByRole("button", { name: "Start at the Beginning" });
     expect(button).toBe(screen.getByTestId("tour-menu-core-tour"));
-    // Mantine's label is nowrap + overflow hidden, so a shrinkable or fixed-width button clips it.
-    expect(button.style.flexShrink).toBe("0");
+    // REQ-2277 rule 10: the button is in the dialog's bar, whose .form-footer rule gives it
+    // flex 0 0 auto. Mantine's label is nowrap + overflow hidden, so a shrinkable or fixed-width
+    // button clips it: it carries no width of its own.
+    expect(button.closest("[data-testid='modal-footer-bar'] .form-footer")).not.toBeNull();
     expect(button.style.width).toBe("");
     expect(button.style.maxWidth).toBe("");
 
