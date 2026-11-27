@@ -21,6 +21,7 @@
     "analyze": "ניתוח",
     "analyzing": "מנתח…",
     "analyzeTitle": "הצגת תוכנית המנוע להצהרה זו, עם הדגשת האופטימיזציות של Provisa",
+    "analyzeWhich": "איזו הצהרה לנתח?",
     "saveViewTitle": "שמירת ה-SQL הנוכחי כהגדרה של ה-view \"{{tableName}}\"",
     "saving": "שומר…",
     "updateView": "עדכון \"{{tableName}}\"",
