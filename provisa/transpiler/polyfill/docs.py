@@ -13,7 +13,9 @@ EVERY CONNECTOR PROVISA SENDS SQL TO): one page per connector dialect, listing e
 polyfill or a limitation there and counting those left out as native, and an index of the same
 tables, one per dialect. The grid stays keyed by dialect; only the pages pivot it. Each rule is
 printed as the grid holds it; a rule that is a function name is printed with the function's
-one-line purpose.
+one-line purpose. Each row prints its provenance: what it was made and verified on, and the last
+run that verified it (provisa.transpiler.polyfill.provenance), with the legs' images at the top of
+its dialect's page.
 scripts/gen_polyfill_docs.py writes them; nothing here is edited by hand."""
 
 # Requirements: REQ-2236
@@ -21,9 +23,12 @@ scripts/gen_polyfill_docs.py writes them; nothing here is edited by hand."""
 from __future__ import annotations
 
 import html
+from collections.abc import Mapping
 
+from provisa.transpiler.polyfill import provenance as provenances
 from provisa.transpiler.polyfill.grid import DIALECTS, Feature, Grid, Rule, Side
-from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite
+from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
+from provisa.transpiler.polyfill.provenance import Provenance
 
 #: Where the pages are written, from the repository's root.
 DIRECTORY = "docs/conformance/polyfill"
@@ -80,9 +85,10 @@ def _limitations(side: Side, dialect: str) -> str:
     return f"<ul>{''.join(items)}</ul>" if items else ""
 
 
-def _row(feature: Feature, dialect: str) -> str:
+def _row(feature: Feature, dialect: str, provenance: Provenance) -> str:
     cells = (
-        f"<strong>{html.escape(feature.name)}</strong><br>{html.escape(feature.summary)}",
+        f"<strong>{html.escape(feature.name)}</strong><br>{html.escape(feature.summary)}"
+        f"<br><em>{html.escape(provenances.line(provenance))}</em>",
         _polyfill(feature.read, dialect),
         _limitations(feature.read, dialect),
         _polyfill(feature.write, dialect),
@@ -117,13 +123,15 @@ _HEADER = (
 )
 
 
-def dialect_table(grid: Grid, dialect: str) -> str:
-    """``dialect``'s table: a row of each feature not native there, and the count of those that
-    are, left out. The dialect's page and the index print it alike."""
+def dialect_table(grid: Grid, dialect: str, provenance: Mapping[str, Provenance]) -> str:
+    """``dialect``'s table: a row of each feature not native there, each with its provenance, and
+    the count of those that are, left out. The dialect's page and the index print it alike."""
     title = DIALECTS[dialect].title
     listed = grid.on(dialect)
     native = len(grid.features) - len(listed)
-    rows = "".join(f"{_row(feature, dialect)}\n" for feature in listed)
+    if listed and dialect not in provenance:
+        raise RuleError(f"rows with no provenance on {dialect}")
+    rows = "".join(f"{_row(feature, dialect, provenance[dialect])}\n" for feature in listed)
     return "\n".join(
         (
             f"{native} of the grid's {len(grid.features)} features are native on {title} and"
@@ -135,7 +143,37 @@ def dialect_table(grid: Grid, dialect: str) -> str:
     )
 
 
-def dialect_page(grid: Grid, dialect: str) -> str:
+def _legs(dialect: str, provenance: Mapping[str, Provenance]) -> str:
+    """The page's statement of where its rows are made and verified: each leg with its image, and
+    the run that last verified them; on a dialect with no row, nothing."""
+    of = provenance.get(dialect)
+    if of is None:
+        return ""
+    title = DIALECTS[dialect].title
+    if of.made_on:
+        legs = "; ".join(
+            f"`{leg.engine}` on {html.escape(leg.image)}"
+            + ("" if leg in of.verified_on else " (not judged by the last run)")
+            for leg in of.made_on
+        )
+        made = f"The rows below are made on the Conformance (functions) legs of {title}: {legs}."
+    else:
+        made = f"No Conformance (functions) leg runs {title}."
+    if of.run is None:
+        verified = f" No run has verified them: {html.escape(of.unverified or '')}."
+    else:
+        verified = (
+            f" They were last verified by run {of.run.run} at {of.run.sha}, on"
+            f" {provenances.legs_text(of.verified_on)}."
+        )
+    return (
+        f"{made}{verified} Each row prints this provenance, read from"
+        " scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json,"
+        " never written by hand.\n\n"
+    )
+
+
+def dialect_page(grid: Grid, dialect: str, provenance: Mapping[str, Provenance]) -> str:
     """The page of ``dialect``."""
     title = DIALECTS[dialect].title
     rules, functions = _counts(grid, dialect)
@@ -164,17 +202,21 @@ def dialect_page(grid: Grid, dialect: str) -> str:
             " function. A rule is printed as the translator runs it: the PostgreSQL pattern, its"
             " holes written `$name` (typed with `::type`), then the dialect's replacement.",
             "",
-            dialect_table(grid, dialect),
+            f"{_legs(dialect, provenance)}{dialect_table(grid, dialect, provenance)}",
             "",
         )
     )
 
 
-def summary_page(grid: Grid) -> str:
+def summary_page(grid: Grid, provenance: Mapping[str, Provenance]) -> str:
     """The index: each dialect's table, as its page prints it."""
     sections = [
         "\n".join(
-            (f"## [{DIALECTS[dialect].title}]({dialect}.md)", "", dialect_table(grid, dialect))
+            (
+                f"## [{DIALECTS[dialect].title}]({dialect}.md)",
+                "",
+                dialect_table(grid, dialect, provenance),
+            )
         )
         for dialect in DIALECTS
     ]
@@ -198,9 +240,14 @@ def summary_page(grid: Grid) -> str:
     )
 
 
-def pages(grid: Grid) -> dict[str, str]:
-    """Each page's path, from the repository's root, and its text."""
+def pages(grid: Grid, provenance: Mapping[str, Provenance]) -> dict[str, str]:
+    """Each page's path, from the repository's root, and its text. ``provenance``: each dialect's,
+    by dialect; a dialect with a row and no provenance is refused."""
+    provenances.required(provenance, grid)
     return {
-        f"{DIRECTORY}/index.md": summary_page(grid),
-        **{f"{DIRECTORY}/{dialect}.md": dialect_page(grid, dialect) for dialect in DIALECTS},
+        f"{DIRECTORY}/index.md": summary_page(grid, provenance),
+        **{
+            f"{DIRECTORY}/{dialect}.md": dialect_page(grid, dialect, provenance)
+            for dialect in DIALECTS
+        },
     }
