@@ -311,6 +311,7 @@ export function RegisterTableForm({
     loading: loadingTables,
     starting: startingTables,
     startingTimedOut: startingTablesTimedOut,
+    error: tablesRefusal,
   } = useAvailableTables(listsTables && listedSchema ? sourceId : null, listedSchema || null);
 
   useEffect(() => {
@@ -738,17 +739,21 @@ export function RegisterTableForm({
   // disabled meanwhile closed its open list under the person picking.
   const listing = !listedSchema || (loadingTables && availableTables.length === 0);
   // What the Tables field's hint says: still listing, or that there is nothing to pick.
-  const tablesStatus = startingTablesTimedOut
-    ? t("registerTableForm.tableStartingTimedOut")
-    : startingTables
-      ? t("registerTableForm.tableStarting")
-      : listing
-        ? t("registerManyTables.listing")
-        : availableTables.length === 0
-          ? t("registerManyTables.noTables")
-          : choices.length === 0
-            ? t("registerTableForm.tableAllRegistered")
-            : undefined;
+  // A listing refused says why on the field (a connector bundle not staged names the bundle and
+  // the stage command): an empty list then is no answer, so "no tables" is not said.
+  const tablesStatus = tablesRefusal
+    ? undefined
+    : startingTablesTimedOut
+      ? t("registerTableForm.tableStartingTimedOut")
+      : startingTables
+        ? t("registerTableForm.tableStarting")
+        : listing
+          ? t("registerManyTables.listing")
+          : availableTables.length === 0
+            ? t("registerManyTables.noTables")
+            : choices.length === 0
+              ? t("registerTableForm.tableAllRegistered")
+              : undefined;
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   const registerProducts = async () => {
@@ -910,6 +915,7 @@ export function RegisterTableForm({
                 placeholder={t("registerManyTables.pickTables")}
                 disabled={listing || choices.length === 0}
                 loading={listing || (startingTables && !startingTablesTimedOut)}
+                error={tablesRefusal ?? undefined}
               />
             </FormField>
           )}
