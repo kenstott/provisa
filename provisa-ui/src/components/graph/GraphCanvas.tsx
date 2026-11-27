@@ -44,7 +44,8 @@ import type {
   CyInstance,
 } from "./cytoscape-types";
 import cytoscape from "cytoscape";
-import "./canvas/cytoscape-extensions";
+// Registers the graph library's extensions, once, as the graph component does.
+import "../provisa-graph/core";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
 import {

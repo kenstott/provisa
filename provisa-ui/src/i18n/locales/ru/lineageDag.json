@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "задание OpenLineage",
     "outsideModel": "вне модели",
-    "reportedEdge": "сообщено OpenLineage"
+    "reportedEdge": "сообщено OpenLineage",
+    "columns_one": "Столбцов: {{count}}",
+    "columns_other": "Столбцов: {{count}}",
+    "unused": "+{{count}} не используется",
+    "materialized": "материализован",
+    "feedbackCycle": "в цикле обратной связи",
+    "errorCycle": "в ошибочном цикле",
+    "clickToExpand": "Нажмите, чтобы развернуть",
+    "clickToCollapse": "Нажмите, чтобы свернуть",
+    "doubleClickToOpen": "двойной щелчок, чтобы открыть",
+    "expandAll": "Развернуть все наборы данных",
+    "collapseAll": "Свернуть все наборы данных",
+    "enlarge": "Увеличить",
+    "stats": "Столбцов: {{columns}} · рёбер: {{edges}}"
   }
 }

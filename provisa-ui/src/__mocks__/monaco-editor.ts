@@ -40,6 +40,7 @@ export const editor = {
   create: () => ({ dispose: () => {}, onDidChangeModelContent: () => ({ dispose: () => {} }) }),
   createModel: () => null,
   setModelLanguage: () => {},
+  onDidCreateEditor: () => ({ dispose: () => {} }),
 };
 
 export const Uri = {

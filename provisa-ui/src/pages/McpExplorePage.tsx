@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
+import { ExploreMain, ExploreShell } from "../components/explore/ExploreShell";
 import { useEffect, useRef, useState } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { artifactFromEvent, type ChatMsg as ChatMsgBase } from "../hooks/useMcpChat";
@@ -464,177 +465,175 @@ export function McpExplorePage() {
   const lastSqlTool = tools.reduce((last, tl, i) => (toolSql(tl) !== null ? i : last), -1);
 
   return (
-    <div
-      className="page"
-      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-      data-testid="mcp-explore"
-      data-answered={answered ? "" : undefined}
+    <ExploreShell
+      testId="mcp-explore"
+      answered={answered}
+      toolbar={<PageTitle icon={Compass}>{t("mcpExplore.title")}</PageTitle>}
     >
-      <div className="page-header">
-        <PageTitle icon={Compass}>{t("mcpExplore.title")}</PageTitle>
-      </div>
-      <Text c="dimmed" size="sm" mb="xs">
-        {t("mcpExplore.intro")}
-      </Text>
-      <HelpBubble
-        title={t("mcpExplore.roleNoteHelpTitle")}
-        paragraphs={[t("mcpExplore.roleNoteTooltip")]}
-        ariaLabel={t("mcpExplore.roleNoteHelpTitle")}
-        testId="mcp-role-note-help"
-        target={
-          <Text size="xs" c="dimmed" mb="sm" style={{ width: "fit-content" }}>
-            {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
-          </Text>
-        }
-      />
+      <ExploreMain>
+        <Text c="dimmed" size="sm" my="xs">
+          {t("mcpExplore.intro")}
+        </Text>
+        <HelpBubble
+          title={t("mcpExplore.roleNoteHelpTitle")}
+          paragraphs={[t("mcpExplore.roleNoteTooltip")]}
+          ariaLabel={t("mcpExplore.roleNoteHelpTitle")}
+          testId="mcp-role-note-help"
+          target={
+            <Text size="xs" c="dimmed" mb="sm" style={{ width: "fit-content" }}>
+              {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
+            </Text>
+          }
+        />
 
-      <ConnectClaudeDesktop roleId={roleId} reveal={revealConnect} />
+        <ConnectClaudeDesktop roleId={roleId} reveal={revealConnect} />
 
-      {tools.length > 0 && (
-        <Group gap={6} mb="xs" wrap="wrap">
-          {tools.map((tl, i) => {
-            const sql = toolSql(tl);
-            return (
-              <Tip
-                text={
-                  tl.error
-                    ? t("mcpExplore.toolErrorTooltip", { name: tl.name })
-                    : tl.running
-                      ? t("mcpExplore.toolRunningTooltip", { name: tl.name })
-                      : sql !== null
-                        ? t("mcpExplore.toolExplainTooltip", { name: tl.name })
-                        : t("mcpExplore.toolDoneTooltip", { name: tl.name })
-                }
-                key={i}
-              >
-                <Badge
-                  size="sm"
-                  variant={tl.running ? "outline" : "light"}
-                  color={tl.error ? "red" : "grape"}
-                  data-testid="mcp-chat-tool"
-                  data-mcp-explain-last={i === lastSqlTool ? "" : undefined}
-                  {...(sql !== null
-                    ? {
-                        component: "button" as const,
-                        onClick: () => setExplaining(sql),
-                        style: { cursor: "pointer" },
-                      }
-                    : {})}
+        {tools.length > 0 && (
+          <Group gap={6} mb="xs" wrap="wrap">
+            {tools.map((tl, i) => {
+              const sql = toolSql(tl);
+              return (
+                <Tip
+                  text={
+                    tl.error
+                      ? t("mcpExplore.toolErrorTooltip", { name: tl.name })
+                      : tl.running
+                        ? t("mcpExplore.toolRunningTooltip", { name: tl.name })
+                        : sql !== null
+                          ? t("mcpExplore.toolExplainTooltip", { name: tl.name })
+                          : t("mcpExplore.toolDoneTooltip", { name: tl.name })
+                  }
+                  key={i}
                 >
-                  {tl.name}
-                </Badge>
-              </Tip>
-            );
-          })}
-        </Group>
-      )}
-      {error && (
-        <Alert color="red" mb="xs">
-          {error}
-        </Alert>
-      )}
-      {explaining !== null && (
-        <ToolExplain sql={explaining} roleId={roleId} onClose={() => setExplaining(null)} />
-      )}
-
-      <div
-        className="mcp-chat-wrap"
-        style={{ flex: 1, minHeight: 0, position: "relative" }}
-        onKeyDown={onDraftKey}
-      >
-        <MainContainer>
-          <ChatContainer>
-            <MessageList
-              typingIndicator={
-                busy ? <TypingIndicator content={t("mcpExplore.thinking")} /> : undefined
-              }
-            >
-              {messages.length === 0 && (
-                <Message
-                  model={{
-                    direction: "incoming",
-                    position: "single",
-                    sender: "assistant",
-                  }}
-                >
-                  <Message.CustomContent>
-                    <div className="mcp-md">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {t("mcpExplore.emptyState")}
-                      </ReactMarkdown>
-                    </div>
-                  </Message.CustomContent>
-                </Message>
-              )}
-              {messages.map((m, i) =>
-                m.role === "user" ? (
-                  <Message
-                    key={i}
-                    model={{ direction: "outgoing", position: "single", sender: "user" }}
+                  <Badge
+                    size="sm"
+                    variant={tl.running ? "outline" : "light"}
+                    color={tl.error ? "red" : "grape"}
+                    data-testid="mcp-chat-tool"
+                    data-mcp-explain-last={i === lastSqlTool ? "" : undefined}
+                    {...(sql !== null
+                      ? {
+                          component: "button" as const,
+                          onClick: () => setExplaining(sql),
+                          style: { cursor: "pointer" },
+                        }
+                      : {})}
                   >
-                    <Message.CustomContent>
-                      <div className="mcp-bubble">
-                        <div className="mcp-user-text">{m.text}</div>
-                        <CopyButton text={m.text} />
-                      </div>
-                    </Message.CustomContent>
-                  </Message>
-                ) : (
-                  // Assistant bubbles render markdown (tables, code, lists).
-                  <Message
-                    key={i}
-                    model={{ direction: "incoming", position: "single", sender: "assistant" }}
-                  >
-                    <Message.CustomContent>
-                      <div className="mcp-bubble">
-                        <div className="mcp-md">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {m.text ||
-                              (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
-                          </ReactMarkdown>
-                        </div>
-                        {m.artifacts?.map((a, j) => (
-                          <ChatArtifact key={j} artifact={a} />
-                        ))}
-                        {m.text && <CopyButton text={m.text} />}
-                      </div>
-                    </Message.CustomContent>
-                  </Message>
-                ),
-              )}
-            </MessageList>
-            <MessageInput
-              placeholder={t("mcpExplore.inputPlaceholder")}
-              value={draft}
-              onChange={(_html: string, text: string) => {
-                if (text !== recalledRef.current) histIndexRef.current = -1; // manual edit
-                setDraft(text);
-              }}
-              onSend={() => void send(draft)}
-              disabled={busy}
-              attachButton={false}
-              data-testid="mcp-chat-input"
-            />
-          </ChatContainer>
-        </MainContainer>
-        {/* Hover copy/clear for the current draft — overlaid just left of the send button. */}
-        {draft.trim() && (
-          <div className="mcp-input-tools">
-            <CopyButton text={draft} />
-            <Tip text={t("mcpExplore.clearTooltip")}>
-              <button
-                type="button"
-                className="mcp-copy"
-                aria-label={t("mcpExplore.clear")}
-                data-testid="mcp-chat-clear"
-                onClick={() => setDraft("")}
-              >
-                <Trash2 size={13} />
-              </button>
-            </Tip>
-          </div>
+                    {tl.name}
+                  </Badge>
+                </Tip>
+              );
+            })}
+          </Group>
         )}
-      </div>
-    </div>
+        {error && (
+          <Alert color="red" mb="xs">
+            {error}
+          </Alert>
+        )}
+        {explaining !== null && (
+          <ToolExplain sql={explaining} roleId={roleId} onClose={() => setExplaining(null)} />
+        )}
+
+        <div
+          className="mcp-chat-wrap"
+          style={{ flex: 1, minHeight: 0, position: "relative" }}
+          onKeyDown={onDraftKey}
+        >
+          <MainContainer>
+            <ChatContainer>
+              <MessageList
+                typingIndicator={
+                  busy ? <TypingIndicator content={t("mcpExplore.thinking")} /> : undefined
+                }
+              >
+                {messages.length === 0 && (
+                  <Message
+                    model={{
+                      direction: "incoming",
+                      position: "single",
+                      sender: "assistant",
+                    }}
+                  >
+                    <Message.CustomContent>
+                      <div className="mcp-md">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {t("mcpExplore.emptyState")}
+                        </ReactMarkdown>
+                      </div>
+                    </Message.CustomContent>
+                  </Message>
+                )}
+                {messages.map((m, i) =>
+                  m.role === "user" ? (
+                    <Message
+                      key={i}
+                      model={{ direction: "outgoing", position: "single", sender: "user" }}
+                    >
+                      <Message.CustomContent>
+                        <div className="mcp-bubble">
+                          <div className="mcp-user-text">{m.text}</div>
+                          <CopyButton text={m.text} />
+                        </div>
+                      </Message.CustomContent>
+                    </Message>
+                  ) : (
+                    // Assistant bubbles render markdown (tables, code, lists).
+                    <Message
+                      key={i}
+                      model={{ direction: "incoming", position: "single", sender: "assistant" }}
+                    >
+                      <Message.CustomContent>
+                        <div className="mcp-bubble">
+                          <div className="mcp-md">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {m.text ||
+                                (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
+                            </ReactMarkdown>
+                          </div>
+                          {m.artifacts?.map((a, j) => (
+                            <ChatArtifact key={j} artifact={a} />
+                          ))}
+                          {m.text && <CopyButton text={m.text} />}
+                        </div>
+                      </Message.CustomContent>
+                    </Message>
+                  ),
+                )}
+              </MessageList>
+              <MessageInput
+                placeholder={t("mcpExplore.inputPlaceholder")}
+                value={draft}
+                onChange={(_html: string, text: string) => {
+                  if (text !== recalledRef.current) histIndexRef.current = -1; // manual edit
+                  setDraft(text);
+                }}
+                onSend={() => void send(draft)}
+                disabled={busy}
+                attachButton={false}
+                data-testid="mcp-chat-input"
+              />
+            </ChatContainer>
+          </MainContainer>
+          {/* Hover copy/clear for the current draft — overlaid just left of the send button. */}
+          {draft.trim() && (
+            <div className="mcp-input-tools">
+              <CopyButton text={draft} />
+              <Tip text={t("mcpExplore.clearTooltip")}>
+                <button
+                  type="button"
+                  className="mcp-copy"
+                  aria-label={t("mcpExplore.clear")}
+                  data-testid="mcp-chat-clear"
+                  onClick={() => setDraft("")}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </Tip>
+            </div>
+          )}
+        </div>
+      </ExploreMain>
+    </ExploreShell>
   );
 }

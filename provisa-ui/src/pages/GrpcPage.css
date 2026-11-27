@@ -1,8 +1,7 @@
-.grpc-page {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - var(--navbar-height, 56px) - var(--subnav-height, 36px));
-  overflow: hidden;
+/* REQ-2277: the page is an Explore shell; the method picker is its toolbar strip. */
+.grpc-topbar {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Top bar ──────────────────────────────────────────────── */
@@ -10,11 +9,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.45rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-alt, #f9fafb);
   gap: 0.5rem;
-  flex-shrink: 0;
 }
 
 .grpc-topbar-left {
@@ -95,28 +90,13 @@
 }
 
 /* ── Body area ────────────────────────────────────────────── */
-.grpc-body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
 .grpc-panel {
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
-  flex: 1;
-}
-
-.grpc-panel-left {
-  border-inline-end: 1px solid var(--border);
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */
 .grpc-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-alt);
   flex-shrink: 0;
 }
 

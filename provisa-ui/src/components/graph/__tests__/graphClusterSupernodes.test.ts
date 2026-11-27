@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 import cytoscape from "cytoscape";
-import "../canvas/cytoscape-extensions";
+import "../../provisa-graph/core";
 import {
   buildClusterElements,
   buildClusterMetaEdges,

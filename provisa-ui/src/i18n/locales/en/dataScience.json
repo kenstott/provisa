@@ -10,6 +10,7 @@
     "rowsShown": "Showing {{shown}} of {{total}} rows",
     "figure": "Figure {{n}}",
     "resizeLabel": "Resize editor and output",
+    "output": "Output",
     "notebookFrame": "Jupyter notebook",
     "copyCode": "Copy code",
     "clearCode": "Clear the editor",

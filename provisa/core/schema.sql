@@ -1627,6 +1627,18 @@ CREATE TABLE IF NOT EXISTS checker_latest_runs (
               CHECK (outcome IN ('pass', 'fail'))
 );
 
+-- REQ-2158: each product member's latest declared-logical-type check, every offer contract on it
+-- against its source's columns now. A member with no row has never been checked or holds no
+-- contract. ``failing``: each column that failed, by offer, its declared logicalType and live type
+-- (null: the column is gone).
+CREATE TABLE IF NOT EXISTS contract_type_checks (
+    table_id   INTEGER PRIMARY KEY,
+    checked_at TIMESTAMPTZ NOT NULL,
+    outcome    TEXT NOT NULL CONSTRAINT contract_type_checks_outcome_check
+               CHECK (outcome IN ('pass', 'fail')),
+    failing    JSONB NOT NULL
+);
+
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
     id              SERIAL PRIMARY KEY,

@@ -152,6 +152,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "array_depth, element_type, native_type, native_platform, "  # REQ-1965
         "subtype, "  # REQ-2171
         "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
+        "gql_selection, "  # REQ-308: how a remote GraphQL column is read, when not by its name
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
         # REQ-2248: a retired column is absent from its table.
         "FROM table_columns WHERE table_id IN (SELECT id FROM served) AND NOT retired "
@@ -189,6 +190,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "native_filter_required": r.get("native_filter_required"),
                 "required_by_steward": bool(r.get("required_by_steward") or False),
                 "scope": r["scope"],  # REQ-1959
+                "gql_selection": r["gql_selection"],  # REQ-308
                 "epoch_unit": r.get("epoch_unit"),  # REQ-1908
                 "array_depth": r.get("array_depth") or 0,  # REQ-1965
                 "element_type": r.get("element_type"),

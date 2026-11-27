@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from provisa.security import sandbox_egress  # REQ-2006
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -41,6 +41,7 @@ from provisa.api.admin.read_rights import (
 
 if TYPE_CHECKING:
     from provisa.api.admin.read_rights import DependentsReader
+    from provisa.core.models import Column
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/graphql-remote", tags=["admin", "graphql-remote"])
@@ -341,6 +342,59 @@ _PROVISA_TO_PHYSICAL_TYPE = {
 }
 
 
+# REQ-308: what the endpoint owns of a column it lists -- its name and its type (the scalar type,
+# and an object field's shape: its sub-fields, GraphQL type and list-ness; a parameter's kind and
+# whether the schema requires it). A subtype or nested attribute is the type's too: the store
+# keeps the held one while the type is unchanged (table_repo._stored_subtype,
+# _nested_attributes).
+_ENDPOINT_OWNED = (
+    "name",
+    "data_type",
+    "object_fields",
+    "gql_object_type",
+    "gql_is_list",
+    "native_filter_type",
+    "native_filter_required",
+    "subtype",
+    "array_depth",
+    "element_type",
+    "native_type",
+    "native_platform",
+)
+
+
+def _endpoint_column_over_held(held: "dict[str, Column]", **listed: Any) -> "Column":
+    """The column the endpoint lists, laid over the one the model holds by that name: the
+    endpoint's name and type, and every other property the model holds. What the model leaves
+    unset (no description, no selection) the endpoint's listing gives. An object field's
+    selection is the read of the shape the endpoint lists, so the endpoint's selection, when it
+    gives one, goes with that shape."""
+    from provisa.core.models import Column
+
+    endpoint = Column(visible_to=[], **listed)
+    stored = held.get(endpoint.name)
+    if stored is None:
+        return endpoint
+    update = {f: getattr(endpoint, f) for f in _ENDPOINT_OWNED}
+    if stored.description is None:
+        update["description"] = endpoint.description
+    if endpoint.gql_selection is not None:
+        update["gql_selection"] = endpoint.gql_selection
+    return Column.model_validate({**stored.model_dump(), **update})
+
+
+def _field_read(selection: str) -> str:
+    """The endpoint field a column's ``gql_selection`` reads: ``employee`` of
+    ``employee_id: employee { id }``."""
+    from graphql import FieldNode, OperationDefinitionNode, parse
+
+    (operation,) = parse(f"{{ {selection} }}").definitions
+    assert isinstance(operation, OperationDefinitionNode)
+    (field,) = operation.selection_set.selections
+    assert isinstance(field, FieldNode)
+    return field.name.value
+
+
 async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     source_id: str,
     domain_id: str,
@@ -361,16 +415,13 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     from provisa.compiler.naming import apply_sql_name
 
     async with model_db.acquire() as conn:
-        # Introspection is not the authority on governance grants — preserve any
-        # visible_to already set (e.g. by config apply): the upsert below replaces a table's
-        # columns wholesale.
+        # REQ-308: the endpoint owns a column's existence, its name and its type; every other
+        # property the model holds of the column (grants, masks, alias, scope, description, a
+        # steward's requirement, tags, fakes ...) is the config's or an admin's, and the upsert
+        # below replaces a table's columns wholesale. So each registered column is read whole
+        # here, to be laid under what the endpoint lists.
         _existing_rows = await conn.execute_core(
-            select(
-                registered_tables.c.table_name,
-                table_columns.c.column_name,
-                table_columns.c.visible_to,
-                table_columns.c.required_by_steward,
-            )
+            select(registered_tables.c.table_name, table_columns)
             .select_from(
                 registered_tables.join(
                     table_columns, table_columns.c.table_id == registered_tables.c.id
@@ -380,17 +431,19 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 and_(
                     registered_tables.c.source_id == source_id,
                     registered_tables.c.schema_name == "graphql",
+                    table_columns.c.retired.is_(False),
                 )
             )
         )
-        _existing = _existing_rows.fetchall()
-        _existing_grants: dict[tuple[str, str], list] = {
-            (r.table_name, r.column_name): list(r.visible_to or []) for r in _existing
-        }
-        # REQ-1986: nor on which parameters a steward made required.
-        _steward_required = {
-            (r.table_name, r.column_name) for r in _existing if r.required_by_steward
-        }
+        _held: dict[str, dict[str, Column]] = {}
+        for r in _existing_rows.fetchall():
+            row = r._mapping
+            _held.setdefault(row["table_name"], {})[row["column_name"]] = Column.model_validate(
+                {
+                    **{k: v for k, v in row.items() if k in Column.model_fields and v is not None},
+                    "name": row["column_name"],
+                }
+            )
         # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
         # snapshot has to be taken while the rows the wipe below removes are still there.
         from provisa.core.repositories import glossary as glossary_repo
@@ -400,6 +453,27 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         for t in tables:
             # A table already registered keeps the name it is registered under.
             _sql_name = t.get("registered_name") or apply_sql_name(t["name"])
+            _listed = {apply_sql_name(c["name"]) for c in t.get("columns", [])}
+            # REQ-308: a column the endpoint does not list stays when the model reads it with its
+            # own selection (``employee_id: employee { id }`` reads the id of the one
+            # ``employee`` the remote type holds): the endpoint's schema has no field of that
+            # name, and every read of the column is the model's.
+            _model_read = [
+                c
+                for name, c in _held.get(_sql_name, {}).items()
+                if name not in _listed and c.gql_selection and c.native_filter_type is None
+            ]
+            # REQ-1929: the endpoint field such a column reads is the model's to read. The model
+            # keys on it (the demo's schedules -> employees joins on employee_id and is the
+            # field ``employee``) and does not land the object itself, so a listed field the
+            # model neither holds nor lands is not made a column beside its key: the
+            # relationship would hide it (RelationshipHidesColumn), as the mapper never offers a
+            # field as both (mapper._detect_relationships).
+            _read_through = {
+                apply_sql_name(_field_read(c.gql_selection))
+                for c in _model_read
+                if c.gql_selection is not None
+            } - set(_held.get(_sql_name, {}))
             tbl = Table(
                 source_id=source_id,
                 # A table registered on its own keeps the domain it was registered into.
@@ -409,9 +483,9 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 description=t.get("description"),
                 alias=None,
                 columns=[
-                    Column(
+                    _endpoint_column_over_held(
+                        _held.get(_sql_name, {}),
                         name=apply_sql_name(c["name"]),
-                        visible_to=_existing_grants.get((_sql_name, apply_sql_name(c["name"])), []),
                         description=c.get("description"),
                         data_type=_PROVISA_TO_PHYSICAL_TYPE.get(c.get("type") or "text", "varchar"),
                         object_fields=_build_object_fields(c.get("gql_object_fields") or []),
@@ -422,16 +496,16 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                         gql_is_list=c.get("gql_is_list", False),
                     )
                     for c in t.get("columns", [])
+                    if apply_sql_name(c["name"]) not in _read_through
                 ]
+                + _model_read
                 + [
-                    Column(
+                    _endpoint_column_over_held(
+                        _held.get(_sql_name, {}),
                         name=f"_nf_{apply_sql_name(a['name'])}",
-                        visible_to=[],
                         native_filter_type="graphql_arg",
                         # REQ-1986: required where the schema requires it (non-null, no default).
                         native_filter_required=required,
-                        required_by_steward=(_sql_name, f"_nf_{apply_sql_name(a['name'])}")
-                        in _steward_required,
                         # REQ-1426: a native-filter column is a column — it carries the argument's
                         # resolved type like any other. Omitting it wrote NULL data_type rows the
                         # catalog then rendered as "unknown". _gql_to_provisa_type always yields a
