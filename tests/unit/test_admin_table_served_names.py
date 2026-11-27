@@ -80,18 +80,26 @@ def test_a_table_the_build_does_not_name_has_no_sql_name():
         assert _table(7).sql_name() is None
 
 
-def test_reverse_alias_suggestion_is_the_authoritys_under_the_gql_convention():
+@pytest.fixture
+def granted():
+    """The caller holds every capability the suggestion resolvers ask for; the gate itself is
+    checked by test_admin_routes_gated.py."""
+    with patch("provisa.api.admin.schema_query.require_capability"):
+        yield object()
+
+
+def test_reverse_alias_suggestion_is_the_authoritys_under_the_gql_convention(granted):
     q = Query()
-    s = q.suggest_reverse_rel_alias(graphql_alias=None, cypher_alias="BY_CUSTOMER")
+    s = q.suggest_reverse_rel_alias(granted, graphql_alias=None, cypher_alias="BY_CUSTOMER")
     assert (s.graphql_alias, s.cypher_alias) == ("byCustomerBy", "BY_CUSTOMER_BY")
     naming.configure(gql="hasura_graphql", sql="snake")
-    s = q.suggest_reverse_rel_alias(graphql_alias=None, cypher_alias="BY_CUSTOMER")
+    s = q.suggest_reverse_rel_alias(granted, graphql_alias=None, cypher_alias="BY_CUSTOMER")
     assert (s.graphql_alias, s.cypher_alias) == ("by_customer_by", "BY_CUSTOMER_BY")
-    s = q.suggest_reverse_rel_alias(graphql_alias="ordersOf", cypher_alias=None)
+    s = q.suggest_reverse_rel_alias(granted, graphql_alias="ordersOf", cypher_alias=None)
     assert (s.graphql_alias, s.cypher_alias) == ("orders", "")
 
 
-def test_suggestions_route_through_the_authority(monkeypatch):
+def test_suggestions_route_through_the_authority(monkeypatch, granted):
     q = Query()
     monkeypatch.setattr(naming, "suggest_column_alias", lambda c: None if c == "id" else f"<{c}>")
     monkeypatch.setattr(naming, "suggest_metric_name", lambda f, c, a: f"<{f}.{c}.{a}>")
@@ -99,8 +107,12 @@ def test_suggestions_route_through_the_authority(monkeypatch):
     monkeypatch.setattr(
         naming, "suggest_reverse_rel_alias", lambda g, c, conv: (f"<{g}:{conv}>", f"<{c}>")
     )
-    assert q.suggest_column_aliases(columns=["orderId", "id"]) == ["<orderId>", None]
-    assert q.suggest_metric_name(fact="orders", column="amt", agg="sum") == "<orders.amt.sum>"
-    assert q.suggest_junction_name(left_table="pets", right_table="owners") == "<pets+owners>"
-    s = q.suggest_reverse_rel_alias(graphql_alias="a", cypher_alias="B")
+    assert q.suggest_column_aliases(granted, columns=["orderId", "id"]) == ["<orderId>", None]
+    assert (
+        q.suggest_metric_name(granted, fact="orders", column="amt", agg="sum") == "<orders.amt.sum>"
+    )
+    assert (
+        q.suggest_junction_name(granted, left_table="pets", right_table="owners") == "<pets+owners>"
+    )
+    s = q.suggest_reverse_rel_alias(granted, graphql_alias="a", cypher_alias="B")
     assert (s.graphql_alias, s.cypher_alias) == ("<a:apollo_graphql>", "<B>")
