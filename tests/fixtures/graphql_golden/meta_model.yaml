@@ -551,7 +551,7 @@ tables:
   table: catalog_pg_attribute
   columns:
   - name: attacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: attalign
@@ -882,7 +882,7 @@ tables:
     visible_to:
     - viewer
   - name: relacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: relallvisible
@@ -906,7 +906,7 @@ tables:
     visible_to:
     - viewer
   - name: relfrozenxid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: relhasindex
@@ -942,7 +942,7 @@ tables:
     visible_to:
     - viewer
   - name: relminmxid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: relname
@@ -1256,7 +1256,7 @@ tables:
   table: catalog_pg_database
   columns:
   - name: datacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: datallowconn
@@ -1284,7 +1284,7 @@ tables:
     visible_to:
     - viewer
   - name: datfrozenxid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: dathasloginevt
@@ -1308,7 +1308,7 @@ tables:
     visible_to:
     - viewer
   - name: datminmxid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: datname
@@ -1350,7 +1350,7 @@ tables:
   table: catalog_pg_default_acl
   columns:
   - name: defaclacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: defaclnamespace
@@ -1553,7 +1553,7 @@ tables:
   table: catalog_pg_foreign_data_wrapper
   columns:
   - name: fdwacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: fdwhandler
@@ -1590,7 +1590,7 @@ tables:
     visible_to:
     - viewer
   - name: srvacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: srvfdw
@@ -1743,11 +1743,11 @@ tables:
     visible_to:
     - viewer
   - name: indclass
-    data_type: 'null'
+    data_type: oidvector
     visible_to:
     - viewer
   - name: indcollation
-    data_type: 'null'
+    data_type: oidvector
     visible_to:
     - viewer
   - name: indexprs
@@ -1795,7 +1795,7 @@ tables:
     visible_to:
     - viewer
   - name: indkey
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: indnatts
@@ -1811,7 +1811,7 @@ tables:
     visible_to:
     - viewer
   - name: indoption
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: indpred
@@ -1882,7 +1882,7 @@ tables:
     visible_to:
     - viewer
   - name: initprivs
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: objoid
@@ -1903,7 +1903,7 @@ tables:
   table: catalog_pg_language
   columns:
   - name: lanacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: laninline
@@ -1961,7 +1961,7 @@ tables:
   table: catalog_pg_largeobject_metadata
   columns:
   - name: lomacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: lomowner
@@ -2022,7 +2022,7 @@ tables:
     visible_to:
     - viewer
   - name: transactionid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: tuple
@@ -2080,7 +2080,7 @@ tables:
   table: catalog_pg_namespace
   columns:
   - name: nspacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: nspname
@@ -2236,7 +2236,7 @@ tables:
     visible_to:
     - viewer
   - name: paracl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: parname
@@ -2249,15 +2249,15 @@ tables:
   table: catalog_pg_partitioned_table
   columns:
   - name: partattrs
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: partclass
-    data_type: 'null'
+    data_type: oidvector
     visible_to:
     - viewer
   - name: partcollation
-    data_type: 'null'
+    data_type: oidvector
     visible_to:
     - viewer
   - name: partdefid
@@ -2413,7 +2413,7 @@ tables:
     visible_to:
     - viewer
   - name: transaction
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -2426,7 +2426,7 @@ tables:
     visible_to:
     - viewer
   - name: proacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: proallargtypes
@@ -2446,7 +2446,7 @@ tables:
     visible_to:
     - viewer
   - name: proargtypes
-    data_type: 'null'
+    data_type: oidvector
     visible_to:
     - viewer
   - name: probin
@@ -2613,7 +2613,7 @@ tables:
     visible_to:
     - viewer
   - name: prattrs
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: prpubid
@@ -2713,11 +2713,11 @@ tables:
     visible_to:
     - viewer
   - name: local_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: remote_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -2734,11 +2734,11 @@ tables:
     visible_to:
     - viewer
   - name: catalog_xmin
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: confirmed_flush_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: conflicting
@@ -2770,7 +2770,7 @@ tables:
     visible_to:
     - viewer
   - name: restart_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: safe_wal_size
@@ -2802,7 +2802,7 @@ tables:
     visible_to:
     - viewer
   - name: xmin
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -3292,11 +3292,11 @@ tables:
     visible_to:
     - viewer
   - name: backend_xid
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: backend_xmin
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: client_addr
@@ -4241,7 +4241,7 @@ tables:
     visible_to:
     - viewer
   - name: backend_xmin
-    data_type: 'null'
+    data_type: xid
     visible_to:
     - viewer
   - name: client_addr
@@ -4261,7 +4261,7 @@ tables:
     visible_to:
     - viewer
   - name: flush_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: pid
@@ -4273,7 +4273,7 @@ tables:
     visible_to:
     - viewer
   - name: replay_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: reply_time
@@ -4281,7 +4281,7 @@ tables:
     visible_to:
     - viewer
   - name: sent_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: state
@@ -4309,7 +4309,7 @@ tables:
     visible_to:
     - viewer
   - name: write_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -4449,7 +4449,7 @@ tables:
     visible_to:
     - viewer
   - name: latest_end_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: latest_end_time
@@ -4465,7 +4465,7 @@ tables:
     visible_to:
     - viewer
   - name: received_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: relid
@@ -4893,7 +4893,7 @@ tables:
     visible_to:
     - viewer
   - name: flushed_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: last_msg_receipt_time
@@ -4905,7 +4905,7 @@ tables:
     visible_to:
     - viewer
   - name: latest_end_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: latest_end_time
@@ -4917,7 +4917,7 @@ tables:
     visible_to:
     - viewer
   - name: receive_start_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: receive_start_tli
@@ -4945,7 +4945,7 @@ tables:
     visible_to:
     - viewer
   - name: written_lsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -5600,7 +5600,7 @@ tables:
     visible_to:
     - viewer
   - name: stxkeys
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: stxkind
@@ -5633,7 +5633,7 @@ tables:
   table: catalog_pg_statistic_ext_data
   columns:
   - name: stxddependencies
-    data_type: 'null'
+    data_type: pg_dependencies
     visible_to:
     - viewer
   - name: stxdexpr
@@ -5645,11 +5645,11 @@ tables:
     visible_to:
     - viewer
   - name: stxdmcv
-    data_type: 'null'
+    data_type: pg_mcv_list
     visible_to:
     - viewer
   - name: stxdndistinct
-    data_type: 'null'
+    data_type: pg_ndistinct
     visible_to:
     - viewer
   - name: stxoid
@@ -5739,7 +5739,7 @@ tables:
     visible_to:
     - viewer
   - name: dependencies
-    data_type: 'null'
+    data_type: pg_dependencies
     visible_to:
     - viewer
   - name: exprs
@@ -5771,7 +5771,7 @@ tables:
     visible_to:
     - viewer
   - name: n_distinct
-    data_type: 'null'
+    data_type: pg_ndistinct
     visible_to:
     - viewer
   - name: schemaname
@@ -5925,7 +5925,7 @@ tables:
     visible_to:
     - viewer
   - name: subskiplsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: subslotname
@@ -5958,7 +5958,7 @@ tables:
     visible_to:
     - viewer
   - name: srsublsn
-    data_type: 'null'
+    data_type: pg_lsn
     visible_to:
     - viewer
   - name: srsubstate
@@ -6016,7 +6016,7 @@ tables:
     visible_to:
     - viewer
   - name: spcacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: spcname
@@ -6108,7 +6108,7 @@ tables:
     visible_to:
     - viewer
   - name: tgattr
-    data_type: 'null'
+    data_type: int2vector
     visible_to:
     - viewer
   - name: tgconstraint
@@ -6322,7 +6322,7 @@ tables:
     visible_to:
     - viewer
   - name: typacl
-    data_type: 'null'
+    data_type: text
     visible_to:
     - viewer
   - name: typalign

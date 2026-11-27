@@ -33,6 +33,7 @@ const mockFetchByRef = vi.mocked(fetchGlossaryTermByRef);
 const mockFetchByQueryName = vi.mocked(fetchGlossaryTermByQueryName);
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   id: 1,
   name: "Revenue",
   definition: "Money in.",

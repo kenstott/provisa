@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Regras de coluna",
+    "hint": "Cada regra oculta ou mascara, para uma função e as funções que herdam dela, toda coluna que tenha esta chave, tanto as colunas de uma tabela quanto as colunas de saída de um comando. A visibilidade e as máscaras próprias da coluna continuam valendo; prevalece o resultado mais restritivo.",
+    "none": "Nenhuma regra de coluna.",
+    "colRole": "Função",
+    "colEffect": "Efeito",
+    "hidden": "Oculta",
+    "maskedCompletely": "Mascarada por completo",
+    "maskedAs": "Mascarada: {{mask}}",
+    "remove": "Remover a regra de {{role}}",
+    "roleLabel": "Função",
+    "actionLabel": "Efeito",
+    "actionHide": "Ocultar",
+    "actionMask": "Mascarar",
+    "maskLabel": "Máscara",
+    "maskComplete": "Mascarada por completo",
+    "constantLabel": "Valor constante",
+    "patternLabel": "Padrão",
+    "replaceLabel": "Substituição",
+    "add": "Adicionar regra"
+  }
+}

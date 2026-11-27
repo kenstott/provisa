@@ -16,19 +16,11 @@
 // SQL mode. Switching modes happens only through this control — never silently.
 
 import { useMemo, useState } from "react";
+import { PanelBody } from "../../components/list/PanelBody";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Button,
-  SegmentedControl,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from "@mantine/core";
+import { Alert, Button, SegmentedControl, Select, Text, Textarea, TextInput } from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useMetrics } from "../../hooks/useAdminQueries";
 import { metricDimensionTables } from "../sql/sqlHelpers";
@@ -170,7 +162,7 @@ export function ViewDefinitionForm({
     selectedMetrics.length === 0 || (!editing && (!name.trim() || !domainId.trim()));
 
   return (
-    <Stack gap="sm" data-testid="view-definition-form">
+    <PanelBody data-testid="view-definition-form">
       <SegmentedControl
         value={mode}
         onChange={(v) => setMode(v as DefinitionMode)}
@@ -303,6 +295,6 @@ export function ViewDefinitionForm({
           />
         </FormLayout>
       )}
-    </Stack>
+    </PanelBody>
   );
 }

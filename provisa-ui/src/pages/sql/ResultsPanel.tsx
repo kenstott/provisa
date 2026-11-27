@@ -15,6 +15,7 @@ import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Box, Button, Modal, Table } from "@mantine/core";
+import { entityName } from "../../components/entityName";
 import { History, BarChart2, Maximize2 } from "lucide-react";
 import { ResultsGrid } from "./ResultsGrid";
 import type { ResultsGridState } from "./useResultsGrid";
@@ -597,7 +598,7 @@ export function ResultsPanel({
                       {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
                     </Table.Td>
                     <Table.Td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                      {h.role}
+                      {entityName("role", h.role)}
                     </Table.Td>
                     <Table.Td
                       style={{

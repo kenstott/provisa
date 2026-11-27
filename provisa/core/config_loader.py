@@ -1205,6 +1205,36 @@ async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  #
             ) from refused
 
 
+async def _upsert_column_rules(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-2278
+    """Save each column rule the config declares, replacing the rule its key and role hold. A rule
+    names a tag the store holds (or a code-defined one), a classification kind, and a role."""
+    from provisa.core.repositories import column_rule as column_rule_repo
+    from provisa.core.schema_org import roles
+    from provisa.profiler.classify import kind_of
+
+    for rule in config.column_rules:
+        if rule.tag_id is not None and await tag_repo.get(conn, rule.tag_id) is None:
+            raise ValueError(
+                f"column rule of role {rule.role_id!r} names tag {rule.tag_id!r}, which does not "
+                "exist"
+            )
+        if rule.classification is not None:
+            try:
+                kind_of(rule.classification)
+            except KeyError as exc:
+                raise ValueError(
+                    f"column rule of role {rule.role_id!r} names classification "
+                    f"{rule.classification!r}, which is no classification kind"
+                ) from exc
+        held = await conn.execute_core(select(roles.c.id).where(roles.c.id == rule.role_id))
+        if held.fetchone() is None:
+            raise ValueError(
+                f"column rule on {rule.tag_id or rule.classification!r} names role "
+                f"{rule.role_id!r}, which does not exist"
+            )
+        await column_rule_repo.upsert(conn, rule)
+
+
 async def _load_after_tables(  # REQ-1919
     conn: "Connection", config: ProvisaConfig, *, refs_before: Any, defer_unregistered: bool
 ) -> None:
@@ -1240,6 +1270,9 @@ async def _load_after_tables(  # REQ-1919
     for ta in config.tag_assignments:
         if ta.object_type == "rls_rule":
             await tag_repo.assign(conn, await _resolve_tag_assignment_rule(conn, ta))
+
+    # 7.2 Column rules (REQ-2278), keyed on a tag (the tags are in place) or a classification.
+    await _upsert_column_rules(conn, config)
 
     # 8. Tracked DB functions
     for func in config.functions:
@@ -2197,6 +2230,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     from provisa.core.repositories.integrity import ObjectRef, discard
     from provisa.core.schema_org import (
         calendars,
+        column_rules,
         connectors,
         data_products,
         domains,
@@ -2241,6 +2275,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
 
     order: list[tuple[str, list[Any]]] = [
         ("synthetic_dataset", await _ids(select(synthetic_datasets.c.id))),
+        # REQ-2278: a rule on a code-defined tag or a classification goes with no tag or role.
+        ("column_rule", await _ids(select(column_rules.c.id))),
         (
             "tag_assignment",
             await _ids(

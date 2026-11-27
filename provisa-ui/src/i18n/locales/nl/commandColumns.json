@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "Deze opdracht declareert geen uitvoerkolommen.",
+    "hint": "Een kolom zonder vermelde rol wordt gelezen door de rollen waaraan de opdracht is toegewezen.",
+    "governanceTitle": "Tags, termen en classificatie",
+    "editTags": "Tags bewerken op de pagina Tags",
+    "editTerms": "Termen bewerken in de woordenlijst",
+    "colColumn": "Kolom",
+    "colTags": "Tags",
+    "colTerm": "Woordenlijstterm",
+    "colClassification": "Classificatie"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "このコマンドは出力列を宣言していません。",
+    "hint": "ロールが一覧にない列は、コマンドが割り当てられているロールが読み取ります。",
+    "governanceTitle": "タグ、用語、分類",
+    "editTags": "タグページでタグを編集",
+    "editTerms": "用語集で用語を編集",
+    "colColumn": "列",
+    "colTags": "タグ",
+    "colTerm": "用語集の用語",
+    "colClassification": "分類"
+  }
+}

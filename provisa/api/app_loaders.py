@@ -1541,6 +1541,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
                 validate_masking_rule(rule_of(entry["mask"]), col_name, data_type, is_nullable)
         masked.append((table_id, col_name, masks, data_type))
     masked = await _with_synthetic_masks(conn, masked, col_types_converted, rules)
+    masked = _with_ruled_masks(masked, state.ruled_columns, col_types_converted, rules)
     for role in roles:
         for key, cols in reader_masks(masked, role["id"], chains[role["id"]]).items():
             rules.setdefault(key, {}).update(cols)
@@ -1548,6 +1549,46 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     # published here, in the same assignment as their members'.
     state.masked_columns = masked
     state.masking_rules = with_meta_masks(state, rules, masked, chains)
+
+
+def _with_ruled_masks(  # REQ-2278
+    masked: list[tuple[int, str, list[dict], str]],
+    ruled: dict[Any, Any],
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    faked: dict[Any, dict[str, Any]],
+) -> list[tuple[int, str, list[dict], str]]:
+    """``masked`` with each table column a mask rule reaches (REQ-2278) carrying the rule's floor
+    entries after its own: its own list decides first, and a reader it leaves unmasked reads the
+    rule's mask (:func:`provisa.security.masking.resolve`). A column with no list of its own is
+    added with the floor entries alone. A column a Test (fake) environment fakes for every role
+    (``faked``) is left as it is: no reader reads its real value."""
+    from provisa.security.column_rules import floor_entries
+
+    floors = {
+        (target[1], target[2]): entries
+        for target, rules in ruled.items()
+        if target[0] == "column" and (entries := floor_entries(rules))
+    }
+    if not floors:
+        return masked
+    everyone = {(table_id, column) for (table_id, _role), cols in faked.items() for column in cols}
+    out = []
+    for table_id, column, masks, data_type in masked:
+        floor = floors.pop((table_id, column), None)
+        if floor is not None and (table_id, column) not in everyone:
+            masks = [*masks, *floor]
+        out.append((table_id, column, masks, data_type))
+    for (table_id, column), floor in floors.items():
+        if (table_id, column) in everyone:
+            continue
+        data_type = next(
+            (c.data_type for c in col_types_converted.get(table_id, []) if c.column_name == column),
+            None,
+        )
+        if data_type is None:
+            continue  # a rule reaches a column of a table this build does not serve
+        out.append((table_id, column, floor, data_type))
+    return out
 
 
 async def _with_synthetic_masks(  # REQ-2180, REQ-1494

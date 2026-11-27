@@ -34,6 +34,7 @@ vi.mock("../GlossaryRelationships", () => ({ GlossaryRelationships: () => null }
 import { TermReadView } from "../TermReadView";
 
 const term: GlossaryTermDetail = {
+  command_refs: [],
   id: 1,
   name: "Customer",
   definition: null,

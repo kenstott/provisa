@@ -38,8 +38,10 @@ import {
   PanelNoticeContext,
   usePanelDeleting,
 } from "./panelActions";
+import { DetailOutOfList } from "./DetailOutOfList";
 import { PanelHeadStyle } from "./PanelHeadStyle";
 import { SplitHandle } from "./SplitHandle";
+import type { OutOfList } from "./useDetailParam";
 import { PanelLeaveContext, usePanelLeave, type PanelLeave } from "./panelLeave";
 
 /** The narrowest the panel is dragged, and the least room the list keeps beside it. */
@@ -82,6 +84,7 @@ export function SplitPane({
   testId,
   leave,
   onDiscard,
+  outOfList = null,
 }: {
   list: ReactNode;
   /** The panel's heading. */
@@ -98,6 +101,11 @@ export function SplitPane({
   leave?: PanelLeave;
   /** Drops the open form's edit: called when the reader chooses Discard, before they leave. */
   onDiscard?: () => void;
+  /**
+   * REQ-2277 rule 9: the item the address names that the list leaves out (useRememberedDetail's
+   * `outOfList`), said once above the list.
+   */
+  outOfList?: OutOfList | null;
 }) {
   const { t } = useTranslation();
   const ownLeave = usePanelLeave();
@@ -182,6 +190,7 @@ export function SplitPane({
   return (
     <div className="split-pane" ref={rowRef} data-testid={testId}>
       <div className="split-pane__list" hidden={alone}>
+        <DetailOutOfList outOfList={outOfList} />
         {provided(list)}
       </div>
       {/* In the page only while it is asking: a pane that asks nothing holds no dialog. It

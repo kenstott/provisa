@@ -9,6 +9,12 @@
     "scope_column": "Kolom",
     "scope_relationship": "Relatie",
     "scope_command": "Opdracht",
+    "scope_command_column": "Opdrachtkolom",
+    "commandColumnsTitle": "Uitvoerkolommen van opdrachten",
+    "commandColumnsNone": "Geen enkele opdracht declareert uitvoerkolommen.",
+    "colCommand": "Opdracht",
+    "colOutputColumn": "Uitvoerkolom",
+    "colTags": "Tags",
     "scope_product": "Dataproduct",
     "scope_term": "Woordenlijstterm",
     "scope_rls_rule": "Rijregel",
@@ -48,7 +54,6 @@
     "colAssignments": "Toewijzingen",
     "colActions": "Acties",
     "empty": "Geen tags voor dit bereik",
-    "noMatch": "Geen tags komen overeen met het filter",
     "systemTag": "Systeemtag (alleen-lezen)",
     "editTag": "Tag {{id}} bewerken",
     "deleteTag": "Tag {{id}} verwijderen",
@@ -65,6 +70,7 @@
     "outsideTitle": "Toewijzingen buiten de toegestane domeinen",
     "outsideBody": "Bij het opslaan zijn deze toewijzingen behouden. Haal de tag weg van een object waar hij niet meer bij hoort.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Sjabloon"
+    "templateSection": "Sjabloon",
+    "noMatch": "Geen tags komen overeen met het filter"
   }
 }

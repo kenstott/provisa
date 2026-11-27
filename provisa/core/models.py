@@ -992,6 +992,9 @@ TAG_OBJECT_TYPES = (
     "column",
     "relationship",
     "command",
+    # REQ-1159 (amended 2026-11-25): an output column of a command's dataset, named by the command
+    # and the column, carries a table column's tags.
+    "command_column",
     "product",
     "term",
     "rls_rule",  # REQ-2208
@@ -1138,8 +1141,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
         # REQ-2208: and on reference library documents and their sections, so the policy sections
-        # about personal data carry the same tag as the columns.
-        applies_to=["column", "term", "document", "section"],
+        # about personal data carry the same tag as the columns. REQ-1159 (amended 2026-11-25): and
+        # on a command's output column, which carries a table column's governance.
+        applies_to=["column", "command_column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1148,7 +1152,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="deprecated",
         description="Scheduled for removal — consumers should migrate off",
-        applies_to=["source", "table", "column", "relationship", "command"],
+        applies_to=["source", "table", "column", "relationship", "command", "command_column"],
         is_system=True,
         reason_policy="required",  # a deprecation must say why
         expires_policy="optional",  # planned removal date, when known
@@ -1324,6 +1328,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "command_column":  # REQ-1159
+            return f"command_column:{self.command_name}:{self.column_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
         if self.object_type == "product":  # REQ-1634
@@ -1452,6 +1458,27 @@ class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
                 "other reader"
             )
         return value
+
+
+class ColumnRuleModel(BaseModel):  # REQ-2278
+    """A column rule keyed on a tag or a classification kind, never both: for ``role_id`` and the
+    roles descending from it, every column carrying the key -- a table's or a command's output
+    column -- is hidden (``hide``) or read through ``mask`` (``mask``; no mask: completely
+    masked)."""
+
+    tag_id: str | None = None
+    classification: str | None = None
+    role_id: str
+    action: Literal["hide", "mask"]
+    mask: Mask | None = None
+
+    @model_validator(mode="after")
+    def _one_key_and_mask_of_mask(self) -> "ColumnRuleModel":
+        if (self.tag_id is None) == (self.classification is None):
+            raise ValueError("a column rule is keyed on a tag or a classification, exactly one")
+        if self.action == "hide" and self.mask is not None:
+            raise ValueError("a hide rule takes no mask")
+        return self
 
 
 class ObjectField(BaseModel):
@@ -2756,6 +2783,17 @@ class DatasetColumn(BaseModel):  # REQ-1159
     # None = no grant list declared = visible (the contract is the action's public shape).
     visible_to: list[str] | None = None
     masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
+    # REQ-1159 (amended 2026-11-25): an output column carries a table column's naming too, the SQL
+    # alias consumers query it by and its description.
+    alias: str | None = None
+    description: str | None = None
+
+
+def queried_name(column: dict) -> str:
+    """The name consumers see and query a command's result column by (REQ-1159, amended
+    2026-11-25): its SQL alias, as a table column's alias is the name it is read by, else the name
+    its service returns it under. Every surface that names a command's result columns asks this."""
+    return column.get("alias") or column["name"]
 
 
 class FunctionArgument(BaseModel):
@@ -4318,6 +4356,9 @@ class ProvisaConfig(BaseModel):
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    # REQ-2278: the column rules keyed on a tag or a classification, as the row rules on a tag are
+    # declared beside them.
+    column_rules: list[ColumnRuleModel] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
     functions: list[Function] = Field(default_factory=list)

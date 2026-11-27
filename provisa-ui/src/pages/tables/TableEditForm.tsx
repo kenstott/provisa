@@ -28,6 +28,7 @@ import { FormChecks, FormFooter, FormLayout } from "../../components/form/FormLa
 import { ParametersPanel } from "./ParametersPanel";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { TableSectionTabs } from "./TableSectionTabs";
+import { PanelBody, PanelStrip } from "../../components/list/PanelBody";
 import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
 import { useTableSection, type TableSection } from "./tableSections";
@@ -42,7 +43,10 @@ import { TableQualitySection } from "./TableQualitySection";
 import { TableColumnsSection } from "./TableColumnsSection";
 import { DeclaredDraftColumns } from "./DeclaredDraftColumns";
 import type { CacheTtlEdit, UpdateEditCol } from "./tableEditTypes";
-import { useDescribeUnregistered, type UnregisteredTable } from "../../hooks/useDescribeUnregistered";
+import {
+  useDescribeUnregistered,
+  type UnregisteredTable,
+} from "../../hooks/useDescribeUnregistered";
 
 interface TableEditFormProps {
   editingTable: RegisteredTable;
@@ -189,16 +193,18 @@ export function TableEditForm({
   };
 
   return (
-    <>
+    <PanelBody>
       {hidingOnly && (
-        <Alert color="blue" mb="0.75rem" data-testid="table-edit-hiding-only">
+        <Alert color="blue" data-testid="table-edit-hiding-only">
           {t("tableEditForm.hidingOnlyNote")}
         </Alert>
       )}
       {/* The same seven sections as the read view, when the table is created and when it is
           edited. To a caller who may change only how columns are hidden the first five show
           read-only; Columns is theirs to edit. */}
-      <TableSectionTabs value={section} onChange={setSection} errors={{ load: loadErrors }} />
+      <PanelStrip>
+        <TableSectionTabs value={section} onChange={setSection} errors={{ load: loadErrors }} />
+      </PanelStrip>
       {section === "identity" &&
         (hidingOnly ? (
           <IdentityRead table={editingTable} source={editSource} />
@@ -326,6 +332,6 @@ export function TableEditForm({
         saveProps={{ "data-testid": "table-edit-save" }}
         cancelProps={{ "data-testid": "table-edit-cancel" }}
       />
-    </>
+    </PanelBody>
   );
 }

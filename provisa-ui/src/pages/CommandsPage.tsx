@@ -55,8 +55,15 @@ import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { commandId, readCommandId, useRememberedDetail } from "../components/list/useDetailParam";
+import {
+  detailListOf,
+  domainNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
+import { entityName } from "../components/entityName";
 import type { ActionType, FormState } from "./commands/types";
 import {
   EMPTY_FORM,
@@ -71,12 +78,22 @@ import {
   CommandBindingsRead,
   CommandSectionTabs,
 } from "./commands/CommandBindings";
+import { CommandColumnsFields, CommandColumnsRead } from "./commands/CommandColumns";
 import type { CommandSection } from "./commands/bindingLanguages";
 import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
-import { matchesQuery } from "../lib/searchItems";
+
+/** A function's or a webhook's row, as the list's narrowings read it. */
+interface CommandRow {
+  /** Its `commands` id (commandId). */
+  id: string;
+  name: string;
+  domainId: string | null | undefined;
+  /** Every text its row shows. */
+  texts: (string | null | undefined)[];
+}
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -84,7 +101,7 @@ export function CommandsPage() {
   const { tables } = useTables();
   const { domains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634: command <-> data product picker
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, ensureDomainChecked } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
   const { activeOrgId } = useAuth();
   // REQ-1327: authoring a command asks table_registration; a role holding only command_execution
@@ -111,14 +128,69 @@ export function CommandsPage() {
   // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
   // REQ-2260: and the one left open is open again on coming back.
+  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
+  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
+  // REQ-2277 rule 9: a command is open only while the list -- the domains in view, the search --
+  // shows its row.
+  // Every text a command's row shows, which the filter searches; the rows below draw the same.
+  const functionRowTexts = (fn: TrackedFunction) => [
+    fn.name,
+    fn.sourceId,
+    fn.domainId,
+    `${fn.schemaName}.${fn.functionName}`,
+    fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : ""),
+    String(fn.arguments.length),
+    fn.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
+  const webhookRowTexts = (wh: TrackedWebhook) => [
+    wh.name,
+    wh.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
+    wh.domainId,
+    wh.url,
+    wh.method,
+    `${wh.timeoutMs}ms`,
+    wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length }),
+    String(wh.arguments.length),
+    wh.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
+  const commandRows: CommandRow[] = [
+    ...functions.map((f) => ({
+      id: commandId("function", f.name),
+      name: f.name,
+      domainId: f.domainId,
+      texts: functionRowTexts(f),
+    })),
+    ...webhooks.map((w) => ({
+      id: commandId("webhook", w.name),
+      name: w.name,
+      domainId: w.domainId,
+      texts: webhookRowTexts(w),
+    })),
+  ];
+  const commandNarrowings = [
+    domainNarrowing<CommandRow>(
+      t,
+      checkedDomains.size > 0 ? checkedDomains : null,
+      ensureDomainChecked,
+      (c) => (c.domainId ? [c.domainId] : []),
+    ),
+    searchNarrowing<CommandRow>(
+      t,
+      cmdSearch,
+      () => setCmdSearch(""),
+      (c) => c.texts,
+    ),
+  ];
+  const shownCommands = new Set(shownBy(commandRows, commandNarrowings).map((c) => c.id));
   const detail = useRememberedDetail(
     "commands",
-    loading
-      ? null
-      : [
-          ...functions.map((f) => commandId("function", f.name)),
-          ...webhooks.map((w) => commandId("webhook", w.name)),
-        ],
+    detailListOf(
+      t,
+      loading ? null : commandRows,
+      (c) => c.id,
+      (c) => c.name,
+      commandNarrowings,
+    ),
   );
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
@@ -392,39 +464,13 @@ export function CommandsPage() {
     roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
-  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
-  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
-  const inCheckedDomain = (domainId: string | null | undefined) =>
-    !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
-
-  // Every text a command's row shows, which the filter searches; the rows below draw the same.
-  const functionRowTexts = (fn: TrackedFunction) => [
-    fn.name,
-    fn.sourceId,
-    fn.domainId,
-    `${fn.schemaName}.${fn.functionName}`,
-    fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : ""),
-    String(fn.arguments.length),
-    fn.visibleTo.join(", ") || t("commandsPage.all"),
-  ];
-  const webhookRowTexts = (wh: TrackedWebhook) => [
-    wh.name,
-    wh.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
-    wh.domainId,
-    wh.url,
-    wh.method,
-    `${wh.timeoutMs}ms`,
-    wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length }),
-    String(wh.arguments.length),
-    wh.visibleTo.join(", ") || t("commandsPage.all"),
-  ];
-  const filteredFunctions = functions.filter(
-    (fn) => inCheckedDomain(fn.domainId) && matchesQuery(functionRowTexts(fn), cmdSearch),
+  const filteredFunctions = functions.filter((fn) =>
+    shownCommands.has(commandId("function", fn.name)),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
 
-  const filteredWebhooks = webhooks.filter(
-    (wh) => inCheckedDomain(wh.domainId) && matchesQuery(webhookRowTexts(wh), cmdSearch),
+  const filteredWebhooks = webhooks.filter((wh) =>
+    shownCommands.has(commandId("webhook", wh.name)),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
 
@@ -617,6 +663,12 @@ export function CommandsPage() {
               bindings={form.languageBindings}
               onChange={(languageBindings) => setForm({ ...form, languageBindings })}
             />
+          ) : fnSection === "columns" ? (
+            <CommandColumnsFields
+              columns={form.outputColumns}
+              onChange={(outputColumns) => setForm({ ...form, outputColumns })}
+              roleOptions={formFieldsProps.roleOptions}
+            />
           ) : (
             <CommandFormFields {...formFieldsProps} />
           )}
@@ -628,6 +680,8 @@ export function CommandsPage() {
             <CommandSectionTabs value={fnSection} onChange={setFnSection} />
             {fnSection === "bindings" ? (
               <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
+            ) : fnSection === "columns" ? (
+              <CommandColumnsRead name={fn.name} columns={fn.outputColumns ?? []} />
             ) : (
               <FunctionRead
                 fn={fn}
@@ -810,6 +864,7 @@ export function CommandsPage() {
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="commands-split"
         storageKey="provisa.commands.detailWidth"
         title={panelTitle}
@@ -880,8 +935,10 @@ export function CommandsPage() {
                               <TagControl objectType="command" commandName={fn.name} />
                             </Group>
                           </Table.Td>
-                          <Table.Td>{fn.sourceId}</Table.Td>
-                          <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>{entityName("source", fn.sourceId)}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", fn.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>
                             {fn.schemaName}.{fn.functionName}
                           </Table.Td>
@@ -969,7 +1026,9 @@ export function CommandsPage() {
                                 : t("commandsPage.statusApproved")}
                             </Badge>
                           </Table.Td>
-                          <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", wh.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>{wh.url}</Table.Td>
                           <Table.Td>{wh.method}</Table.Td>
                           <Table.Td>{wh.timeoutMs}ms</Table.Td>

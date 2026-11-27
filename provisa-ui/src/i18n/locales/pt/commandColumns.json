@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "Este comando não declara colunas de saída.",
+    "hint": "Uma coluna sem função listada é lida pelas funções às quais o comando está atribuído.",
+    "governanceTitle": "Tags, termos e classificação",
+    "editTags": "Editar tags na página Tags",
+    "editTerms": "Editar termos no glossário",
+    "colColumn": "Coluna",
+    "colTags": "Tags",
+    "colTerm": "Termo do glossário",
+    "colClassification": "Classificação"
+  }
+}

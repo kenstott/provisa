@@ -23,7 +23,7 @@ import {
 import { X } from "lucide-react";
 import type { Source, ListedTable } from "../../types/admin";
 import type { TableMetadata } from "../../api/admin";
-import type { ActionArg, InlineField, DatasetColumn } from "../../api/actions";
+import type { ActionArg, InlineField } from "../../api/actions";
 import {
   GRAPHQL_TYPES,
   IR_TYPES,
@@ -130,12 +130,6 @@ export function CommandFormFields({
   const changeOutputColumn = (ci: number, field: "name" | "type", value: string) => {
     const cols = [...form.outputColumns];
     cols[ci] = { ...cols[ci], [field]: value };
-    setForm({ ...form, outputColumns: cols });
-  };
-  // REQ-1679: per-column governance patch on an output column.
-  const patchOutputColumn = (ci: number, patch: Partial<DatasetColumn>) => {
-    const cols = [...form.outputColumns];
-    cols[ci] = { ...cols[ci], ...patch };
     setForm({ ...form, outputColumns: cols });
   };
   const removeOutputColumn = (ci: number) =>
@@ -871,8 +865,8 @@ export function CommandFormFields({
               !isSourceOperation &&
               !declaresItsShape &&
               form.returnSchemaMode === "dataset" && (
-                // The output dataset's columns: each an entry of its row and who sees it and how it
-                // is masked, set apart from the next.
+                // The output dataset's columns: each an entry of its row. Who sees each and how it
+                // is masked is set on the Columns tab (REQ-1159).
                 <FormLayout data-testid="output-columns">
                   <Title order={5}>{t("commandFormFields.outputColumnsTitle")}</Title>
                   {form.outputColumns.map((col, ci) => (
@@ -905,13 +899,6 @@ export function CommandFormFields({
                           <X size={14} />
                         </ActionIcon>
                       </FieldGroup>
-                      {/* REQ-1679: the function's response is governed like a table's rows. */}
-                      <ColumnGovernanceFields
-                        col={col}
-                        onChange={(patch) => patchOutputColumn(ci, patch)}
-                        testId={`output-column-governance-${ci}`}
-                        roleOptions={roleOptions}
-                      />
                     </FormEntry>
                   ))}
                   <FormField size="full">
