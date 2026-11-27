@@ -215,16 +215,28 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
         _reads_as_the_file_does(
             tmp_path, found, f"onedrive://{user}/{RUN}/{INNER}/orders.csv", opts
         )
-        _engine_reads_as_the_file_does(
-            Source(
-                id="od-live",
-                type=SourceType.files,
-                path=source.path,
-                database=source.database,
-                username=source.username,
-                password=source.password,
+        try:
+            _engine_reads_as_the_file_does(
+                Source(
+                    id="od-live",
+                    type=SourceType.files,
+                    path=source.path,
+                    database=source.database,
+                    username=source.username,
+                    password=source.password,
+                )
             )
-        )
+        except Exception:
+            # What Graph answers to the nested folder named by its path, as one %2F-encoded
+            # segment and as slashes (a diagnostic; the failure is re-raised).
+            for sub in (f"{RUN}/{INNER}", f"{RUN}%2F{INNER}"):
+                for tail in ("", "/children"):
+                    resp = client.get(
+                        f"{drive}/root:/{sub}:{tail}",
+                        headers={"Authorization": f"Bearer {token()}"},
+                    )
+                    print(f"graph probe root:/{sub}:{tail} -> {resp.status_code}")
+            raise
     finally:
 
         def delete() -> None:
