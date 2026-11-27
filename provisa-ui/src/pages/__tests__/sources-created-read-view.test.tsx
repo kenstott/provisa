@@ -84,6 +84,9 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
     updateSourceAllowedDomains: vi.fn().mockResolvedValue(ok),
   }),
   useSuggestTableAlias: () => ({ suggestTableAlias: async () => "" }),
+  // The source setup's reads: no table registered before, none related.
+  useTables: () => ({ tables: [], loading: false, refetch: async () => ({}) }),
+  useRelationships: () => ({ relationships: [], loading: false, refetch: async () => ({}) }),
   useAvailableSchemas: () => ({ schemas: ["public"], loading: false }),
   useAvailableTables: () => ({
     tables: [
@@ -103,6 +106,15 @@ vi.mock("../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) =>
 }));
 
 // What the server answers to registering the picked tables: each registered, under its own id.
+// REQ-2262: what the setup flow records for the source, as the server takes it.
+const setupWrites: { sourceId: string; outcomes: Record<string, string | null> }[] = [];
+vi.mock("../../hooks/useSourceSetupOutcomes", () => ({
+  useSetSourceSetupOutcomes:
+    () => async (sourceId: string, outcomes: Record<string, string | null>) => {
+      setupWrites.push({ sourceId, outcomes });
+    },
+}));
+
 const registerTables = vi.fn();
 vi.mock("../../hooks/useTableQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useTableQueries")>()),
@@ -115,6 +127,7 @@ import { forgetSourceKinds } from "../sources/sourceKind";
 const panel = () => within(screen.getByTestId("sources-split-panel"));
 
 beforeEach(() => {
+  setupWrites.length = 0;
   SOURCES = [source({})];
   createSource.mockReset().mockResolvedValue(ok);
   refetch.mockReset().mockResolvedValue({ data: { sources: SOURCES } });
@@ -150,7 +163,10 @@ async function create(type: string, made: Source, fill: () => Promise<void>): Pr
   await userEvent.click(screen.getByTestId("sources-submit"));
   await waitFor(() => expect(createSource).toHaveBeenCalled());
   expect(createSource.mock.calls[0][0]).toMatchObject({ id: made.id, type });
-  await screen.findByTestId("register-tables-skip");
+  // REQ-2234 / REQ-2262: the source's setup, its strip at Register tables, the form its content.
+  await screen.findByTestId("source-setup-finish-later");
+  expect(panel().getByTestId("source-setup-stepper")).toHaveAttribute("data-active", "1");
+  expect(panel().getByTestId("register-tables-field")).toBeInTheDocument();
 }
 
 /** The tables that need no input are picked already: one action registers them. */
@@ -160,6 +176,8 @@ async function registerPicked(): Promise<void> {
   await userEvent.click(submit);
   await waitFor(() => expect(registerTables).toHaveBeenCalledTimes(1));
   expect(await panel().findByTestId("your-data-step")).toBeInTheDocument();
+  // Your data is step 2 of the same strip.
+  expect(panel().getByTestId("source-setup-stepper")).toHaveAttribute("data-active", "2");
 }
 
 function expectReadView(id: string): void {
@@ -203,10 +221,16 @@ const KINDS: { name: string; type: string; made: Source; fill: () => Promise<voi
 ];
 
 describe.each(KINDS)("$name, created and its tables registered", ({ type, made, fill }) => {
-  it("closes Your data on the source read, and opens its edit form on Edit alone", async () => {
+  it("leaves Your data by Finish later for the source read, and opens its edit form on Edit alone", async () => {
     await create(type, made, fill);
     await registerPicked();
-    await userEvent.click(panel().getByTestId("your-data-back"));
+    await waitFor(() =>
+      expect(setupWrites).toContainEqual({
+        sourceId: made.id,
+        outcomes: { tables: "registered", relationships: null, query: null },
+      }),
+    );
+    await userEvent.click(panel().getByTestId("source-setup-finish-later"));
     await waitFor(() => expect(screen.queryByTestId("your-data-step")).toBeNull());
     await panel().findByTestId("source-read");
     expectReadView(made.id);
@@ -229,10 +253,17 @@ describe.each(KINDS)("$name, created and its tables registered", ({ type, made, 
 describe.each(KINDS)(
   "$name, created and registering its tables skipped",
   ({ type, made, fill }) => {
-    it("shows the source read on Skip, and opens its edit form on Edit alone", async () => {
+    it("records Skip, shows the source read on Finish later, and opens its edit form on Edit alone", async () => {
       await create(type, made, fill);
-      await userEvent.click(panel().getByTestId("register-tables-skip"));
-      await waitFor(() => expect(screen.queryByTestId("register-tables-skip")).toBeNull());
+      await userEvent.click(panel().getByTestId("source-setup-skip-tables"));
+      await waitFor(() =>
+        expect(setupWrites).toContainEqual({
+          sourceId: made.id,
+          outcomes: { tables: "skipped", relationships: null, query: null },
+        }),
+      );
+      await userEvent.click(panel().getByTestId("source-setup-finish-later"));
+      await waitFor(() => expect(screen.queryByTestId("source-setup-finish-later")).toBeNull());
       await panel().findByTestId("source-read");
       expectReadView(made.id);
       await userEvent.click(panel().getByTestId("source-detail-edit"));

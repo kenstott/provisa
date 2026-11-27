@@ -39,6 +39,8 @@
     "colTimeout": "Délai d'expiration",
     "noFunctions": "Aucune fonction enregistrée",
     "noWebhooks": "Aucun webhook enregistré",
+    "noFunctionsMatch": "Aucune fonction ne correspond au filtre",
+    "noWebhooksMatch": "Aucun webhook ne correspond au filtre",
     "customSchema": "jeu de données",
     "dash": "—",
     "all": "tous",

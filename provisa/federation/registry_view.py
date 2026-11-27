@@ -242,6 +242,8 @@ def _build_registered_tables(registered: list[dict]) -> list[Any]:
                         native_platform=c["native_platform"],
                         # REQ-2171: the form a subtyped column lands in.
                         subtype=c["subtype"],
+                        # REQ-308: how a remote GraphQL column is read, when not by its name.
+                        gql_selection=c["gql_selection"],
                     )
                     for c in rt["columns"]
                 ],

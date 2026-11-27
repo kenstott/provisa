@@ -25,12 +25,14 @@ Provisa it is not there, and code that imports it is tested by mocking it.
     ps.log("scored", level="info", accounts=12); ps.metric("scored", 12)
     ps.audit("spark.run", application_id=app_id, ui=ui_url, rows=12)
     ps.answer_cut("orders", max_pages=10, rows=1000)  # the read's rows stop at its page limit
+    frame = ps.spark.session("spark_jobs").sql("SELECT id FROM sales.orders")  # REQ-2225
 
 Each call is made to ``$PROVISA_SERVICES`` through the worker's egress proxy, naming the call it
 serves, so what it does is recorded against the request that called the code. A refusal is raised
 as :class:`ServiceError`, naming the service; with no ``$PROVISA_SERVICES`` every call raises it.
 The same calls, by the same names, are Node's ``@provisa/services`` (provisa/node/services.mjs),
-but for :func:`warn` and :func:`answer_cut`, Python's alone in v0 as ``@discover`` is (REQ-2267).
+but for :func:`warn` and :func:`answer_cut`, Python's alone in v0 as ``@discover`` is (REQ-2267),
+and :class:`spark`, Python's alone as Spark Connect's client is (REQ-2225).
 
 WARNINGS (REQ-2267). A call may say its answer is not the whole of what was asked --
 :func:`answer_cut` for a read cut at its page limit, :func:`warn` for any other -- and its rows
@@ -56,7 +58,7 @@ landed) gives an empty context and asks for the whole table under its inputs.
         ...
 """
 
-# Requirements: REQ-2104, REQ-2105, REQ-2106, REQ-2267
+# Requirements: REQ-2104, REQ-2105, REQ-2106, REQ-2225, REQ-2267
 from __future__ import annotations
 
 import base64
@@ -93,6 +95,7 @@ __all__ = [
     "metric",
     "secrets",
     "settings",
+    "spark",
     "vectors",
     "warn",
 ]
@@ -197,23 +200,6 @@ def _reason(body: bytes) -> str:
 
 def _q(name: str) -> str:
     return urllib.parse.quote(name, safe="")
-
-
-#: REQ-2225: a script connector's setup values, given by the host's front end; memory only.
-_setup_values: dict[str, Any] = {}
-
-
-def _set_values(values: dict[str, Any]) -> None:
-    _setup_values.clear()
-    _setup_values.update(values)
-
-
-def setup_value(name: str) -> Any:
-    """REQ-2225: the setup value ``name`` of a connector that serves a script; KeyError naming it
-    when the host has not been given it."""
-    if name not in _setup_values:
-        raise KeyError(f"this host has no setup value {name!r}")
-    return _setup_values[name]
 
 
 class secrets:  # noqa: N801 -- a namespace, named as the service
@@ -387,6 +373,27 @@ class dq:  # noqa: N801
         """A data product's promises, expectations, partner DQ and orphans, each with its latest
         run (REQ-1443)."""
         return _json("dq", "GET", f"dq/product/{_q(product_id)}")
+
+
+class spark:  # noqa: N801
+    """A Spark source's cluster, opened from a Python code source (REQ-2225, amended 2026-11-25).
+    The code needs the Spark Connect client (``pyspark-client``) among its own dependencies, and
+    the worker's egress allow-list names the cluster's host, as for any address the code calls."""
+
+    @staticmethod
+    def session(source: str) -> Any:  # a pyspark.sql.SparkSession
+        """A Spark Connect session on the cluster of the organisation's Spark source ``source``:
+        its own cluster, else the organisation's default, with its stored credential."""
+        from pyspark.sql import SparkSession
+
+        address = _json("spark", "GET", f"spark/{_q(source)}")["address"]
+        return SparkSession.builder.remote(address).getOrCreate()
+
+    @staticmethod
+    def dataframe(session: Any, table: TableRef[Any]) -> Any:  # a pyspark.sql.DataFrame
+        """REQ-2270: a governed table argument as a DataFrame on ``session``'s cluster, its rows
+        read over Arrow Flight SQL as the calling role (:meth:`TableRef.read`)."""
+        return session.createDataFrame(table.read())
 
 
 def log(message: str, level: str = "info", **fields: Any) -> None:

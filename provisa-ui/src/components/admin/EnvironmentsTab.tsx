@@ -641,7 +641,21 @@ export function EnvironmentsTab({ title }: { title: string }) {
   };
 
   const onList = tab === "environments";
-  const shownEnvs = envs.filter((e) => matchesQuery([e.name, e.parent, e.created_by], search));
+  // Every text an environment's row (EnvironmentRow) shows.
+  const envRowTexts = (e: Environment) => [
+    e.name,
+    e.drifted ? t("environmentsTab.drifted") : "",
+    isBase(e)
+      ? t("environmentsTab.ownConnections")
+      : t("environmentsTab.branchOf", { env: e.parent }),
+    t(`environmentStage.${e.stage}`),
+    syncBadge(e.name)?.label,
+    e.created_by,
+    e.expires_at,
+    Object.keys(e.expired_kept_by).length > 0 ? t("environmentsTab.expiredKept") : "",
+    e.protected ? t("detailFields.yes") : t("detailFields.no"),
+  ];
+  const shownEnvs = envs.filter((e) => matchesQuery(envRowTexts(e), search));
   const openEnv = envs.find((e) => e.name === detail.id) ?? null;
   const openAdd = () => {
     detail.close();
@@ -737,6 +751,14 @@ export function EnvironmentsTab({ title }: { title: string }) {
                 list={
                   <SortGroupTable
                     testPrefix="environments"
+                    testId="environments-list"
+                    emptyTestId="environments-empty"
+                    // A list a filter emptied says so, never that there are none.
+                    empty={
+                      envs.length === 0
+                        ? t("environmentsTab.noEnvironments")
+                        : t("environmentsTab.noMatch")
+                    }
                     rows={shownEnvs}
                     columns={[
                       {

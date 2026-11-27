@@ -29,6 +29,7 @@
     "cacheOn": "aan",
     "cacheOff": "uit",
     "empty": "Geen bronnen gevonden.",
+    "noMatch": "Geen bronnen komen overeen met het filter.",
     "discover": "Detecteren",
     "mapTable": "Tabel toewijzen",
     "refreshSchema": "Schema verversen",

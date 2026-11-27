@@ -10,51 +10,20 @@
 
 """The Spark connector's own code (REQ-2225).
 
-The host runs one annotated Spark script given when the connector is set up: its @table and
-@command functions are the source's. This package is what that script imports. :func:`session`
-is a SparkSession against the cluster named at setup; the script never names the cluster itself.
-
-A command given a governed table (REQ-2226) reads it with :func:`dataframe`: over Arrow Flight SQL
-as the calling role (REQ-2270), so the rows and columns that reach the cluster are the ones Provisa
-lets that role read.
-
-    from provisa_services import TableRef
-    from provisa_spark import dataframe
-
-    def regional_totals(orders: TableRef[Order]) -> list[Total]:
-        '''@query'''
-        frame = dataframe(orders).groupBy("region").sum("amount")
-        return [Total(region=r[0], amount=r[1]) for r in frame.collect()]
+A Spark source is a connection to a cluster through Spark Connect; it has no script (REQ-2225,
+amended 2026-11-25). The host serves no tables of its own: what the cluster holds is served from
+its catalog (REQ-2272). Logic the cluster does not hold is an ordinary Python code source, which
+opens this source's session with ``provisa_services.spark.session(<source>)``.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-import provisa_services
-
-__all__ = ["dataframe", "declared", "session"]
-
-
-def session() -> Any:  # a pyspark.sql.SparkSession
-    """A Spark Connect session to the configured cluster, created once and shared by the script."""
-    from pyspark.sql import SparkSession
-
-    return SparkSession.builder.remote(provisa_services.setup_value("cluster")).getOrCreate()
-
-
-def dataframe(table: Any) -> Any:  # a provisa_services.TableRef -> a pyspark.sql.DataFrame
-    """REQ-2270: a governed table argument as a DataFrame on the cluster. Its rows are read over
-    Arrow Flight SQL as the calling role, through Provisa's governed pipeline, and handed to the
-    cluster as Arrow."""
-    return session().createDataFrame(table.read())
+__all__ = ["declared"]
 
 
 def declared(values: dict) -> None:
-    """Names the values this connector needs for the setup form. The host runs the script's own
-    lifecycle functions and never calls this one.
+    """Names the values this connector needs for the setup form.
 
     @on-start
-    @requires script
     @requires cluster
     """

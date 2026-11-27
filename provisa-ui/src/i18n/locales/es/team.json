@@ -22,6 +22,7 @@
     "colProvider": "Inicio de sesión",
     "colOrgAdmin": "Admin de la org.",
     "noMembers": "Aún no hay miembros.",
+    "noMembersMatch": "Ningún miembro coincide con el filtro.",
     "yes": "Sí",
     "no": "No",
     "promote": "Hacer admin de la organización",

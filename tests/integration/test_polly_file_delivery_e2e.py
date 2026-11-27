@@ -232,7 +232,9 @@ def test_a_small_result_asked_for_as_a_file_is_one_the_user_can_download(server,
     assert artifact["kind"] == "file" and artifact["row_count"] == _ROWS, artifact
 
     # What the chat panel fetches the file with: the signed-in user's own credential.
-    fetched = httpx.get(f"{server.base_url}{artifact['redirect_url']}", headers=headers, timeout=60)
+    # REQ-1191: the link is absolute, at the base URI the request came in on.
+    assert artifact["redirect_url"].startswith(f"{server.base_url}/data/redirect-file/"), artifact
+    fetched = httpx.get(artifact["redirect_url"], headers=headers, timeout=60)
     assert fetched.status_code == 200, fetched.text
     rows = list(csv.DictReader(io.StringIO(fetched.text)))
     assert [int(r["id"]) for r in rows] == list(range(1, _ROWS + 1))
@@ -252,7 +254,7 @@ def test_a_download_link_followed_with_no_credential_is_refused(server, headers,
         "give me these items as a CSV",
     )
     artifact = next(e for e in events if e["type"] == "artifact")
-    assert httpx.get(f"{server.base_url}{artifact['redirect_url']}", timeout=60).status_code == 401
+    assert httpx.get(artifact["redirect_url"], timeout=60).status_code == 401
 
 
 def test_a_turn_that_delivered_no_file_tells_the_model_so(server, headers, model):

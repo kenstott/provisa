@@ -46,6 +46,7 @@
     "kind_git": "Git host",
     "add": "Add registry",
     "none": "No package registries. Installs come from the public registries.",
+    "noMatch": "No package registries match the filter.",
     "filterPlaceholder": "Filter registries",
     "closeForm": "Close the form",
     "edit": "Edit {{name}}",

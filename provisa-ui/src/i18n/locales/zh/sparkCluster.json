@@ -1,6 +1,6 @@
 {
   "sparkCluster": {
-    "help": "当数据源未指定自己的集群时，Spark 脚本在此运行和验证。数据源如有自己的集群，则始终使用该集群。",
+    "help": "当 Spark 数据源未指定自己的集群时所连接的集群。数据源如有自己的集群，则始终使用该集群。",
     "address": "Spark Connect 地址",
     "addressHelp": "集群的 Spark Connect 地址，例如 sc://spark.example.com:15002。不要在其中包含令牌：将令牌保存为密钥，并在下方指定。",
     "credential": "令牌密钥",
@@ -19,7 +19,7 @@
     "tls": "TLS",
     "tlsHelp": "通过 TLS 连接。令牌只通过 TLS 发送，因此提供令牌会开启 TLS。",
     "userId": "用户 ID",
-    "userIdHelp": "集群运行脚本所用的用户（如集群要求）。可选。",
+    "userIdHelp": "集群运行会话工作所用的用户（如集群要求）。可选。",
     "badHost": "主机名或地址，不含 sc://、端口或路径",
     "badPort": "1 到 65535 之间的端口",
     "badToken": "密钥引用，例如 ${secret:spark_token}",

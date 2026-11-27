@@ -3,6 +3,7 @@
     "help": "Les registres vers lesquels l'image construite d'une source de code peut être poussée, pour l'exécuter sur un hôte distant. Chaque champ peut contenir une valeur ou une référence de secret comme ${secret:registry_token}. Sans registre, l'image construite est téléchargée à la place.",
     "add": "Ajouter un registre de conteneurs",
     "none": "Aucun registre de conteneurs. Les images construites peuvent toujours être téléchargées.",
+    "noMatch": "Aucun registre de conteneurs ne correspond au filtre.",
     "address": "Registre et espace de noms",
     "addressHelp": "Le registre, avec son port s'il en a un, et l'espace de noms de dépôt sous lequel les images sont poussées, par exemple ghcr.io/example ou registry.example.com:5000/data.",
     "username": "Nom d'utilisateur",

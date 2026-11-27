@@ -174,7 +174,16 @@ def _loaded(schema, field: str):
     return (
         make_graphql_remote_keyed_loader(state),
         SimpleNamespace(id="remote"),
-        SimpleNamespace(table_name=table["sql_name"]),
+        # The registry row: its registered columns, each read by its name.
+        SimpleNamespace(
+            table_name=table["sql_name"],
+            columns=[
+                SimpleNamespace(
+                    name=c["name"], data_type=c["type"], native_filter_type=None, gql_selection=None
+                )
+                for c in table["columns"]
+            ],
+        ),
     )
 
 

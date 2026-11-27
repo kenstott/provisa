@@ -136,7 +136,7 @@ def _ledger(**overrides) -> ConnectorConfig:
         update={
             "name": "ledger",
             "description": "Ledger",
-            "requires": [ConnectorRequirement(name="script", multiline=True, script=True)],
+            "requires": [ConnectorRequirement(name="script", multiline=True)],
             **overrides,
         }
     )
@@ -166,7 +166,7 @@ async def test_a_filled_block_is_offered_beside_the_orgs_own(control_plane, tmp_
     assert [row["name"] for row in offered] == ["crm", "ledger"]
     ledger = offered[1]
     assert ledger["description"] == "Ledger"
-    assert ledger["requires"] == [{"name": "script", "multiline": True, "script": True}]
+    assert ledger["requires"] == [{"name": "script", "multiline": True}]
     assert "path" not in ledger and "build_command" not in ledger
 
 
