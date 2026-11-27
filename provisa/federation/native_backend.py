@@ -464,6 +464,7 @@ class NativeEngineBackend(EngineBackend):
         from provisa.core.operator_floor import floor_setting
         from provisa.core.request_context import current_org
         from provisa.core.secrets import resolve_secrets
+        from provisa.federation.codehost_connectors import CodeHost, is_dev
         from provisa.jdbc_source.attach import attach_type, attach_view
 
         complete = True
@@ -608,9 +609,17 @@ class NativeEngineBackend(EngineBackend):
             # A registered source always carries its type; one without fails here, by name.
             try:
                 # REQ-1867: the source's own reach (a hinted scan), not only its type's
-                if not self.engine.connector_for_source(src).reads_in_place:
+                connector = self.engine.connector_for_source(src)
+                if not connector.reads_in_place:
                     return
             except UnreachableSource:
+                return
+            # REQ-2267: a dev-mode code source is attached once the schema build has named it
+            # (codesource.attach.prepare, after state.tables is published). A walk before that
+            # build (the boot reconcile) leaves it, and the walk after the build, which sees the
+            # new registry, attaches it; Trino's connector decides the same way (details()).
+            if isinstance(connector, CodeHost) and is_dev(src) and not connector.dev_ready(src.id):
+                complete = False
                 return
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
