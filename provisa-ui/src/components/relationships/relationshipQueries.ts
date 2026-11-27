@@ -21,6 +21,7 @@ import { rootKey } from "../../api/metaGraph";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import { allPrefixes, compactIri, withUsedPrefixes, type SparqlVocabulary } from "../graph/sparql";
 import { grpcExample } from "../../pages/data-products/tableExamples";
+import type { ServedCommand } from "../commands/commandQueries";
 
 /** The rows a relationship's query reads at most. */
 export const RELATIONSHIP_QUERY_LIMIT = 25;
@@ -87,6 +88,9 @@ export interface GraphSchemaDoc {
      * columns], then the junction table and its type. */
     join: string;
   }[];
+  /** REQ-1159 (amended 2026-11-27): every command the role's GraphQL schema offers, by the names
+   * its call is written with on each surface. */
+  commands: ServedCommand[];
 }
 
 /** What the acting role is served, each read on its own; null while unread or refused. */

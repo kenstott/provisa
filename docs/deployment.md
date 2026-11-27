@@ -54,7 +54,7 @@ Budget about 700 MB of extra disk for it, most of it PyTorch. No install carries
 
 ```bash
 pip install 'provisa[embedded]' \
-  --extra-index-url https://kenstott.github.io/provisa/simple/ \
+  --extra-index-url https://pkgs.provisa.dev/simple/ \
   --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 

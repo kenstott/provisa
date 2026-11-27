@@ -174,6 +174,9 @@ function buildMessageTemplate(
 
 interface GrpcHandoff {
   method: string;
+  /** REQ-1159 (amended 2026-11-27): the method is a command's call (a command's Query it line),
+   *  named by the command, its body ``{ name, args }``. */
+  command: boolean;
   byColumns: string[] | null;
   funcs: string[] | null;
   projection: NodeProjection | null;
@@ -212,6 +215,7 @@ function parseGrpcHandoff(
       : null;
   return {
     method: signature,
+    command: false,
     byColumns: (body?.by as string[]) ?? listArg(signature, /\(by=\[([^\]]*)\]/),
     funcs: (body?.funcs as string[]) ?? listArg(signature, /funcs=\[([^\]]*)\]/),
     projection,
@@ -274,9 +278,25 @@ export function GrpcPage() {
   const [handoff, setHandoff] = useState<GrpcHandoff | null>(null);
   useNavPayload<{
     grpcMethod?: string;
+    grpcCommand?: string;
     grpcBody?: Record<string, unknown>;
     autoRun?: boolean;
   }>((payload) => {
+    if (payload.grpcCommand) {
+      const command = payload.grpcCommand;
+      const body = payload.grpcBody ?? null;
+      setHandoff((prev) => ({
+        method: command,
+        command: true,
+        byColumns: null,
+        funcs: null,
+        projection: null,
+        body,
+        autoRun: payload.autoRun === true,
+        seq: (prev?.seq ?? 0) + 1,
+      }));
+      return;
+    }
     if (!payload.grpcMethod) return;
     const signature = payload.grpcMethod;
     const body = payload.grpcBody ?? null;
@@ -404,12 +424,17 @@ export function GrpcPage() {
         const p = parseProto(text);
         // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
         // before matching against the bare typeName the proto actually exposes.
-        const preferred = handoff ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "") : "";
+        const preferred =
+          handoff && !handoff.command
+            ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "")
+            : "";
         const navM = preferred
           ? p.methods.find((m) => m.typeName === preferred && m.operation === "query")
           : null;
-        const initial =
-          navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
+        // A command's call is selected once the commands are read (below), not here.
+        const initial = handoff?.command
+          ? null
+          : (navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null);
         if (initial) {
           setOpType(initial.operation);
           selectMethod(
@@ -458,6 +483,21 @@ export function GrpcPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async command fetch; setState occurs inside the async callback
     if (roleId) void fetchCommands(roleId);
   }, [roleId, fetchCommands]);
+
+  // REQ-1159 (amended 2026-11-27): a command's call handed over is selected once the role's
+  // commands are read, with the body it was handed.
+  useEffect(() => {
+    if (!handoff?.command || selectedSeq === handoff.seq) return;
+    const method = commandMethods.find((m) => m.name === handoff.method);
+    if (!method) return;
+    // eslint-disable-next-line react-hooks/immutability -- one-shot guard, as the proto fetch's: the handed command is selected, so the first-method auto-select stands aside
+    navSelectDoneRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- selects the handed command once its list is read; guarded by the hand-off's sequence number
+    setOpType("command");
+    selectMethod(method, parsed, null, null, null, handoff.body);
+    setSelectedSeq(handoff.seq);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- commandMethods is derived from commands, the real dependency
+  }, [handoff, commands, parsed, selectMethod, selectedSeq]);
 
   // REQ-1361: the group-by picker must offer only columns the server's {Type}DistinctOnColumn
   // enum actually accepts — the {Type}Filter message's fields (a different, broader set) yield

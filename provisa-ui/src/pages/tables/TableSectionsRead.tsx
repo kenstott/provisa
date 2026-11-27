@@ -19,6 +19,7 @@ import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { namingConventionLabel } from "../../hooks/useNamingConventions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { entityName } from "../../components/entityName";
+import { EntityLink } from "../../components/EntityLink";
 import { useSourceKind } from "../sources/sourceKind";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
 import {
@@ -420,7 +421,11 @@ export function QualityRead({ table, source }: { table: RegisteredTable; source?
       : [
           {
             label: t("profilerPanel.title"),
-            value: table.profilerSourceId ?? null,
+            value: table.profilerSourceId ? (
+              <EntityLink kind="source" id={table.profilerSourceId} testId="quality-profiler-link">
+                {table.profilerSourceId}
+              </EntityLink>
+            ) : null,
           },
         ]),
     checkersField(t, table.qualityCheckers),

@@ -163,6 +163,17 @@ def test_a_streams_on_close_reports_its_rows_and_bytes():
 # ── ArrowResult ────────────────────────────────────────────────────────────────
 
 
+def test_a_materialized_results_byte_count_is_counted_when_read_and_kept_past_its_table():
+    """``Table.nbytes`` walks every buffer: a result whose stats are never read (a response-cache
+    hit's terminal) never counts them; replacing the rows keeps the count of the table it held."""
+    table = pa.Table.from_batches([_batch(0, 2), _batch(2, 1)])
+    res = ArrowResult(table, ["BIGINT", "VARCHAR"], to_rows=_plain_rows)
+    assert res.stats._table is table
+    res.rows = [(9, "x")]
+    assert res.table is None
+    assert (res.stats.row_count, res.stats.byte_count) == (3, table.nbytes)
+
+
 def test_a_materialized_result_keeps_the_engines_table_and_builds_rows_when_read():
     table = pa.Table.from_batches([_batch(0, 2), _batch(2, 1)])
     to_rows = _CountingRows()

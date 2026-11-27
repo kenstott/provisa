@@ -4,21 +4,21 @@ The `provisa` command is the single entry point for the pip-installed embedded t
 
 The `provisa` wheels are attached to each [GitHub release](https://github.com/kenstott/provisa/releases),
 not uploaded to PyPI, and a package index on GitHub Pages lists them:
-`https://kenstott.github.io/provisa/simple/`. Add that index to pip, uv or Poetry. Every other
+`https://pkgs.provisa.dev/simple/`. Add that index to pip, uv or Poetry. Every other
 dependency, `provisa-client` and `provisa-notebook` among them, still comes from PyPI.
 
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
 and the embedded PostgreSQL model store:
 
 ```bash
-pip install 'provisa[embedded]' --extra-index-url https://kenstott.github.io/provisa/simple/
+pip install 'provisa[embedded]' --extra-index-url https://pkgs.provisa.dev/simple/
 ```
 
 On Linux, add PyTorch's CPU index as well:
 
 ```bash
 pip install 'provisa[embedded]' \
-  --extra-index-url https://kenstott.github.io/provisa/simple/ \
+  --extra-index-url https://pkgs.provisa.dev/simple/ \
   --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
@@ -27,7 +27,7 @@ With uv, declare the index in `pyproject.toml` and pin `provisa` to it:
 ```toml
 [[tool.uv.index]]
 name = "provisa"
-url = "https://kenstott.github.io/provisa/simple/"
+url = "https://pkgs.provisa.dev/simple/"
 explicit = true
 
 [tool.uv.sources]
@@ -39,7 +39,7 @@ With Poetry, add the index as a supplemental source and install from it:
 ```toml
 [[tool.poetry.source]]
 name = "provisa"
-url = "https://kenstott.github.io/provisa/simple/"
+url = "https://pkgs.provisa.dev/simple/"
 priority = "supplemental"
 ```
 

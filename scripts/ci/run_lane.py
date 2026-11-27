@@ -160,8 +160,9 @@ LANES: dict[str, Lane] = {
     # about 2,450 API calls of an org allowed 15,000 a day. The live Microsoft 365 tests run only
     # in their own on-demand lane (microsoft_365), against the maintainer's tenant (maintainer
     # 2026-11-10); the warehouse lane, whose job holds no M365 secrets, leaves them out.
-    # The live Google Workspace test is in no CI lane at all: its domain is the maintainer's own.
-    # Nor is the live QuickBooks test: its sandbox company is the maintainer's own too.
+    # The live Google Workspace tests run only in their own on-demand lane (google_workspace),
+    # against the maintainer's domain (maintainer 2026-11-26), never nightly.
+    # The live QuickBooks test is in no CI lane at all: its sandbox company is the maintainer's own.
     # Nor is the live Shopify test: its dev store is the maintainer's own too.
     "warehouse": Lane(
         ("tests/integration", "tests/steps"),
@@ -184,6 +185,12 @@ LANES: dict[str, Lane] = {
     # its own job. The tests drive the loader directly, so the job runs them with no stack.
     "microsoft_365": Lane(
         ("tests/integration", "tests/steps"), "requires_microsoft_365", clear_addopts=True
+    ),
+    # The live Google Workspace domain (REQ-2280; maintainer 2026-11-26): on demand only
+    # (include_google_workspace), its own job, like microsoft_365. A service account with
+    # domain-wide delegation acts as the domain's test user; no stack is brought up.
+    "google_workspace": Lane(
+        ("tests/integration", "tests/steps"), "requires_google_workspace", clear_addopts=True
     ),
     # REQ-2006: a visitor's walk through one published demo, served from the bundle demo-bundles.yml
     # just built (PROVISA_TEST_DEMO_BUNDLES_DIR), before it is published: that job runs it with the
@@ -282,7 +289,7 @@ ON_DEMAND = ("leak",)
 # The lanes a dispatch of integration-suite.yml can run, beside the suite matrix: each its own job.
 # A live lane runs only when the dispatch includes it (its include_<lane> input).
 OWN_JOBS = ("cluster",)
-LIVE = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
+LIVE = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365", "google_workspace")
 # Lanes another workflow runs, with what they need that no integration-suite.yml dispatch has: a
 # targeted run naming a test only they select is refused, saying where it runs.
 ELSEWHERE = {
@@ -296,7 +303,6 @@ ELSEWHERE = {
 # one of these, and over no other: a new test that no lane selects and none of these marks fails it.
 NO_CI_LANE: dict[str, str] = {
     "packaging": "scripts/test-all, with TEST_ALL_PACKAGING=1 (its packaging lane)",
-    "requires_google_workspace": "by hand, against the maintainer's own Google Workspace domain",
     "requires_quickbooks": "by hand, against the maintainer's own QuickBooks sandbox company",
     "requires_shopify": "by hand, against the maintainer's own Shopify dev store",
     "requires_fabric": "nowhere until the CI service principal has Admin on the Fabric workspace (maintainer 2026-11-11)",

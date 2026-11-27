@@ -428,6 +428,7 @@ _OWN_STEPS = {
         "athena",
         "servicenow",
         "microsoft_365",
+        "google_workspace",
     },
     # REQ-2012: carries the paid model keys of its own, as the live-account jobs do.
     "polly-bakeoff.yml": {"bakeoff"},
@@ -908,7 +909,7 @@ def test_a_targeted_warehouse_ui_run_runs_only_the_named_specs_in_the_warehouse_
     # beside `tests`; without it the plan is the runner's, as before.
     code, planned = _plan_outputs(tmp_path, "e2e/source-to-query-special-cases.spec.ts", "")
     assert code == 0
-    live = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
+    live = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365", "google_workspace")
     assert planned == {
         "matrix": '{"include":[]}',
         "suite": "false",
