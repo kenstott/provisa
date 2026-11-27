@@ -15,7 +15,8 @@ import { PanelWithdraw } from "../../components/list/PanelWithdraw";
 import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Group, Modal, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Text } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { PanelBody } from "../../components/list/PanelBody";
 import { Pencil, ArrowRight, RefreshCw, Play } from "lucide-react";
 import type { Source } from "../../types/admin";
@@ -191,7 +192,7 @@ export function SourceDetailPanel({
         </Group>
       </PanelActions>
       {kaggleOrigin && (
-        <Modal
+        <ModalLayout
           opened={refreshModalOpen}
           onClose={() => setRefreshModalOpen(false)}
           title={t("sourceDetailPanel.refreshKaggleTitle")}
@@ -226,7 +227,7 @@ export function SourceDetailPanel({
               }
             />
           </FormLayout>
-        </Modal>
+        </ModalLayout>
       )}
       {profileError && (
         <Alert color="red" data-testid="source-detail-profiler-error">

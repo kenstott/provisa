@@ -177,6 +177,63 @@ def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright:
     return rel_type.copy() if isinstance(rel_type, exp.Expression) else exp.Literal.string(rel_type)
 
 
+def path_edge_json(
+    rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    src_alias: str,
+    src_nm: "NodeMapping",
+    tgt_alias: str,
+    tgt_nm: "NodeMapping",
+    is_reversed: bool = False,
+    via: "tuple[str, JunctionMapping] | None" = None,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A path's relationship as its JSON object: the relationship as stored, from ``src_alias``'s
+    node to ``tgt_alias``'s, or the other way round where the path traversed it against its stored
+    direction (``is_reversed``)."""
+    if is_reversed:
+        # Traversed against its stored direction: the relationship as stored, its start
+        # the node it leaves and its end the node it enters (Neo4j), and its identity
+        # the same either way (as show-children names it).
+        src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+    src_id_cast = node_key_text(src_alias, src_nm)
+    tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
+    identity = exp.DPipe(
+        this=exp.DPipe(
+            this=exp.DPipe(
+                this=exp.DPipe(
+                    this=_type_value(rel_type),
+                    expression=exp.Literal.string(":"),
+                ),
+                expression=src_id_cast,
+            ),
+            expression=exp.Literal.string("-"),
+        ),
+        expression=tgt_id_cast,
+    )
+    if via is not None and via[1].identity_column is not None:
+        # REQ-2176: an edge of its own row is named by it, as a bare edge is.
+        identity = via_column(via[0], via[1].identity_column)
+    return exp.Anonymous(
+        this="JSON_OBJECT",
+        expressions=[
+            exp.Literal.string("identity"),
+            identity,
+            exp.Literal.string("type"),
+            _type_value(rel_type),
+            exp.Literal.string("start"),
+            src_id_cast,
+            exp.Literal.string("end"),
+            tgt_id_cast,
+            exp.Literal.string("startNode"),
+            node_json(src_alias, src_nm),
+            exp.Literal.string("endNode"),
+            node_json(tgt_alias, tgt_nm),
+            # REQ-1586: a path step over a junction carries the junction's columns as the
+            # step edge's properties, the same as a single-hop edge does.
+            *junction_edge_fields(via),
+        ],
+    )
+
+
 #: meta key: the NodeMapping of the variable a ``table.*`` selects (graph_rewriter reads it)
 NODE_OF_STAR = "provisa_node"
 #: meta key: set on a ``table.*`` that selects a node of a union of labels' rows, whose node value
@@ -488,76 +545,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         it, and the path is null where such a step matched neither way.
         """
 
-        def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            props = node_properties_json(alias, nm)
-            # Its identity "Label|key" so _walk_for_nodes can find and register it.
-            compound_id = node_identity(alias, nm)
-            return exp.Anonymous(
-                this="JSON_OBJECT",
-                expressions=[
-                    exp.Literal.string("id"),
-                    compound_id,
-                    exp.Literal.string("label"),
-                    exp.Literal.string(nm.label),
-                    exp.Literal.string("tableLabel"),
-                    exp.Literal.string(nm.table_label),
-                    exp.Literal.string("properties"),
-                    props,
-                ],
-            )
-
-        def _edge_obj(
-            rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            src_alias: str,
-            src_nm: "NodeMapping",
-            tgt_alias: str,
-            tgt_nm: "NodeMapping",
-            is_reversed: bool = False,
-            via: "tuple[str, JunctionMapping] | None" = None,
-        ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            if is_reversed:
-                # Traversed against its stored direction: the relationship as stored, its start
-                # the node it leaves and its end the node it enters (Neo4j), and its identity
-                # the same either way (as show-children names it).
-                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
-            src_id_cast = node_key_text(src_alias, src_nm)
-            tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
-            identity = exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.DPipe(
-                        this=exp.DPipe(
-                            this=_type_value(rel_type),
-                            expression=exp.Literal.string(":"),
-                        ),
-                        expression=src_id_cast,
-                    ),
-                    expression=exp.Literal.string("-"),
-                ),
-                expression=tgt_id_cast,
-            )
-            if via is not None and via[1].identity_column is not None:
-                # REQ-2176: an edge of its own row is named by it, as a bare edge is.
-                identity = via_column(via[0], via[1].identity_column)
-            return exp.Anonymous(
-                this="JSON_OBJECT",
-                expressions=[
-                    exp.Literal.string("identity"),
-                    identity,
-                    exp.Literal.string("type"),
-                    _type_value(rel_type),
-                    exp.Literal.string("start"),
-                    src_id_cast,
-                    exp.Literal.string("end"),
-                    tgt_id_cast,
-                    exp.Literal.string("startNode"),
-                    _node_obj(src_alias, src_nm),
-                    exp.Literal.string("endNode"),
-                    _node_obj(tgt_alias, tgt_nm),
-                    # REQ-1586: a path step over a junction carries the junction's columns as the
-                    # step edge's properties, the same as a single-hop edge does.
-                    *junction_edge_fields(via),
-                ],
-            )
+        _node_obj = node_json
+        _edge_obj = path_edge_json
 
         if not step_nodes and step_edges:
             seen: set[str] = set()

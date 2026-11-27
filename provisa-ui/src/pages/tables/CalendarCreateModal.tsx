@@ -16,7 +16,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
-import { Modal, TextInput, Select, MultiSelect, NumberInput, Button, Alert } from "@mantine/core";
+import { TextInput, Select, MultiSelect, NumberInput, Button, Alert } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { DateInput, DatePickerInput, TimeInput } from "@mantine/dates";
 import { useCreateCalendar, useDeleteCalendar } from "../../hooks/useAdminQueries";
 import type { CalendarSummary } from "../../hooks/useAdminQueries";
@@ -136,7 +137,7 @@ export function CalendarCreateModal({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       title={isEdit ? t("tableEditForm.calEditTitle") : t("tableEditForm.calModalTitle")}
@@ -352,6 +353,6 @@ export function CalendarCreateModal({
           )}
         </FormFooter>
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

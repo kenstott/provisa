@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Button, Modal, Switch, Text } from "@mantine/core";
+import { Button, Switch, Text } from "@mantine/core";
+import { ModalLayout } from "../../../components/modal/ModalLayout";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { checkColumnFake, proposeFakes, type FakeCatalog } from "../../../api/fakes";
@@ -109,7 +110,7 @@ export function ColumnFakeDialog({
     </FormChecks>
   );
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       size="lg"
@@ -196,6 +197,6 @@ export function ColumnFakeDialog({
           </Button>
         </FormFooter>
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

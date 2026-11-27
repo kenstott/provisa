@@ -12,7 +12,8 @@
 // select shows (its reach labels and gating included), laid out as a fluid set of category columns
 // that fill the dialog's width, with a search box and category chips that filter in place.
 import { useMemo, useRef, useState } from "react";
-import { Chip, Group, Modal, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+import { Chip, Group, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { Ban, Copy, Zap } from "lucide-react";
 import { SourceLogo } from "./SourceLogo";
@@ -108,7 +109,7 @@ interface PickerProps {
 export function SourceTypePicker(props: PickerProps) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={props.opened}
       onClose={props.onClose}
       size="90%"
@@ -118,7 +119,7 @@ export function SourceTypePicker(props: PickerProps) {
     >
       {/* Mounted only while open, so every opening starts with an empty search and "All". */}
       {props.opened && <PickerBody {...props} />}
-    </Modal>
+    </ModalLayout>
   );
 }
 

@@ -17,13 +17,13 @@ import {
   Group,
   List,
   Loader,
-  Modal,
   Progress,
   SimpleGrid,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -229,7 +229,7 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
         </SimpleGrid>
       </Stack>
 
-      <Modal
+      <ModalLayout
         opened={target !== null}
         onClose={() => (changing ? undefined : setTarget(null))}
         title={target ? t("billingTab.changeTo", { plan: planName(target.plan) }) : ""}
@@ -266,7 +266,7 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
             />
           </Stack>
         )}
-      </Modal>
+      </ModalLayout>
     </Card>
   );
 }

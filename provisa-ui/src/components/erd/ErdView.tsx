@@ -195,12 +195,19 @@ export function ErdView({
     try {
       const saved = await saveErdLayout(name, arrangementOf(places, focus, members, shown));
       setLayouts((await fetchErdLayouts()).layouts);
-      setLoaded(saved);
-      setFocused(saved);
       setEdited(false);
       setPlaced(new Set());
       setLayoutError(null);
-      if (name !== layout) setLayout(name);
+      if (name !== layout) {
+        // The router renders the new link apart from these updates. Holding the saved layout here
+        // while the link still names the old one made the fetch below load the old layout again,
+        // and its focus wrote the old name back into the link. The link follows; the layout
+        // loads under its own name.
+        setLayout(name);
+      } else {
+        setLoaded(saved);
+        setFocused(saved);
+      }
       return true;
     } catch (error) {
       setLayoutError((error as Error).message);

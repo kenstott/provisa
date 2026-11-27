@@ -13,7 +13,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, List, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "../../modal/ModalLayout";
 import { Upload } from "lucide-react";
 import {
   ApplyRefused,
@@ -63,7 +64,7 @@ export function ApplyImportDialog({
   ];
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("ontologyImport.applyTitle", { title: review.import.title })}
@@ -114,6 +115,6 @@ export function ApplyImportDialog({
           }
         />
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

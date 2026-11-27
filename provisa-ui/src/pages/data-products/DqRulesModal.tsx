@@ -12,7 +12,8 @@
 // the rules it enforces — read-only, parsed by the same server-side parser the table editor uses,
 // so soda and GX contracts read the same way here without a client-side YAML/JSON reimplementation.
 import { useTranslation } from "react-i18next";
-import { Modal, Table, Text } from "@mantine/core";
+import { Table, Text } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import type { CoreDqRule } from "./productCore";
 
 interface DqRulesModalProps {
@@ -28,15 +29,12 @@ interface DqRulesModalProps {
 export function DqRulesModal({ opened, onClose, rules, scans, tableName }: DqRulesModalProps) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={onClose}
       size="90%"
       title={t("dataProductsTab.detail.dqRulesTitle", { table: tableName })}
-      styles={{
-        content: { height: "90vh" },
-        body: { height: "calc(90vh - 3.5rem)", overflow: "auto" },
-      }}
+      styles={{ content: { height: "90vh" } }}
     >
       {scans !== null && (
         <Text size="xs" c="dimmed" data-testid="dq-rules-dataset">
@@ -77,6 +75,6 @@ export function DqRulesModal({ opened, onClose, rules, scans, tableName }: DqRul
           </Table.Tbody>
         </Table>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

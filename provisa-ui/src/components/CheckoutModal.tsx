@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
-import { Alert, Group, Loader, Modal, Text } from "@mantine/core";
+import { Alert, Group, Loader, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { mountCheckout, type CheckoutSession, type EmbeddedCheckout } from "../api/billing";
 
@@ -63,7 +64,7 @@ export function CheckoutModal({
   }, [session, container]);
 
   return (
-    <Modal
+    <ModalLayout
       opened={session !== null}
       onClose={onClose}
       title={t("billingTab.checkoutTitle")}
@@ -82,6 +83,6 @@ export function CheckoutModal({
         </Group>
       )}
       <div ref={setContainer} data-testid="checkout-container" />
-    </Modal>
+    </ModalLayout>
   );
 }

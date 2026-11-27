@@ -8,7 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Anchor, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
+import { Anchor, Button, Group, List, Stack, Text } from "@mantine/core";
+import { FormFooter } from "./form/FormLayout";
+import { ModalLayout } from "./modal/ModalLayout";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -58,7 +60,7 @@ export function DependentsDialog({ subject, dependents, onClose, itemAction }: D
   const { t } = useTranslation();
   const kinds = Array.from(new Set(dependents.map((d) => d.kind)));
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("dependentsDialog.title", { name: subject })}
@@ -95,9 +97,7 @@ export function DependentsDialog({ subject, dependents, onClose, itemAction }: D
           );
         })}
       </Stack>
-      <Group justify="flex-start" mt="lg">
-        <Button onClick={onClose}>{t("dependentsDialog.close")}</Button>
-      </Group>
-    </Modal>
+      <FormFooter action={<Button onClick={onClose}>{t("dependentsDialog.close")}</Button>} />
+    </ModalLayout>
   );
 }
