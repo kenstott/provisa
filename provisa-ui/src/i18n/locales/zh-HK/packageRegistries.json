@@ -46,6 +46,7 @@
     "kind_git": "Git 主機",
     "add": "新增登錄庫",
     "none": "沒有套件登錄庫。安裝來自公開登錄庫。",
+    "noMatch": "沒有符合篩選條件的套件登錄庫。",
     "filterPlaceholder": "篩選登錄庫",
     "closeForm": "關閉表單",
     "edit": "編輯 {{name}}",

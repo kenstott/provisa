@@ -48,6 +48,7 @@
     "colAssignments": "Toewijzingen",
     "colActions": "Acties",
     "empty": "Geen tags voor dit bereik",
+    "noMatch": "Geen tags komen overeen met het filter",
     "systemTag": "Systeemtag (alleen-lezen)",
     "editTag": "Tag {{id}} bewerken",
     "deleteTag": "Tag {{id}} verwijderen",

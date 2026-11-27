@@ -22,6 +22,7 @@
     "colProvider": "Connexion",
     "colOrgAdmin": "Admin d'organisation",
     "noMembers": "Aucun membre pour l'instant.",
+    "noMembersMatch": "Aucun membre ne correspond au filtre.",
     "yes": "Oui",
     "no": "Non",
     "promote": "Nommer admin d'organisation",

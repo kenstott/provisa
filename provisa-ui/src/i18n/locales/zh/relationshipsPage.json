@@ -43,6 +43,7 @@
     "suggestHelpTitle": "建议的关系",
     "suggestHelpBody": "跨域扫描已注册的表，找出可能的连接并列为候选。在你接受之前不会声明任何关系；被拒绝的候选会一直不出现在列表中，直到你清除拒绝记录。",
     "empty": "尚未注册任何关系。",
+    "noMatch": "没有符合筛选条件的关系。",
     "detailPanel": "关系详情",
     "panelNewRelationship": "新建关系",
     "backToRelationship": "返回 {{id}}"

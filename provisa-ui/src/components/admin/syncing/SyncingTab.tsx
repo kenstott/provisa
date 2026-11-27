@@ -212,18 +212,34 @@ export function SyncingTab() {
   const publishesChosen = (e: SyncEntry) =>
     productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
 
+  // Every text an entry's row shows.
+  const lastRunLabel = (e: SyncEntry) =>
+    e.last_run === null
+      ? ""
+      : e.last_run.ok
+        ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
+        : t("syncingTab.publishPartial", {
+            count: e.last_run.total_published,
+            failed: e.last_run.errors.length,
+          });
+  const entryRowTexts = (e: SyncEntry) => [
+    e.id,
+    t(`syncingTab.direction_${e.direction}`),
+    e.provider,
+    e.provider ? providerName(e.provider) : "",
+    e.domains.join(", "),
+    lastRunLabel(e),
+  ];
   const section = (type: SyncEntryType) => {
-    const rows = s.entries.filter(
-      (e) =>
-        e.type === type &&
-        publishesChosen(e) &&
-        matchesQuery([e.id, e.provider ?? "", ...e.domains], search),
-    );
+    const ofType = s.entries.filter((e) => e.type === type);
+    const chosen = ofType.filter(publishesChosen);
+    const rows = chosen.filter((e) => matchesQuery(entryRowTexts(e), search));
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
         <SortGroupTable
           testPrefix={`syncing-${type}`}
+          testId={`syncing-list-${type}`}
           minWidth={640}
           rows={rows}
           initialSortCol="name"
@@ -252,10 +268,13 @@ export function SyncingTab() {
             { col: "lastRun" },
           ]}
           colSpan={5}
+          // A list a filter emptied says so, never that there are none.
           empty={
-            productFilter.length === 0
-              ? t(`syncingTab.none_${type}`)
-              : t("syncingTab.noneForProducts")
+            chosen.length === 0 && productFilter.length > 0
+              ? t("syncingTab.noneForProducts")
+              : ofType.length === 0
+                ? t(`syncingTab.none_${type}`)
+                : t("syncingTab.noMatch")
           }
           emptyTestId={`syncing-none-${type}`}
           rowKey={(e) => e.id}
@@ -274,12 +293,7 @@ export function SyncingTab() {
               <Table.Td data-testid={`syncing-row-last-run-${e.id}`}>
                 {e.last_run ? (
                   <Badge size="sm" variant="light" color={e.last_run.ok ? "green" : "red"}>
-                    {e.last_run.ok
-                      ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
-                      : t("syncingTab.publishPartial", {
-                          count: e.last_run.total_published,
-                          failed: e.last_run.errors.length,
-                        })}
+                    {lastRunLabel(e)}
                   </Badge>
                 ) : (
                   "—"

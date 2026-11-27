@@ -78,6 +78,7 @@
     "erdHelpBody": "繪製已註冊的資料表及其之間宣告的關係，讓你在編寫查詢前了解有哪些聯結。唯讀：可按網域篩選，並將圖表匯出為 PNG 或 SVG。",
     "purposeModel": "「+ 模型」會宣告實體或事實，即星型結構描述和 Data Vault 的建構元素。它會註冊具體化檢視、其 Time Travel，以及與其所參照實體之間的關係。",
     "empty": "尚未註冊任何表。",
+    "noMatch": "沒有符合篩選條件的表。",
     "resizeDetail": "調整詳情面板大小",
     "detailPanel": "資料表詳情",
     "closeDetail": "關閉詳情面板",

@@ -194,6 +194,7 @@
     "colGqlAlias": "GQL उपनाम",
     "colSteward": "स्टीवर्ड",
     "noDomains": "कोई डोमेन परिभाषित नहीं",
+    "noDomainsMatch": "फ़िल्टर से मेल खाता कोई डोमेन नहीं",
     "deleteDomain": "डोमेन {{id}} हटाएँ",
     "resolveSteward": "दिखाएँ कि डोमेन {{id}} का स्टीवर्ड कौन है",
     "pageIndicator": "पृष्ठ {{page}} / {{total}}",

@@ -48,6 +48,7 @@
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "No RLS rules defined.",
     "noRulesMatchFilter": "No rules match the current filter.",
+    "noRolesMatch": "No roles match the filter.",
     "purposeTitle": "What RLS rules are for",
     "purposeBody": "A row-level security rule is a SQL predicate bound to one role and one scope. The server ANDs it into the query before execution, on reads and writes and on every surface, so a role sees only the rows its rule permits whichever client it uses.",
     "purposeAdd": "Scope a rule to a single table, or to a whole domain so it covers every table in it; where both apply, the table rule wins for that table. A rule on a tag covers every table carrying the tag, now and later, and is added to the table's own rule, so a tag can only narrow what a role reads. Rules name roles, so to change what someone can see, change the role they hold.",

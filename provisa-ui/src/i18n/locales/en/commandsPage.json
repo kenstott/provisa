@@ -39,6 +39,8 @@
     "colTimeout": "Timeout",
     "noFunctions": "No functions registered",
     "noWebhooks": "No webhooks registered",
+    "noFunctionsMatch": "No functions match the filter",
+    "noWebhooksMatch": "No webhooks match the filter",
     "customSchema": "dataset",
     "dash": "—",
     "all": "all",

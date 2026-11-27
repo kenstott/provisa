@@ -22,6 +22,7 @@ function ctx() {
     presentChoice: vi.fn(),
     runAdminMutation: vi.fn(),
     chooseFile: vi.fn(),
+    changed: vi.fn(),
   };
   return { c, go };
 }

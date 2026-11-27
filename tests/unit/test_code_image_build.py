@@ -36,7 +36,7 @@ import httpx
 import pytest
 import sqlglot
 
-from provisa.codesource import image_build, oci
+from provisa.codesource import image_build, oci, wheel_source
 from provisa.codesource.bundle import content_hash
 from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.worker import PROTOCOL
@@ -66,6 +66,9 @@ def _zip(files: dict[str, bytes]) -> bytes:
 
 
 VERSION = "0.1.0a7+local"
+#: The wheel sources short of the build from source, which would compile this checkout's rust/:
+#: a refusal for want of a wheel is tested on these.
+NO_SOURCE_BUILD = wheel_source.SOURCES[:2]
 
 
 def _wheels(root: Path, version: str = VERSION) -> Path:
@@ -473,7 +476,7 @@ def test_a_build_without_the_provisa_wheel_for_its_architecture_is_refused_by_na
     machine = image_build._WHEEL_ARCH[arch]
     (house / f"provisa-{VERSION}-cp312-cp312-manylinux_2_28_{machine}.whl").unlink()
     with pytest.raises(image_build.ImageBuildRefused) as refused:
-        image_build._encoders(plan, arch)
+        image_build._encoders(plan, arch, NO_SOURCE_BUILD)
     assert refused.value.code == "codesource.image_encoders"
     assert f"linux/{arch}" in str(refused.value) and machine in str(refused.value)
 
@@ -484,7 +487,7 @@ def test_a_wheel_of_another_provisa_version_is_not_taken(tmp_path: Path):
     with pytest.raises(
         image_build.ImageBuildRefused, match=re.escape(f"no provisa {VERSION} wheel")
     ):
-        image_build._encoders(plan, "amd64")
+        image_build._encoders(plan, "amd64", NO_SOURCE_BUILD)
 
 
 def test_the_wheelhouse_is_the_one_the_deployment_names(tmp_path: Path, monkeypatch):
