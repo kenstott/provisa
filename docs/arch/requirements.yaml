@@ -97266,7 +97266,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     lane whose midpoints fall closer than the node gap keep their order and move apart by the least amount.
     Terms then align to the columns by the lowest-angle score, as stated. There is no setting. (Amended
     2026-11-13, THE GRID IS OFF AT FIRST:) Maintainer 2026-11-13: every 3D graph draws no floor grid until
-    the reader turns Grid on; the choice is remembered and restored, and Set Defaults returns it to off.'
+    the reader turns Grid on; the choice is remembered and restored, and Set Defaults returns it to off. (Amended 2026-11-27 by the maintainer. The Cypher and SPARQL explorer and the Lineage page are drawn by the shared component and take its one look. The component gains a table node whose field rows are edge ends (lineage draws a relation as such a table, role as the node type band). The explorer draws a label as a node type band; the reader''s per-label colour and size settings are dropped. Both keep their interactions (collapse and expand, links, ring menu, clusters, pinning).)'
   tests:
   - provisa-ui/src/components/__tests__/graphGuard.test.ts
   - provisa-ui/src/components/provisa-graph/__tests__/lanes.test.ts
