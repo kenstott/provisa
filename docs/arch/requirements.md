@@ -11212,7 +11212,7 @@ Public-publish anonymous access: unauthenticated requests carry no tenant_id cla
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_public_role_read_only.py`, `tests/unit/test_auth_middleware_multitenancy.py`, `tests/unit/test_hasura_public_read_only.py`
 
 ### REQ-1059 · Public Data Publishing {#REQ-1059}
 
@@ -19126,7 +19126,7 @@ New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five
 
 **Code:** `provisa-ui/e2e/source-to-query-special-cases.spec.ts`, `demo/grpc_remote_server/animal_catalog.proto`, `demo/grpc_remote_server/server.py`, `provisa/federation/connector_duckdb.py`, `provisa/api/admin/introspect.py`, `provisa/grpc_remote/loader.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa-ui/e2e/engine-swap.spec.ts`, `provisa-ui/e2e/engine-swap-helpers.ts`, `provisa-ui/e2e/engine-swap-registrars.ts`
 
-**Tests:** `provisa-ui/e2e/source-to-query-special-cases.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query-special-cases.spec.ts`, `tests/unit/test_duckdb_community_connectors.py`, `tests/unit/test_special_cases_spec_credentials.py`, `tests/unit/test_checker_source_credentials.py`, `tests/unit/test_dq_worker_gx_connect.py`
 
 ### REQ-1743 · Correctness {#REQ-1743}
 
@@ -25386,7 +25386,7 @@ A Visual Studio Code extension for Node and Python code sources, published on th
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_vscode_extension.py`, `tests/unit/test_developer_services_route.py`
 
 ### REQ-2113 · Source Registration {#REQ-2113}
 
@@ -25424,7 +25424,7 @@ Polly can operate the UI in the user's browser: navigate to a screen, fill in fi
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/clientTools.readScreen.test.tsx`, `provisa-ui/src/__tests__/tourActing.test.tsx`, `provisa-ui/src/__tests__/tourAnchors.sources.test.tsx`, `provisa-ui/src/__tests__/clientTools.codeFields.test.tsx`
 
 ## 1. Access Governance & Security
 
@@ -26414,7 +26414,7 @@ Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/grpc_encoder/test_differential.py`, `tests/unit/federation/test_duckdb_engine_error_not_interrupted.py`
 
 ### REQ-2195 · JDBC/ODBC Integration {#REQ-2195}
 

@@ -34674,6 +34674,10 @@
   superseded_by: REQ-1240
 - id: REQ-1058
   value: 'Publish selected tables and views to unauthenticated visitors, with no account required.'
+  tests:
+  - tests/unit/test_public_role_read_only.py
+  - tests/unit/test_auth_middleware_multitenancy.py
+  - tests/unit/test_hasura_public_read_only.py
   status: complete
   since: 2026-11
   group: 1. Access Governance & Security
@@ -64215,6 +64219,10 @@
     '
   tests:
   - provisa-ui/e2e/source-to-query-special-cases.spec.ts
+  - tests/unit/test_duckdb_community_connectors.py
+  - tests/unit/test_special_cases_spec_credentials.py
+  - tests/unit/test_checker_source_credentials.py
+  - tests/unit/test_dq_worker_gx_connect.py
   notes: 'Roadmap audit 2026-10-13: built, but not complete until it has a test: no unit test'
 - id: REQ-1743
   status: complete
@@ -88626,6 +88634,9 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
 - id: REQ-2112
   status: complete
+  tests:
+  - tests/unit/test_vscode_extension.py
+  - tests/unit/test_developer_services_route.py
   since: 2026-11
   group: 4. Source Connectors
   category: Source Connectors
@@ -88731,6 +88742,11 @@ Then the mutation is refused as it is in the UI"
 
 - id: REQ-2115
   status: complete
+  tests:
+  - provisa-ui/src/__tests__/clientTools.readScreen.test.tsx
+  - provisa-ui/src/__tests__/tourActing.test.tsx
+  - provisa-ui/src/__tests__/tourAnchors.sources.test.tsx
+  - provisa-ui/src/__tests__/clientTools.codeFields.test.tsx
   since: 2026-11
   group: 10. UI & Admin Surfaces
   category: Catalog Explore
@@ -94548,6 +94564,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2194
   value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
+  tests:
+  - tests/unit/grpc_encoder/test_differential.py
+  - tests/unit/federation/test_duckdb_engine_error_not_interrupted.py
   status: complete
   since: 2026-11
   target: 2026-Q4
