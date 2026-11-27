@@ -890,7 +890,7 @@ start_backend() {
   # merge) the bundles this machine staged at the older release are staged at the new one before
   # the backend starts. Without it the File Crawler's server could not start and its tables were
   # not listed. Nothing never staged here is fetched; a bundle that cannot be staged ends the start.
-  "$SCRIPT_DIR/.venv/bin/python" -m provisa.runtime_deps.stage_pgwire_bundles --moved --github-release \
+  "$SCRIPT_DIR/.venv/bin/python" -m provisa.runtime_deps.stage_pgwire_bundles --moved \
     || { echo "ERROR: staging the moved pgwire bundles failed (above)."; exit 1; }
   # The Docker path's redis requires its password (scripts/dev-store-credentials.sh); a native
   # start's redis is the one it always dialled.

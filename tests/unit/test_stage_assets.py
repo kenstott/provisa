@@ -131,7 +131,7 @@ def test_the_dev_launcher_stages_moved_bundles_before_each_backend_start():
     whose pin moved are staged there first, and a failure to stage ends the start naming it."""
     text = (_REPO / "start-ui-install.sh").read_text()
     body = text[text.index("start_backend() {") : text.index("restart_backend() {")]
-    stage = body.index("provisa.runtime_deps.stage_pgwire_bundles --moved --github-release")
+    stage = body.index("provisa.runtime_deps.stage_pgwire_bundles --moved")
     assert stage < body.index("serve_backend.py")
 
 
