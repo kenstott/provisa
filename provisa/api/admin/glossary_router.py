@@ -30,6 +30,7 @@ from fastapi import APIRouter, Query, Request
 
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import _require_right
+from provisa.api.admin.column_rules_router import rebuild_if, term_ref_ruled
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.discovery.analyzer import read_answer_list
@@ -1167,8 +1168,10 @@ async def move_ref(request: Request) -> dict:
             ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
     if moved is None:
         raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
+    await rebuild_if(ruled)
     await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
@@ -1225,6 +1228,8 @@ async def ground_command_column(request: Request, name: str, column: str) -> dic
             raise ApiError(
                 409, "glossary.term_is_class", said, term=exc.term, tables=tables
             ) from exc
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
+    await rebuild_if(ruled)
     await _notify(org_id, "ontology command column grounded")
     return {"ok": True}
 
@@ -1240,6 +1245,8 @@ async def unground_command_column(request: Request, name: str, column: str) -> d
         await _readable_command(request, _conn, name)
         if not await glossary_repo.unground_command_column(_conn, name, column):
             raise ApiError(404, "glossary.ref_not_found", "no term for that column")
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
+    await rebuild_if(ruled)
     await _notify(org_id, "ontology command column ungrounded")
     return {"ok": True}
 

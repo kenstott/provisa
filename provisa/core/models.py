@@ -4356,6 +4356,9 @@ class ProvisaConfig(BaseModel):
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    # REQ-2278: the column rules keyed on a tag or a classification, as the row rules on a tag are
+    # declared beside them.
+    column_rules: list[ColumnRuleModel] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
     functions: list[Function] = Field(default_factory=list)

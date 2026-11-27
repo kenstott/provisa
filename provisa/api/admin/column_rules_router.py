@@ -92,6 +92,23 @@ async def keyed_by(conn: Any, tags: "tuple[str, ...]" = (), kinds: "tuple[str, .
     return bool(named & keyed_tags or set(kinds) & keyed_kinds)
 
 
+async def term_ref_ruled(conn: Any) -> bool:
+    """Whether a column rule is keyed on a tag a column carries through its term (pii, REQ-2145):
+    a change of a column's term reference then rebuilds the runtime, so the column comes under the
+    rule, or is released, at once (REQ-2278)."""
+    from provisa.core.term_tags import FLOWING_TAGS
+
+    return await keyed_by(conn, tags=FLOWING_TAGS)
+
+
+async def rebuild_if(ruled: bool) -> None:
+    """Rebuild the runtime when a change reached a column a column rule governs (REQ-2278)."""
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+
+
 @router.get("/column-rules")
 async def list_column_rules(
     request: Request, tag: str | None = None, classification: str | None = None
