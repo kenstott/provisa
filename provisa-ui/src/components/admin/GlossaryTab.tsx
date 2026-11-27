@@ -864,7 +864,20 @@ export function GlossaryTab() {
                 <GlossaryNoTerm />
               ) : (
                 <TermPanel name={detail.name} host={deleting}>
-                  <Stack gap="md" pb="md">
+                  <TermHeadActions
+                    detail={detail}
+                    canEdit={canEdit}
+                    canCurate={canCurate}
+                    act={act}
+                    onEdit={() => setEditing(true)}
+                    onDuplicate={() => openDuplicateTerm(detail)}
+                    onApprove={() => setApproveOpen(true)}
+                    onDeprecate={() => setDeprecateOpen(true)}
+                    onRetire={() => setRetireOpen(true)}
+                    onDelete={() => deleteTerm(detail)}
+                    onTagsChanged={() => void loadDetail(detail.id, true)}
+                    editing={editing}
+                  >
                     {actionError && (
                       <Alert color="red" data-testid="glossary-error">
                         {actionError}
@@ -876,24 +889,6 @@ export function GlossaryTab() {
                     {/* REQ-1387 (RELATED_TO IS THE LAST RESORT): held only by RELATED_TO, which does
                     not ground, so the pair may want a term between. Guidance, never a block. */}
                     {onlyRelatedTo(detail) && <RelatedToHint />}
-
-                    {/* The term's actions, icons in the panel's head beside its name; while the
-                    term is edited its form's Save and Cancel sit there instead. */}
-                    {!editing && (
-                      <TermHeadActions
-                        detail={detail}
-                        canEdit={canEdit}
-                        canCurate={canCurate}
-                        act={act}
-                        onEdit={() => setEditing(true)}
-                        onDuplicate={() => openDuplicateTerm(detail)}
-                        onApprove={() => setApproveOpen(true)}
-                        onDeprecate={() => setDeprecateOpen(true)}
-                        onRetire={() => setRetireOpen(true)}
-                        onDelete={() => deleteTerm(detail)}
-                        onTagsChanged={() => void loadDetail(detail.id, true)}
-                      />
-                    )}
 
                     {!editing && (
                       <TermToReview
@@ -999,7 +994,7 @@ export function GlossaryTab() {
                         onTagsChanged={() => void loadDetail(detail.id, true)}
                       />
                     )}
-                  </Stack>
+                  </TermHeadActions>
                 </TermPanel>
               )}
             </div>

@@ -251,20 +251,16 @@ describe.each(KINDS)("$name, created and its tables registered", ({ type, made, 
 });
 
 describe.each(KINDS)(
-  "$name, created and registering its tables skipped",
+  "$name, created and its setup left at Register tables",
   ({ type, made, fill }) => {
-    it("records Skip, shows the source read on Finish later, and opens its edit form on Edit alone", async () => {
+    it("offers no Skip; Finish later records nothing, shows the source read, and Edit alone opens its form", async () => {
       await create(type, made, fill);
-      await userEvent.click(panel().getByTestId("source-setup-skip-tables"));
-      await waitFor(() =>
-        expect(setupWrites).toContainEqual({
-          sourceId: made.id,
-          outcomes: { tables: "skipped", relationships: null, query: null },
-        }),
-      );
+      // REQ-2234: the later steps read the tables it registers, so it cannot be skipped.
+      expect(screen.queryByTestId("source-setup-skip")).toBeNull();
       await userEvent.click(panel().getByTestId("source-setup-finish-later"));
       await waitFor(() => expect(screen.queryByTestId("source-setup-finish-later")).toBeNull());
       await panel().findByTestId("source-read");
+      expect(setupWrites).toEqual([]);
       expectReadView(made.id);
       await userEvent.click(panel().getByTestId("source-detail-edit"));
       expect(await panel().findByTestId("sources-edit-submit")).toBeInTheDocument();

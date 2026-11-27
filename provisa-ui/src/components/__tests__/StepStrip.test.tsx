@@ -48,7 +48,7 @@ describe("StepStrip", () => {
     fireEvent.click(screen.getByTestId("s-b"));
     expect(go).not.toHaveBeenCalled();
     rerender(
-      <StepStrip steps={STEPS} active={1} onStepClick={go} currentOpens label="Steps" testId="s" />,
+      <StepStrip steps={STEPS} active={1} onStepClick={go} currentSelectable label="Steps" testId="s" />,
     );
     fireEvent.click(screen.getByTestId("s-c"));
     expect(go).not.toHaveBeenCalled();

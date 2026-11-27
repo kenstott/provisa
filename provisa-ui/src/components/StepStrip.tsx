@@ -10,7 +10,8 @@
 
 // REQ-2277: the one step strip, shared by source setup and the modeling wizards. Every step is
 // named; the current one is highlighted, the completed ones carry a check and go back when
-// pressed, and the ones not yet reached do nothing. It lays out in a row while the panel is wide
+// pressed, and the ones not yet reached do nothing. Source setup's strip (REQ-2234) also opens the
+// current step when it is pressed (`currentSelectable`): the strip is how its steps are opened. It lays out in a row while the panel is wide
 // enough for every label, and stacks vertically below STACK_BELOW pixels.
 
 import { useElementSize } from "@mantine/hooks";
@@ -29,20 +30,19 @@ export function StepStrip({
   steps,
   active,
   onStepClick,
-  currentOpens = false,
   label,
   testId,
+  currentSelectable = false,
 }: {
   steps: readonly Step[];
   /** Index of the current step. */
   active: number;
-  /** A completed step (before `active`) was pressed, or the current one with `currentOpens`. */
+  /** A completed step (before `active`), or the current one when it is selectable, was pressed. */
   onStepClick: (index: number) => void;
-  /** The current step can be pressed too: the strip shows progress, and the step on screen may be
-   *  an earlier one (the modeling wizards, REQ-2199). */
-  currentOpens?: boolean;
   label: string;
   testId: string;
+  /** The current step can be pressed too. */
+  currentSelectable?: boolean;
 }) {
   const { ref, width } = useElementSize();
   // Width is 0 until the first measure: the row is the first layout.
@@ -63,12 +63,12 @@ export function StepStrip({
         iconSize={22}
         aria-label={label}
       >
-        {steps.map((s, i) => (
+        {steps.map((s, index) => (
           <Stepper.Step
             key={s.key}
+            allowStepSelect={currentSelectable && index === active ? true : undefined}
             label={s.label}
             description={s.description}
-            allowStepSelect={currentOpens ? i <= active : undefined}
             data-testid={`${testId}-${s.key}`}
           />
         ))}

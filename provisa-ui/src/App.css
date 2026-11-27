@@ -896,6 +896,12 @@ main {
 .split-pane__head .mantine-ActionIcon-root[aria-disabled="true"] {
   cursor: default;
 }
+/* An action that closes what the head belongs to without deciding it (source setup's Finish later,
+ * REQ-2234): last, at the head's far end. */
+.split-pane__actions .panel-head-end {
+  order: 1;
+  margin-inline-start: auto;
+}
 .split-pane__actions:empty {
   min-height: 1px;
 }

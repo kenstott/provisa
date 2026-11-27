@@ -60,7 +60,7 @@ export function WizardStep({
           steps={steps}
           active={progress}
           onStepClick={onStep}
-          currentOpens
+          currentSelectable
           label={t("modelingWizard.stepsLabel")}
           testId="wizard-steps"
         />
