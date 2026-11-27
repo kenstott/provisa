@@ -13,6 +13,17 @@
     extraConfig = "AcceptEnv SPLUNKBASE_USERNAME SPLUNKBASE_PASSWORD FREE_ASKAMERICA_KEY";
   };
 
+  # The swap an Ubuntu runner has (4 GB beside its 16 GB), and the 4 GB of memory the guest leaves
+  # QEMU and the runner: 20 GB in all, as there. Without it Trino's 5 GB heap, kept after its text
+  # search tests, and ClickHouse's own text search left the guest out of memory, and the kernel
+  # killed clickhouse-server mid-test (run 45940557737, core 2/21).
+  virtualisation.vmVariant.swapDevices = [
+    {
+      device = "/var/lib/swapfile";
+      size = 8192;
+    }
+  ];
+
   virtualisation.vmVariant.virtualisation = {
     # A hosted runner has 4 cores and 16 GB; the guest gets all but what QEMU and the runner need.
     cores = 4;

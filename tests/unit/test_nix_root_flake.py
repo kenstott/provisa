@@ -250,6 +250,16 @@ def test_the_guests_store_writes_go_to_its_disk_not_to_memory():
     assert "writableStoreUseTmpfs = false;" in guest
 
 
+def test_the_guest_has_the_memory_and_swap_of_an_ubuntu_runner():
+    """The kernel killed clickhouse-server for memory in core 2/21, beside Trino's 5 GB heap (run
+    45940557737); an Ubuntu runner has 16 GB and 4 GB of swap. The guest's 12 GB and 8 GB of swap
+    make the same 20 GB."""
+    guest = (_NIXOS / "vm-guest.nix").read_text()
+    assert "memorySize = 12288;" in guest
+    swap = guest.split("virtualisation.vmVariant.swapDevices = [", 1)[1].split("];", 1)[0]
+    assert re.search(r"^\s*size = 8192;$", swap, flags=re.M)
+
+
 def test_the_package_names_a_runtime_directory_its_sandbox_accepts():
     """Inside the FHS sandbox's user namespace every root-owned directory reads as uid 65534, so
     platformdirs refused XDG_RUNTIME_DIR under /run and its /tmp fallback, and the embedded
