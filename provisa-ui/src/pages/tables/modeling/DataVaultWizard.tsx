@@ -15,7 +15,7 @@
 // rules -- then reviews what they become: a hub_ entity per hub, a lnk_ fact with no measures per
 // link related to each hub, and a sat_ entity per satellite keyed on its parent's key.
 //
-// (Amended 2026-11-26) It is a dialog whose step choices are its fixed button bar: Skip step is
+// (Amended 2026-11-27) It stays in the + Model panel; its step choices are the panel's command bar: Skip step is
 // offered only on the business rules, the one step no later step reads -- the links and satellites
 // read the hubs, the satellites take a link as their parent, and a rule names a hub, link or
 // satellite.
@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
-import { ModalLayout } from "../../../components/modal/ModalLayout";
+import { usePanelDirty } from "../../../components/list/panelLeave";
 import type { Domain } from "../../../types/admin";
 import { ModelReview } from "./ModelReview";
 import { ChoiceField, ChoicesField, DomainField, TextField } from "./pickers";
@@ -518,8 +518,11 @@ export function DataVaultWizard({
   const steps = useWizardSteps(STEPS, (sid) => missing(sid, a));
   const step = steps.step;
   const [problem, setProblem] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
   const set = (patch: Partial<VaultAnswers>) => setA((prev) => ({ ...prev, ...patch }));
   const plan = useMemo(() => planVault(a, t), [a, t]);
+  // The panel asks before leaving answers that are not yet made into tables.
+  usePanelDirty(!created && (a.hubs.length > 0 || step > 0), a.hubs[0]?.concept ?? "");
   // The steps whose answers no later step reads, and how each is skipped: its answers dropped.
   const skips: Partial<Record<StepId, () => void>> = { rules: () => set({ rules: [] }) };
 
@@ -567,14 +570,7 @@ export function DataVaultWizard({
   const skip = skips[id];
 
   return (
-    <ModalLayout
-      opened
-      onClose={onClose}
-      title={t("tablesPage.panelDataVault")}
-      size="xl"
-      closeOnClickOutside={false}
-      data-testid="data-vault-wizard"
-    >
+    <>
       {id === "review" ? (
         <ModelReview
           plan={plan}
@@ -585,6 +581,7 @@ export function DataVaultWizard({
           onBack={back}
           onClose={onClose}
           onDone={onSuccess}
+          onCreated={() => setCreated(true)}
         />
       ) : (
         <WizardStep
@@ -770,6 +767,6 @@ export function DataVaultWizard({
           />
         </WizardStep>
       )}
-    </ModalLayout>
+    </>
   );
 }

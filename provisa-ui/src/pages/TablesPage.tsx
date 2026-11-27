@@ -307,10 +307,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showForm, setShowForm] = useState(false);
   // REQ-2234: several tables just registered: the panel shows their data, the first in view.
   const [registeredMany, setRegisteredMany] = useState<Registered | null>(null);
-  // REQ-1164: entity/fact modeling, in the panel; REQ-2199: + Model's drop down also opens a
-  // method's wizard, a dialog over the page (amended 2026-11-26: its choices are the dialog's bar).
-  const [showModeling, setShowModeling] = useState<false | "entityFact">(false);
-  const [wizard, setWizard] = useState<"star" | "vault" | null>(null);
+  // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard,
+  // in the panel too (amended 2026-11-27: its step choices are the panel's command bar).
+  const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
   // REQ-2115: Polly's read_screen reads the page's view from here, and the modeling form or wizard
   // open (a wizard's step is published by the step itself). A table is named only once the list
   // holds it, so a link to one that does not exist reads as none.
@@ -319,7 +318,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     table: tables.find((tb) => tb.id === expanded)?.id ?? null,
     domains: erd.focus.domains,
     objects: erd.focus.objects,
-    modeling: wizard ?? (showModeling || null),
+    modeling: showModeling || null,
     // REQ-2277: the profile runs dialog, as the URL names it, once a table is open.
     ...profileDialogInputs(expanded !== null ? searchParams : null),
   });
@@ -1059,6 +1058,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         onSuccess={() => setShowViewForm(false)}
         onCancel={() => setShowViewForm(false)}
       />
+    ) : showModeling === "star" ? (
+      <StarSchemaWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onClose={() => setShowModeling(false)}
+      />
+    ) : showModeling === "vault" ? (
+      <DataVaultWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onClose={() => setShowModeling(false)}
+      />
     ) : showModeling ? (
       <ModelingForm
         domains={domains}
@@ -1167,7 +1184,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           : showViewForm && viewsOnly
             ? translate("tablesPage.panelNewView")
             : showModeling
-              ? translate("tablesPage.panelNewModel")
+              ? translate(
+                  showModeling === "star"
+                    ? "tablesPage.panelStarSchema"
+                    : showModeling === "vault"
+                      ? "tablesPage.panelDataVault"
+                      : "tablesPage.panelNewModel",
+                )
               : selectedTable
                 ? (selectedTable.alias ?? selectedTable.tableName)
                 : "";
@@ -1263,10 +1286,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   >
                     {translate("tablesPage.modelEntityFact")}
                   </Menu.Item>
-                  <Menu.Item onClick={() => setWizard("star")} data-testid="tables-model-star">
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("star"))}
+                    data-testid="tables-model-star"
+                  >
                     {translate("tablesPage.modelStarSchema")}
                   </Menu.Item>
-                  <Menu.Item onClick={() => setWizard("vault")} data-testid="tables-model-vault">
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("vault"))}
+                    data-testid="tables-model-vault"
+                  >
                     {translate("tablesPage.modelDataVault")}
                   </Menu.Item>
                 </Menu.Dropdown>
@@ -1722,26 +1751,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       >
         {panelBody}
       </SplitPane>
-      {wizard === "star" && (
-        <StarSchemaWizard
-          domains={domains}
-          onSuccess={() => {
-            setWizard(null);
-            reload();
-          }}
-          onClose={() => setWizard(null)}
-        />
-      )}
-      {wizard === "vault" && (
-        <DataVaultWizard
-          domains={domains}
-          onSuccess={() => {
-            setWizard(null);
-            reload();
-          }}
-          onClose={() => setWizard(null)}
-        />
-      )}
       <ModalLayout
         opened={regenTable !== null}
         onClose={() => setRegenTable(null)}

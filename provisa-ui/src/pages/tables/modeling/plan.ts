@@ -20,14 +20,7 @@ export type History = "none" | "scd2" | "snapshot";
 
 /** What a generated table is in its method. */
 export type Role =
-  | "dimension"
-  | "fact"
-  | "hub"
-  | "satellite"
-  | "linkSatellite"
-  | "effectivity"
-  | "link"
-  | "sameAs";
+  "dimension" | "fact" | "hub" | "satellite" | "linkSatellite" | "effectivity" | "link" | "sameAs";
 
 /** A fact's dimension: a table this plan generates (by its id), or one already registered. */
 export type Target = { planned: string } | { existing: string };

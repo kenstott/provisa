@@ -13,7 +13,7 @@
 // the measures and their additivity -- then reviews what they become: a dim_ entity per new
 // dimension (SCD type 2 and snapshot keep history) and one fact_ fact related to every dimension.
 //
-// (Amended 2026-11-26) It is a dialog whose step choices are its fixed button bar: Skip step is
+// (Amended 2026-11-27) It stays in the + Model panel; its step choices are the panel's command bar: Skip step is
 // offered on the dimensions and the measures, which no later step reads; the process and the grain
 // make the fact itself, so they are not skipped.
 
@@ -35,7 +35,7 @@ import {
   type StarAnswers,
   type StarDimension,
 } from "./plan";
-import { ModalLayout } from "../../../components/modal/ModalLayout";
+import { usePanelDirty } from "../../../components/list/panelLeave";
 import { useWizardSteps } from "./wizardSteps";
 import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
@@ -245,9 +245,12 @@ export function StarSchemaWizard({
   const steps = useWizardSteps(STEPS, (sid) => missing(sid, a));
   const step = steps.step;
   const [problem, setProblem] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
   const set = (patch: Partial<StarAnswers>) => setA((prev) => ({ ...prev, ...patch }));
   const factCols = useColumnOptions(tables.columnsOf(a.source));
   const plan = useMemo(() => planStar(a, t), [a, t]);
+  // The panel asks before leaving answers that are not yet made into tables.
+  usePanelDirty(!created && (Boolean(a.process || a.source) || step > 0), a.process);
   // The steps whose answers no later step reads, and how each is skipped: its answers dropped.
   // The grain is the fact's key and the dimensions and measures read the process's fact table;
   // nothing after the dimensions reads them, and nothing after the measures but the review.
@@ -277,14 +280,7 @@ export function StarSchemaWizard({
 
   const noSource = !a.source;
   return (
-    <ModalLayout
-      opened
-      onClose={onClose}
-      title={t("tablesPage.panelStarSchema")}
-      size="xl"
-      closeOnClickOutside={false}
-      data-testid="star-schema-wizard"
-    >
+    <>
       {id === "review" ? (
         <ModelReview
           plan={plan}
@@ -295,6 +291,7 @@ export function StarSchemaWizard({
           onBack={back}
           onClose={onClose}
           onDone={onSuccess}
+          onCreated={() => setCreated(true)}
         />
       ) : (
         <WizardStep
@@ -486,6 +483,6 @@ export function StarSchemaWizard({
           />
         </WizardStep>
       )}
-    </ModalLayout>
+    </>
   );
 }

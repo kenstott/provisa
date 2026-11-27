@@ -12,6 +12,7 @@
 // what the answers become in Provisa's primitives under the method's conventional names, which
 // can be changed; and Create makes them through the entity/fact API, with draft descriptions.
 
+import { useState, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { useLocation } from "react-router-dom";
@@ -20,6 +21,8 @@ import i18n from "../../../../i18n";
 import type { Domain, ListedTable } from "../../../../types/admin";
 import { StarSchemaWizard } from "../StarSchemaWizard";
 import { DataVaultWizard } from "../DataVaultWizard";
+import { PanelActionsContext, PanelNoticeContext } from "../../../../components/list/panelActions";
+import { PanelLeaveContext, usePanelLeave } from "../../../../components/list/panelLeave";
 
 const t = i18n.getFixedT("en");
 
@@ -390,22 +393,48 @@ describe("the wizards' step strip (REQ-2277)", () => {
   });
 });
 
-// REQ-2199 (amended 2026-11-26): each wizard is a dialog whose step choices are one fixed button
-// bar at its bottom (REQ-2277 rule 10): the step's primary action, Skip step only where no later
-// step reads that step's answers, Back after the first step, and Close. The step strip shows
-// progress only, and a step in it opens that step.
-describe("the wizards' button bar and step strip (REQ-2199, REQ-2277 rule 10)", () => {
-  const bar = () => screen.getByTestId("modal-footer-bar");
-  /** The step's choices, in the bar, in order, and none of them in the scrolling content. */
-  const choices = () => {
-    const scroll = document.querySelector("[data-modal-scroll]") as HTMLElement;
-    expect(within(scroll).queryAllByTestId(/^wizard-(next|skip|back|close|create|done)$/)).toEqual(
-      [],
+// REQ-2199 (amended 2026-11-27): each wizard stays in the + Model detail panel, under its
+// unsaved-changes guard, and each step's choices are the panel's command bar (its pinned head, as
+// in the source setup flow): the step's primary action, Skip step only where no later step reads
+// that step's answers, Back from the second step on, and Close. The step strip shows progress
+// only, and a step in it opens that step.
+describe("the wizards' command bar and step strip (REQ-2199)", () => {
+  /** The detail panel the wizard is in: its pinned head, its notice line and its leave guard. */
+  function InPanel({ children }: { children: ReactNode }) {
+    const [head, setHead] = useState<HTMLElement | null>(null);
+    const [notice, setNotice] = useState<HTMLElement | null>(null);
+    const leave = usePanelLeave();
+    return (
+      <PanelLeaveContext.Provider value={leave}>
+        <div data-testid="panel-head" ref={setHead} />
+        <div ref={setNotice} />
+        {leave.asking !== null && (
+          <button data-testid="panel-discard" onClick={() => leave.answer(true)}>
+            {leave.asking}
+          </button>
+        )}
+        <PanelActionsContext.Provider value={head}>
+          <PanelNoticeContext.Provider value={notice}>
+            <div data-testid="panel-content">{children}</div>
+          </PanelNoticeContext.Provider>
+        </PanelActionsContext.Provider>
+      </PanelLeaveContext.Provider>
     );
-    return within(bar())
-      .getAllByRole("button")
-      .map((b) => b.getAttribute("data-testid"));
+  }
+  const inPanel = (ui: ReactElement) => renderInForm(<InPanel>{ui}</InPanel>);
+  const head = () => within(screen.getByTestId("panel-head"));
+  /** The step's choices, in the panel's head, in order, and none of them in the panel's content. */
+  const choices = () => {
+    expect(
+      within(screen.getByTestId("panel-content")).queryAllByTestId(
+        /^wizard-(next|skip|back|close|create|done)$/,
+      ),
+    ).toEqual([]);
+    return Array.from(screen.getByTestId("panel-head").querySelectorAll("button")).map((b) =>
+      b.getAttribute("data-testid"),
+    );
   };
+  const nextInHead = () => userEvent.click(head().getByTestId("wizard-next"));
 
   async function vaultToRules() {
     await pick("vault-domain", "sales");
@@ -413,87 +442,116 @@ describe("the wizards' button bar and step strip (REQ-2199, REQ-2277 rule 10)", 
     await userEvent.type(screen.getByTestId("vault-hub-concept-0"), "Customer");
     await pick("vault-hub-source-0", "sales.customers");
     await pick("vault-hub-key-0", "id (varchar)");
-    await next();
-    await next();
-    await next();
+    await nextInHead();
+    await nextInHead();
+    await nextInHead();
   }
 
   async function starToDimensions() {
     await userEvent.type(screen.getByTestId("star-process"), "Sales");
     await pick("star-domain", "sales");
     await pick("star-source", "sales.orders");
-    await next();
+    await nextInHead();
     await pick("star-grain", "order_id (varchar)");
-    await next();
+    await nextInHead();
   }
 
-  it("the Data Vault wizard is a dialog with Next and Close in its bar, and no Back first", () => {
-    const onCancel = vi.fn();
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onCancel} />);
-    expect(screen.getByRole("dialog")).toHaveTextContent(t("tablesPage.panelDataVault"));
-    expect(choices()).toEqual(["wizard-next", "wizard-close"]);
-    expect(within(bar()).getByTestId("wizard-close")).toHaveTextContent(t("modelingWizard.close"));
+  it("the Data Vault wizard is in the panel, not a dialog, with Next and Close in its head", async () => {
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      within(screen.getByTestId("panel-content")).getByTestId("wizard-step-hubs"),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(choices()).toEqual(["wizard-next", "wizard-close"]));
+    expect(head().getByTestId("wizard-close")).toHaveTextContent(t("modelingWizard.close"));
   });
 
-  it("Close leaves the Data Vault wizard", async () => {
-    const onCancel = vi.fn();
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onCancel} />);
-    await userEvent.click(within(bar()).getByTestId("wizard-close"));
-    expect(onCancel).toHaveBeenCalled();
+  it("a step's problem is the panel's notice, and the step does not move on", async () => {
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(choices()).toContain("wizard-next"));
+    await nextInHead();
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent(
+      t("modelingWizard.vault.missing.hubs"),
+    );
+    expect(screen.getByTestId("wizard-step-hubs")).toBeInTheDocument();
+  });
+
+  it("Close leaves an untouched wizard at once", async () => {
+    const onClose = vi.fn();
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onClose} />);
+    await userEvent.click(await head().findByTestId("wizard-close"));
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByTestId("panel-discard")).toBeNull();
+  });
+
+  it("Close asks first when the wizard has answers, behind the panel's dirty guard", async () => {
+    const onClose = vi.fn();
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onClose} />);
+    await userEvent.click(screen.getByTestId("vault-hub-add"));
+    await userEvent.type(screen.getByTestId("vault-hub-concept-0"), "Customer");
+    await userEvent.click(head().getByTestId("wizard-close"));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("panel-discard")).toHaveTextContent("Customer");
+    await userEvent.click(screen.getByTestId("panel-discard"));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("offers Skip step in the Data Vault wizard only on business rules, which no step reads", async () => {
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
-    expect(choices()).not.toContain("wizard-skip");
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(choices()).toEqual(["wizard-next", "wizard-close"]));
     await pick("vault-domain", "sales");
     await userEvent.click(screen.getByTestId("vault-hub-add"));
     await userEvent.type(screen.getByTestId("vault-hub-concept-0"), "Customer");
     await pick("vault-hub-source-0", "sales.customers");
     await pick("vault-hub-key-0", "id (varchar)");
-    await next();
+    await nextInHead();
     // Links: the satellites and the rules read them.
     expect(screen.getByTestId("wizard-step-links")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-next", "wizard-back", "wizard-close"]);
-    await next();
+    await nextInHead();
     // Satellites: the rules read them.
     expect(screen.getByTestId("wizard-step-satellites")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-next", "wizard-back", "wizard-close"]);
-    await next();
+    await nextInHead();
     expect(screen.getByTestId("wizard-step-rules")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-next", "wizard-skip", "wizard-back", "wizard-close"]);
-    expect(within(bar()).getByTestId("wizard-skip")).toHaveTextContent(
-      t("modelingWizard.skipStep"),
-    );
+    expect(head().getByTestId("wizard-skip")).toHaveTextContent(t("modelingWizard.skipStep"));
   });
 
-  it("Skip step drops the step's answers and opens the next step", async () => {
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+  it("Back opens the step before, and Skip step drops the step's answers and moves on", async () => {
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
     await vaultToRules();
+    await userEvent.click(head().getByTestId("wizard-back"));
+    expect(screen.getByTestId("wizard-step-satellites")).toBeInTheDocument();
+    await nextInHead();
     await userEvent.click(screen.getByTestId("vault-rule-add"));
     await userEvent.type(screen.getByTestId("vault-rule-text-0"), "half-written");
-    await userEvent.click(within(bar()).getByTestId("wizard-skip"));
+    await userEvent.click(head().getByTestId("wizard-skip"));
     expect(screen.getByTestId("wizard-step-review")).toBeInTheDocument();
-    await userEvent.click(within(bar()).getByTestId("wizard-back"));
+    await userEvent.click(head().getByTestId("wizard-back"));
     expect(screen.getByTestId("wizard-step-rules")).toBeInTheDocument();
     expect(screen.queryByTestId("vault-rule-text-0")).toBeNull();
   });
 
-  it("the review's bar holds Create, Back and Close; the result's holds Done", async () => {
+  it("the review's head holds Create, Back and Close; the result's holds Done", async () => {
     const onSuccess = vi.fn();
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={onSuccess} onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={onSuccess} onClose={onClose} />);
     await vaultToRules();
-    await next();
+    await nextInHead();
     expect(screen.getByTestId("wizard-step-review")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-create", "wizard-back", "wizard-close"]);
-    await userEvent.click(within(bar()).getByTestId("wizard-create"));
+    await userEvent.click(head().getByTestId("wizard-create"));
     await screen.findByTestId("wizard-created");
     await waitFor(() => expect(choices()).toEqual(["wizard-done"]));
-    await userEvent.click(within(bar()).getByTestId("wizard-done"));
+    await userEvent.click(head().getByTestId("wizard-done"));
     expect(onSuccess).toHaveBeenCalled();
+    // What was made is saved: leaving asks nothing.
+    expect(screen.queryByTestId("panel-discard")).toBeNull();
   });
 
   it("the strip shows how far the wizard has come, and a step in it opens that step", async () => {
-    renderInForm(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    inPanel(<DataVaultWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
     await vaultToRules();
     const strip = () => screen.getByTestId("wizard-steps");
     expect(strip()).toHaveAttribute("data-active", "3");
@@ -511,44 +569,46 @@ describe("the wizards' button bar and step strip (REQ-2199, REQ-2277 rule 10)", 
     expect(screen.getByTestId("wizard-step-rules")).toBeInTheDocument();
   });
 
-  it("the star schema wizard is a dialog; Skip step only on dimensions and measures", async () => {
-    renderInForm(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByRole("dialog")).toHaveTextContent(t("tablesPage.panelStarSchema"));
-    expect(choices()).toEqual(["wizard-next", "wizard-close"]);
+  it("the star schema wizard is in the panel; Skip step only on dimensions and measures", async () => {
+    inPanel(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(choices()).toEqual(["wizard-next", "wizard-close"]));
     await userEvent.type(screen.getByTestId("star-process"), "Sales");
     await pick("star-domain", "sales");
     await pick("star-source", "sales.orders");
-    await next();
+    await nextInHead();
     // The grain: the fact is keyed on it.
     expect(choices()).toEqual(["wizard-next", "wizard-back", "wizard-close"]);
     await pick("star-grain", "order_id (varchar)");
-    await next();
+    await nextInHead();
     expect(screen.getByTestId("wizard-step-dimensions")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-next", "wizard-skip", "wizard-back", "wizard-close"]);
-    await next();
+    await nextInHead();
     expect(screen.getByTestId("wizard-step-measures")).toBeInTheDocument();
     expect(choices()).toEqual(["wizard-next", "wizard-skip", "wizard-back", "wizard-close"]);
-    await next();
+    await nextInHead();
     expect(choices()).toEqual(["wizard-create", "wizard-back", "wizard-close"]);
   });
 
   it("skipping the star schema's dimensions leaves none in the review", async () => {
-    renderInForm(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
+    inPanel(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={vi.fn()} />);
     await starToDimensions();
     await userEvent.click(screen.getByTestId("star-dim-add"));
     await userEvent.type(screen.getByTestId("star-dim-name-0"), "Customer");
-    await userEvent.click(within(bar()).getByTestId("wizard-skip"));
+    await userEvent.click(head().getByTestId("wizard-skip"));
     expect(screen.getByTestId("wizard-step-measures")).toBeInTheDocument();
-    await userEvent.click(within(bar()).getByTestId("wizard-skip"));
+    await userEvent.click(head().getByTestId("wizard-skip"));
     expect(screen.getByTestId("wizard-step-review")).toBeInTheDocument();
     expect(screen.queryAllByTestId(/^wizard-review-name-dim:/)).toHaveLength(0);
   });
 
-  it("Close leaves the star schema wizard", async () => {
-    const onCancel = vi.fn();
-    renderInForm(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onCancel} />);
+  it("Close on the star schema wizard asks first once it has answers", async () => {
+    const onClose = vi.fn();
+    inPanel(<StarSchemaWizard domains={DOMAINS} onSuccess={vi.fn()} onClose={onClose} />);
     await starToDimensions();
-    await userEvent.click(within(bar()).getByTestId("wizard-close"));
-    expect(onCancel).toHaveBeenCalled();
+    await userEvent.click(head().getByTestId("wizard-close"));
+    expect(onClose).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("panel-discard"));
+    expect(onClose).toHaveBeenCalled();
   });
 });

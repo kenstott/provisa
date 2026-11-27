@@ -162,8 +162,9 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
           </Text>
         </Group>
       ))}
-      {/* The wizard is over: Done is the dialog's one choice, in its bar. */}
+      {/* The wizard is over: Done is the one choice in the panel's command bar. */}
       <FormFooter
+        panel
         action={
           <Button onClick={onDone} data-changes={false} data-testid="wizard-done">
             {t("modelingForm.done")}
@@ -183,6 +184,7 @@ export function ModelReview({
   onBack,
   onClose,
   onDone,
+  onCreated,
 }: {
   plan: ModelPlan;
   index: number;
@@ -192,6 +194,8 @@ export function ModelReview({
   onBack: () => void;
   onClose: () => void;
   onDone: () => void;
+  /** Called once the plan has been created, whatever came of it: there is no going back. */
+  onCreated: () => void;
 }) {
   const { t } = useTranslation();
   const { registerEntity } = useRegisterEntity();
@@ -239,6 +243,7 @@ export function ModelReview({
           },
         }),
       );
+      onCreated();
     } finally {
       setBusy(false);
     }

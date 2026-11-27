@@ -131,13 +131,6 @@ const BUTTON_EXCEPTIONS: Readonly<Record<string, { marker: string; reason: strin
   "pages/tables/CalendarCreateModal.tsx": [
     { marker: "calendar-holiday-add", reason: "adds a holiday preset to the list above it" },
   ],
-  "pages/tables/modeling/WizardFrame.tsx": [
-    {
-      marker: "data-list-add",
-      reason:
-        "a wizard step's Add: adds a hub, link, satellite, rule or dimension to the list above it",
-    },
-  ],
 };
 
 function componentFiles(dir: string, found: string[] = []): string[] {
