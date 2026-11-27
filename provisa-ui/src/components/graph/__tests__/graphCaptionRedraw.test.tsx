@@ -19,11 +19,19 @@ import { act, render } from "../../../test-utils/render";
 
 // The real cytoscape, without a canvas renderer: jsdom has no 2D context.
 vi.mock("cytoscape", async (importOriginal) => {
-  const real = (await importOriginal<{ default: (o: Record<string, unknown>) => unknown }>())
-    .default as ((o: Record<string, unknown>) => unknown) & { use: (e: unknown) => void };
+  const real = (await importOriginal<{ default: (...a: unknown[]) => unknown }>())
+    .default as ((...a: unknown[]) => unknown) & { use: (e: unknown) => void };
   const headless = Object.assign(
-    (o: Record<string, unknown>) =>
-      real({ ...o, container: undefined, headless: true, styleEnabled: true }),
+    (...args: unknown[]) =>
+      // cytoscape("layout", "fcose"): the graph component's registry lookup, passed through.
+      typeof args[0] === "string"
+        ? real(...args)
+        : real({
+            ...(args[0] as Record<string, unknown>),
+            container: undefined,
+            headless: true,
+            styleEnabled: true,
+          }),
     { use: real.use.bind(real) },
   );
   return { default: headless };

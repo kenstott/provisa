@@ -31,7 +31,6 @@ const THE_COMPONENT = "components/provisa-graph/";
  */
 const NOT_YET_CONVERTED: readonly string[] = [
   "components/graph/GraphCanvas.tsx",
-  "components/graph/canvas/cytoscape-extensions.ts",
   "components/lineage/LineageDag.tsx",
 ];
 
