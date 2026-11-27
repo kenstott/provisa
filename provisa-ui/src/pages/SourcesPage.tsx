@@ -89,6 +89,7 @@ import { schemaRegistryAuthPayload } from "./sources/schemaRegistryAuth";
 import { brandCredentialTyped, openapiBrandRegistration } from "./sources/openapiBrand";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerMappingJson } from "./sources/profilerMapping";
+import { hasSetupFlow } from "./sources/descriptor";
 import { salesforceMappingJson } from "./sources/salesforce";
 import { quickbooksMappingJson } from "./sources/quickbooks";
 import { useDbtSourceForm, warehousesToCreate } from "./sources/dbt";
@@ -702,9 +703,11 @@ export function SourcesPage() {
   const [related, setRelated] = useState<{ sourceId: string; count: number } | null>(null);
   const openCreated = async (id: string) => {
     const fresh = await refetchSources();
-    if (fresh.data?.sources.some((x) => x.id === id)) {
+    const made = fresh.data?.sources.find((x) => x.id === id);
+    if (made) {
       updateExpanded(id);
-      setSetup({ sourceId: id, step: null });
+      // REQ-2234: a source whose tables Provisa itself produces has no setup flow to open on.
+      if (hasSetupFlow(made.type)) setSetup({ sourceId: id, step: null });
     }
   };
 
@@ -1834,7 +1837,8 @@ export function SourcesPage() {
                 {t("yourData.relationshipsCreated", { count: related.count })}
               </Alert>
             )}
-            {editingSourceId !== s.id && (
+            {/* REQ-2234: no setup strip for a source whose tables Provisa itself produces. */}
+            {editingSourceId !== s.id && hasSetupFlow(s.type) && (
               <PanelStrip>
                 <SourceSetupStepper
                   sourceId={s.id}

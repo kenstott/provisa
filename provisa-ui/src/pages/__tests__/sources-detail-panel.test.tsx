@@ -389,6 +389,30 @@ describe("once a source is saved, its panel opens on registering its tables", ()
   });
 });
 
+// REQ-2234 (amended 2026-11-27): a source type declares whether its tables are registered through
+// the setup flow; those whose tables Provisa itself produces show only their own tabs.
+describe("a source's setup strip", () => {
+  it("is on an ordinary source's detail", async () => {
+    render(<SourcesPage />);
+    await userEvent.click(await screen.findByTestId("sources-row-sales-pg"));
+    expect(await within(panel()!).findByTestId("source-setup-step")).toBeInTheDocument();
+  });
+
+  it.each(["data_profiler", "great_expectations", "soda"])(
+    "is not on a %s source's detail, which keeps its own tabs",
+    async (type) => {
+      SOURCES = [source({}), source({ id: "dq", type, host: "", port: 0, database: "" })];
+      render(<SourcesPage />);
+      await userEvent.click(await screen.findByTestId("sources-row-dq"));
+      expect(screen.getByTestId("sources-split-title")).toHaveTextContent("dq");
+      expect(within(panel()!).getByTestId("source-detail-edit")).toBeInTheDocument();
+      expect(within(panel()!).getByTestId("source-section-connection")).toBeInTheDocument();
+      expect(within(panel()!).queryByTestId("source-setup-step")).toBeNull();
+      expect(screen.queryByText("Register tables")).toBeNull();
+    },
+  );
+});
+
 describe("while a form is open in the panel", () => {
   it("hides the page's + Source: the panel has its own close", async () => {
     render(<SourcesPage />);
