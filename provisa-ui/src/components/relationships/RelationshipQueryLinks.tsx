@@ -87,16 +87,19 @@ function QueryLinkButton({
   );
 }
 
-/** A list of query links, one per surface: under their own heading each named by its surface
+/** A row of query surfaces, one link each: under their own heading each named by its surface
  * beside its glyph, as a relationship's detail panel and a table's sections draw them; without one
- * an icon button each, as a data product's Access section draws them. */
-export function QueryLinkRow({
-  links,
+ * an icon button each, as a data product's Access section draws them. Choosing one calls
+ * ``onChoose`` with it. */
+export function QuerySurfaceRow<S extends RelationshipSurface>({
+  surfaces,
+  onChoose,
   labelOf,
   heading,
   testIdPrefix,
 }: {
-  links: { surface: RelationshipSurface; link: QueryLink }[];
+  surfaces: readonly S[];
+  onChoose: (surface: S) => void;
   /** Each link's tip: what it reads, on which surface. */
   labelOf: (surface: RelationshipSurface) => string;
   /** Shown before the links, where they stand on their own. */
@@ -104,9 +107,7 @@ export function QueryLinkRow({
   testIdPrefix: string;
 }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  if (links.length === 0) return null;
-  const open = (link: QueryLink) => navigate(link.to, { state: link.state });
+  if (surfaces.length === 0) return null;
   const named = heading !== undefined;
   return (
     <Group
@@ -120,7 +121,7 @@ export function QueryLinkRow({
           {heading}
         </Text>
       )}
-      {links.map(({ surface, link }) => {
+      {surfaces.map((surface) => {
         const label = labelOf(surface);
         const testId = `${testIdPrefix}-query-${surface}`;
         return named ? (
@@ -129,16 +130,51 @@ export function QueryLinkRow({
             label={label}
             text={t(`relationshipRow.queryLinks.surfaces.${surface}`)}
             testId={testId}
-            onClick={() => open(link)}
+            onClick={() => onChoose(surface)}
             glyph={GLYPH[surface]}
           />
         ) : (
-          <QueryLinkIcon key={surface} label={label} testId={testId} onClick={() => open(link)}>
+          <QueryLinkIcon
+            key={surface}
+            label={label}
+            testId={testId}
+            onClick={() => onChoose(surface)}
+          >
             {GLYPH[surface]}
           </QueryLinkIcon>
         );
       })}
     </Group>
+  );
+}
+
+/** A list of query links, one per surface, each opening its Explore editor (QuerySurfaceRow). */
+export function QueryLinkRow({
+  links,
+  labelOf,
+  heading,
+  testIdPrefix,
+}: {
+  links: { surface: RelationshipSurface; link: QueryLink }[];
+  /** Each link's tip: what it reads, on which surface. */
+  labelOf: (surface: RelationshipSurface) => string;
+  /** Shown before the links, where they stand on their own. */
+  heading?: string;
+  testIdPrefix: string;
+}) {
+  const navigate = useNavigate();
+  const linkOf = new Map(links.map(({ surface, link }) => [surface, link]));
+  return (
+    <QuerySurfaceRow
+      surfaces={links.map(({ surface }) => surface)}
+      onChoose={(surface) => {
+        const link = linkOf.get(surface);
+        if (link) navigate(link.to, { state: link.state });
+      }}
+      labelOf={labelOf}
+      heading={heading}
+      testIdPrefix={testIdPrefix}
+    />
   );
 }
 

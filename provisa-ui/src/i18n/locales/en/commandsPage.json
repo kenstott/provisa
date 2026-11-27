@@ -6,7 +6,6 @@
     "restoreDetail": "Restore the panel",
     "closeDetail": "Close the detail panel",
     "backToList": "Back to the list",
-    "backToCommand": "Back to the command",
     "panelNewCommand": "New command",
     "title": "Commands",
     "loading": "Loading commands...",
@@ -56,8 +55,6 @@
     "editAria": "Edit {{name}}",
     "deleteFunctionAria": "Delete function {{name}}",
     "deleteWebhookAria": "Delete webhook {{name}}",
-    "testButton": "Test",
-    "testingButton": "Testing...",
     "cancelAria": "Cancel edit",
     "saveAria": "Save changes",
     "deleteFunctionTitle": "Delete function \"{{name}}\"?",
@@ -65,12 +62,14 @@
     "deleteWebhookTitle": "Delete webhook \"{{name}}\"?",
     "deleteWebhookConsequence": "This will remove the webhook from the schema.",
     "inlineReturns": "inline ({{count}} fields)",
-    "testAsRole": "Test as role:",
-    "testResultHeading": "Test Result: {{name}}",
     "close": "Close",
-    "governanceApplied": "Governance applied",
     "savedMessage": "Saved {{type}} \"{{name}}\"",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "argKind": {
+      "column_value": "value",
+      "table_ref": "table reference",
+      "result_set": "result set"
+    }
   }
 }

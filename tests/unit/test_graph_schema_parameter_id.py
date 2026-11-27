@@ -26,6 +26,7 @@ import types
 from typing import Any, cast
 
 import pytest
+from graphql import GraphQLField, GraphQLObjectType, GraphQLSchema, GraphQLString
 
 import provisa.api.app as appmod
 import provisa.api.rest.cypher_router as cr
@@ -33,6 +34,9 @@ from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.gql.label_map import CypherLabelMap
+
+# A built surface has a GraphQL schema; /data/graph-schema lists its commands (REQ-1159).
+_SCHEMA = GraphQLSchema(query=GraphQLObjectType("Query", {"plain": GraphQLField(GraphQLString)}))
 
 ROLE = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
 
@@ -133,6 +137,7 @@ async def test_graph_schema_answers_for_a_parameterized_table(graph, monkeypatch
     monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
     monkeypatch.setattr(cr, "_build_label_map", lambda *_: graph)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    monkeypatch.setattr(appmod.state, "schemas", {"admin": _SCHEMA})
     monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
 

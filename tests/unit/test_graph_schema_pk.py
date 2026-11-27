@@ -13,11 +13,15 @@ import types
 from typing import Any, cast
 
 import pytest
+from graphql import GraphQLField, GraphQLObjectType, GraphQLSchema, GraphQLString
 
 import provisa.api.app as appmod
 import provisa.api.rest.cypher_router as cr
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
+
+# A built surface has a GraphQL schema; /data/graph-schema lists its commands (REQ-1159).
+_SCHEMA = GraphQLSchema(query=GraphQLObjectType("Query", {"plain": GraphQLField(GraphQLString)}))
 
 
 def _node(label: str, pk_columns: list[str], table_id: int = 0):
@@ -52,6 +56,7 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
     monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
     monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    monkeypatch.setattr(appmod.state, "schemas", {"admin": _SCHEMA})
     # A built surface has its root fields too (REQ-2128's graphql_field); none are named here.
     monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
@@ -75,6 +80,7 @@ async def test_graph_schema_names_each_labels_table(monkeypatch):
     monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
     monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    monkeypatch.setattr(appmod.state, "schemas", {"admin": _SCHEMA})
     monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
 
