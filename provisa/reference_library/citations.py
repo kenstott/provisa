@@ -13,7 +13,7 @@
 One shape for whatever cites the library (``reference_citations``): a tag's definition cites the
 section that defines it, each assignment of a tag cites the documents or sections that trace or
 confirm it, and a data quality check kept from a regulation cites the section it came from
-(REQ-2245); a security item will cite under a kind of its own. A citation names a document and,
+(REQ-2245), a glossary term cites what a steward picked for it; a security item will cite under a kind of its own. A citation names a document and,
 optionally, a section of it as a section tag does: by its heading, or by its page when it has none
 (a PDF's pages). The section's text is what the library's extraction read: the passages under that
 heading, or on that page, in order; the whole document's when no section is named.
@@ -58,7 +58,11 @@ TAG_ASSIGNMENT = "tag_assignment"
 #: A data quality check kept from a regulation's section cites that section; its tag id is NULL and
 #: its object key names the check (provisa.dq.regulation.check_object_key).
 DQ_CHECK = "dq_check"
-CITER_KINDS = (TAG, TAG_ASSIGNMENT, DQ_CHECK)
+#: A glossary term cites a document or section a steward picked for it on the term's panel; its tag
+#: id is NULL and its object key is the term's id (:func:`term_key`). A term's citations found by a
+#: scan are its accepted drafts' passages (provisa.reference_library.terms).
+TERM = "term"
+CITER_KINDS = (TAG, TAG_ASSIGNMENT, DQ_CHECK, TERM)
 
 #: The cited section is there with the text it had when cited.
 CURRENT = "current"
@@ -306,6 +310,28 @@ async def of_citers(
     for citation in _with_state(rows):
         out.setdefault((citation.tag_id, citation.object_key), []).append(citation)
     return out
+
+
+def term_key(term_id: int) -> str:
+    """The object key a glossary term's citations are kept under."""
+    return str(term_id)
+
+
+async def of_object(conn: Connection, citer_kind: str, object_key: str) -> list[Citation]:
+    """Every citation one citer of ``citer_kind`` with no tag (a data quality check, a term)
+    makes, each with its state."""
+    rows = (
+        await conn.execute_core(
+            citation_states()
+            .where(
+                citations_t.c.citer_kind == citer_kind,
+                citations_t.c.tag_id.is_(None),
+                citations_t.c.object_key == object_key,
+            )
+            .order_by(*_ORDER)
+        )
+    ).fetchall()
+    return _with_state(rows)
 
 
 async def citing(

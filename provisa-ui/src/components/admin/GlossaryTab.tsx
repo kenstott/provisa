@@ -37,19 +37,25 @@ import {
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
-import { BadgeCheck, BookOpen, ClipboardList, Pencil, Plus, Sparkles } from "lucide-react";
+import { BadgeCheck, BookOpen, ClipboardList, Plus, Sparkles } from "lucide-react";
 import { useScreenInputs } from "../../mcp/screenState";
 import { OntologyToggle, OntologyView } from "../graph3d/OntologyGraph";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
-import { TermCurationActions } from "./TermCurationActions";
+import { TermHeadActions } from "./TermHeadActions";
+import { TermPanel } from "./TermPanel";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
-import { defaultFindDomains, tableNames, toReview } from "./termFindings";
+import { defaultFindDomains, tableNames } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
-import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
+import {
+  linkedTermFilters,
+  matchesTermFilters,
+  withTermFilters,
+  type TermListFilters,
+} from "./termListFilters";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
 import { OntologyImportsView } from "./ontologyImport/OntologyImportsView";
@@ -74,6 +80,7 @@ import {
   type GlossaryFinding,
 } from "../../api/glossary";
 import { useAuth } from "../../context/AuthContext";
+import { useRequiredFields } from "../form/useRequiredFields";
 import {
   ENTERPRISE_DOMAIN,
   onlyRelatedTo,
@@ -91,8 +98,6 @@ import type {
 } from "../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
-import { PanelDeleteLock } from "../list/PanelDelete";
-import { PanelDuplicate } from "../list/PanelDuplicate";
 import { usePanelDeleting } from "../list/panelActions";
 import {
   readStoredBool,
@@ -112,7 +117,7 @@ export function GlossaryTab() {
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
@@ -130,8 +135,11 @@ export function GlossaryTab() {
   const viewDomains = useViewDomains();
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  // REQ-2259, REQ-2277: a link naming a list filter (a Context Health count) decides every filter
+  // that visit, and the filters stay in its URL as they change; else they reopen as left.
+  const [linked] = useState(() => linkedTermFilters(searchParams));
   const [query, setQueryState] = useState(
-    () => searchParams.get("search") ?? readStoredString("glossary.search") ?? "",
+    () => searchParams.get("search") ?? (linked ? "" : readStoredString("glossary.search")) ?? "",
   );
   const setQuery = (value: string) => {
     setQueryState(value);
@@ -139,40 +147,66 @@ export function GlossaryTab() {
   };
   // REQ-2144: the list filtered by a term's status and, apart, by its grounding (REQ-1387). No
   // status picked shows every status; the choice is remembered as a comma-separated list.
-  const [statusFilter, setStatusFilterState] = useState<TermStatus[]>(
-    () => (readStoredString("glossary.status") ?? "").split(",").filter(Boolean) as TermStatus[],
+  const [statusFilter, setStatusFilterState] = useState<TermStatus[]>(() =>
+    linked
+      ? linked.status
+      : ((readStoredString("glossary.status") ?? "").split(",").filter(Boolean) as TermStatus[]),
   );
+  const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(() =>
+    linked ? linked.grounding : (readStoredString("glossary.grounding") as TermGrounding | null),
+  );
+  // REQ-1387: narrow the list to the terms an agent sees by name.
+  const [agentVisibleOnly, setAgentVisibleOnlyState] = useState(() =>
+    linked ? linked.agentVisible : readStoredBool("glossary.agentVisible", false),
+  );
+  // REQ-2146: narrow the list to the terms with findings.
+  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
+    linked ? linked.toReview : readStoredBool("glossary.toReview", false),
+  );
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
+  // links that want review. A report's placeholder row opens the list with it on (REQ-1386).
+  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
+    linked ? linked.relatedTo : readStoredBool("glossary.relatedTo", false),
+  );
+  const filters: TermListFilters = {
+    status: statusFilter,
+    grounding: groundingFilter,
+    agentVisible: agentVisibleOnly,
+    toReview: toReviewOnly,
+    relatedTo: relatedToOnly,
+  };
+  const relink = (change: Partial<TermListFilters>) => {
+    if (linked !== null) {
+      setSearchParams((p) => withTermFilters(p, { ...filters, ...change }), { replace: true });
+    }
+  };
   const setStatusFilter = (value: TermStatus[]) => {
     setStatusFilterState(value);
     writeStored("glossary.status", value.join(","));
+    relink({ status: value });
   };
-  const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(
-    () => readStoredString("glossary.grounding") as TermGrounding | null,
-  );
   const setGroundingFilter = (value: TermGrounding | null) => {
     setGroundingFilterState(value);
     writeStored("glossary.grounding", value ?? "");
+    relink({ grounding: value });
   };
-  // The approval being confirmed, its impact shown first (REQ-2144).
-  const [approveOpen, setApproveOpen] = useState(false);
-  // REQ-2146: narrow the list to the terms with findings.
-  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
-    readStoredBool("glossary.toReview", false),
-  );
+  const setAgentVisibleOnly = (on: boolean) => {
+    setAgentVisibleOnlyState(on);
+    writeStoredBool("glossary.agentVisible", on);
+    relink({ agentVisible: on });
+  };
   const setToReviewOnly = (on: boolean) => {
     setToReviewOnlyState(on);
     writeStoredBool("glossary.toReview", on);
+    relink({ toReview: on });
   };
-  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
-  // links that want review.
-  // A report's placeholder row opens the list with it on (REQ-1386: ?relatedTo=1).
-  const [relatedToOnly, setRelatedToOnlyState] = useState(
-    () => searchParams.get(RELATED_TO_PARAM) === "1" || readStoredBool("glossary.relatedTo", false),
-  );
   const setRelatedToOnly = (on: boolean) => {
     setRelatedToOnlyState(on);
     writeStoredBool("glossary.relatedTo", on);
+    relink({ relatedTo: on });
   };
+  // The approval being confirmed, its impact shown first (REQ-2144).
+  const [approveOpen, setApproveOpen] = useState(false);
   // The RELATED_TO edges the assistant just added, each with the shapes that may resolve it.
   const [review, setReview] = useState<RelatedToReview[]>([]);
 
@@ -191,22 +225,27 @@ export function GlossaryTab() {
   const [imports, setImports] = useState(false);
   // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
-  // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
-  // terms dialog is open.
+  // REQ-2115: the open term (its id is the page's `term`, useGlossaryPanel), once the glossary has
+  // answered for it, and whether the Find terms dialog is open. Two domains may each hold a term of
+  // one name (REQ-1591), so its domains tell it apart; its status and definition are what the panel
+  // shows, for Polly to check a change it made against the term on screen.
+  const shown = detail !== null && detail.id === selectedId ? detail : null;
   useScreenInputs("/context/ontology", {
-    termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
+    termName: shown?.name ?? null,
+    termDomains: shown?.domains ?? null,
+    termStatus: shown?.status ?? null,
+    termDefinition: shown?.definition ?? null,
     findTerms: findTermsOpen,
   });
 
   const [actionError, setActionError] = useState("");
   // REQ-2198: a term's Delete works like a save. While it runs the detail is locked and the term's
   // item in the list is marked as being deleted; once it is done the detail closes, the list
-  // already read again without the term. What a failed delete says is put at the detail's top.
+  // already read again without the term. What a failed delete says is put under the panel's head.
   const deleting = usePanelDeleting(detail !== null, () => {
     setSelectedId(null);
     setDetail(null);
   });
-  const [deleteNotice, setDeleteNotice] = useState<HTMLDivElement | null>(null);
 
   // REQ-1592: an expert is PICKED from the org's members, not typed. Naming an author decides who
   // may change the term from then on, so a typo would hand it to nobody.
@@ -221,6 +260,11 @@ export function GlossaryTab() {
   const [addDomains, setAddDomainsRaw] = useState<string[]>([]);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
+  // REQ-1968: the name, and a domain when domains are on, are checked when Create is pressed.
+  const addRequired = useRequiredFields({
+    name: addName,
+    ...(domainsEnabled ? { domains: addDomains } : {}),
+  });
 
   const refreshList = useCallback(async () => {
     setListLoading(true);
@@ -383,7 +427,7 @@ export function GlossaryTab() {
   };
 
   const handleCreate = async () => {
-    if (!addName.trim()) return;
+    if (!addRequired.validate()) return;
     setAddSaving(true);
     setAddError("");
     try {
@@ -400,6 +444,7 @@ export function GlossaryTab() {
       setAddName("");
       setAddDefinition("");
       setAddDomains([]);
+      addRequired.reset();
       await refreshList();
       setSelectedId(id);
     } catch (e) {
@@ -507,13 +552,7 @@ export function GlossaryTab() {
     [],
   );
   const otherTermOptions = termOptions(terms.filter((term) => term.id !== detail?.id));
-  const displayedTerms = terms.filter(
-    (term) =>
-      (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
-      (!groundingFilter || term.grounding === groundingFilter) &&
-      (!toReviewOnly || toReview(term)) &&
-      (!relatedToOnly || term.related_to > 0),
-  );
+  const displayedTerms = terms.filter((term) => matchesTermFilters(term, filters));
   const statusOptions = (["draft", "approved", "deprecated", "retired"] as const).map((st) => ({
     value: st,
     label: t(`glossaryTab.status_${st}`),
@@ -662,6 +701,14 @@ export function GlossaryTab() {
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-to-review-only"
               />
+              <Checkbox
+                size="xs"
+                label={t("glossaryTab.agentVisibleOnly")}
+                checked={agentVisibleOnly}
+                onChange={(e) => setAgentVisibleOnly(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-agent-visible-only"
+              />
               <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>
             {/* Status on a line of its own: its picked statuses need the column's width. */}
@@ -731,7 +778,10 @@ export function GlossaryTab() {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflow: "auto" }} data-testid="glossary-detail">
+          <div
+            style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
+            data-testid="glossary-detail"
+          >
             {detailLoading ? (
               <Group justify="center" py="md">
                 <Loader size="xs" />
@@ -740,10 +790,8 @@ export function GlossaryTab() {
               // REQ-2259: the stewardship summary (REQ-2144) is on Context Health.
               <GlossaryNoTerm />
             ) : (
-              <PanelDeleteLock host={deleting}>
+              <TermPanel name={detail.name} host={deleting}>
                 <Stack gap="md" pb="md">
-                  {/* Where a failed delete says why: no box of its own until it does. */}
-                  <div ref={setDeleteNotice} style={{ display: "contents" }} />
                   {actionError && (
                     <Alert color="red" data-testid="glossary-error">
                       {actionError}
@@ -756,37 +804,22 @@ export function GlossaryTab() {
                     not ground, so the pair may want a term between. Guidance, never a block. */}
                   {onlyRelatedTo(detail) && <RelatedToHint />}
 
-                  {canEdit && !editing && (
-                    // Edit opens the whole term as one form; Retire and Delete act at once.
-                    <Group gap="xs" data-toolbar>
-                      {canCurate && (
-                        <Button
-                          variant="default"
-                          leftSection={<Pencil size={14} />}
-                          onClick={() => setEditing(true)}
-                          data-testid="glossary-edit-btn"
-                        >
-                          {t("glossaryTab.edit")}
-                        </Button>
-                      )}
-                      <PanelDuplicate
-                        name={detail.name}
-                        onDuplicate={() => openDuplicateTerm(detail)}
-                        testId="glossary-duplicate-btn"
-                        labelled
-                      />
-                      {canCurate && (
-                        <TermCurationActions
-                          detail={detail}
-                          act={act}
-                          onApprove={() => setApproveOpen(true)}
-                          onDeprecate={() => setDeprecateOpen(true)}
-                          onRetire={() => setRetireOpen(true)}
-                          deleteNotice={deleteNotice}
-                          onDelete={() => deleteTerm(detail)}
-                        />
-                      )}
-                    </Group>
+                  {/* The term's actions, icons in the panel's head beside its name; while the
+                    term is edited its form's Save and Cancel sit there instead. */}
+                  {!editing && (
+                    <TermHeadActions
+                      detail={detail}
+                      canEdit={canEdit}
+                      canCurate={canCurate}
+                      act={act}
+                      onEdit={() => setEditing(true)}
+                      onDuplicate={() => openDuplicateTerm(detail)}
+                      onApprove={() => setApproveOpen(true)}
+                      onDeprecate={() => setDeprecateOpen(true)}
+                      onRetire={() => setRetireOpen(true)}
+                      onDelete={() => deleteTerm(detail)}
+                      onTagsChanged={() => void loadDetail(detail.id, true)}
+                    />
                   )}
 
                   {!editing && (
@@ -894,7 +927,7 @@ export function GlossaryTab() {
                     />
                   )}
                 </Stack>
-              </PanelDeleteLock>
+              </TermPanel>
             )}
           </div>
         </div>
@@ -916,10 +949,10 @@ export function GlossaryTab() {
             <FormField size="medium">
               <TextInput
                 label={t("glossaryTab.nameLabel")}
+                {...addRequired.field("name")}
                 value={addName}
                 onChange={(e) => setAddName(e.currentTarget.value)}
                 data-testid="glossary-add-name-input"
-                required
               />
             </FormField>
           </FormIdentifiers>
@@ -941,7 +974,7 @@ export function GlossaryTab() {
                 value={addDomains}
                 onChange={setAddDomains}
                 data-testid="glossary-add-domains-input"
-                required
+                {...addRequired.field("domains")}
               />
             </FormField>
           )}
@@ -959,7 +992,6 @@ export function GlossaryTab() {
               <Button
                 onClick={() => void handleCreate()}
                 loading={addSaving}
-                disabled={!addName.trim() || (domainsEnabled && addDomains.length === 0)}
                 data-testid="glossary-add-save-btn"
               >
                 {t("glossaryTab.create")}

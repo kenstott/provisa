@@ -41,6 +41,7 @@ from provisa.fakes.read_sql import (
     uniform,
 )
 from provisa.fakes.sql_subset import read as read_sql
+from provisa.fakes.template import is_json
 
 _DIGEST = "__digest__"
 #: The name a level gives a faked column's digest (``DIGEST + <column>``), for :func:`layered`.
@@ -104,8 +105,10 @@ def faked_projection(
         return exp.column(name, table=alias, quoted=True)
 
     inner: list[exp.Expr] = [real(name) for name, _, _ in columns]  # pyright: ignore[reportPrivateImportUsage]
-    for name in fakes:
-        inner.append(exp.alias_(digest(fingerprint, real(name)), _DIGEST + name, quoted=True))
+    for name, col in fakes.items():
+        # REQ-2279: a JSON column is digested as its JSON text.
+        value = digest(fingerprint, real(name), json_value=is_json(col.data_type))
+        inner.append(exp.alias_(value, _DIGEST + name, quoted=True))
     inner += [exp.alias_(e.copy(), name, quoted=True) for name, e in (carried or {}).items()]
     source = base.copy()
     source.set("alias", exp.TableAlias(this=exp.to_identifier(alias, quoted=True)))

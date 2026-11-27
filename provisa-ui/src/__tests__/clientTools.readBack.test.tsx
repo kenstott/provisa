@@ -227,6 +227,7 @@ describe("navigate", () => {
       presentChoice: vi.fn(),
       runAdminMutation: vi.fn(),
       chooseFile: vi.fn(),
+      changed: vi.fn(),
     };
     const out = await executeClientTool(
       "navigate",
@@ -254,6 +255,22 @@ describe("read-back of a page that keeps its state in its URL", () => {
     open("/tables", { view: "erd", table: null });
     const out = await readBack("/tables?view=erd&table=7", {}, WAIT);
     expect(out).toMatchObject({ shown: false, difference: "the page shows table none, not 7" });
+  });
+
+  // REQ-2277: the profile runs dialog is in the link, and read back by the same names.
+  it("reads the profile runs dialog back when it shows the run and result named", async () => {
+    open("/tables", { view: "list", table: 7, profile: "latest", profileView: "terrain" });
+    const out = await readBack("/tables?table=7&profile=latest&profileView=terrain", {}, WAIT);
+    expect(out.shown).toBe(true);
+  });
+
+  it("names a profile result the dialog does not show", async () => {
+    open("/tables", { view: "list", table: 7, profile: "latest", profileView: "columns" });
+    const out = await readBack("/tables?table=7&profile=latest&profileView=terrain", {}, WAIT);
+    expect(out).toMatchObject({
+      shown: false,
+      difference: "the page shows profileView columns, not terrain",
+    });
   });
 
   it("names domains that did not collapse", async () => {

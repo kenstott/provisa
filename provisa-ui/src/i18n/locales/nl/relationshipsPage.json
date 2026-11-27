@@ -43,6 +43,7 @@
     "suggestHelpTitle": "Voorgestelde relaties",
     "suggestHelpBody": "Doorzoekt de geregistreerde tabellen over domeinen heen op waarschijnlijke joins en toont ze als kandidaten. Er wordt niets gedeclareerd tot je er een accepteert, en een afgewezen kandidaat blijft uit de lijst tot je de afwijzingen wist.",
     "empty": "Nog geen relaties geregistreerd.",
+    "noMatch": "Geen relaties komen overeen met het filter.",
     "detailPanel": "Details van de relatie",
     "panelNewRelationship": "Nieuwe relatie",
     "backToRelationship": "Terug naar {{id}}"

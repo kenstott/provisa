@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
+import { expectFilterFindsEveryCell } from "../../../test-utils/listFilter";
 
 vi.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({
@@ -77,6 +78,13 @@ describe("ReportsTab filter", () => {
     expect(shown()).toEqual(["report-item-mid"]);
     type("TENANT");
     expect(shown()).toEqual(["report-item-zeta_usage"]);
+  });
+
+  it("finds each report by every text its row shows", async () => {
+    render(<ReportsTab title="Admin — Reports" />);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("reports-list"),
+    );
   });
 
   it("restores the full list when the filter is cleared", () => {

@@ -21,6 +21,7 @@ import {
 } from "../../api/profiler";
 import { useAuth } from "../../context/AuthContext";
 import { ProfileChecksBar } from "./ProfileChecksBar";
+import { LATEST_RUN, useProfileRunsParam } from "./useProfileRunsParam";
 import { ProfileDriftPanel } from "./ProfileDriftPanel";
 import { ProfileResultTable } from "./ProfileResultTable";
 import { ProfileDriftStrata } from "./profile3d/drift/ProfileDriftStrata";
@@ -93,30 +94,42 @@ export function ProfileRunsModal({
   tableId,
   tableName,
   onClose,
+  namesTable = false,
 }: {
   tableId: number;
   tableName: string;
-  onClose: () => void;
+  /** The page names the dialog's table by `?table=` only while it is open (useProfileRunsParam). */
+  namesTable?: boolean;
+  /** Called after the dialog's URL parameters are removed; a caller that opens it from the URL needs none. */
+  onClose?: () => void;
 }) {
   const { t } = useTranslation();
   // REQ-1620: the selected roles, the "Role: All" set included, as the run is shown to them.
   const { actingRoles } = useAuth();
   const [runs, setRuns] = useState<ProfileRun[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  // REQ-2277: the run and the result shown are the URL's. A run that is not named is the latest
+  // that succeeded, once the list is in.
+  const link = useProfileRunsParam(namesTable);
+  const selected =
+    runs == null
+      ? null
+      : link.profile == null || link.profile === LATEST_RUN
+        ? (runs.find((run) => run.status === "succeeded")?.run_id ?? null)
+        : link.profile;
   // The results of one run, kept with the run they answer: a selection whose results have not come
   // back yet shows a loader rather than the previous run's.
   const [loaded, setLoaded] = useState<{ runId: string; data: ProfileRunResults } | null>(null);
   const results = loaded != null && loaded.runId === selected ? loaded.data : null;
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<string>("columns");
+  const tab = link.view;
+  const close = () => {
+    link.close();
+    onClose?.();
+  };
 
   useEffect(() => {
     fetchProfileRuns(tableId)
-      .then((r) => {
-        setRuns(r);
-        const latest = r.find((run) => run.status === "succeeded");
-        if (latest) setSelected(latest.run_id);
-      })
+      .then(setRuns)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [tableId]);
 
@@ -169,7 +182,7 @@ export function ProfileRunsModal({
     // result each scroll on their own, side by side, down to the dialog's bottom edge.
     <FitModal
       opened
-      onClose={onClose}
+      onClose={close}
       size="90%"
       title={t("profileRunsModal.title", { table: tableName })}
       testId="profile-runs-modal"
@@ -199,7 +212,7 @@ export function ProfileRunsModal({
             selectedRow={(row) => row[RUN_ID] === selected}
             onRowClick={(row) => {
               const run = runs.find((r) => r.run_id === row[RUN_ID]);
-              if (run?.status === "succeeded") setSelected(run.run_id);
+              if (run?.status === "succeeded") link.selectRun(run.run_id);
             }}
           />
         </Box>
@@ -217,7 +230,7 @@ export function ProfileRunsModal({
               testId: `profile-tab-${k}`,
             }))}
             value={tab}
-            onChange={setTab}
+            onChange={link.selectView}
             className="profile-runs-menu"
             testId="profile-runs-menu"
           />

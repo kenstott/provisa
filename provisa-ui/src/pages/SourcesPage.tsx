@@ -158,7 +158,6 @@ import {
 } from "./sources/sourceSeed";
 import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
-import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { SourceSetupStepper } from "./sources/SourceSetupStepper";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
@@ -257,14 +256,34 @@ export function SourcesPage() {
   const { regions, connected, error: regionError } = useRegionChoices();
   const [regionSel, setRegionSel] = useRegionSelection(regions, connected);
   const hasRegions = regions.length > 0;
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const getEffectiveTtl = (source: Source): string => {
+    if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
+    if (settings) return `${settings.cache.default_ttl}s (global)`;
+    return "default";
+  };
+  // Every text a source's row shows, which the filter searches; the row below draws the same.
+  const sourceRowTexts = (s: Source) => [
+    s.id,
+    s.withdrawn ? t("sourcesPage.withdrawn") : "",
+    s.type,
+    sourceTypeLabel(s.type, s.federationHintsJson),
+    s.host,
+    s.port ? String(s.port) : "",
+    s.database,
+    hasRegions ? (s.region ?? t("regionSelector.noRegion")) : "",
+    s.gqlNamingConvention || t("sourcesPage.naOrInherit"),
+    s.cacheEnabled ? t("sourcesPage.cacheOn") : t("sourcesPage.cacheOff"),
+    getEffectiveTtl(s),
+    s.description,
+  ];
+  // The sources the list holds before any filter: none of them is the system's own.
+  const listableSources = sources.filter(
+    (s) => ![DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id),
+  );
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredSources = useMemo(
-    () =>
-      sources.filter((s) => {
-        if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        return matchesQuery([s.id, s.type, s.description], sourceSearch);
-      }),
-    [sources, sourceSearch],
+  const filteredSources = listableSources.filter((s) =>
+    matchesQuery(sourceRowTexts(s), sourceSearch),
   );
   const listColumns = useMemo<ListColumn<Source>[]>(
     () => [
@@ -333,7 +352,6 @@ export function SourcesPage() {
       ? sparkHost
       : (connectors.find((c) => c.name === authFields.code_connector) ?? null);
   const heldForm = heldBy ? { ...form, ...fixedFormValues(heldBy) } : form;
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [sourceReach, setSourceReach] = useState<SourceReach | null>(null);
   const domainsEnabled = settings?.naming.use_domains !== false;
   const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
@@ -472,12 +490,6 @@ export function SourcesPage() {
   // delete) keeps the page mounted, so an open Schema Discovery panel keeps what is typed and
   // discovered in it (REQ-150); the refetched rows replace the old ones in place.
   const loading = sourcesLoading || (settingsLoading && settings === null);
-
-  const getEffectiveTtl = (source: Source): string => {
-    if (source.cacheTtl != null) return `${ttlText(source.cacheTtl, t)} (custom)`;
-    if (settings) return `${settings.cache.default_ttl}s (global)`;
-    return "default";
-  };
 
   // Type dropdown annotated + gated by the current engine's reach (REQ-947): each option shows
   // LIVE / REPLICA, and a type the engine cannot reach is disabled with the engine(s) that can.
@@ -656,9 +668,10 @@ export function SourcesPage() {
 
   // The source the short create step just made is selected. It is saved, so its detail is the
   // read view, seeded from the list as it is now; its edit form opens on Edit alone.
-  // REQ-2234: the panel opens first on registering its tables, then on Your data, shown over
-  // the read view: skipping or closing either leaves the source read.
-  const [afterSave, setAfterSave] = useState<string | null>(null);
+  // REQ-2234 / REQ-2262: the source's setup flow, opened as the panel's working surface -- right
+  // after the source is saved, or from the setup strip on its read view -- on a done step gone
+  // back to, or (null) on the current one. Finish later leaves the source read.
+  const [setup, setSetup] = useState<{ sourceId: string; step: number | null } | null>(null);
   // REQ-2262: the relationships the review after registration created, said on the source it
   // returns to.
   const [related, setRelated] = useState<{ sourceId: string; count: number } | null>(null);
@@ -666,7 +679,7 @@ export function SourcesPage() {
     const fresh = await refetchSources();
     if (fresh.data?.sources.some((x) => x.id === id)) {
       updateExpanded(id);
-      setAfterSave(id);
+      setSetup({ sourceId: id, step: null });
     }
   };
 
@@ -750,7 +763,7 @@ export function SourcesPage() {
         (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
       );
     }
-    setAfterSave(null);
+    setSetup(null);
     setDiscoverSourceId(null);
     setDiscoverSourceType(null);
     setMappingSourceId(null);
@@ -1594,15 +1607,29 @@ export function SourcesPage() {
     </FormLayout>
   );
   const working =
-    afterSave !== null && afterSave === expanded ? (
-      <AfterSaveSteps
-        sourceId={afterSave}
-        onClose={() => setAfterSave(null)}
-        onRelated={(count) => {
-          setRelated({ sourceId: afterSave, count });
-          setAfterSave(null);
-        }}
-      />
+    setup !== null && selectedSource !== null && setup.sourceId === selectedSource.id ? (
+      <PanelWorking
+        back={t("sourceSetup.finishLater")}
+        onBack={() => setSetup(null)}
+        testId="source-setup-finish-later"
+      >
+        <SourceSetupStepper
+          sourceId={selectedSource.id}
+          outcomes={selectedSource.setupOutcomes}
+          open
+          step={setup.step}
+          onConnect={() => {
+            setSetup(null);
+            handleEdit(selectedSource);
+          }}
+          onOpen={(step) => setSetup({ sourceId: selectedSource.id, step })}
+          onClose={() => setSetup(null)}
+          onRelated={(count) => {
+            setRelated({ sourceId: selectedSource.id, count });
+            setSetup(null);
+          }}
+        />
+      </PanelWorking>
     ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}
@@ -1787,9 +1814,14 @@ export function SourcesPage() {
             {editingSourceId !== s.id && (
               <SourceSetupStepper
                 sourceId={s.id}
+                outcomes={s.setupOutcomes}
+                open={false}
+                step={null}
                 // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
                 onConnect={() => handleEdit(s)}
-                onRegister={() => setAfterSave(s.id)}
+                onOpen={(step) => setSetup({ sourceId: s.id, step })}
+                onClose={() => setSetup(null)}
+                onRelated={(count) => setRelated({ sourceId: s.id, count })}
               />
             )}
             <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
@@ -1845,7 +1877,7 @@ export function SourcesPage() {
       ? t("sourcesPage.panelNewSource")
       : (selectedSource?.id ?? discoverSourceId ?? mappingSourceId ?? "");
   const closePanel = () => {
-    setAfterSave(null);
+    setSetup(null);
     setDiscoverSourceId(null);
     setDiscoverSourceType(null);
     setMappingSourceId(null);
@@ -1961,8 +1993,13 @@ export function SourcesPage() {
               <Table.Tbody>
                 {(() => {
                   if (regionSources.length === 0) {
+                    // A list a filter emptied says so, never that there are no sources.
                     return (
-                      <ListEmpty colSpan={hasRegions ? 9 : 8}>{t("sourcesPage.empty")}</ListEmpty>
+                      <ListEmpty colSpan={hasRegions ? 9 : 8} testId="sources-empty">
+                        {listableSources.length === 0
+                          ? t("sourcesPage.empty")
+                          : t("sourcesPage.noMatch")}
+                      </ListEmpty>
                     );
                   }
                   return (

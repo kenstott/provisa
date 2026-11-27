@@ -38,6 +38,7 @@ from provisa.compiler.sql_types import (
     JoinMeta,
     StatementSources,
     TableMeta,
+    registered_type,
 )
 
 
@@ -137,6 +138,18 @@ def _integer_result(func_name: str, table_id: int, phys: str, ctx: CompilationCo
     return func_name in _INTEGER_OF_INTEGER and (table_id, phys.lower()) in ctx.integer_columns
 
 
+#: REQ-1961: the aggregates whose result has the type of the column they read.
+_SAME_TYPE = frozenset({"min", "max"})
+
+
+def _result_type(func_name: str, table_id: int, phys: str, ctx: CompilationContext) -> str | None:
+    """The registered type of ``func_name`` over column ``phys`` (REQ-1961): MIN and MAX have
+    the column's type. SUM, AVG, STDDEV and VARIANCE widen it as each engine chooses, so their
+    type is not known at compile time; a decimal result is then written at the precision and
+    scale its values carry."""
+    return registered_type(ctx, table_id, phys) if func_name in _SAME_TYPE else None
+
+
 def _build_agg_func_parts(
     sql_func: str,
     func_name: str,
@@ -165,6 +178,7 @@ def _build_agg_func_parts(
                 field_name=field_name,
                 nested_in=f"{agg_key}.{fn_key}",
                 integer=_integer_result(func_name, table_id, phys, ctx),
+                data_type=_result_type(func_name, table_id, phys, ctx),
             )
         )
     return select_parts, columns
@@ -502,6 +516,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                 field_name=col,
                 nested_in="groupKey",
                 integer=(table.table_id, phys.lower()) in ctx.integer_columns,
+                data_type=registered_type(ctx, table.table_id, phys),
             )
         )
 
@@ -530,6 +545,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                     field_name=col_aliases.get(func_name, {}).get(col_name, col_name),
                     nested_in=f"aggregate.{func_name}",
                     integer=_integer_result(func_name, table.table_id, phys, ctx),
+                    data_type=_result_type(func_name, table.table_id, phys, ctx),
                 )
             )
 

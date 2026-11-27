@@ -473,8 +473,11 @@ async def _upsert_sources(conn: "Connection", config: ProvisaConfig) -> None:  #
     """Add each source the config declares to the store, or replace its definition. Stored as
     written: a credential's reference, never its value."""
     for src in config.written.sources:
-        # REQ-1921: a configuration carries a withdrawn source as withdrawn.
-        await source_repo.upsert(conn, src, withdrawn=src.withdrawn)
+        # REQ-1921: a configuration carries a withdrawn source as withdrawn; REQ-2262: and its
+        # setup outcomes as the store held them.
+        await source_repo.upsert(
+            conn, src, withdrawn=src.withdrawn, setup_outcomes=src.setup_outcomes
+        )
 
 
 def resolved_source(source: Source) -> Source:  # REQ-1919

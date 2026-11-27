@@ -9,6 +9,7 @@
     "detailPanel": "Details van platformregio",
     "colRegion": "Regio",
     "none": "Het platform declareert geen regio's.",
+    "noMatch": "Geen regio's komen overeen met het filter.",
     "edit": "Bewerken",
     "remove": "Verwijderen",
     "taken": "Er bestaat al een regio met de naam {{id}}.",

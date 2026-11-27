@@ -9,6 +9,7 @@
     "detailPanel": "平台区域详情",
     "colRegion": "区域",
     "none": "平台未声明任何区域。",
+    "noMatch": "没有符合筛选条件的区域。",
     "edit": "编辑",
     "remove": "移除",
     "taken": "已存在名为 {{id}} 的区域。",

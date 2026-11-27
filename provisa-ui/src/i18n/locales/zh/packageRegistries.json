@@ -46,6 +46,7 @@
     "kind_git": "Git 主机",
     "add": "添加注册表",
     "none": "没有包注册表。安装来自公共注册表。",
+    "noMatch": "没有符合筛选条件的包注册表。",
     "filterPlaceholder": "筛选注册表",
     "closeForm": "关闭表单",
     "edit": "编辑 {{name}}",

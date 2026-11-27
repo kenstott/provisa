@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Deleting a table, column, relationship, tag or metric retires it (REQ-2248).
+"""Deleting a table, column, relationship, tag, metric, glossary term or domain retires it (REQ-2248).
 
 Per kind: the delete keeps the row, marked retired with who (the person the change commits as),
 when and why; the projected model file carries the retirement; a merge carries a retirement and
@@ -35,7 +35,7 @@ from provisa.core.repositories import relationship as rel_repo
 from provisa.core.repositories import source as source_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
-from provisa.core.repositories.retirement import RetiredNameTaken
+from provisa.core.repositories.retirement import RETIRED_MARK, RetiredNameTaken
 from provisa.core.schema_org import (
     domains,
     metrics,
@@ -426,9 +426,12 @@ def _merge(source: dict, target: dict, removals: bool) -> dict:
     return merged_tree(source, target, set(source) | set(target), removals, by="ada", why=MERGE_WHY)
 
 
+TERM = "terms/order.yaml"
+
+
 @pytest.mark.parametrize(
     "path",
-    [ORDERS, "tags/legacy.yaml", "metrics/revenue.yaml"],
+    [ORDERS, "tags/legacy.yaml", "metrics/revenue.yaml", TERM],
 )
 def test_a_retirement_in_the_source_travels_to_the_target(path):
     target = {path: {"retired": False}}
@@ -436,7 +439,7 @@ def test_a_retirement_in_the_source_travels_to_the_target(path):
     assert merged[path] == STAMP
 
 
-@pytest.mark.parametrize("path", [ORDERS, "tags/legacy.yaml", "metrics/revenue.yaml"])
+@pytest.mark.parametrize("path", [ORDERS, "tags/legacy.yaml", "metrics/revenue.yaml", TERM])
 def test_a_merge_that_removes_an_object_retires_it_in_the_target(path):
     merged = _merge({}, {path: {"retired": False, "description": "kept"}}, removals=True)
     body = merged[path]
@@ -450,33 +453,148 @@ def test_a_merge_that_removes_a_retired_object_keeps_its_own_retirement():
     assert merged["tags/legacy.yaml"] == STAMP
 
 
-def test_a_domain_a_merge_removes_still_goes():
-    """Only the kinds REQ-2248 names are retired; a domain is not one of them."""
+def _retired_domain(merged: dict, domain_id: str) -> tuple[str, dict]:
+    """The one retired domain file in ``merged`` that was ``domain_id``, by path and body."""
+    [(path, body)] = [
+        (p, b)
+        for p, b in merged.items()
+        if p.endswith("domain.yaml") and b.get("retired_id") == domain_id
+    ]
+    return path, body
+
+
+def test_a_domain_a_merge_removes_is_retired_under_a_key_of_its_own():
+    """As its delete does: the row is kept, retired, and its id is free (REQ-2248, amended
+    2026-11-15: DELETING A SOURCE OR A DOMAIN RETIRES IT)."""
     merged = _merge({}, {"finance/domain.yaml": {"description": "ledgers"}}, removals=True)
     assert "finance/domain.yaml" not in merged
+    path, body = _retired_domain(merged, "finance")
+    assert path.startswith(f"finance{RETIRED_MARK}") and path.endswith("/domain.yaml")
+    assert body["description"] == "ledgers"
+    assert (body["retired"], body["status_by"], body["status_reason"]) == (True, "ada", MERGE_WHY)
 
 
-def test_a_domain_a_merge_removes_stays_while_a_table_it_retires_sits_in_it():
-    """The retired table keeps its row, and its row its domain: removing the domain under it would
-    leave the merged tree naming a domain it does not hold, and the merge would be refused whole."""
+def test_a_domain_holding_only_a_retired_table_is_retired_with_it():
+    """The table the merge retires goes with the domain to its key, and a live table's
+    relationship to it follows it there."""
+    elsewhere = "crm/tables/accounts.yaml"
+    target = {
+        "sales/domain.yaml": {"description": "revenue"},
+        ORDERS: _order(),
+        "crm/domain.yaml": {"description": "accounts"},
+        elsewhere: {"table_name": "accounts", "relationships": [{"id": "a_o", "target": ORDERS}]},
+    }
+    source = {"crm/domain.yaml": target["crm/domain.yaml"], elsewhere: target[elsewhere]}
+    merged = _merge(source, target, removals=True)
+    path, _ = _retired_domain(merged, "sales")
+    moved = path.replace("domain.yaml", "tables/orders.yaml")
+    assert ORDERS not in merged and "sales/domain.yaml" not in merged
+    assert merged[moved]["retired"] is True
+    assert merged[elsewhere]["relationships"] == [{"id": "a_o", "target": moved}]
+    assert merged["crm/domain.yaml"] == {"description": "accounts"}
+
+
+def test_a_domain_still_holding_a_live_table_is_kept_unchanged():
+    """The merge removes the domain but not the table in it, so its delete would be refused."""
     domain = {"description": "revenue"}
-    merged = _merge({}, {"sales/domain.yaml": domain, ORDERS: _order()}, removals=True)
+    target = {"sales/domain.yaml": domain, ORDERS: _order()}
+    merged = merged_tree({}, target, {"sales/domain.yaml"}, True, by="ada", why=MERGE_WHY)
     assert merged["sales/domain.yaml"] == domain
-    assert merged[ORDERS]["retired"] is True
+    assert merged[ORDERS] == _order()
 
 
-def test_a_term_a_merge_removes_stays_while_a_table_it_retires_names_it():
-    term = "terms/order.yaml"
+@pytest.mark.parametrize(
+    "holder",
+    [
+        ("terms/order.yaml", {"name": "order", "domains": [{"domain_id": "sales"}]}),
+        ("sources/pg.yaml", {"type": "postgresql", "allowed_domains": ["sales"]}),
+        ("data-products/ledger.yaml", {"name": "ledger", "domain_id": "sales"}),
+        ("sales/eu/domain.yaml", {"parent_domain_id": "sales"}),
+    ],
+)
+def test_a_domain_a_live_object_names_is_kept_unchanged(holder):
+    path, body = holder
+    domain = {"description": "revenue"}
+    target = {"sales/domain.yaml": domain, path: body}
+    merged = _merge({path: body}, target, removals=True)
+    assert merged["sales/domain.yaml"] == domain
+    assert merged[path] == body
+
+
+def test_a_domain_held_only_by_a_retired_object_is_retired_and_the_object_follows_it():
+    target = {
+        "sales/domain.yaml": {"description": "revenue"},
+        TERM: {"name": "order", "domains": [{"domain_id": "sales"}]},
+    }
+    merged = _merge({}, target, removals=True)
+    path, _ = _retired_domain(merged, "sales")
+    key = path.removesuffix("/domain.yaml")
+    assert merged[TERM]["retired"] is True
+    assert merged[TERM]["domains"] == [{"domain_id": key}]
+
+
+def test_a_domain_and_one_under_it_both_removed_are_both_retired():
+    target = {
+        "sales/domain.yaml": {"description": "revenue"},
+        "sales/eu/domain.yaml": {"parent_domain_id": "sales"},
+    }
+    merged = _merge({}, target, removals=True)
+    parent, _ = _retired_domain(merged, "sales")
+    _, child = _retired_domain(merged, "sales/eu")
+    assert child["parent_domain_id"] == parent.removesuffix("/domain.yaml")
+
+
+def test_a_domain_the_deployment_keeps_is_never_retired():
+    root = {"description": "no domain"}
+    merged = _merge({}, {"domain.yaml": root}, removals=True)
+    assert merged == {"domain.yaml": root}
+
+
+def test_a_retired_domain_a_merge_removes_keeps_its_own_key_and_retirement():
+    path = f"finance{RETIRED_MARK}abc/domain.yaml"
+    body = {**STAMP, "retired_id": "finance"}
+    assert _merge({}, {path: dict(body)}, removals=True) == {path: body}
+
+
+def test_a_domain_retired_in_the_source_is_joined_not_retired_twice():
+    """The source's delete retired the domain with its table; the target's copy joins that one."""
+    key = f"sales{RETIRED_MARK}abc"
+    theirs = {
+        f"{key}/domain.yaml": {**STAMP, "retired_id": "sales", "description": "revenue"},
+        f"{key}/tables/orders.yaml": _order(**STAMP),
+    }
+    target = {"sales/domain.yaml": {"description": "revenue"}, ORDERS: _order()}
+    merged = _merge(theirs, target, removals=True)
+    assert merged == theirs
+
+
+def test_a_term_a_merge_removes_is_retired_and_a_table_it_retires_still_names_it():
     merged = _merge(
         {},
         {
             "sales/domain.yaml": {"description": "revenue"},
-            term: {"name": "order"},
-            ORDERS: _order(glossary=[{"column_name": "id", "term": term}]),
+            TERM: {"name": "order", "approved": True, "retire_on": "2027-01-01"},
+            ORDERS: _order(glossary=[{"column_name": "id", "term": TERM}]),
         },
         removals=True,
     )
-    assert merged[term] == {"name": "order"}
+    term = merged[TERM]
+    assert (term["retired"], term["status_by"], term["status_reason"]) == (True, "ada", MERGE_WHY)
+    assert (term["approved"], term["deprecation_asserted"]) == (False, False)
+    assert "retire_on" not in term
+    [table] = [b for p, b in merged.items() if p.endswith("/tables/orders.yaml")]
+    assert table["glossary"] == [{"column_name": "id", "term": TERM}]
+
+
+@pytest.mark.parametrize("held", [False, True])
+def test_a_source_a_merge_lacks_is_kept_unchanged(held):
+    """A source is identity-only (REQ-1491): no merge removes it, so none retires it."""
+    source_file = {"type": "postgresql"}
+    target: dict[str, dict] = {"sources/pg.yaml": source_file}
+    if held:
+        target |= {"sales/domain.yaml": {}, ORDERS: _order(source_id="pg")}
+    merged = _merge({k: v for k, v in target.items() if k != "sources/pg.yaml"}, target, True)
+    assert merged["sources/pg.yaml"] == source_file
 
 
 @pytest.mark.parametrize("removals", [False, True])

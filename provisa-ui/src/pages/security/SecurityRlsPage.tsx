@@ -58,6 +58,7 @@ import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { matchesQuery } from "../../lib/searchItems";
+import { RoutePageHelp } from "../../components/RoutePageHelp";
 
 const EMPTY_RULE = {
   tableId: "",
@@ -302,6 +303,8 @@ export function SecurityRlsPage() {
     setShowRuleForm(true);
   };
 
+  const rightsLabel = (r: RLSRule) =>
+    r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", ");
   const filtered = rules.filter((r) => {
     if (narrowTo && r.tagId) {
       // A tag rule belongs to every domain that holds a table carrying the tag.
@@ -322,7 +325,11 @@ export function SecurityRlsPage() {
         : r.domainId
           ? `domain:${r.domainId}`
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-    return matchesQuery([r.roleId, scope, r.description], ruleSearch);
+    // Every text a rule's row shows.
+    return matchesQuery(
+      [String(r.id), scope, r.roleId, rightsLabel(r), r.filterExpr, r.description],
+      ruleSearch,
+    );
   });
 
   // REQ-1940: sort and group are the shared list mechanism.
@@ -334,8 +341,6 @@ export function SecurityRlsPage() {
         : r.domainId
           ? r.domainId
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
-  const rightsLabel = (r: RLSRule) =>
-    r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", ");
   const ruleColumns: ListColumn<RLSRule>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {
@@ -676,6 +681,7 @@ export function SecurityRlsPage() {
             ariaLabel={t("securityPage.purposeAria")}
             testId="security-purpose-help"
           />
+          <RoutePageHelp placement="own" />
         </Group>
       </Group>
 
@@ -709,7 +715,7 @@ export function SecurityRlsPage() {
             />
             <Table.Tbody>
               {filtered.length === 0 && (
-                <ListEmpty colSpan={6}>
+                <ListEmpty colSpan={6} testId="rules-empty">
                   {rules.length === 0
                     ? t("securityPage.noRulesDefined")
                     : t("securityPage.noRulesMatchFilter")}

@@ -245,6 +245,9 @@ class CompilationContext:
     # REQ-1867: (table_id, physical column name lowercased) for every registered column typed an
     # integer: written as a JSON number, by its type.
     integer_columns: set[tuple[int, str]] = field(default_factory=set)
+    # REQ-1961: (table_id, physical column name lowercased) → the column's registered type, for
+    # every registered column: what a ColumnRef carries as its data_type.
+    column_types: dict[tuple[int, str], str] = field(default_factory=dict)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —
@@ -293,6 +296,13 @@ _INTEGER_TYPES = frozenset(
 )  # fmt: skip
 
 
+def registered_type(ctx: CompilationContext, table_id: int, physical: str) -> str | None:
+    """REQ-1961: the registered type of ``physical`` in table ``table_id``. None for a name that
+    is not a registered column of the table (a virtual column, ``__typename``): it has no
+    registered type, which is what ColumnRef.data_type None states."""
+    return ctx.column_types.get((table_id, physical.lower()))
+
+
 @functools.lru_cache(maxsize=1024)
 def is_integer_type(data_type: str | None) -> bool:
     """REQ-1867: a column type whose values are integers, written as JSON numbers by the type --
@@ -322,8 +332,9 @@ class ColumnRef:
     # represented its value as (a DuckDB HUGEINT read through Arrow is a Decimal).
     integer: bool = False
     # REQ-1961: the registered type of the column, e.g. "numeric(18,2)". None when the column has
-    # no registered type or the type is not known at compile time. Export formats use this to
-    # produce exact decimal columns (decimal128(p,s) in Parquet) instead of float64.
+    # no registered type or the type is not known at compile time (an expression, a SUM). Parquet
+    # writes a sized numeric as its declared decimal; a Decimal with no declared size is written at
+    # the precision and scale its values carry. A Decimal is never written as a float.
     data_type: str | None = None
 
 

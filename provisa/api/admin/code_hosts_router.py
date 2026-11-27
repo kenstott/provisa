@@ -22,18 +22,12 @@ Under ``/admin/orgs/{org_id}/code-sources/{source_id}``:
   stream), which its form lists.
 - ``GET /host``: the source's mode and whether its remote host answers. ``POST /repin``
   ``{code_hash}``: pin the source to the code its host now runs, once reviewed.
-- ``POST /validate`` ``{script, inputs, keys}`` (REQ-2225): a Spark source's script -- the one in
-  the form, or with none the one it serves -- validated by its host in three steps: the static
-  check, a dry run of each function on a sample of the governed tables ``inputs`` names, read as
-  the caller's role, and each resolver's two ``keys`` (provisa/codesource/script_validation.py).
 
 Each is opened by ``source_registration`` held in THAT organisation, as the code uploads are.
 """
 
-# Requirements: REQ-2098, REQ-2225
+# Requirements: REQ-2098
 from __future__ import annotations
-
-from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
@@ -62,15 +56,6 @@ class ConnectBody(BaseModel):
 
 class RepinBody(BaseModel):
     code_hash: str
-
-
-class ValidateBody(BaseModel):
-    #: The script to validate; None validates the one the source serves.
-    script: str | None = None
-    #: Each function's inputs by parameter: a table argument's value names a governed table.
-    inputs: dict[str, dict[str, Any]] = {}
-    #: Each code resolver's two keys, its source key and its target key.
-    keys: dict[str, tuple[str, str]] = {}
 
 
 def _refusal(refused: BundleRefused | ContainerRegistryRefused) -> ApiError:
@@ -183,19 +168,3 @@ async def exports(request: Request, org_id: str, source_id: str) -> dict:
         missing = BundleRefused("not_found", f"There is no source {source_id!r}", source=source_id)
         raise _refusal(missing)
     return {"exports": [{"name": name, "kind": kind} for name, kind in found]}
-
-
-@router.post("/validate")
-async def validate(request: Request, org_id: str, source_id: str, body: ValidateBody) -> dict:
-    from provisa.api.admin.capabilities import acting_role_of_request
-    from provisa.codesource import script_validation
-
-    await _guard(request, org_id)
-    asked = script_validation.Asked(script=body.script, inputs=body.inputs, keys=body.keys)
-    try:
-        target = await script_validation.target_of(_state(), source_id)
-        return await script_validation.validate(
-            _state(), target, asked, acting_role_of_request(request)
-        )
-    except BundleRefused as refused:
-        raise _refusal(refused) from None

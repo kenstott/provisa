@@ -6,11 +6,22 @@
     "nowhere": "कहीं नहीं",
     "hiddenPlaces_one": "{{count}} और जिन्हें आप नहीं पढ़ सकते",
     "hiddenPlaces_other": "{{count}} और जिन्हें आप नहीं पढ़ सकते",
-    "rowFilters_one": "{{count}} पंक्ति फ़िल्टर",
-    "rowFilters_other": "{{count}} पंक्ति फ़िल्टर",
-    "classifiedAs": "वर्गीकरण द्वारा निर्दिष्ट: {{kind}}",
     "noDependents": "कुछ नहीं",
     "enabled": "सक्षम",
-    "disabled": "अक्षम"
+    "disabled": "अक्षम",
+    "objectCount_one": "{{count}} ऑब्जेक्ट",
+    "objectCount_other": "{{count}} ऑब्जेक्ट",
+    "sourceCount_one": "{{count}} स्रोत",
+    "sourceCount_other": "{{count}} स्रोत",
+    "objectsInSources": "{{sources}} में {{objects}}",
+    "classificationCount_one": "{{count}} वर्गीकरण",
+    "classificationCount_other": "{{count}} वर्गीकरण",
+    "rowRuleCount_one": "{{count}} पंक्ति नियम",
+    "rowRuleCount_other": "{{count}} पंक्ति नियम",
+    "groupTables": "टेबल ({{count}})",
+    "groupColumns": "कॉलम ({{count}})",
+    "groupClassification": "वर्गीकरण द्वारा निर्दिष्ट ({{count}})",
+    "groupRowRules": "पंक्ति नियम ({{count}})",
+    "filterClassifications": "वर्गीकरण फ़िल्टर करें"
   }
 }

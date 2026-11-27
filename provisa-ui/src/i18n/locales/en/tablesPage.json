@@ -78,6 +78,7 @@
     "erdHelpBody": "Draws the registered tables and the relationships declared between them, so you can see which joins exist before you write a query. It is read-only: filter by domain and export the diagram as PNG or SVG.",
     "purposeModel": "+ Model declares an entity or a fact, the building blocks of a star schema and a Data Vault. It registers the materialized view, its Time Travel, and the relationships to the entities it keys on.",
     "empty": "No tables registered yet.",
+    "noMatch": "No tables match the filter.",
     "resizeDetail": "Resize the detail panel",
     "detailPanel": "Table details",
     "closeDetail": "Close the detail panel",

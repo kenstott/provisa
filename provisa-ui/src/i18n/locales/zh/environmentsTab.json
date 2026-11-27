@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "环境",
+    "noEnvironments": "暂无环境。",
+    "noMatch": "没有符合筛选条件的环境。",
     "tabRequests": "合并请求",
     "tabRepository": "仓库",
     "tabIntegration": "集成",

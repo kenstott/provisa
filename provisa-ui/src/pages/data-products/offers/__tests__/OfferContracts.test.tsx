@@ -470,6 +470,24 @@ describe("an offer's contracts (REQ-2180)", () => {
     expect(screen.queryByTestId("data-contract-2")).toBeNull();
   });
 
+  it("expand and collapse every card of a document from icons beside its heading", async () => {
+    await panel(3);
+    openContracts();
+    await openDocument(1);
+    const cards = ["details", "fields", "sla", "quality", "versions"];
+    const open = () =>
+      cards.map((c) =>
+        screen.getByTestId(`data-contract-1-${c}-toggle`).getAttribute("aria-expanded"),
+      );
+    expect(open()).toEqual(cards.map(() => "true"));
+    fireEvent.click(screen.getByTestId("offer-1-contract-1-document-collapse-all"));
+    expect(open()).toEqual(cards.map(() => "false"));
+    // The document itself stays open: the icons act on its cards.
+    expect(screen.getByTestId("data-contract-1")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("offer-1-contract-1-document-expand-all"));
+    expect(open()).toEqual(cards.map(() => "true"));
+  });
+
   it("warn where the newest version breaks a reader, naming it", async () => {
     const breaking = await panel(3, undefined, [saved("1.0.0"), saved("2.0.0", [REMOVED])]);
     openContracts();

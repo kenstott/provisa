@@ -14,6 +14,9 @@
 //
 // - A form's primary action is never disabled by a missing or invalid field: it validates on the
 //   click (useRequiredFields). It is disabled only when there is nothing to act on (`.length === 0`).
+// - (REQ-2277 rule 2, maintainer 2026-11-26: a one-field prompt is a form too.) No button, in a
+//   form or not, primary or not, is disabled by an empty typed value (`!x.trim()`,
+//   `x.trim() === ""`, or `!x` / `x === ""` on a field's own value): its press checks it.
 // - A field that blocks submit carries the required marker: a field a submit handler refuses while
 //   empty is `required`, every field named to useRequiredFields is spread onto its control, and a
 //   native select given `.native(...)` draws <RequiredMark /> in its label.
@@ -23,6 +26,8 @@ import ts from "typescript";
 export type RequiredRule =
   /** A form's primary action disabled by a missing or invalid field. */
   | "primary-disabled-by-field"
+  /** Any button disabled by an empty typed value. */
+  | "action-disabled-by-empty-value"
   /** A field that blocks submit without the required marker. */
   | "required-unmarked";
 
@@ -169,6 +174,41 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
     return found;
   };
 
+  /** The typed values an expression treats as empty: `!x.trim()` and `x.trim() === ""` on any
+   *  value, and `!x` / `x === ""` on a field's own value. */
+  const emptyValues = (e: ts.Expression): string[] => {
+    const found: string[] = [];
+    const look = (n: ts.Node) => {
+      if (ts.isPrefixUnaryExpression(n) && n.operator === ts.SyntaxKind.ExclamationToken) {
+        const inner = strip(n.operand);
+        const trim = trimmed(inner);
+        if (trim && isName(trim)) found.push(trim.getText());
+        else if (isName(inner) && fields.has(inner.getText())) found.push(inner.getText());
+      }
+      if (
+        ts.isBinaryExpression(n) &&
+        [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken].includes(
+          n.operatorToken.kind,
+        )
+      ) {
+        for (const [side, other] of [
+          [n.left, n.right],
+          [n.right, n.left],
+        ] as const) {
+          const x = strip(other);
+          if (!(ts.isStringLiteralLike(x) && x.text === "")) continue;
+          const trim = trimmed(side);
+          if (trim && isName(trim)) found.push(trim.getText());
+          else if (isName(strip(side)) && fields.has(strip(side).getText()))
+            found.push(strip(side).getText());
+        }
+      }
+      ts.forEachChild(n, look);
+    };
+    look(e);
+    return found;
+  };
+
   const checkDisabled = (what: string, node: ts.Node, e: ts.Expression | undefined) => {
     if (!e) return;
     const missing = missingFields(e);
@@ -265,6 +305,17 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
       const tag = tagOf(n);
       if (tag === "SaveButton") checkDisabled("<SaveButton>", n, attrExpr(n, "disabled"));
       if (isPrimaryButton(n)) checkDisabled("the primary <Button>", n, attrExpr(n, "disabled"));
+      else if (["Button", "DestructiveConfirmButton", "ActionIcon"].includes(tag)) {
+        const disabled = attrExpr(n, "disabled");
+        const empty = disabled ? emptyValues(disabled) : [];
+        if (empty.length > 0) {
+          report(
+            "action-disabled-by-empty-value",
+            n,
+            `<${tag}> disabled by empty ${empty.join(", ")}: check it on the press (useRequiredFields)`,
+          );
+        }
+      }
       if (tag === "FormFooter") {
         const props = attrExpr(n, "saveProps");
         if (props && ts.isObjectLiteralExpression(strip(props))) {

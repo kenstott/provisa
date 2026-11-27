@@ -12,6 +12,7 @@ import { Group, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { ContextPlace } from "../api/contextViews";
 import { EntityLink } from "./EntityLink";
+import { placeName } from "./contextPlaceTexts";
 
 /** REQ-2259: the tables and columns a tag is applied to or a kind was detected on, each a link to
  * its panel when the viewer holds the table page's right; those the viewer does not read are only
@@ -36,7 +37,7 @@ export function ContextPlaces({
   return (
     <Group gap={6} data-testid={testId}>
       {places.map((p) => {
-        const name = p.column === null ? p.tableRef : `${p.tableRef}.${p.column}`;
+        const name = placeName(p);
         return (
           <Text size="xs" key={name} component="span">
             {p.column === null ? (

@@ -28,6 +28,7 @@ from provisa.compiler.sql_types import (
     JoinMeta,
     StatementSources,
     TableMeta,
+    registered_type,
 )
 from provisa.compiler.sql_rewrite import (
     _join_column_expr,
@@ -639,6 +640,7 @@ def _collect_nested_columns(
                     cardinality=cardinality,
                     json=(parent_table.table_id, nested_phys.lower()) in ctx.json_columns,
                     integer=(parent_table.table_id, nested_phys.lower()) in ctx.integer_columns,
+                    data_type=registered_type(ctx, parent_table.table_id, nested_phys),
                 )
             )
     return alias_counter, has_lateral

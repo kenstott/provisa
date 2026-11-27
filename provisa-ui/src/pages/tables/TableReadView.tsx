@@ -39,9 +39,19 @@ import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useTableSection, type TableSection } from "./tableSections";
 import { TableAssociations } from "./TableAssociations";
 import { ParametersPanel } from "./ParametersPanel";
+import { parameterName } from "./parameters";
 import { IdentityRead, LoadRead, QualityRead, QueryRead } from "./TableSectionsRead";
 import { dataProductField } from "./tableSectionFields";
 import { KeepsHistoryNote } from "./KeepsHistoryNote";
+
+/** How many cells a row of each column tab spans: the column's name and the tab's attributes. */
+const COLUMN_TAB_WIDTH: Record<ColumnTab, number> = {
+  naming: 3,
+  type: 4,
+  access: 3,
+  testing: 4,
+  writeGrants: 1,
+};
 
 interface TableProfileResult {
   columns: string[];
@@ -149,6 +159,11 @@ export function TableReadView({
   // is not offered Testing, here as in the editor.
   const shownTabs = COLUMN_TABS.filter((topic) => !(topic === "testing" && hidingOnly));
   const [tab, setTab] = useColumnTab(shownTabs, columnTab);
+  // REQ-1986: the Columns tab lists the table's data columns, then its parameters apart, each
+  // under the name a caller gives it.
+  const dataColumns = table.columns.filter((c) => !c.nativeFilterType);
+  const parameterColumns = table.columns.filter((c) => c.nativeFilterType);
+  const firstParameter = parameterColumns[0];
   // The row a link names is brought into view when it is first shown, not at each render.
   const linkedRow = useRef<HTMLTableRowElement | null>(null);
   useEffect(() => {
@@ -622,8 +637,17 @@ export function TableReadView({
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {table.columns.map((c) => (
+                    {[...dataColumns, ...parameterColumns].map((c) => (
                       <Fragment key={c.id}>
+                        {c === firstParameter && (
+                          <Table.Tr data-testid="table-read-parameters-heading">
+                            <Table.Td colSpan={COLUMN_TAB_WIDTH[tab]}>
+                              <Text size="sm" fw={600}>
+                                {t("parametersPanel.title")}
+                              </Text>
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
                         <Table.Tr
                           ref={c.columnName === column ? linkedRow : undefined}
                           className={c.columnName === column ? "row-selected" : undefined}
@@ -671,7 +695,9 @@ export function TableReadView({
                                 },
                               ]}
                             >
-                              <code>{c.columnName}</code>
+                              <code>
+                                {c.nativeFilterType ? parameterName(c.columnName) : c.columnName}
+                              </code>
                             </ColumnGlossaryHover>
                             {c.nativeFilterType && (
                               <Badge

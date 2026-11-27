@@ -153,6 +153,7 @@ def _register_table_in_ctx(
             # REQ-151: a SQL database's path column is text here already (schema_gen.
             # _served_as_text), neither the JSON column it is read from nor a number.
             col_info.append((col_name, col_meta.data_type))
+            ctx.column_types[(t.table_id, col_name.lower())] = col_meta.data_type
             if is_json_type(col_meta.data_type):
                 ctx.json_columns.add((t.table_id, col_name.lower()))
             if is_integer_type(col_meta.data_type):

@@ -17,10 +17,12 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, Table, Text } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Table, Text } from "@mantine/core";
+import { useSearchParams } from "react-router-dom";
 import { Check, Library, TriangleAlert } from "lucide-react";
 import {
   fetchLibrary,
+  fetchReviewsDue,
   reembedLibrary,
   type LibraryDocument,
   type ReembedOutcome,
@@ -37,7 +39,6 @@ import { SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
 import { useUrlFilter } from "../../components/list/useUrlFilter";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
-import { PageHelp } from "../../components/PageHelp";
 import { PageLoading } from "../../components/PageLoading";
 import { PageTitle } from "../../components/PageTitle";
 import { useCapability } from "../../hooks/useCapability";
@@ -45,7 +46,8 @@ import { documentMark } from "../../lib/documentMark";
 import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadges";
 import { LibraryAddForm } from "./LibraryAddForm";
 import { LibraryDetail } from "./LibraryDetail";
-import { addedOrRefreshed, when } from "./libraryParts";
+import { addedOrRefreshed, libraryRowTexts, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { matchesQuery } from "../../lib/searchItems";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
@@ -57,6 +59,20 @@ export function LibraryPage() {
   const [error, setError] = useState("");
   // REQ-2277: the list's filter, in the URL.
   const [search, setSearch] = useUrlFilter();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reviewsDueOnly = searchParams.get(REVIEWS_DUE_PARAM) === "1";
+  // The documents with reviews due, read while the list is narrowed to them.
+  const [due, setDue] = useState<ReadonlySet<number> | null>(null);
+  const setReviewsDueOnly = (on: boolean) =>
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (on) n.set(REVIEWS_DUE_PARAM, "1");
+        else n.delete(REVIEWS_DUE_PARAM);
+        return n;
+      },
+      { replace: true },
+    );
   // REQ-2241: `?document=<id>` is the open document's panel.
   // REQ-2260: and the one left open is open again on coming back.
   const detail = useRememberedDetail(
@@ -75,6 +91,18 @@ export function LibraryPage() {
       .then(setDocuments)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  useEffect(() => {
+    if (!reviewsDueOnly) return;
+    let live = true;
+    fetchReviewsDue().then(
+      (r) => live && setDue(new Set(r.documents.map((d) => d.id))),
+      (e: unknown) => live && setError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [reviewsDueOnly]);
 
   const indexing = (documents ?? []).some((d) => d.index_status === "indexing");
   useEffect(() => {
@@ -103,13 +131,15 @@ export function LibraryPage() {
   };
   const stale = (documents ?? []).filter((d) => d.needs_reembedding).length;
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return documents ?? [];
-    return (documents ?? []).filter((d) =>
-      [d.title, d.source, ...d.domains].some((v) => v.toLowerCase().includes(needle)),
-    );
-  }, [documents, search]);
+  // REQ-2143: the page search reads the web-search syntax, over every text a row shows, after the
+  // reviews-due narrowing.
+  const filtered = useMemo(
+    () =>
+      (documents ?? [])
+        .filter((d) => !reviewsDueOnly || (due !== null && due.has(d.id)))
+        .filter((d) => matchesQuery(libraryRowTexts(d, t, i18n.language), search)),
+    [documents, search, reviewsDueOnly, due, t, i18n.language],
+  );
 
   const columns: ListColumn<LibraryDocument>[] = useMemo(
     () => [
@@ -141,7 +171,9 @@ export function LibraryPage() {
   );
   const sortGroup = useListSortGroup(filtered, columns, "library");
 
-  if (documents === null && !error) return <PageLoading message={t("referenceLibrary.loading")} />;
+  if ((documents === null || (reviewsDueOnly && due === null)) && !error) {
+    return <PageLoading message={t("referenceLibrary.loading")} />;
+  }
 
   const doc = selected === null ? null : ((documents ?? []).find((d) => d.id === selected) ?? null);
   const replace = (d: LibraryDocument) =>
@@ -161,6 +193,8 @@ export function LibraryPage() {
       key={doc.id}
       doc={doc}
       canEdit={canEdit}
+      tab={detail.tab ?? "overview"}
+      onTab={detail.setTab}
       onChanged={replace}
       onRemoved={(id) => {
         setDocuments((prev) => (prev ?? []).filter((x) => x.id !== id));
@@ -181,6 +215,13 @@ export function LibraryPage() {
           remember="library"
         />
         <div className="page-actions">
+          <Checkbox
+            label={t("referenceLibrary.reviewsDueOnly")}
+            checked={reviewsDueOnly}
+            onChange={(e) => setReviewsDueOnly(e.currentTarget.checked)}
+            styles={{ label: { whiteSpace: "nowrap" } }}
+            data-testid="reflib-reviews-due-only"
+          />
           {canEdit && stale > 0 && (
             <Button
               variant="light"
@@ -203,18 +244,6 @@ export function LibraryPage() {
               {t("referenceLibrary.add")}
             </Button>
           )}
-          <PageHelp
-            title={t("referenceLibrary.helpTitle")}
-            paragraphs={[
-              t("referenceLibrary.intro"),
-              t("referenceLibrary.helpWhat"),
-              t("referenceLibrary.helpWho"),
-              t("referenceLibrary.helpSees"),
-              t("referenceLibrary.helpEmbedding"),
-            ]}
-            ariaLabel={t("referenceLibrary.helpLabel")}
-            testId="reflib-page-help"
-          />
         </div>
       </div>
       <Text c="dimmed" size="sm" mb="sm" data-testid="reflib-why">
@@ -284,7 +313,10 @@ export function LibraryPage() {
             <Table.Tbody>
               {filtered.length === 0 && (
                 <ListEmpty colSpan={5} testId="reflib-empty">
-                  {t("referenceLibrary.empty")}
+                  {/* A list a filter emptied says so, never that the library is empty. */}
+                  {(documents ?? []).length === 0
+                    ? t("referenceLibrary.empty")
+                    : t("referenceLibrary.noMatch")}
                 </ListEmpty>
               )}
               <ListItems

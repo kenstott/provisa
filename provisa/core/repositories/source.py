@@ -19,7 +19,7 @@ from sqlalchemy import delete as _delete, insert, select, update
 
 from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
 from provisa.core.host_code import refuse_producer_command
-from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
+from provisa.core.models import BUILT_IN_SOURCE_IDS, Source, SourceSetupOutcomes
 from provisa.core.repositories import retirement
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rekey, remove_parts
 from provisa.core.schema_org import registered_tables, sources
@@ -145,14 +145,21 @@ def refuse_on_engine_shard(source: Source) -> None:  # REQ-2073
         raise RedisSourceRefused(source.id, shard)
 
 
-async def upsert(  # REQ-012, REQ-250, REQ-1919
-    conn: "Connection", source: Source, *, withdrawn: bool | None = None
+async def upsert(  # REQ-012, REQ-250, REQ-1919, REQ-2262
+    conn: "Connection",
+    source: Source,
+    *,
+    withdrawn: bool | None = None,
+    setup_outcomes: SourceSetupOutcomes | None = None,
 ) -> None:
     """Create the source, or replace its definition.
 
     REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
     the store holds it. Every other save keeps what is held (a new source is live): a source is
-    withdrawn and put back only by ``withdrawSource`` / ``putBackSource``."""
+    withdrawn and put back only by ``withdrawSource`` / ``putBackSource``.
+
+    REQ-2262: ``setup_outcomes`` likewise -- given by a configuration; every other save keeps
+    what is held, and the setup stepper records it through :func:`set_setup_outcomes`."""
     # REQ-2134: a producer command is host code; config load, a config import and the admin API
     # all save through here and ``create``.
     refuse_producer_command(source.id, source.producer_command)
@@ -168,6 +175,8 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     values = await owned_if_reconnected(conn, _source_values(source))
     if withdrawn is not None:
         values["withdrawn"] = withdrawn
+    if setup_outcomes is not None:
+        values["setup_outcomes"] = setup_outcomes.model_dump(mode="json")
     await conn.upsert(
         sources,
         values,
@@ -287,6 +296,30 @@ async def set_withdrawn(conn: "Connection", source_id: str, withdrawn: bool) -> 
         .values(withdrawn=withdrawn)
     )
     return (done.rowcount or 0) > 0
+
+
+async def set_setup_outcomes(  # REQ-2262
+    conn: "Connection", source_id: str, outcomes: SourceSetupOutcomes
+) -> SourceSetupOutcomes | None:
+    """Record what became of each step of the setup of the source in service at ``source_id``,
+    replacing what was held, and return what is now held; None when there is no such source.
+
+    ``decided_at`` is the store's: the time of the write when it leaves every step decided (the
+    tables registered after it, related to nothing, are what the collapsed line hints at), and
+    cleared while any step is open (Run setup again clears all)."""
+    from datetime import datetime, timezone
+
+    decided_at = datetime.now(timezone.utc).isoformat() if outcomes.all_decided() else None
+    stored = outcomes.model_copy(update={"decided_at": decided_at})
+    model_change.name(  # REQ-1524
+        "set setup outcomes", model_change.uri(model_uri.source_uri, source_id)
+    )
+    done = await conn.execute_core(
+        update(sources)
+        .where(sources.c.id == source_id, sources.c.retired.is_(False))
+        .values(setup_outcomes=stored.model_dump(mode="json"))
+    )
+    return stored if (done.rowcount or 0) > 0 else None
 
 
 class SourceDeleteRefused(Exception):
