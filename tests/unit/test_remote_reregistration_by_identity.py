@@ -269,11 +269,55 @@ async def test_a_column_registered_with_its_selection_outlives_a_refresh_from_th
         held = await table_repo.get_by_name(conn, "crm", "graphql", "schedules")
     assert held is not None
     columns = {c["column_name"]: c for c in held["columns"]}
-    assert set(columns) == {"id", "employee", "employee_id"}, columns
+    # REQ-1929: ``employee`` is the field the model reads through employee_id, and the
+    # relationship keyed on it; it is not also made a column (the hourly smoke's boot refused
+    # the model: RelationshipHidesColumn on S__Schedules.employee).
+    assert set(columns) == {"id", "employee_id"}, columns
     kept = columns["employee_id"]
     assert kept["gql_selection"] == "employee_id: employee { id }"
     assert (kept["data_type"], list(kept["visible_to"])) == ("integer", ["analyst"])
     assert kept["description"] == "Employee the shift belongs to"
+
+
+async def test_a_field_the_model_reads_through_a_selection_stays_a_column_where_it_holds_it(plane):
+    """The model holds ``employee`` as a column of its own beside ``employee_id``: the refresh
+    keeps both, as it keeps every column the endpoint lists and the model holds."""
+    from provisa.core.models import Column, Table
+
+    async with plane.acquire() as conn:
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="crm",
+                domain_id="sales",
+                schema_name="graphql",
+                table_name="schedules",
+                columns=[
+                    Column(name="id", data_type="integer", visible_to=["analyst"]),
+                    Column(name="employee", data_type="jsonb", visible_to=["analyst"]),
+                    Column(
+                        name="employee_id",
+                        data_type="integer",
+                        visible_to=["analyst"],
+                        gql_selection="employee_id: employee { id }",
+                    ),
+                ],
+            ),
+        )
+    endpoint = {
+        "name": "schedules",
+        "columns": [
+            {"name": "id", "type": "integer"},
+            {"name": "employee", "type": "jsonb", "gql_object_type": "Employee"},
+        ],
+    }
+    await _upsert_tables_to_semantic_layer("crm", "sales", [endpoint], plane, SERVICE_READER)
+    async with plane.acquire() as conn:
+        held = await table_repo.get_by_name(conn, "crm", "graphql", "schedules")
+    assert held is not None
+    columns = {c["column_name"]: c for c in held["columns"]}
+    assert set(columns) == {"id", "employee", "employee_id"}, columns
+    assert list(columns["employee"]["visible_to"]) == ["analyst"]
 
 
 # --- what the model holds of a column the endpoint lists -------------------------------------------

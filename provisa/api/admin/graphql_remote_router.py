@@ -383,6 +383,18 @@ def _endpoint_column_over_held(held: "dict[str, Column]", **listed: Any) -> "Col
     return Column.model_validate({**stored.model_dump(), **update})
 
 
+def _field_read(selection: str) -> str:
+    """The endpoint field a column's ``gql_selection`` reads: ``employee`` of
+    ``employee_id: employee { id }``."""
+    from graphql import FieldNode, OperationDefinitionNode, parse
+
+    (operation,) = parse(f"{{ {selection} }}").definitions
+    assert isinstance(operation, OperationDefinitionNode)
+    (field,) = operation.selection_set.selections
+    assert isinstance(field, FieldNode)
+    return field.name.value
+
+
 async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     source_id: str,
     domain_id: str,
@@ -442,6 +454,26 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
             # A table already registered keeps the name it is registered under.
             _sql_name = t.get("registered_name") or apply_sql_name(t["name"])
             _listed = {apply_sql_name(c["name"]) for c in t.get("columns", [])}
+            # REQ-308: a column the endpoint does not list stays when the model reads it with its
+            # own selection (``employee_id: employee { id }`` reads the id of the one
+            # ``employee`` the remote type holds): the endpoint's schema has no field of that
+            # name, and every read of the column is the model's.
+            _model_read = [
+                c
+                for name, c in _held.get(_sql_name, {}).items()
+                if name not in _listed and c.gql_selection and c.native_filter_type is None
+            ]
+            # REQ-1929: the endpoint field such a column reads is the model's to read. The model
+            # keys on it (the demo's schedules -> employees joins on employee_id and is the
+            # field ``employee``) and does not land the object itself, so a listed field the
+            # model neither holds nor lands is not made a column beside its key: the
+            # relationship would hide it (RelationshipHidesColumn), as the mapper never offers a
+            # field as both (mapper._detect_relationships).
+            _read_through = {
+                apply_sql_name(_field_read(c.gql_selection))
+                for c in _model_read
+                if c.gql_selection is not None
+            } - set(_held.get(_sql_name, {}))
             tbl = Table(
                 source_id=source_id,
                 # A table registered on its own keeps the domain it was registered into.
@@ -464,16 +496,9 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                         gql_is_list=c.get("gql_is_list", False),
                     )
                     for c in t.get("columns", [])
+                    if apply_sql_name(c["name"]) not in _read_through
                 ]
-                # REQ-308: a column the endpoint does not list leaves, unless the model reads it
-                # with its own selection (``employee_id: employee { id }`` reads the id of the one
-                # ``employee`` the remote type holds): the endpoint's schema has no field of that
-                # name, and every read of the column is the model's.
-                + [
-                    c
-                    for name, c in _held.get(_sql_name, {}).items()
-                    if name not in _listed and c.gql_selection and c.native_filter_type is None
-                ]
+                + _model_read
                 + [
                     _endpoint_column_over_held(
                         _held.get(_sql_name, {}),
