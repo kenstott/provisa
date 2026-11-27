@@ -88,6 +88,53 @@ def test_every_connector_is_staged_govdata_included(tmp_path, monkeypatch):
     )  # filled: nothing fetched
 
 
+def _staged(root: Path, release: str, artifact: str) -> None:
+    (root / release / artifact / "bin").mkdir(parents=True)
+    (root / release / artifact / "bin" / artifact).write_text("#!/bin/sh\n")
+
+
+def test_a_moved_pin_stages_at_the_new_release_the_bundles_staged_at_an_older_one(
+    tmp_path, monkeypatch
+):
+    """The File Crawler listed no tables once the calcite pin moved to engine-v0.131.1: this
+    machine had pgwire-file staged only at engine-v0.128.10. The moved bundles are the ones staged
+    at another release and not at the pin; a connector never staged here is not fetched."""
+    fetched: list[str] = []
+
+    def downloader(spec: BundleSpec, dest: Path) -> None:
+        fetched.append(spec.connector)
+        (dest / "bin").mkdir(parents=True)
+        (dest / "bin" / spec.artifact_name).write_text("#!/bin/sh\n")
+
+    monkeypatch.setattr(pgwire_bundles, "named_bundle_dir", lambda _connector: None)
+    pinned = pgwire_bundles.RELEASE_TAG
+    _staged(tmp_path, "engine-v0.128.10", "pgwire-file")
+    _staged(tmp_path, "engine-v0.128.10", "pgwire-govdata")
+    _staged(tmp_path, pinned, "pgwire-govdata")
+    assert stage_pgwire_bundles.moved(tmp_path) == ["file"]
+    stage_pgwire_bundles.stage(
+        tmp_path, downloader=downloader, excepted=stage_pgwire_bundles._excepted(["file"])
+    )
+    assert fetched == ["file"]
+    assert stage_pgwire_bundles.moved(tmp_path) == []
+
+
+def test_moved_stages_nothing_on_a_machine_that_never_staged_a_bundle(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
+    monkeypatch.setattr(pgwire_bundles, "named_bundle_dir", lambda _connector: None)
+    assert stage_pgwire_bundles.moved(tmp_path) == []
+    assert stage_pgwire_bundles.main(["--moved"]) == 0
+
+
+def test_the_dev_launcher_stages_moved_bundles_before_each_backend_start():
+    """start-ui-install.sh starts (and restarts) the backend through start_backend: the bundles
+    whose pin moved are staged there first, and a failure to stage ends the start naming it."""
+    text = (_REPO / "start-ui-install.sh").read_text()
+    body = text[text.index("start_backend() {") : text.index("restart_backend() {")]
+    stage = body.index("provisa.runtime_deps.stage_pgwire_bundles --moved --github-release")
+    assert stage < body.index("serve_backend.py")
+
+
 def test_only_names_a_real_connector(capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
     assert stage_pgwire_bundles.main(["--only", "gomdata"]) == 1
