@@ -14828,7 +14828,7 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 
 ### REQ-1363 · Domain Hierarchy {#REQ-1363}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** structural
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
 Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03, THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit and its child domains represent the organizations within that business unit. A role granted the business unit's domain reaches every organization's domain under it, including one added later, without the role being edited. (Amended 2026-10-03, GRANTS, ROW FILTERS AND STEWARDS ACROSS THE TREE:) A role granted a parent domain reaches every domain under it. Row filters across the tree all apply together: a table's rows are filtered by its own domain's filter and by the filter of every ancestor domain, so a child domain can only narrow what its ancestors allow. A child domain with no steward inherits the steward of its nearest ancestor that has one.
 
