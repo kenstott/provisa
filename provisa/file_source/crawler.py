@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from provisa.file_source.files_glob import StorageOptions
 from provisa.file_source.source import FileSourceConfig, discover_schema
 
-# Requirements: REQ-012, REQ-016, REQ-250, REQ-252
+# Requirements: REQ-012, REQ-016, REQ-250, REQ-252, REQ-2280
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ def _walk_fsspec(
     simple_links: bool = True,
     same_domain: bool = True,
     exclude_pattern: str | None = None,
+    storage_options: StorageOptions = None,
 ) -> list[str]:
     """Walk an fsspec URI and return matching file paths.
 
@@ -94,9 +96,9 @@ def _walk_fsspec(
     crawl can otherwise wander into off-target subpaths/domains via arbitrary page links,
     unlike a local/S3/FTP walk which is structurally confined to its root.
     """
-    import fsspec  # pyright: ignore[reportMissingImports]
+    from provisa.file_source.files_glob import remote_fs
 
-    fs, base_path = fsspec.core.url_to_fs(root, simple_links=simple_links)
+    fs, base_path = remote_fs(root, {"simple_links": simple_links, **(storage_options or {})})
     all_files: list[str] = []
     root_netloc = urlparse(root).netloc
     _walk_fsspec_recursive(
@@ -161,12 +163,15 @@ def _walk_fsspec_recursive(
             )
 
 
-def _introspect_file(file_path: str, source_type: str) -> list[dict]:  # REQ-252
+def _introspect_file(
+    file_path: str, source_type: str, storage_options: StorageOptions = None
+) -> list[dict]:  # REQ-252
     """Call discover_schema for the given file; return columns list."""
     cfg = FileSourceConfig(
         id=f"_crawl_{Path(file_path).stem}",
         source_type=source_type,
         path=file_path,
+        options={"storage_options": storage_options},
     )
     return discover_schema(cfg)
 
@@ -222,7 +227,8 @@ def crawl_directory(
     simple_links: bool = True,
     same_domain: bool = True,
     exclude_pattern: str | None = None,
-) -> list[dict]:  # REQ-012, REQ-016, REQ-250, REQ-788, REQ-1785
+    storage_options: StorageOptions = None,
+) -> list[dict]:  # REQ-012, REQ-016, REQ-250, REQ-788, REQ-1785, REQ-2280
     """Crawl *root* and return discovered table descriptors.
 
     Parameters
@@ -247,6 +253,9 @@ def crawl_directory(
         anchors. ``same_domain`` (default True) restricts link-following to the
         root URL's own domain. ``exclude_pattern`` is an fnmatch glob applied to
         each linked entry's basename to skip known-irrelevant subpaths/files.
+    storage_options:
+        The fsspec options a remote root is opened with: a onedrive:// or gdrive:// root's
+        sign-in (``cloud_drive.drive_storage_options``, REQ-2280).
 
     Returns
     -------
@@ -273,7 +282,7 @@ def crawl_directory(
 
     effective_depth = 0 if not recursive else depth
     # REQ-788: the source's glob decides its files; the walk is of the directory before it.
-    in_glob = source_glob_files(root)
+    in_glob = source_glob_files(root, storage_options)
     allowed = None if in_glob is None else {os.path.normpath(f) for f in in_glob}
     root = split_source_path(root)[0]
 
@@ -284,6 +293,7 @@ def crawl_directory(
             simple_links=simple_links,
             same_domain=same_domain,
             exclude_pattern=exclude_pattern,
+            storage_options=storage_options,
         )
     else:
         file_paths = _walk_local(root, effective_depth)
@@ -297,7 +307,7 @@ def crawl_directory(
             continue
         if pattern is not None and not fnmatch.fnmatch(Path(fp).name, pattern):
             continue
-        columns = _introspect_file(fp, source_type)
+        columns = _introspect_file(fp, source_type, storage_options)
         entry = _build_table_entry(fp, source_type, columns)
         results.append(entry)
         log.debug("Crawled %s → %d table(s)", fp, len(entry["tables"]))

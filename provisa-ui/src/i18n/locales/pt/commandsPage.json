@@ -6,7 +6,6 @@
     "restoreDetail": "Restaurar o painel",
     "closeDetail": "Fechar o painel de detalhes",
     "backToList": "Voltar à lista",
-    "backToCommand": "Voltar ao comando",
     "panelNewCommand": "Novo comando",
     "title": "Comandos",
     "loading": "Carregando comandos...",
@@ -56,8 +55,6 @@
     "editAria": "Editar {{name}}",
     "deleteFunctionAria": "Excluir função {{name}}",
     "deleteWebhookAria": "Excluir webhook {{name}}",
-    "testButton": "Testar",
-    "testingButton": "Testando...",
     "cancelAria": "Cancelar edição",
     "saveAria": "Salvar alterações",
     "deleteFunctionTitle": "Excluir a função \"{{name}}\"?",
@@ -65,12 +62,14 @@
     "deleteWebhookTitle": "Excluir o webhook \"{{name}}\"?",
     "deleteWebhookConsequence": "Isso removerá o webhook do esquema.",
     "inlineReturns": "inline ({{count}} campos)",
-    "testAsRole": "Testar como função:",
-    "testResultHeading": "Resultado do teste: {{name}}",
     "close": "Fechar",
-    "governanceApplied": "Governança aplicada",
     "savedMessage": "{{type}} \"{{name}}\" salvo",
     "yes": "Sim",
-    "no": "Não"
+    "no": "Não",
+    "argKind": {
+      "column_value": "valor",
+      "table_ref": "referência de tabela",
+      "result_set": "conjunto de resultados"
+    }
   }
 }

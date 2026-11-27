@@ -377,6 +377,29 @@ class ArrowStreamResult(StreamingQueryResult):  # REQ-2194
             source.close()
 
 
+class _TableStats(StreamStats):
+    """A materialized Arrow result's stats: its ``byte_count`` (``Table.nbytes``, which walks every
+    buffer of every column: ~50 us for a 26-column row) is counted when first read, so a result
+    whose stats no one reads (a response-cache hit's terminal) never counts it (REQ-1867: a hit is
+    never slower than its miss)."""
+
+    def __init__(self, table: Any) -> None:
+        super().__init__(row_count=table.num_rows, done=True)
+        self._table: Any = table  # held until counted
+
+    @property
+    def byte_count(self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        if self._table is not None:
+            self._bytes = self._table.nbytes
+            self._table = None
+        return self._bytes
+
+    @byte_count.setter
+    def byte_count(self, value: int | None) -> None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        self._table = None  # an assigned count replaces the table's (and the dataclass __init__'s)
+        self._bytes = value
+
+
 #: What ArrowResult hands the dataclass __init__ for ``rows``: they are built from its table.
 _FROM_TABLE: list[tuple] = []
 
@@ -389,6 +412,8 @@ class ArrowResult(QueryResult):  # REQ-2194
     conversion happens at the consumer, never at the fetch. A consumer that replaces ``rows``
     replaces the result: the table no longer answers for it and is dropped.
     """
+
+    stats: StreamStats
 
     def __init__(
         self,
@@ -405,9 +430,7 @@ class ArrowResult(QueryResult):  # REQ-2194
         )
 
     def __post_init__(self) -> None:
-        self.stats = StreamStats(
-            row_count=self.table.num_rows, byte_count=self.table.nbytes, done=True
-        )
+        self.stats = _TableStats(self.table)
 
     @property
     def rows(self) -> list[tuple]:  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -420,6 +443,7 @@ class ArrowResult(QueryResult):  # REQ-2194
         if value is _FROM_TABLE:  # the dataclass __init__: rows are built from the table when read
             return
         self._rows = value
+        _ = self.stats.byte_count  # counted from the table it held, before the table is dropped
         self.table = None
 
     def with_rows(self) -> ArrowResult:

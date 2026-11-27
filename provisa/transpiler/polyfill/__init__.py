@@ -39,10 +39,10 @@ from provisa.transpiler.polyfill import measured
 from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
 
-#: The package's modules that hold no family: the grid, its notation and matching, the pages, and
-#: the Trino helpers families share.
+#: The package's modules that hold no family: the grid, its notation and matching, the pages and
+#: the rows' provenance they print, and the Trino helpers families share.
 _NOT_FAMILIES = frozenset(
-    {"docs", "grid", "inet_literal", "matching", "measured", "notation", "trino"}
+    {"docs", "grid", "inet_literal", "matching", "measured", "notation", "provenance", "trino"}
 )
 
 
