@@ -23,6 +23,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCompileQuery } from "../../hooks/useAdminQueries";
 import type { CompileResult } from "../../api/admin";
 import { Tip } from "../Tip";
+import type { QueryLanguage } from "./useOntology";
 
 /** What the query compiles to: its semantic SQL, its Cypher or why it has none, and its SPARQL or
  * why it has none. */
@@ -63,11 +64,16 @@ function compiledOf(raw: CompileResult | { queries: CompileResult[] }): Compiled
 
 export function OpenAsQuery({
   query,
+  language,
   focused,
   testId,
 }: {
   /** The view's query as it runs now; null while there is none (not read yet). */
   query: string | null;
+  /** The language ``query`` is written in: GraphQL, compiled to SQL, Cypher and SPARQL when the
+   * menu opens; or Cypher (All hops, REQ-2174 amended 2026-11-26), which opens as itself alone.
+   * Null with no query. */
+  language: QueryLanguage | null;
   /** A focus is set: the view draws a neighbourhood its query does not state. */
   focused: boolean;
   testId: string;
@@ -85,7 +91,8 @@ export function OpenAsQuery({
   const current = compiled !== null && compiled.query === query ? compiled : null;
 
   const compile = () => {
-    if (query === null || actingRoles === null || focused || current) return;
+    if (query === null || language !== "graphql" || actingRoles === null || focused || current)
+      return;
     // A graph view opens as a graph: its Cypher is its nodes and relationships, which the frame
     // draws, not its fields.
     compileQuery(actingRoles, query, undefined, false, false, true).then(
@@ -95,17 +102,24 @@ export function OpenAsQuery({
     );
   };
 
-  const unavailable = focused ? t("graph3d.openAsQueryFocused") : null;
+  // A Cypher query (All hops) has no GraphQL, SQL or SPARQL form to open as: it opens as itself.
+  const cypherOnly = language === "cypher";
+  const unavailable = focused
+    ? t("graph3d.openAsQueryFocused")
+    : cypherOnly
+      ? t("graph3d.openAsQueryCypherOnly")
+      : null;
   const sqlWhy =
     unavailable ?? current?.error ?? (current ? null : t("graph3d.openAsQueryCompiling"));
-  const cypherWhy =
-    unavailable ??
-    current?.error ??
-    (current
-      ? current.result?.cypher
-        ? null
-        : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
-      : t("graph3d.openAsQueryCompiling"));
+  const cypherWhy = cypherOnly
+    ? null
+    : (unavailable ??
+      current?.error ??
+      (current
+        ? current.result?.cypher
+          ? null
+          : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
+        : t("graph3d.openAsQueryCompiling")));
 
   const sparqlWhy =
     unavailable ??
@@ -155,7 +169,7 @@ export function OpenAsQuery({
           navigate("/sql", { state: { sql: current?.result?.sql, autoRun: true } }),
         )}
         {item("cypher", cypherWhy, () =>
-          navigate("/graph", { state: { query: current?.result?.cypher } }),
+          navigate("/graph", { state: { query: cypherOnly ? query : current?.result?.cypher } }),
         )}
         {item("sparql", sparqlWhy, () =>
           navigate("/sparql", { state: { query: current?.result?.sparql } }),

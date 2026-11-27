@@ -97,7 +97,7 @@ describe("a focus's hops, nested under one root field", () => {
       const got = await readOntology(reader(), s, srv.read);
       expect(srv.sent).toHaveLength(1);
       expect(got.queries).toEqual([query]);
-      expect(got.opened).toBe(query);
+      expect(got.opened).toEqual({ language: "graphql", query });
     });
 
   it("draws what the hop count reaches, and no further", async () => {

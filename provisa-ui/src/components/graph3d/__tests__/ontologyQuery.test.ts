@@ -301,23 +301,33 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
   });
 
   it("reads each match's neighbourhood both ways, each hop's terms with their grounding", () => {
+    // REQ-2174 (amended 2026-11-26): a search's two hops nest under its matches, both ways: each
+    // edge's end read whole (with what it touches) while hops remain, by its id past the last.
     const q = searched("cust");
-    // A match is read with what it touches, and its edges both ways, each end by its id: the
-    // next hop reads the ends.
-    expect(q.match(/refs \{/g)).toHaveLength(1);
-    expect(q.match(/domains \{/g)).toHaveLength(1);
+    // The matches, each end of theirs (out and in), and each end of those: 1 + 2 + 4 terms read whole.
+    expect(q.match(/refs \{/g)).toHaveLength(7);
+    expect(q.match(/ domains \{/g)).toHaveLength(7);
     expect(q).toContain("edgesIn");
+    expect(q).toContain("sourceTerm { id name");
+    expect(q).toContain("targetTerm { id name");
+    // Past the last hop an end is its id alone.
     expect(q).toContain("sourceTerm { id }");
     expect(q).toContain("targetTerm { id }");
-    // Every hop's terms are read with what they touch, the last hop's too (REQ-2174, amended
+    // All's walk past its root reads each hop's terms with what they touch (REQ-2174, amended
     // 2026-11-12: a term drawn brings its grounding).
-    const s = scope(["ontology", "domains", "columns"], { search: searchItems("cust") });
+    const s = scope(["ontology", "domains", "columns"], {
+      search: searchItems("cust"),
+      depth: Infinity,
+    });
     const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [3, 4]));
     expect(hop(1)).toContain("on_terms(where: { id: { in: [3,4] } })");
     expect(hop(1).match(/refs \{/g)).toHaveLength(1);
-    expect(hop(2).match(/refs \{/g)).toHaveLength(1);
     expect(hop(2).match(/domains \{/g)).toHaveLength(1);
     expect(hop(2)).toContain("edgesIn");
+    // A fixed hop count is never walked.
+    expect(() =>
+      ontologyHopQuery(reader(), { ...s, depth: 2 }, 1, [3, 4]),
+    ).toThrow(/nested under its root/);
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
     expect(flat.match(/refs \{/g)).toHaveLength(1);
@@ -364,33 +374,40 @@ describe("REQ-2174: a focus's hops, read as steps across the term links", () => 
     ).toEqual([1, 2, 3, 4, Infinity]);
   });
 
-  it("reads a product's graph at its root as its own terms, each read once", () => {
-    // J509a: read three levels deep, nested both ways, the query was 20 KB and got no answer in a
-    // minute; its tables, columns and terms are all the product's own terms read once.
-    const q = focused("p:c360", 3);
-    expect(fullTerms(q)).toBe(1);
-    expect(q).toContain("targetTerm { id }");
-    expect(q).toBe(focused("p:c360", 1));
-    expect(q.length).toBeLessThan(focused("term:7", 1).length * 2);
+  it("nests a product's hops under its own terms, the root the same at All", () => {
+    // REQ-2174 (amended 2026-11-26): its tables, columns and terms are the product's own terms,
+    // the root; each hop nests one level under it, both ways.
+    expect(fullTerms(focused("p:c360", 1))).toBe(3);
+    expect(fullTerms(focused("p:c360", 2))).toBe(7);
+    expect(fullTerms(focused("p:c360", 3))).toBe(15);
+    // All's root is read alone, its hops walked.
+    const all = focused("p:c360", Infinity);
+    expect(fullTerms(all)).toBe(1);
+    expect(all).toContain("targetTerm { id }");
   });
 
   it("reads a product's first hop as one step across the links, both ways", () => {
-    // The product's terms, the terms a link reaches by their ids.
+    // The product's terms, and the terms a link reaches either way, read whole.
     const q = focused("p:c360", 1);
-    expect(fullTerms(q)).toBe(1);
     expect(q).toContain("edgesIn");
-    expect(q).toContain("sourceTerm { id }");
+    expect(q).toContain("sourceTerm { id name");
+    expect(q).toContain("targetTerm { id name");
   });
 
-  it("reads a term's graph a hop at a time, each hop's terms once with their grounding", () => {
-    // Nested, a level to each hop both ways, depth 3 read 7 terms' refs per path (R509-C2).
-    for (const depth of [1, 2, 3]) expect(fullTerms(focused("term:7", depth))).toBe(1);
-    expect(focused("term:7", 3)).toBe(focused("term:7", 1));
-    const s = scope(["ontology", "columns", "data"], { focus: "term:7", depth: 3 });
-    const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [1, 2]));
-    expect([1, 2, 3].map((n) => fullTerms(hop(n)))).toEqual([1, 1, 1]);
-    expect(hop(1)).toBe(hop(2).replace("OntologyHop2", "OntologyHop1"));
-    expect(hop(3)).toBe(hop(2).replace("OntologyHop2", "OntologyHop3"));
+  it("reads a term's graph in one query, a level nested for each hop", () => {
+    for (const [depth, terms] of [
+      [1, 3],
+      [2, 7],
+      [3, 15],
+      [4, 31],
+    ])
+      expect(fullTerms(focused("term:7", depth))).toBe(terms);
+    // One root field, whatever the depth.
+    const four = ontologyQuery(
+      reader(),
+      scope(["ontology", "columns", "data"], { focus: "term:7", depth: 4 }),
+    ) as string;
+    expect(four.split("\n").filter((l) => /^ {2}\w/.test(l))).toHaveLength(1);
   });
 });
 
@@ -431,7 +448,7 @@ describe("REQ-416: the query's answer keeps GraphQL's names", () => {
   });
 });
 
-describe("REQ-2143: a neighbourhood read a hop at a time", () => {
+describe("REQ-2143, REQ-2174 (amended 2026-11-26): All's neighbourhood walked a hop at a time", () => {
   const term = (id: number, over: Partial<TermRow> = {}): TermRow => ({
     id,
     name: `t${id}`,
@@ -484,7 +501,7 @@ describe("REQ-2143: a neighbourhood read a hop at a time", () => {
     const sent: string[] = [];
     const got = await readOntology(
       reader(),
-      scope(["ontology", "columns"], { search: searchItems("t1") }),
+      scope(["ontology", "columns"], { search: searchItems("t1"), depth: Infinity }),
       async (q) => {
         sent.push(q);
         return answers[/^query (\w+)/.exec(q)![1]];

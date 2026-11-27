@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2136 / REQ-2143: Open as query hands over the query of the search now shown. A search is read
-// a hop at a time, and the view opens as its root and every hop in one query; while those reads
-// were in flight the view still offered the query of the search before, so Open as query run on
-// /query answered the unsearched ontology (open-as-query.spec.ts, run 43725827456). While the
-// current search's read is in flight the view has no query to open as.
+// REQ-2136 / REQ-2143: Open as query hands over the query of the search now shown. While a search's
+// read was in flight the view still offered the query of the search before, so Open as query run
+// on /query answered the unsearched ontology (open-as-query.spec.ts, run 43725827456). While the
+// current search's read is in flight the view has no query to open as. (REQ-2174, amended
+// 2026-11-26:) the search's hops are nested under its root, one root field, read and opened as one.
 
 import { act } from "react";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe("Open as query while the view reads a new search", () => {
-  it("offers no query until the search's reads are in, then the search's own, with its hops", async () => {
+  it("offers no query until the search's read is in, then the search's own, with its hops", async () => {
     const { result } = renderHook(() => useOntology(WHOLE, true));
     act(() => result.current.query(EMPTY).onScope(viewScope("")));
     await waitFor(() => expect(result.current.query(EMPTY).text).not.toBeNull());
@@ -98,6 +98,9 @@ describe("Open as query while the view reads a new search", () => {
     await waitFor(() => expect(result.current.query(EMPTY).text).not.toBeNull());
     const searched = result.current.query(EMPTY).text as string;
     expect(searched).toContain('ilike: "%species%"');
-    expect(searched).toContain("_termsHop1:");
+    // One root field, the search's hops nested under it both ways.
+    expect(searched.split("\n").filter((l) => /^ {2}\w/.test(l))).toHaveLength(1);
+    expect(searched).toContain("targetTerm {");
+    expect(searched).toContain("sourceTerm {");
   });
 });

@@ -37,6 +37,7 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
 }));
 
 import { OpenAsQuery } from "../OpenAsQuery";
+import type { QueryLanguage } from "../useOntology";
 
 const QUERY = "query Ontology {\n  _terms: on_terms { id: id }\n}";
 
@@ -46,10 +47,20 @@ function Landed() {
   return <pre data-testid="landed">{JSON.stringify([location.pathname, location.state])}</pre>;
 }
 
-function view(query: string | null, focused = false) {
+function view(query: string | null, focused = false, language: QueryLanguage = "graphql") {
   render(
     <Routes>
-      <Route path="/" element={<OpenAsQuery query={query} focused={focused} testId="x" />} />
+      <Route
+        path="/"
+        element={
+          <OpenAsQuery
+            query={query}
+            language={query === null ? null : language}
+            focused={focused}
+            testId="x"
+          />
+        }
+      />
       <Route path="*" element={<Landed />} />
     </Routes>,
   );
@@ -218,5 +229,19 @@ describe("a graph view's Open as query", () => {
   it("is off before the view has read its query", () => {
     view(null);
     expect(screen.getByTestId("x-open-as-query")).toBeDisabled();
+  });
+});
+
+describe("All hops' Open as query (REQ-2174, amended 2026-11-26)", () => {
+  const CYPHER = "MATCH p = (t:Ontology:Terms {id: 7})-[*]-(n) RETURN p";
+
+  it("opens its Cypher as itself, compiling nothing, and offers no other surface", async () => {
+    view(CYPHER, false, "cypher");
+    fireEvent.click(screen.getByTestId("x-open-as-query"));
+    for (const other of ["graphql", "sql", "sparql"])
+      expect(await screen.findByTestId(`x-open-as-${other}`)).toHaveAttribute("data-disabled");
+    expect(compiles.calls).toEqual([]);
+    fireEvent.click(screen.getByTestId("x-open-as-cypher"));
+    expect(landed()).toEqual(["/graph", { query: CYPHER }]);
   });
 });

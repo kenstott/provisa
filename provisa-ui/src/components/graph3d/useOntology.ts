@@ -37,16 +37,21 @@ import {
   type TableColumnsRow,
 } from "./tableColumns";
 import { readOntology } from "./ontologyRead";
+import { allHopsCypher, termsCypherLabel } from "./ontologyCypher";
 import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
-/** What a read of the ontology came to: the graph and the query that read it, or -- past the
- * budget -- how many terms it would have read, with each term's domains; ``hops``: its root was
- * within the budget, and its hops (All's, or a few hops of a dense part) took it past, so it would
- * draw more than the budget, ``over``. */
+/** The language a view's query is written in: GraphQL, or -- All hops -- Cypher (REQ-2174,
+ * amended 2026-11-26). */
+export type QueryLanguage = "graphql" | "cypher";
+
+/** What a read of the ontology came to: the graph and the query that read it, in ``language``, or
+ * -- past the budget -- how many terms it would have read, with each term's domains; ``hops``: its
+ * root was within the budget, and its hops (All's, or a few hops of a dense part) took it past, so
+ * it would draw more than the budget, ``over``. */
 export type Loaded =
-  | { data: GraphData; query: string; over?: undefined }
-  | { over: number; rows: CountRow[]; query: string; hops?: true };
+  | { data: GraphData; query: string; language: QueryLanguage; over?: undefined }
+  | { over: number; rows: CountRow[]; query: string; language: "graphql"; hops?: true };
 
 /** The ontology as ``scope`` reads it, opened as one query (REQ-2136), by the rules it reads by
  * (QueryScope.products): its terms counted first, and read only within the budget (REQ-2143);
@@ -60,9 +65,11 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (query === null || (terms && count === null)) return null;
   const counted =
     count === null ? [] : (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
-  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
+  if (counted.length > NODE_BUDGET)
+    return { over: counted.length, rows: counted, query, language: "graphql" };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
-  // alone. Else a search's or a focus's neighbourhood is read a hop at a time, each term once.
+  // alone. Else a search's or a focus's neighbourhood is nested under its root, one read; All's is
+  // walked a hop at a time, each term once.
   const { rows, opened, over } = await readOntology(
     m,
     scope,
@@ -72,15 +79,23 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   );
   // REQ-2174 (amended 2026-11-12): All follows the connected part to its end under the budget --
   // past it the reads stop, and that it is past is said, as at the root.
-  const past = { over: NODE_BUDGET, rows: counted, query, hops: true } as const;
+  const past = { over: NODE_BUDGET, rows: counted, query, language: "graphql", hops: true } as const;
   if (over) return past;
-  // REQ-2136: what the view opens as is what it read -- the root and every hop -- in one query.
+  // REQ-2136, REQ-2174 (amended 2026-11-26): what the view opens as is the one query that read it,
+  // its hops nested in it; All's, the Cypher variable-length query from its root's terms.
   if (opened === null) return null;
   const data = ontologyGraph(rows, scope);
   if (termLevels(scope) > 0 && data.nodes.length > NODE_BUDGET) return past;
+  const said =
+    opened.language === "graphql"
+      ? { query: opened.query, language: opened.language }
+      : {
+          query: allHopsCypher(await termsCypherLabel(role), opened.roots),
+          language: opened.language,
+        };
   // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];
-  if (!scope.products || !scope.layers.has("lineage")) return { data, query: opened };
+  if (!scope.products || !scope.layers.has("lineage")) return { data, ...said };
   // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): under Lineage each product read has its
   // lineage, from the product lineage endpoint (REQ-2156).
   const lineages = await Promise.all(products.map((p) => fetchProductLineage(p.id)));
@@ -89,7 +104,7 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
       (g, p, i) => withProductLineage(g, p.id, lineages[i], memberTablesOf(p)),
       data,
     ),
-    query: opened,
+    ...said,
   };
 }
 
@@ -280,12 +295,15 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
       : tableColumnsField(columnsReader, shownTables);
   // REQ-2136: Open as query hands over the query of the scope now asked for, never the one before:
   // none while that scope's read is in flight.
+  // A Cypher query (All hops) reads no columns on asking: they are a GraphQL root of their own.
   const text =
     scoped?.query === undefined || scopedFor !== scope
       ? null
-      : columnsField === null
+      : columnsField === null || scoped.language === "cypher"
         ? scoped.query
         : scoped.query.replace(/\n}$/, `\n  ${columnsField}\n}`);
+  // The language ``text`` is written in; none while there is no text.
+  const language: QueryLanguage | null = text === null || scoped === null ? null : scoped.language;
   const notice =
     scoped?.over !== undefined && !overview
       ? t(scoped.hops ? "graph3d.overBudgetHops" : "graph3d.overBudget", { count: scoped.over })
@@ -295,6 +313,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     onScope,
     onExpanded,
     text,
+    language,
     notice,
     overview,
     ...(focus === null ? {} : { own: focus }),
