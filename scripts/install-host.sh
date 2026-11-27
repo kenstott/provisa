@@ -355,7 +355,7 @@ EOF
 
 render_env_file() {
   # $1 config dir, $2 data dir, $3 trino port, $4 pg port, $5 pg password, $6 minio port,
-  # $7 minio password, $8 zaychik port. Holds the core services' secrets: written root-only.
+  # $7 minio password, $8 zaychik port, $9 org id. Holds the core services' secrets: written root-only.
   local pg_url="postgresql+psycopg://provisa:$5@127.0.0.1:$4/provisa"
   local s3="http://127.0.0.1:$6"
   # REQ-2269: Trino's materializations land in this PostgreSQL. Named here because `provisa run`
@@ -365,7 +365,8 @@ render_env_file() {
 # Written by install-host.sh on every run; edit the script's flags, not this file.
 PROVISA_CONFIG=$1/provisa.yaml
 # REQ-1296: the bootstrap org id is 'root'; the resolver's own default is not an install's.
-ORG_ID=root
+# An existing install keeps the org its env file already names (existing_org_id).
+ORG_ID=${9:-root}
 TRINO_HOST=127.0.0.1
 TRINO_PORT=$3
 PROVISA_TRINO_ETC_DIR=$2/trino
@@ -400,6 +401,13 @@ render_minio_env() {
 MINIO_ROOT_USER=$INSTALL_HOST_MINIO_USER
 MINIO_ROOT_PASSWORD=$1
 EOF
+}
+
+existing_org_id() {
+  # $1 env file. Prints the ORG_ID it names, or nothing when the file or the line is absent, so
+  # render_env_file writes REQ-1296's 'root' only on a first install. Run before the file is rewritten.
+  [ -f "$1" ] || return 0
+  sed -n 's/^ORG_ID=//p' "$1" | head -1
 }
 
 generate_secret() {
@@ -735,12 +743,14 @@ write_files() {
   install -d -m 0700 "$cfg/core" "$data/postgres"
   install -d -m 0700 -o "$INSTALL_HOST_MINIO_UID" -g "$INSTALL_HOST_MINIO_UID" "$data/minio"
   ensure_core_secrets "$cfg"
+  local org_id
+  org_id="$(existing_org_id "$cfg/provisa.env")"
   (
     umask 077
     render_postgres_env "$IH_PG_PASSWORD" >"$cfg/core/postgres.env"
     render_minio_env "$IH_MINIO_PASSWORD" >"$cfg/core/minio.env"
     render_env_file "$cfg" "$data" "$IH_TRINO_PORT" "$IH_PG_PORT" "$IH_PG_PASSWORD" \
-      "$IH_MINIO_PORT" "$IH_MINIO_PASSWORD" "$IH_ZAYCHIK_PORT" >"$cfg/provisa.env"
+      "$IH_MINIO_PORT" "$IH_MINIO_PASSWORD" "$IH_ZAYCHIK_PORT" "$org_id" >"$cfg/provisa.env"
   )
   # An earlier release wrote provisa.env world-readable; it holds the core services' secrets now.
   chmod 0600 "$cfg/provisa.env" "$cfg/core/postgres.env" "$cfg/core/minio.env"
