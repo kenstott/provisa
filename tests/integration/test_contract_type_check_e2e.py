@@ -59,7 +59,8 @@ def _source_sql(*statements: str) -> None:
 
 
 def _config() -> dict:
-    readers = [_ADMIN, "viewer"]
+    # "viewer" is a standard role a config may not define (REQ-2155); the reader is a custom role.
+    readers = [_ADMIN, "ctc_reader"]
     return {
         "federation_engine": "duckdb",
         "auth": {
