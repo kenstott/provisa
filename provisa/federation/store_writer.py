@@ -30,6 +30,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
@@ -123,6 +124,40 @@ async def shared_store_connection(dsn: str) -> AsyncGenerator[Any]:
         yield conn
 
 
+def forget_ensured(schema: str, table: str) -> None:
+    """Forget the row-cache table ``schema.table`` in every pooled store handle: Provisa itself just
+    dropped, recreated or altered the table at that address (a reconcile, a replica swap or drop),
+    so the next keyed read ensures it again instead of trusting a record of the table it replaced.
+    The address is a replica address, unique to one org's store, so forgetting it in a store that
+    never held it changes nothing."""
+    with _shared_lock:
+        held = list(_shared.values())
+    for store in held:
+        store.ensured.pop((schema, table), None)
+
+
+# What a statement against a table that is not there, or lacks a column it names, raises, per
+# driver: the SQLSTATE (PostgreSQL 42P01/42703; ODBC and MySQL 42S02/42S22), MySQL's error number
+# (1146 no such table, 1054 unknown column), or SQLite's message, which carries no code.
+_MISSING_SQLSTATES = frozenset({"42P01", "42703", "42S02", "42S22"})
+_MISSING_MYSQL_ERRNOS = frozenset({1146, 1054})
+_MISSING_SQLITE_MESSAGES = ("no such table", "no such column", "has no column named")
+
+
+def missing_table_or_column(exc: DBAPIError) -> bool:
+    """Whether ``exc`` says the table it ran against, or a column it named, does not exist."""
+    orig = exc.orig
+    if (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) in _MISSING_SQLSTATES:
+        return True
+    args = getattr(orig, "args", ())
+    first = args[0] if args else None
+    if first in _MISSING_SQLSTATES or first in _MISSING_MYSQL_ERRNOS:
+        return True
+    import sqlite3
+
+    return isinstance(orig, sqlite3.Error) and any(m in str(orig) for m in _MISSING_SQLITE_MESSAGES)
+
+
 def dispose_shared_stores() -> None:
     """Close every pooled store handle this process opened (its shutdown)."""
     with _shared_lock:
@@ -201,6 +236,7 @@ async def reconcile_table(
         have = [c["column_name"] for c in existing]
         if not have:
             await conn.execute_core(CreateTable(tbl))
+            forget_ensured(schema, table)  # a row-cache record of a table dropped since
             return "created"
         # REQ-1651: the declared key is part of the shape. A table created before its key was
         # resolved kept PRIMARY KEY-less for good (and one created under a wrong key kept the wrong
@@ -236,6 +272,7 @@ async def reconcile_table(
         else:
             await conn.execute_core(DropTable(tbl, if_exists=True))
         await conn.execute_core(CreateTable(tbl))
+        forget_ensured(schema, table)  # the row cache ensures the recreated table again
         return "recreated"
 
 

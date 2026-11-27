@@ -1418,9 +1418,10 @@ async def _ensure_row_cache_table(
         add_missing_columns(raw_conn, [cache_table], schema)
     # Recorded once ensured: a cold keyed read whose table already matches skips the schema/guard
     # round trip and the reflection (``add_missing_columns``, which also takes the schema's
-    # advisory lock on PostgreSQL). A different column signature re-ensures; a statement that
-    # fails against the table forgets it (``_row_cache_connection``), so the next read re-ensures
-    # a table changed or dropped since.
+    # advisory lock on PostgreSQL). A different column signature re-ensures; Provisa's own DDL on
+    # the table forgets it (``store_writer.forget_ensured``), and a statement that fails against
+    # it forgets it too (``_row_cache_connection``), so the next read re-ensures a table changed
+    # or dropped since.
     store.ensured[(schema, name)] = (signature, cache_table)
     return cache_table
 
@@ -1470,10 +1471,27 @@ async def _ensure_and_read_row_cache(
             schema, name, full_columns, pk_columns, keys
         )
         return None, cached
+    from sqlalchemy.exc import DBAPIError
+
+    from provisa.federation.store_writer import missing_table_or_column
+
     cache_table = await _ensure_row_cache_table(engine, backend, state, schema, name, columns)
-    cached = await _read_row_cache(
-        engine, backend, state, schema, name, cache_table, pk_columns, keys
-    )
+    try:
+        cached = await _read_row_cache(
+            engine, backend, state, schema, name, cache_table, pk_columns, keys
+        )
+    except DBAPIError as exc:
+        # The ensure step itself, not a fallback: the table recorded as ensured was dropped, or
+        # lost a column, behind every path that forgets it (``store_writer.forget_ensured``) --
+        # an operator's DROP, another process's reconcile. ``_row_cache_connection`` forgot it as
+        # the read failed, so it is ensured again and read once more. Any other error, or the
+        # same one again, is raised as it is.
+        if not missing_table_or_column(exc):
+            raise
+        cache_table = await _ensure_row_cache_table(engine, backend, state, schema, name, columns)
+        cached = await _read_row_cache(
+            engine, backend, state, schema, name, cache_table, pk_columns, keys
+        )
     return cache_table, cached
 
 
