@@ -145,6 +145,14 @@ def _print_server_log() -> None:
     ):
         print(f"--- {log} (last 150 lines)")
         print("\n".join(log.read_text(errors="replace").splitlines()[-150:]))
+        model = json.loads((log.parent / "model" / "model.json").read_text())
+        for schema in model.get("schemas", []):
+            operand = schema.get("operand", {})
+            config = {
+                k: ("<redacted>" if "ecret" in k or "assword" in k else v)
+                for k, v in operand.get("storageConfig", {}).items()
+            }
+            print(f"--- model schema {schema.get('name')}: {dict(operand, storageConfig=config)}")
 
 
 def _engine_reads_as_the_file_does(source: Source) -> None:
