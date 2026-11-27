@@ -180,8 +180,9 @@ functions:
   binding:
     method: /provisa.demo.Enrich/EnrichRows
     target: ${env:DEMO_GRPC_TARGET:-localhost:50071}
-  description: Demo gRPC command that ENRICHES an input relation — materializes the referenced result_set,
-    sends its rows to the service, returns each row plus a deterministic embedding + geo marker (REQ-885)
+  description: Demo gRPC command that enriches an input relation — materializes the referenced result_set
+    (id, region), sends its rows to the service, and returns only its declared output columns, id, a
+    deterministic embedding and a geo marker (REQ-885)
   domain_id: pet-store
   function_name: enrich_grpc_set
   impl_kind: grpc
