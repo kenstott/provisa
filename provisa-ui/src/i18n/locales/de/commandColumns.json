@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "Dieser Befehl deklariert keine Ausgabespalten.",
+    "hint": "Eine Spalte ohne aufgeführte Rolle wird von den Rollen gelesen, denen der Befehl zugewiesen ist.",
+    "governanceTitle": "Tags, Begriffe und Klassifizierung",
+    "editTags": "Tags auf der Seite „Tags“ bearbeiten",
+    "editTerms": "Begriffe im Glossar bearbeiten",
+    "colColumn": "Spalte",
+    "colTags": "Tags",
+    "colTerm": "Glossarbegriff",
+    "colClassification": "Klassifizierung"
+  }
+}

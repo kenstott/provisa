@@ -68,6 +68,7 @@ const TERM = {
   status: "approved",
   domains: [],
   refs: [],
+  command_refs: [],
   edges_out: [],
   edges_in: [],
   experts: [],

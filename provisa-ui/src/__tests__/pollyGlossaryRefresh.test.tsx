@@ -93,6 +93,7 @@ const summary = (
 const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   ...term,
   refs: [],
+  command_refs: [],
   edges_out: [],
   edges_in: [],
   experts: [],

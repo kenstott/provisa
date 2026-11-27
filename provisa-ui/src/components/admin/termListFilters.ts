@@ -62,15 +62,22 @@ export function linkedTermFilters(params: URLSearchParams): TermListFilters | nu
   };
 }
 
-/** `params` with the filters written in, every filter parameter not set removed. */
-export function withTermFilters(params: URLSearchParams, f: TermListFilters): URLSearchParams {
+/**
+ * `params` with the filters `f` names written in, each one not set removed; a filter `f` does not
+ * name keeps its parameter, so changes written one after another all hold.
+ */
+export function withTermFilters(
+  params: URLSearchParams,
+  f: Partial<TermListFilters>,
+): URLSearchParams {
   const n = new URLSearchParams(params);
   const set = (name: string, value: string | null) => (value ? n.set(name, value) : n.delete(name));
-  set(TERM_FILTER_PARAMS.status, f.status.join(","));
-  set(TERM_FILTER_PARAMS.grounding, f.grounding);
-  set(TERM_FILTER_PARAMS.agentVisible, f.agentVisible ? "1" : null);
-  set(TERM_FILTER_PARAMS.toReview, f.toReview ? "1" : null);
-  set(TERM_FILTER_PARAMS.relatedTo, f.relatedTo ? "1" : null);
+  if (f.status !== undefined) set(TERM_FILTER_PARAMS.status, f.status.join(","));
+  if (f.grounding !== undefined) set(TERM_FILTER_PARAMS.grounding, f.grounding);
+  if (f.agentVisible !== undefined)
+    set(TERM_FILTER_PARAMS.agentVisible, f.agentVisible ? "1" : null);
+  if (f.toReview !== undefined) set(TERM_FILTER_PARAMS.toReview, f.toReview ? "1" : null);
+  if (f.relatedTo !== undefined) set(TERM_FILTER_PARAMS.relatedTo, f.relatedTo ? "1" : null);
   return n;
 }
 
@@ -83,13 +90,24 @@ export function termListHref(f: Partial<TermListFilters>): string {
   return `/context/ontology?${params.toString()}`;
 }
 
+/** Each filter: whether it is on in `f`, and whether, on, it keeps `term`. */
+export const TERM_FILTERS: {
+  [K in keyof TermListFilters]: {
+    on: (f: TermListFilters) => boolean;
+    keeps: (term: GlossaryTermSummary, f: TermListFilters) => boolean;
+  };
+} = {
+  status: { on: (f) => f.status.length > 0, keeps: (term, f) => f.status.includes(term.status) },
+  grounding: {
+    on: (f) => f.grounding !== null,
+    keeps: (term, f) => term.grounding === f.grounding,
+  },
+  agentVisible: { on: (f) => f.agentVisible, keeps: (term) => term.agent_visible },
+  toReview: { on: (f) => f.toReview, keeps: (term) => toReview(term) },
+  relatedTo: { on: (f) => f.relatedTo, keeps: (term) => term.related_to > 0 },
+};
+
 /** Whether `term` is one the filters show. */
 export function matchesTermFilters(term: GlossaryTermSummary, f: TermListFilters): boolean {
-  return (
-    (f.status.length === 0 || f.status.includes(term.status)) &&
-    (f.grounding === null || term.grounding === f.grounding) &&
-    (!f.agentVisible || term.agent_visible) &&
-    (!f.toReview || toReview(term)) &&
-    (!f.relatedTo || term.related_to > 0)
-  );
+  return Object.values(TERM_FILTERS).every((filter) => !filter.on(f) || filter.keeps(term, f));
 }

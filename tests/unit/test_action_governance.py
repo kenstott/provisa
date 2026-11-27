@@ -118,6 +118,16 @@ class TestContract:
     def test_output_columns_win(self):
         assert contract_columns(FN)[0]["name"] == "id"
 
+    def test_naming_of_an_output_column_is_kept(self):  # REQ-1159 (amended 2026-11-25)
+        fn = {
+            "name": "f",
+            "output_columns": [
+                {"name": "ssn", "type": "varchar", "alias": "tax_id", "description": "Tax id"}
+            ],
+        }
+        col = contract_columns(fn)[0]
+        assert (col["alias"], col["description"]) == ("tax_id", "Tax id")
+
     def test_return_schema_array_of_objects_is_a_contract(self):
         fn = {
             "name": "f",
@@ -138,7 +148,16 @@ class TestContract:
     def test_json_string_column_is_read(self):
         assert contract_columns(
             {"name": "f", "output_columns": '[{"name":"x","type":"varchar"}]'}
-        ) == [{"name": "x", "type": "varchar", "visible_to": None, "masks": []}]
+        ) == [
+            {
+                "name": "x",
+                "type": "varchar",
+                "visible_to": None,
+                "masks": [],
+                "alias": None,
+                "description": None,
+            }
+        ]
 
     def test_scalar_return_has_no_contract(self):
         assert contract_columns({"name": "f", "returns": "String"}) is None
@@ -200,6 +219,22 @@ class TestGovern:
         governed, enf = await govern_action_rows(rows, fn, "junior", _state())
         assert governed == [{"id": 1, "bonus": 2.0}]
         assert enf.columns_excluded == ["audit"]
+
+    async def test_a_result_column_comes_back_under_its_alias(self):
+        """REQ-1159 (amended 2026-11-25): the SQL alias is the name consumers query the column
+        by, so the governed rows carry it under the alias, masked as before."""
+        fn = {
+            **FN,
+            "output_columns": [
+                {"name": "id", "type": "integer", "alias": "customer_id"},
+                {**CONTRACT[2], "alias": "tax_id"},
+                {"name": "region", "type": "varchar"},
+            ],
+        }
+        rows = [{"id": 1, "ssn": "111", "region": "east"}]
+        governed, enf = await govern_action_rows(rows, fn, "analyst", _state())
+        assert governed == [{"customer_id": 1, "tax_id": "***", "region": "east"}]
+        assert enf.masking_applied == ["ssn -> constant"]
 
     async def test_admin_sees_everything_unmasked(self):
         rows, enf = await govern_action_rows(ROWS, FN, "org_admin", _state())

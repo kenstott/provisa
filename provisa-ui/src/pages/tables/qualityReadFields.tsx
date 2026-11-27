@@ -17,6 +17,7 @@ import { useDqContract } from "../../hooks/useAdminQueries";
 import type { DqContract, QualityChecker, UniqueConstraint } from "../../types/admin";
 import type { DetailField } from "../../components/detail/DetailFields";
 import { detailHref } from "../../components/list/useDetailParam";
+import { entityName } from "../../components/entityName";
 
 // What the Quality tab reads of a table's stored settings, under the edit controls' own labels.
 
@@ -146,7 +147,7 @@ export function checkersField(t: TFunction, checkers: QualityChecker[]): DetailF
                     {c.tableName}
                   </Anchor>
                 </Table.Td>
-                <Table.Td>{c.sourceId}</Table.Td>
+                <Table.Td>{entityName("source", c.sourceId)}</Table.Td>
                 <Table.Td>
                   {c.outcome === null ? (
                     t("detailFields.empty")

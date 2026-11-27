@@ -20,6 +20,11 @@ interface DomainFilterContextValue {
   toggleDomain: (id: string) => void;
   ensureDomainChecked: (id: string) => void;
   domainsEnabled: boolean;
+  /**
+   * True while the domains of the active roles are being read: the checked domains are not yet the
+   * reader's, so a list narrowed by them is not yet the one the page shows (REQ-2277 rule 9).
+   */
+  domainsPending: boolean;
 }
 
 // Pure merge of the persisted domain-filter state against the currently-available domains. A domain
@@ -72,6 +77,7 @@ const DomainFilterContext = createContext<DomainFilterContextValue>({
   toggleDomain: () => {},
   ensureDomainChecked: () => {},
   domainsEnabled: true,
+  domainsPending: false,
 });
 
 export function DomainFilterProvider({ children }: { children: React.ReactNode }) {
@@ -80,6 +86,9 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   const [selectedDomain, setSelectedDomain] = useState("all");
   const [checkedDomains, setCheckedDomains] = useState<Set<string>>(new Set());
   const [domainsEnabled, setDomainsEnabled] = useState(true);
+  // The role set whose domains have been answered (or refused): until it is the current one, the
+  // checked domains are still being restored.
+  const [answeredFor, setAnsweredFor] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSettings()
@@ -100,6 +109,8 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   const namedDomains = [
     ...new Set(selectedRoles.flatMap((r) => r.domain_access).filter((d) => d !== "*")),
   ].join(",");
+  const roleSetKey = `${roleIds}|${namedDomains}`;
+  const domainsPending = selectedRoles.length > 0 && answeredFor !== roleSetKey;
   useEffect(() => {
     if (selectedRoles.length === 0) return;
     let stale = false;
@@ -117,7 +128,10 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
           setCheckedDomains(restoreCheckedDomains(ids));
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!stale) setAnsweredFor(roleSetKey);
+      });
     return () => {
       stale = true;
     };
@@ -160,6 +174,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         toggleDomain,
         ensureDomainChecked,
         domainsEnabled,
+        domainsPending,
       }}
     >
       {children}

@@ -9,6 +9,12 @@
     "scope_column": "Columna",
     "scope_relationship": "Relación",
     "scope_command": "Comando",
+    "scope_command_column": "Columna de comando",
+    "commandColumnsTitle": "Columnas de salida de comandos",
+    "commandColumnsNone": "Ningún comando declara columnas de salida.",
+    "colCommand": "Comando",
+    "colOutputColumn": "Columna de salida",
+    "colTags": "Etiquetas",
     "scope_product": "Producto de datos",
     "scope_term": "Término del glosario",
     "scope_rls_rule": "Regla de fila",
@@ -48,7 +54,6 @@
     "colAssignments": "Asignaciones",
     "colActions": "Acciones",
     "empty": "No hay etiquetas para este ámbito",
-    "noMatch": "Ninguna etiqueta coincide con el filtro",
     "systemTag": "Etiqueta del sistema (solo lectura)",
     "editTag": "Editar etiqueta {{id}}",
     "deleteTag": "Eliminar etiqueta {{id}}",
@@ -65,6 +70,7 @@
     "outsideTitle": "Asignaciones fuera de los dominios permitidos",
     "outsideBody": "Al guardar se conservaron estas asignaciones. Quite la etiqueta de un objeto al que ya no corresponda.",
     "outsideItem": "{{kind}} {{name}}, en {{domains}}",
-    "templateSection": "Plantilla"
+    "templateSection": "Plantilla",
+    "noMatch": "Ninguna etiqueta coincide con el filtro"
   }
 }

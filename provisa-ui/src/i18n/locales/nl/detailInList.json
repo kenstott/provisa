@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} staat niet in de lijst",
+    "why": "De link noemt het, maar {{reasons}}.",
+    "bySearch": "de zoekopdracht ‘{{search}}’ sluit het uit",
+    "byFilter": "het filter {{filter}} sluit het uit",
+    "byDomain": "het domein ({{domains}}) is niet in beeld",
+    "clearSearch": "Zoekopdracht wissen",
+    "clearFilter": "Filter {{filter}} wissen",
+    "addDomain": "{{domains}} aan de weergave toevoegen",
+    "showAll": "In de lijst tonen",
+    "dismiss": "Sluiten",
+    "byTab": "het tabblad {{tab}} toont het niet",
+    "openTab": "Tabblad {{tab}} tonen"
+  }
+}

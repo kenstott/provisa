@@ -144,6 +144,10 @@ class _RelJoinMixin:  # mixin for _Translator
         #: A relationship matched either way by one outer join (REQ-348): where it matched
         #: forward, and backward.
         _rel_var_forward_when: dict[str, EitherWay]
+        #: The same, for each hop (id of its RelPattern), named or not: a path's step reads it.
+        _rel_step_either_way: dict[int, EitherWay]
+        #: A path's steps matched either way (REQ-348): each step edge's, None for one matched one way.
+        _path_step_either_way: dict[str, list[EitherWay | None]]
         #: The conditions of relationships between two nodes the statement holds, which join no
         #: table (#303): the WHERE of the statement _build_from_joins builds the FROM of.
         _held_end_conditions: list[exp.Expression]
@@ -837,7 +841,17 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
-            primary_joins, forward_when = either_way_joins(primary_joins, other_joins)
+            from provisa.gql.select_builder import node_key
+
+            primary_joins, forward_when = either_way_joins(
+                primary_joins,
+                other_joins,
+                exp.EQ(
+                    this=node_key(src_table_ref, src_nm), expression=node_key(tgt_alias, tgt_nm)
+                ),
+                f"{rel.variable or tgt_alias}__way",
+            )
+            self._rel_step_either_way[id(rel)] = forward_when
             if rel.variable:
                 self._rel_var_forward_when[rel.variable] = forward_when
             candidates = candidates[:1]
@@ -1495,6 +1509,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 ):
                     _step_nodes: list[tuple[str, NodeMapping]] = []
                     _step_edges: list[tuple] = []
+                    _step_ways: list[EitherWay | None] = []
                     _seen_aliases: set[str] = set()
 
                     def _add_step_node(_alias: str, _nm: "NodeMapping | None") -> None:
@@ -1516,6 +1531,7 @@ class _RelJoinMixin:  # mixin for _Translator
                             _add_step_node(_sa, _snm)
                             _add_step_node(_ta, _tnm)
                             _step_edges.append(_ep)
+                            _step_ways.append(self._rel_step_either_way.get(id(_rel)))
                         elif _rel.variable and _rel.variable in self._rel_var_endpoints:
                             _vep = self._rel_var_endpoints[_rel.variable]
                             _sa, _snm, _ta, _tnm, _rev = _vep
@@ -1533,8 +1549,11 @@ class _RelJoinMixin:  # mixin for _Translator
                                     self._rel_var_via.get(_rel.variable),  # REQ-1586
                                 )
                             )
+                            _step_ways.append(self._rel_var_forward_when.get(_rel.variable))
                     if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
+                        if any(_step_ways):
+                            self._path_step_either_way[clause.variable] = _step_ways
 
         if from_expr is None and self._lateral_bound and not joins:
             # Every node matched is the outer statement's row (#160): this statement reads that

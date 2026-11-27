@@ -20,6 +20,7 @@ import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable, DataProduct, Relationship, Source } from "../../types/admin";
 import type { ReplicaBuild } from "../../api/admin";
 import { ReplicatingMark } from "./ReplicatingMark";
+import { PanelBody, PanelStrip } from "../../components/list/PanelBody";
 import { computeProfile, masksSummary } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
@@ -361,13 +362,15 @@ export function TableReadView({
   if (actionsOnly) return actions;
 
   return (
-    <>
+    <PanelBody>
       <KeepsHistoryNote table={table} navigate={navigate} />
       {/* The same seven sections as the edit form, each read-only. */}
-      <TableSectionTabs value={section} onChange={setSection} />
+      <PanelStrip>
+        <TableSectionTabs value={section} onChange={setSection} />
+      </PanelStrip>
       {/* The section in view, as a demo tour step anchors on it (`open: <section>`); Columns
           carries its own. */}
-      <div data-testid={section === "columns" ? undefined : `table-section-${section}-panel`}>
+      <PanelBody data-testid={section === "columns" ? undefined : `table-section-${section}-panel`}>
         {section === "identity" && (
           <IdentityRead table={table} source={source} actingRole={actingRole} />
         )}
@@ -874,7 +877,7 @@ export function TableReadView({
         )}
         {/* REQ-2162: who can read or write each column. */}
         {section === "access" && <TableAccessPanel tableId={table.id} />}
-      </div>
+      </PanelBody>
       {deployMsg[table.id] && (
         <Box
           px="0.75rem"
@@ -885,6 +888,6 @@ export function TableReadView({
           {deployMsg[table.id].message}
         </Box>
       )}
-    </>
+    </PanelBody>
   );
 }

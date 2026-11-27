@@ -52,7 +52,7 @@ jobs:
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'
         run: |
-          sudo apt-get update
+          scripts/ci/apt-update.sh
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git curl bison flex patchelf \
             libssl-dev liblz4-dev libzstd-dev libsqlite3-dev libmariadb-dev pkg-config \

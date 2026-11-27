@@ -56,9 +56,9 @@ import { DetailFields } from "../detail/DetailFields";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { useRequiredFields } from "../form/useRequiredFields";
-import { matchesQuery } from "../../lib/searchItems";
 import { FilterInput } from "./FilterInput";
 
 /**
@@ -241,9 +241,31 @@ function SecretsVault({ vault, title, header }: VaultProps) {
   const [stillNamedBy, setStillNamedBy] = useState<SecretReference[]>([]);
   const [message, setMessage] = useState("");
   const [search, setSearch] = useUrlFilter();
+  // REQ-2277 rule 9: a secret is open only while the search shows its row.
+  const narrowings = [
+    searchNarrowing<Secret>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a secret's row shows.
+      (s) => [
+        s.name,
+        s.description,
+        s.updated_at ? new Date(s.updated_at).toLocaleString() : t("secretsTab.never"),
+        s.updated_by ? t("secretsTab.updatedBy", { actor: s.updated_by }) : "",
+        s.reference,
+      ],
+    ),
+  ];
   const detail = useRememberedDetail(
     vault === "org" ? "secrets" : "mySecrets",
-    state === null ? null : state.secrets.map((s) => s.name),
+    detailListOf(
+      t,
+      state === null ? null : state.secrets,
+      (s) => s.name,
+      (s) => s.name,
+      narrowings,
+    ),
   );
   // A replacement fixes the name, because the name is the identity and changing it would create a
   // second secret.
@@ -361,19 +383,7 @@ function SecretsVault({ vault, title, header }: VaultProps) {
 
   const writable = state.provider.writable;
   const open = state.secrets.find((s) => s.name === detail.id) ?? null;
-  const shown = state.secrets.filter((s) =>
-    // Every text a secret's row shows.
-    matchesQuery(
-      [
-        s.name,
-        s.description,
-        s.updated_at ? new Date(s.updated_at).toLocaleString() : t("secretsTab.never"),
-        s.updated_by ? t("secretsTab.updatedBy", { actor: s.updated_by }) : "",
-        s.reference,
-      ],
-      search,
-    ),
-  );
+  const shown = shownBy(state.secrets, narrowings);
 
   const formView = (
     <FormLayout data-testid="secret-form">
@@ -529,6 +539,7 @@ function SecretsVault({ vault, title, header }: VaultProps) {
         {message && <Alert color="green">{message}</Alert>}
 
         <SplitPane
+          outOfList={detail.outOfList}
           testId="secrets-split"
           storageKey={`provisa.secrets.${vault}.detailWidth`}
           title={panelTitle}

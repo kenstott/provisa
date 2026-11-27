@@ -24,7 +24,7 @@ export function SourceSectionTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <Tabs value={value} onChange={(v) => v && onChange(v as SourceSection)} mb="sm">
+    <Tabs value={value} onChange={(v) => v && onChange(v as SourceSection)}>
       <Tabs.List aria-label={t("sourceSections.label")}>
         {shown.map((section) => (
           <Tabs.Tab key={section} value={section} data-testid={`source-section-${section}`}>

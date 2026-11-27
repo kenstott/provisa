@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Regole di colonna",
+    "hint": "Ogni regola nasconde o maschera, per un ruolo e per i ruoli che ne ereditano, ogni colonna che porta questa chiave, sia le colonne di una tabella sia le colonne di output di un comando. La visibilità e le maschere proprie della colonna continuano ad applicarsi; prevale il risultato più restrittivo.",
+    "none": "Nessuna regola di colonna.",
+    "colRole": "Ruolo",
+    "colEffect": "Effetto",
+    "hidden": "Nascosta",
+    "maskedCompletely": "Mascherata completamente",
+    "maskedAs": "Mascherata: {{mask}}",
+    "remove": "Rimuovi la regola per {{role}}",
+    "roleLabel": "Ruolo",
+    "actionLabel": "Effetto",
+    "actionHide": "Nascondi",
+    "actionMask": "Maschera",
+    "maskLabel": "Maschera",
+    "maskComplete": "Mascherata completamente",
+    "constantLabel": "Valore costante",
+    "patternLabel": "Pattern",
+    "replaceLabel": "Sostituzione",
+    "add": "Aggiungi regola"
+  }
+}

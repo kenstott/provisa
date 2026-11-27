@@ -90,6 +90,7 @@ TENANT_TABLES: dict[str, str] = {
     "tags": MODEL,
     "tag_param_values": MODEL,
     "tag_assignments": MODEL,
+    "column_rules": MODEL,  # REQ-2278: read into the runtime build (state.ruled_columns)
     "tracked_functions": MODEL,
     "tracked_webhooks": MODEL,
     "scheduled_triggers": MODEL,

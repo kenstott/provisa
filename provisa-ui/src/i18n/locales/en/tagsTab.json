@@ -9,6 +9,12 @@
     "scope_column": "Column",
     "scope_relationship": "Relationship",
     "scope_command": "Command",
+    "scope_command_column": "Command column",
+    "commandColumnsTitle": "Command output columns",
+    "commandColumnsNone": "No command declares output columns.",
+    "colCommand": "Command",
+    "colOutputColumn": "Output column",
+    "colTags": "Tags",
     "scope_product": "Data product",
     "scope_term": "Glossary term",
     "scope_rls_rule": "Row rule",
@@ -48,7 +54,6 @@
     "colAssignments": "Assignments",
     "colActions": "Actions",
     "empty": "No tags for this scope",
-    "noMatch": "No tags match the filter",
     "systemTag": "System tag (read only)",
     "editTag": "Edit tag {{id}}",
     "deleteTag": "Delete tag {{id}}",
@@ -65,6 +70,7 @@
     "outsideTitle": "Assignments outside the allowed domains",
     "outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
     "outsideItem": "{{kind}} {{name}}, in {{domains}}",
-    "templateSection": "Template"
+    "templateSection": "Template",
+    "noMatch": "No tags match the filter"
   }
 }

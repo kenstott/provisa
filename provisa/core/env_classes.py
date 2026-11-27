@@ -69,6 +69,9 @@ CARRIED: frozenset[str] = frozenset(
         "tags",
         "tag_param_values",
         "tag_assignments",
+        # REQ-2278: a column rule on a tag or a classification travels with the tags and the
+        # roles it names, as a row filter on a tag does.
+        "column_rules",
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",

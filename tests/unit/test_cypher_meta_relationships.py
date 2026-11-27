@@ -120,14 +120,20 @@ def meta():
         all_relationships=rels,
         all_column_types=column_types,
     )
+    con = _connect(cols)
+    _seed(con)
+    return lm, con
+
+
+def _connect(cols: dict[str, set[str]]) -> duckdb.DuckDBPyConnection:
+    """A DuckDB database with each seeded table, empty."""
     con = duckdb.connect()
     con.execute("ATTACH ':memory:' AS provisa_admin")
     con.execute("CREATE SCHEMA provisa_admin.public")
     for name, columns in cols.items():
         defs = ", ".join(f'"{c}" {_type(c).upper()}' for c in sorted(columns))
         con.execute(f'CREATE TABLE provisa_admin.public."{name}_meta" ({defs})')
-    _seed(con)
-    return lm, con
+    return con
 
 
 def _insert(con, table: str, **values) -> None:
@@ -413,3 +419,111 @@ def test_an_optional_undirected_self_referential_hop_s_ends_are_as_stored(selfre
         for a_id, s, e in rows
     ]
     assert sorted(got, key=repr) == expected
+
+
+# --- two relationships between the same two nodes, each way; a self-loop ------------------------
+# REQ-348: an OPTIONAL undirected hop reaches each relationship once. FK: 20 CHECKS 21 and 21
+# CHECKS 20 are two relationships; 22 CHECKS 22 is one. Junction: 5 KIND_OF 6 and 6 KIND_OF 5;
+# 7 KIND_OF 7. 23 and 8 reach none.
+
+
+@pytest.fixture(scope="module")
+def mutual(meta):
+    lm, _seeded = meta
+    con = _connect(_columns())
+    _insert(con, "registered_tables", id=20, name="a", checked_table_id=21)
+    _insert(con, "registered_tables", id=21, name="b", checked_table_id=20)
+    _insert(con, "registered_tables", id=22, name="loop", checked_table_id=22)
+    _insert(con, "registered_tables", id=23, name="none")
+    for term in (5, 6, 7, 8):
+        _insert(con, "_terms", id=term, name=f"t{term}")
+    for src, tgt in ((5, 6), (6, 5), (7, 7)):
+        _insert(con, "_term_edges", from_term_id=src, to_term_id=tgt, rel_type="KIND_OF")
+    return lm, con
+
+
+_MUTUAL = {
+    # (a, b, r's start, r's end): one row per relationship, NULLs where none is reached.
+    "fk": [
+        (20, 21, 20, 21),
+        (20, 21, 21, 20),
+        (21, 20, 20, 21),
+        (21, 20, 21, 20),
+        (22, 22, 22, 22),
+        (23, None, None, None),
+    ],
+    "junction": [
+        (5, 6, 5, 6),
+        (5, 6, 6, 5),
+        (6, 5, 5, 6),
+        (6, 5, 6, 5),
+        (7, 7, 7, 7),
+        (8, None, None, None),
+    ],
+}
+
+
+def _node_key(node: dict) -> int:
+    # A node's graph identity, "Label|key".
+    return int(node["id"].rsplit("|", 1)[1])
+
+
+def _json(value):
+    import json
+
+    return None if value is None else (json.loads(value) if isinstance(value, str) else value)
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_hop_reaches_each_relationship_once(mutual, shape):
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        mutual,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, b.id, r",
+    )
+    got = [
+        (
+            a_id,
+            b_id,
+            *((None, None) if e is None else (_node_key(e["startNode"]), _node_key(e["endNode"]))),
+        )
+        for a_id, b_id, e in ((a, b, _json(r)) for a, b, r in rows)
+    ]
+    assert sorted(got, key=repr) == _MUTUAL[shape]
+
+
+def _path_rows(meta, cypher: str) -> list[tuple]:
+    got = []
+    for a_id, p in _rows(meta, cypher):
+        path = _json(p)
+        if path is None:
+            got.append((a_id, None, None, None))
+            continue
+        (edge,) = path["edges"]
+        far = path["nodes"][-1]["properties"]["id"]
+        got.append((a_id, far, _node_key(edge["startNode"]), _node_key(edge["endNode"])))
+    return sorted(got, key=repr)
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_path_s_edge_is_each_relationship_as_stored(mutual, shape):
+    label, rel = _SELFREL_NODES[shape]
+    got = _path_rows(
+        mutual, f"MATCH (a:{label}) OPTIONAL MATCH p = (a)-[:{rel}]-(b:{label}) RETURN a.id, p"
+    )
+    assert got == _MUTUAL[shape]
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("fk", [(10, 11, 11, 10), (11, 10, 11, 10), (12, None, None, None)]),
+        ("junction", [(1, 2, 1, 2), (2, 1, 1, 2), (3, None, None, None)]),
+    ],
+)
+def test_an_optional_undirected_path_is_null_where_nothing_matched(selfrel, shape, expected):
+    label, rel = _SELFREL_NODES[shape]
+    got = _path_rows(
+        selfrel, f"MATCH (a:{label}) OPTIONAL MATCH p = (a)-[r:{rel}]-(b:{label}) RETURN a.id, p"
+    )
+    assert got == expected
