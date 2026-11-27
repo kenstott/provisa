@@ -998,6 +998,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_step_either_way: dict[int, EitherWay] = {}
         # REQ-348: a path's step edges, each where it matched forward and backward, or None.
         self._path_step_either_way: dict[str, list[EitherWay | None]] = {}
+        # A path an OPTIONAL MATCH names: null where it matched nothing.
+        self._optional_paths: set[str] = set()
         self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
@@ -1007,6 +1009,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # every resolved rel step, including anonymous/unnamed ones, so flat-JOIN path
         # building can reconstruct full {nodes, edges} even when endpoints have no variable.
         self._rel_step_endpoints: dict[int, tuple] = {}
+        # A hop's further candidate read as its own UNION branch: (that branch's path steps,
+        # id(RelPattern), the hop's step edge as the branch matches it), so a path the branch
+        # answers carries the relationship that branch matched.
+        self._branch_rel_steps: list[tuple[dict, int, tuple]] = []
         # REQ-1586: (id(NodePattern), table) -> alias for a node with no variable. An anonymous endpoint
         # aliases to its table name, so a self-referencing pattern -- ()-[:KIND_OF]->() over one
         # table, which is what a junction edge between two rows of the same entity is -- would
@@ -2589,12 +2595,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         for path in carried_paths:
             self._path_vars.pop(path, None)
             self._path_step_either_way.pop(path, None)
+            self._optional_paths.discard(path)
         for key in new_var_table:
             # A name the WITH gives a value of its own (WITH [x IN collect(p) | ...] AS p) is no
             # longer the path that pattern named.
             if key not in carried_paths:
                 self._path_vars.pop(key, None)
                 self._path_step_either_way.pop(key, None)
+                self._optional_paths.discard(key)
         # A relationship or node of a union the WITH does not carry is out of scope after it: a
         # later MATCH naming it binds it anew (MATCH (me)-[r1]->() WITH me MATCH (me)-[r1]->()).
         self._all_rels_rel_vars &= set(new_var_table)
