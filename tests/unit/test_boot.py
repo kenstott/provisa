@@ -32,6 +32,7 @@ async def _probe():
 
 
 def _spec(node, kind, **kw):
+    extra = {"replica": kw["replica"]} if "replica" in kw else {}
     return NodeSpec(
         node=node,
         kind=kind,
@@ -40,6 +41,7 @@ def _spec(node, kind, **kw):
         handle=_noop_handle,
         poll_seconds=kw.get("poll"),
         probe_factory=kw.get("pf"),
+        **extra,
     )
 
 
@@ -188,7 +190,7 @@ def test_register_runtime_adds_tick_reaper_and_poll_jobs():
     assert "events:tick:org_default" in sched.jobs and "events:reaper:org_default" in sched.jobs
     assert (
         "events:boot:org_default" in sched.jobs
-    )  # one-shot boot-create job (build replicas at boot)
+    )  # one-shot boot job (seed the nodes that hold no replica, drain pending work)
     assert (
         "poll:s.poll:org_default" in sched.jobs
     )  # only the poll node with a cadence gets its own job
@@ -215,9 +217,13 @@ def test_register_runtime_seed_false_skips_boot_create():
 
 
 @pytest.mark.asyncio
-async def test_boot_create_seeds_one_replace_event_per_source(monkeypatch):
-    # Design: replicas are BUILT at boot. boot_create posts one 'replace' event per SOURCE node
-    # (never MV nodes — those are driven downstream); the caller drains to land them.
+async def test_boot_create_seeds_no_source_that_holds_a_replica(monkeypatch):
+    """REQ-1632/REQ-2300: boot copies no data into a replica. The boot's schema-currency
+    reconcile has already kept each matching replica as it stands and created each missing one
+    empty; its rows come from the refresh cadence. So boot_create posts nothing for a source
+    node that holds a replica (a whole copy or a land) -- only for a node that lands nothing (a
+    watched live table or a push source), whose boot event is the views' first build -- and
+    never for an MV node, driven downstream."""
     posted: list[tuple[str, str]] = []
     fanned: list[tuple[int, list]] = []
 
@@ -242,12 +248,58 @@ async def test_boot_create_seeds_one_replace_event_per_source(monkeypatch):
     db = SimpleNamespace(acquire=lambda: _Ctx())
     from provisa.events.boot import boot_create
 
-    specs = [_spec("s.a", "source"), _spec("mv.x", "mv"), _spec("s.b", "source")]
+    specs = [
+        _spec("s.copy", "source", replica=True),
+        _spec("s.live", "source", replica=False),
+        _spec("mv.x", "mv"),
+        _spec("s.landed", "source", replica=True),
+        _spec("s.push", "source", cs="kafka", replica=False),
+    ]
     n = await boot_create(db, specs)
     assert n == 2
-    assert posted == [("s.a", "replace"), ("s.b", "replace")]
-    # each source's boot event is enqueued as work for the source node itself (self-dependent)
-    assert fanned == [(1, ["s.a"]), (2, ["s.b"])]
+    assert posted == [("s.live", "replace"), ("s.push", "replace")]
+    # each seeded node's boot event is enqueued as work for the node itself (self-dependent)
+    assert fanned == [(1, ["s.live"]), (2, ["s.push"])]
+
+
+def test_a_source_node_says_whether_it_holds_a_replica():
+    """REQ-1632: a node that lands rows (the per-fire land) or whose whole copy is built
+    (REQ-1915) holds a replica; a watched live table's node and a push source's node land
+    nothing through the node and hold none."""
+    engine = build_duckdb_engine()
+    api = _src("api", "openapi")
+    pg = _src("pg", "postgresql")
+    pg.change_signal = "probe"  # read where it lies, watched for the views over it
+    kafka = _src("bus", "kafka")
+    tables = [
+        _tbl("api", "events", [_col("id", "bigint", pk=True)]),
+        _tbl("pg", "users", [_col("id")]),
+        _tbl("bus", "ticks", [_col("id")]),
+    ]
+
+    def _specs(replica_build):
+        return {
+            s.node: s.replica
+            for s in specs_from_config(
+                sources=[api, pg, kafka],
+                tables=tables,
+                mvs=[],
+                engine=engine,
+                engine_runtime=_DsnEngine("sqlite://"),
+                source_fetch=lambda s, t: _fetch,
+                mv_columns=lambda m: [],
+                mv_run_query=lambda m: _run_query,
+                replica_build=replica_build,
+            )
+        }
+
+    landed = _specs(None)  # no build runner: the node lands the rows itself
+    built = _specs(lambda key: _noop_handle)  # the data replicator builds the whole copy
+    assert landed["api/default.events"] is True
+    assert built["api/default.events"] is True
+    for held in (landed, built):
+        assert held["pg/default.users"] is False
+        assert held["bus/default.ticks"] is False
 
 
 def test_a_table_that_inherits_its_sources_ttl_is_polled_at_that_ttl():
