@@ -6891,8 +6891,13 @@ async def _route_compiled(
         )
 
 
+# The leading whitespace and comments are skipped in one atomic group: once skipped they are never
+# re-split. Nested inside the repeat, ``\s+`` and ``--[^\n]*`` could split each comment line many
+# ways, and a statement that is not a write (the verb never follows) tried every split -- an
+# exponential search that held a worker on two commented-out statements (SQL-REGEX-BACKTRACK).
+# Atomic, a word inside a comment is never read as the statement's verb either.
 _OPENING_WRITE_RE = re.compile(
-    r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
+    r"(?>(?:\s+|--[^\n]*|/\*.*?\*/)*)(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE | re.DOTALL,
 )
 
