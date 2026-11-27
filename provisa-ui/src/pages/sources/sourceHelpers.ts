@@ -116,6 +116,8 @@ export const parseFilesPath = (fullPath: string): { transport: string; path: str
     "http://",
     "https://",
     "sharepoint://",
+    "onedrive://",
+    "gdrive://",
   ]) {
     if (fullPath.startsWith(t)) return { transport: t, path: fullPath.slice(t.length) };
   }

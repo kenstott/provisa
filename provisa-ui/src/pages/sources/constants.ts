@@ -184,6 +184,14 @@ export function brandSetupDefaults(brand: string): Record<string, string> {
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = generated.typeAlias;
 
+/** What a files source's path field shows before one is typed, by transport; another remote
+ * transport shows "bucket/prefix/**". */
+export const FILES_PATH_PLACEHOLDER: Record<string, string> = {
+  "file://": "/data/files/**",
+  "onedrive://": "user@example.com/Reports/*.csv", // REQ-2280
+  "gdrive://": "<folder id>/Reports/*.csv",
+};
+
 export const FILE_TRANSPORTS = [
   { value: "file://", label: "file:// (file mount / local disk)", needsAuth: false as const },
   { value: "ftp://", label: "ftp://", needsAuth: "userpass" as const },
@@ -193,4 +201,7 @@ export const FILE_TRANSPORTS = [
   { value: "http://", label: "http://", needsAuth: "userpass" as const },
   { value: "https://", label: "https://", needsAuth: "userpass" as const },
   { value: "sharepoint://", label: "sharepoint://", needsAuth: "cert-or-userpass" as const },
+  // REQ-2280: a user's OneDrive (Microsoft Graph) and a shared Google Drive folder.
+  { value: "onedrive://", label: "onedrive://", needsAuth: "onedrive" as const },
+  { value: "gdrive://", label: "gdrive://", needsAuth: "gdrive" as const },
 ];

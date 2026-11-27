@@ -75,7 +75,14 @@ const values = (rel: ArgValue): Record<string, ArgValue> => ({
 
 describe("the surfaces a command is offered on", () => {
   it("is every surface that names it, in the order a table's links are drawn", () => {
-    expect(commandSurfaces(SERVED, reader)).toEqual(["cypher", "sql", "graphql", "rest", "grpc"]);
+    expect(commandSurfaces(SERVED, reader)).toEqual([
+      "cypher",
+      "sql",
+      "graphql",
+      "rest",
+      "grpc",
+      "jsonapi",
+    ]);
   });
 
   it("leaves out a surface the command is excluded from", () => {
@@ -83,14 +90,18 @@ describe("the surfaces a command is offered on", () => {
     expect(commandSurfaces(served, reader)).toEqual(["sql", "graphql", "grpc"]);
   });
 
+  it("leaves out JSON:API where the command has no REST name, the name its route binds", () => {
+    const served = { ...SERVED, names: { ...SERVED.names, rest: null } };
+    expect(commandSurfaces(served, reader)).not.toContain("jsonapi");
+  });
+
   it("is none when the role is not served the command", () => {
     expect(commandSurfaces(null, reader)).toEqual([]);
   });
 
-  it("offers neither SPARQL nor JSON:API, whose Explore pages call no command", () => {
+  it("does not offer SPARQL, which has no call of a command", () => {
     const offered: string[] = commandSurfaces(SERVED, reader);
     expect(offered).not.toContain("sparql");
-    expect(offered).not.toContain("jsonapi");
   });
 });
 
@@ -151,6 +162,19 @@ describe("a command's call on each surface", () => {
     });
   });
 
+  it("JSON:API: a read hands its REST-named command with each argument as written", () => {
+    expect(commandQueryLink("jsonapi", ENRICH, SERVED, reader, values(asQuery))).toEqual({
+      to: "/jsonapi",
+      state: {
+        jsonapiCommand: "enrich_grpc_set",
+        jsonapiDomain: "derived",
+        jsonapiWrite: false,
+        jsonapiArgs: { input: QUERY, factor: 1.5 },
+        autoRun: true,
+      },
+    });
+  });
+
   it("gRPC: the command's call with its arguments, rows as a JSON array", () => {
     expect(commandQueryLink("grpc", ENRICH, SERVED, reader, values(asRows))).toEqual({
       to: "/grpc",
@@ -196,6 +220,19 @@ describe("a command that writes", () => {
       state: {
         openApiUrl: "POST /data/rest/sales/commands/refund_order",
         openApiBody: { order_id: 7 },
+        autoRun: false,
+      },
+    });
+  });
+
+  it("JSON:API: a POST with its arguments, left for Run", () => {
+    expect(commandQueryLink("jsonapi", REFUND, served, reader, given)).toEqual({
+      to: "/jsonapi",
+      state: {
+        jsonapiCommand: "refund_order",
+        jsonapiDomain: "sales",
+        jsonapiWrite: true,
+        jsonapiArgs: { order_id: 7 },
         autoRun: false,
       },
     });

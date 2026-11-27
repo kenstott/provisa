@@ -23,7 +23,7 @@ cd provisa
 ./setup.sh
 ```
 
-`setup.sh` crea `.venv/`, instala todas las dependencias de Python mediante `pip install -e ".[dev]"`, y configura los git hooks en `.githooks/`.
+`setup.sh` comprueba uv, Rust, Node.js, Go y Docker frente a las versiones que fija el dev container (`.devcontainer/devcontainer.json`) y ofrece instalar las que faltan o son demasiado antiguas (`./setup.sh --yes` instala sin preguntar; Docker es opcional y solo hace falta para las pruebas con contenedores y las pilas de demostración). Después sincroniza las dependencias de Python bloqueadas en `.venv/` (compilando los codificadores de Rust), ejecuta `npm ci` en `provisa-ui` y configura los git hooks en `.githooks/`. Se puede volver a ejecutar sin riesgo.
 
 ---
 

@@ -304,11 +304,10 @@ describe("a command's Query it line", () => {
     routed();
     const line = await screen.findByTestId("command-query-links");
     expect(line).toHaveTextContent("Query it");
-    for (const surface of ["cypher", "sql", "graphql", "rest", "grpc"]) {
+    for (const surface of ["cypher", "sql", "graphql", "rest", "grpc", "jsonapi"]) {
       expect(within(line).getByTestId(`command-query-${surface}`)).toBeInTheDocument();
     }
     expect(within(line).queryByTestId("command-query-sparql")).toBeNull();
-    expect(within(line).queryByTestId("command-query-jsonapi")).toBeNull();
   });
 
   it("asks for the arguments, then opens that Explore tab with the call, a write not run", async () => {

@@ -28,6 +28,7 @@ import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
 import { JDBC_SOURCE, jdbcSourceHints } from "./jdbcSource";
+import { driveFieldsFromMapping } from "./cloudDrive";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
 import { KAFKA, kafkaFieldsFromSource } from "./kafka";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
@@ -209,7 +210,10 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === "files") {
     // How the Excel reader finds the tables of its workbooks (mapping.excel_hints).
-    authFields = withExcelHints(authFields, excelHintsFromMapping(s.mappingJson));
+    authFields = withExcelHints(
+      { ...authFields, ...driveFieldsFromMapping(mapping) }, // REQ-2280: a gdrive:// sign-in
+      excelHintsFromMapping(s.mappingJson),
+    );
   }
   if (CODE_SOURCE_TYPES.has(s.type) && s.mappingJson) {
     authFields = codeFieldsFromMapping(s.mappingJson); // REQ-1984, REQ-1993

@@ -235,6 +235,13 @@
     "qbSignIn": "כניסה עם QuickBooks",
     "qbSignedIn": "מחובר לחברה {{realm}}. שמרו את המקור כדי לשמור זאת.",
     "qbSignInFailed": "לא ניתן היה להשלים את הכניסה.",
-    "wikidataEndpointHint": "שירות השאילתות של ויקינתונים. ללא אישורים; הטבלאות מתרעננות ממנו מדי יום."
+    "wikidataEndpointHint": "שירות השאילתות של ויקינתונים. ללא אישורים; הטבלאות מתרעננות ממנו מדי יום.",
+    "gdriveAuth_service_account": "חשבון שירות",
+    "gdriveAuth_oauth": "OAuth (אסימון רענון)",
+    "gdriveServiceAccountKey": "מפתח חשבון שירות (JSON)",
+    "gdriveServiceAccountKeyHint": "שתפו את התיקייה עם כתובת הדוא\"ל של חשבון השירות: לחשבון שירות אין אחסון משלו.",
+    "gdriveRefreshToken": "אסימון רענון",
+    "gdriveSubject": "פועל כמשתמש (אופציונלי)",
+    "gdriveSubjectHint": "עם האצלה ברמת הדומיין, חשבון השירות קורא את ה-Drive של משתמש Workspace זה. השאירו ריק כדי לקרוא כחשבון השירות עצמו."
   }
 }

@@ -235,6 +235,13 @@
     "qbSignIn": "Se connecter avec QuickBooks",
     "qbSignedIn": "Connecté à l'entreprise {{realm}}. Enregistrez la source pour la conserver.",
     "qbSignInFailed": "La connexion n’a pas pu aboutir.",
-    "wikidataEndpointHint": "Le service de requêtes Wikidata. Sans identifiant ; les tables sont actualisées chaque jour."
+    "wikidataEndpointHint": "Le service de requêtes Wikidata. Sans identifiant ; les tables sont actualisées chaque jour.",
+    "gdriveAuth_service_account": "Compte de service",
+    "gdriveAuth_oauth": "OAuth (jeton d'actualisation)",
+    "gdriveServiceAccountKey": "Clé du compte de service (JSON)",
+    "gdriveServiceAccountKeyHint": "Partagez le dossier avec l'adresse e-mail du compte de service : un compte de service n'a pas de stockage propre.",
+    "gdriveRefreshToken": "Jeton d'actualisation",
+    "gdriveSubject": "Agit en tant qu'utilisateur (facultatif)",
+    "gdriveSubjectHint": "Avec la délégation au niveau du domaine, le compte de service lit le Drive de cet utilisateur Workspace. Laissez vide pour lire en tant que compte de service lui-même."
   }
 }

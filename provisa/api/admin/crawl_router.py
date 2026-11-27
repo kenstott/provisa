@@ -27,6 +27,12 @@ router = APIRouter(prefix="/admin/sources", tags=["admin", "sources"])
 class CrawlRequest(BaseModel):
     path: str
     depth: int | None = None  # None = unlimited
+    # REQ-2280: a onedrive:// or gdrive:// path signs in with the fields its source will hold
+    # (provisa.file_source.cloud_drive): tenant id, client id, secret or key, and mapping.
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None
+    mapping: dict | None = None
 
 
 class CrawlResponse(BaseModel):
@@ -48,12 +54,14 @@ async def crawl_directory_endpoint(
     and ``tables`` (list of ``{name, columns}``).
     """
     require_capability_request(request, "source_registration")
+    from provisa.file_source.cloud_drive import drive_storage_options
     from provisa.file_source.crawler import crawl_directory
 
     from provisa.file_source.files_glob import propose_glob_groups, split_source_path
 
     try:
-        discovered = crawl_directory(body.path, body.depth)
+        storage_options = drive_storage_options({"id": "crawl", **body.model_dump()})
+        discovered = crawl_directory(body.path, body.depth, storage_options=storage_options)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
