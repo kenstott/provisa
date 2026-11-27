@@ -661,3 +661,171 @@ _STORED_PATHS = {
 @pytest.mark.parametrize(("cypher", "expected"), _STORED_PATHS.values(), ids=_STORED_PATHS.keys())
 def test_a_path_s_relationship_is_as_stored(meta, cypher, expected):
     assert _stored_edges(meta, cypher) == sorted(expected, key=repr)
+
+
+# --- a variable-length path: its nodes in pattern order, its relationships as stored -------------
+# Neo4j: a path's nodes run from the pattern's first node to its last, whichever way the arrow
+# points, and each relationship is as stored. A walk between two types is flat joins; one over a
+# self-referential type is a recursive walk, which returns the whole path too.
+
+
+def _whole_paths(meta, cypher: str) -> list:
+    """Each row's path as (its nodes' keys, its relationships as (start, end, startNode's key,
+    endNode's key, identity)); None for a null path."""
+    got = []
+    for (p,) in _rows(meta, cypher):
+        path = _json(p)
+        got.append(
+            None
+            if path is None
+            else (
+                tuple(_node_key(n) for n in path["nodes"]),
+                tuple(
+                    (
+                        int(e["start"]),
+                        int(e["end"]),
+                        _node_key(e["startNode"]),
+                        _node_key(e["endNode"]),
+                        e["identity"],
+                    )
+                    for e in path["edges"]
+                ),
+            )
+        )
+    return sorted(got, key=repr)
+
+
+def _whole(nodes: tuple, *edges: tuple) -> tuple:
+    """A path of ``nodes``, its relationships as stored from (type, start, end) each."""
+    return (nodes, _stored(*edges))
+
+
+_VARLEN_PATHS = {
+    # Between two types: flat joins.
+    "fk-flat-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE*1..2]-(t:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((1, 10), ("SOURCE", 10, 1)),
+            _whole((1, 11), ("SOURCE", 11, 1)),
+            _whole((2, 12), ("SOURCE", 12, 2)),
+        ],
+    ),
+    "fk-flat-forward": (
+        "MATCH p = (t:Meta:RegisteredTables)-[:SOURCE*1..2]->(s:Meta:Sources) RETURN p",
+        [
+            _whole((10, 1), ("SOURCE", 10, 1)),
+            _whole((11, 1), ("SOURCE", 11, 1)),
+            _whole((12, 2), ("SOURCE", 12, 2)),
+        ],
+    ),
+    "junction-flat-reversed": (
+        "MATCH p = (b:Meta:RegisteredTables)<-[:MEMBER_TABLES*1..2]-(a:Meta:DataProducts) RETURN p",
+        [
+            _whole((10, 100), ("MEMBER_TABLES", 100, 10)),
+            _whole((12, 100), ("MEMBER_TABLES", 100, 12)),
+        ],
+    ),
+    "junction-flat-forward": (
+        "MATCH p = (a:Meta:DataProducts)-[:MEMBER_TABLES*1..2]->(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((100, 10), ("MEMBER_TABLES", 100, 10)),
+            _whole((100, 12), ("MEMBER_TABLES", 100, 12)),
+        ],
+    ),
+    # Over a self-referential type: a recursive walk. FK: 11 CHECKS 10; junction: 1 KIND_OF 2.
+    "fk-recursive-reversed": (
+        "MATCH p = (a:Meta:RegisteredTables)<-[:CHECKS*1..2]-(b:Meta:RegisteredTables) RETURN p",
+        [_whole((10, 11), ("CHECKS", 11, 10))],
+    ),
+    "fk-recursive-forward": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:CHECKS*1..2]->(a:Meta:RegisteredTables) RETURN p",
+        [_whole((11, 10), ("CHECKS", 11, 10))],
+    ),
+    "fk-recursive-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS*1..2]-(b:Meta:RegisteredTables) RETURN p",
+        [_whole((10, 11), ("CHECKS", 11, 10)), _whole((11, 10), ("CHECKS", 11, 10))],
+    ),
+    "junction-recursive-reversed": (
+        "MATCH p = (a:Ontology:Terms)<-[:KIND_OF*1..2]-(b:Ontology:Terms) RETURN p",
+        [_whole((2, 1), ("KIND_OF", 1, 2))],
+    ),
+    "junction-recursive-forward": (
+        "MATCH p = (b:Ontology:Terms)-[:KIND_OF*1..2]->(a:Ontology:Terms) RETURN p",
+        [_whole((1, 2), ("KIND_OF", 1, 2))],
+    ),
+    "junction-recursive-undirected": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF*1..2]-(b:Ontology:Terms) RETURN p",
+        [_whole((1, 2), ("KIND_OF", 1, 2)), _whole((2, 1), ("KIND_OF", 1, 2))],
+    ),
+    "fk-recursive-optional-reversed": (
+        "MATCH (a:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (a)<-[:CHECKS*1..2]-(b:Meta:RegisteredTables) RETURN p",
+        [None, None, _whole((10, 11), ("CHECKS", 11, 10))],
+    ),
+}
+
+
+@pytest.mark.parametrize(("cypher", "expected"), _VARLEN_PATHS.values(), ids=_VARLEN_PATHS.keys())
+def test_a_variable_length_path_is_in_pattern_order_with_each_relationship_as_stored(
+    meta, cypher, expected
+):
+    assert _whole_paths(meta, cypher) == sorted(expected, key=repr)
+
+
+# Two hops over a self-referential type. FK: 30 CHECKS 31 CHECKS 32; junction: 4 KIND_OF 5
+# KIND_OF 6.
+
+
+@pytest.fixture(scope="module")
+def chain(meta):
+    lm, _seeded = meta
+    con = _connect(_columns())
+    _insert(con, "registered_tables", id=30, name="a", checked_table_id=31)
+    _insert(con, "registered_tables", id=31, name="b", checked_table_id=32)
+    _insert(con, "registered_tables", id=32, name="c")
+    for term in (4, 5, 6):
+        _insert(con, "_terms", id=term, name=f"t{term}")
+    for src, tgt in ((4, 5), (5, 6)):
+        _insert(con, "_term_edges", from_term_id=src, to_term_id=tgt, rel_type="KIND_OF")
+    return lm, con
+
+
+_CHAIN_PATHS = {
+    "fk-reversed": (
+        "MATCH p = (a:Meta:RegisteredTables)<-[:CHECKS*2]-(b:Meta:RegisteredTables) RETURN p",
+        [_whole((32, 31, 30), ("CHECKS", 31, 32), ("CHECKS", 30, 31))],
+    ),
+    "fk-forward": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:CHECKS*2]->(a:Meta:RegisteredTables) RETURN p",
+        [_whole((30, 31, 32), ("CHECKS", 30, 31), ("CHECKS", 31, 32))],
+    ),
+    "fk-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS*2]-(b:Meta:RegisteredTables) RETURN p",
+        [
+            _whole((30, 31, 32), ("CHECKS", 30, 31), ("CHECKS", 31, 32)),
+            _whole((32, 31, 30), ("CHECKS", 31, 32), ("CHECKS", 30, 31)),
+        ],
+    ),
+    "junction-reversed": (
+        "MATCH p = (a:Ontology:Terms)<-[:KIND_OF*2]-(b:Ontology:Terms) RETURN p",
+        [_whole((6, 5, 4), ("KIND_OF", 5, 6), ("KIND_OF", 4, 5))],
+    ),
+    "junction-forward": (
+        "MATCH p = (b:Ontology:Terms)-[:KIND_OF*2]->(a:Ontology:Terms) RETURN p",
+        [_whole((4, 5, 6), ("KIND_OF", 4, 5), ("KIND_OF", 5, 6))],
+    ),
+    "junction-undirected": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF*2]-(b:Ontology:Terms) RETURN p",
+        [
+            _whole((4, 5, 6), ("KIND_OF", 4, 5), ("KIND_OF", 5, 6)),
+            _whole((6, 5, 4), ("KIND_OF", 5, 6), ("KIND_OF", 4, 5)),
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize(("cypher", "expected"), _CHAIN_PATHS.values(), ids=_CHAIN_PATHS.keys())
+def test_a_two_hop_recursive_path_is_in_pattern_order_with_each_relationship_as_stored(
+    chain, cypher, expected
+):
+    assert _whole_paths(chain, cypher) == sorted(expected, key=repr)
