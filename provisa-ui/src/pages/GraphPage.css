@@ -1,36 +1,31 @@
 /* Graph page — Neo4j Browser-style layout */
 
 /* ── Page shell ─────────────────────────────────────────────────────────────── */
-.graph-page {
-  display: flex;
-  height: calc(100vh - 52px);
-  overflow: hidden;
-  background: var(--bg);
-}
+/* REQ-2277: the page is an Explore shell; its sidebar and the query with its frames are the panes. */
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────────── */
 .graph-sidebar {
   display: flex;
   flex-shrink: 0;
   background: var(--bg);
-  border-inline-end: 1px solid var(--border);
   overflow: hidden;
   position: relative;
 }
 
+/* The splitter (SplitHandle) laid over the sidebar's right edge: its line is the divider. */
 .graph-sidebar-resizer {
   position: absolute;
   inset-inline-end: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
-  cursor: col-resize;
+  width: 9px;
+  display: flex;
   z-index: 10;
 }
-
-.graph-sidebar-resizer:hover {
-  background: var(--primary);
-  opacity: 0.5;
+.graph-sidebar-resizer > .split-pane__handle {
+  flex: 1 0 9px;
+  margin-inline: 0;
+  justify-content: flex-end;
 }
 
 .graph-sidebar-tabs {
@@ -473,14 +468,14 @@
 
 .graph-query-input .cm-editor {
   background: transparent;
-  font-size: 0.85rem;
+  font-size: var(--editor-font-size);
   min-height: 36px;
   max-height: 160px;
   overflow-y: auto;
 }
 
 .graph-query-input .cm-scroller {
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--editor-font-mono);
   padding: 0.5rem 0.75rem;
 }
 
@@ -2291,10 +2286,17 @@ button.gf-overview-chip {
 }
 
 /* ── SPARQL endpoint and prefixes, above the query bar ──────────────────────── */
+/* REQ-2277: the endpoint and the prefixes stand at the top of the query block, in its frame: the
+ * endpoint's line, then the prefixes as a strip flush against the editor ("13 prefixes", opened to
+ * their lines), each divided from the next by one line. */
+.graph-query-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .graph-endpoint-bar {
   flex-shrink: 0;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
 
@@ -2303,6 +2305,18 @@ button.gf-overview-chip {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The prefixes strip is the one collapsible, laid flush: no side borders or corners of its own,
+ * the query bar's top line below it. */
+.graph-endpoint-bar .provisa-collapsible {
+  --collapsible-radius: 0;
+}
+.graph-endpoint-bar .provisa-collapsible > .mantine-Accordion-item {
+  border-inline: 0;
+  border-top: 0;
 }
 
 .graph-endpoint-url {
@@ -2323,7 +2337,6 @@ button.gf-overview-chip {
   flex-direction: column;
   gap: 4px;
   max-height: 240px;
-  margin-top: 6px;
   overflow-y: auto;
 }
 

@@ -19,6 +19,8 @@ import type { TopTab } from "./types";
 import type { Domain, Metric } from "../../types/admin";
 import type { ListedTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
+import { SplitHandle } from "../../components/list/SplitHandle";
+import { useResizableSize } from "../../hooks/useResizableSize";
 
 interface SchemaBrowserProps {
   sidebarOpen: boolean;
@@ -142,6 +144,18 @@ export function SchemaBrowser({
       else next.add(g);
       return next;
     });
+  // REQ-2277: the tree's width is dragged at its right edge and kept per viewer.
+  const {
+    ref: paneRef,
+    size: paneWidth,
+    startResize,
+    onHandleKeyDown,
+  } = useResizableSize<HTMLDivElement>("provisa.sql.schemaWidth", {
+    initial: 240,
+    min: 160,
+    max: 640,
+    edge: "right",
+  });
   const modelingGroups: { id: "metrics" | "facts" | "dimensions"; label: string }[] = [
     { id: "metrics", label: t("schemaBrowser.groupMetrics") },
     { id: "facts", label: t("schemaBrowser.groupFacts") },
@@ -152,9 +166,10 @@ export function SchemaBrowser({
       style={{
         display: "flex",
         flexShrink: 0,
-        borderInlineEnd: "1px solid var(--border)",
+        borderInlineEnd: sidebarOpen ? undefined : "1px solid var(--border)",
         position: "relative",
       }}
+      data-testid="sql-schema-side"
     >
       <Tip
         text={sidebarOpen ? t("schemaBrowser.collapsePanel") : t("schemaBrowser.expandPanel")}
@@ -173,9 +188,16 @@ export function SchemaBrowser({
             insetInlineEnd: -13,
             top: "50%",
             transform: "translateY(-50%)",
-            zIndex: 30,
+            // Under the splitter (z-index 2, explore.css): the splitter's grab area reaches 5px past
+            // the pane's edge, over the tab's inner edge, and must win there so the divider drags
+            // at its middle; the rest of the tab still toggles (REQ-2277).
+            zIndex: 1,
             width: 13,
             height: 40,
+            // ActionIcon's own min-width/min-height (28px) would pull the tab back over the tree
+            // and cover the splitter's middle (REQ-2277).
+            minWidth: 0,
+            minHeight: 0,
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderInlineStart: "none",
@@ -189,14 +211,14 @@ export function SchemaBrowser({
       </Tip>
 
       <div
+        ref={paneRef}
         style={{
-          width: sidebarOpen ? 210 : 0,
+          width: sidebarOpen ? paneWidth : 0,
           overflow: "hidden",
-          transition: "width 0.18s ease",
           background: "var(--bg)",
         }}
       >
-        <ScrollArea style={{ width: 210, height: "100%" }} type="auto" offsetScrollbars>
+        <ScrollArea style={{ width: paneWidth, height: "100%" }} type="auto" offsetScrollbars>
           <div style={{ padding: "0.5rem 0" }}>
             {/* REQ-1322: Metrics / Facts / Dimensions modeling groups */}
             {modelingGroups.map(({ id, label }) => {
@@ -666,6 +688,15 @@ export function SchemaBrowser({
           </div>
         </ScrollArea>
       </div>
+      {sidebarOpen && (
+        <SplitHandle
+          orientation="vertical"
+          label={t("explore.resizeSide")}
+          onPointerDown={startResize}
+          onKeyDown={onHandleKeyDown}
+          testId="sql-schema-side-handle"
+        />
+      )}
     </div>
   );
 }

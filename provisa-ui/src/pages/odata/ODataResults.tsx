@@ -19,6 +19,7 @@ import { Alert, Button, Group, Loader, Text } from "@mantine/core";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import type { StatementWarning } from "../../api/admin";
 import { serverMessage } from "../../i18n/serverMessage";
+import { ResultPanel } from "../../components/explore/ResultPanel";
 import { ResultsGrid } from "../sql/ResultsGrid";
 import { useResultsGrid } from "../sql/useResultsGrid";
 import type { PagedRead } from "./usePagedRead";
@@ -70,45 +71,54 @@ export function ODataResults({ read, setName }: { read: PagedRead; setName: stri
           })
         : t("odataPage.rowRange", { start: offset + 1, end: offset + page.rows.length });
   return (
-    <div className="odata-results" data-testid="odata-results">
-      <Warnings warnings={page.warnings} />
-      <Group gap="xs" wrap="nowrap">
-        <Button
-          size="xs"
-          variant="default"
-          leftSection={<ChevronLeft size={14} />}
-          disabled={loading || urls.length < 2}
-          onClick={read.previous}
-          data-testid="odata-previous"
-        >
-          {t("odataPage.previousPage")}
-        </Button>
-        <Button
-          size="xs"
-          variant="default"
-          rightSection={<ChevronRight size={14} />}
-          disabled={loading || page.nextLink === null}
-          onClick={read.next}
-          data-testid="odata-next"
-        >
-          {t("odataPage.nextPage")}
-        </Button>
-        <Text size="sm" c="dimmed" data-testid="odata-range">
-          {range}
-        </Text>
-        {loading && <Loader size="xs" />}
-      </Group>
-      {page.rows.length > 0 && (
-        <div className="odata-grid">
-          <ResultsGrid
-            grid={grid}
-            totalRowCount={rows.length}
-            rowsPartial={rowsCut(page.warnings) || page.nextLink !== null}
-            exportName={setName}
-            provenance={[{ label: t("odataPage.provenanceUrl"), value: urls[urls.length - 1] }]}
-          />
-        </div>
-      )}
+    <div className="odata-results">
+      <ResultPanel
+        testId="odata-results"
+        title={t("explore.results")}
+        meta={
+          <Text component="span" size="xs" c="dimmed" data-testid="odata-range">
+            {range}
+          </Text>
+        }
+        actions={
+          <Group gap="xs" wrap="nowrap">
+            {loading && <Loader size="xs" />}
+            <Button
+              size="compact-xs"
+              variant="default"
+              leftSection={<ChevronLeft size={14} />}
+              disabled={loading || urls.length < 2}
+              onClick={read.previous}
+              data-testid="odata-previous"
+            >
+              {t("odataPage.previousPage")}
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="default"
+              rightSection={<ChevronRight size={14} />}
+              disabled={loading || page.nextLink === null}
+              onClick={read.next}
+              data-testid="odata-next"
+            >
+              {t("odataPage.nextPage")}
+            </Button>
+          </Group>
+        }
+        notice={<Warnings warnings={page.warnings} />}
+      >
+        {page.rows.length > 0 && (
+          <div className="odata-grid">
+            <ResultsGrid
+              grid={grid}
+              totalRowCount={rows.length}
+              rowsPartial={rowsCut(page.warnings) || page.nextLink !== null}
+              exportName={setName}
+              provenance={[{ label: t("odataPage.provenanceUrl"), value: urls[urls.length - 1] }]}
+            />
+          </div>
+        )}
+      </ResultPanel>
     </div>
   );
 }
