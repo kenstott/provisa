@@ -39,6 +39,22 @@ describe("StepStrip", () => {
     fireEvent.click(screen.getByTestId("s-a"));
     expect(go).toHaveBeenCalledWith(0);
   });
+
+  it("does not open the current step unless asked to, and then opens it", () => {
+    const go = vi.fn();
+    const { rerender } = render(
+      <StepStrip steps={STEPS} active={1} onStepClick={go} label="Steps" testId="s" />,
+    );
+    fireEvent.click(screen.getByTestId("s-b"));
+    expect(go).not.toHaveBeenCalled();
+    rerender(
+      <StepStrip steps={STEPS} active={1} onStepClick={go} currentOpens label="Steps" testId="s" />,
+    );
+    fireEvent.click(screen.getByTestId("s-c"));
+    expect(go).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("s-b"));
+    expect(go).toHaveBeenCalledWith(1);
+  });
 });
 
 function Probe({ reachable }: { reachable: number }) {

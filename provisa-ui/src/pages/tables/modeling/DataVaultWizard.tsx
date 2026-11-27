@@ -14,13 +14,18 @@
 // where several rows are active at once), how far back history goes, and the business vault's
 // rules -- then reviews what they become: a hub_ entity per hub, a lnk_ fact with no measures per
 // link related to each hub, and a sat_ entity per satellite keyed on its parent's key.
+//
+// (Amended 2026-11-26) It is a dialog whose step choices are its fixed button bar: Skip step is
+// offered only on the business rules, the one step no later step reads -- the links and satellites
+// read the hubs, the satellites take a link as their parent, and a rule names a hub, link or
+// satellite.
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
-import { usePanelDirty } from "../../../components/list/panelLeave";
 import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
+import { ModalLayout } from "../../../components/modal/ModalLayout";
 import type { Domain } from "../../../types/admin";
 import { ModelReview } from "./ModelReview";
 import { ChoiceField, ChoicesField, DomainField, TextField } from "./pickers";
@@ -35,10 +40,11 @@ import {
   type VaultRule,
   type VaultSatellite,
 } from "./plan";
-import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
+import { useWizardSteps } from "./wizardSteps";
 import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["hubs", "links", "satellites", "rules", "review"] as const;
+type StepId = (typeof STEPS)[number];
 const GROUPINGS: Grouping[] = ["source", "rateOfChange", "sensitivity"];
 const DEPTHS: HistoryDepth[] = ["full", "current"];
 const ENDS = ["never", "effectivity"] as const;
@@ -95,7 +101,7 @@ function parentKeyLength(a: VaultAnswers, parent: string): number {
 }
 
 /** What a step still needs before Next, as the problem to show; null when it is answered. */
-function missing(step: (typeof STEPS)[number], a: VaultAnswers): string | null {
+function missing(step: StepId, a: VaultAnswers): string | null {
   switch (step) {
     case "hubs":
       return a.domainId &&
@@ -500,24 +506,22 @@ function SatelliteEntry({
 export function DataVaultWizard({
   domains,
   onSuccess,
-  onCancel,
+  onClose,
 }: {
   domains: Domain[];
   onSuccess: () => void;
-  onCancel: () => void;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
   const tables = useModelTables();
   const [a, setA] = useState<VaultAnswers>(EMPTY);
-  const [step, setStep] = useStepParam(
-    STEPS.length,
-    reachableStep(STEPS, (sid) => missing(sid as (typeof STEPS)[number], a)),
-  );
+  const steps = useWizardSteps(STEPS, (sid) => missing(sid, a));
+  const step = steps.step;
   const [problem, setProblem] = useState<string | null>(null);
-  const [created, setCreated] = useState(false);
   const set = (patch: Partial<VaultAnswers>) => setA((prev) => ({ ...prev, ...patch }));
   const plan = useMemo(() => planVault(a, t), [a, t]);
-  usePanelDirty(!created && (a.hubs.length > 0 || step > 0), a.hubs[0]?.concept ?? "");
+  // The steps whose answers no later step reads, and how each is skipped: its answers dropped.
+  const skips: Partial<Record<StepId, () => void>> = { rules: () => set({ rules: [] }) };
 
   const linkLabel = (l: VaultLink) =>
     l.name.trim() || l.hubs.map((h) => a.hubs.find((x) => x.uid === h)?.concept ?? "").join(" ");
@@ -542,206 +546,230 @@ export function DataVaultWizard({
   ];
 
   const id = STEPS[step];
-  const steps = STEPS.map((sid) => ({
+  const strip = STEPS.map((sid) => ({
     key: sid,
     label: t(
       sid === "review" ? "modelingWizard.review.title" : `modelingWizard.vault.${sid}.title`,
     ),
   }));
   const next = () => {
-    const gap = missing(id, a);
-    if (gap) {
-      setProblem(t(`modelingWizard.vault.missing.${gap}`));
-      return;
-    }
-    setProblem(null);
-    setStep(step + 1);
+    const gap = steps.next();
+    setProblem(gap && t(`modelingWizard.vault.missing.${gap}`));
   };
   const back = () => {
     setProblem(null);
-    setStep(step - 1);
+    steps.back();
   };
-
-  if (id === "review") {
-    return (
-      <ModelReview
-        plan={plan}
-        index={step}
-        steps={steps}
-        onStep={setStep}
-        onBack={back}
-        onCancel={onCancel}
-        onDone={onSuccess}
-        onCreated={() => setCreated(true)}
-      />
-    );
-  }
+  const open = (index: number) => {
+    setProblem(null);
+    steps.open(index);
+  };
+  const skip = skips[id];
 
   return (
-    <WizardStep
-      index={step}
-      steps={steps}
-      onStep={setStep}
-      title={t(`modelingWizard.vault.${id}.title`)}
-      intro={t(`modelingWizard.vault.${id}.intro`)}
-      testId={`wizard-step-${id}`}
+    <ModalLayout
+      opened
+      onClose={onClose}
+      title={t("tablesPage.panelDataVault")}
+      size="xl"
+      closeOnClickOutside={false}
+      data-testid="data-vault-wizard"
     >
-      {id === "hubs" && (
-        <>
-          <DomainField
-            domains={domains}
-            value={a.domainId}
-            onChange={(domainId) => set({ domainId })}
-            testId="vault-domain"
-          />
-          <ListHead
-            text={t("modelingWizard.vault.hubsLabel")}
-            help={t("modelingWizard.vault.hubsHelp")}
-          />
-          {a.hubs.map((h, i) => (
-            <HubEntry
-              key={h.uid}
-              hub={h}
-              index={i}
-              tables={tables}
-              onChange={(nh) => set({ hubs: a.hubs.map((x) => (x.uid === h.uid ? nh : x)) })}
-              onRemove={() =>
-                set({
-                  hubs: a.hubs.filter((x) => x.uid !== h.uid),
-                  links: a.links.map((l) => ({ ...l, hubs: l.hubs.filter((x) => x !== h.uid) })),
-                  satellites: a.satellites.filter((s) => s.parent !== h.uid),
-                })
-              }
-            />
-          ))}
-          <AddButton onClick={() => set({ hubs: [...a.hubs, newHub()] })} testId="vault-hub-add">
-            {t("modelingWizard.vault.addHub")}
-          </AddButton>
-        </>
-      )}
-      {id === "links" && (
-        <>
-          <ListHead
-            text={t("modelingWizard.vault.linksLabel")}
-            help={t("modelingWizard.vault.linksHelp")}
-          />
-          {a.links.map((l, i) => (
-            <LinkEntry
-              key={l.uid}
-              link={l}
-              index={i}
-              hubs={a.hubs}
-              tables={tables}
-              onChange={(nl) => set({ links: a.links.map((x) => (x.uid === l.uid ? nl : x)) })}
-              onRemove={() =>
-                set({
-                  links: a.links.filter((x) => x.uid !== l.uid),
-                  satellites: a.satellites.filter((s) => s.parent !== l.uid),
-                })
-              }
-            />
-          ))}
-          <AddButton
-            onClick={() => set({ links: [...a.links, newLink()] })}
-            testId="vault-link-add"
-          >
-            {t("modelingWizard.vault.addLink")}
-          </AddButton>
-        </>
-      )}
-      {id === "satellites" && (
-        <>
-          <ChoiceField
-            label={t("modelingWizard.vault.depthLabel")}
-            help={t("modelingWizard.vault.depthHelp")}
-            required
-            testId="vault-history-depth"
-            data={DEPTHS.map((d) => ({ value: d, label: t(`modelingWizard.vault.depth.${d}`) }))}
-            value={a.historyDepth}
-            onChange={(v) => set({ historyDepth: (v as HistoryDepth | null) ?? "full" })}
-          />
-          <ListHead
-            text={t("modelingWizard.vault.satellitesLabel")}
-            help={t("modelingWizard.vault.satellitesHelp")}
-          />
-          {a.satellites.map((s, i) => (
-            <SatelliteEntry
-              key={s.uid}
-              sat={s}
-              index={i}
-              parents={parents}
-              keepsHistory={a.historyDepth === "full"}
-              tables={tables}
-              onChange={(ns) =>
-                set({ satellites: a.satellites.map((x) => (x.uid === s.uid ? ns : x)) })
-              }
-              onRemove={() => set({ satellites: a.satellites.filter((x) => x.uid !== s.uid) })}
-            />
-          ))}
-          <AddButton
-            onClick={() => set({ satellites: [...a.satellites, newSatellite()] })}
-            testId="vault-sat-add"
-          >
-            {t("modelingWizard.vault.addSatellite")}
-          </AddButton>
-        </>
-      )}
-      {id === "rules" && (
-        <>
-          <ListHead
-            text={t("modelingWizard.vault.rulesLabel")}
-            help={t("modelingWizard.vault.rulesHelp")}
-          />
-          {a.rules.map((r, i) => (
-            <FieldGroup row className="form-field-group--bare" key={r.uid}>
+      {id === "review" ? (
+        <ModelReview
+          plan={plan}
+          index={step}
+          progress={steps.progress}
+          steps={strip}
+          onStep={open}
+          onBack={back}
+          onClose={onClose}
+          onDone={onSuccess}
+        />
+      ) : (
+        <WizardStep
+          index={step}
+          progress={steps.progress}
+          steps={strip}
+          onStep={open}
+          title={t(`modelingWizard.vault.${id}.title`)}
+          intro={t(`modelingWizard.vault.${id}.intro`)}
+          testId={`wizard-step-${id}`}
+        >
+          {id === "hubs" && (
+            <>
+              <DomainField
+                domains={domains}
+                value={a.domainId}
+                onChange={(domainId) => set({ domainId })}
+                testId="vault-domain"
+              />
+              <ListHead
+                text={t("modelingWizard.vault.hubsLabel")}
+                help={t("modelingWizard.vault.hubsHelp")}
+              />
+              {a.hubs.map((h, i) => (
+                <HubEntry
+                  key={h.uid}
+                  hub={h}
+                  index={i}
+                  tables={tables}
+                  onChange={(nh) => set({ hubs: a.hubs.map((x) => (x.uid === h.uid ? nh : x)) })}
+                  onRemove={() =>
+                    set({
+                      hubs: a.hubs.filter((x) => x.uid !== h.uid),
+                      links: a.links.map((l) => ({
+                        ...l,
+                        hubs: l.hubs.filter((x) => x !== h.uid),
+                      })),
+                      satellites: a.satellites.filter((s) => s.parent !== h.uid),
+                    })
+                  }
+                />
+              ))}
+              <AddButton
+                onClick={() => set({ hubs: [...a.hubs, newHub()] })}
+                testId="vault-hub-add"
+              >
+                {t("modelingWizard.vault.addHub")}
+              </AddButton>
+            </>
+          )}
+          {id === "links" && (
+            <>
+              <ListHead
+                text={t("modelingWizard.vault.linksLabel")}
+                help={t("modelingWizard.vault.linksHelp")}
+              />
+              {a.links.map((l, i) => (
+                <LinkEntry
+                  key={l.uid}
+                  link={l}
+                  index={i}
+                  hubs={a.hubs}
+                  tables={tables}
+                  onChange={(nl) => set({ links: a.links.map((x) => (x.uid === l.uid ? nl : x)) })}
+                  onRemove={() =>
+                    set({
+                      links: a.links.filter((x) => x.uid !== l.uid),
+                      satellites: a.satellites.filter((s) => s.parent !== l.uid),
+                    })
+                  }
+                />
+              ))}
+              <AddButton
+                onClick={() => set({ links: [...a.links, newLink()] })}
+                testId="vault-link-add"
+              >
+                {t("modelingWizard.vault.addLink")}
+              </AddButton>
+            </>
+          )}
+          {id === "satellites" && (
+            <>
               <ChoiceField
-                label={t("modelingWizard.vault.ruleTarget")}
+                label={t("modelingWizard.vault.depthLabel")}
+                help={t("modelingWizard.vault.depthHelp")}
                 required
-                testId={`vault-rule-target-${i}`}
-                data={ruleTargets}
-                value={r.target || null}
-                onChange={(target) =>
-                  set({
-                    rules: a.rules.map((x) =>
-                      x.uid === r.uid ? { ...x, target: target ?? "" } : x,
-                    ),
-                  })
-                }
+                testId="vault-history-depth"
+                data={DEPTHS.map((d) => ({
+                  value: d,
+                  label: t(`modelingWizard.vault.depth.${d}`),
+                }))}
+                value={a.historyDepth}
+                onChange={(v) => set({ historyDepth: (v as HistoryDepth | null) ?? "full" })}
               />
-              <TextField
-                label={t("modelingWizard.vault.ruleText")}
-                size="long"
-                testId={`vault-rule-text-${i}`}
-                value={r.text}
-                onChange={(text) =>
-                  set({ rules: a.rules.map((x) => (x.uid === r.uid ? { ...x, text } : x)) })
-                }
-                placeholder={t("modelingWizard.vault.ruleTextPlaceholder")}
+              <ListHead
+                text={t("modelingWizard.vault.satellitesLabel")}
+                help={t("modelingWizard.vault.satellitesHelp")}
               />
-              <RemoveButton
-                onClick={() => set({ rules: a.rules.filter((x) => x.uid !== r.uid) })}
-                testId={`vault-rule-remove-${i}`}
+              {a.satellites.map((s, i) => (
+                <SatelliteEntry
+                  key={s.uid}
+                  sat={s}
+                  index={i}
+                  parents={parents}
+                  keepsHistory={a.historyDepth === "full"}
+                  tables={tables}
+                  onChange={(ns) =>
+                    set({ satellites: a.satellites.map((x) => (x.uid === s.uid ? ns : x)) })
+                  }
+                  onRemove={() => set({ satellites: a.satellites.filter((x) => x.uid !== s.uid) })}
+                />
+              ))}
+              <AddButton
+                onClick={() => set({ satellites: [...a.satellites, newSatellite()] })}
+                testId="vault-sat-add"
+              >
+                {t("modelingWizard.vault.addSatellite")}
+              </AddButton>
+            </>
+          )}
+          {id === "rules" && (
+            <>
+              <ListHead
+                text={t("modelingWizard.vault.rulesLabel")}
+                help={t("modelingWizard.vault.rulesHelp")}
               />
-            </FieldGroup>
-          ))}
-          <AddButton
-            onClick={() => set({ rules: [...a.rules, newRule()] })}
-            testId="vault-rule-add"
-          >
-            {t("modelingWizard.vault.addRule")}
-          </AddButton>
-        </>
+              {a.rules.map((r, i) => (
+                <FieldGroup row className="form-field-group--bare" key={r.uid}>
+                  <ChoiceField
+                    label={t("modelingWizard.vault.ruleTarget")}
+                    required
+                    testId={`vault-rule-target-${i}`}
+                    data={ruleTargets}
+                    value={r.target || null}
+                    onChange={(target) =>
+                      set({
+                        rules: a.rules.map((x) =>
+                          x.uid === r.uid ? { ...x, target: target ?? "" } : x,
+                        ),
+                      })
+                    }
+                  />
+                  <TextField
+                    label={t("modelingWizard.vault.ruleText")}
+                    size="long"
+                    testId={`vault-rule-text-${i}`}
+                    value={r.text}
+                    onChange={(text) =>
+                      set({ rules: a.rules.map((x) => (x.uid === r.uid ? { ...x, text } : x)) })
+                    }
+                    placeholder={t("modelingWizard.vault.ruleTextPlaceholder")}
+                  />
+                  <RemoveButton
+                    onClick={() => set({ rules: a.rules.filter((x) => x.uid !== r.uid) })}
+                    testId={`vault-rule-remove-${i}`}
+                  />
+                </FieldGroup>
+              ))}
+              <AddButton
+                onClick={() => set({ rules: [...a.rules, newRule()] })}
+                testId="vault-rule-add"
+              >
+                {t("modelingWizard.vault.addRule")}
+              </AddButton>
+            </>
+          )}
+          <WizardFooter
+            primaryLabel={
+              STEPS[step + 1] === "review" ? t("modelingWizard.toReview") : t("modelingWizard.next")
+            }
+            onPrimary={next}
+            onSkip={
+              skip &&
+              (() => {
+                skip();
+                setProblem(null);
+                steps.skip();
+              })
+            }
+            onBack={step > 0 ? back : undefined}
+            onClose={onClose}
+            problem={problem}
+          />
+        </WizardStep>
       )}
-      <WizardFooter
-        first={step === 0}
-        nextLabel={
-          STEPS[step + 1] === "review" ? t("modelingWizard.toReview") : t("modelingWizard.next")
-        }
-        onNext={next}
-        onBack={back}
-        onCancel={onCancel}
-        problem={problem}
-      />
-    </WizardStep>
+    </ModalLayout>
   );
 }

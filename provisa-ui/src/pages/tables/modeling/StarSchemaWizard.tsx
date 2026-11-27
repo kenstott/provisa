@@ -12,12 +12,15 @@
 // and its fact type, the grain, the dimensions (each new or conformed, and how it handles change),
 // the measures and their additivity -- then reviews what they become: a dim_ entity per new
 // dimension (SCD type 2 and snapshot keep history) and one fact_ fact related to every dimension.
+//
+// (Amended 2026-11-26) It is a dialog whose step choices are its fixed button bar: Skip step is
+// offered on the dimensions and the measures, which no later step reads; the process and the grain
+// make the fact itself, so they are not skipped.
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
-import { usePanelDirty } from "../../../components/list/panelLeave";
 import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
 import type { Domain } from "../../../types/admin";
 import { AGGS } from "./columns";
@@ -32,10 +35,12 @@ import {
   type StarAnswers,
   type StarDimension,
 } from "./plan";
-import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
+import { ModalLayout } from "../../../components/modal/ModalLayout";
+import { useWizardSteps } from "./wizardSteps";
 import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["process", "grain", "dimensions", "measures", "review"] as const;
+type StepId = (typeof STEPS)[number];
 const FACT_TYPES: FactType[] = ["transaction", "periodic", "accumulating"];
 const SCDS: Scd[] = ["type1", "type2", "snapshot"];
 const ADDITIVITY: Additivity[] = ["additive", "semiAdditive", "nonAdditive"];
@@ -66,7 +71,7 @@ const EMPTY: StarAnswers = {
 };
 
 /** What a step still needs before Next, as the problem to show; null when it is answered. */
-function missing(step: (typeof STEPS)[number], a: StarAnswers): string | null {
+function missing(step: StepId, a: StarAnswers): string | null {
   switch (step) {
     case "process":
       return a.process.trim() && a.domainId && a.source ? null : "process";
@@ -228,241 +233,259 @@ function DimensionEntry({
 export function StarSchemaWizard({
   domains,
   onSuccess,
-  onCancel,
+  onClose,
 }: {
   domains: Domain[];
   onSuccess: () => void;
-  onCancel: () => void;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
   const tables = useModelTables();
   const [a, setA] = useState<StarAnswers>(EMPTY);
-  const [step, setStep] = useStepParam(
-    STEPS.length,
-    reachableStep(STEPS, (sid) => missing(sid as (typeof STEPS)[number], a)),
-  );
+  const steps = useWizardSteps(STEPS, (sid) => missing(sid, a));
+  const step = steps.step;
   const [problem, setProblem] = useState<string | null>(null);
-  const [created, setCreated] = useState(false);
   const set = (patch: Partial<StarAnswers>) => setA((prev) => ({ ...prev, ...patch }));
   const factCols = useColumnOptions(tables.columnsOf(a.source));
   const plan = useMemo(() => planStar(a, t), [a, t]);
-  usePanelDirty(!created && (Boolean(a.process || a.source) || step > 0), a.process);
+  // The steps whose answers no later step reads, and how each is skipped: its answers dropped.
+  // The grain is the fact's key and the dimensions and measures read the process's fact table;
+  // nothing after the dimensions reads them, and nothing after the measures but the review.
+  const skips: Partial<Record<StepId, () => void>> = {
+    dimensions: () => set({ dimensions: [] }),
+    measures: () => set({ measures: [] }),
+  };
 
   const id = STEPS[step];
-  const steps = STEPS.map((sid) => ({
+  const strip = STEPS.map((sid) => ({
     key: sid,
     label: t(sid === "review" ? "modelingWizard.review.title" : `modelingWizard.star.${sid}.title`),
   }));
   const next = () => {
-    const gap = missing(id, a);
-    if (gap) {
-      setProblem(t(`modelingWizard.star.missing.${gap}`));
-      return;
-    }
-    setProblem(null);
-    setStep(step + 1);
+    const gap = steps.next();
+    setProblem(gap && t(`modelingWizard.star.missing.${gap}`));
   };
   const back = () => {
     setProblem(null);
-    setStep(step - 1);
+    steps.back();
   };
-
-  if (id === "review") {
-    return (
-      <ModelReview
-        plan={plan}
-        index={step}
-        steps={steps}
-        onStep={setStep}
-        onBack={back}
-        onCancel={onCancel}
-        onDone={onSuccess}
-        onCreated={() => setCreated(true)}
-      />
-    );
-  }
+  const open = (index: number) => {
+    setProblem(null);
+    steps.open(index);
+  };
+  const skip = skips[id];
 
   const noSource = !a.source;
   return (
-    <WizardStep
-      index={step}
-      steps={steps}
-      onStep={setStep}
-      title={t(`modelingWizard.star.${id}.title`)}
-      intro={t(`modelingWizard.star.${id}.intro`)}
-      testId={`wizard-step-${id}`}
+    <ModalLayout
+      opened
+      onClose={onClose}
+      title={t("tablesPage.panelStarSchema")}
+      size="xl"
+      closeOnClickOutside={false}
+      data-testid="star-schema-wizard"
     >
-      {id === "process" && (
-        <>
-          <TextField
-            label={t("modelingWizard.star.processLabel")}
-            help={t("modelingWizard.star.processHelp")}
-            required
-            testId="star-process"
-            value={a.process}
-            onChange={(process) => set({ process })}
-            placeholder="order fulfillment"
-          />
-          <DomainField
-            domains={domains}
-            value={a.domainId}
-            onChange={(domainId) => set({ domainId })}
-            testId="star-domain"
-          />
-          <ChoiceField
-            label={t("modelingWizard.star.sourceLabel")}
-            help={t("modelingWizard.star.sourceHelp")}
-            required
-            size="long"
-            testId="star-source"
-            data={tables.sourceOptions}
-            value={a.source}
-            onChange={(source) =>
-              set({
-                source,
-                grain: [],
-                measures: [],
-                dimensions: a.dimensions.map((d) => ({ ...d, via: null })),
-              })
-            }
-          />
-          <ChoiceField
-            label={t("modelingWizard.star.factTypeLabel")}
-            help={t("modelingWizard.star.factTypeHelp")}
-            required
-            testId="star-fact-type"
-            data={FACT_TYPES.map((f) => ({
-              value: f,
-              label: t(`modelingWizard.star.factType.${f}`),
-            }))}
-            value={a.factType}
-            onChange={(v) => set({ factType: (v as FactType | null) ?? "transaction" })}
-          />
-        </>
-      )}
-      {id === "grain" && (
-        <>
-          <TextField
-            label={t("modelingWizard.star.grainStatement")}
-            help={t("modelingWizard.star.grainStatementHelp")}
-            size="long"
-            testId="star-grain-statement"
-            value={a.grainStatement}
-            onChange={(grainStatement) => set({ grainStatement })}
-            placeholder={t("modelingWizard.star.grainStatementPlaceholder")}
-          />
-          <ChoicesField
-            label={t("modelingForm.grainLabel")}
-            help={t("modelingWizard.star.grainHelp")}
-            hint={t("modelingForm.keyHint")}
-            required
-            testId="star-grain"
-            data={factCols.keys}
-            value={a.grain}
-            onChange={(grain) => set({ grain })}
-            disabled={noSource}
-          />
-        </>
-      )}
-      {id === "dimensions" && (
-        <>
-          <ListHead
-            text={t("modelingForm.dimensionsLabel")}
-            help={t("modelingWizard.star.dimensionsHelp")}
-          />
-          {a.dimensions.map((d, i) => (
-            <DimensionEntry
-              key={d.uid}
-              dim={d}
-              index={i}
-              tables={tables}
-              factColumns={factCols.all}
-              onChange={(nd) =>
-                set({ dimensions: a.dimensions.map((x) => (x.uid === d.uid ? nd : x)) })
-              }
-              onRemove={() => set({ dimensions: a.dimensions.filter((x) => x.uid !== d.uid) })}
-            />
-          ))}
-          <AddButton
-            onClick={() => set({ dimensions: [...a.dimensions, newDimension()] })}
-            testId="star-dim-add"
-          >
-            {t("modelingForm.addDimension")}
-          </AddButton>
-        </>
-      )}
-      {id === "measures" && (
-        <>
-          <ChoicesField
-            label={t("modelingForm.measuresLabel")}
-            help={t("modelingWizard.star.measuresHelp")}
-            hint={t("modelingForm.measuresHint")}
-            testId="star-measures"
-            data={factCols.numeric}
-            value={a.measures.map((m) => m.column)}
-            onChange={(cols) =>
-              set({
-                measures: cols.map(
-                  (column) =>
-                    a.measures.find((m) => m.column === column) ?? {
-                      column,
-                      agg: "sum",
-                      additivity: "additive",
-                    },
-                ),
-              })
-            }
-          />
-          {a.measures.map((m) => (
-            // Each measure's aggregation and additivity share its row.
-            <FieldGroup row className="form-field-group--bare" key={m.column}>
+      {id === "review" ? (
+        <ModelReview
+          plan={plan}
+          index={step}
+          progress={steps.progress}
+          steps={strip}
+          onStep={open}
+          onBack={back}
+          onClose={onClose}
+          onDone={onSuccess}
+        />
+      ) : (
+        <WizardStep
+          index={step}
+          progress={steps.progress}
+          steps={strip}
+          onStep={open}
+          title={t(`modelingWizard.star.${id}.title`)}
+          intro={t(`modelingWizard.star.${id}.intro`)}
+          testId={`wizard-step-${id}`}
+        >
+          {id === "process" && (
+            <>
+              <TextField
+                label={t("modelingWizard.star.processLabel")}
+                help={t("modelingWizard.star.processHelp")}
+                required
+                testId="star-process"
+                value={a.process}
+                onChange={(process) => set({ process })}
+                placeholder="order fulfillment"
+              />
+              <DomainField
+                domains={domains}
+                value={a.domainId}
+                onChange={(domainId) => set({ domainId })}
+                testId="star-domain"
+              />
               <ChoiceField
-                label={t("modelingWizard.star.aggOf", { column: m.column })}
-                size="short"
-                testId={`star-measure-agg-${m.column}`}
-                data={AGGS.map((g) => ({ value: g, label: g }))}
-                value={m.agg}
-                onChange={(agg) =>
+                label={t("modelingWizard.star.sourceLabel")}
+                help={t("modelingWizard.star.sourceHelp")}
+                required
+                size="long"
+                testId="star-source"
+                data={tables.sourceOptions}
+                value={a.source}
+                onChange={(source) =>
                   set({
-                    measures: a.measures.map((x) =>
-                      x.column === m.column ? { ...x, agg: agg ?? "sum" } : x,
-                    ),
+                    source,
+                    grain: [],
+                    measures: [],
+                    dimensions: a.dimensions.map((d) => ({ ...d, via: null })),
                   })
                 }
               />
               <ChoiceField
-                label={t("modelingWizard.star.additivityLabel")}
-                help={t("modelingWizard.star.additivityHelp")}
-                testId={`star-measure-additivity-${m.column}`}
-                data={ADDITIVITY.map((v) => ({
-                  value: v,
-                  label: t(`modelingWizard.star.additivity.${v}`),
+                label={t("modelingWizard.star.factTypeLabel")}
+                help={t("modelingWizard.star.factTypeHelp")}
+                required
+                testId="star-fact-type"
+                data={FACT_TYPES.map((f) => ({
+                  value: f,
+                  label: t(`modelingWizard.star.factType.${f}`),
                 }))}
-                value={m.additivity}
-                onChange={(v) =>
+                value={a.factType}
+                onChange={(v) => set({ factType: (v as FactType | null) ?? "transaction" })}
+              />
+            </>
+          )}
+          {id === "grain" && (
+            <>
+              <TextField
+                label={t("modelingWizard.star.grainStatement")}
+                help={t("modelingWizard.star.grainStatementHelp")}
+                size="long"
+                testId="star-grain-statement"
+                value={a.grainStatement}
+                onChange={(grainStatement) => set({ grainStatement })}
+                placeholder={t("modelingWizard.star.grainStatementPlaceholder")}
+              />
+              <ChoicesField
+                label={t("modelingForm.grainLabel")}
+                help={t("modelingWizard.star.grainHelp")}
+                hint={t("modelingForm.keyHint")}
+                required
+                testId="star-grain"
+                data={factCols.keys}
+                value={a.grain}
+                onChange={(grain) => set({ grain })}
+                disabled={noSource}
+              />
+            </>
+          )}
+          {id === "dimensions" && (
+            <>
+              <ListHead
+                text={t("modelingForm.dimensionsLabel")}
+                help={t("modelingWizard.star.dimensionsHelp")}
+              />
+              {a.dimensions.map((d, i) => (
+                <DimensionEntry
+                  key={d.uid}
+                  dim={d}
+                  index={i}
+                  tables={tables}
+                  factColumns={factCols.all}
+                  onChange={(nd) =>
+                    set({ dimensions: a.dimensions.map((x) => (x.uid === d.uid ? nd : x)) })
+                  }
+                  onRemove={() => set({ dimensions: a.dimensions.filter((x) => x.uid !== d.uid) })}
+                />
+              ))}
+              <AddButton
+                onClick={() => set({ dimensions: [...a.dimensions, newDimension()] })}
+                testId="star-dim-add"
+              >
+                {t("modelingForm.addDimension")}
+              </AddButton>
+            </>
+          )}
+          {id === "measures" && (
+            <>
+              <ChoicesField
+                label={t("modelingForm.measuresLabel")}
+                help={t("modelingWizard.star.measuresHelp")}
+                hint={t("modelingForm.measuresHint")}
+                testId="star-measures"
+                data={factCols.numeric}
+                value={a.measures.map((m) => m.column)}
+                onChange={(cols) =>
                   set({
-                    measures: a.measures.map((x) =>
-                      x.column === m.column
-                        ? { ...x, additivity: (v as Additivity | null) ?? "additive" }
-                        : x,
+                    measures: cols.map(
+                      (column) =>
+                        a.measures.find((m) => m.column === column) ?? {
+                          column,
+                          agg: "sum",
+                          additivity: "additive",
+                        },
                     ),
                   })
                 }
               />
-            </FieldGroup>
-          ))}
-        </>
+              {a.measures.map((m) => (
+                // Each measure's aggregation and additivity share its row.
+                <FieldGroup row className="form-field-group--bare" key={m.column}>
+                  <ChoiceField
+                    label={t("modelingWizard.star.aggOf", { column: m.column })}
+                    size="short"
+                    testId={`star-measure-agg-${m.column}`}
+                    data={AGGS.map((g) => ({ value: g, label: g }))}
+                    value={m.agg}
+                    onChange={(agg) =>
+                      set({
+                        measures: a.measures.map((x) =>
+                          x.column === m.column ? { ...x, agg: agg ?? "sum" } : x,
+                        ),
+                      })
+                    }
+                  />
+                  <ChoiceField
+                    label={t("modelingWizard.star.additivityLabel")}
+                    help={t("modelingWizard.star.additivityHelp")}
+                    testId={`star-measure-additivity-${m.column}`}
+                    data={ADDITIVITY.map((v) => ({
+                      value: v,
+                      label: t(`modelingWizard.star.additivity.${v}`),
+                    }))}
+                    value={m.additivity}
+                    onChange={(v) =>
+                      set({
+                        measures: a.measures.map((x) =>
+                          x.column === m.column
+                            ? { ...x, additivity: (v as Additivity | null) ?? "additive" }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                </FieldGroup>
+              ))}
+            </>
+          )}
+          <WizardFooter
+            primaryLabel={
+              STEPS[step + 1] === "review" ? t("modelingWizard.toReview") : t("modelingWizard.next")
+            }
+            onPrimary={next}
+            onSkip={
+              skip &&
+              (() => {
+                skip();
+                setProblem(null);
+                steps.skip();
+              })
+            }
+            onBack={step > 0 ? back : undefined}
+            onClose={onClose}
+            problem={problem}
+          />
+        </WizardStep>
       )}
-      <WizardFooter
-        first={step === 0}
-        nextLabel={
-          STEPS[step + 1] === "review" ? t("modelingWizard.toReview") : t("modelingWizard.next")
-        }
-        onNext={next}
-        onBack={back}
-        onCancel={onCancel}
-        problem={problem}
-      />
-    </WizardStep>
+    </ModalLayout>
   );
 }

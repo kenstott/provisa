@@ -8,8 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2199: a modeling wizard's step in the + Model panel: which step of how many, the step's own
-// question in its method's words, and Next / Back / Cancel as the panel's actions.
+// REQ-2199: a modeling wizard's step in its dialog: the step strip, which shows the progress made,
+// the step's own question in its method's words, and (amended 2026-11-26, after the source setup
+// flow of REQ-2234) the step's choices as the dialog's one fixed button bar (REQ-2277 rule 10):
+// the step's primary action, Skip step where no later step reads the step's answers, Back after the
+// first step, and Close.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,6 +29,7 @@ import { FieldLabel } from "../FieldLabel";
  */
 export function WizardStep({
   index,
+  progress,
   steps,
   onStep,
   title,
@@ -33,9 +37,12 @@ export function WizardStep({
   testId,
   children,
 }: {
+  /** The step on screen. */
   index: number;
+  /** The furthest step reached: the strip shows progress, not the step on screen. */
+  progress: number;
   steps: readonly Step[];
-  /** A completed step in the strip was pressed. */
+  /** A step in the strip, up to the progress, was pressed: it opens. */
   onStep: (index: number) => void;
   title: string;
   intro: string;
@@ -51,8 +58,9 @@ export function WizardStep({
       <PanelStrip>
         <StepStrip
           steps={steps}
-          active={index}
+          active={progress}
           onStepClick={onStep}
+          currentOpens
           label={t("modelingWizard.stepsLabel")}
           testId="wizard-steps"
         />
@@ -87,53 +95,95 @@ export function AddButton({
 }) {
   return (
     <FormField size="full">
-      <Button variant="light" size="xs" w="fit-content" onClick={onClick} data-testid={testId}>
+      <Button
+        variant="light"
+        size="xs"
+        w="fit-content"
+        onClick={onClick}
+        data-list-add
+        data-testid={testId}
+      >
         {children}
       </Button>
     </FormField>
   );
 }
 
-/** The step's actions: Next (Review on the last question), Back after the first, and Cancel. */
+/**
+ * The step's choices, drawn in the dialog's fixed bar: the primary action (Next, Review on the last
+ * question, Create on the review), Skip step where the step offers it, Back after the first step,
+ * and Close.
+ */
 export function WizardFooter({
-  first,
-  nextLabel,
-  onNext,
-  onBack,
-  onCancel,
-  problem,
-  busy = false,
-  nextTestId = "wizard-next",
+  primaryLabel,
+  onPrimary,
+  primaryTestId = "wizard-next",
   creates = false,
+  busy = false,
+  onSkip,
+  onBack,
+  onClose,
+  problem,
 }: {
-  first: boolean;
-  nextLabel: string;
-  onNext: () => void;
-  onBack: () => void;
-  onCancel: () => void;
-  problem: string | null;
-  busy?: boolean;
-  nextTestId?: string;
-  /** Next creates the model (the review's Create); every other step's Next only moves on. */
+  primaryLabel: string;
+  onPrimary: () => void;
+  primaryTestId?: string;
+  /** The primary action creates the model (the review's Create); every other step's only moves on. */
   creates?: boolean;
+  busy?: boolean;
+  /** Offered only on a step no later step reads: drops the step's answers and moves on. */
+  onSkip?: () => void;
+  /** Left out on the first step. */
+  onBack?: () => void;
+  onClose: () => void;
+  problem: string | null;
 }) {
   const { t } = useTranslation();
   return (
     <FormFooter
-      panel
-      onCancel={onCancel}
       problem={problem}
       action={
         <>
-          {/* REQ-2115: Polly asks the user before she presses Create, not Next or Back. */}
-          <Button onClick={onNext} loading={busy} data-changes={creates} data-testid={nextTestId}>
-            {nextLabel}
+          {/* REQ-2115: Polly asks the user before she presses Create, and nothing else here. */}
+          <Button
+            onClick={onPrimary}
+            loading={busy}
+            data-changes={creates}
+            data-testid={primaryTestId}
+          >
+            {primaryLabel}
           </Button>
-          {!first && (
-            <Button onClick={onBack} disabled={busy} data-changes={false} data-testid="wizard-back">
+          {onSkip && (
+            <Button
+              variant="default"
+              onClick={onSkip}
+              disabled={busy}
+              data-changes={false}
+              data-testid="wizard-skip"
+            >
+              {t("modelingWizard.skipStep")}
+            </Button>
+          )}
+          {onBack && (
+            <Button
+              variant="default"
+              onClick={onBack}
+              disabled={busy}
+              data-changes={false}
+              data-testid="wizard-back"
+            >
               {t("modelingWizard.back")}
             </Button>
           )}
+          <Button
+            variant="default"
+            onClick={onClose}
+            disabled={busy}
+            data-changes={false}
+            data-testid="wizard-close"
+          >
+            {t("modelingWizard.close")}
+          </Button>
         </>
       }
     />

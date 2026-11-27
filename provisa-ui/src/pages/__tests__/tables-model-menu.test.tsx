@@ -9,12 +9,13 @@
 // permission from the copyright holder.
 
 // REQ-2199: + Model on the Tables page is a split button. The button opens the entity/fact form;
-// its drop down reads Entity/Fact, Star Schema and Data Vault, and each opens in the + Model panel:
-// the entity/fact form as it is, or that method's wizard at its first question.
+// its drop down reads Entity/Fact, Star Schema and Data Vault: Entity/Fact opens the entity/fact
+// form as it is in the + Model panel, and each method's wizard opens at its first question as a
+// dialog (REQ-2199, amended 2026-11-26).
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { renderWithProviders, screen } from "../../test-utils/render";
+import { renderWithProviders, screen, waitFor } from "../../test-utils/render";
 import i18n from "../../i18n";
 import type { RegisteredTable, RoleTtl } from "../../types/admin";
 
@@ -257,18 +258,21 @@ describe("TablesPage — + Model's drop down", () => {
     expect(await screen.findByTestId("modeling-kind")).toBeInTheDocument();
   });
 
-  it("Star Schema opens its wizard at the business process, in the panel", async () => {
+  it("Star Schema opens its wizard at the business process, as a dialog", async () => {
     await openMenu();
     await userEvent.click(await screen.findByTestId("tables-model-star"));
     expect(await screen.findByTestId("wizard-step-process")).toBeInTheDocument();
-    expect(screen.getAllByText(t("tablesPage.panelStarSchema")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("dialog")).toHaveTextContent(t("tablesPage.panelStarSchema"));
+    expect(screen.getByRole("dialog")).toContainElement(screen.getByTestId("wizard-step-process"));
     expect(screen.queryByTestId("modeling-kind")).toBeNull();
   });
 
-  it("Data Vault opens its wizard at the hubs, in the panel", async () => {
+  it("Data Vault opens its wizard at the hubs, as a dialog, and Close leaves it", async () => {
     await openMenu();
     await userEvent.click(await screen.findByTestId("tables-model-vault"));
     expect(await screen.findByTestId("wizard-step-hubs")).toBeInTheDocument();
-    expect(screen.getAllByText(t("tablesPage.panelDataVault")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("dialog")).toHaveTextContent(t("tablesPage.panelDataVault"));
+    await userEvent.click(screen.getByTestId("wizard-close"));
+    await waitFor(() => expect(screen.queryByTestId("wizard-step-hubs")).toBeNull());
   });
 });

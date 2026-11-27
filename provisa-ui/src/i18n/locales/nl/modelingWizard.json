@@ -4,6 +4,8 @@
     "next": "Volgende",
     "toReview": "Controleren",
     "back": "Terug",
+    "skipStep": "Stap overslaan",
+    "close": "Sluiten",
     "remove": "Verwijderen",
     "domainHelp": "Het domein waaronder elke tabel die deze wizard maakt wordt geregistreerd: de naamruimte voor toegangsbeheer en query's.",
     "validTime": "Geldigheidstijd",

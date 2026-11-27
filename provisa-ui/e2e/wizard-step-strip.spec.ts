@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2277: New Data Vault shows every step in a strip, at 1280 and 1900 wide, inside the panel
+// REQ-2277: New Data Vault shows every step in a strip, at 1280 and 1900 wide, inside the dialog
 // and not overflowing it, with the current step highlighted.
 
 import { test, expect } from "./coverage";

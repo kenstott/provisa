@@ -29,14 +29,18 @@ export function StepStrip({
   steps,
   active,
   onStepClick,
+  currentOpens = false,
   label,
   testId,
 }: {
   steps: readonly Step[];
   /** Index of the current step. */
   active: number;
-  /** A completed step (before `active`) was pressed. */
+  /** A completed step (before `active`) was pressed, or the current one with `currentOpens`. */
   onStepClick: (index: number) => void;
+  /** The current step can be pressed too: the strip shows progress, and the step on screen may be
+   *  an earlier one (the modeling wizards, REQ-2199). */
+  currentOpens?: boolean;
   label: string;
   testId: string;
 }) {
@@ -59,11 +63,12 @@ export function StepStrip({
         iconSize={22}
         aria-label={label}
       >
-        {steps.map((s) => (
+        {steps.map((s, i) => (
           <Stepper.Step
             key={s.key}
             label={s.label}
             description={s.description}
+            allowStepSelect={currentOpens ? i <= active : undefined}
             data-testid={`${testId}-${s.key}`}
           />
         ))}
