@@ -8876,6 +8876,7 @@
   "de/sqlCanvasTableCard.json::sqlCanvasTableCard.unjoined": "{{tables}} isn't joined to the other tables",
   "de/sqlEditorPanel.json::sqlEditorPanel.analyze": "Analyze",
   "de/sqlEditorPanel.json::sqlEditorPanel.analyzeTitle": "Show the engine's plan for this statement, with Provisa's optimizations called out",
+  "de/sqlEditorPanel.json::sqlEditorPanel.analyzeWhich": "Analyze which statement?",
   "de/sqlEditorPanel.json::sqlEditorPanel.analyzing": "Analyzing…",
   "de/sqlEditorPanel.json::sqlEditorPanel.asOfHint": "Write as_of on each relation that keeps versions: read it as it stood at this time",
   "de/sqlEditorPanel.json::sqlEditorPanel.asOfLabel": "As of",

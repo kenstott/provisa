@@ -143,7 +143,7 @@ def _proto_value(field, value):
 def _dict_row_to_message(pb2, msg_cls, d: dict):
     """Build a ``{Type}`` proto message from a node's nested dict (REQ-1405) — the same
     nested-dict shape a group's nodes column holds for every other transport,
-    just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
+    just typed instead of left as JSON. Relation columns (``sql_selection.rel_read``) surface as
     a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
     every other value is a scalar assigned via the shared ``_proto_value`` adapter."""
     descriptor = msg_cls.DESCRIPTOR
