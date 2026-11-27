@@ -702,11 +702,13 @@ class TestNestedRelationship:
         q = results[0]
         assert '"t0"."id"' in q.sql
         assert '"t0"."amount"' in q.sql
-        # many-to-one now uses a json_object correlated subquery (no LEFT JOIN, no ARRAY_AGG)
+        # many-to-one is a grouped read of customers joined back by key (#362): no flat join of
+        # the table, no ARRAY_AGG
         assert "json_object" in q.sql
         assert "ARRAY_AGG" not in q.sql
         assert 'LEFT JOIN "public"."customers"' not in q.sql
-        assert '"t1"."id" = "t0"."customer_id"' in q.sql
+        assert 'SELECT "t1"."id" AS "_key0"' in q.sql
+        assert '"t1_read"."_key0" = "t0"."customer_id"' in q.sql
         # single ColumnRef for the relationship, nested_in=None, is_agg=True
         cust_cols = [c for c in q.columns if c.field_name == "customer"]
         assert len(cust_cols) == 1
@@ -934,7 +936,9 @@ class TestNestedRelationship:
         results = compile_query(doc, ctx, flat=False)
         sql = results[0].sql
         assert "json_agg" in sql, f"Expected json_agg in non-flat SQL: {sql}"
-        assert "LEFT JOIN" not in sql, f"Expected no LEFT JOIN in non-flat SQL: {sql}"
+        # The list is one grouped read joined by key (#362), not the table's rows joined flat.
+        assert 'LEFT JOIN "public"."orders"' not in sql, f"Expected no flat join: {sql}"
+        assert 'GROUP BY "t1"."customer_id"' in sql, sql
 
     def test_one_to_many_flat_true_uses_left_join(self):
         """flat=True on a one-to-many join (no args) → LEFT JOIN."""
@@ -1165,8 +1169,9 @@ class TestJoinTypeCast:
         sql = results[0].sql
         # Should be plain column refs, no CAST
         assert "CAST" not in sql
-        # json subquery WHERE uses tgt = src order
-        assert '"t1"."id" = "t0"."customer_id"' in sql
+        # the read's key is the target's column, joined to the source's (#362)
+        assert 'SELECT "t1"."id" AS "_key0"' in sql
+        assert '"t1_read"."_key0" = "t0"."customer_id"' in sql
 
     def test_no_cast_for_compatible_numeric_types(self):
         """integer JOIN bigint → no CAST (same numeric group)."""
@@ -1546,15 +1551,16 @@ class TestOpsDefaultLimit:
         )
 
     def test_ops_queries_flat_false_uses_array_agg_with_limit(self):
-        """flat=False with default_limit=10 must use json_agg(SELECT ... LIMIT 10),
-        not a bare LATERAL JOIN — to avoid fan-out rows."""
+        """flat=False with default_limit=10 must use json_agg of each key's first 10 rows
+        (#362: ROW_NUMBER per key), not a bare LATERAL JOIN — to avoid fan-out rows."""
         schema, ctx = self._build_ops_schema_and_ctx()
         doc = parse("{ orders { id _meta { _queries { query } } } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx, flat=False)
         sql = results[0].sql
         assert "json_agg" in sql, "Expected json_agg in non-flat SQL: " + sql
-        assert "LIMIT" in sql, "Expected LIMIT inside json_agg subquery: " + sql
+        assert '"_row" <= 10' in sql, "Expected the cap on each key's rows: " + sql
+        assert "LATERAL" not in sql, sql
 
     def test_ops_queries_flat_true_uses_lateral_join(self):
         """flat=True with default_limit=10 must use LATERAL JOIN with LIMIT."""
@@ -1575,7 +1581,7 @@ class TestOpsDefaultLimit:
         results = compile_query(doc, ctx, flat=False)
         sql = results[0].sql
         assert "json_agg" in sql, "Expected json_agg with explicit limit: " + sql
-        assert "LIMIT 2" in sql, "Expected LIMIT 2 from explicit arg: " + sql
+        assert '"_row" <= 2' in sql, "Expected the cap of 2 from the explicit arg: " + sql
         assert "LATERAL" not in sql, "Expected no LATERAL with flat=False: " + sql
 
 

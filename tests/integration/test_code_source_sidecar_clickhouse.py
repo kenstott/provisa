@@ -133,6 +133,21 @@ _GQL_READ = """
 }
 """
 
+# #362: a relationship field reads on ClickHouse as on every engine -- the compiler's grouped read
+# joined by key, its JSON in ClickHouse's functions. regionDetail is many-to-one: an object. A
+# to-one field takes no parameter, so the function is called with its default tag ("none").
+_GQL_JOIN = """
+{
+  orders(where: {region: {eq: "eu-west"}}) {
+    id
+    regionDetail {
+      label
+      asked
+    }
+  }
+}
+"""
+
 # Labels are the tables' PascalCase type names; the relationship type is the field's
 # (cql_rel_type: regionDetail, many-to-one -> IS_REGION_DETAIL); the parameter binds by its name.
 _CYPHER_JOIN = (
@@ -154,6 +169,25 @@ def test_graphql_reads_the_clickhouse_code_source_with_its_parameter(server, dev
     assert "errors" not in body, body
     rows = body["data"]["regions"]
     assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}, body
+
+
+def test_graphql_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):
+    resp = httpx.post(
+        f"{server.base_url}/data/graphql",
+        json={"query": _GQL_JOIN},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "errors" not in body, body
+    orders = body["data"]["orders"]
+    assert orders, "GraphQL: no eu-west orders joined to their region"
+    details = [o["regionDetail"] for o in orders]
+    assert all(isinstance(d, dict) for d in details), body  # many-to-one: an object
+    assert {(d["label"], d["asked"]) for d in details} == {("EU West", "none")}, body
+    eu = _rows(_sql(server, "SELECT id FROM orders WHERE region = 'eu-west' ORDER BY id"))
+    assert sorted(o["id"] for o in orders) == [r["id"] for r in eu]
 
 
 def test_cypher_join_through_clickhouse_code_source_returns_same_rows(server, dev_source):

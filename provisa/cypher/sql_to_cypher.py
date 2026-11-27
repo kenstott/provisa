@@ -147,6 +147,10 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         except UntranslatableSubquery:
             return None
 
+    # #362: each relationship field's grouped read, as the correlated subquery it states per row.
+    from provisa.cypher.sql_to_cypher_reads import restate
+
+    restate(tree)
     _normalize_json_builders(tree)
 
     domain_to_label = _build_domain_to_label(ctx, label_map, domain_to_sql_name)
