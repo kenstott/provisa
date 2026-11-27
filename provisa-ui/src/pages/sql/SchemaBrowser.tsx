@@ -13,7 +13,7 @@ import { ActionIcon, ScrollArea, Text, UnstyledButton } from "@mantine/core";
 import { ChevronRight, ChevronDown, Table2, Columns3, Info, Sigma } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { groupModelingTables } from "./sqlHelpers";
-import { columnSqlRef, tableSqlRef } from "../../naming";
+import { columnSqlRef, servedSqlRef } from "../../naming";
 import { DOMAIN_PAGE_SIZE } from "./types";
 import type { TopTab } from "./types";
 import type { Domain, Metric } from "../../types/admin";
@@ -53,7 +53,9 @@ function ModelingTableRow({
   group: string;
 }) {
   const { t } = useTranslation();
-  const ref = tableSqlRef(tbl);
+  // REQ-2361: the name the server's names table gives the table; a table it does not name is
+  // not served, so there is nothing to insert.
+  const ref = servedSqlRef(tbl);
   return (
     <Tip
       text={
@@ -64,7 +66,7 @@ function ModelingTableRow({
       named
     >
       <UnstyledButton
-        onClick={() => insertAtCursor(ref)}
+        onClick={() => ref !== null && insertAtCursor(ref)}
         draggable={topTab === "canvas"}
         onDragStart={
           topTab === "canvas"
@@ -445,8 +447,8 @@ export function SchemaBrowser({
                                         fontSize: "0.75rem",
                                       }}
                                       onDoubleClick={
-                                        topTab === "sql"
-                                          ? () => insertAtCursor(tableSqlRef(tbl))
+                                        topTab === "sql" && servedSqlRef(tbl) !== null
+                                          ? () => insertAtCursor(servedSqlRef(tbl) as string)
                                           : undefined
                                       }
                                     >
@@ -469,7 +471,11 @@ export function SchemaBrowser({
                                   </Tip>
                                   <Tip text={t("schemaBrowser.insertTableReference")} named>
                                     <ActionIcon
-                                      onClick={() => insertAtCursor(tableSqlRef(tbl))}
+                                      onClick={() => {
+                                        const served = servedSqlRef(tbl);
+                                        if (served !== null) insertAtCursor(served);
+                                      }}
+                                      disabled={servedSqlRef(tbl) === null}
                                       aria-label={t("schemaBrowser.insertTableReference")}
                                       variant="subtle"
                                       size="sm"

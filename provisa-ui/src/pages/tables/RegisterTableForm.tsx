@@ -470,10 +470,12 @@ export function RegisterTableForm({
         setColumns(pipelineArgs); // a pipeline's arguments are kept
         return;
       }
-      setPreviewRows(res.rows);
       const roleIds = roles.map((r) => r.id);
       try {
+        // The rows and the columns they type are shown together, once the server suggested the
+        // columns' aliases.
         const previewed = await previewedColumns(res.columns, roleIds, suggestColumnAliases);
+        setPreviewRows(res.rows);
         setColumns([...pipelineArgs, ...previewed]);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
