@@ -9589,7 +9589,7 @@
     is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
     answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
     truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
-    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.)'
+    max_recursion_depth session property. (Amended 2026-11-26 by the maintainer: an undirected relationship whose two ends are the same type, under OPTIONAL MATCH, is answered, not refused as reaching several relationships: one outer join matches either direction.) (Amended 2026-11-27, lead under the standing Cypher conformance goal, an end that the walk''s relationship types place on one label, because every mapping of those types joins that label to itself, is bindable, so a variable-length pattern with two free ends over such types, alternated or not, is walked and not refused. An untyped walk, a graph-session walk, or types that reach several labels are still refused by name.)'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
