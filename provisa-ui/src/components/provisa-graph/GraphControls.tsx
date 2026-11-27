@@ -10,10 +10,10 @@
 
 // REQ-2239: a 2D graph's controls, in the one stack every graph shares (CanvasControls), always in
 // this order: zoom in, zoom out, fit, full screen, and one download with the file types under it; a
-// copy of the graph as text where the view gives one. The menu and the hints are drawn inside the
+// copy of the graph as text where the view gives one; then the view's own commands. The menu and the hints are drawn inside the
 // graph, not in a portal, so they are still seen while it is full screen.
 
-import { useState, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Menu } from "@mantine/core";
 import { Check, Copy, Download } from "lucide-react";
@@ -24,6 +24,14 @@ import { CanvasButton, CanvasControls, CONTROL_ICON, FullscreenButton } from "./
 import { fitWhole, zoomAboutCentre, type GraphExports } from "./viewport";
 
 const ZOOM_STEP = 1.3;
+
+/** A command of the view's own, after the shared ones: its name, icon and action. */
+export interface GraphCommandButton {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  testId: string;
+}
 
 /** Text a graph's controls copy: the button's words, before and after, and the text. */
 export interface GraphCopy {
@@ -38,6 +46,7 @@ export function GraphControls({
   stageRef,
   exports,
   copy,
+  commands = [],
   testId,
 }: {
   cyRef: RefObject<CyInstance | null>;
@@ -45,6 +54,8 @@ export function GraphControls({
   stageRef: RefObject<HTMLDivElement | null>;
   exports: GraphExports;
   copy?: GraphCopy;
+  /** The view's own commands, after the shared ones. */
+  commands?: GraphCommandButton[];
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -120,6 +131,15 @@ export function GraphControls({
           testId={copy.testId}
         />
       )}
+      {commands.map((c) => (
+        <CanvasButton
+          key={c.testId}
+          label={c.label}
+          icon={c.icon}
+          onClick={c.onClick}
+          testId={c.testId}
+        />
+      ))}
       {/* The copy said done, beside the bar, for as long as the check shows. */}
       {copy && copied && (
         <span className="pg-copied" role="status">

@@ -8,12 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2239: every 2D graph view is drawn by the one graph component (components/provisa-graph/),
-// built on cytoscape, and by nothing else. This guard reads every source file outside the
-// component and fails on one that imports cytoscape or a cytoscape extension (cytoscape-elk,
-// cytoscape-fcose, cytoscape-svg, ...): a view hands the component its nodes, edges, groups and a
-// layout preset, and never reaches the library itself. Tests are not read: a layout's test may
-// lay a graph out headless.
+// REQ-2239: every 2D model diagram (the ERD, the ontology graph in 2D, product lineage and the
+// Lineage page) is drawn by the one graph component (components/provisa-graph/), built on
+// cytoscape, and by nothing else. This guard reads every source file outside the component and
+// fails on one that imports cytoscape or a cytoscape extension (cytoscape-elk, cytoscape-fcose,
+// cytoscape-svg, ...): a view hands the component its nodes, edges, groups and a layout preset,
+// and never reaches the library itself. Tests are not read: a layout's test may lay a graph out
+// headless.
+//
+// (Amended 2026-11-27.) Two kinds of graph keep their own look and are exempt by rule, not listed:
+// the network graph (the Cypher and SPARQL explorers, components/graph/, which mimic Neo4j
+// Browser) and the 3D view (a scene drawn with three.js).
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -24,15 +29,16 @@ const SRC = resolve(__dirname, "../..");
 /** The component: the only code that may import the library. */
 const THE_COMPONENT = "components/provisa-graph/";
 
-/**
- * Shrinking: 2D graph views not yet drawn by the component. A file leaves this list in the commit
- * that moves it onto the component, and the guard fails a listed file that no longer imports the
- * library. Nothing is added here.
- */
-const NOT_YET_CONVERTED: readonly string[] = [
-  "components/graph/GraphCanvas.tsx",
-  "components/lineage/LineageDag.tsx",
-];
+/** The network graph: the Cypher and SPARQL explorers, drawn after Neo4j Browser. */
+const NETWORK_GRAPH = "components/graph/";
+
+/** A 3D view draws its scene with three.js. */
+const THREE_IMPORT = /\bfrom\s*["']three(?:\/[\w./-]+)?["']/;
+
+/** Whether ``file`` (with source ``text``) is a graph of a kind that keeps its own look. */
+export function ownLook(file: string, text: string): boolean {
+  return file.startsWith(NETWORK_GRAPH) || THREE_IMPORT.test(text);
+}
 
 /** An import of the library or one of its extensions: static, type-only, dynamic or required. */
 const LIBRARY_IMPORT =
@@ -57,29 +63,43 @@ function sourceFiles(dir: string, found: string[] = []): string[] {
   return found;
 }
 
-const importsOf = (file: string) => libraryImports(readFileSync(join(SRC, file), "utf8"));
+const textOf = (file: string) => readFileSync(join(SRC, file), "utf8");
+const importsOf = (file: string) => libraryImports(textOf(file));
 
 describe("the graph library is imported only by the one graph component", () => {
   const files = sourceFiles(SRC);
-  const pending = new Set(NOT_YET_CONVERTED);
+  const exempt = new Set(files.filter((f) => ownLook(f, textOf(f))));
 
   it("finds the sources and the component", () => {
     expect(files.length).toBeGreaterThan(200);
     expect(files.filter((f) => f.startsWith(THE_COMPONENT) && importsOf(f).length > 0)).not.toEqual(
       [],
     );
-    for (const f of NOT_YET_CONVERTED) expect(files, `${f} is listed but does not exist`).toContain(f);
+    // The rule finds both kinds: the network graph's canvas and the 3D ontology view's scene.
+    expect(exempt).toContain("components/graph/GraphCanvas.tsx");
+    expect(exempt).toContain("components/graph3d/graphScene.ts");
   });
 
-  it.each(files.filter((f) => !f.startsWith(THE_COMPONENT) && !pending.has(f)))(
+  it.each(files.filter((f) => !f.startsWith(THE_COMPONENT) && !exempt.has(f)))(
     "%s imports no cytoscape",
     (file) => {
       expect(importsOf(file), `${file} imports the graph library outside ProvisaGraph`).toEqual([]);
     },
   );
 
-  it.each([...NOT_YET_CONVERTED])("%s still imports it: once it does not, it leaves the list", (file) => {
-    expect(importsOf(file).length).toBeGreaterThan(0);
+  it("draws lineage with the component", () => {
+    expect(exempt.has("components/lineage/LineageDag.tsx")).toBe(false);
+    expect(importsOf("components/lineage/LineageDag.tsx")).toEqual([]);
+  });
+
+  it("exempts by kind only", () => {
+    expect(ownLook("components/graph/GraphCanvas.tsx", "")).toBe(true);
+    expect(ownLook("components/graph3d/graphScene.ts", `import * as THREE from "three";`)).toBe(true);
+    expect(
+      ownLook("pages/x/scene.ts", `import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";`),
+    ).toBe(true);
+    expect(ownLook("components/lineage/LineageDag.tsx", `import cytoscape from "cytoscape";`)).toBe(false);
+    expect(ownLook("components/graph3d/LaneStage.tsx", `// a three-lane diagram`)).toBe(false);
   });
 
   it("is found by the rule", () => {

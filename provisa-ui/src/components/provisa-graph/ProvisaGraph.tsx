@@ -37,7 +37,8 @@ import {
 } from "./core";
 import { cyCanvas, type CyCanvas } from "./cyCanvas";
 import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
-import { GraphControls, type GraphCopy } from "./GraphControls";
+import { flowLayout, flowParts, packUnder } from "./flow";
+import { GraphControls, type GraphCommandButton, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
 import { GroupResize } from "./GroupResize";
 import { runLanes, type LanesOptions } from "./lanes";
@@ -73,7 +74,7 @@ import {
 const WHEEL_ZOOM = 0.002;
 import "./provisa-graph.css";
 
-export type LayoutPreset = "layered" | "lanes" | "force";
+export type LayoutPreset = "layered" | "lanes" | "force" | "flow";
 
 /** The reader's choices of a layered graph (the ERD's options). */
 export interface LayeredOptions {
@@ -108,6 +109,9 @@ export interface ProvisaGraphProps {
   exportData?: () => unknown;
   /** Text the controls copy (a Mermaid flowchart of the graph). */
   copy?: GraphCopy;
+  /** The view's own commands, at the end of the controls (REQ-2239: the shared command bar, plus
+   * the commands unique to the graph's kind). */
+  commands?: GraphCommandButton[];
   /** A glance (a card): no controls, legend or hint. */
   bare?: boolean;
   /** The layered preset's options. */
@@ -121,6 +125,8 @@ export interface ProvisaGraphProps {
   onEdgeClick?: (id: string, data: (key: string) => unknown) => void;
   /** A fold node clicked: what it stands for is to be drawn. */
   onMore?: (id: string, data: (key: string) => unknown) => void;
+  /** A node or a group double-clicked (a click toggles a group, so a double click opens it). */
+  onDoubleClick?: (id: string, data: (key: string) => unknown) => void;
   /** What is hovered, when the view keeps it; otherwise the graph does. */
   hover?: GraphHover | null;
   onHover?: (h: GraphHover | null) => void;
@@ -207,6 +213,7 @@ export function ProvisaGraph({
   exportName,
   exportData,
   copy,
+  commands,
   bare = false,
   options,
   collapsed = NO_GROUPS,
@@ -215,6 +222,7 @@ export function ProvisaGraph({
   onNodeClick,
   onEdgeClick,
   onMore,
+  onDoubleClick,
   hover: hoverProp,
   onHover,
   neighbourhood,
@@ -256,6 +264,7 @@ export function ProvisaGraph({
     onNodeClick,
     onEdgeClick,
     onMore,
+    onDoubleClick,
     onHover,
     onArrange,
     onCollapsedChange,
@@ -272,6 +281,7 @@ export function ProvisaGraph({
       onNodeClick,
       onEdgeClick,
       onMore,
+      onDoubleClick,
       onHover,
       onArrange,
       onCollapsedChange,
@@ -446,6 +456,9 @@ export function ProvisaGraph({
     cy.on("tap", "edge", (evt: EventObject) =>
       latest.current.onEdgeClick?.(evt.target.id(), (k) => evt.target.data(k)),
     );
+    cy.on("dbltap", 'node[kind = "node"], node[kind = "group"]', (evt: EventObject) =>
+      latest.current.onDoubleClick?.(evt.target.id(), (k) => evt.target.data(k)),
+    );
     cy.on("tap", 'node[kind = "group"]', (evt: EventObject) => {
       const change = latest.current.onCollapsedChange;
       if (!change) return;
@@ -531,6 +544,17 @@ export function ProvisaGraph({
           graph.edges.filter((e) => e.overlay),
           finish,
         );
+      } else if (preset === "flow") {
+        // Lineage's: ELK left to right; what no line reaches packed under the rest.
+        const { isolated } = flowParts(cy);
+        const placed = () => {
+          const rect = box.getBoundingClientRect();
+          packUnder(cy, isolated, rect.height > 0 ? rect.width / rect.height : 1.6);
+          fitClear(cy as unknown as CyInstance);
+          finish();
+        };
+        // Every group is laid out, the ones no line reaches too: ELK stacks their nodes.
+        laying.run(cy.layout(flowLayout(cy.elements()) as Parameters<typeof cy.layout>[0]), placed);
       } else if (preset === "force") {
         // A move turns the line between a pair of nodes, which decides which way its lines bend.
         cy.on("dragfree", 'node[kind = "node"]', () => bendPairs(c));
@@ -846,6 +870,7 @@ export function ProvisaGraph({
               stageRef={stageRef}
               exports={exports}
               copy={copy}
+              commands={commands}
               testId={testId}
             />
             <GraphLegend types={drawnTypes} typeName={typeName} />
