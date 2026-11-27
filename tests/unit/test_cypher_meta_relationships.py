@@ -120,14 +120,20 @@ def meta():
         all_relationships=rels,
         all_column_types=column_types,
     )
+    con = _connect(cols)
+    _seed(con)
+    return lm, con
+
+
+def _connect(cols: dict[str, set[str]]) -> duckdb.DuckDBPyConnection:
+    """A DuckDB database with each seeded table, empty."""
     con = duckdb.connect()
     con.execute("ATTACH ':memory:' AS provisa_admin")
     con.execute("CREATE SCHEMA provisa_admin.public")
     for name, columns in cols.items():
         defs = ", ".join(f'"{c}" {_type(c).upper()}' for c in sorted(columns))
         con.execute(f'CREATE TABLE provisa_admin.public."{name}_meta" ({defs})')
-    _seed(con)
-    return lm, con
+    return con
 
 
 def _insert(con, table: str, **values) -> None:
@@ -281,3 +287,377 @@ def test_an_undirected_self_referential_exists_reads_both_ways(meta, cypher, exp
 )
 def test_a_free_end_is_the_table_the_named_end_s_relationship_reaches(meta, cypher, expected):
     assert _rows(meta, cypher) == expected
+
+
+# --- OPTIONAL MATCH over an undirected self-referential type: one outer join, either way --------
+# REQ-348 (amended 2026-11-26): answered, not refused as reaching several relationships. FK: 11
+# CHECKS 10 (checked_table_id). Junction: 1 KIND_OF 2 (_term_edges). Terms 1 and 2 are referenced
+# by columns 'c1' and 'c2' (_term_refs), which a hop after the self-referential one reaches.
+
+
+@pytest.fixture(scope="module")
+def selfrel(meta):
+    lm, con = meta
+    for term in (1, 2):
+        _insert(con, "table_columns", id=900 + term, name=f"c{term}", column_key=f"c{term}")
+        _insert(con, "_term_refs", term_id=term, column_key=f"c{term}")
+    return lm, con
+
+
+_SELFREL_NODES = {
+    "fk": ("Meta:RegisteredTables", "CHECKS"),
+    "junction": ("Ontology:Terms", "KIND_OF"),
+}
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        # a=10 reaches 11 against the arrow, a=11 reaches 10 along it, a=12 reaches none.
+        ("fk", [(10, 11), (11, 10), (12, None)]),
+        ("junction", [(1, 2), (2, 1), (3, None)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_matches_either_direction(
+    selfrel, shape, expected
+):
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[:{rel}]-(b:{label}) RETURN a.id, b.id",
+    )
+    assert rows == expected
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_self_referential_hop_is_one_outer_join(selfrel, shape):
+    lm, _con = selfrel
+    label, rel = _SELFREL_NODES[shape]
+    sql = _sql(lm, f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, b.id")
+    assert "UNION" not in sql.upper()
+    assert " OR " in sql
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        # Each edge object is the relationship as stored: its start the source, whichever end
+        # the pattern named first.
+        ("fk", [(10, 11, 10, False), (11, 11, 10, False), (12, None, None, True)]),
+        ("junction", [(1, 1, 2, False), (2, 1, 2, False), (3, None, None, True)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_returns_r_as_stored(selfrel, shape, expected):
+    import json
+
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, r, r IS NULL",
+    )
+
+    def key(node: dict) -> int:
+        # A node's graph identity, "Label|key".
+        return int(node["id"].rsplit("|", 1)[1])
+
+    got = []
+    for a_id, r, absent in rows:
+        edge = None if r is None else (json.loads(r) if isinstance(r, str) else r)
+        got.append(
+            (
+                a_id,
+                None if edge is None else key(edge["startNode"]),
+                None if edge is None else key(edge["endNode"]),
+                absent,
+            )
+        )
+    assert sorted(got, key=repr) == expected
+
+
+@pytest.mark.parametrize(
+    ("cypher", "expected"),
+    [
+        (
+            "MATCH (a:Meta:RegisteredTables) "
+            "OPTIONAL MATCH (a)-[r:CHECKS]-(b:Meta:RegisteredTables)-[:SOURCE]-(s:Meta:Sources) "
+            "RETURN a.id, b.id, s.name",
+            [(10, 11, "pg"), (11, 10, "pg"), (12, None, None)],
+        ),
+        (
+            "MATCH (a:Ontology:Terms) "
+            "OPTIONAL MATCH (a)-[:KIND_OF]-(b:Ontology:Terms)-[:REFERENCED_BY]-(c) "
+            "RETURN a.id, b.id, c.name",
+            [(1, 2, "c2"), (2, 1, "c1"), (3, None, None)],
+        ),
+    ],
+    ids=["fk", "junction"],
+)
+def test_an_optional_undirected_self_referential_hop_then_a_following_hop(
+    selfrel, cypher, expected
+):
+    assert _rows(selfrel, cypher) == expected
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("fk", [(10, 11, 10), (11, 11, 10), (12, None, None)]),
+        ("junction", [(1, 1, 2), (2, 1, 2), (3, None, None)]),
+    ],
+)
+def test_an_optional_undirected_self_referential_hop_s_ends_are_as_stored(selfrel, shape, expected):
+    import json
+
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        selfrel,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) "
+        "RETURN a.id, startNode(r), endNode(r)",
+    )
+    got = [
+        (a_id, *(None if n is None else json.loads(n)["properties"]["id"] for n in (s, e)))
+        for a_id, s, e in rows
+    ]
+    assert sorted(got, key=repr) == expected
+
+
+# --- two relationships between the same two nodes, each way; a self-loop ------------------------
+# REQ-348: an OPTIONAL undirected hop reaches each relationship once. FK: 20 CHECKS 21 and 21
+# CHECKS 20 are two relationships; 22 CHECKS 22 is one. Junction: 5 KIND_OF 6 and 6 KIND_OF 5;
+# 7 KIND_OF 7. 23 and 8 reach none.
+
+
+@pytest.fixture(scope="module")
+def mutual(meta):
+    lm, _seeded = meta
+    con = _connect(_columns())
+    _insert(con, "registered_tables", id=20, name="a", checked_table_id=21)
+    _insert(con, "registered_tables", id=21, name="b", checked_table_id=20)
+    _insert(con, "registered_tables", id=22, name="loop", checked_table_id=22)
+    _insert(con, "registered_tables", id=23, name="none")
+    for term in (5, 6, 7, 8):
+        _insert(con, "_terms", id=term, name=f"t{term}")
+    for src, tgt in ((5, 6), (6, 5), (7, 7)):
+        _insert(con, "_term_edges", from_term_id=src, to_term_id=tgt, rel_type="KIND_OF")
+    return lm, con
+
+
+_MUTUAL = {
+    # (a, b, r's start, r's end): one row per relationship, NULLs where none is reached.
+    "fk": [
+        (20, 21, 20, 21),
+        (20, 21, 21, 20),
+        (21, 20, 20, 21),
+        (21, 20, 21, 20),
+        (22, 22, 22, 22),
+        (23, None, None, None),
+    ],
+    "junction": [
+        (5, 6, 5, 6),
+        (5, 6, 6, 5),
+        (6, 5, 5, 6),
+        (6, 5, 6, 5),
+        (7, 7, 7, 7),
+        (8, None, None, None),
+    ],
+}
+
+
+def _node_key(node: dict) -> int:
+    # A node's graph identity, "Label|key".
+    return int(node["id"].rsplit("|", 1)[1])
+
+
+def _json(value):
+    import json
+
+    return None if value is None else (json.loads(value) if isinstance(value, str) else value)
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_hop_reaches_each_relationship_once(mutual, shape):
+    label, rel = _SELFREL_NODES[shape]
+    rows = _rows(
+        mutual,
+        f"MATCH (a:{label}) OPTIONAL MATCH (a)-[r:{rel}]-(b:{label}) RETURN a.id, b.id, r",
+    )
+    got = [
+        (
+            a_id,
+            b_id,
+            *((None, None) if e is None else (_node_key(e["startNode"]), _node_key(e["endNode"]))),
+        )
+        for a_id, b_id, e in ((a, b, _json(r)) for a, b, r in rows)
+    ]
+    assert sorted(got, key=repr) == _MUTUAL[shape]
+
+
+def _path_rows(meta, cypher: str) -> list[tuple]:
+    got = []
+    for a_id, p in _rows(meta, cypher):
+        path = _json(p)
+        if path is None:
+            got.append((a_id, None, None, None))
+            continue
+        (edge,) = path["edges"]
+        far = path["nodes"][-1]["properties"]["id"]
+        got.append((a_id, far, _node_key(edge["startNode"]), _node_key(edge["endNode"])))
+    return sorted(got, key=repr)
+
+
+@pytest.mark.parametrize("shape", ["fk", "junction"])
+def test_an_optional_undirected_path_s_edge_is_each_relationship_as_stored(mutual, shape):
+    label, rel = _SELFREL_NODES[shape]
+    got = _path_rows(
+        mutual, f"MATCH (a:{label}) OPTIONAL MATCH p = (a)-[:{rel}]-(b:{label}) RETURN a.id, p"
+    )
+    assert got == _MUTUAL[shape]
+
+
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        ("fk", [(10, 11, 11, 10), (11, 10, 11, 10), (12, None, None, None)]),
+        ("junction", [(1, 2, 1, 2), (2, 1, 1, 2), (3, None, None, None)]),
+    ],
+)
+def test_an_optional_undirected_path_is_null_where_nothing_matched(selfrel, shape, expected):
+    label, rel = _SELFREL_NODES[shape]
+    got = _path_rows(
+        selfrel, f"MATCH (a:{label}) OPTIONAL MATCH p = (a)-[r:{rel}]-(b:{label}) RETURN a.id, p"
+    )
+    assert got == expected
+
+
+# --- a named path's relationships, each as stored ------------------------------------------------
+# Neo4j: a path's relationship starts at the node it leaves and ends at the node it enters,
+# whichever way the pattern traversed it; its identity is the same either way. FK: tables 10 and
+# 11 have SOURCE 1, table 12 SOURCE 2; 11 CHECKS 10. Junction: product 100 has MEMBER_TABLES 10
+# and 12 (and each of them PRODUCT 100); term 1 KIND_OF 2.
+
+
+def _stored_edges(meta, cypher: str) -> list:
+    """Each row's path as its relationships: (start, end, startNode's key, endNode's key,
+    identity) each; None for a null path."""
+    got = []
+    for (p,) in _rows(meta, cypher):
+        path = _json(p)
+        got.append(
+            None
+            if path is None
+            else tuple(
+                (
+                    int(e["start"]),
+                    int(e["end"]),
+                    _node_key(e["startNode"]),
+                    _node_key(e["endNode"]),
+                    e["identity"],
+                )
+                for e in path["edges"]
+            )
+        )
+    return sorted(got, key=repr)
+
+
+def _stored(*edges: tuple) -> tuple:
+    """A path's relationships as stored, from (type, start, end) each."""
+    return tuple((s, e, s, e, f"{t}:{s}-{e}") for t, s, e in edges)
+
+
+_SOURCE_PATHS = [_stored(("SOURCE", 10, 1)), _stored(("SOURCE", 11, 1)), _stored(("SOURCE", 12, 2))]
+_MEMBER_PATHS = [_stored(("MEMBER_TABLES", 100, 10)), _stored(("MEMBER_TABLES", 100, 12))]
+
+_STORED_PATHS = {
+    # Directed, read against the arrow.
+    "fk-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-reversed": (
+        "MATCH p = (b:Meta:RegisteredTables)<-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    "fk-self-reversed": (
+        "MATCH p = (a:Meta:RegisteredTables)<-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [_stored(("CHECKS", 11, 10))],
+    ),
+    "junction-self-reversed": (
+        "MATCH p = (a:Ontology:Terms)<-[:KIND_OF]-(b:Ontology:Terms) RETURN p",
+        [_stored(("KIND_OF", 1, 2))],
+    ),
+    # Undirected, matched from the relationship's end.
+    "fk-undirected": (
+        "MATCH p = (s:Meta:Sources)-[:SOURCE]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-undirected": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    # Undirected over a self-referential type: each relationship matched both ways.
+    "fk-self-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [_stored(("CHECKS", 11, 10))] * 2,
+    ),
+    "junction-self-undirected": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF]-(b:Ontology:Terms) RETURN p",
+        [_stored(("KIND_OF", 1, 2))] * 2,
+    ),
+    # Variable-length, each way.
+    "fk-varlen-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE*1..2]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-varlen-undirected": (
+        "MATCH p = (s:Meta:Sources)-[:SOURCE*1..2]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-varlen-reversed": (
+        "MATCH p = (b:Meta:RegisteredTables)<-[:MEMBER_TABLES*1..2]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    "junction-varlen-undirected": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:MEMBER_TABLES*1..2]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    # OPTIONAL: null where nothing matched.
+    "fk-optional-reversed": (
+        "MATCH (s:Meta:Sources) OPTIONAL MATCH p = (s)<-[:SOURCE]-(t:Meta:RegisteredTables) "
+        "RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-optional-undirected": (
+        "MATCH (s:Meta:Sources) OPTIONAL MATCH p = (s)-[:SOURCE]-(t:Meta:RegisteredTables) "
+        "RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-self-optional-reversed": (
+        "MATCH (a:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (a)<-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [None, None, _stored(("CHECKS", 11, 10))],
+    ),
+    "junction-optional-reversed": (
+        "MATCH (b:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (b)<-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        [None, *_MEMBER_PATHS],
+    ),
+    "junction-optional-undirected": (
+        "MATCH (b:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (b)-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        [None, *_MEMBER_PATHS],
+    ),
+    # Two hops, one against the arrow and one along it.
+    "fk-then-junction": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE]-(t:Meta:RegisteredTables)"
+        "-[:PRODUCT]->(d:Meta:DataProducts) RETURN p",
+        [
+            _stored(("SOURCE", 10, 1), ("PRODUCT", 10, 100)),
+            _stored(("SOURCE", 12, 2), ("PRODUCT", 12, 100)),
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize(("cypher", "expected"), _STORED_PATHS.values(), ids=_STORED_PATHS.keys())
+def test_a_path_s_relationship_is_as_stored(meta, cypher, expected):
+    assert _stored_edges(meta, cypher) == sorted(expected, key=repr)

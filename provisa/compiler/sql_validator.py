@@ -389,7 +389,10 @@ def _view_command_columns(tree: exp.Expr, view_commands: Mapping[str, dict]) -> 
         if command is None or not isinstance(select, exp.Select) or select.args.get("joins"):
             continue
         alias = tbl.alias or None
-        names = [c["name"] for c in command.get("output_columns") or []]
+        # REQ-1159: each column under the name consumers query it by.
+        from provisa.core.models import queried_name
+
+        names = [queried_name(c) for c in command.get("output_columns") or []]
         expressions: list[exp.Expr] = []
         for item in select.expressions:
             star = isinstance(item, exp.Star) or (

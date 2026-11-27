@@ -34,6 +34,7 @@ const TERM = {
   edges_in: [],
   experts: [],
   refs: [],
+  command_refs: [],
 } as unknown as GlossaryTermDetail;
 
 describe("a term's calculation method", () => {

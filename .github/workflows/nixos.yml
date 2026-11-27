@@ -547,12 +547,12 @@ jobs:
         with:
           phase: prime
 
-  # The core services start zaychik (docker-compose.core.yml), built from zaychik/ by Maven. Each
-  # guest built it and asked Maven Central for its plugins: core 8/21 got 429 Too Many Requests and
-  # its stack never started (run 45903556292). Built here once, as integration-suite-lanes.yml
-  # primes it, and loaded into each lane's guest.
+  # The zaychik image the core services start, primed once (.github/actions/zaychik-image): a lane
+  # that built it asked Maven Central for its Maven plugins and got 429.
   zaychik-image:
-    name: zaychik image
+    name: Zaychik image
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -595,14 +595,7 @@ jobs:
         with:
           phase: restore
 
-      - uses: ./.github/actions/zaychik-image
-        with:
-          phase: restore
-
       - uses: ./.github/actions/nixos-vm
-
-      - name: The zaychik image into the guest
-        run: ssh -F "$PROVISA_VM_SSH_CONFIG" vm docker load < ~/zaychik-image/zaychik.tar
 
       - name: Pyodide downloads and duckdb-ext wheels into the guest
         run: |
@@ -629,6 +622,18 @@ jobs:
             uv run --no-sync python scripts/stage_duckdb_extensions.py
             uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --only splunk --github-release
           '
+
+      # The runner holds the tarball the restore leaves in ~/zaychik-image; the guest's own docker
+      # loads it, so the core services find zaychik:latest and build nothing.
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
+      - name: Load the zaychik image in the guest
+        run: |
+          scp -F "$PROVISA_VM_SSH_CONFIG" ~/zaychik-image/zaychik.tar vm:zaychik.tar
+          packaging/nixos/vm-run 'docker load -i ~/zaychik.tar && rm ~/zaychik.tar'
 
       - name: Stack slots in the guest
         run: |

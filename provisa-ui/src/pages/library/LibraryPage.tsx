@@ -37,6 +37,12 @@ import {
 } from "../../components/list/ListTable";
 import { SplitPane } from "../../components/list/SplitPane";
 import { useRememberedDetail } from "../../components/list/useDetailParam";
+import {
+  detailListOf,
+  filterNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../../components/list/leftOut";
 import { useUrlFilter } from "../../components/list/useUrlFilter";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PageLoading } from "../../components/PageLoading";
@@ -46,7 +52,7 @@ import { documentMark } from "../../lib/documentMark";
 import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadges";
 import { LibraryAddForm } from "./LibraryAddForm";
 import { LibraryDetail } from "./LibraryDetail";
-import { addedOrRefreshed, REVIEWS_DUE_PARAM, when } from "./libraryParts";
+import { addedOrRefreshed, libraryRowTexts, REVIEWS_DUE_PARAM, when } from "./libraryParts";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
@@ -74,9 +80,34 @@ export function LibraryPage() {
     );
   // REQ-2241: `?document=<id>` is the open document's panel.
   // REQ-2260: and the one left open is open again on coming back.
+  // REQ-2277 rule 9: a document is open only while the list -- the reviews-due narrowing, and the
+  // search (REQ-2143: the web-search syntax, over every text a row shows) -- shows its row. While
+  // the documents with reviews due are read, the narrowed list is still loading.
+  const listNarrowings = [
+    filterNarrowing<LibraryDocument>(
+      t,
+      reviewsDueOnly,
+      t("referenceLibrary.reviewsDueOnly"),
+      (d) => due !== null && due.has(d.id),
+      () => setReviewsDueOnly(false),
+    ),
+    searchNarrowing<LibraryDocument>(
+      t,
+      search,
+      () => setSearch(""),
+      (d) => libraryRowTexts(d, t, i18n.language),
+    ),
+  ];
+  const listLoading = documents === null || (reviewsDueOnly && due === null);
   const detail = useRememberedDetail(
     "library",
-    documents === null ? null : documents.map((d) => String(d.id)),
+    detailListOf(
+      t,
+      listLoading ? null : documents,
+      (d) => String(d.id),
+      (d) => d.title,
+      listNarrowings,
+    ),
   );
   const selected = detail.id === null ? null : Number(detail.id);
   const setSelected = (id: number | null) =>
@@ -130,16 +161,7 @@ export function LibraryPage() {
   };
   const stale = (documents ?? []).filter((d) => d.needs_reembedding).length;
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const listed = (documents ?? []).filter(
-      (d) => !reviewsDueOnly || (due !== null && due.has(d.id)),
-    );
-    if (!needle) return listed;
-    return listed.filter((d) =>
-      [d.title, d.source, ...d.domains].some((v) => v.toLowerCase().includes(needle)),
-    );
-  }, [documents, search, reviewsDueOnly, due]);
+  const filtered = shownBy(documents ?? [], listNarrowings);
 
   const columns: ListColumn<LibraryDocument>[] = useMemo(
     () => [
@@ -171,7 +193,7 @@ export function LibraryPage() {
   );
   const sortGroup = useListSortGroup(filtered, columns, "library");
 
-  if ((documents === null || (reviewsDueOnly && due === null)) && !error) {
+  if (listLoading && !error) {
     return <PageLoading message={t("referenceLibrary.loading")} />;
   }
 
@@ -282,6 +304,7 @@ export function LibraryPage() {
         </Alert>
       )}
       <SplitPane
+        outOfList={detail.outOfList}
         testId="reflib-split"
         storageKey="provisa.referenceLibrary.detailWidth"
         title={adding ? t("referenceLibrary.addTitle") : (doc?.title ?? "")}
@@ -313,7 +336,10 @@ export function LibraryPage() {
             <Table.Tbody>
               {filtered.length === 0 && (
                 <ListEmpty colSpan={5} testId="reflib-empty">
-                  {t("referenceLibrary.empty")}
+                  {/* A list a filter emptied says so, never that the library is empty. */}
+                  {(documents ?? []).length === 0
+                    ? t("referenceLibrary.empty")
+                    : t("referenceLibrary.noMatch")}
                 </ListEmpty>
               )}
               <ListItems

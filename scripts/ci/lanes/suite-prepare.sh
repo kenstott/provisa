@@ -17,7 +17,7 @@ uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
 
 # REQ-1992: tests/integration/test_org_folder_crypt.py mounts an org's encrypted folder with
 # gocryptfs over FUSE, as a node does.
-sudo apt-get update -qq
+"$(dirname "$0")/../apt-update.sh"
 sudo apt-get install -y -qq gocryptfs fuse3
 
 # REQ-294: a running Provisa never fetches a connector bundle. The suite's tests attach a files

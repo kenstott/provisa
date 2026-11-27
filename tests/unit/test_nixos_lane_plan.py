@@ -143,9 +143,9 @@ def test_each_lane_loads_the_primed_zaychik_image_into_its_guest():
     restore = uses.index("./.github/actions/zaychik-image")
     assert lane["steps"][restore]["with"] == {"phase": "restore"}
     load = next(
-        s["run"] for s in lane["steps"] if s.get("name") == "The zaychik image into the guest"
+        s["run"] for s in lane["steps"] if s.get("name") == "Load the zaychik image in the guest"
     )
-    assert "docker load < ~/zaychik-image/zaychik.tar" in load
+    assert "docker load -i ~/zaychik.tar" in load and "zaychik-image/zaychik.tar" in load
     assert uses.index("./.github/actions/nixos-vm") < [s.get("name") for s in lane["steps"]].index(
-        "The zaychik image into the guest"
+        "Load the zaychik image in the guest"
     )

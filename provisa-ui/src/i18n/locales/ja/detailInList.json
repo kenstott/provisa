@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} は一覧にありません",
+    "why": "リンクはこれを指していますが、{{reasons}}。",
+    "bySearch": "検索「{{search}}」で除外されています",
+    "byFilter": "{{filter}} フィルターで除外されています",
+    "byDomain": "ドメイン（{{domains}}）が表示対象外です",
+    "clearSearch": "検索をクリア",
+    "clearFilter": "{{filter}} フィルターを解除",
+    "addDomain": "{{domains}} を表示対象に追加",
+    "showAll": "一覧に表示",
+    "dismiss": "閉じる",
+    "byTab": "{{tab}} タブには含まれません",
+    "openTab": "{{tab}} タブを表示"
+  }
+}

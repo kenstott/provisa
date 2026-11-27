@@ -9,6 +9,12 @@
     "scope_column": "列",
     "scope_relationship": "关系",
     "scope_command": "命令",
+    "scope_command_column": "命令列",
+    "commandColumnsTitle": "命令的输出列",
+    "commandColumnsNone": "没有命令声明输出列。",
+    "colCommand": "命令",
+    "colOutputColumn": "输出列",
+    "colTags": "标签",
     "scope_product": "数据产品",
     "scope_term": "术语",
     "scope_rls_rule": "行规则",
@@ -64,6 +70,7 @@
     "outsideTitle": "允许的域之外的分配",
     "outsideBody": "保存后保留了这些分配。请从不再适用的对象上移除此标签。",
     "outsideItem": "{{kind}} {{name}}，位于 {{domains}}",
-    "templateSection": "模板"
+    "templateSection": "模板",
+    "noMatch": "没有符合筛选条件的标签"
   }
 }

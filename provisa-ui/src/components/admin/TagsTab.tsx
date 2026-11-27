@@ -10,7 +10,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRememberedChoice } from "../../hooks/useRememberedChoice";
-import { useRememberedDetail } from "../list/useDetailParam";
+import { useLocation } from "react-router-dom";
+import { namedIn, useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy, type Narrowing } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { useTranslation } from "react-i18next";
 import {
@@ -63,6 +65,7 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
 import { PanelActions, SplitPane } from "../list/SplitPane";
+import { PanelBody, PanelSection } from "../list/PanelBody";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { DetailFields } from "../detail/DetailFields";
@@ -71,7 +74,6 @@ import { Tip } from "../Tip";
 import { useRequiredFields } from "../form/useRequiredFields";
 import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
-import { matchesQuery } from "../../lib/searchItems";
 import { MultiSelect } from "../MultiSelect";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { useDomainFilter } from "../../context/DomainFilterContext";
@@ -81,6 +83,8 @@ import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { TagDependents, TagWhereApplied } from "./TagUses";
 import { dependentsSummary, whereAppliedSummary } from "../../lib/tagUseSummary";
 import { EntityLink } from "../EntityLink";
+import { CommandColumnTags } from "./CommandColumnTags";
+import { ColumnRules } from "./ColumnRules";
 
 const PAGE_SIZE = 50;
 
@@ -92,6 +96,7 @@ const SCOPES: TagObjectType[] = [
   "column",
   "relationship",
   "command",
+  "command_column", // REQ-1159
   "product",
   "term",
   "rls_rule",
@@ -141,8 +146,9 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
 
   // `?tag=<id>` (a graph's or a refused delete's link, detailHref) opens that tag's panel; the one
   // left open is open again on coming back (REQ-2260).
-  const detail = useRememberedDetail("tags", tagsLoading ? null : tags.map((g) => g.id));
-  const openTag = detail.id === null ? undefined : tags.find((g) => g.id === detail.id);
+  // The tag the address names, whether or not the list shows it: the scope it opens on.
+  const linkedId = namedIn("tags", useLocation().search);
+  const linkedTag = linkedId === null ? undefined : tags.find((g) => g.id === linkedId);
   // The scope tab is the URL's ?scope=. Without one the page opens on the scope the reader last
   // chose -- or, for an open tag that scope does not hold, the first scope the tag applies to (that
   // visit's, not saved over the reader's).
@@ -154,8 +160,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   const [scope, setUrlScope] = useUrlTab<TagObjectType>(
     "scope",
     SCOPES,
-    openTag !== undefined && !openTag.appliesTo.includes(rememberedScope)
-      ? openTag.appliesTo[0]
+    linkedTag !== undefined && !linkedTag.appliesTo.includes(rememberedScope)
+      ? linkedTag.appliesTo[0]
       : rememberedScope,
   );
   const setScope = (next: TagObjectType) => {
@@ -163,6 +169,53 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     setUrlScope(next);
   };
   const [search, setSearch] = useUrlFilter();
+  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
+  const assignmentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
+    // `entity` row this table lists, and counting the full ids would report every one as unused.
+    for (const a of tagAssignments) {
+      const base = baseTagId(a.tagId);
+      counts[base] = (counts[base] ?? 0) + 1;
+    }
+    return counts;
+  }, [tagAssignments]);
+  // Every text a tag's row shows, which the filter searches; the row below draws the same.
+  const tagRowTexts = (tag: Tag): string[] => {
+    const use = readOnly ? uses?.get(tag.id) : undefined;
+    return [
+      tag.id,
+      tag.required ? t("tagsTab.requiredLabel") : "",
+      tag.requiresCitation ? t("tagCitations.requiresCitationBadge") : "",
+      tag.needsReview ? t("tagCitations.needsReview") : "",
+      tag.description,
+      ...tag.appliesTo.map(scopeLabel),
+      tag.derived ? t("tagsTab.derivedTag") : String(assignmentCounts[tag.id] ?? 0),
+      ...(use === undefined ? [] : [whereAppliedSummary(use, t), dependentsSummary(use, t)]),
+    ];
+  };
+  // REQ-2277 rule 9: a tag is open only while the list -- the scope's tab, under the search --
+  // shows its row.
+  const narrowings: (Narrowing<Tag> | null)[] = [
+    {
+      hides: (tag) => !tag.appliesTo.includes(scope),
+      reason: () => t("detailInList.byTab", { tab: t(`tagsTab.scope_${scope}`) }),
+      action: (tag) => t("detailInList.openTab", { tab: t(`tagsTab.scope_${tag.appliesTo[0]}`) }),
+      bringIn: (tag) => setScope(tag.appliesTo[0]),
+    },
+    searchNarrowing<Tag>(t, search, () => setSearch(""), tagRowTexts),
+  ];
+  const detail = useRememberedDetail(
+    "tags",
+    detailListOf(
+      t,
+      tagsLoading ? null : tags,
+      (g) => g.id,
+      (g) => g.id,
+      narrowings,
+    ),
+  );
+  const openTag = detail.id === null ? undefined : tags.find((g) => g.id === detail.id);
   const [page, setPage] = useState(1);
   // The panel holds the create form while it is open; else the open tag, read or in its form.
   const [createOpen, setCreateOpen] = useState(false);
@@ -189,7 +242,6 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
   const tagRequired = useRequiredFields({ id: formId, scopes: formScopes });
   const valueRequired = useRequiredFields({ value: newValue });
 
-  const scopeLabel = (s: TagObjectType) => t(`tagsTab.scope_${s}`);
   const policyLabel = (p: TagFieldPolicy) => t(`tagsTab.policy_${p}`);
   const policyOptions = POLICIES.map((p) => ({ label: policyLabel(p), value: p }));
   const paramPolicyOptions = PARAM_POLICIES.map((p) => ({
@@ -197,21 +249,11 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
     value: p,
   }));
 
-  const assignmentCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    // REQ-1467: counted by base id — "entity:customer" and "entity:vendor" are both uses of the
-    // `entity` row this table lists, and counting the full ids would report every one as unused.
-    for (const a of tagAssignments) {
-      const base = baseTagId(a.tagId);
-      counts[base] = (counts[base] ?? 0) + 1;
-    }
-    return counts;
-  }, [tagAssignments]);
-
-  const filtered = tags
-    .filter((tag) => tag.appliesTo.includes(scope))
-    .filter((tag) => matchesQuery([tag.id, tag.description], search))
-    .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
+  // The scope's tags before the search: none says the scope has none, not that none matched.
+  const inScope = tags.filter((tag) => tag.appliesTo.includes(scope));
+  const filtered = shownBy(tags, narrowings).sort((a, b) =>
+    a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1,
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const [grouped, setGrouped] = useState(false);
@@ -547,7 +589,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
 
   // The tag read: every value its form sets, under the form's labels, then what it is used by.
   const readView = (tag: Tag) => (
-    <Stack gap="sm" data-testid={`tags-detail-${tag.id}`}>
+    <PanelBody data-testid={`tags-detail-${tag.id}`}>
       {!readOnly && (
         <PanelActions>
           <fieldset className="panel-action-set">
@@ -660,13 +702,24 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         </CollapsibleItem>
       </Collapsibles>
       {readOnly && <TagUsesRead tag={tag} uses={uses} />}
+      {/* REQ-2278: the rules that hide or mask, per role, every column carrying the tag. A tag
+          that only ever lands on whole objects keys none; a derived tag is never assigned. */}
+      {!tag.derived &&
+        (tag.appliesTo.includes("column") || tag.appliesTo.includes("command_column")) && (
+          <ColumnRules
+            key={tag.id}
+            tagId={tag.id}
+            readOnly={readOnly}
+            testId={`tags-column-rules-${tag.id}`}
+          />
+        )}
       {/* REQ-1467: the value list is editable even on a system tag -- the tag itself is
           code-defined, but which values it admits is the maintainer's call. */}
       {tag.paramPolicy === "required" && (
-        <Stack gap="xs" data-testid={`tags-values-${tag.id}`}>
-          <Text size="sm" fw={500} c="dimmed">
-            {t("tagsTab.editValues", { id: tag.id })}
-          </Text>
+        <PanelSection
+          title={t("tagsTab.editValues", { id: tag.id })}
+          data-testid={`tags-values-${tag.id}`}
+        >
           <Group gap={4}>
             {tag.paramValues.length === 0 && (
               <Text size="xs" c="dimmed">
@@ -729,9 +782,9 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               />
             </FormLayout>
           )}
-        </Stack>
+        </PanelSection>
       )}
-    </Stack>
+    </PanelBody>
   );
 
   const panelTitle = createOpen
@@ -804,6 +857,7 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         </Alert>
       )}
       <SplitPane
+        outOfList={detail.outOfList}
         testId="tags-split"
         storageKey="provisa.tags.detailWidth"
         title={panelTitle}
@@ -831,6 +885,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
             <SortGroupTable
               selection={readOnly ? undefined : selection}
               testPrefix="tags"
+              testId="tags-list"
+              emptyTestId="tags-empty"
               minWidth={640}
               rows={filtered}
               columns={[
@@ -863,7 +919,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
               ]}
               colSpan={readOnly ? 6 : 4}
               rowKey={(tag) => tag.id}
-              empty={t("tagsTab.empty")}
+              // A list a filter emptied says so, never that there are no tags.
+              empty={inScope.length === 0 ? t("tagsTab.empty") : t("tagsTab.noMatch")}
               page={{ index: safePage - 1, size: PAGE_SIZE }}
               onGroupedChange={setGrouped}
               render={(tag) => [
@@ -945,6 +1002,8 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
                 />
               </Group>
             )}
+            {/* REQ-1159: a command's output columns are tagged here, where the scope names them. */}
+            {!readOnly && scope === "command_column" && <CommandColumnTags />}
           </>
         }
       >

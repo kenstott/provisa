@@ -13,6 +13,7 @@ import { render, screen, fireEvent, waitFor, within } from "../test-utils/render
 import i18n from "../i18n";
 import { TagsTab } from "../components/admin/TagsTab";
 import type { Tag, TagAssignment } from "../types/admin";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
 // The tag id is required (REQ-1968): its label carries the required marker after its text.
@@ -67,6 +68,29 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   fetchLibraryDocument: vi.fn(async () => ({
     id: 3,
     passage_list: [{ ordinal: 0, section: "Scope", page: 1, text: "a" }],
+  })),
+}));
+
+// REQ-1159: a command output column's row links its command, as the viewer's rights allow.
+vi.mock("../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/AuthContext")>()),
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
+
+// REQ-1159: the commands whose output columns the command-column scope tags.
+vi.mock("../api/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/actions")>()),
+  fetchActions: vi.fn(async () => ({
+    functions: [
+      {
+        name: "lookup",
+        outputColumns: [
+          { name: "ssn", type: "varchar" },
+          { name: "region", type: "varchar" },
+        ],
+      },
+    ],
+    webhooks: [],
   })),
 }));
 
@@ -229,6 +253,25 @@ describe("TagsTab", () => {
     ]);
   });
 
+  it("finds each tag by every text its row shows", async () => {
+    mockTags = [
+      USER_TAG,
+      { ...SYSTEM_TAG, required: true, requiresCitation: true, needsReview: true },
+      DERIVED_TAG,
+    ];
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("tags-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-tag" } });
+    expect(screen.getByTestId("tags-empty")).toHaveTextContent("No tags match the filter");
+  });
+
   it("filters the registry by the selected scope and counts assignments", () => {
     render(<TagsTab title="Tags" />);
     // Default scope is "source": only the user tag applies.
@@ -256,6 +299,14 @@ describe("TagsTab", () => {
     fireEvent.click(screen.getByTestId("tags-scope-command"));
     const cmdRows = screen.getAllByTestId(/^tags-row-/);
     expect(cmdRows.map((r) => r.getAttribute("data-testid"))).toEqual(["tags-row-audit"]);
+  });
+
+  it("tags each command output column under the command-column scope (REQ-1159)", async () => {
+    render(<TagsTab title="Tags" />);
+    expect(screen.queryByTestId("command-column-tags")).toBeNull();
+    fireEvent.click(screen.getByTestId("tags-scope-command_column"));
+    expect(await screen.findByTestId("tag-control-command_column-lookup-ssn")).toBeTruthy();
+    expect(screen.getByTestId("tag-control-command_column-lookup-region")).toBeTruthy();
   });
 
   it("shows a lock instead of edit/delete actions for a system tag", () => {

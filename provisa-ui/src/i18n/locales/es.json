@@ -4,6 +4,7 @@
     "cancel": "Cancelar",
     "stop": "Detener",
     "stopped": "Detenida",
+    "noQuery": "No hay ninguna consulta que ejecutar.",
     "stopQuery": "Detener la consulta",
     "save": "Guardar",
     "delete": "Eliminar",

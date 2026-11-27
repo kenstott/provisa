@@ -25,7 +25,12 @@ from provisa import cli
 from provisa.core import desktop_profile
 from provisa.core.desktop_profile import LaunchProfile
 
-_PROFILE_ENV = {"PROVISA_ENGINE": "duckdb", "PROVISA_REDIS_EMBEDDED": "1"}
+_PROFILE_STORE = "duckdb:///native/materialize.duckdb"
+_PROFILE_ENV = {
+    "PROVISA_ENGINE": "duckdb",
+    "PROVISA_MATERIALIZE_URL": _PROFILE_STORE,
+    "PROVISA_REDIS_EMBEDDED": "1",
+}
 
 
 @pytest.fixture
@@ -42,7 +47,12 @@ def native_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(desktop_profile, "load_profile", _load)
     # Skip the offline DuckDB extension staging: it is not under test here.
     monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path / "ext"))
-    for key in ("PROVISA_ENGINE", "PROVISA_REDIS_EMBEDDED", "PROVISA_CONFIG"):
+    for key in (
+        "PROVISA_ENGINE",
+        "PROVISA_MATERIALIZE_URL",
+        "PROVISA_REDIS_EMBEDDED",
+        "PROVISA_CONFIG",
+    ):
         monkeypatch.delenv(key, raising=False)
     data_dir = tmp_path / "native"
     data_dir.mkdir()
@@ -112,3 +122,41 @@ def test_a_broken_config_fails_loud(
     monkeypatch.setenv("PROVISA_CONFIG", str(_config(tmp_path, "federation_engine: [trino\n")))
     with pytest.raises(yaml.YAMLError):
         cli._apply_embedded_env(native_profile)
+
+
+def test_config_engine_also_leaves_the_materialize_store_to_that_engine(
+    native_profile: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The profile's DuckDB store comes only with the profile's DuckDB engine: a config that names
+    Trino gets Trino's declared default, the control-plane PostgreSQL."""
+    monkeypatch.setenv("PROVISA_CONFIG", str(_config(tmp_path, "federation_engine: trino\n")))
+    cli._apply_embedded_env(native_profile)
+    assert "PROVISA_MATERIALIZE_URL" not in os.environ
+
+    from provisa.federation import engine
+
+    monkeypatch.setenv("TENANT_DATABASE_URL", "postgresql+asyncpg://u@cp-host:5432/provisa")
+    monkeypatch.setattr(
+        "provisa.core.request_context._platform_config_provider",
+        lambda: {"federation_engine": "trino"},
+    )
+    monkeypatch.setattr("provisa.storage.byo.org_store_dsn", lambda org_id: None)
+    assert engine.build_trino_engine().materialize_store() == "postgresql://u@cp-host:5432/provisa"
+
+
+def test_env_materialize_store_wins_under_a_config_engine(
+    native_profile: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PROVISA_MATERIALIZE_URL", "postgresql://u@store:5432/mat")
+    monkeypatch.setenv("PROVISA_CONFIG", str(_config(tmp_path, "federation_engine: trino\n")))
+    cli._apply_embedded_env(native_profile)
+    assert os.environ["PROVISA_MATERIALIZE_URL"] == "postgresql://u@store:5432/mat"
+
+
+def test_profile_engine_and_store_apply_together_when_config_is_silent(
+    native_profile: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PROVISA_CONFIG", str(_config(tmp_path, "sources: []\n")))
+    cli._apply_embedded_env(native_profile)
+    assert os.environ["PROVISA_ENGINE"] == "duckdb"
+    assert os.environ["PROVISA_MATERIALIZE_URL"] == _PROFILE_STORE

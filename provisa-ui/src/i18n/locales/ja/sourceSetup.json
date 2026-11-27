@@ -4,7 +4,7 @@
     "connect": "ソースを接続",
     "register": "テーブルを登録",
     "relate": "リレーションシップを検出",
-    "query": "クエリ",
+    "yourData": "あなたのデータ",
     "tablesCount_one": "{{count}} 個のテーブル",
     "tablesCount_other": "{{count}} 個のテーブル",
     "registerHint": "このソースのテーブルを登録すると、クエリできるようになります。",
@@ -25,6 +25,8 @@
     "runAgain": "セットアップを再実行",
     "nothingToQueryHint": "クエリできる登録済みテーブルはありません。",
     "newTablesHint_one": "セットアップ後に登録された {{count}} 個のテーブルにリレーションシップがありません。",
-    "newTablesHint_other": "セットアップ後に登録された {{count}} 個のテーブルにリレーションシップがありません。"
+    "newTablesHint_other": "セットアップ後に登録された {{count}} 個のテーブルにリレーションシップがありません。",
+    "yourDataAction": "データを表示",
+    "finishLater": "後で完了"
   }
 }

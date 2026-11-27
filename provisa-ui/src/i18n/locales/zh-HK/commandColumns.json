@@ -1,0 +1,13 @@
+{
+  "commandColumns": {
+    "none": "此命令未宣告任何輸出欄。",
+    "hint": "未列出角色的欄位，由獲指派該命令的角色讀取。",
+    "governanceTitle": "標籤、術語及分類",
+    "editTags": "在「標籤」頁面編輯標籤",
+    "editTerms": "在詞彙表編輯術語",
+    "colColumn": "欄位",
+    "colTags": "標籤",
+    "colTerm": "詞彙表術語",
+    "colClassification": "分類"
+  }
+}

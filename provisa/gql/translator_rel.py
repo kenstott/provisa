@@ -31,7 +31,9 @@ from provisa.gql.ir import (
 )
 from provisa.gql.label_map import NodeMapping, RelationshipMapping
 from provisa.gql.translator_helpers import (
+    EitherWay,
     _is_bwd_for_candidate,
+    either_way_joins,
     _join_alias,
     _make_rel_joins,
     via_alias_for,
@@ -88,6 +90,16 @@ def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
     )
 
 
+def _either_way(clause: MatchClause, candidates: list) -> bool:
+    """REQ-348 (amended 2026-11-26): an OPTIONAL undirected hop whose two candidates are one
+    self-referential relationship read each way is one outer join matching either direction
+    (either_way_joins), not two UNION branches."""
+    if not clause.optional or len(candidates) != 2:
+        return False
+    (first, first_bwd), (second, second_bwd) = candidates
+    return first is second and first.source_label == first.target_label and first_bwd != second_bwd
+
+
 def _refuse_optional_branches(clause: MatchClause, candidates: list) -> None:
     """An OPTIONAL hop that reaches several relationships has no form here: each is its own UNION
     branch of LEFT JOINs, so a row with none of them would come back once per relationship, and a
@@ -129,10 +141,20 @@ class _RelJoinMixin:  # mixin for _Translator
         _optional_rel_vars: set[str]
         #: An OPTIONAL relationship between two nodes the statement holds: where it matched (#303).
         _rel_var_matched: dict[str, exp.Expression]
+        #: A relationship matched either way by one outer join (REQ-348): where it matched
+        #: forward, and backward.
+        _rel_var_forward_when: dict[str, EitherWay]
+        #: The same, for each hop (id of its RelPattern), named or not: a path's step reads it.
+        _rel_step_either_way: dict[int, EitherWay]
+        #: A path's steps matched either way (REQ-348): each step edge's, None for one matched one way.
+        _path_step_either_way: dict[str, list[EitherWay | None]]
+        #: A path an OPTIONAL MATCH names: null where it matched nothing.
+        _optional_paths: set[str]
         #: The conditions of relationships between two nodes the statement holds, which join no
         #: table (#303): the WHERE of the statement _build_from_joins builds the FROM of.
         _held_end_conditions: list[exp.Expression]
         _rel_step_endpoints: dict[int, tuple]
+        _branch_rel_steps: list[tuple[dict, int, tuple]]
         _anon_node_aliases: dict[tuple[int, str], str]
         _passthrough_vars: set[str]
         _all_rels_rel_vars: set[str]
@@ -754,7 +776,9 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
-        _refuse_optional_branches(clause, candidates)
+        either_way = _either_way(clause, candidates)
+        if not either_way:
+            _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
@@ -771,20 +795,26 @@ class _RelJoinMixin:  # mixin for _Translator
             if primary_rm.source_label != primary_rm.target_label
             else primary_bwd
         )
-        if _src_alias and _tgt_alias:
-            self._rel_step_endpoints[id(rel)] = (
-                primary_rm.rel_type,
+
+        def step_edge(rm: "RelationshipMapping", bwd: bool) -> tuple:
+            return (
+                rm.rel_type,
                 _src_alias,
                 src_nm,
                 _tgt_alias,
                 tgt_nm,
-                _eff_bwd,
+                # _make_rel_join derives orientation from labels for a non-self-referential
+                # relationship.
+                (src_nm.type_name == rm.target_label)
+                if rm.source_label != rm.target_label
+                else bwd,
                 # REQ-1586: the junction this hop traverses, under the same alias the joins use,
                 # so a path step's edge carries the junction's columns as its properties.
-                None
-                if primary_rm.via is None
-                else (via_alias_for(primary_rm, rel.variable or _tgt_alias), primary_rm.via),
+                None if rm.via is None else (via_alias_for(rm, rel.variable or _tgt_alias), rm.via),
             )
+
+        if _src_alias and _tgt_alias:
+            self._rel_step_endpoints[id(rel)] = step_edge(primary_rm, primary_bwd)
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
             if clause.optional:
@@ -808,6 +838,32 @@ class _RelJoinMixin:  # mixin for _Translator
             join_type,
             rel.variable,
         )
+        if either_way:
+            other_rm, other_bwd = candidates[1]
+            other_joins = _make_rel_joins(
+                other_rm,
+                other_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
+            )
+            from provisa.gql.select_builder import node_key
+
+            primary_joins, forward_when = either_way_joins(
+                primary_joins,
+                other_joins,
+                exp.EQ(
+                    this=node_key(src_table_ref, src_nm), expression=node_key(tgt_alias, tgt_nm)
+                ),
+                f"{rel.variable or tgt_alias}__way",
+            )
+            self._rel_step_either_way[id(rel)] = forward_when
+            if rel.variable:
+                self._rel_var_forward_when[rel.variable] = forward_when
+            candidates = candidates[:1]
         self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
         held_before = list(self._lateral_conditions)
@@ -836,12 +892,18 @@ class _RelJoinMixin:  # mixin for _Translator
             branch_from, branch_joins = _branch_reads(
                 from_expr, lateral, held_before, joins_before, extra_joins
             )
+            # Its path steps, which a named path over the hop fills (_build_from_joins).
+            branch_steps: dict[str, tuple[list, list]] = {}
+            if _src_alias and _tgt_alias:
+                self._branch_rel_steps.append(
+                    (branch_steps, id(rel), step_edge(extra_rm, extra_bwd))
+                )
             # The branch is of its own relationship type, which its type(r) names.
             self._extra_path_branches.append(
                 (
                     branch_from,
                     branch_joins,
-                    {},
+                    branch_steps,
                     {rel.variable: extra_rm.rel_type} if rel.variable else {},
                 )
             )
@@ -1462,6 +1524,8 @@ class _RelJoinMixin:  # mixin for _Translator
                 ):
                     _step_nodes: list[tuple[str, NodeMapping]] = []
                     _step_edges: list[tuple] = []
+                    _step_ways: list[EitherWay | None] = []
+                    _step_rels: list[int] = []
                     _seen_aliases: set[str] = set()
 
                     def _add_step_node(_alias: str, _nm: "NodeMapping | None") -> None:
@@ -1483,6 +1547,8 @@ class _RelJoinMixin:  # mixin for _Translator
                             _add_step_node(_sa, _snm)
                             _add_step_node(_ta, _tnm)
                             _step_edges.append(_ep)
+                            _step_ways.append(self._rel_step_either_way.get(id(_rel)))
+                            _step_rels.append(id(_rel))
                         elif _rel.variable and _rel.variable in self._rel_var_endpoints:
                             _vep = self._rel_var_endpoints[_rel.variable]
                             _sa, _snm, _ta, _tnm, _rev = _vep
@@ -1500,8 +1566,25 @@ class _RelJoinMixin:  # mixin for _Translator
                                     self._rel_var_via.get(_rel.variable),  # REQ-1586
                                 )
                             )
+                            _step_ways.append(self._rel_var_forward_when.get(_rel.variable))
+                            _step_rels.append(id(_rel))
                     if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
+                        for _branch_steps, _rel_id, _branch_edge in self._branch_rel_steps:
+                            if _rel_id in _step_rels:
+                                # A branch matching one hop by another candidate: the same path,
+                                # that hop's relationship as the branch matched it.
+                                _branch_steps[clause.variable] = (
+                                    _step_nodes,
+                                    [
+                                        _branch_edge if _id == _rel_id else _edge
+                                        for _id, _edge in zip(_step_rels, _step_edges, strict=True)
+                                    ],
+                                )
+                        if clause.optional:
+                            self._optional_paths.add(clause.variable)
+                        if any(_step_ways):
+                            self._path_step_either_way[clause.variable] = _step_ways
 
         if from_expr is None and self._lateral_bound and not joins:
             # Every node matched is the outer statement's row (#160): this statement reads that

@@ -42,8 +42,8 @@ import { Globe, Info, Pencil, TriangleAlert, X } from "lucide-react";
 import { PageTitle } from "../PageTitle";
 import { FilterInput } from "./FilterInput";
 import { useRememberedDetail, type RememberedDetailParam } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy, type Narrowing } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
-import { matchesQuery } from "../../lib/searchItems";
 import {
   fetchOrgGrant,
   fetchOrgGrants,
@@ -113,9 +113,30 @@ export function PlatformRegionsTab({ title }: { title: string }) {
   // REQ-1412: the engine lane is the commercial plugin's route, so it is offered only with it.
   const { billing } = useAuth();
   const [search, setSearch] = useUrlFilter();
+  // REQ-2277 rule 9: a region is open only while the search shows its row.
+  const narrowings = [
+    searchNarrowing<PlatformRegion>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a region's row shows: its purposes by the names their badges give them.
+      (r) => [
+        r.id,
+        r.description,
+        ...r.purposes,
+        ...r.purposes.map((p) => t(`regionPurposes.name.${p}`)),
+      ],
+    ),
+  ];
   const detail = useRememberedDetail(
     "platformRegions",
-    data === null ? null : data.regions.map((r) => r.id),
+    detailListOf(
+      t,
+      data === null ? null : data.regions,
+      (r) => r.id,
+      (r) => r.id,
+      narrowings,
+    ),
   );
   const [creating, setCreating] = useState<Creating | null>(null);
 
@@ -135,7 +156,7 @@ export function PlatformRegionsTab({ title }: { title: string }) {
       <RegionsSection
         data={data}
         onSaved={saved}
-        search={search}
+        narrowings={narrowings}
         detail={detail}
         creating={creating}
         setCreating={setCreating}
@@ -273,14 +294,14 @@ export function PlatformRegionsTab({ title }: { title: string }) {
 function RegionsSection({
   data,
   onSaved,
-  search,
+  narrowings,
   detail,
   creating,
   setCreating,
 }: {
   data: PlatformRegions;
   onSaved: (next: PlatformRegions) => void;
-  search: string;
+  narrowings: readonly (Narrowing<PlatformRegion> | null)[];
   detail: RememberedDetailParam;
   creating: Creating | null;
   setCreating: (next: Creating | null) => void;
@@ -309,9 +330,7 @@ function RegionsSection({
     }
   };
   const [affected, setAffected] = useState<Affected | null>(null);
-  const regions = data.regions.filter((r) =>
-    matchesQuery([r.id, r.description, ...r.purposes], search),
-  );
+  const regions = shownBy(data.regions, narrowings);
   const readOnly = data.read_only;
 
   const columns: ListColumn<PlatformRegion>[] = useMemo(
@@ -452,6 +471,7 @@ function RegionsSection({
         />
       )}
       <SplitPane
+        outOfList={detail.outOfList}
         testId="platform-regions-split"
         storageKey="provisa.platformRegions.detailWidth"
         title={title}
@@ -475,7 +495,10 @@ function RegionsSection({
               <Table.Tbody>
                 {regions.length === 0 && (
                   <ListEmpty colSpan={3} testId="platform-regions-empty">
-                    {t("platformRegions.none")}
+                    {/* A list a filter emptied says so, never that none is declared. */}
+                    {data.regions.length === 0
+                      ? t("platformRegions.none")
+                      : t("platformRegions.noMatch")}
                   </ListEmpty>
                 )}
                 <ListItems

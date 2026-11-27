@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { TableRow } from "../../types/admin";
 import { detailHref } from "../../components/list/useDetailParam";
+import { entityName } from "../../components/entityName";
 
 /** The tables registered from a source, each linked to its own panel on the Tables page; a
  *  withdrawn one is marked so (REQ-1921). "—" when none is registered. */
@@ -48,7 +49,7 @@ export function SourceTablesList({ sourceId, tables }: { sourceId: string; table
                 </Badge>
               )}
             </Table.Td>
-            <Table.Td>{tb.domainId}</Table.Td>
+            <Table.Td>{entityName("domain", tb.domainId)}</Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>

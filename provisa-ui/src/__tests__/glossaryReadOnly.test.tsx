@@ -92,6 +92,7 @@ const CHURN: GlossaryTermSummary = {
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...REVENUE,
   refs: [
     {

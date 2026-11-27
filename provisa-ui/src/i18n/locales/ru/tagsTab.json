@@ -9,6 +9,12 @@
     "scope_column": "Столбец",
     "scope_relationship": "Связь",
     "scope_command": "Команда",
+    "scope_command_column": "Столбец команды",
+    "commandColumnsTitle": "Выходные столбцы команд",
+    "commandColumnsNone": "Ни одна команда не объявляет выходных столбцов.",
+    "colCommand": "Команда",
+    "colOutputColumn": "Выходной столбец",
+    "colTags": "Теги",
     "scope_product": "Продукт данных",
     "scope_term": "Термин глоссария",
     "scope_rls_rule": "Правило строк",
@@ -64,6 +70,7 @@
     "outsideTitle": "Назначения вне разрешённых доменов",
     "outsideBody": "При сохранении эти назначения остались. Снимите тег с объекта, к которому он больше не относится.",
     "outsideItem": "{{kind}} {{name}}, в {{domains}}",
-    "templateSection": "Шаблон"
+    "templateSection": "Шаблон",
+    "noMatch": "Нет тегов, соответствующих фильтру"
   }
 }

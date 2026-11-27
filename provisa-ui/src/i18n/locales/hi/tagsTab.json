@@ -9,6 +9,12 @@
     "scope_column": "कॉलम",
     "scope_relationship": "रिलेशनशिप",
     "scope_command": "कमांड",
+    "scope_command_column": "कमांड कॉलम",
+    "commandColumnsTitle": "कमांड के आउटपुट कॉलम",
+    "commandColumnsNone": "कोई भी कमांड आउटपुट कॉलम घोषित नहीं करता।",
+    "colCommand": "कमांड",
+    "colOutputColumn": "आउटपुट कॉलम",
+    "colTags": "टैग",
     "scope_product": "डेटा उत्पाद",
     "scope_term": "शब्दावली शब्द",
     "scope_rls_rule": "पंक्ति नियम",
@@ -64,6 +70,7 @@
     "outsideTitle": "अनुमत डोमेन से बाहर के असाइनमेंट",
     "outsideBody": "सहेजने पर ये असाइनमेंट बने रहे। जिस वस्तु पर टैग अब लागू नहीं होता, वहाँ से इसे हटाएँ।",
     "outsideItem": "{{kind}} {{name}}, {{domains}} में",
-    "templateSection": "टेम्पलेट"
+    "templateSection": "टेम्पलेट",
+    "noMatch": "फ़िल्टर से मेल खाता कोई टैग नहीं"
   }
 }

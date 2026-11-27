@@ -1002,6 +1002,13 @@
       "reason_required": "提案には理由を記載します。",
       "no_recipient": "ドメイン {{domain}} には提案を受け取るデータプロダクトオーナーもデータスチュワードもいません。",
       "not_a_recipient": "ドメイン {{domain}} の提案は、そのデータスチュワードとデータプロダクトオーナーが読みます。"
+    },
+    "column_rules": {
+      "database_unavailable": "コントロールプレーンに接続できません",
+      "right_not_everywhere": "列ルールはすべてのドメインに及ぶため、すべてのドメインで {{right}} が必要です",
+      "invalid": "列ルールが無効です: {{reason}}",
+      "not_found": "列ルール {{rule}} はありません",
+      "tag_not_found": "タグ {{tag}} が見つかりません"
     }
   }
 }

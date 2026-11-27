@@ -25,7 +25,7 @@ import {
 } from "../../../hooks/useAdminQueries";
 import { serverMessage } from "../../../i18n/serverMessage";
 import type { ListedTable } from "../../../types/admin";
-import { FieldGroup, FormEntry, FormField, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry, FormField } from "../../../components/form/FormLayout";
 import {
   createPlan,
   targetName,
@@ -36,7 +36,8 @@ import {
 } from "./plan";
 import { TextField } from "./pickers";
 import type { Step } from "../../../components/StepStrip";
-import { StepHead, WizardFooter } from "./WizardFrame";
+import { PanelBody } from "../../../components/list/PanelBody";
+import { WizardStep, WizardFooter } from "./WizardFrame";
 
 /** The plan's tables under their final names, ready to create. */
 function initialNames(plan: ModelPlan): Names {
@@ -127,7 +128,7 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
   // The title counts tables; the relationships made between them are listed below it.
   const made = rows.filter((r) => r.status === "created" && r.primitive !== "relationship");
   return (
-    <Stack gap="md" data-testid="wizard-created">
+    <PanelBody data-testid="wizard-created">
       <Alert
         color={failed ? "red" : "green"}
         title={
@@ -142,33 +143,31 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
           <Text size="sm">{t("modelingWizard.result.oneWay")}</Text>
         </Stack>
       </Alert>
-      <Stack gap="xs">
-        {rows.map((r) => (
-          <Group key={r.id} gap="xs" wrap="nowrap" data-testid={`wizard-created-${r.id}`}>
-            <Badge
-              variant="light"
-              color={r.status === "created" ? "green" : r.status === "failed" ? "red" : "gray"}
-            >
-              {t(`modelingWizard.result.status.${r.status}`)}
-            </Badge>
-            <Text size="sm" fw={600}>
-              {r.name}
-            </Text>
-            <Text size="sm" c="dimmed">
-              {t(`modelingWizard.primitive.${r.primitive}`)} · {t(`modelingWizard.role.${r.role}`)}
-              {r.primitive !== "relationship" &&
-                r.relatesTo.length > 0 &&
-                ` · ${t("modelingWizard.result.relatesTo", { tables: r.relatesTo.join(", ") })}`}
-            </Text>
-          </Group>
-        ))}
-      </Stack>
+      {rows.map((r) => (
+        <Group key={r.id} gap="xs" wrap="nowrap" data-testid={`wizard-created-${r.id}`}>
+          <Badge
+            variant="light"
+            color={r.status === "created" ? "green" : r.status === "failed" ? "red" : "gray"}
+          >
+            {t(`modelingWizard.result.status.${r.status}`)}
+          </Badge>
+          <Text size="sm" fw={600}>
+            {r.name}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {t(`modelingWizard.primitive.${r.primitive}`)} · {t(`modelingWizard.role.${r.role}`)}
+            {r.primitive !== "relationship" &&
+              r.relatesTo.length > 0 &&
+              ` · ${t("modelingWizard.result.relatesTo", { tables: r.relatesTo.join(", ") })}`}
+          </Text>
+        </Group>
+      ))}
       <Group justify="flex-start">
         <Button onClick={onDone} data-testid="wizard-done">
           {t("modelingForm.done")}
         </Button>
       </Group>
-    </Stack>
+    </PanelBody>
   );
 }
 
@@ -245,15 +244,14 @@ export function ModelReview({
   };
 
   return (
-    <FormLayout>
-      <StepHead
-        index={index}
-        steps={steps}
-        onStep={onStep}
-        title={t("modelingWizard.review.title")}
-        intro={t("modelingWizard.review.intro")}
-        testId="wizard-step-review"
-      />
+    <WizardStep
+      index={index}
+      steps={steps}
+      onStep={onStep}
+      title={t("modelingWizard.review.title")}
+      intro={t("modelingWizard.review.intro")}
+      testId="wizard-step-review"
+    >
       {plan.tables.map((table) => (
         <FormEntry key={table.id} data-testid={`wizard-review-${table.id}`}>
           <FieldGroup>
@@ -319,6 +317,6 @@ export function ModelReview({
         problem={problem}
         busy={busy}
       />
-    </FormLayout>
+    </WizardStep>
   );
 }

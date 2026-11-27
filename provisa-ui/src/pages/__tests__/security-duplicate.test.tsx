@@ -66,7 +66,9 @@ vi.mock("../../hooks/useCapability", async (importOriginal) => ({
   // REQ-1327: the roles page acts for a holder of the rights its actions ask.
   useCapability: () => true,
 }));
-vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ rebind: vi.fn() }) }));
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ rebind: vi.fn(), capabilities: ["access_config", "org_settings"] }),
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     domains: [],

@@ -1272,6 +1272,14 @@ class AppState:
         self._active_runtime().masking_rules = value
 
     @property
+    def ruled_columns(self) -> dict[Any, Any]:  # REQ-2278
+        return self._active_runtime().ruled_columns
+
+    @ruled_columns.setter
+    def ruled_columns(self, value: dict[Any, Any]) -> None:
+        self._active_runtime().ruled_columns = value
+
+    @property
     def masked_columns(self) -> list[tuple[int, str, list[dict], str]]:
         return self._active_runtime().masked_columns
 
@@ -3331,6 +3339,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     # cloned envs.
     _rt.masking_rules = prod_rt.masking_rules
     _rt.masked_columns = prod_rt.masked_columns
+    _rt.ruled_columns = prod_rt.ruled_columns  # REQ-2278
     if _rt.data_mode == TEST_FAKE:
         async with state.model_db.acquire() as conn:
             await _load_masking_rules(
@@ -3871,6 +3880,14 @@ async def _rebuild_schemas_impl(
         # role would once it is put back.
         expand_column_grants([*tables, *withdrawn_tables], role_chains_by_id)
         narrow_own_domain_grants([*tables, *withdrawn_tables], roles)
+        # REQ-2278: a tag- or classification-keyed column rule hides its columns from its role and
+        # the roles descending from it, once the grants are folded down the chains; its masks
+        # are added as the masking rules load (app_loaders._load_masking_rules).
+        from provisa.core.repositories import column_rule as _column_rule_repo
+        from provisa.security.column_rules import hide_ruled_tables
+
+        state.ruled_columns = await _column_rule_repo.ruled_columns(_pg)
+        hide_ruled_tables([*tables, *withdrawn_tables], state.ruled_columns, role_chains_by_id)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
@@ -5934,6 +5951,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_classifications_router)
+    from provisa.api.admin.column_rules_router import (  # REQ-2278
+        router as column_rules_router,
+    )
+
+    app.include_router(column_rules_router)
     from provisa.api.admin.erd_layouts_router import router as erd_layouts_router  # REQ-2189
 
     app.include_router(erd_layouts_router)

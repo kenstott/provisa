@@ -85,6 +85,7 @@ const LIVE: GlossaryTermSummary = {
 const FLAGGED: GlossaryTermSummary = { ...LIVE, id: 2, name: "Customer", findings: 1 };
 
 const LIVE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   ...LIVE,
   refs: [],
   edges_out: [],

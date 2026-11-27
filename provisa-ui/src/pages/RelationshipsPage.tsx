@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
+import { listableRelationships, relName, relationshipNarrowings } from "./relationshipNarrowings";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -47,6 +47,7 @@ import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  relationshipRowTexts,
   SHAPE_CODE,
   tableRef,
   type RelForm,
@@ -56,6 +57,7 @@ import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, shownBy } from "../components/list/leftOut";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -67,13 +69,12 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
-import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
 import { ColumnFilterMenu } from "./sql/ColumnFilterMenu";
-import { matchesFilter as matchesColumnFilter, type FilterSpec } from "./sql/columnFilter";
+import type { FilterSpec } from "./sql/columnFilter";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -101,15 +102,6 @@ export function RelationshipsPage() {
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
-  // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail(
-    "relationships",
-    relsLoading ? null : rels.map((r) => String(r.id)),
-  );
-  const expanded = detail.id;
-  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
-  const { open: openDetail, close: closeDetail } = detail;
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
   // REQ-2145: a save or a delete that re-homes key refs off a tagged term, refused over the tags
   // those columns would lose: what each loses and gains, and what to do again once resolved.
@@ -137,7 +129,12 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const { domainsEnabled, domains: filterDomains, checkedDomains } = useDomainFilter();
+  const {
+    domainsEnabled,
+    domains: filterDomains,
+    checkedDomains,
+    ensureDomainChecked,
+  } = useDomainFilter();
   const erdCheckedDomains =
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { capabilities, actingRoles } = useAuth();
@@ -191,15 +188,37 @@ export function RelationshipsPage() {
   const tableRefById: Record<number, string> = Object.fromEntries(
     tables.map((t) => [t.id, tableRef(t)]),
   );
-  const tableDomainById = Object.fromEntries(
-    tables.map((t) => [t.id, domainToSqlName(t.domainId)]),
+  const tableDomainById = useMemo(
+    () => Object.fromEntries(tables.map((t) => [t.id, domainToSqlName(t.domainId)])),
+    [tables],
   );
-  const tableSourceById = Object.fromEntries(tables.map((t) => [t.id, t.sourceId]));
-  const remoteTableIds = new Set(
-    tables
-      .filter((t) => t.schemaName === "graphql_remote" || t.schemaName === "grpc_remote")
-      .map((t) => t.id),
+  const listableRels = listableRelationships(rels, tables);
+  // REQ-2277 rule 9: a relationship is open only while the list shows its row; the ERD in the
+  // list's place shows every relationship.
+  const { listNarrowings, relTypeNarrowing } = relationshipNarrowings(t, {
+    checkedDomains: erdCheckedDomains,
+    tables,
+    addDomain: ensureDomainChecked,
+    search: relSearch,
+    clearSearch: () => updateSearch(""),
+    rowTexts: (r) => relationshipRowTexts(r, t, tableDomainById, domainsEnabled),
+    relTypeFilter,
+    clearRelTypeFilter: () => setRelTypeFilter(null),
+  });
+  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "relationships",
+    erd.on
+      ? detailListOf(t, relsLoading ? null : allRels, (r) => String(r.id), relName, [])
+      : detailListOf(t, relsLoading ? null : listableRels, (r) => String(r.id), relName, [
+          ...listNarrowings,
+          relTypeNarrowing,
+        ]),
   );
+  const expanded = detail.id;
+  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
+  const { open: openDetail, close: closeDetail } = detail;
 
   const handleDelete = useCallback(
     async (id: string, resolve?: TagLossResolution) => {
@@ -560,25 +579,9 @@ export function RelationshipsPage() {
     setReverseForm(null);
   }, [reverseForm, upsertRelationship]);
 
-  const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(domainToSqlName)) : null;
-  const matchesFilter = (r: Relationship) => {
-    if (remoteTableIds.has(r.sourceTableId)) return false;
-    const srcDomain = r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : undefined;
-    const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-    if (!relationshipInCheckedDomains(narrowTo, srcDomain, tgtDomain)) return false;
-    // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
-    return matchesQuery([r.sourceTableName, r.targetTableName, r.alias], relSearch);
-  };
-
   // REQ-1940: sort and group are the shared list mechanism.
-  const listedRels = rels.filter(
-    (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && matchesFilter(r),
-  );
-  // REQ-1586 (amended 2026-11-22): the Rel type column carries the list's column filter.
-  const filteredRels =
-    relTypeFilter === null
-      ? listedRels
-      : listedRels.filter((r) => matchesColumnFilter("text", relTypeFilter, SHAPE_CODE[r.shape]));
+  const listedRels = shownBy(listableRels, listNarrowings);
+  const filteredRels = shownBy(listedRels, [relTypeNarrowing]);
   const relTypeValues = (["fk", "jct", "dim"] as const)
     .map((value) => ({
       value,
@@ -868,6 +871,7 @@ export function RelationshipsPage() {
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="relationships-split"
         storageKey="provisa.relationships.detailWidth"
         title={panelTitle}
@@ -962,7 +966,10 @@ export function RelationshipsPage() {
                     if (filtered.length === 0) {
                       return (
                         <ListEmpty colSpan={domainsEnabled ? 8 : 7} testId="relationships-empty">
-                          {t("relationshipsPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {listableRels.length === 0
+                            ? t("relationshipsPage.empty")
+                            : t("relationshipsPage.noMatch")}
                         </ListEmpty>
                       );
                     }

@@ -1,0 +1,23 @@
+{
+  "columnRules": {
+    "title": "Reglas de columna",
+    "hint": "Cada regla oculta o enmascara, para un rol y los roles que heredan de él, toda columna que lleve esta clave, tanto las columnas de una tabla como las columnas de salida de un comando. La visibilidad y las máscaras propias de la columna siguen aplicándose; prevalece el resultado más estricto.",
+    "none": "Ninguna regla de columna.",
+    "colRole": "Rol",
+    "colEffect": "Efecto",
+    "hidden": "Oculta",
+    "maskedCompletely": "Enmascarada por completo",
+    "maskedAs": "Enmascarada: {{mask}}",
+    "remove": "Quitar la regla de {{role}}",
+    "roleLabel": "Rol",
+    "actionLabel": "Efecto",
+    "actionHide": "Ocultar",
+    "actionMask": "Enmascarar",
+    "maskLabel": "Máscara",
+    "maskComplete": "Enmascarada por completo",
+    "constantLabel": "Valor constante",
+    "patternLabel": "Patrón",
+    "replaceLabel": "Reemplazo",
+    "add": "Añadir regla"
+  }
+}

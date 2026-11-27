@@ -112,7 +112,13 @@ def cap_lists(tree: exp.Expr, limit: int, columns_of: ColumnsOf = _no_columns) -
     """Bound each list ``tree`` aggregates at ``limit`` entries, in place. Returns whether any
     list was bounded. :class:`ListNotCappable` for a list in a shape the cap has no form for.
     ``columns_of`` names a joined table's columns: a list beside other aggregates over joined
-    tables reads them from the one source its rows are numbered in."""
+    tables reads them from the one source its rows are numbered in. A derived table's columns are
+    its select's names (a relationship's grouped read joined in another's: sql_selection.rel_read)."""
+
+    def known(table: exp.Expr) -> list[str] | None:
+        derived = _derived_columns(table)
+        return derived if derived is not None else columns_of(table)
+
     by_select: dict[int, tuple[exp.Select, list[exp.Expr]]] = {}
     arrays = 0
     for node in list(tree.walk()):
@@ -127,10 +133,21 @@ def cap_lists(tree: exp.Expr, limit: int, columns_of: ColumnsOf = _no_columns) -
             by_select.setdefault(id(select), (select, []))[1].append(node)
     for select, lists in by_select.values():
         if _aggregates_beside(select, lists):
-            _number_the_source(select, lists, limit, columns_of)
+            _number_the_source(select, lists, limit, known)
         else:
             _limit_the_rows(select, lists, limit)
     return bool(by_select) or arrays > 0
+
+
+def _derived_columns(table: exp.Expr) -> list[str] | None:
+    """A derived table's columns, each a name its select gives; None for any other FROM item or
+    a select with an unnamed column."""
+    if not (isinstance(table, exp.Subquery) and isinstance(table.this, exp.Select)):
+        return None
+    names = [p.alias_or_name for p in table.this.expressions]
+    if not all(names) or any(isinstance(p, exp.Star) for p in table.this.expressions):
+        return None
+    return names
 
 
 def _defines(select: exp.Select) -> set[str]:

@@ -9,6 +9,12 @@
     "scope_column": "Colonne",
     "scope_relationship": "Relation",
     "scope_command": "Commande",
+    "scope_command_column": "Colonne de commande",
+    "commandColumnsTitle": "Colonnes de sortie des commandes",
+    "commandColumnsNone": "Aucune commande ne déclare de colonnes de sortie.",
+    "colCommand": "Commande",
+    "colOutputColumn": "Colonne de sortie",
+    "colTags": "Tags",
     "scope_product": "Produit de données",
     "scope_term": "Terme du glossaire",
     "scope_rls_rule": "Règle de ligne",
@@ -64,6 +70,7 @@
     "outsideTitle": "Affectations hors des domaines autorisés",
     "outsideBody": "L'enregistrement a conservé ces affectations. Retirez le tag d'un objet auquel il ne correspond plus.",
     "outsideItem": "{{kind}} {{name}}, dans {{domains}}",
-    "templateSection": "Modèle"
+    "templateSection": "Modèle",
+    "noMatch": "Aucun tag ne correspond au filtre"
   }
 }

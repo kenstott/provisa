@@ -29,8 +29,13 @@ from pydantic import ValidationError
 from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_selection import _build_rel_json_expr
-from provisa.compiler.sql_types import CompilationContext, TableMeta
+from provisa.compiler.sql_selection import rel_read
+from provisa.compiler.sql_types import (
+    CompilationContext,
+    JoinMeta,
+    StatementSources,
+    TableMeta,
+)
 from provisa.core.models import Cardinality, Relationship
 from graphql import FieldNode, parse
 
@@ -215,65 +220,46 @@ def _table(table_id: int, table_name: str, field_name: str = "widgets") -> Table
     )
 
 
-def test_build_rel_json_expr_one_to_one_matches_many_to_one_shape():
-    parent = _table(2, "order_docs")
+def _read(cardinality: str):
+    target = _table(2, "order_docs")
     ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
     fn = _field("{ x { name } }")
-
-    expr_o2o, counter_o2o = _build_rel_json_expr(
-        fn.selection_set.selections,
+    join = JoinMeta(
+        source_column="order_id",
+        target_column="order_id",
+        source_column_type="integer",
+        target_column_type="integer",
+        target=target,
+        cardinality=cardinality,
+    )
+    return rel_read(
+        fn,
+        join,
         ctx,
-        "Widget",
-        parent,
         "t1",
-        "public.order_docs t1",
-        '"t1"."order_id" = "t0"."order_id"',
-        "one-to-one",
+        '"t0"."order_id"',
+        '"t1"."order_id"',
         None,
         False,
-        1,
-        set(),
-    )
-    expr_m2o, _ = _build_rel_json_expr(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "t1",
-        "public.order_docs t1",
-        '"t1"."order_id" = "t0"."order_id"',
-        "many-to-one",
+        2,
+        StatementSources(_table(1, "orders")),
         None,
-        False,
-        1,
-        set(),
     )
 
-    # Singular json_object (not json_agg), head-of-matched-rows via LIMIT 1 — identical
-    # to the many-to-one resolver shape.
-    assert expr_o2o.startswith("(SELECT json_object(")
-    assert "LIMIT 1" in expr_o2o
-    assert "json_agg" not in expr_o2o
-    assert expr_o2o == expr_m2o
-    assert counter_o2o == 1
+
+def test_rel_read_one_to_one_matches_many_to_one_shape():
+    value_o2o, join_o2o, counter_o2o = _read("one-to-one")
+    value_m2o, join_m2o, _ = _read("many-to-one")
+
+    # Singular json_object (not json_agg), the head of each key's matched rows (#362) --
+    # identical to the many-to-one resolver shape.
+    assert value_o2o == '"t1_read"."_value"'
+    assert 'WHERE "_row" = 1' in join_o2o
+    assert "json_agg" not in join_o2o
+    assert (value_o2o, join_o2o) == (value_m2o, join_m2o)
+    assert counter_o2o == 2
 
 
-def test_build_rel_json_expr_unhandled_cardinality_raises():
-    parent = _table(2, "order_docs")
-    ctx = CompilationContext(physical_to_sql={(2, "name"): "name"})
-    fn = _field("{ x { name } }")
+def test_rel_read_unhandled_cardinality_raises():
     with pytest.raises(ValueError, match="unhandled relationship cardinality"):
-        _build_rel_json_expr(
-            fn.selection_set.selections,
-            ctx,
-            "Widget",
-            parent,
-            "t1",
-            "public.order_docs t1",
-            "TRUE",
-            "bogus-cardinality",
-            None,
-            False,
-            1,
-            set(),
-        )
+        _read("bogus-cardinality")

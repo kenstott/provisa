@@ -15,6 +15,12 @@
 // A surface the table is not exposed on shows no link.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import type { ReactElement } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";

@@ -91,7 +91,10 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    EitherWay,
+    RelEndpoints,
     edge_properties_column,
+    oriented_rel,
     via_column,
 )
 from provisa.gql.mistakes import unknown_label
@@ -989,6 +992,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         self._optional_rel_vars: set[str] = set()
         self._rel_var_matched: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: a relationship one outer join matched either way → where it matched forward,
+        # and backward.
+        self._rel_var_forward_when: dict[str, EitherWay] = {}
+        self._rel_step_either_way: dict[int, EitherWay] = {}
+        # REQ-348: a path's step edges, each where it matched forward and backward, or None.
+        self._path_step_either_way: dict[str, list[EitherWay | None]] = {}
+        # A path an OPTIONAL MATCH names: null where it matched nothing.
+        self._optional_paths: set[str] = set()
         self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
@@ -998,6 +1009,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # every resolved rel step, including anonymous/unnamed ones, so flat-JOIN path
         # building can reconstruct full {nodes, edges} even when endpoints have no variable.
         self._rel_step_endpoints: dict[int, tuple] = {}
+        # A hop's further candidate read as its own UNION branch: (that branch's path steps,
+        # id(RelPattern), the hop's step edge as the branch matches it), so a path the branch
+        # answers carries the relationship that branch matched.
+        self._branch_rel_steps: list[tuple[dict, int, tuple]] = []
         # REQ-1586: (id(NodePattern), table) -> alias for a node with no variable. An anonymous endpoint
         # aliases to its table name, so a self-referencing pattern -- ()-[:KIND_OF]->() over one
         # table, which is what a junction edge between two rows of the same entity is -- would
@@ -2243,23 +2258,32 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         its edge object, its ``id`` the union's (its own row's id, else its ends' keys)."""
         from provisa.gql.select_builder import node_key_text
 
-        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = self._rel_var_endpoints[name]
-        if is_reversed:
-            src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
         via = self._rel_var_via.get(name)
-        edge_id: exp.Expression = exp.DPipe(
-            this=exp.DPipe(
-                this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
-            ),
-            expression=node_key_text(tgt_alias, tgt_nm),
-        )
-        if via is not None and via[1].identity_column is not None:
-            edge_id = via_column(via[0], via[1].identity_column)
-        edge = self._temporal_context().resolve_graph_element(name)
-        assert isinstance(edge, exp.Anonymous)
-        return exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[exp.Literal.string("id"), edge_id, *(e.copy() for e in edge.expressions)],
+
+        def value(ends: RelEndpoints) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
+            if is_reversed:
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+            edge_id: exp.Expression = exp.DPipe(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                this=exp.DPipe(
+                    this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
+                ),
+                expression=node_key_text(tgt_alias, tgt_nm),
+            )
+            if via is not None and via[1].identity_column is not None:
+                edge_id = via_column(via[0], via[1].identity_column)
+            edge = self._temporal_context().edge_object(name, ends)
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("id"),
+                    edge_id,
+                    *(e.copy() for e in edge.expressions),
+                ],
+            )
+
+        return oriented_rel(
+            self._rel_var_endpoints[name], self._rel_var_forward_when.get(name), value
         )
 
     def _is_graph_element(self, name: str) -> bool:
@@ -2567,13 +2591,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if name in typed_carried or name not in new_var_table:
                 self._rel_var_types.pop(name, None)
                 self._rel_var_endpoints.pop(name, None)
+                self._rel_var_forward_when.pop(name, None)
         for path in carried_paths:
             self._path_vars.pop(path, None)
+            self._path_step_either_way.pop(path, None)
+            self._optional_paths.discard(path)
         for key in new_var_table:
             # A name the WITH gives a value of its own (WITH [x IN collect(p) | ...] AS p) is no
             # longer the path that pattern named.
             if key not in carried_paths:
                 self._path_vars.pop(key, None)
+                self._path_step_either_way.pop(key, None)
+                self._optional_paths.discard(key)
         # A relationship or node of a union the WITH does not carry is out of scope after it: a
         # later MATCH naming it binds it anew (MATCH (me)-[r1]->() WITH me MATCH (me)-[r1]->()).
         self._all_rels_rel_vars &= set(new_var_table)

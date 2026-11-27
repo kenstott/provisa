@@ -50,10 +50,10 @@ import { PanelDelete } from "../list/PanelDelete";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
-import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -75,10 +75,64 @@ export function OrgsTab({ title }: { title: string }) {
   const [orgInvites, setOrgInvites] = useState<OrgInvite[] | null>(null);
   const [view, setView] = useUrlTab<View>("view", VIEWS);
   const [search, setSearch] = useUrlFilter();
-  const orgDetail = useRememberedDetail("orgs", orgs === null ? null : orgs.map((o) => o.id));
+  // REQ-1594: an invitation is spent when it has no redemptions left. "used_at is set" stopped
+  // describing that once a link could admit more than the one person it was minted for.
+  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
+
+  const tierLabel = (tier: OrgTier | null) =>
+    tier === null ? t("orgsTab.tierNotSet") : t(`orgsTab.tier_${tier}`);
+  const statusOf = (inv: OrgInvite) =>
+    isSpent(inv)
+      ? t("orgsTab.spentStatus")
+      : inv.used_at
+        ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
+        : t("orgsTab.activeStatus");
+  // REQ-2277 rule 9: an org or an invite is open only while its tab's list, under the search,
+  // shows its row; the other tab's list is not shown.
+  const orgNarrowings = [
+    searchNarrowing<Org>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text an organization's row shows.
+      (o) => [o.id, o.name, tierLabel(o.tier)],
+    ),
+  ];
+  const inviteNarrowings = [
+    searchNarrowing<OrgInvite>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text an invite's row shows.
+      (i) => [
+        i.org_name,
+        i.role_id,
+        i.token,
+        i.created_by,
+        new Date(i.expires_at).toLocaleDateString(),
+        statusOf(i),
+      ],
+    ),
+  ];
+  const orgDetail = useRememberedDetail(
+    "orgs",
+    detailListOf(
+      t,
+      view === "orgs" ? orgs : null,
+      (o) => o.id,
+      (o) => o.name,
+      orgNarrowings,
+    ),
+  );
   const inviteDetail = useRememberedDetail(
     "orgInvites",
-    orgInvites === null ? null : orgInvites.map((i) => i.token),
+    detailListOf(
+      t,
+      view === "invites" ? orgInvites : null,
+      (i) => i.token,
+      (i) => i.org_name,
+      inviteNarrowings,
+    ),
   );
   const [form, setForm] = useState<Form>(null);
   const [saving, setSaving] = useState(false);
@@ -203,10 +257,6 @@ export function OrgsTab({ title }: { title: string }) {
     }));
   };
 
-  // REQ-1594: an invitation is spent when it has no redemptions left. "used_at is set" stopped
-  // describing that once a link could admit more than the one person it was minted for.
-  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
-
   const handleCreateInvite = () => {
     if (!inviteRequired.validate() || inviteOrgId === null) return;
     const orgId = inviteOrgId.trim();
@@ -249,23 +299,13 @@ export function OrgsTab({ title }: { title: string }) {
 
   const allOrgs = orgs ?? [];
   const allInvites = orgInvites ?? [];
-  const filteredOrgs = allOrgs.filter((o) => matchesQuery([o.id, o.name], search));
+  const filteredOrgs = shownBy(allOrgs, orgNarrowings);
   const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
   const orgSafePage = Math.min(orgPage, orgTotalPages);
-  const filteredInvites = allInvites.filter((i) =>
-    matchesQuery([i.org_name, i.token, i.created_by], search),
-  );
+  const filteredInvites = shownBy(allInvites, inviteNarrowings);
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);
   const orgSelectData = allOrgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
-  const tierLabel = (tier: OrgTier | null) =>
-    tier === null ? t("orgsTab.tierNotSet") : t(`orgsTab.tier_${tier}`);
-  const statusOf = (inv: OrgInvite) =>
-    isSpent(inv)
-      ? t("orgsTab.spentStatus")
-      : inv.used_at
-        ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
-        : t("orgsTab.activeStatus");
 
   const openOrg = view === "orgs" ? (allOrgs.find((o) => o.id === orgDetail.id) ?? null) : null;
   const openInvite =
@@ -545,6 +585,8 @@ export function OrgsTab({ title }: { title: string }) {
     <>
       <SortGroupTable
         testPrefix="orgs"
+        testId="orgs-list"
+        emptyTestId="orgs-empty"
         minWidth={480}
         rows={filteredOrgs}
         columns={[
@@ -560,7 +602,8 @@ export function OrgsTab({ title }: { title: string }) {
         headers={[{ col: "id" }, { col: "name" }, { col: "tier" }]}
         colSpan={3}
         rowKey={(org) => org.id}
-        empty={t("orgsTab.empty")}
+        // A list a filter emptied says so, never that there are none.
+        empty={allOrgs.length === 0 ? t("orgsTab.empty") : t("orgsTab.noMatch")}
         page={{ index: orgSafePage - 1, size: PAGE_SIZE }}
         onGroupedChange={setOrgsGrouped}
         render={(org) => (
@@ -598,6 +641,8 @@ export function OrgsTab({ title }: { title: string }) {
     <>
       <SortGroupTable
         testPrefix="org-invites"
+        testId="org-invites-list"
+        emptyTestId="org-invites-empty"
         minWidth={640}
         rows={filteredInvites}
         columns={[
@@ -642,7 +687,7 @@ export function OrgsTab({ title }: { title: string }) {
         ]}
         colSpan={6}
         rowKey={(inv) => inv.token}
-        empty={t("orgsTab.noInvites")}
+        empty={allInvites.length === 0 ? t("orgsTab.noInvites") : t("orgsTab.noInvitesMatch")}
         page={{ index: invSafePage - 1, size: PAGE_SIZE }}
         onGroupedChange={setInvitesGrouped}
         render={(inv) => (
@@ -743,6 +788,7 @@ export function OrgsTab({ title }: { title: string }) {
         </Tabs.List>
       </Tabs>
       <SplitPane
+        outOfList={view === "orgs" ? orgDetail.outOfList : inviteDetail.outOfList}
         testId="orgs-split"
         storageKey="provisa.orgs.detailWidth"
         title={panelTitle}

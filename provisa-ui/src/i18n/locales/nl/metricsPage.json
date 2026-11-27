@@ -5,6 +5,7 @@
     "newMetric": "+ Metric",
     "loading": "Laden...",
     "empty": "Nog geen metrics geregistreerd.",
+    "noMatch": "Geen metrics komen overeen met het filter.",
     "colName": "Naam",
     "colExpression": "Expressie",
     "colDatatype": "Datatype",

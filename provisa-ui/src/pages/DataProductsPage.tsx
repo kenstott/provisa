@@ -29,7 +29,12 @@ import {
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { ProductSyncCell } from "./data-products/ProductSyncStatus";
-import { SYNC_ORDER, syncState, useProductSyncStatus } from "./data-products/productSync";
+import {
+  SYNC_ORDER,
+  syncLabel,
+  syncState,
+  useProductSyncStatus,
+} from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
@@ -50,13 +55,18 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import {
+  detailListOf,
+  filterNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
 import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
@@ -196,9 +206,69 @@ export function DataProductsPage() {
   // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
   // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page.
   // REQ-2260: a visit without one reopens the product left open.
+  // REQ-2277 rule 9: a product is open only while the list -- the search and every facet -- shows
+  // its row.
+  const syncStatus = useProductSyncStatus();
+  const productNarrowings = useMemo(
+    () => [
+      searchNarrowing<DataProduct>(
+        t,
+        search,
+        () => updateSearch(""),
+        // Every text a product's row shows.
+        (p) => [
+          p.id,
+          p.domainId,
+          p.name,
+          ownerNames(p).join(", "),
+          t(`dataProductsTab.status_${p.status}`),
+          syncLabel(syncStatus.statuses[p.id] ?? [], t),
+          p.purpose,
+        ],
+      ),
+      filterNarrowing<DataProduct>(
+        t,
+        toReviewOnly,
+        t("dataProductsTab.toReview"),
+        (p) => productFindings.findings.has(p.id),
+        () => setToReviewOnly(false),
+      ),
+      filterNarrowing<DataProduct>(
+        t,
+        tagFilter.length > 0,
+        t("dataProductsTab.tagFacetLabel"),
+        (p) => tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
+        () => setTagFilter([]),
+      ),
+      filterNarrowing<DataProduct>(
+        t,
+        domainFilter.length > 0,
+        t("dataProductsTab.domainFacetLabel"),
+        (p) => domainFilter.includes(p.domainId),
+        () => setDomainFilter([]),
+      ),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are the page's own, fixed for its life; updateSearch and setToReviewOnly are redefined each render but act alike
+    [
+      t,
+      search,
+      syncStatus.statuses,
+      toReviewOnly,
+      productFindings.findings,
+      tagFilter,
+      productTags,
+      domainFilter,
+    ],
+  );
   const detail = useRememberedDetail(
     "products",
-    products.data === null ? null : products.data.map((p) => p.id),
+    detailListOf(
+      t,
+      products.data,
+      (p) => p.id,
+      (p) => p.name,
+      productNarrowings,
+    ),
   );
   const expanded = detail.id;
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
@@ -462,25 +532,9 @@ export function DataProductsPage() {
 
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredProducts = useMemo(
-    () =>
-      dataProducts.filter(
-        (p) =>
-          matchesQuery([p.id, p.name, p.domainId, ...ownerNames(p), p.purpose], search) &&
-          (!toReviewOnly || productFindings.findings.has(p.id)) &&
-          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
-          (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
-      ),
-    [
-      dataProducts,
-      search,
-      toReviewOnly,
-      productFindings.findings,
-      tagFilter,
-      productTags,
-      domainFilter,
-    ],
+    () => shownBy(dataProducts, productNarrowings),
+    [dataProducts, productNarrowings],
   );
-  const syncStatus = useProductSyncStatus();
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },
@@ -681,6 +735,7 @@ export function DataProductsPage() {
         }
         return (
           <SplitPane
+            outOfList={detail.outOfList}
             testId="data-products-split"
             storageKey="provisa.data_products.detailWidth"
             title={panelTitle}

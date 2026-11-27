@@ -5,6 +5,7 @@
     "newMetric": "+ Metrik",
     "loading": "Wird geladen...",
     "empty": "Noch keine Metriken registriert.",
+    "noMatch": "Keine Metriken entsprechen dem Filter.",
     "colName": "Name",
     "colExpression": "Ausdruck",
     "colDatatype": "Datentyp",

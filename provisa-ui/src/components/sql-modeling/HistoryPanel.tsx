@@ -11,6 +11,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Table, Text } from "@mantine/core";
+import { entityName } from "../entityName";
 import type { HistoryEntry, ResultTab } from "./types";
 import { Tip } from "../Tip";
 
@@ -69,7 +70,7 @@ export function HistoryPanel({ history, setSqlText, setRole, setResultTab }: His
                   {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
                 </Table.Td>
                 <Table.Td style={{ whiteSpace: "nowrap" }} c="dimmed">
-                  {h.role}
+                  {entityName("role", h.role)}
                 </Table.Td>
                 <Table.Td style={{ whiteSpace: "nowrap" }} c={h.error ? "red" : "dimmed"}>
                   {h.durationMs}ms

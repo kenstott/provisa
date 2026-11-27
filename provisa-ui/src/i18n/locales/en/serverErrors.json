@@ -1002,6 +1002,13 @@
       "reason_required": "A suggestion states its reason.",
       "no_recipient": "Domain {{domain}} has no data product owner or data steward to receive a suggestion.",
       "not_a_recipient": "The suggestions of domain {{domain}} are read by its data stewards and data product owners."
+    },
+    "column_rules": {
+      "database_unavailable": "The control plane is not reachable",
+      "right_not_everywhere": "A column rule reaches every domain; it needs {{right}} in every domain",
+      "invalid": "The column rule is not valid: {{reason}}",
+      "not_found": "No column rule {{rule}}",
+      "tag_not_found": "Tag {{tag}} not found"
     }
   }
 }

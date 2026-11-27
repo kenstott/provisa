@@ -31,8 +31,8 @@ import { PageTitle } from "../PageTitle";
 import { DetailFields } from "../detail/DetailFields";
 import { SplitPane } from "../list/SplitPane";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
-import { matchesQuery } from "../../lib/searchItems";
 import { FilterInput } from "./FilterInput";
 import { useTranslation } from "react-i18next";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
@@ -165,7 +165,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [envsLoaded, setEnvsLoaded] = useState(false);
   const [search, setSearch] = useUrlFilter();
-  const detail = useRememberedDetail("environments", envsLoaded ? envs.map((e) => e.name) : null);
   // The new-environment form, open in the panel from the header.
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -180,6 +179,38 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const mode: DataMode = canAdminister ? dataMode : "inherit";
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<string | null>("environments");
+  // REQ-1546: where each branch stands against the remote, computed from refs and never from the
+  // network — rendering this page dials nobody's git host.
+  const [sync, setSync] = useState<Record<string, BranchSync>>({});
+  // REQ-1552: an org with no remote is not "in sync" — nothing it holds is mirrored anywhere, and
+  // the page says so once rather than leaving every row looking like a branch nobody has pushed.
+  const [remoteConfigured, setRemoteConfigured] = useState<boolean | null>(null);
+  // Every text an environment's row (EnvironmentRow) shows.
+  const envRowTexts = (e: Environment) => [
+    e.name,
+    e.drifted ? t("environmentsTab.drifted") : "",
+    isBase(e)
+      ? t("environmentsTab.ownConnections")
+      : t("environmentsTab.branchOf", { env: e.parent }),
+    t(`environmentStage.${e.stage}`),
+    syncBadge(e.name)?.label,
+    e.created_by,
+    e.expires_at,
+    Object.keys(e.expired_kept_by).length > 0 ? t("environmentsTab.expiredKept") : "",
+    e.protected ? t("detailFields.yes") : t("detailFields.no"),
+  ];
+  // REQ-2277 rule 9: an environment is open only while the list, under the search, shows its row.
+  const narrowings = [searchNarrowing<Environment>(t, search, () => setSearch(""), envRowTexts)];
+  const detail = useRememberedDetail(
+    "environments",
+    detailListOf(
+      t,
+      envsLoaded && tab === "environments" ? envs : null,
+      (e) => e.name,
+      (e) => e.name,
+      narrowings,
+    ),
+  );
   const newName = useRef<HTMLInputElement>(null);
   const [synthetic, setSynthetic] = useState<SyntheticSeed | null>(null); // REQ-1939
 
@@ -204,12 +235,6 @@ export function EnvironmentsTab({ title }: { title: string }) {
   const createRequired = useRequiredFields({ name });
   const mergeRequired = useRequiredFields({ into: mergeInto, message });
 
-  // REQ-1546: where each branch stands against the remote, computed from refs and never from the
-  // network — rendering this page dials nobody's git host.
-  const [sync, setSync] = useState<Record<string, BranchSync>>({});
-  // REQ-1552: an org with no remote is not "in sync" — nothing it holds is mirrored anywhere, and
-  // the page says so once rather than leaving every row looking like a branch nobody has pushed.
-  const [remoteConfigured, setRemoteConfigured] = useState<boolean | null>(null);
   // The one environment a repository action is running against, so its row shows the wait rather
   // than the whole table going busy.
   const [busy, setBusy] = useState<string | null>(null);
@@ -641,7 +666,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
   };
 
   const onList = tab === "environments";
-  const shownEnvs = envs.filter((e) => matchesQuery([e.name, e.parent, e.created_by], search));
+  const shownEnvs = shownBy(envs, narrowings);
   const openEnv = envs.find((e) => e.name === detail.id) ?? null;
   const openAdd = () => {
     detail.close();
@@ -718,6 +743,7 @@ export function EnvironmentsTab({ title }: { title: string }) {
           <Tabs.Panel value="environments" pt="md">
             <Stack gap="md">
               <SplitPane
+                outOfList={detail.outOfList}
                 testId="environments-split"
                 storageKey="provisa.environments.detailWidth"
                 title={adding ? t("environmentsTab.newEnvironment") : (openEnv?.name ?? "")}
@@ -737,6 +763,14 @@ export function EnvironmentsTab({ title }: { title: string }) {
                 list={
                   <SortGroupTable
                     testPrefix="environments"
+                    testId="environments-list"
+                    emptyTestId="environments-empty"
+                    // A list a filter emptied says so, never that there are none.
+                    empty={
+                      envs.length === 0
+                        ? t("environmentsTab.noEnvironments")
+                        : t("environmentsTab.noMatch")
+                    }
                     rows={shownEnvs}
                     columns={[
                       {

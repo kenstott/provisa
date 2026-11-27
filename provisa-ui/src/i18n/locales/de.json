@@ -4,6 +4,7 @@
     "cancel": "Abbrechen",
     "stop": "Stoppen",
     "stopped": "Gestoppt",
+    "noQuery": "Es gibt keine Abfrage zum Ausführen.",
     "stopQuery": "Abfrage stoppen",
     "save": "Speichern",
     "delete": "Löschen",
