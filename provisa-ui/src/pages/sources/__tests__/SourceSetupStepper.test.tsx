@@ -12,13 +12,16 @@
 // -- right after the source is saved (opened: each step with its content) or later from the read
 // view -- Connect source, Register tables, Your data, Discover relationships. Each step is done once
 // it has an outcome, recorded on the server (setSourceSetupOutcomes), or once it has produced its
-// object: each step's Skip and Done, opening a query from the flow recording Query, Finish setup,
-// the collapsed Setup complete line, Run setup again, and the hint for tables registered since.
+// object. The strip shows progress only and a step in it opens that step; the choices are the
+// panel's command bar (its head): the step's primary action, Skip step where the step may be
+// skipped (not Register tables), and Finish later. There is no Cancel and no Finish setup. Also the
+// collapsed Setup complete line, Run setup again, and the hint for tables registered since.
 
 import { useEffect, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { act, fireEvent, render, screen } from "../../../test-utils/render";
+import { act, fireEvent, render, screen, within } from "../../../test-utils/render";
+import { PanelActionsContext } from "../../../components/list/panelActions";
 import type { Relationship, SourceSetupOutcomes, TableRow } from "../../../types/admin";
 import type { SetupOutcomesWrite } from "../../../hooks/useSourceSetupOutcomes";
 import type { TableRegistrationOutcome } from "../../../hooks/useTableQueries";
@@ -92,7 +95,7 @@ vi.mock("../../tables/RegisterTableForm", () => ({
     initialSourceId: string;
     pickReady: boolean;
     onRegisteredMany: (outcomes: TableRegistrationOutcome[]) => void;
-    onCancel: () => void;
+    onCancel?: () => void;
   }) => (
     <div data-testid="register-form">
       {`register ${initialSourceId}${pickReady ? " ready picked" : ""}`}
@@ -117,7 +120,7 @@ vi.mock("../../tables/RegisterTableForm", () => ({
           ])
         }
       />
-      <button data-testid="register-form-cancel" onClick={onCancel} />
+      {onCancel !== undefined && <button data-testid="register-form-cancel" onClick={onCancel} />}
     </div>
   ),
 }));
@@ -173,8 +176,10 @@ interface Calls {
   onRelated: (count: number) => void;
 }
 
+// The panel's pinned head, where its command bar's actions go (PanelActions).
 function Panel({ open, step, calls }: { open: boolean; step: number | null; calls: Calls }) {
   const [outcomes, setOutcomes] = useState(held);
+  const [head, setHead] = useState<HTMLElement | null>(null);
   useEffect(() => {
     setHeld = (o) => {
       held = o;
@@ -182,16 +187,21 @@ function Panel({ open, step, calls }: { open: boolean; step: number | null; call
     };
   }, []);
   return (
-    <SourceSetupStepper
-      sourceId="pg"
-      outcomes={outcomes}
-      open={open}
-      step={step}
-      onConnect={calls.onConnect}
-      onOpen={calls.onOpen}
-      onClose={calls.onClose}
-      onRelated={calls.onRelated}
-    />
+    <>
+      <div data-testid="panel-head" ref={setHead} />
+      <PanelActionsContext.Provider value={head}>
+        <SourceSetupStepper
+          sourceId="pg"
+          outcomes={outcomes}
+          open={open}
+          step={step}
+          onConnect={calls.onConnect}
+          onOpen={calls.onOpen}
+          onClose={calls.onClose}
+          onRelated={calls.onRelated}
+        />
+      </PanelActionsContext.Provider>
+    </>
   );
 }
 
@@ -213,6 +223,24 @@ async function press(testId: string) {
 }
 
 const active = () => screen.getByTestId("source-setup-stepper").getAttribute("data-active");
+const head = () => within(screen.getByTestId("panel-head"));
+/** The head's actions, in order: what the command bar says. */
+const headActions = () =>
+  Array.from(screen.getByTestId("panel-head").querySelectorAll("button")).map(
+    (b) => b.getAttribute("data-testid") ?? b.textContent,
+  );
+/** What no step offers any more, in either view. */
+const REMOVED = [
+  "source-setup-finish",
+  "source-setup-skip-tables",
+  "source-setup-register",
+  "source-setup-your-data",
+  "source-setup-query",
+  "register-form-cancel",
+];
+function expectRemovedGone() {
+  for (const id of REMOVED) expect(screen.queryByTestId(id)).toBeNull();
+}
 const lastWrite = () => writes[writes.length - 1];
 
 beforeEach(() => {
@@ -227,101 +255,46 @@ beforeEach(() => {
   refetchTables.mockReset();
 });
 
-describe("SourceSetupStepper on the read view", () => {
-  it("a new source, no tables registered: Register tables is current", () => {
+describe("SourceSetupStepper on the read view: the strip shows progress only", () => {
+  it("a new source, no tables registered: Register tables is current; pressing it opens it", () => {
     tables = [table(5, "other", "people")];
     const { onOpen } = renderStepper();
     expect(active()).toBe("1");
     expect(screen.getByText("Connect source")).toBeInTheDocument();
     expect(screen.getByText("Your data")).toBeInTheDocument();
     expect(screen.getByText("Discover relationships")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("source-setup-register"));
-    // Register tables opens the flow on its current step: the same strip, with the form.
+    // The strip holds no buttons, and the read view puts nothing in the panel's head.
+    expectRemovedGone();
+    expect(screen.queryByTestId("source-setup-done")).toBeNull();
+    expect(screen.queryByTestId("source-setup-skip")).toBeNull();
+    expect(headActions()).toEqual([]);
+    fireEvent.click(screen.getByText("Register tables"));
+    // The current step opens the flow on it: the same strip, with the form.
     expect(onOpen).toHaveBeenCalledWith(null);
-    expect(screen.queryByTestId("source-setup-query")).toBeNull();
   });
 
-  it("Register tables' Skip records tables skipped and goes on to Your data", async () => {
-    tables = [table(5, "other", "people")];
-    renderStepper();
-    await press("source-setup-skip-tables");
-    expect(lastWrite()).toEqual({
-      sourceId: "pg",
-      outcomes: { tables: "skipped", relationships: null, query: null },
-    });
-    // No table of its own: nothing to query, nothing to relate, Done finishes.
-    expect(active()).toBe("2");
-    expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.getByText("No tables are registered to query.")).toBeInTheDocument();
-    await press("source-setup-done");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "skipped",
-      relationships: "none_found",
-      query: "done",
-    });
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
-  });
-
-  it("tables registered, no query yet: Your data is step 2, a click from the flow", () => {
+  it("tables registered, no query yet: Your data is step 2; pressing it opens it", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     relationships = [relationship(5, 99)];
     const { onOpen } = renderStepper();
     expect(active()).toBe("2");
     expect(screen.getByText("2 tables")).toBeInTheDocument();
-    expect(screen.getByTestId("source-setup-query")).toBeEnabled();
-    fireEvent.click(screen.getByTestId("source-setup-your-data"));
+    expectRemovedGone();
+    expect(headActions()).toEqual([]);
+    fireEvent.click(screen.getByText("Your data"));
     expect(onOpen).toHaveBeenCalledWith(null);
   });
 
-  it("Your data decided, no relationships: Discover relationships is step 3, across every source", () => {
+  it("Your data decided, no relationships: Discover relationships is step 3; pressing it opens it", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     relationships = [relationship(5, 99)];
     held = { ...NONE, query: "opened" };
-    renderStepper();
+    const { onOpen } = renderStepper();
     expect(active()).toBe("3");
-    fireEvent.click(screen.getByTestId("source-setup-relate"));
-    // The review is scoped to this source's tables; it proposes joins against the whole model.
-    expect(screen.getByTestId("review")).toHaveTextContent("review 11,12");
-  });
-
-  it("a run that found relationships finishes setup as found, with the count", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    held = { ...NONE, query: "opened" };
-    const { onRelated } = renderStepper();
-    fireEvent.click(screen.getByTestId("source-setup-relate"));
-    await press("review-some");
-    expect(refetchRelationships).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("source-setup-relate")).toBeNull();
+    fireEvent.click(screen.getByText("Discover relationships"));
+    expect(onOpen).toHaveBeenCalledWith(null);
     expect(screen.queryByTestId("review")).toBeNull();
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "found",
-      query: "opened",
-    });
-    expect(onRelated).toHaveBeenCalledWith(2);
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
-  });
-
-  it("a run that found nothing finishes the step as none found", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    held = { ...NONE, query: "done" };
-    renderStepper();
-    fireEvent.click(screen.getByTestId("source-setup-relate"));
-    await press("review-none");
-    expect(lastWrite().outcomes.relationships).toBe("none_found");
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
-  });
-
-  it("Discover relationships' Skip, before a run, records relationships skipped", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    held = { ...NONE, query: "opened" };
-    renderStepper();
-    await press("source-setup-skip-relationships");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "skipped",
-      query: "opened",
-    });
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
   });
 
   it("a recorded outcome holds after a reload: the stepper reads the server's record", () => {
@@ -331,100 +304,27 @@ describe("SourceSetupStepper on the read view", () => {
     expect(active()).toBe("3");
   });
 
-  it("nothing to relate: says so on Your data, and setup ends with it", async () => {
+  it("a skipped step says so on the strip", () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    held = { tables: "registered", relationships: null, query: "skipped", decidedAt: null };
+    renderStepper();
+    expect(active()).toBe("3");
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+  });
+
+  it("nothing to relate: the strip says so", () => {
     tables = [table(11, "pg", "orders")];
     renderStepper();
     expect(active()).toBe("2");
     expect(screen.getByText("Nothing to relate")).toBeInTheDocument();
-    expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
-      "There is nothing to relate these tables to yet.",
-    );
-    expect(screen.getByTestId("source-setup-query")).toBeEnabled();
-    await press("source-setup-done");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "none_found",
-      query: "done",
-    });
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
   });
 
-  it("without the create relationship right: no discovery offered", () => {
+  it("without the create relationship right: the strip says not permitted", () => {
     auth.capabilities = [];
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     renderStepper();
     expect(active()).toBe("2");
     expect(screen.getByText("Not permitted")).toBeInTheDocument();
-    expect(screen.queryByTestId("source-setup-relate")).toBeNull();
-    expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
-      "create relationship right",
-    );
-  });
-
-  it("the starter query records Query opened before it opens the query explorer", async () => {
-    tables = [table(11, "pg", "orders")];
-    renderStepper();
-    expect(screen.getByTestId("source-setup-relate-note").nextSibling).toHaveTextContent("orders");
-    await press("source-setup-query");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "none_found",
-      query: "opened",
-    });
-    expect(screen.getByTestId("query-state").textContent).toBe(GRAPHQL);
-  });
-
-  it("Your data's Done with relationships already found collapses the strip", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    relationships = [relationship(5, 11)];
-    renderStepper();
-    expect(active()).toBe("2");
-    await press("source-setup-done");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "found",
-      query: "done",
-    });
-    expect(screen.getByTestId("source-setup-complete")).toHaveTextContent("Setup complete");
-    expect(screen.queryByTestId("source-setup-stepper")).toBeNull();
-  });
-
-  it("Your data's Done with relationships to discover goes on to Discover relationships", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    renderStepper();
-    await press("source-setup-done");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: null,
-      query: "done",
-    });
-    expect(active()).toBe("3");
-    expect(screen.getByTestId("source-setup-skip-relationships")).toBeInTheDocument();
-  });
-
-  it("Finish setup, always shown while active, closes every remaining step as skipped", async () => {
-    tables = [table(5, "other", "people")];
-    renderStepper();
-    expect(screen.getByTestId("source-setup-finish")).toHaveTextContent("Finish setup");
-    await press("source-setup-finish");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "skipped",
-      relationships: "none_found",
-      query: "skipped",
-    });
-    expect(screen.getByTestId("source-setup-complete")).toBeInTheDocument();
-  });
-
-  it("Finish setup keeps what the steps already show", async () => {
-    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
-    renderStepper();
-    expect(active()).toBe("2");
-    await press("source-setup-finish");
-    expect(lastWrite().outcomes).toEqual({
-      tables: "registered",
-      relationships: "skipped",
-      query: "skipped",
-    });
   });
 
   it("collapsed, it never reopens on its own; Run setup again clears the record", async () => {
@@ -472,15 +372,6 @@ describe("SourceSetupStepper on the read view", () => {
     expect(screen.queryByTestId("source-setup-stepper")).toBeNull();
   });
 
-  it("a refused write says why and keeps the step", async () => {
-    tables = [table(5, "other", "people")];
-    refuse = "Source 'pg' not found";
-    renderStepper();
-    await press("source-setup-skip-tables");
-    expect(screen.getByTestId("source-setup-error")).toHaveTextContent("Source 'pg' not found");
-    expect(active()).toBe("1");
-  });
-
   it("a done step opens the flow on it; a step not reached does nothing", () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     held = { ...NONE, query: "opened" };
@@ -505,21 +396,31 @@ describe("SourceSetupStepper on the read view", () => {
   });
 });
 
-describe("SourceSetupStepper opened: the flow after a save", () => {
+describe("SourceSetupStepper opened: the choices are the panel's command bar", () => {
   it("is the only setup flow: the separate after-save steps are gone", () => {
     expect(Object.keys(import.meta.glob("../AfterSaveSteps.tsx"))).toHaveLength(0);
   });
 
-  it("shows the strip at Register tables, with Register Table on the source and Skip", () => {
+  it("Register tables: the form's Register is the primary; no Skip step, no Cancel; Finish later", () => {
     tables = [table(5, "other", "people")];
     renderStepper({ open: true });
     expect(active()).toBe("1");
     expect(screen.getByTestId("source-setup-step")).toBeInTheDocument();
     expect(screen.getByTestId("register-form")).toHaveTextContent("register pg ready picked");
-    expect(screen.getByTestId("source-setup-skip-tables")).toBeInTheDocument();
-    expect(screen.getByTestId("source-setup-finish")).toBeInTheDocument();
-    // The read view's one-line step is not the opened flow's: the form is the step.
-    expect(screen.queryByTestId("source-setup-register")).toBeNull();
+    // Later steps read the tables it registers: it cannot be skipped.
+    expect(screen.queryByTestId("source-setup-skip")).toBeNull();
+    expectRemovedGone();
+    expect(headActions()).toEqual(["source-setup-finish-later"]);
+    expect(head().getByTestId("source-setup-finish-later")).toHaveTextContent("Finish later");
+  });
+
+  it("Finish later closes the flow and keeps its progress: nothing is recorded or cleared", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    const { onClose } = renderStepper({ open: true });
+    expect(active()).toBe("2");
+    fireEvent.click(head().getByTestId("source-setup-finish-later"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(writes).toHaveLength(0);
   });
 
   it("registering records the tables and goes on to Your data, step 2, on the tables just registered", async () => {
@@ -534,15 +435,105 @@ describe("SourceSetupStepper opened: the flow after a save", () => {
     expect(lastWrite().outcomes).toEqual({ tables: "registered", relationships: null, query: null });
     expect(active()).toBe("2");
     expect(screen.getByTestId("your-data")).toHaveTextContent("data 11,12 as analyst refused broken");
-    expect(screen.getByTestId("source-setup-done")).toBeInTheDocument();
     expect(screen.queryByTestId("register-form")).toBeNull();
   });
 
-  it("Your data, opened later, shows the source's own tables", () => {
+  it("Your data: Done, Skip step and Finish later, in that order, in the head", () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     renderStepper({ open: true });
     expect(active()).toBe("2");
     expect(screen.getByTestId("your-data")).toHaveTextContent("data 11,12 as analyst");
+    expect(headActions()).toEqual([
+      "source-setup-done",
+      "source-setup-skip",
+      "source-setup-finish-later",
+    ]);
+    expect(head().getByTestId("source-setup-done")).toHaveTextContent("Done");
+    expect(head().getByTestId("source-setup-skip")).toHaveTextContent("Skip step");
+    expectRemovedGone();
+  });
+
+  it("Your data's Skip step records Query skipped and goes on to Discover relationships", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    renderStepper({ open: true });
+    await press("source-setup-skip");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: null,
+      query: "skipped",
+    });
+    expect(active()).toBe("3");
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+  });
+
+  it("Your data's Skip step with nothing to relate ends the flow", async () => {
+    tables = [table(11, "pg", "orders")];
+    const { onClose } = renderStepper({ open: true });
+    await press("source-setup-skip");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: "none_found",
+      query: "skipped",
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("nothing to relate: says so on Your data, and Done ends setup", async () => {
+    tables = [table(11, "pg", "orders")];
+    const { onClose } = renderStepper({ open: true });
+    expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
+      "There is nothing to relate these tables to yet.",
+    );
+    await press("source-setup-done");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: "none_found",
+      query: "done",
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("a source whose tables were recorded skipped: nothing to query, Done finishes", async () => {
+    tables = [table(5, "other", "people")];
+    held = { ...NONE, tables: "skipped" };
+    renderStepper({ open: true });
+    expect(active()).toBe("2");
+    expect(screen.getByText("Skipped")).toBeInTheDocument();
+    expect(screen.getByText("No tables are registered to query.")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-setup-relate")).toBeNull();
+    await press("source-setup-done");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "skipped",
+      relationships: "none_found",
+      query: "done",
+    });
+  });
+
+  it("Your data's Done with relationships already found ends the flow", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    relationships = [relationship(5, 11)];
+    const { onClose } = renderStepper({ open: true });
+    expect(active()).toBe("2");
+    await press("source-setup-done");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: "found",
+      query: "done",
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("Your data's Done with relationships to discover goes on to Discover relationships", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    renderStepper({ open: true });
+    await press("source-setup-done");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: null,
+      query: "done",
+    });
+    expect(active()).toBe("3");
+    expect(head().getByTestId("source-setup-skip")).toBeInTheDocument();
   });
 
   it("opening a query from Your data records Query; returning resumes at Discover relationships", async () => {
@@ -558,26 +549,68 @@ describe("SourceSetupStepper opened: the flow after a save", () => {
     // Back on the source: the read view's strip remembers the query and stands at step 3.
     await press("back-to-source");
     expect(active()).toBe("3");
-    expect(screen.getByTestId("source-setup-relate")).toBeInTheDocument();
   });
 
-  it("Discover relationships is step 3 with Skip; deciding it ends the flow", async () => {
+  it("opening a query with nothing to relate closes Discover relationships with it", async () => {
+    tables = [table(11, "pg", "orders")];
+    renderStepper({ open: true });
+    await press("your-data-open-query");
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: "none_found",
+      query: "opened",
+    });
+    expect(screen.getByTestId("query-state").textContent).toBe(GRAPHQL);
+  });
+
+  it("Discover relationships: Create relationships, Skip step and Finish later in the head", () => {
+    tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
+    held = { ...NONE, query: "opened" };
+    renderStepper({ open: true });
+    expect(active()).toBe("3");
+    expect(headActions()).toEqual([
+      "source-setup-relate",
+      "source-setup-skip",
+      "source-setup-finish-later",
+    ]);
+    expect(head().getByTestId("source-setup-relate")).toHaveTextContent("Create relationships");
+    expectRemovedGone();
+  });
+
+  it("Create relationships opens the review on the source's tables; a run that found some ends the flow", async () => {
     tables = [table(11, "pg", "orders"), table(12, "pg", "lines"), table(5, "other", "people")];
     held = { ...NONE, query: "opened" };
     const { onClose, onRelated } = renderStepper({ open: true });
-    expect(active()).toBe("3");
-    fireEvent.click(screen.getByTestId("source-setup-relate"));
+    fireEvent.click(head().getByTestId("source-setup-relate"));
+    // The review is scoped to this source's tables; it proposes joins against the whole model.
     expect(screen.getByTestId("review")).toHaveTextContent("review 11,12");
     await press("review-some");
+    expect(refetchRelationships).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("review")).toBeNull();
+    expect(lastWrite().outcomes).toEqual({
+      tables: "registered",
+      relationships: "found",
+      query: "opened",
+    });
     expect(onRelated).toHaveBeenCalledWith(2);
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("Discover relationships' Skip, opened, records skipped and ends the flow", async () => {
+  it("a run that found nothing finishes the step as none found", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     held = { ...NONE, query: "done" };
     const { onClose } = renderStepper({ open: true });
-    await press("source-setup-skip-relationships");
+    fireEvent.click(head().getByTestId("source-setup-relate"));
+    await press("review-none");
+    expect(lastWrite().outcomes.relationships).toBe("none_found");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("Discover relationships' Skip step records skipped and ends the flow", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    held = { ...NONE, query: "done" };
+    const { onClose } = renderStepper({ open: true });
+    await press("source-setup-skip");
     expect(lastWrite().outcomes).toEqual({
       tables: "registered",
       relationships: "skipped",
@@ -591,40 +624,39 @@ describe("SourceSetupStepper opened: the flow after a save", () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     const { onClose } = renderStepper({ open: true });
     expect(screen.getByTestId("your-data")).toBeInTheDocument();
+    expect(screen.getByTestId("source-setup-relate-note")).toHaveTextContent(
+      "create relationship right",
+    );
     expect(screen.queryByTestId("source-setup-relate")).toBeNull();
     await press("source-setup-done");
     expect(lastWrite().outcomes.relationships).toBe("skipped");
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("not offered when no table was registered", async () => {
-    tables = [table(5, "other", "people")];
+  it("a refused write says why and keeps the step", async () => {
+    tables = [table(11, "pg", "orders"), table(5, "other", "people")];
+    refuse = "Source 'pg' not found";
     renderStepper({ open: true });
-    await press("source-setup-skip-tables");
+    await press("source-setup-skip");
+    expect(screen.getByTestId("source-setup-error")).toHaveTextContent("Source 'pg' not found");
     expect(active()).toBe("2");
-    expect(screen.getByText("No tables are registered to query.")).toBeInTheDocument();
-    expect(screen.queryByTestId("source-setup-relate")).toBeNull();
   });
 
-  it("the form's Cancel leaves the flow with nothing recorded", async () => {
-    tables = [table(5, "other", "people")];
-    const { onClose } = renderStepper({ open: true });
-    await press("register-form-cancel");
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(writes).toHaveLength(0);
-  });
-
-  it("back to a done step shows its content without deciding it again", async () => {
+  it("a step in the strip opens it: back to a done step shows its content without deciding it again", async () => {
     tables = [table(11, "pg", "orders"), table(5, "other", "people")];
     held = { ...NONE, query: "opened" };
     renderStepper({ open: true });
     expect(active()).toBe("3");
     fireEvent.click(screen.getByText("Your data"));
     expect(screen.getByTestId("your-data")).toHaveTextContent("data 11 as analyst");
-    expect(screen.queryByTestId("source-setup-done")).toBeNull();
+    // A done step gone back to is not decided again: the head offers only Finish later.
+    expect(headActions()).toEqual(["source-setup-finish-later"]);
     fireEvent.click(screen.getByText("Register tables"));
     expect(screen.getByTestId("register-form")).toBeInTheDocument();
-    expect(screen.queryByTestId("source-setup-skip-tables")).toBeNull();
+    expect(screen.queryByTestId("source-setup-skip")).toBeNull();
+    // The current step, pressed, opens it again.
+    fireEvent.click(screen.getByText("Discover relationships"));
+    expect(head().getByTestId("source-setup-relate")).toBeInTheDocument();
     expect(active()).toBe("3");
     expect(writes).toHaveLength(0);
   });
