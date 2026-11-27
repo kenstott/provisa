@@ -27,13 +27,13 @@ import {
   Checkbox,
   Group,
   Loader,
-  Modal,
   SimpleGrid,
   Stack,
   Table,
   Text,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import { CheckCheck } from "lucide-react";
 import {
@@ -274,7 +274,7 @@ export function StewardshipSummary({
         />
       </SimpleGrid>
       {approvable !== null && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setApprovable(null)}
           title={t("glossaryTab.bulkApproveTitle")}
@@ -325,7 +325,7 @@ export function StewardshipSummary({
               }
             />
           </Stack>
-        </Modal>
+        </ModalLayout>
       )}
     </Stack>
   );

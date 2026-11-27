@@ -22,7 +22,6 @@ import {
   Alert,
   Button,
   Group,
-  Modal,
   NumberInput,
   Select,
   Stack,
@@ -32,6 +31,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import {
   ENV_POLICY_NONE,
@@ -852,7 +852,7 @@ export function TeamPage() {
       </Collapsibles>
 
       {multitenancy && isOrgAdmin && (
-        <Modal
+        <ModalLayout
           opened={deleteOpen}
           onClose={() => setDeleteOpen(false)}
           title={t("teamPage.deleteModalTitle")}
@@ -887,7 +887,7 @@ export function TeamPage() {
               </Button>
             </FormFooter>
           </FormLayout>
-        </Modal>
+        </ModalLayout>
       )}
     </Stack>
   );

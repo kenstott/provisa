@@ -13,7 +13,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal, Text, TextInput } from "@mantine/core";
+import { Button, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
 import type { RegisteredTable } from "../types/admin";
 import {
@@ -40,7 +41,7 @@ export function NativeParamsModal({ table, onClose, onSubmit }: NativeParamsModa
   const canRun = requiredParamsSatisfied(table, values);
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("nativeParams.title", { name: table.alias || table.tableName })}
@@ -82,6 +83,6 @@ export function NativeParamsModal({ table, onClose, onSubmit }: NativeParamsModa
           }
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

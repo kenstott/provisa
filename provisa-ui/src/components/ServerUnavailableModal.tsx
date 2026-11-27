@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
-import { Group, Loader, Modal, Stack, Text } from "@mantine/core";
+import { Group, Loader, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { CloudOff } from "lucide-react";
 import { serverUnreachable, subscribeServerReachability } from "../lib/serverReachability";
 
@@ -32,7 +33,7 @@ export function ServerUnavailableModal() {
   useEffect(() => subscribeServerReachability(setDown), []);
 
   return (
-    <Modal
+    <ModalLayout
       opened={down}
       onClose={() => {
         /* not dismissible — see the note above */
@@ -61,6 +62,6 @@ export function ServerUnavailableModal() {
           </Text>
         </Group>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

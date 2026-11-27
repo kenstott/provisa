@@ -70,7 +70,8 @@ interface Props {
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
   language: string;
   onRegisteredMany: (outcomes: TableRegistrationOutcome[]) => void;
-  onCancel: () => void;
+  /** Absent in source setup (REQ-2234): no Cancel there. */
+  onCancel?: () => void;
   setError: (e: string | null) => void;
   problem?: string | null;
 }

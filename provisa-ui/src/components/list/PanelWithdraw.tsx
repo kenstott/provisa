@@ -17,7 +17,8 @@
 
 import { useContext, useState } from "react";
 import { createPortal } from "react-dom";
-import { ActionIcon, Button, Loader, Modal, Text } from "@mantine/core";
+import { ActionIcon, Button, Loader, Text } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -146,7 +147,7 @@ export function PanelWithdraw({
         </ConfirmDialog>
       )}
       {putBackRegions !== null && (
-        <Modal
+        <ModalLayout
           opened={choosing}
           onClose={() => setChoosing(false)}
           title={t("list.putBackTitle", { name })}
@@ -195,7 +196,7 @@ export function PanelWithdraw({
               }
             />
           </FormLayout>
-        </Modal>
+        </ModalLayout>
       )}
       {said !== null && (notice ? createPortal(said, notice) : notice === undefined ? said : null)}
     </>

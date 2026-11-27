@@ -10,7 +10,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { Button, Checkbox, Group, Stack, Text, Title } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { BrandMark } from "../components/BrandMark";
 import { declineTour, tourResumeStep, useTour } from "./useTour";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../components/form/FormLayout";
@@ -33,7 +34,7 @@ export function TourWelcomeModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={close}
       // The offer is the product introducing itself, so it carries the mark and the wordmark the
@@ -93,6 +94,6 @@ export function TourWelcomeModal({ onClose }: { onClose: () => void }) {
           </Button>
         </FormFooter>
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

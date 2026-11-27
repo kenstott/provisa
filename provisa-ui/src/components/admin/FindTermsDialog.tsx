@@ -25,7 +25,6 @@ import {
   Button,
   FileInput,
   Group,
-  Modal,
   MultiSelect,
   SegmentedControl,
   Select,
@@ -35,6 +34,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { RotateCw, ScanSearch } from "lucide-react";
 import {
   fetchScannableDocuments,
@@ -50,7 +50,7 @@ import { useTables } from "../../hooks/useAdminQueries";
 import { isUserTable } from "../../pages/tables/modeling/columns";
 import { ChoiceField } from "../../pages/tables/modeling/pickers";
 import { useColumnOptions } from "../../pages/tables/modeling/useModelTables";
-import { FormField, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { ScanStatusBadge, TermReviewQueue } from "./TermReviewQueue";
 import { useScanProgress } from "./useScanProgress";
@@ -362,12 +362,15 @@ function ScanForm({
         </FormField>
       )}
       <FormField size="full">
-        <Group justify="space-between" wrap="nowrap">
-          <Text size="xs" c="dimmed">
-            {origin === "table" && table.reads === "terms"
-              ? t("findTerms.termsNote")
-              : t("findTerms.budgetNote")}
-          </Text>
+        <Text size="xs" c="dimmed">
+          {origin === "table" && table.reads === "terms"
+            ? t("findTerms.termsNote")
+            : t("findTerms.budgetNote")}
+        </Text>
+      </FormField>
+      {/* REQ-2277 rule 10: the scan's Start is the dialog's action, in its button bar. */}
+      <FormFooter
+        action={
           <Button
             leftSection={<ScanSearch size={14} />}
             onClick={() => void start()}
@@ -378,8 +381,8 @@ function ScanForm({
           >
             {t("findTerms.start")}
           </Button>
-        </Group>
-      </FormField>
+        }
+      />
     </FormLayout>
   );
 }
@@ -586,7 +589,7 @@ export function FindTermsDialog({
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("findTerms.title")}
@@ -627,6 +630,6 @@ export function FindTermsDialog({
           </Stack>
         </Stack>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

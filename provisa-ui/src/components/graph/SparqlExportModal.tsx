@@ -13,9 +13,10 @@
 // and rows that hold triples as RDF too.
 
 import { useState } from "react";
-import { Alert, Button, Group, Input, Modal, SegmentedControl, Select, Text } from "@mantine/core";
+import { Alert, Button, Input, SegmentedControl, Select, Text } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { useTranslation } from "react-i18next";
-import { FormField, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { downloadBlob } from "./graph-export";
 import {
   exportFormats,
@@ -61,7 +62,7 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
   };
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       title={t("sparqlExportModal.title")}
@@ -122,17 +123,20 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
             )}
           </>
         )}
-        <Group>
-          {frame && (
-            <Button onClick={handleDownload} loading={busy} data-testid="sparql-export-download">
-              {t("sparqlExportModal.download")}
-            </Button>
-          )}
+        <FormFooter
+          action={
+            frame && (
+              <Button onClick={handleDownload} loading={busy} data-testid="sparql-export-download">
+                {t("sparqlExportModal.download")}
+              </Button>
+            )
+          }
+        >
           <Button variant="default" onClick={onClose} data-testid="sparql-export-close">
             {t("sparqlExportModal.close")}
           </Button>
-        </Group>
+        </FormFooter>
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

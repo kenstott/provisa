@@ -24,13 +24,13 @@ import {
   Button,
   Group,
   Input,
-  Modal,
   MultiSelect,
   Paper,
   Stack,
   Text,
   useMantineColorScheme,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { Copy, Check, GitBranch } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -401,13 +401,13 @@ export function LineagePage(): React.ReactElement {
       {/* REQ-1627: the same graph at near-fullscreen. A federation carries far more than the inline
           panel can show, and the collapse state is shared, so opening the modal continues the trace
           rather than restarting it. */}
-      <Modal
+      <ModalLayout
         opened={modalOpen && !!graph}
         onClose={() => setModalOpen(false)}
         size="90%"
         title={t("lineagePage.title")}
         data-testid="lineage-modal"
-        styles={{ body: { padding: 0 } }}
+        flush
       >
         {graph && (
           <div style={{ padding: "var(--mantine-spacing-xs)" }}>
@@ -427,7 +427,7 @@ export function LineagePage(): React.ReactElement {
             />
           </div>
         )}
-      </Modal>
+      </ModalLayout>
     </Stack>
   );
 }
