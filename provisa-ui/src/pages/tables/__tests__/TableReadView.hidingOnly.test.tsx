@@ -12,6 +12,12 @@
 // previews it, but is not offered the table editor's acts -- deploy, profile, delete.
 
 import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).

@@ -39,6 +39,7 @@ import { useRoles } from "../../hooks/useAdminQueries";
 import { grantLabel } from "../../lib/grants";
 import { maskSpecLabel, maskValueOf, type MaskSpec } from "../../lib/masks";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { Tip } from "../Tip";
 
 /** The mask a rule reads its columns through: completely masked, a constant, or a regex. */
@@ -105,7 +106,7 @@ export function ColumnRules({
   };
 
   const add = async () => {
-    if (roleId === null) return;
+    if (roleId === null || !required.validate()) return;
     setSaving(true);
     try {
       await saveColumnRule(ruleKey, roleId, action, action === "mask" ? mask() : null);
@@ -127,7 +128,9 @@ export function ColumnRules({
     }
   };
 
-  const regexIncomplete = action === "mask" && maskChoice === "regex" && pattern.trim() === "";
+  // REQ-1968: the Add button validates on the click; only the fields on screen are checked.
+  const regexShown = action === "mask" && maskChoice === "regex";
+  const required = useRequiredFields(regexShown ? { roleId, pattern } : { roleId });
 
   return (
     <Stack gap="xs" data-testid={testId}>
@@ -187,6 +190,7 @@ export function ColumnRules({
               data={roles.map((r) => ({ value: r.id, label: grantLabel(r.id, t) }))}
               value={roleId}
               onChange={setRoleId}
+              {...required.field("roleId")}
               comboboxProps={{ withinPortal: true }}
               data-testid={`${testId}-role`}
             />
@@ -239,6 +243,7 @@ export function ColumnRules({
                   label={t("columnRules.patternLabel")}
                   value={pattern}
                   onChange={(e) => setPattern(e.currentTarget.value)}
+                  {...required.field("pattern")}
                   data-testid={`${testId}-pattern`}
                 />
               </FormField>
@@ -255,7 +260,7 @@ export function ColumnRules({
           <FormFooter
             action={
               <Button
-                disabled={roleId === null || saving || regexIncomplete}
+                disabled={saving}
                 onClick={() => void add()}
                 data-testid={`${testId}-add`}
               >

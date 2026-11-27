@@ -31,7 +31,6 @@ import httpx
 import json
 
 import pytest
-import sqlglot
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 
@@ -295,7 +294,11 @@ class _Pipeline:
         lowered = lower_to_catalog_physical(apply_governance(sql, gov), ctx)
         self.statements.append(lowered)
         self.bound.append(list(exec_params or []))
-        native = sqlglot.transpile(lowered, read="postgres", write="duckdb")[0]
+        # The DuckDB engine's own transpile (DuckDBBackend.transpile_physical): an expansion's
+        # ordered list is json_agg(... ORDER BY ...), which DuckDB's json_arrayagg macro refuses.
+        from provisa.transpiler.transpile import transpile_to_duckdb
+
+        native = transpile_to_duckdb(lowered, generated=True)
         return SimpleNamespace(sql=native, params=list(exec_params or []))
 
     async def execute(self, plan, state):

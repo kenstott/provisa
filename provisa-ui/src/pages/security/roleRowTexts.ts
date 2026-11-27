@@ -49,17 +49,19 @@ export function roleRowTexts(r: Role, t: TFunction): string[] {
 /** Whether a derived role's rows -- the parent and each value role under it -- hold ``search``. */
 export function derivedRoleMatches(d: DeclaredDerivedRole, search: string, t: TFunction): boolean {
   const shown = [t("securityPage.derivedNoRights"), t("securityPage.derivedNoDomains")];
-  return (
-    matchesQuery([d.attribute, t("securityPage.derivedBadge"), ...shown, d.description], search) ||
-    d.values.some((v) =>
-      matchesQuery(
-        [
-          `${d.attribute}${SEPARATOR}${v}`,
-          ...shown,
-          t("securityPage.valueRoleHeld", { attribute: d.attribute, value: v }),
-        ],
-        search,
-      ),
-    )
+  // One haystack for the role: a word is held when the attribute or any value role holds it, and a
+  // word with a leading - leaves out a role any of whose value roles holds it.
+  return matchesQuery(
+    [
+      d.attribute,
+      t("securityPage.derivedBadge"),
+      ...shown,
+      d.description,
+      ...d.values.flatMap((v) => [
+        `${d.attribute}${SEPARATOR}${v}`,
+        t("securityPage.valueRoleHeld", { attribute: d.attribute, value: v }),
+      ]),
+    ],
+    search,
   );
 }

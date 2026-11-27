@@ -300,8 +300,15 @@ class TestMerge:
     async def test_removals_are_a_separate_decision(self, seeded):
         await seeded.insert(domains, ENV, id="experiment", description="only in dev")
         report = await merge_model(seeded.db, seeded.org_id, None, ENV, removals=True)
-        assert await seeded.added_domains() == ["sales"]
         assert report.delta.removed == ["experiment/domain.yaml"]
+        # REQ-2248 (amended 2026-11-15): a domain the merge removes is retired, not deleted -- its
+        # row is kept under a key of its own with its id in retired_id, and the id is free.
+        live = sorted(d["id"] for d in await seeded.rows(domains, ENV) if not d["retired"])
+        assert "experiment" not in live and "sales" in live
+        (kept,) = [d for d in await seeded.rows(domains, ENV) if d["retired_id"] == "experiment"]
+        assert kept["retired"] is True
+        assert kept["id"].startswith("experiment~retired~")
+        assert kept["description"] == "only in dev"
 
     async def test_a_source_row_is_never_removed_by_a_merge(self, seeded):
         # REQ-1491: a binding is the environment's own deliberate fact, and nothing arriving from

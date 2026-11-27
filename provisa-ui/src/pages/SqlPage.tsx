@@ -218,6 +218,8 @@ export function SqlPage() {
   // REQ-1519: the plan Analyze last described, and the reason a description was refused.
   const [analyzePlan, setAnalyzePlan] = useState<ExplainResponse | null>(null);
   const [analyzeError, setAnalyzeError] = useState("");
+  // REQ-1519: the statements Analyze is asking the reader to choose from (several in the editor).
+  const [analyzeChoices, setAnalyzeChoices] = useState<string[] | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
@@ -699,21 +701,44 @@ export function SqlPage() {
 
   // REQ-1519: describe the statement through the ONE pipeline instead of running it. The plan
   // comes back governed, optimized and routed, so the tree is the tree for the SQL that would run.
+  const analyzeStatement = useCallback(
+    async (statement: string) => {
+      setAnalyzeChoices(null);
+      setAnalyzing(true);
+      setAnalyzeError("");
+      try {
+        const plan = await explainSql(statement, role, false);
+        setAnalyzePlan(plan);
+      } catch (e) {
+        setAnalyzePlan(null);
+        setAnalyzeError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setAnalyzing(false);
+      }
+      setResultTab("analyze");
+    },
+    [role],
+  );
+
+  // Statements are split as the run splits them (the server's splitter: comment-only segments are
+  // dropped, leading comments stay with the statement after them). Several: the reader picks one.
   const handleAnalyze = useCallback(async () => {
     if (!sqlText.trim()) return;
-    setAnalyzing(true);
-    setAnalyzeError("");
+    let statements: string[];
     try {
-      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
-      setAnalyzePlan(plan);
+      statements = await splitSql(sqlText);
     } catch (e) {
       setAnalyzePlan(null);
       setAnalyzeError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAnalyzing(false);
+      setResultTab("analyze");
+      return;
     }
-    setResultTab("analyze");
-  }, [sqlText, role]);
+    if (statements.length > 1) {
+      setAnalyzeChoices(statements);
+      return;
+    }
+    if (statements.length === 1) await analyzeStatement(statements[0]);
+  }, [sqlText, analyzeStatement]);
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
   // Written into the tab whose result it is (a run's own tab, though another may be active by now).
@@ -1042,6 +1067,9 @@ export function SqlPage() {
                 handleRun={handleRun}
                 handleStop={handleStop}
                 handleAnalyze={handleAnalyze}
+                analyzeChoices={analyzeChoices}
+                chooseAnalyze={analyzeStatement}
+                dismissAnalyzeChoices={() => setAnalyzeChoices(null)}
                 analyzing={analyzing}
                 sampleMode={sampleMode}
                 setSampleMode={setSampleMode}
