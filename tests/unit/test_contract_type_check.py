@@ -18,19 +18,37 @@ passes on a change of width, length or precision within the same logical type.""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import insert, select
 
-from provisa.core.models import OfferContract, OfferField, OfferTerms
+from provisa.api.offer_derivation import rederive_all
+from provisa.core.database import Database
+from provisa.core.models import (
+    Column,
+    DataProduct,
+    OfferContract,
+    OfferField,
+    OfferTerms,
+    Table,
+)
+from provisa.core.repositories import data_product as data_product_repo
+from provisa.core.repositories import data_product_offer as offers
+from provisa.core.repositories import table as table_repo
+from provisa.core.schema_org import domains, registered_tables, sources
 from provisa.dq.contract_types import (
     CONTRACT_TYPE_CHECK,
+    TypeCheck,
     TypeMismatch,
     check_contract,
+    check_dataset,
     check_types,
     fits,
     logical_type,
 )
+from tests.unit.offer_build import installed
 
 _AT = datetime(2026, 11, 27, tzinfo=UTC)
 
@@ -122,3 +140,99 @@ def test_fits_reads_logical_types():
     assert fits("number", "integer")
     assert not fits("integer", "double")
     assert not fits("string", None)
+
+
+# -- a dataset's contracts against its source ------------------------------------------------------
+
+
+@dataclass
+class _Listed:
+    """A column as the source lists it now (provisa.api.admin.schema_query.AvailableColumnType)."""
+
+    name: str
+    data_type: str
+
+
+@pytest.fixture
+async def plane(control_plane) -> Database:
+    """Product p, its default offer (viewer), its member orders (id integer, placed_on date), the
+    date column served by its alias placed."""
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="sales"))
+        await data_product_repo.upsert(conn, DataProduct(id="p", domain_id="sales", name="P"))
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="pg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                columns=[
+                    Column(name="id", visible_to=["viewer"], data_type="integer"),
+                    Column(
+                        name="placed_on", alias="placed", visible_to=["viewer"], data_type="date"
+                    ),
+                ],
+            ),
+        )
+        await data_product_repo.set_members(
+            conn, "p", table_ids=[await _table_id(conn)], commands=[]
+        )
+    return db
+
+
+async def _table_id(conn) -> int:
+    return (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+        )
+    ).scalar_one()
+
+
+def _source(*columns: tuple[str, str]):
+    """A reader of the source's columns now, recording what it was asked for."""
+    asked: list[tuple[str, str, str]] = []
+
+    async def read(source_id: str, schema_name: str, table_name: str) -> list[_Listed]:
+        asked.append((source_id, schema_name, table_name))
+        return [_Listed(n, t) for n, t in columns]
+
+    read.asked = asked  # type: ignore[attr-defined]
+    return read
+
+
+async def test_each_offers_contract_on_a_dataset_is_checked_against_its_source(plane, monkeypatch):
+    built = installed(monkeypatch)
+    async with plane.acquire() as conn:
+        await rederive_all(conn, await built.state(conn))
+        dataset = await _table_id(conn)
+        (offer,) = await offers.list_offers(conn, "p")
+        read = _source(("id", "bigint"), ("placed_on", "date"))
+        assert await check_dataset(conn, dataset, read) == {offer["id"]: TypeCheck("pass")}
+        assert read.asked == [("pg", "public", "orders")]
+
+        drifted = await check_dataset(
+            conn, dataset, _source(("id", "bigint"), ("placed_on", "varchar(10)"))
+        )
+    # The column is named as the contract states it: by its alias.
+    assert drifted == {
+        offer["id"]: TypeCheck(
+            "fail", [TypeMismatch(column="placed", declared="date", live="varchar(10)")]
+        )
+    }
+
+
+async def test_a_column_dropped_at_the_source_fails_its_contracts(plane, monkeypatch):
+    built = installed(monkeypatch)
+    async with plane.acquire() as conn:
+        await rederive_all(conn, await built.state(conn))
+        found = await check_dataset(conn, await _table_id(conn), _source(("id", "integer")))
+    (check,) = found.values()
+    assert check.mismatches == [TypeMismatch(column="placed", declared="date", live=None)]
+
+
+async def test_a_dataset_no_offer_contracts_has_no_type_checks(plane):
+    async with plane.acquire() as conn:
+        assert await check_dataset(conn, await _table_id(conn), _source()) == {}

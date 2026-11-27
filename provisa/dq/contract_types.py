@@ -25,12 +25,18 @@ any failing promise check; nothing is re-versioned by it.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+from sqlalchemy import select
 
 if TYPE_CHECKING:
     from provisa.core.models import OfferContract
+
+#: Reads a source table's columns as the source lists them now, each with its ``name`` and
+#: ``data_type``: provisa.api.admin.schema_query.resolve_available_columns_metadata.
+ColumnReader = Callable[[str, str, str], Awaitable[Sequence[Any]]]
 
 #: The built-in check's name, as a contract's promise results list it.
 CONTRACT_TYPE_CHECK = "contract_logical_type"
@@ -107,3 +113,52 @@ def check_contract(contract: "OfferContract", live: Mapping[str, str]) -> TypeCh
     """The check of ``contract``'s current version against its dataset's ``live`` column types,
     keyed by the names its fields carry (a column's SQL alias where one is set)."""
     return check_types(((f.name, f.type) for f in contract.terms.fields), live)
+
+
+async def check_dataset(
+    conn: Any, dataset: int, read_columns: ColumnReader
+) -> dict[int, TypeCheck]:
+    """The check of every offer's contract on ``dataset``, by offer id, against the columns its
+    source lists now (``read_columns``). A field is matched to its live column by the name it is
+    served by: the column's SQL alias where one is set, otherwise its column name."""
+    from provisa.core.models import OfferContract
+    from provisa.core.schema_org import (
+        data_product_offer_contracts,
+        registered_tables,
+        table_columns,
+    )
+
+    contracts = (
+        await conn.execute_core(
+            select(data_product_offer_contracts.c.offer_id, data_product_offer_contracts.c.contract)
+            .where(data_product_offer_contracts.c.table_id == dataset)
+            .order_by(data_product_offer_contracts.c.offer_id)
+        )
+    ).fetchall()
+    if not contracts:
+        return {}
+    table = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.id == dataset)
+        )
+    ).one()
+    served_as = {
+        row.column_name: row.alias or row.column_name
+        for row in (
+            await conn.execute_core(
+                select(table_columns.c.column_name, table_columns.c.alias).where(
+                    table_columns.c.table_id == dataset
+                )
+            )
+        ).fetchall()
+    }
+    listed = await read_columns(table.source_id, table.schema_name, table.table_name)
+    live = {served_as[c.name]: c.data_type for c in listed if c.name in served_as}
+    return {
+        int(row.offer_id): check_contract(OfferContract.model_validate(row.contract), live)
+        for row in contracts
+    }
