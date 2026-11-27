@@ -1,5 +1,5 @@
 {
-  description = "Provisa on NixOS: the host configuration, and the VM the NixOS workflow tests it in";
+  description = "The NixOS workflow's hosts: the CI host (configuration.nix) and the guests it is tested in. A user's host imports the root flake's nixosModules.provisa instead";
 
   # nixos-26.05 at a fixed commit, so every run builds the same system; move it deliberately.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/7c8764b7c7b09b34f632464276218ef9090eaa11";
@@ -7,10 +7,6 @@
   outputs =
     { nixpkgs, ... }:
     {
-      # The host itself: toolchain, nix-ld, Docker, and the provisa service. Reusable on any NixOS
-      # machine (an EC2 instance imports this beside its own hardware module).
-      nixosModules.provisa = ./configuration.nix;
-
       # The same host as a QEMU guest, for .github/workflows/nixos.yml:
       #   nix build path:packaging/nixos#nixosConfigurations.ci.config.system.build.vm
       nixosConfigurations.ci = nixpkgs.lib.nixosSystem {

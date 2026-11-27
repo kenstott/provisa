@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,13 +40,19 @@ check = _check()
 @pytest.fixture
 def sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """A repository with one commit, as the working directory; its sha."""
+    # On NixOS, git lives at /run/current-system/sw/bin/git (not in the FHS
+    # paths below).  Discover git's actual location before we override PATH so
+    # the fixture works on every distro without hard-coding distro paths.
+    # REQ-1900: the NixOS CI workflow must pass its unit-test leg.
+    _git = shutil.which("git") or "/usr/bin/git"
+    _git_dir = str(Path(_git).parent)
     env = {
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@example.com",
         "HOME": str(tmp_path),
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "PATH": f"/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:{_git_dir}",
         "GIT_CONFIG_NOSYSTEM": "1",
     }
 
