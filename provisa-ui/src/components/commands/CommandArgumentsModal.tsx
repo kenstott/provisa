@@ -17,7 +17,7 @@
 import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Button, SegmentedControl, Select, TextInput, Textarea } from "@mantine/core";
+import { Button, Group, Radio, Select, TextInput, Textarea } from "@mantine/core";
 import type { ActionArg } from "../../api/actions";
 import type { SqlNamedTable } from "../../naming";
 import { ModalLayout } from "../modal/ModalLayout";
@@ -202,14 +202,18 @@ export function CommandArgumentsModal({
             <Fragment key={a.name}>
               {sources.length > 1 && (
                 <FormField size="medium">
-                  <SegmentedControl
-                    size="xs"
-                    aria-label={t("commandQuery.givenAs", { name: a.name })}
+                  <Radio.Group
+                    label={t("commandQuery.givenAs", { name: a.name })}
                     value={d.source}
                     onChange={(v) => set(a.name, { source: v as RelationSource })}
-                    data={sources.map((s) => ({ value: s, label: sourceLabels[s] }))}
                     data-testid={`command-arg-${a.name}-source`}
-                  />
+                  >
+                    <Group gap="md" mt={4}>
+                      {sources.map((src) => (
+                        <Radio key={src} value={src} label={sourceLabels[src]} />
+                      ))}
+                    </Group>
+                  </Radio.Group>
                 </FormField>
               )}
               {d.source === "table" && (
