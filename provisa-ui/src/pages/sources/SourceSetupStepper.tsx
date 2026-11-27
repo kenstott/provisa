@@ -10,7 +10,7 @@
 
 // REQ-2234 / REQ-2262: a source's setup, one flow from connecting it to querying it, shown with
 // the same step strip wherever it is reached: right after the source is saved, or later from the
-// source's read view. Connect source, Register tables, Your data, Discover relationships. A step is
+// source's read view. Connect source, Register tables, Review samples, Discover relationships. A step is
 // done once it has an outcome -- recorded per source on the server, shared by every user and
 // environment -- or once it has produced its object (tables registered, a relationship touching
 // them).
@@ -20,9 +20,10 @@
 // a save) the step's content follows the strip and its choices are the panel's command bar (its
 // pinned head, PanelActions): the step's primary action, Skip step where the step may be skipped,
 // and Finish later at the end. Register tables' primary is the form's own Register N tables, and it
-// has no Skip step: the later steps read the tables it registers. Your data has Done (opening the
-// query explorer from it decides it too, recorded before it opens, so returning resumes at the next
-// step) and Skip step. Discover relationships has Create relationships (a review, decided either
+// has no Skip step: the later steps read the tables it registers. Review samples shows each
+// table's first rows as a tab and is done once every tab has been opened, or on Done (its Query it
+// link opens the query explorer, which decides it too, recorded before it opens, so returning
+// resumes at the next step); it has Done and Skip step. Discover relationships has Create relationships (a review, decided either
 // way after a run, found or none found) and Skip step. Finish later closes the flow and keeps what
 // is recorded. With every step decided the strip collapses to one "Setup complete" line with Run
 // setup again; it never reopens on its own, but tables registered since, related to nothing, show
@@ -54,14 +55,14 @@ import { PanelActions } from "../../components/list/SplitPane";
 import { PanelBody, PanelStrip } from "../../components/list/PanelBody";
 import { RelationshipReview } from "../../components/relationships/RelationshipReview";
 import { RegisterTableForm } from "../tables/RegisterTableForm";
-import { YourDataStep } from "../tables/YourDataStep";
+import { ReviewSamplesStep } from "./ReviewSamplesStep";
 import { registeredOf, type Registered } from "../tables/useManyTables";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import type { Relationship, SourceSetupOutcomes } from "../../types/admin";
 
 const CONNECT = 0;
 const REGISTER = 1;
-const YOUR_DATA = 2;
+const REVIEW_SAMPLES = 2;
 const RELATE = 3;
 const COLLAPSED = 4;
 
@@ -153,7 +154,7 @@ export function SourceSetupStepper({
   const setOutcomes = useSetSourceSetupOutcomes();
   // The done step the opened flow shows, gone back to; null shows the current step.
   const [viewing, setViewing] = useState<number | null>(step);
-  // What the registration just made answered: the tables Your data shows and the ones refused.
+  // What the registration just made answered: the tables Review samples shows and the ones refused.
   const [registered, setRegistered] = useState<Registered | null>(null);
   // The tables a review opened from here is scoped to: the source's, or (from the collapsed
   // line's hint) those registered since setup was decided. Null while no review is open.
@@ -184,7 +185,7 @@ export function SourceSetupStepper({
     tablesOutcome === null
       ? REGISTER
       : outcomes.query === null
-        ? YOUR_DATA
+        ? REVIEW_SAMPLES
         : !relatePassed
           ? RELATE
           : COLLAPSED;
@@ -200,7 +201,7 @@ export function SourceSetupStepper({
     setError(null);
     setOutcomes(sourceId, next).then(then, (e: Error) => setError(e.message));
   };
-  /** Your data decided: the steps it passes are recorded as they show. Discover relationships,
+  /** Review samples decided: the steps it passes are recorded as they show. Discover relationships,
    * passed without a decision (nothing to relate, or not permitted), is closed with it. */
   const decideQuery = (query: "opened" | "done" | "skipped", then?: () => void) =>
     record(
@@ -321,15 +322,15 @@ export function SourceSetupStepper({
     else if (open) setViewing(to === active ? null : to);
     else onOpen(to === active ? null : to);
   };
-  const relateNote = shown === YOUR_DATA && relationshipsOutcome === null && relatePassed && (
+  const relateNote = shown === REVIEW_SAMPLES && relationshipsOutcome === null && relatePassed && (
     <Text size="sm" c="dimmed" data-testid="source-setup-relate-note">
       {nothingToRelate
         ? t("sourceSetup.nothingToRelateHint")
         : t("sourceSetup.relateNotAllowedHint")}
     </Text>
   );
-  // The tables Your data shows: those just registered, else the source's own.
-  const yourData: Registered = registered ?? {
+  // The tables Review samples shows: those just registered, else the source's own.
+  const samples: Registered = registered ?? {
     tableIds: own.map((tbl) => tbl.id),
     refused: [],
   };
@@ -338,7 +339,7 @@ export function SourceSetupStepper({
   const current = shown === active;
   const commandBar = open && (
     <PanelActions>
-      {current && shown === YOUR_DATA && (
+      {current && shown === REVIEW_SAMPLES && (
         <>
           <Button onClick={() => decideQuery("done")} data-testid="source-setup-done">
             {t("sourceSetup.done")}
@@ -389,8 +390,8 @@ export function SourceSetupStepper({
                     : undefined,
             },
             {
-              key: "yourData",
-              label: t("sourceSetup.yourData"),
+              key: "reviewSamples",
+              label: t("sourceSetup.reviewSamples"),
               description: outcomes.query === "skipped" ? skippedText : undefined,
             },
             {
@@ -419,11 +420,16 @@ export function SourceSetupStepper({
           <RegisterStep sourceId={sourceId} onRegistered={onRegistered} />
         </div>
       )}
-      {open && shown === YOUR_DATA && relateNote}
+      {open && shown === REVIEW_SAMPLES && relateNote}
       {open &&
-        shown === YOUR_DATA &&
-        (yourData.tableIds.length > 0 || yourData.refused.length > 0 ? (
-          <YourDataStep registered={yourData} role={actingRoles} onOpenQuery={openQuery} />
+        shown === REVIEW_SAMPLES &&
+        (samples.tableIds.length > 0 || samples.refused.length > 0 ? (
+          <ReviewSamplesStep
+            registered={samples}
+            role={actingRoles}
+            onOpenQuery={openQuery}
+            onAllOpened={() => decideQuery("done")}
+          />
         ) : (
           <Text size="sm" c="dimmed">
             {t("sourceSetup.nothingToQueryHint")}
