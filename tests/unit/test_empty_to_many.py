@@ -10,9 +10,8 @@
 
 """A nested field answers what it holds at any depth (#286): a to-one is an object, a to-many
 below a to-one keeps every row, sibling to-many fields are each their own list, and a list field
-with no rows is [] -- whichever way the field is compiled (a correlated JSON value, or a lateral
-join for a field with arguments). Each case runs on DuckDB and on PostgreSQL: a field nested in
-a field nested in a lateral join is a correlated subquery two levels deep."""
+with no rows is [] -- whichever way the field is compiled (a grouped read joined by key, or a
+lateral join for a field with arguments). Each case runs on DuckDB and on PostgreSQL."""
 
 # Requirements: REQ-047, REQ-048
 
@@ -159,16 +158,16 @@ def test_a_list_field_with_no_rows_is_an_empty_list(answer, query, path):
     assert node["edgesOut"] == []
 
 
-def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_joined(meta):  # noqa: F811
+def test_on_trino_the_empty_default_is_an_empty_list_and_the_read_is_joined(meta):  # noqa: F811
     from provisa.transpiler.transpile import transpile_to_trino
 
     _schema, ctx, _con = meta
     root = _compiled(meta, "{ on_terms { id edgesOut { id } } }")
     trino = transpile_to_trino(make_semantic_sql(root.sql, ctx), generated=True)
-    # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
-    assert "_grel_" in trino and "LEFT JOIN" in trino
+    # The field is a grouped read joined by key (#362)...
+    assert "_grel_" not in trino and 'LEFT JOIN (SELECT "t1"."from_term_id" AS "_key0"' in trino
     # ...and its default is the text '[]' its json_format(...) aggregate is compared with.
-    assert "COALESCE(_grel_0._val, '[]')" in trino
+    assert 'COALESCE("t1_read"."_value", \'[]\')' in trino
     assert "CAST('[]' AS JSON)" not in trino
     assert "JSON_PARSE('[]')" not in trino
 

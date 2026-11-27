@@ -527,3 +527,137 @@ def test_an_optional_undirected_path_is_null_where_nothing_matched(selfrel, shap
         selfrel, f"MATCH (a:{label}) OPTIONAL MATCH p = (a)-[r:{rel}]-(b:{label}) RETURN a.id, p"
     )
     assert got == expected
+
+
+# --- a named path's relationships, each as stored ------------------------------------------------
+# Neo4j: a path's relationship starts at the node it leaves and ends at the node it enters,
+# whichever way the pattern traversed it; its identity is the same either way. FK: tables 10 and
+# 11 have SOURCE 1, table 12 SOURCE 2; 11 CHECKS 10. Junction: product 100 has MEMBER_TABLES 10
+# and 12 (and each of them PRODUCT 100); term 1 KIND_OF 2.
+
+
+def _stored_edges(meta, cypher: str) -> list:
+    """Each row's path as its relationships: (start, end, startNode's key, endNode's key,
+    identity) each; None for a null path."""
+    got = []
+    for (p,) in _rows(meta, cypher):
+        path = _json(p)
+        got.append(
+            None
+            if path is None
+            else tuple(
+                (
+                    int(e["start"]),
+                    int(e["end"]),
+                    _node_key(e["startNode"]),
+                    _node_key(e["endNode"]),
+                    e["identity"],
+                )
+                for e in path["edges"]
+            )
+        )
+    return sorted(got, key=repr)
+
+
+def _stored(*edges: tuple) -> tuple:
+    """A path's relationships as stored, from (type, start, end) each."""
+    return tuple((s, e, s, e, f"{t}:{s}-{e}") for t, s, e in edges)
+
+
+_SOURCE_PATHS = [_stored(("SOURCE", 10, 1)), _stored(("SOURCE", 11, 1)), _stored(("SOURCE", 12, 2))]
+_MEMBER_PATHS = [_stored(("MEMBER_TABLES", 100, 10)), _stored(("MEMBER_TABLES", 100, 12))]
+
+_STORED_PATHS = {
+    # Directed, read against the arrow.
+    "fk-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-reversed": (
+        "MATCH p = (b:Meta:RegisteredTables)<-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    "fk-self-reversed": (
+        "MATCH p = (a:Meta:RegisteredTables)<-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [_stored(("CHECKS", 11, 10))],
+    ),
+    "junction-self-reversed": (
+        "MATCH p = (a:Ontology:Terms)<-[:KIND_OF]-(b:Ontology:Terms) RETURN p",
+        [_stored(("KIND_OF", 1, 2))],
+    ),
+    # Undirected, matched from the relationship's end.
+    "fk-undirected": (
+        "MATCH p = (s:Meta:Sources)-[:SOURCE]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-undirected": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    # Undirected over a self-referential type: each relationship matched both ways.
+    "fk-self-undirected": (
+        "MATCH p = (a:Meta:RegisteredTables)-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [_stored(("CHECKS", 11, 10))] * 2,
+    ),
+    "junction-self-undirected": (
+        "MATCH p = (a:Ontology:Terms)-[:KIND_OF]-(b:Ontology:Terms) RETURN p",
+        [_stored(("KIND_OF", 1, 2))] * 2,
+    ),
+    # Variable-length, each way.
+    "fk-varlen-reversed": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE*1..2]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-varlen-undirected": (
+        "MATCH p = (s:Meta:Sources)-[:SOURCE*1..2]-(t:Meta:RegisteredTables) RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "junction-varlen-reversed": (
+        "MATCH p = (b:Meta:RegisteredTables)<-[:MEMBER_TABLES*1..2]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    "junction-varlen-undirected": (
+        "MATCH p = (b:Meta:RegisteredTables)-[:MEMBER_TABLES*1..2]-(a:Meta:DataProducts) RETURN p",
+        _MEMBER_PATHS,
+    ),
+    # OPTIONAL: null where nothing matched.
+    "fk-optional-reversed": (
+        "MATCH (s:Meta:Sources) OPTIONAL MATCH p = (s)<-[:SOURCE]-(t:Meta:RegisteredTables) "
+        "RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-optional-undirected": (
+        "MATCH (s:Meta:Sources) OPTIONAL MATCH p = (s)-[:SOURCE]-(t:Meta:RegisteredTables) "
+        "RETURN p",
+        _SOURCE_PATHS,
+    ),
+    "fk-self-optional-reversed": (
+        "MATCH (a:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (a)<-[:CHECKS]-(b:Meta:RegisteredTables) RETURN p",
+        [None, None, _stored(("CHECKS", 11, 10))],
+    ),
+    "junction-optional-reversed": (
+        "MATCH (b:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (b)<-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        [None, *_MEMBER_PATHS],
+    ),
+    "junction-optional-undirected": (
+        "MATCH (b:Meta:RegisteredTables) "
+        "OPTIONAL MATCH p = (b)-[:MEMBER_TABLES]-(a:Meta:DataProducts) RETURN p",
+        [None, *_MEMBER_PATHS],
+    ),
+    # Two hops, one against the arrow and one along it.
+    "fk-then-junction": (
+        "MATCH p = (s:Meta:Sources)<-[:SOURCE]-(t:Meta:RegisteredTables)"
+        "-[:PRODUCT]->(d:Meta:DataProducts) RETURN p",
+        [
+            _stored(("SOURCE", 10, 1), ("PRODUCT", 10, 100)),
+            _stored(("SOURCE", 12, 2), ("PRODUCT", 12, 100)),
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize(("cypher", "expected"), _STORED_PATHS.values(), ids=_STORED_PATHS.keys())
+def test_a_path_s_relationship_is_as_stored(meta, cypher, expected):
+    assert _stored_edges(meta, cypher) == sorted(expected, key=repr)

@@ -71,7 +71,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "pages/sources/CodeHostPanel.tsx": "<Button> disabled by empty host, port, pairing",
   "pages/sources/KaggleFormSection.tsx": "<Button> disabled by empty token",
   "pages/sources/OpenApiFormSection.tsx": "<Button> disabled by empty openapiSpecPath",
-  "pages/sources/ScriptValidationPanel.tsx": "<Button> disabled by empty script",
   "pages/sources/ServiceNowApisSection.tsx": "<Button> disabled by empty importSet",
   "pages/sql/SqlEditorPanel.tsx":
     "<Button> disabled by empty nlText; <Button> disabled by empty sqlText",
