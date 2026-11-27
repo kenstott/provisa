@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
-import { Button, Modal, Stack, Text } from "@mantine/core";
+import { Button, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { orgSelectionRequired, subscribeOrgSelection } from "../lib/orgSelection";
@@ -30,7 +31,7 @@ export function OrgSelectionPrompt() {
   useEffect(() => subscribeOrgSelection(setRequired), []);
 
   return (
-    <Modal
+    <ModalLayout
       opened={required}
       onClose={() => {
         /* not dismissible: every data request is refused until an org is selected */
@@ -60,6 +61,6 @@ export function OrgSelectionPrompt() {
       ) : (
         <Text data-testid="org-selection-none">{t("orgSelectionPrompt.noMemberships")}</Text>
       )}
-    </Modal>
+    </ModalLayout>
   );
 }

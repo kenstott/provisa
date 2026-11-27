@@ -15,17 +15,9 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Anchor,
-  Button,
-  Checkbox,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  VisuallyHidden,
-} from "@mantine/core";
+import { Alert, Anchor, Button, Checkbox, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
+import { FormFooter } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { BookOpen } from "lucide-react";
 import {
@@ -157,7 +149,7 @@ export function RelatedToReviewModal({
 }) {
   const { t } = useTranslation();
   return (
-    <Modal
+    <ModalLayout
       opened={review.length > 0}
       onClose={onClose}
       title={t("glossaryTab.reviewTitle")}
@@ -207,13 +199,15 @@ export function RelatedToReviewModal({
             ))}
           </Stack>
         ))}
-        <Group justify="space-between">
-          <GroundingGuideLink testId="glossary-review-guide" />
-          <Button variant="default" onClick={onClose} data-testid="glossary-review-close">
-            {t("glossaryTab.reviewClose")}
-          </Button>
-        </Group>
+        <GroundingGuideLink testId="glossary-review-guide" />
+        <FormFooter
+          action={
+            <Button variant="default" onClick={onClose} data-testid="glossary-review-close">
+              {t("glossaryTab.reviewClose")}
+            </Button>
+          }
+        />
       </Stack>
-    </Modal>
+    </ModalLayout>
   );
 }

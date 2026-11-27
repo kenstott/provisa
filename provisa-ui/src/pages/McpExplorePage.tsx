@@ -15,7 +15,8 @@ import { useNavPayload } from "../hooks/useNavPayload";
 import { artifactFromEvent, type ChatMsg as ChatMsgBase } from "../hooks/useMcpChat";
 import { ChatArtifact } from "../components/ChatArtifact";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Loader, Text, TextInput } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import {
   MainContainer,
@@ -257,7 +258,7 @@ function ToolExplain({
     };
   }, [sql, roleId]);
   return (
-    <Modal opened onClose={onClose} size="xl" title={t("mcpExplore.explainTitle")}>
+    <ModalLayout opened onClose={onClose} size="xl" title={t("mcpExplore.explainTitle")}>
       <div data-testid="mcp-explain-panel">
         <Text size="xs" fw={600} mb={4}>
           {t("mcpExplore.explainSent")}
@@ -278,7 +279,7 @@ function ToolExplain({
           <Loader size="sm" />
         )}
       </div>
-    </Modal>
+    </ModalLayout>
   );
 }
 

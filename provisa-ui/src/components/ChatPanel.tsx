@@ -25,7 +25,6 @@ import {
   FileInput,
   Group,
   Loader,
-  Modal,
   Paper,
   Pill,
   TextInput,
@@ -36,6 +35,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import {
   Check,
@@ -446,7 +446,7 @@ export function ChatPanel() {
           </ActionIcon>
         </Tip>
 
-        <Modal
+        <ModalLayout
           opened={unconfiguredReason !== null}
           onClose={() => setUnconfiguredReason(null)}
           title={t("chatPanel.notSetUpTitle")}
@@ -458,20 +458,23 @@ export function ChatPanel() {
               : t("chatPanel.needsVendor")}
           </Text>
           {/* The way on first, at the start; "Not now" follows. */}
-          <Group justify="flex-start">
-            <Button
-              onClick={() => {
-                setUnconfiguredReason(null);
-                navigate("/admin/ai-models");
-              }}
-            >
-              {t("chatPanel.openAiModels")}
-            </Button>
+          <FormFooter
+            action={
+              <Button
+                onClick={() => {
+                  setUnconfiguredReason(null);
+                  navigate("/admin/ai-models");
+                }}
+              >
+                {t("chatPanel.openAiModels")}
+              </Button>
+            }
+          >
             <Button variant="default" onClick={() => setUnconfiguredReason(null)}>
               {t("chatPanel.notNow")}
             </Button>
-          </Group>
-        </Modal>
+          </FormFooter>
+        </ModalLayout>
       </>
     );
   }
@@ -765,7 +768,7 @@ export function ChatPanel() {
           Box (not a sibling rendered after it closes) — position: absolute anchors against the
           nearest POSITIONED ancestor, and rendering it outside the panel meant its ancestor was
           effectively the document, so it covered the whole app regardless of where the panel was
-          docked. A plain overlay Box here, not Mantine's <Modal> (which portals to document.body
+          docked. A plain overlay Box here, not Mantine's <ModalLayout> (which portals to document.body
           and can't be confined to an arbitrary container at all).
           REQ-1843: anchored to the TOP now, not centered — the newest content (the message the
           choice is usually asking about) sits at the BOTTOM, since REQ-1841's auto-scroll follows
@@ -921,7 +924,7 @@ export function ChatPanel() {
         )}
       </Box>
 
-      <Modal
+      <ModalLayout
         opened={confirmState !== null}
         onClose={() => resolveConfirm(false)}
         title={confirmState?.title}
@@ -942,9 +945,13 @@ export function ChatPanel() {
             action={<Button onClick={() => resolveConfirm(true)}>{t("chatPanel.confirm")}</Button>}
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
 
-      <Modal opened={filePrompt !== null} onClose={() => resolveFile(null)} title={filePrompt}>
+      <ModalLayout
+        opened={filePrompt !== null}
+        onClose={() => resolveFile(null)}
+        title={filePrompt}
+      >
         <FormLayout>
           <FormField size="full">
             <FileInput
@@ -967,7 +974,7 @@ export function ChatPanel() {
             }
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

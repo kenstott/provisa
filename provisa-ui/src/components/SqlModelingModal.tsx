@@ -22,7 +22,6 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   NumberInput,
   SegmentedControl,
   Select,
@@ -32,6 +31,7 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { runSql, nlToSql } from "../api/admin";
 import { useViewDomains } from "../lib/viewDomains";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -511,28 +511,16 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   );
 
   return (
-    <Modal
+    <ModalLayout
       opened
       onClose={onClose}
       withCloseButton={false}
       centered
       size="90vw"
-      styles={{
-        content: {
-          height: "90vh",
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        },
-        body: {
-          padding: 0,
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          overflow: "hidden",
-        },
-      }}
+      // The workbench fills the dialog and lays out its own panes, toolbar and scrolling.
+      fill
+      flush
+      styles={{ content: { height: "90vh", maxHeight: "90vh" } }}
     >
       <>
         {/* Header */}
@@ -941,6 +929,6 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
           </div>
         </div>
       </>
-    </Modal>
+    </ModalLayout>
   );
 }

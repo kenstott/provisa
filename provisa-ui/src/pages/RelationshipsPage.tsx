@@ -14,7 +14,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Code2, X, Link2 } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Pagination, Table, Text } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
@@ -1092,7 +1093,7 @@ export function RelationshipsPage() {
 
       {refusal.dialog}
       {tagLoss && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setTagLoss(null)}
           title={tagLossTitle(t, tagLoss.columns, null)}
@@ -1105,7 +1106,7 @@ export function RelationshipsPage() {
             onCarry={() => retryTagLoss({ carry_tags: true })}
             onCancel={() => setTagLoss(null)}
           />
-        </Modal>
+        </ModalLayout>
       )}
     </div>
   );

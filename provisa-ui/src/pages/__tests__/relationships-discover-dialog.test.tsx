@@ -801,17 +801,21 @@ describe("Discovery dialog: its size by what it shows", () => {
 });
 
 describe("Discovery dialog: an ended run's layout", () => {
-  it("puts New run beside Apply, in the action row above the table", async () => {
+  it("puts New run after Apply, in the dialog's fixed button bar below the table", async () => {
     await endedRun();
     const newRun = screen.getByTestId("discover-new-run");
+    // REQ-2277 rule 10: the dialog's actions are in its bar, outside the scrolling content.
+    const bar = within(dialog()).getByTestId("modal-footer-bar");
+    expect(bar).toContainElement(applyButton());
     expect(newRun.parentElement).toBe(applyButton().parentElement);
-    expect(newRun.compareDocumentPosition(applyButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    expect(applyButton().compareDocumentPosition(newRun) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(
-      applyButton().compareDocumentPosition(screen.getByTestId("discover-proposals")) &
+      screen.getByTestId("discover-proposals").compareDocumentPosition(applyButton()) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(dialog().querySelector("[data-modal-scroll]")).not.toContainElement(applyButton());
   });
 
   it("scrolls only the table, beneath its pinned header, in the height the dialog leaves", async () => {
@@ -821,10 +825,10 @@ describe("Discovery dialog: an ended run's layout", () => {
     expect(region).toHaveClass("page-sticky-head");
     expect(region.firstElementChild).toHaveClass("table-scroll");
     expect(within(region).getByTestId("discover-proposals")).toBeInTheDocument();
-    const body = dialog().querySelector(".mantine-Modal-body") as HTMLElement;
-    expect(body.style.display).toBe("flex");
-    expect(body.style.flexDirection).toBe("column");
-    expect(body.style.minHeight).toBe("0px");
+    // The dialog's content fills its height and does not scroll as a whole (ModalLayout `fill`).
+    const scroll = dialog().querySelector("[data-modal-scroll]") as HTMLElement;
+    expect(scroll).toHaveClass("modal-layout__scroll--fill");
+    expect(scroll).toContainElement(region);
     expect(screen.getByTestId("discover-run-block").style.flexShrink).toBe("0");
   });
 
