@@ -47,7 +47,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -1389,16 +1390,21 @@ async def _ensure_row_cache_table(
         runtime._store_broker.ensure_row_cache_table(schema, name, full_columns)
         return None
 
-    from provisa.core.database import create_engine_from_url
+    from provisa.core.database import bounded_connection
     from provisa.core.db import add_missing_columns
     from provisa.federation import store_writer
     from sqlalchemy.schema import CreateSchema
 
-    cache_table = build_row_cache_table(schema, name, columns, (), dialect_name=backend.dialect)
     dsn = engine.engine.materialize_store()
+    store = store_writer.shared_store(dsn)
+    signature = (backend.dialect, tuple(columns))
+    ensured = store.ensured.get((schema, name))
+    if ensured is not None and ensured[0] == signature:
+        return ensured[1]
+    cache_table = build_row_cache_table(schema, name, columns, (), dialect_name=backend.dialect)
     from provisa.federation.replica_guard import require_store_replica_table
 
-    async with store_writer.store_connection(dsn) as conn:
+    async with store_writer.shared_store_connection(dsn) as conn:
         if schema and conn.capabilities.schemas:
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         await require_store_replica_table(conn, schema, name, action="write the row-level replica")
@@ -1408,13 +1414,29 @@ async def _ensure_row_cache_table(
     # CREATE TABLE IF NOT EXISTS alone -- confirmed live (UndefinedColumnError on _row_expires_at
     # against a table created before that column existed). ``add_missing_columns`` also creates
     # the table outright when absent, so this replaces the old CreateTable-only step entirely.
-    reconcile_engine = create_engine_from_url(dsn, pool_size=1)
-    try:
-        with reconcile_engine.begin() as raw_conn:
-            add_missing_columns(raw_conn, [cache_table], schema)
-    finally:
-        reconcile_engine.dispose()
+    with bounded_connection(store.db.engine, begin=True) as raw_conn:
+        add_missing_columns(raw_conn, [cache_table], schema)
+    # Recorded once ensured: a cold keyed read whose table already matches skips the schema/guard
+    # round trip and the reflection (``add_missing_columns``, which also takes the schema's
+    # advisory lock on PostgreSQL). A different column signature re-ensures; a statement that
+    # fails against the table forgets it (``_row_cache_connection``), so the next read re-ensures
+    # a table changed or dropped since.
+    store.ensured[(schema, name)] = (signature, cache_table)
     return cache_table
+
+
+@asynccontextmanager
+async def _row_cache_connection(dsn: str, schema: str, name: str) -> AsyncGenerator[Any]:
+    """A pooled store connection for a statement against the row-cache table ``schema.name``;
+    when the statement fails, the table's ensured entry is forgotten and the error raised."""
+    from provisa.federation import store_writer
+
+    try:
+        async with store_writer.shared_store_connection(dsn) as conn:
+            yield conn
+    except BaseException:
+        store_writer.shared_store(dsn).ensured.pop((schema, name), None)
+        raise
 
 
 async def _ensure_and_read_row_cache(
@@ -1469,10 +1491,8 @@ async def _read_row_cache(
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         return runtime._store_broker.read_row_cache(schema, name, pk_columns, keys)
-    from provisa.federation import store_writer
-
     dsn = engine.engine.materialize_store()
-    async with store_writer.store_connection(dsn) as conn:
+    async with _row_cache_connection(dsn, schema, name) as conn:
         return await _read_cached(conn, cache_table, pk_columns, keys)
 
 
@@ -1567,13 +1587,12 @@ async def _land_row_cache(
             schema, name, full_columns, pk_columns, [_UpsertEvent(r) for r in stamped]
         )
         return
-    from provisa.federation import store_writer
     from provisa.federation.materialize_exec import land_rows
 
     dsn = engine.engine.materialize_store()
     from provisa.federation.replica_guard import require_store_replica_table
 
-    async with store_writer.store_connection(dsn) as conn:
+    async with _row_cache_connection(dsn, schema, name) as conn:
         await require_store_replica_table(conn, schema, name, action="write the row-level replica")
         await land_rows(conn, cache_table, pk_columns, rows, resolved_cache_ttl=reap_horizon)
 
@@ -1595,12 +1614,10 @@ async def _tombstone_row_cache(
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         runtime._store_broker.tombstone_row_cache(schema, name, pk_columns, keys)
         return
-    from provisa.federation import store_writer
-
     dsn = engine.engine.materialize_store()
     from provisa.federation.replica_guard import require_store_replica_table
 
-    async with store_writer.store_connection(dsn) as conn:
+    async with _row_cache_connection(dsn, schema, name) as conn:
         await require_store_replica_table(conn, schema, name, action="write the row-level replica")
         await _tombstone_keys(conn, cache_table, pk_columns, keys)
 

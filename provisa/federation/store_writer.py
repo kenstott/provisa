@@ -25,7 +25,9 @@ effective change_signal (REQ-932) inside this one place.
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.schema import CreateTable, DropTable
@@ -56,7 +58,8 @@ if TYPE_CHECKING:
 async def store_connection(dsn: str) -> AsyncGenerator[Any]:
     """A SQLAlchemy ``Connection`` (the ``StoreConn`` write face) to the relational store ``dsn``.
 
-    Built per landing (landing is on-demand, not hot) and disposed after. This is the ONE place a
+    Built per landing (landing is on-demand, not hot) and disposed after. This and
+    :func:`shared_store_connection` (the row cache's hot keyed path) are the places a
     server-relational store connection for writing is opened; the federation engine never opens one
     for writes. An embedded DuckDB store is written differently — through the engine's own connection,
     since DuckDB is single-writer per file (see ``store_connection.land_duckdb_native``, REQ-989)."""
@@ -68,6 +71,65 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
             yield conn
     finally:
         engine.dispose()
+
+
+# One pooled store handle per DSN for this process, for the row cache's keyed path: it reads the
+# store on every cold key read (ensure, read, re-check under the row lock, land, tombstone), and an
+# engine built and disposed per step opened a new server connection for each. Shared by every org
+# and request thread of the process (its pool is thread-safe); closed at shutdown by
+# :func:`dispose_shared_stores`.
+@dataclass
+class SharedStore:
+    """A store's pooled ``Database`` and the row-cache tables ensured through it.
+
+    ``ensured`` maps (schema, table) to the column signature the table was ensured for and its
+    ``Table`` (``query_residency._ensure_row_cache_table``). It is held with the pool so a store
+    handle closed at shutdown takes its record with it: the next process life ensures afresh."""
+
+    db: Any
+    ensured: dict[tuple[str, str], tuple[Any, Any]] = field(default_factory=dict)
+
+
+_shared: dict[str, SharedStore] = {}
+_shared_lock = threading.Lock()
+
+
+def shared_store(dsn: str) -> SharedStore:
+    """The process's pooled handle over the relational store ``dsn``, built on first use.
+
+    An embedded DuckDB store is refused: it is single-writer per file and written through the
+    engine's own connection (REQ-989); a pooled connection kept here would hold its file."""
+    from sqlalchemy import make_url
+
+    from provisa.core.database import Database, create_engine_from_url
+
+    if make_url(dsn).get_backend_name() == "duckdb":
+        raise ValueError(
+            "a DuckDB store is written through the engine's own connection (REQ-989), "
+            "never through a pooled store handle"
+        )
+    with _shared_lock:
+        store = _shared.get(dsn)
+        if store is None:
+            store = SharedStore(Database(create_engine_from_url(dsn), name="materialize"))
+            _shared[dsn] = store
+        return store
+
+
+@asynccontextmanager
+async def shared_store_connection(dsn: str) -> AsyncGenerator[Any]:
+    """A connection (the ``StoreConn`` write face) checked out of :func:`shared_store`'s pool."""
+    async with shared_store(dsn).db.acquire() as conn:
+        yield conn
+
+
+def dispose_shared_stores() -> None:
+    """Close every pooled store handle this process opened (its shutdown)."""
+    with _shared_lock:
+        held = list(_shared.values())
+        _shared.clear()
+    for store in held:
+        store.db.engine.dispose()
 
 
 async def table_exists(store_dsn: str, *, schema: str, table: str) -> bool:

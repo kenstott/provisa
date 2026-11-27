@@ -376,7 +376,6 @@ _DIRECT_ENGINE: dict[str, str] = {
     "provisa/core/schema_create.py": "an org schema's DDL",
     "provisa/discovery/catalog_cache.py": "the catalog cache table's DDL",
     "provisa/executor/drivers/sqlalchemy_driver.py": "a source's own database (data plane)",
-    "provisa/federation/query_residency.py": "a replica's reconcile (data plane)",
     "provisa/federation/replica_locks.py": "a lock",
     "provisa/federation/replica_target.py": "a replica's rows (data plane)",
     "provisa/federation/singlestore_kafka.py": "a pipeline in the engine (data plane)",
