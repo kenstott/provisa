@@ -184,3 +184,67 @@ describe("GrpcPage — a body handed with the method", () => {
     expect(sent).toEqual([]);
   });
 });
+
+// REQ-1159 (amended 2026-11-27): a command's Query it line hands over the command's call: the
+// command is selected with the body it was handed, run at once for a read, left for Run for a write.
+describe("GrpcPage — a command's call handed over", () => {
+  const calls: unknown[] = [];
+  const COMMANDS = [
+    { name: "enrich_grpc_set", description: null, arguments: [{ name: "input", type: "String" }] },
+  ];
+  const body = { name: "enrich_grpc_set", args: { input: [{ id: 1 }] } };
+
+  beforeEach(() => {
+    calls.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.startsWith("/data/proto/")) return new Response(PROTO, { status: 200 });
+        if (u.startsWith("/data/grpc-commands/")) {
+          return new Response(JSON.stringify(COMMANDS), { status: 200 });
+        }
+        if (u.startsWith("/data/grpc-command/")) calls.push(JSON.parse(String(init?.body)));
+        return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+      }),
+    );
+  });
+
+  function opened(autoRun: boolean) {
+    render(
+      <MantineProvider>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: "/grpc",
+              state: { grpcCommand: "enrich_grpc_set", grpcBody: body, autoRun },
+            },
+          ]}
+        >
+          <GrpcPage />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+  }
+
+  it("selects the command with the handed body and runs a read", async () => {
+    opened(true);
+    await waitFor(() =>
+      expect(calls).toEqual([{ name: "enrich_grpc_set", args_json: JSON.stringify(body.args) }]),
+    );
+    const read = await readScreen(1000);
+    if (typeof read === "string") throw new Error(read);
+    expect(read.inputs?.method).toBe("enrich_grpc_set");
+  });
+
+  it("selects a write's call and leaves it for Run", async () => {
+    opened(false);
+    await waitFor(async () => {
+      const read = await readScreen(1000);
+      if (typeof read === "string") throw new Error(read);
+      expect(read.inputs?.method).toBe("enrich_grpc_set");
+      expect(JSON.parse(String(read.inputs?.body))).toEqual(body);
+    });
+    expect(calls).toEqual([]);
+  });
+});

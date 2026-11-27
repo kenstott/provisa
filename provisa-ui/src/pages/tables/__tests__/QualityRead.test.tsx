@@ -105,6 +105,15 @@ describe("QualityRead", () => {
     expect(screen.getByTestId("table-read-checker-22")).toHaveTextContent("—");
   });
 
+  it("links the profiler to its source on the Sources page", () => {
+    const profiled = { ...TABLE, profilerSourceId: "demo-profiler" } as RegisteredTable;
+    render(<QualityRead table={profiled} source={{ id: "pg", type: "postgresql" } as Source} />);
+    expect(screen.getByRole("link", { name: "demo-profiler" })).toHaveAttribute(
+      "href",
+      "/sources?expanded=demo-profiler",
+    );
+  });
+
   it("says no checker scans a table none does", () => {
     render(<QualityRead table={TABLE} source={{ id: "pg", type: "postgresql" } as Source} />);
     expect(screen.getByTestId("table-read-checkers")).toHaveTextContent("—");

@@ -127,6 +127,10 @@ class SourceTypeDescriptor:
     note: str = ""
     mapping_json: tuple[str, ...] = field(default=())
     federation_hints: tuple[str, ...] = field(default=())
+    #: REQ-2234: whether its tables are registered through the setup flow (Connect source,
+    #: Register tables, Your data, Discover relationships). False for a source whose tables
+    #: Provisa itself produces: its detail shows only its own tabs.
+    setup_flow: bool = True
 
 
 # ---------------------------------------------------------------------------------------------
@@ -308,6 +312,9 @@ FILE_SOURCES: frozenset[str] = frozenset({"sqlite", "csv", "parquet"})
 NO_CONNECTION_TYPES: frozenset[str] = frozenset(
     {"ingest", "dbt", "data_profiler", "node", "python", "go", "rust", "spark"}
 )
+#: REQ-2234: the types whose tables Provisa itself produces, so none is registered through the
+#: setup flow.
+NO_SETUP_FLOW_TYPES: frozenset[str] = frozenset({"data_profiler", "great_expectations", "soda"})
 DATA_LAKE: frozenset[str] = frozenset({"delta_lake", "iceberg", "hive", "hive_s3"})
 #: A file source whose path may name an object store, read with that store's credentials.
 CLOUD_FILE_TYPES: frozenset[str] = frozenset({"csv", "parquet", "sqlite", "duckdb"})
@@ -1104,6 +1111,7 @@ def _descriptor(
         federation_hints=tuple(
             dict.fromkeys(f.name for f in fields if f.at == "federationHintsJson")
         ),
+        setup_flow=offer.name not in NO_SETUP_FLOW_TYPES,
     )
 
 

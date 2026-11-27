@@ -289,8 +289,8 @@ def test_pip_download_adds_the_release_pages_index_to_the_configured_one(monkeyp
     # REQ-294 (2026-11-22): provisa-duckdb-ext comes from the release's Pages index, added as an
     # extra index; no --index-url, so pip's own configuration still serves the third-party wheels.
     at = ran[0].index("--extra-index-url")
-    assert ran[0][at + 1] == "https://kenstott.github.io/provisa/simple/"
-    assert stage_duckdb_extensions.RELEASE_INDEX == "https://kenstott.github.io/provisa/simple/"
+    assert ran[0][at + 1] == "https://pkgs.provisa.dev/simple/"
+    assert stage_duckdb_extensions.RELEASE_INDEX == "https://pkgs.provisa.dev/simple/"
     assert not any(arg.startswith("--index-url") or arg == "-i" for arg in ran[0])
 
 

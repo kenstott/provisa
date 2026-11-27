@@ -42,7 +42,7 @@ from typing import Any
 from sqlglot import exp
 from sqlglot.dialects.postgres import Postgres
 from sqlglot.time import format_time
-from sqlglot.tokens import TokenType
+from sqlglot.tokens import Token, TokenType
 from sqlglot.trie import new_trie
 
 from provisa.transpiler import interval_input
@@ -170,11 +170,10 @@ def _reads_qualified_calls(parser: type) -> None:
     parser._parse_column_ops = _parse_column_ops
 
 
-def _pg_json_object(self: Any) -> exp.Expr:
-    """json_object of an array (``'{...}'``, ``ARRAY[...]``) as PostgreSQL's call; any other as
-    sqlglot reads SQL's."""
-    current, following = self._curr, self._next
-    of_array = current is not None and (
+def of_array(current: Token | None, following: Token | None) -> bool:
+    """Whether json_object's arguments, beginning ``current`` then ``following``, are of an array
+    (``'{...}'``, ``ARRAY[...]``): the call is PostgreSQL's, read as a plain call."""
+    return current is not None and (
         (current.token_type == TokenType.STRING and current.text.startswith("{"))
         or (
             current.token_type == TokenType.ARRAY
@@ -182,7 +181,12 @@ def _pg_json_object(self: Any) -> exp.Expr:
             and following.token_type == TokenType.L_BRACKET
         )
     )
-    if of_array:
+
+
+def _pg_json_object(self: Any) -> exp.Expr:
+    """json_object of an array (``'{...}'``, ``ARRAY[...]``) as PostgreSQL's call; any other as
+    sqlglot reads SQL's."""
+    if of_array(self._curr, self._next):
         return exp.Anonymous(
             this="json_object", expressions=self._parse_csv(self._parse_assignment)
         )

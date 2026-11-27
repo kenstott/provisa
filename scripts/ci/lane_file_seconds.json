@@ -42,6 +42,7 @@
   "tests/integration/test_bolt_multi_statement.py": 19.0,
   "tests/integration/test_bolt_rel_ids.py": 0.1,
   "tests/integration/test_bolt_server.py": 0.0,
+  "tests/integration/test_boot_keeps_matching_replicas_e2e.py": 120.0,
   "tests/integration/test_bootstrap_claimant_data_plane.py": 1.5,
   "tests/integration/test_bootstrap_status.py": 5.0,
   "tests/integration/test_built_in_source_reseed.py": 115.4,
@@ -787,6 +788,7 @@
   "tests/integration/test_demo_spark_cluster_e2e.py": 240.0,
   "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0,
   "tests/integration/test_node_tags_served.py": 30.0,
-  "tests/integration/test_relationship_fields_on_engines.py": 120.0
+  "tests/integration/test_relationship_fields_on_engines.py": 120.0,
+  "tests/integration/test_claim_root_data_role.py": 63.7
  }
 }

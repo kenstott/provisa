@@ -1229,6 +1229,24 @@ CREATE TABLE IF NOT EXISTS glossary_term_refs (
     UNIQUE (command_name, column_name),
     CONSTRAINT glossary_term_refs_one_owner CHECK ((table_id IS NULL) <> (command_name IS NULL))
 );
+-- A table that predates command refs: the column, a nullable table_id, the command's key and the
+-- one-owner rule.
+ALTER TABLE glossary_term_refs ADD COLUMN IF NOT EXISTS command_name TEXT;
+ALTER TABLE glossary_term_refs ALTER COLUMN table_id DROP NOT NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'glossary_term_refs'::regclass
+                     AND conname = 'glossary_term_refs_command_name_column_name_key') THEN
+        ALTER TABLE glossary_term_refs ADD CONSTRAINT glossary_term_refs_command_name_column_name_key
+            UNIQUE (command_name, column_name);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'glossary_term_refs'::regclass
+                     AND conname = 'glossary_term_refs_one_owner') THEN
+        ALTER TABLE glossary_term_refs ADD CONSTRAINT glossary_term_refs_one_owner
+            CHECK ((table_id IS NULL) <> (command_name IS NULL));
+    END IF;
+END $$;
 
 -- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
 -- instance of. A table has at most one class term (its class_term_id); a term may ground many.
@@ -2124,6 +2142,56 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
         CHECK ((table_id IS NULL) <> (command_name IS NULL)),
     CONSTRAINT profiler_classifications_run_of_table CHECK ((run_id IS NULL) = (table_id IS NULL))
 );
+-- A table that predates command classifications: it was keyed on (table_id, physical_column, kind)
+-- with table_id and run_id required. Add the surrogate id and command_name, keep the old key as a
+-- unique constraint, move the primary key to id, then relax the two columns and add the owner rules.
+ALTER TABLE profiler_classifications ADD COLUMN IF NOT EXISTS id SERIAL;
+ALTER TABLE profiler_classifications ADD COLUMN IF NOT EXISTS command_name TEXT;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_table_id_physical_column_kind_key') THEN
+        ALTER TABLE profiler_classifications
+            ADD CONSTRAINT profiler_classifications_table_id_physical_column_kind_key
+            UNIQUE (table_id, physical_column, kind);
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint c
+        WHERE c.conrelid = 'profiler_classifications'::regclass AND c.contype = 'p'
+          AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                          WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+                            AND a.attname = 'id')
+    ) THEN
+        ALTER TABLE profiler_classifications DROP CONSTRAINT profiler_classifications_pkey;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass AND contype = 'p') THEN
+        ALTER TABLE profiler_classifications ADD PRIMARY KEY (id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_command_name_physical_column_kind_key') THEN
+        ALTER TABLE profiler_classifications
+            ADD CONSTRAINT profiler_classifications_command_name_physical_column_kind_key
+            UNIQUE (command_name, physical_column, kind);
+    END IF;
+END $$;
+ALTER TABLE profiler_classifications ALTER COLUMN table_id DROP NOT NULL;
+ALTER TABLE profiler_classifications ALTER COLUMN run_id DROP NOT NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_one_owner') THEN
+        ALTER TABLE profiler_classifications ADD CONSTRAINT profiler_classifications_one_owner
+            CHECK ((table_id IS NULL) <> (command_name IS NULL));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_run_of_table') THEN
+        ALTER TABLE profiler_classifications ADD CONSTRAINT profiler_classifications_run_of_table
+            CHECK ((run_id IS NULL) = (table_id IS NULL));
+    END IF;
+END $$;
 
 -- REQ-2278: a column rule keyed on a tag or a classification kind, never both: for one role (and the
 -- roles descending from it) every column carrying the key -- a table's or a command's output

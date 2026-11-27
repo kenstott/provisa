@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{surface}} में {{name}}",
+    "linkLabel": "{{surface}} में {{name}} कॉल करें",
+    "open": "खोलें",
+    "givenAs": "{{name}} कैसे दिया जाता है",
+    "sourceTable": "टेबल",
+    "sourceQuery": "क्वेरी",
+    "sourceRows": "पंक्तियाँ",
+    "tableHint": "एक टेबल जिसे आप पढ़ सकते हैं; उसकी पहली {{cap}} पंक्तियाँ भेजी जाती हैं।",
+    "queryHint": "उसकी पहली {{cap}} पंक्तियाँ भेजी जाती हैं।",
+    "rowsHint": "CSV जिसकी पहली पंक्ति कॉलमों के नाम देती है, या ऑब्जेक्ट्स का JSON ऐरे; अधिकतम {{cap}} पंक्तियाँ।",
+    "missing": "नहीं दिया गया: {{names}}",
+    "notNumber": "{{name}} कोई संख्या नहीं है",
+    "notBoolean": "{{name}} न true है न false",
+    "notJson": "{{name}} JSON नहीं है",
+    "notRows": "{{name}}: ऐसा CSV पेस्ट करें जिसकी पहली पंक्ति कॉलमों के नाम देती है, या ऑब्जेक्ट्स का JSON ऐरे",
+    "overCap": "{{name}}: अधिकतम {{cap}} पंक्तियाँ",
+    "notReadable": "{{name}}: चुनी गई टेबल ऐसी नहीं है जिसे आप पढ़ सकते हैं"
+  }
+}
