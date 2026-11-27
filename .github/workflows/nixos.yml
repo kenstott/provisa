@@ -348,9 +348,23 @@ jobs:
         with:
           phase: prime
 
+  # The zaychik image the core services start, primed once (.github/actions/zaychik-image): a lane
+  # that built it asked Maven Central for its Maven plugins and got 429.
+  zaychik-image:
+    name: Zaychik image
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+
   lane:
     name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
-    needs: [plan, trino-plugins]
+    needs: [plan, trino-plugins, zaychik-image]
     if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout }}
@@ -381,6 +395,18 @@ jobs:
             uv sync --frozen --extra dev
             uv pip install -e "provisa-client/[dev]" -q
           '
+
+      # The runner holds the tarball the restore leaves in ~/zaychik-image; the guest's own docker
+      # loads it, so the core services find zaychik:latest and build nothing.
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
+      - name: Load the zaychik image in the guest
+        run: |
+          scp -F "$PROVISA_VM_SSH_CONFIG" ~/zaychik-image/zaychik.tar vm:zaychik.tar
+          packaging/nixos/vm-run 'docker load -i ~/zaychik.tar && rm ~/zaychik.tar'
 
       - name: Stack slots in the guest
         run: |
