@@ -183,7 +183,11 @@ function ResponseCacheTab() {
     (tbl) => tbl.sourceId !== "provisa-admin" && tbl.sourceId !== "provisa-otel",
   );
   const filtered = userTables.filter((tbl) =>
-    matchesQuery([tbl.alias || tbl.tableName, tbl.domainId], tableSearch),
+    // Every text a table's row shows.
+    matchesQuery(
+      [tbl.alias || tbl.tableName, tbl.domainId, String(entriesByTable.get(tbl.id) ?? 0)],
+      tableSearch,
+    ),
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(tablePage, totalPages - 1);
@@ -255,6 +259,10 @@ function ResponseCacheTab() {
           </Group>
           <SortGroupTable
             testPrefix="cache-tables"
+            testId="cache-tables-list"
+            emptyTestId="cache-tables-empty"
+            // The list shows only once there are tables: an empty one is the filter's.
+            empty={t("cacheManager.response.noMatch")}
             rows={filtered}
             columns={[
               {

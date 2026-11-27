@@ -8,6 +8,7 @@
     "none_data_catalog": "データカタログはまだありません。",
     "none_ontology": "オントロジーはまだありません。",
     "none_custom": "カスタムシステムはまだありません。",
+    "noMatch": "フィルターに一致するエントリはありません。",
     "addEntry": "追加",
     "newEntry": "新規",
     "duplicateCredentialsNote": "{{id}} の認証情報はコピーされません。ここで入力してください。",

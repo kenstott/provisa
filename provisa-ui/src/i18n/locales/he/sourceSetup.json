@@ -4,7 +4,7 @@
     "connect": "חיבור מקור",
     "register": "רישום טבלאות",
     "relate": "גילוי קשרים",
-    "query": "שאילתה",
+    "yourData": "הנתונים שלך",
     "tablesCount_one": "טבלה {{count}}",
     "tablesCount_other": "{{count}} טבלאות",
     "registerHint": "יש לרשום את הטבלאות של מקור זה כדי לתשאל אותן.",
@@ -25,6 +25,8 @@
     "runAgain": "הפעל הגדרה שוב",
     "nothingToQueryHint": "אין טבלאות רשומות לשאילתה.",
     "newTablesHint_one": "לטבלה {{count}} שנרשמה מאז ההגדרה אין קשר.",
-    "newTablesHint_other": "ל-{{count}} טבלאות שנרשמו מאז ההגדרה אין קשר."
+    "newTablesHint_other": "ל-{{count}} טבלאות שנרשמו מאז ההגדרה אין קשר.",
+    "yourDataAction": "הצג את הנתונים שלך",
+    "finishLater": "סיים מאוחר יותר"
   }
 }

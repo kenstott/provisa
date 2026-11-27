@@ -3,6 +3,7 @@
     "help": "可推送代码源构建镜像的注册表，用于在远程主机上运行。每个字段可填写值，或 ${secret:registry_token} 这样的密钥引用。没有注册表时，构建的镜像会改为下载。",
     "add": "添加容器注册表",
     "none": "没有容器注册表。构建的镜像仍可下载。",
+    "noMatch": "没有符合筛选条件的容器注册表。",
     "address": "注册表和命名空间",
     "addressHelp": "注册表（如有端口则带端口）以及推送镜像所用的仓库命名空间，例如 ghcr.io/example 或 registry.example.com:5000/data。",
     "username": "用户名",

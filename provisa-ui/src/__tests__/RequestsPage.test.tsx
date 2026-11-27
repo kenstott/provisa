@@ -17,6 +17,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { MantineProvider } from "@mantine/core";
 import i18n from "../i18n";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 // REQ-2216: the page offers the org's delivery setting to a holder of org_settings.
 const auth = vi.hoisted(() => ({ capabilities: [] as string[] }));
@@ -173,6 +174,25 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     expect(screen.getByTestId("requests-waiting-3")).toBeInTheDocument();
     expect(screen.queryByTestId("requests-waiting-1")).toBeNull();
     expect(screen.queryByTestId("requests-waiting-4")).toBeNull();
+  });
+
+  it("finds each request by every text its row shows", async () => {
+    serve(() => json({}));
+    page();
+    await row(1);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("requests-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    serve(() => json({}));
+    page();
+    await row(1);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-request" } });
+    expect(screen.getByTestId("requests-empty")).toHaveTextContent(
+      "No pending requests matching filter.",
+    );
   });
 
   it("shows which domains each request still waits on", async () => {

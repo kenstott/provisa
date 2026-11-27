@@ -6,6 +6,8 @@
 
 // REQ-2071: Explore's Data Science area. The Python tab runs code in a Web Worker on the Pyodide the
 // provisa-notebook package serves at /pyodide, reading Provisa as the page's user (bridge.ts).
+import { hasNoStatement } from "../lib/noStatement";
+import { NoQueryMessage } from "../components/NoQueryMessage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -616,10 +618,19 @@ function PythonTab({
     };
   }, [makeWorker]);
 
+  // The last run had no code in the editor: the output pane says so.
+  const [noQuery, setNoQuery] = useState(false);
+
   const run = useCallback(
     async (source: string = code, runId: string | null = null, tab: string = activeScript.id) => {
       const w = worker.current;
       if (w === null || status !== "ready") return;
+      // No code in the editor (blank, or comments alone): said in the output pane, nothing run.
+      if (hasNoStatement(source, "python")) {
+        setNoQuery(true);
+        return;
+      }
+      setNoQuery(false);
       setStatus("running");
       // The identity is read at the moment of the run: a rotated token or a newly picked role,
       // org or environment is what the code reads as.
@@ -639,6 +650,8 @@ function PythonTab({
     if (request === null || !request.autoRun || request.seq === ranRequest.current) return;
     if (status === "ready") {
       ranRequest.current = request.seq;
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         a handed run is the run: its state (running, or no code to run) is set when it starts */
       void run(request.code, request.runId, requestTab ?? activeScript.id);
     } else if (status === "missing" || status === "failed") {
       ranRequest.current = request.seq;
@@ -740,7 +753,10 @@ function PythonTab({
                 // One editor per script: its own document and undo history, shown as switched to.
                 key={activeScript.id}
                 value={code}
-                onChange={setCode}
+                onChange={(v) => {
+                  setNoQuery(false);
+                  setCode(v);
+                }}
                 theme={theme}
                 height="100%"
                 style={{ height: "100%" }}
@@ -791,6 +807,7 @@ function PythonTab({
                   <Code block>{failure}</Code>
                 </Alert>
               )}
+              {noQuery && <NoQueryMessage testId="data-science-no-query" />}
               {output !== null && <RunOutput output={output} />}
             </Box>
           </ResultPanel>

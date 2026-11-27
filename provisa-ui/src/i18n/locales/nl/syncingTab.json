@@ -8,6 +8,7 @@
     "none_data_catalog": "Nog geen datacatalogi.",
     "none_ontology": "Nog geen ontologieën.",
     "none_custom": "Nog geen aangepaste systemen.",
+    "noMatch": "Geen items komen overeen met het filter.",
     "addEntry": "Toevoegen",
     "newEntry": "Nieuw",
     "duplicateCredentialsNote": "De credentials van {{id}} worden niet gekopieerd: voer ze hier in.",

@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const auth = vi.hoisted(() => ({
   loading: false,
@@ -301,6 +302,26 @@ describe("the Platform page", () => {
     fireEvent.click(await screen.findByTestId("platform-section-stores"));
     expect(await screen.findByTestId("platform-redis-panel")).toBeInTheDocument();
     expect(screen.getByTestId("platform-materialize-panel")).toBeInTheDocument();
+  });
+
+  it("finds each region by every text its row shows", async () => {
+    fetchPlatform.mockResolvedValue({ ...PLATFORM, regions: [EU_REGION, US_REGION] });
+    render(<PlatformRegionsTab title="Admin — Platform" />);
+    await screen.findByTestId("platform-region-row-us");
+    await expectFilterFindsEveryCell(screen.getByTestId("platform-regions-filter"), () =>
+      screen.getByTestId("platform-regions-table"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<PlatformRegionsTab title="Admin — Platform" />);
+    await screen.findByTestId("platform-region-row-eu");
+    fireEvent.change(screen.getByTestId("platform-regions-filter"), {
+      target: { value: "no-such-region" },
+    });
+    expect(screen.getByTestId("platform-regions-empty")).toHaveTextContent(
+      "No regions match the filter.",
+    );
   });
 
   it("lists the regions with their purposes explained and says changes apply on restart", async () => {

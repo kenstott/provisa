@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { NoQueryMessage } from "../../components/NoQueryMessage";
 import { columnLabel } from "../../lib/columnKeys";
 import type { ResultRedirect } from "../../types/resultRedirect";
 import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
@@ -35,6 +36,8 @@ interface ResultsPanelProps {
   /** The last run was stopped before it answered: the results say so, and show nothing it held. */
   stopped?: boolean;
   resultError: string;
+  /** The last run had no statement in the editor: nothing was sent. */
+  noQuery?: boolean;
   /** The result was landed in the results store and is there, not in the grid. */
   resultRedirect?: ResultRedirect | null;
   resultRows: Record<string, unknown>[];
@@ -64,6 +67,7 @@ export function ResultsPanel({
   running,
   stopped = false,
   resultError,
+  noQuery = false,
   resultRedirect = null,
   resultRows,
   rowsPartial = false,
@@ -176,6 +180,8 @@ export function ResultsPanel({
           >
             {t("common.stopped")}
           </div>
+        ) : noQuery ? (
+          <NoQueryMessage testId="sql-no-query" />
         ) : resultRedirect ? (
           <ResultRedirectNotice redirect={resultRedirect} />
         ) : resultError ? (

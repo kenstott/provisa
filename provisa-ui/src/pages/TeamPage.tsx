@@ -336,7 +336,17 @@ export function TeamPage() {
     },
   ];
   const shownMembers = members.filter((m) =>
-    matchesQuery([m.display_name, m.email, m.user_id, m.provider], search),
+    // Every text a member's row shows, and the id it is known by.
+    matchesQuery(
+      [
+        m.display_name,
+        m.email,
+        m.user_id,
+        m.provider,
+        m.is_org_admin ? t("teamPage.yes") : t("teamPage.no"),
+      ],
+      search,
+    ),
   );
   const memberSortGroup = useListSortGroup(shownMembers, memberColumns, "team-members");
   const inviteSortGroup = useListSortGroup(invites, inviteColumns, "team-invites");
@@ -553,7 +563,12 @@ export function TeamPage() {
                 />
                 <Table.Tbody>
                   {shownMembers.length === 0 && (
-                    <ListEmpty colSpan={3}>{t("teamPage.noMembers")}</ListEmpty>
+                    <ListEmpty colSpan={3} testId="team-members-empty">
+                      {/* A list a filter emptied says so. */}
+                      {members.length === 0
+                        ? t("teamPage.noMembers")
+                        : t("teamPage.noMembersMatch")}
+                    </ListEmpty>
                   )}
                   <ListItems
                     state={memberSortGroup}

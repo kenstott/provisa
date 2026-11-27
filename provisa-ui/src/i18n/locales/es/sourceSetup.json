@@ -4,7 +4,7 @@
     "connect": "Conectar origen",
     "register": "Registrar tablas",
     "relate": "Descubrir relaciones",
-    "query": "Consultar",
+    "yourData": "Sus datos",
     "tablesCount_one": "{{count}} tabla",
     "tablesCount_other": "{{count}} tablas",
     "registerHint": "Registre las tablas de este origen para consultarlas.",
@@ -25,6 +25,8 @@
     "runAgain": "Volver a ejecutar la configuración",
     "nothingToQueryHint": "No hay tablas registradas para consultar.",
     "newTablesHint_one": "{{count}} tabla registrada desde la configuración no tiene relación.",
-    "newTablesHint_other": "{{count}} tablas registradas desde la configuración no tienen relación."
+    "newTablesHint_other": "{{count}} tablas registradas desde la configuración no tienen relación.",
+    "yourDataAction": "Ver sus datos",
+    "finishLater": "Terminar más tarde"
   }
 }

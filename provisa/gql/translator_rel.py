@@ -31,7 +31,9 @@ from provisa.gql.ir import (
 )
 from provisa.gql.label_map import NodeMapping, RelationshipMapping
 from provisa.gql.translator_helpers import (
+    EitherWay,
     _is_bwd_for_candidate,
+    either_way_joins,
     _join_alias,
     _make_rel_joins,
     via_alias_for,
@@ -88,6 +90,16 @@ def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
     )
 
 
+def _either_way(clause: MatchClause, candidates: list) -> bool:
+    """REQ-348 (amended 2026-11-26): an OPTIONAL undirected hop whose two candidates are one
+    self-referential relationship read each way is one outer join matching either direction
+    (either_way_joins), not two UNION branches."""
+    if not clause.optional or len(candidates) != 2:
+        return False
+    (first, first_bwd), (second, second_bwd) = candidates
+    return first is second and first.source_label == first.target_label and first_bwd != second_bwd
+
+
 def _refuse_optional_branches(clause: MatchClause, candidates: list) -> None:
     """An OPTIONAL hop that reaches several relationships has no form here: each is its own UNION
     branch of LEFT JOINs, so a row with none of them would come back once per relationship, and a
@@ -129,6 +141,9 @@ class _RelJoinMixin:  # mixin for _Translator
         _optional_rel_vars: set[str]
         #: An OPTIONAL relationship between two nodes the statement holds: where it matched (#303).
         _rel_var_matched: dict[str, exp.Expression]
+        #: A relationship matched either way by one outer join (REQ-348): where it matched
+        #: forward, and backward.
+        _rel_var_forward_when: dict[str, EitherWay]
         #: The conditions of relationships between two nodes the statement holds, which join no
         #: table (#303): the WHERE of the statement _build_from_joins builds the FROM of.
         _held_end_conditions: list[exp.Expression]
@@ -754,7 +769,9 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
-        _refuse_optional_branches(clause, candidates)
+        either_way = _either_way(clause, candidates)
+        if not either_way:
+            _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
@@ -808,6 +825,22 @@ class _RelJoinMixin:  # mixin for _Translator
             join_type,
             rel.variable,
         )
+        if either_way:
+            other_rm, other_bwd = candidates[1]
+            other_joins = _make_rel_joins(
+                other_rm,
+                other_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
+            )
+            primary_joins, forward_when = either_way_joins(primary_joins, other_joins)
+            if rel.variable:
+                self._rel_var_forward_when[rel.variable] = forward_when
+            candidates = candidates[:1]
         self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
         held_before = list(self._lateral_conditions)

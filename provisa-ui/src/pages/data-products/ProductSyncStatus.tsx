@@ -17,7 +17,7 @@ import { Badge, Stack, Text } from "@mantine/core";
 import type { ProductSyncStatus } from "../../api/syncing";
 import { EntityPageLink } from "../../components/EntityLink";
 import { TipSurface } from "../../components/Tip";
-import { syncHref, syncState } from "./productSync";
+import { syncHref, syncLabel, syncState } from "./productSync";
 
 export function ProductSyncCell({
   productId,
@@ -32,11 +32,10 @@ export function ProductSyncCell({
   if (state === "none") {
     return (
       <Text size="xs" c="dimmed" data-testid={testId}>
-        {t("dataProductsTab.syncNone")}
+        {syncLabel(statuses, t)}
       </Text>
     );
   }
-  const failed = statuses.filter((s) => s.outcome === "failed").length;
   const when = (iso: string) =>
     new Date(iso).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" });
   return (
@@ -60,9 +59,7 @@ export function ProductSyncCell({
       <span>
         <EntityPageLink href={syncHref(productId)} testId={testId}>
           <Badge size="sm" variant="light" color={state === "failed" ? "red" : "green"}>
-            {state === "failed"
-              ? t("dataProductsTab.syncFailed", { count: failed })
-              : t("dataProductsTab.syncSynced", { count: statuses.length })}
+            {syncLabel(statuses, t)}
           </Badge>
         </EntityPageLink>
       </span>

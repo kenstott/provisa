@@ -18,6 +18,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { MutationResult, Source } from "../../types/admin";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
@@ -163,6 +164,36 @@ describe("the Sources list's search", () => {
     expect(screen.getByTestId("sources-row-sales-pg")).toBeInTheDocument();
     expect(screen.getByTestId("sources-row-events")).toBeInTheDocument();
   });
+
+  it("finds each source by every text its row shows", async () => {
+    SOURCES = [
+      source({ cacheTtl: 120 }),
+      source({
+        id: "events",
+        type: "kafka",
+        host: "broker",
+        port: 9092,
+        database: "stream",
+        cacheEnabled: false,
+        withdrawn: true,
+        gqlNamingConvention: "snake_case",
+      }),
+    ];
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("sources-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-source" } });
+    expect(await screen.findByTestId("sources-empty")).toHaveTextContent(
+      "No sources match the filter.",
+    );
+  });
 });
 
 // REQ-1921: a withdrawn source is marked in the list, and its panel offers Put back.
@@ -294,8 +325,8 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     await userEvent.click(screen.getByTestId("sources-submit"));
     await waitFor(() => expect(createSource).toHaveBeenCalled());
     expect(createSource.mock.calls[0][0]).toMatchObject({ id: "crm", type: "postgresql" });
-    // REQ-2234: the panel opens first on registering its tables; skipping that step closes it.
-    await userEvent.click(await screen.findByTestId("register-tables-skip"));
+    // REQ-2234: the panel opens first on the source's setup; Finish later leaves it for the read.
+    await userEvent.click(await screen.findByTestId("source-setup-finish-later"));
     // Its detail, read: the source is saved, so nothing is offered to save.
     const read = await within(panel()!).findByTestId("source-read");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("crm");
@@ -348,7 +379,8 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     );
     // A step in the source's own panel, not a dialog over the page.
     expect(panel()).toContainElement(screen.getByTestId("register-tables-field"));
-    expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
+    expect(panel()).toContainElement(screen.getByTestId("source-setup-skip-tables"));
+    expect(panel()).toContainElement(screen.getByTestId("source-setup-finish-later"));
   });
 });
 

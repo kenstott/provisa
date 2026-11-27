@@ -9,6 +9,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { hasNoStatement } from "../lib/noStatement";
+import { NoQueryMessage } from "../components/NoQueryMessage";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useScreenInputs } from "../mcp/screenState";
@@ -299,6 +301,8 @@ export function GrpcPage() {
   const [response, setResponse] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  // The last run had no request in the body editor: the response pane says so.
+  const [noQuery, setNoQuery] = useState(false);
   // REQ-1361 picker: group-by columns + restricted agg funcs for Query{Type}Aggregate/GroupBy.
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
@@ -537,6 +541,14 @@ export function GrpcPage() {
 
   const handleRun = useCallback(async () => {
     if (!selectedMethod || !roleId) return;
+    // No request in the body editor (blank): said in the response pane, nothing sent.
+    if (hasNoStatement(messageText, "json")) {
+      setNoQuery(true);
+      setError("");
+      setResponse("");
+      return;
+    }
+    setNoQuery(false);
     if (selectedMethod.operation === "mutation") {
       setError("Mutation RPCs are not yet supported via the HTTP proxy.");
       return;
@@ -812,7 +824,10 @@ export function GrpcPage() {
           <GrpcCodeView
             language="json"
             value={messageText}
-            onChange={setMessageText}
+            onChange={(v) => {
+              setNoQuery(false);
+              setMessageText(v);
+            }}
             editablePlaceholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
             data-testid="grpc-body-editor"
           />
@@ -839,6 +854,7 @@ export function GrpcPage() {
             )
           }
         >
+          {noQuery && <NoQueryMessage testId="grpc-no-query" />}
           <GrpcCodeView
             language="json"
             value={response}

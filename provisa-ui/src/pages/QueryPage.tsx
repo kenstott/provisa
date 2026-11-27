@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback, useState, useMemo, useEffect } from "react";
+import { hasNoStatement } from "../lib/noStatement";
+import { useRef, useCallback, useState, useMemo, useEffect, type RefObject } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import {
@@ -595,6 +596,25 @@ function StopQuery() {
   );
 }
 
+/** Where a run with no statement in the editor says so: the response pane, as Stop says "Stopped"
+ *  there. The fetcher (which sends nothing for such a run) calls what is set here. */
+function NoQueryResponse({ saidRef }: { saidRef: RefObject<(() => void) | null> }) {
+  const { t } = useTranslation();
+  const responseEditor = useGraphiQL((s) => s.responseEditor);
+  const { updateActiveTabValues } = useGraphiQLActions();
+  useEffect(() => {
+    saidRef.current = () => {
+      const text = t("common.noQuery");
+      responseEditor?.setValue(text);
+      updateActiveTabValues({ response: text });
+    };
+    return () => {
+      saidRef.current = null;
+    };
+  }, [saidRef, responseEditor, updateActiveTabValues, t]);
+  return null;
+}
+
 /** Opens a new GraphiQL tab holding a query handed to the page, and runs it when asked.
  *  Mounted once per hand-off (keyed by the caller), whether the page was just opened or was
  *  already open. */
@@ -823,6 +843,8 @@ export function QueryPage() {
     onRedirect: setRedirectResult,
   };
 
+  const noQuerySaidRef = useRef<(() => void) | null>(null);
+  const saidNoQuery = useCallback(() => noQuerySaidRef.current?.(), []);
   const fetcher = useMemo((): Fetcher | null => {
     if (roleHeader === null) return null;
     const roleId = roleHeader;
@@ -830,6 +852,13 @@ export function QueryPage() {
        latest-value ref intentionally passed to the fetch wrapper; it is dereferenced per-request inside createProvisaFetch, never during render */
     const provisaFetch = createProvisaFetch(settingsRef);
     return (request, opts) => {
+      // No statement in the editor (blank, or comments alone): the response says so, nothing is sent.
+      if (hasNoStatement(request.query ?? "", "graphql")) {
+        return (async function* () {
+          saidNoQuery();
+          yield* [];
+        })();
+      }
       // The response this run shows is kept with this query.
       noteRun(request.query ?? "");
       // Each run its own controller: GraphiQL's stop aborts this run's request, and no other.
@@ -930,7 +959,7 @@ export function QueryPage() {
 
       return stoppable(answers(), controller);
     };
-  }, [roleHeader]);
+  }, [roleHeader, saidNoQuery]);
 
   const provisaPlugin = useMemo(() => {
     if (roleHeader === null) return null;
@@ -961,6 +990,8 @@ export function QueryPage() {
     [],
   );
 
+  /* eslint-disable-next-line react-hooks/refs --
+     the fetcher reads noQuerySaidRef at run time, inside saidNoQuery, never during render */
   if (!role || !fetcher || !plugins)
     return (
       <ExploreShell testId="query-page" className="query-page">
@@ -1090,6 +1121,7 @@ export function QueryPage() {
             {({ prettify, merge, copy }) => (
               <>
                 <StopQuery />
+                <NoQueryResponse saidRef={noQuerySaidRef} />
                 {prettify}
                 {merge}
                 {copy}

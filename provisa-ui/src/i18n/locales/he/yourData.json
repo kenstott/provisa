@@ -11,7 +11,6 @@
     "mcp": "קריאה לכלי MCP",
     "copy": "העתקת {{what}}",
     "close": "סגירה",
-    "createRelationships": "יצירת קשרים",
     "relationshipsCreated_one": "נוצר {{count}} קשר.",
     "relationshipsCreated_other": "נוצרו {{count}} קשרים."
   }

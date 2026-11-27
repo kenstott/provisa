@@ -53,6 +53,8 @@ vi.mock("../../../api/syncing", async (importOriginal) => ({
 }));
 
 import { ContextHealthPage } from "../ContextHealthPage";
+import { StewardshipSummary } from "../../../components/admin/StewardshipSummary";
+import { expectFilterFindsEveryCell } from "../../../test-utils/listFilter";
 import { blankEntry } from "../../../api/syncing";
 
 const term = (
@@ -310,6 +312,14 @@ describe("the stewardship summary's three lists", () => {
     render(<ContextHealthPage />);
     const scroll = await screen.findByTestId(`${list}-scroll`);
     expect(scroll).toHaveStyle({ height: "280px", overflowY: "auto" });
+  });
+
+  it.each(LISTS)("%s finds each term by every text its row shows", async (list) => {
+    render(<StewardshipSummary canEdit={false} onApproved={() => {}} />);
+    await screen.findByTestId(list);
+    await expectFilterFindsEveryCell(screen.getByTestId(`${list}-filter`), () =>
+      screen.getByTestId(list),
+    );
   });
 
   it("narrows each list by its own filter, kept in the URL", async () => {

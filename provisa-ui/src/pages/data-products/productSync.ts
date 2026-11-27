@@ -13,6 +13,7 @@
 // to the product, drawn as a link only for a viewer holding that page's right.
 
 import { useEffect, useState } from "react";
+import type { TFunction } from "i18next";
 import { fetchProductSyncStatus, type ProductSyncStatus } from "../../api/syncing";
 
 /** Context Sync narrowed to the product `id`. */
@@ -25,6 +26,17 @@ export type SyncState = "synced" | "failed" | "none";
 export function syncState(statuses: ProductSyncStatus[]): SyncState {
   if (statuses.length === 0) return "none";
   return statuses.some((s) => s.outcome === "failed") ? "failed" : "synced";
+}
+
+/** What a product's sync cell shows: its state, with the count of entries it names. */
+export function syncLabel(statuses: ProductSyncStatus[], t: TFunction): string {
+  const state = syncState(statuses);
+  if (state === "none") return t("dataProductsTab.syncNone");
+  return state === "failed"
+    ? t("dataProductsTab.syncFailed", {
+        count: statuses.filter((s) => s.outcome === "failed").length,
+      })
+    : t("dataProductsTab.syncSynced", { count: statuses.length });
 }
 
 /** The order the list sorts the column in: failures first, then synced, then not synced. */

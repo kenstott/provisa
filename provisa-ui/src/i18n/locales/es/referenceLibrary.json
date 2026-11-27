@@ -34,6 +34,7 @@
     "addTitle": "Añadir un documento",
     "loading": "Cargando la biblioteca de referencia...",
     "empty": "La biblioteca aún no contiene documentos.",
+    "noMatch": "Ningún documento coincide con el filtro.",
     "detailPanel": "Detalles del documento",
     "colTitle": "Título",
     "colSource": "Origen",

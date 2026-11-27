@@ -194,6 +194,7 @@
     "colGqlAlias": "Псевдоним GQL",
     "colSteward": "Стюард",
     "noDomains": "Домены не определены",
+    "noDomainsMatch": "Нет доменов, соответствующих фильтру",
     "deleteDomain": "Удалить домен {{id}}",
     "resolveSteward": "Показать, кто курирует домен {{id}}",
     "pageIndicator": "Страница {{page}} / {{total}}",

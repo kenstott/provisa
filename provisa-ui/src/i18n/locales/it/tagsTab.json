@@ -48,6 +48,7 @@
     "colAssignments": "Assegnazioni",
     "colActions": "Azioni",
     "empty": "Nessun tag per questo ambito",
+    "noMatch": "Nessun tag corrisponde al filtro",
     "systemTag": "Tag di sistema (sola lettura)",
     "editTag": "Modifica tag {{id}}",
     "deleteTag": "Elimina tag {{id}}",

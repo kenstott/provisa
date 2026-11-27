@@ -22,6 +22,7 @@
     "colProvider": "Sign-in",
     "colOrgAdmin": "Org admin",
     "noMembers": "No members yet.",
+    "noMembersMatch": "No members match the filter.",
     "yes": "Yes",
     "no": "No",
     "promote": "Make org admin",

@@ -381,7 +381,6 @@ export function SqlEditorPanel({
             size="xs"
             leftSection={<Play size={11} />}
             onClick={handleRun}
-            disabled={!sqlText.trim()}
             data-testid="sql-run"
             style={{ flexShrink: 0 }}
           >

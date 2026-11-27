@@ -74,32 +74,11 @@ import { useResizableSize } from "../hooks/useResizableSize";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
 import { Tip, TipSurface } from "./Tip";
 import { ChatArtifact } from "./ChatArtifact";
+import { adminRequestSent, serverToolRan } from "../mcp/pollyWrites";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
 const DEFAULT_WIDTH = 360;
-
-// REQ-1845: every server tool (REQ-1835) that mutates the glossary — used to decide whether to
-// dispatch "provisa:glossary-changed" so an already-open Glossary admin page (REST-backed, never
-// GraphQL) refreshes itself.
-const GLOSSARY_TOOL_NAMES = new Set([
-  "create_glossary_term",
-  "update_glossary_term",
-  "delete_glossary_term",
-  "add_glossary_term_edge",
-  "remove_glossary_term_edge",
-  // REQ-2130: a term grounded in a table, or let go of it.
-  "ground_glossary_term_to_table",
-  "unground_glossary_term_from_table",
-  // REQ-2144: a term's status, which the Ontology page's Status filter reads.
-  "approve_glossary_term",
-  "deprecate_glossary_term",
-  "retire_glossary_term",
-  "restore_glossary_term",
-  // REQ-2145: a term's tags.
-  "tag_glossary_term",
-  "untag_glossary_term",
-]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
 // showcase distinct real capabilities (catalog search, subscription sources, page awareness, the
@@ -328,11 +307,10 @@ export function ChatPanel() {
     pendingFileResolveRef.current = null;
   };
 
-  const onServerToolResult = (name: string) => {
-    if (GLOSSARY_TOOL_NAMES.has(name)) {
-      window.dispatchEvent(new CustomEvent("provisa:glossary-changed"));
-    }
-  };
+  const onServerToolResult = (name: string) => serverToolRan(name);
+  // A change sent through admin_request refreshes what it changed, as runAdminMutation's does.
+  const changed = (path: string) =>
+    adminRequestSent(path, () => void apolloClient.refetchQueries({ include: "active" }));
 
   const {
     messages,
@@ -348,8 +326,9 @@ export function ChatPanel() {
     detach,
   } = useMcpChat(
     roleId,
-    { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile },
-    location.pathname,
+    { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile, changed },
+    // The route with its query: a page's open object is in it (the Ontology page's ?term=<id>).
+    `${location.pathname}${location.search}`,
     onServerToolResult,
   );
 
@@ -751,7 +730,9 @@ export function ChatPanel() {
                 withRemoveButton
                 disabled={busy}
                 onRemove={() => detach(a.id)}
-                removeButtonProps={{ "aria-label": t("chatPanel.removeAttachment", { name: a.name }) }}
+                removeButtonProps={{
+                  "aria-label": t("chatPanel.removeAttachment", { name: a.name }),
+                }}
                 data-testid="chat-panel-attachment"
               >
                 {a.name}
