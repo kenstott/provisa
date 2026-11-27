@@ -85,7 +85,13 @@ runs:
         qemu=$!
         for _ in $(seq 1 60); do
           if ssh -F "$PROVISA_VM_SSH_CONFIG" -o ConnectTimeout=5 vm true 2>/dev/null; then
-            ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'nixos-version; nproc; free -g; df -h /'
+            ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'nixos-version; nproc; free -g; df -h /; swapon --show'
+            # vm-guest.nix gives the guest swap; a guest without it is a broken image, not a lane's
+            # memory problem (run 45997449404 booted with none, and the kernel killed ClickHouse).
+            if [ -z "$(ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'swapon --show --noheadings')" ]; then
+              echo "the guest has no swap: vm-guest.nix swapDevices did not reach the VM"
+              exit 1
+            fi
             exit 0
           fi
           if ! kill -0 "$qemu" 2>/dev/null; then break; fi

@@ -253,11 +253,15 @@ def test_the_guests_store_writes_go_to_its_disk_not_to_memory():
 def test_the_guest_has_the_memory_and_swap_of_an_ubuntu_runner():
     """The kernel killed clickhouse-server for memory in core 2/21, beside Trino's 5 GB heap (run
     45940557737); an Ubuntu runner has 16 GB and 4 GB of swap. The guest's 12 GB and 8 GB of swap
-    make the same 20 GB."""
+    make the same 20 GB. qemu-vm.nix empties swapDevices at mkVMOverride (priority 10), so a
+    plain definition never reached the VM (run 45997449404 booted with no swap); priority 9 does,
+    and the boot step refuses a guest without swap."""
     guest = (_NIXOS / "vm-guest.nix").read_text()
     assert "memorySize = 12288;" in guest
-    swap = guest.split("virtualisation.vmVariant.swapDevices = [", 1)[1].split("];", 1)[0]
-    assert re.search(r"^\s*size = 8192;$", swap, flags=re.M)
+    swap = guest.split("virtualisation.vmVariant.swapDevices = lib.mkOverride 9 [", 1)[1]
+    assert re.search(r"^\s*size = 8192;$", swap.split("];", 1)[0], flags=re.M)
+    boot = (_ROOT / ".github" / "actions" / "nixos-vm" / "action.yml").read_text()
+    assert "swapon --show --noheadings" in boot
 
 
 def test_the_package_names_a_runtime_directory_its_sandbox_accepts():

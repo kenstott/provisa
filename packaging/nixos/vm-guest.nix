@@ -1,7 +1,7 @@
 # A NixOS host as a QEMU guest on a GitHub-hosted runner (.github/actions/nixos-vm): what every
 # guest the NixOS workflow boots has, whichever host it is. The host names the user the workflow
 # logs in as, with the key the workflow writes beside the host's flake.
-{ ... }:
+{ lib, ... }:
 {
   # A hosted runner's zone. NixOS declares none by default, and a library that looks for the
   # host's zone then warns on stderr, ahead of the output a test reads from a process it starts.
@@ -17,7 +17,10 @@
   # QEMU and the runner: 20 GB in all, as there. Without it Trino's 5 GB heap, kept after its text
   # search tests, and ClickHouse's own text search left the guest out of memory, and the kernel
   # killed clickhouse-server mid-test (run 45940557737, core 2/21).
-  virtualisation.vmVariant.swapDevices = [
+  # qemu-vm.nix empties swapDevices at mkVMOverride (priority 10) whenever the VM uses its default
+  # file systems, which beats a plain definition and mkForce (50): run 45997449404 booted with
+  # "Swap: 0" and the kernel killed clickhouse-server again. Priority 9 is the one that wins.
+  virtualisation.vmVariant.swapDevices = lib.mkOverride 9 [
     {
       device = "/var/lib/swapfile";
       size = 8192;
