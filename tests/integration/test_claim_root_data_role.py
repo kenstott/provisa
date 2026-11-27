@@ -135,11 +135,15 @@ async def root_boot():
 
         from tests.conftest import as_deployment_org
 
+        # The deployment org's engine is bound to trino BEFORE the lifespan, as the boot does it
+        # (REQ-1266): the lifespan's provision_infra connects the Zaychik Arrow Flight transport
+        # for whichever engine is bound then, so a later swap leaves flight_client unset.
+        with as_deployment_org():
+            if getattr(state.federation_engine.engine, "name", None) != "trino":
+                state.federation_engine = EngineRuntime(build_engine(), state)
+
         app = create_app()
         async with app.router.lifespan_context(app):
-            with as_deployment_org():
-                if getattr(state.federation_engine.engine, "name", None) != "trino":
-                    state.federation_engine = EngineRuntime(build_engine(), state)
             await _unclaimed_slot_and_account(state)
             before = {"org_id": state.org_id, "assets": await _root_assets(state)}
 
