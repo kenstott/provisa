@@ -159,6 +159,7 @@ import {
 import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
 import { SourceSetupStepper } from "./sources/SourceSetupStepper";
+import { PanelBody, PanelStrip } from "../components/list/PanelBody";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
@@ -1593,7 +1594,6 @@ export function SourcesPage() {
                 ? handleGraphqlRegister
                 : handleCreate
       }
-      style={{ margin: 0 }}
     >
       <FormIdentifiers>
         <FormField size="medium">
@@ -1699,117 +1699,119 @@ export function SourcesPage() {
   const panelBody: React.ReactNode =
     working ??
     (showForm && !editingSourceId ? (
-      <FormLayout
-        component="form"
-        id="sources-new-form"
-        data-tour="sources-form"
-        className="form-card"
-        onSubmit={
-          form.type === "dbt"
-            ? handleDbtRegister
-            : carrierOf(form.type) === "openapi"
-              ? handleOpenapiRegister
-              : form.type === "grpc"
-                ? handleGrpcRegister
-                : carrierOf(form.type) === "graphql"
-                  ? handleGraphqlRegister
-                  : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
-                    // "Add Dataset" button (each file needs its own createSource+registerTable
-                    // call, not one createSource for a single "kaggle" type — which does not
-                    // exist as a SourceType) — the outer submit has nothing of its own to do.
-                    form.type === "kaggle"
-                    ? (e: React.FormEvent) => e.preventDefault()
-                    : handleCreate
-        }
-      >
-        <FormIdentifiers>
-          <FormField size="medium">
-            <TextInput
-              label={t("sourcesPage.idLabel")}
-              required
-              value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
-              placeholder={t("sourcesPage.idPlaceholder")}
-              data-testid="sources-id-input"
-            />
-          </FormField>
-          <FormField size="long">
-            <label>
-              {t("sourcesPage.typeLabel")}
-              <select
-                className="form-select"
-                data-tour="sources-type"
-                data-testid="sources-type-select"
-                value={form.type}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
-                // dialog instead of the long native list. The select still holds the value, so
-                // setting it programmatically (selectOption) works unchanged.
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setTypePickerOpen(true);
-                }}
-                // A click that was not preceded by a mouse press (the guided tour's) opens it too.
-                onClick={() => setTypePickerOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+      <PanelBody>
+        <FormLayout
+          component="form"
+          id="sources-new-form"
+          data-tour="sources-form"
+          className="form-card"
+          onSubmit={
+            form.type === "dbt"
+              ? handleDbtRegister
+              : carrierOf(form.type) === "openapi"
+                ? handleOpenapiRegister
+                : form.type === "grpc"
+                  ? handleGrpcRegister
+                  : carrierOf(form.type) === "graphql"
+                    ? handleGraphqlRegister
+                    : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
+                      // "Add Dataset" button (each file needs its own createSource+registerTable
+                      // call, not one createSource for a single "kaggle" type — which does not
+                      // exist as a SourceType) — the outer submit has nothing of its own to do.
+                      form.type === "kaggle"
+                      ? (e: React.FormEvent) => e.preventDefault()
+                      : handleCreate
+          }
+        >
+          <FormIdentifiers>
+            <FormField size="medium">
+              <TextInput
+                label={t("sourcesPage.idLabel")}
+                required
+                value={form.id}
+                onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
+                placeholder={t("sourcesPage.idPlaceholder")}
+                data-testid="sources-id-input"
+              />
+            </FormField>
+            <FormField size="long">
+              <label>
+                {t("sourcesPage.typeLabel")}
+                <select
+                  className="form-select"
+                  data-tour="sources-type"
+                  data-testid="sources-type-select"
+                  value={form.type}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  // REQ-1938: clicking the field, or opening it from the keyboard, shows the picker
+                  // dialog instead of the long native list. The select still holds the value, so
+                  // setting it programmatically (selectOption) works unchanged.
+                  onMouseDown={(e) => {
                     e.preventDefault();
                     setTypePickerOpen(true);
-                  }
-                }}
+                  }}
+                  // A click that was not preceded by a mouse press (the guided tour's) opens it too.
+                  onClick={() => setTypePickerOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " " || (e.altKey && e.key === "ArrowDown")) {
+                      e.preventDefault();
+                      setTypePickerOpen(true);
+                    }
+                  }}
+                >
+                  {typeSelectData().map((group) => (
+                    <optgroup
+                      key={group.group}
+                      label={t(`sourceTypePicker.categories.${group.group}`)}
+                    >
+                      {group.items.map((item) => (
+                        <option key={item.value} value={item.value} disabled={item.disabled}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            </FormField>
+          </FormIdentifiers>
+          {duplicateOf?.credentialsLeft && (
+            <FormField size="full">
+              <Alert
+                color="yellow"
+                variant="light"
+                py={4}
+                px="sm"
+                data-testid="sources-duplicate-note"
               >
-                {typeSelectData().map((group) => (
-                  <optgroup
-                    key={group.group}
-                    label={t(`sourceTypePicker.categories.${group.group}`)}
-                  >
-                    {group.items.map((item) => (
-                      <option key={item.value} value={item.value} disabled={item.disabled}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          </FormField>
-        </FormIdentifiers>
-        {duplicateOf?.credentialsLeft && (
-          <FormField size="full">
-            <Alert
-              color="yellow"
-              variant="light"
-              py={4}
-              px="sm"
-              data-testid="sources-duplicate-note"
-            >
-              {t("sourcesPage.duplicateCredentialsNote", { source: duplicateOf.source })}
-            </Alert>
-          </FormField>
-        )}
-        <SourceTypePicker
-          opened={typePickerOpen}
-          onClose={() => setTypePickerOpen(false)}
-          groups={typeSelectData()}
-          value={form.type}
-          onPick={handleTypeChange}
-        />
-        {/* Only what a source needs in order to exist; the rest is set in the edit form the
+                {t("sourcesPage.duplicateCredentialsNote", { source: duplicateOf.source })}
+              </Alert>
+            </FormField>
+          )}
+          <SourceTypePicker
+            opened={typePickerOpen}
+            onClose={() => setTypePickerOpen(false)}
+            groups={typeSelectData()}
+            value={form.type}
+            onPick={handleTypeChange}
+          />
+          {/* Only what a source needs in order to exist; the rest is set in the edit form the
             new source opens in. */}
-        <SourceFormFields {...sourceFormFieldsProps} essential />
-        {/* The same two actions, in the same place and order, as the edit form below: Save first,
+          <SourceFormFields {...sourceFormFieldsProps} essential />
+          {/* The same two actions, in the same place and order, as the edit form below: Save first,
             Cancel beside it, at the start of the row and as wide as their labels. A Kaggle source
             is created by its own section's button, so it gets Cancel alone. */}
-        <FormFooter
-          panel
-          submit={form.type !== "kaggle"}
-          form="sources-new-form"
-          saving={submitting}
-          onCancel={handleCancelForm}
-          saveProps={{ "data-testid": "sources-submit" }}
-          cancelProps={{ "data-testid": "sources-cancel" }}
-        />
-      </FormLayout>
+          <FormFooter
+            panel
+            submit={form.type !== "kaggle"}
+            form="sources-new-form"
+            saving={submitting}
+            onCancel={handleCancelForm}
+            saveProps={{ "data-testid": "sources-submit" }}
+            cancelProps={{ "data-testid": "sources-cancel" }}
+          />
+        </FormLayout>
+      </PanelBody>
     ) : selectedSource ? (
       ((s: Source) => {
         const shown = shownSourceSections(s.type, formSections);
@@ -1821,7 +1823,7 @@ export function SourcesPage() {
           </FormSections>
         );
         return (
-          <>
+          <PanelBody>
             {/* While the form is open the panel's head is the form's: its Save and Cancel. */}
             {editingSourceId !== s.id && sourceActions(s)}
             {related?.sourceId === s.id && (
@@ -1836,19 +1838,23 @@ export function SourcesPage() {
               </Alert>
             )}
             {editingSourceId !== s.id && (
-              <SourceSetupStepper
-                sourceId={s.id}
-                outcomes={s.setupOutcomes}
-                open={false}
-                step={null}
-                // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
-                onConnect={() => handleEdit(s)}
-                onOpen={(step) => setSetup({ sourceId: s.id, step })}
-                onClose={() => setSetup(null)}
-                onRelated={(count) => setRelated({ sourceId: s.id, count })}
-              />
+              <PanelStrip>
+                <SourceSetupStepper
+                  sourceId={s.id}
+                  outcomes={s.setupOutcomes}
+                  open={false}
+                  step={null}
+                  // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
+                  onConnect={() => handleEdit(s)}
+                  onOpen={(step) => setSetup({ sourceId: s.id, step })}
+                  onClose={() => setSetup(null)}
+                  onRelated={(count) => setRelated({ sourceId: s.id, count })}
+                />
+              </PanelStrip>
             )}
-            <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
+            <PanelStrip>
+              <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
+            </PanelStrip>
             {inView === "tables" && <SourceTablesList sourceId={s.id} tables={registeredTables} />}
             {inView === "operations" && <SourceOperations sourceId={s.id} type={s.type} />}
             {editingSourceId === s.id ? (
@@ -1891,7 +1897,7 @@ export function SourcesPage() {
                 }}
               />
             )}
-          </>
+          </PanelBody>
         );
       })(selectedSource)
     ) : null);
