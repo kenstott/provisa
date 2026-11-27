@@ -43,8 +43,8 @@ def test_each_demo_is_built_by_the_action_and_published_with_the_runs_own_token(
     build = next(s for s in steps if s.get("uses") == "./.github/actions/demo-bundle")
     assert build["with"] == {"demo": "${{ matrix.demo }}"}
     publish = next(s for s in steps if "demo_bundle.py push" in s.get("run", ""))
-    assert publish["env"]["PROVISA_DEMO_REGISTRY_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
-    assert publish["env"]["REGISTRY"] == "https://ghcr.io/${{ github.repository_owner }}"
+    assert publish["env"]["PROVISA_DEMO_REGISTRY_TOKEN"] == "${{ secrets.GHCR_ORG_TOKEN }}"
+    assert publish["env"]["REGISTRY"] == "https://ghcr.io/simpleishard-llc"
 
 
 def test_the_plan_builds_only_the_published_demos_a_push_changed():

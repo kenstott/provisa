@@ -271,4 +271,4 @@ def test_the_image_is_pushed_after_every_leg_and_before_what_names_it() -> None:
     assert "connector push spark-connector-image" in push["run"]
     assert "--config provisa/core/platform_connectors.yaml --name spark" in push["run"]
     assert "--registry-password-env REGISTRY_PASSWORD" in push["run"]
-    assert push["env"] == {"REGISTRY_PASSWORD": "${{ secrets.GITHUB_TOKEN }}"}
+    assert push["env"] == {"REGISTRY_PASSWORD": "${{ secrets.GHCR_ORG_TOKEN }}"}

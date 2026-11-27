@@ -107,7 +107,7 @@ A published demo is not built on your laptop. Its authors built it once, with it
 
 - **Pin a version.** `./start-ui-install.sh --demo weblogs@<version>` pulls that version, and the same one every time.
 - **Build from the checkout.** `--from-source` runs the checkout's `demo/named/weblogs/` through the build-everything path described under [A named demo](#a-named-demo): the shop, nginx and the traffic generator all start. It is for demo authors. Combining it with `@<version>` is refused.
-- **Pull from another registry.** Set `PROVISA_DEMO_REGISTRY`. Bundles come from `ghcr.io/kenstott/provisa-demos` otherwise.
+- **Pull from another registry.** Set `PROVISA_DEMO_REGISTRY`. Bundles come from `ghcr.io/simpleishard-llc/provisa-demos` otherwise.
 
 A bundled demo runs only what reading it needs: its run-time compose file, `docker-compose.run.yml`. For `weblogs` that is the shop database, loaded from the dump in the bundle. The shop, nginx and the traffic generator do not run; the logs they wrote are in the bundle. Without `--keep-data`, a start removes and reloads the run-time database. The bundle's logs are never emptied.
 

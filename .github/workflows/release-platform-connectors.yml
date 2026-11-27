@@ -74,7 +74,7 @@ jobs:
           uv run provisa connector build "https://github.com/${GITHUB_REPOSITORY}.git" \
             --name spark --ref "$VERSION" --commit "$GITHUB_SHA" --path connectors/spark \
             --build-command "python3 connectors/spark/_build_client.py" \
-            --image ghcr.io/kenstott/provisa-spark-connector --arch amd64 \
+            --image ghcr.io/simpleishard-llc/provisa-spark-connector --arch amd64 \
             --oci-layout spark-connector-image > block.yaml
           uv run python scripts/fill_platform_connectors.py block.yaml
 
