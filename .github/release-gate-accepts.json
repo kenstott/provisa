@@ -3,18 +3,48 @@
   "commits": {
     "e91b2b4de1719f6f0af11990ec3f09480f59d0d9": {
       "tested_sha": "e91b2b4de1719f6f0af11990ec3f09480f59d0d9",
-      "runs": [46034806005, 46034809201],
+      "runs": [
+        46034806005,
+        46034809201
+      ],
       "reason": "spark script validation test fixture (fix/r513-spark-unit): unit and lint"
     },
     "c90ed48a80a2236cf6710660ece726cba1ef3d2f": {
       "tested_sha": "c90ed48a80a2236cf6710660ece726cba1ef3d2f",
-      "runs": [46042439750, 46042618731, 46042621817],
+      "runs": [
+        46042439750,
+        46042618731,
+        46042621817
+      ],
       "reason": "graph-session listener stop and Oracle warm-up (fix/r513-integ-two): integration, unit and lint"
     },
     "1a5c90427f4dcdd450810c411e9530abb2671121": {
       "tested_sha": "eac074b604177224d91beb6b14ce603d187759a2",
-      "runs": [46049146200],
+      "runs": [
+        46049146200
+      ],
       "reason": "roadmap generator scripts/gen_roadmap.py and its test, merged at eac074b604: unit"
+    },
+    "e2b5e6dfad93c0f3581d3b8468435a37dafc72c3": {
+      "tested_sha": "82521b867fb62b710398ef256c99f7e24c617212",
+      "runs": [
+        46057666982
+      ],
+      "reason": "setup.sh dev toolchain check (scripts/dev_prereqs.py): tests/unit/test_dev_prereqs_script.py"
+    },
+    "4140f422973a727eca2281ab2ed82529a7cf2515": {
+      "tested_sha": "82521b867fb62b710398ef256c99f7e24c617212",
+      "runs": [
+        46057666982
+      ],
+      "reason": "setup.sh macOS without Homebrew (scripts/dev_prereqs.py): tests/unit/test_dev_prereqs_script.py"
+    },
+    "82521b867fb62b710398ef256c99f7e24c617212": {
+      "tested_sha": "82521b867fb62b710398ef256c99f7e24c617212",
+      "runs": [
+        46057666982
+      ],
+      "reason": "the release gate's ancestor rule (scripts/release_gate.py): its unit tests"
     }
   }
 }
