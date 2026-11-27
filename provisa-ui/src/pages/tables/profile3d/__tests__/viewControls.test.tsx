@@ -10,8 +10,8 @@
 
 // REQ-2239 (amended 2026-11-11, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D): every 3D view -- the
 // ontology graph and the four table-profile views -- has the one hover stack of the 2D graphs in its
-// canvas, holding Reset view, Rotate, Grid (where the scene draws a floor grid), Full screen and
-// Download. Rotate and Grid are toggles that show their state and read and write the settings the
+// canvas, holding Reset view, Full screen and Download, then Rotate and Grid (where the scene draws a
+// floor grid). Rotate and Grid are toggles that show their state and read and write the settings the
 // toolbar's pills did; no toolbar holds Rotate, Grid or Reset view. jsdom has no WebGL, so each
 // three.js scene is replaced by a recorder.
 
@@ -204,7 +204,7 @@ beforeEach(() => {
 });
 
 describe.each(VIEWS)("$name's view controls", (v) => {
-  it("sit in one stack in its canvas: Reset view, Rotate, Grid, Full screen, Download", async () => {
+  it("sit in one stack in its canvas: Reset view, Full screen, Download, Rotate, Grid", async () => {
     render(v.draw());
     await waitFor(() => expect(made.scenes.some((s) => s.kind === v.kind)).toBe(true));
     const stack = stackOf(v);
@@ -212,12 +212,14 @@ describe.each(VIEWS)("$name's view controls", (v) => {
     const names = within(stack)
       .getAllByRole("button", { hidden: true })
       .map((b) => b.getAttribute("aria-label"));
+    // The shared controls first, in the order every graph's bar has them (GraphControls), then the
+    // 3D view's own.
     expect(names).toEqual([
       "Reset view",
-      "Rotate",
-      ...(v.grid ? ["Grid"] : []),
       "Full screen",
       "Download",
+      "Rotate",
+      ...(v.grid ? ["Grid"] : []),
     ]);
   });
 

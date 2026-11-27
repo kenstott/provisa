@@ -31,6 +31,8 @@ export interface GraphCommandButton {
   icon: ReactNode;
   onClick: () => void;
   testId: string;
+  /** A toggle's state: the button shows it pressed. */
+  pressed?: boolean;
 }
 
 /** Text a graph's controls copy: the button's words, before and after, and the text. */
@@ -47,6 +49,8 @@ export function GraphControls({
   exports,
   copy,
   commands = [],
+  fitPadding,
+  children,
   testId,
 }: {
   cyRef: RefObject<CyInstance | null>;
@@ -56,6 +60,10 @@ export function GraphControls({
   copy?: GraphCopy;
   /** The view's own commands, after the shared ones. */
   commands?: GraphCommandButton[];
+  /** The fit's padding where the view keeps its own (fitWhole's default otherwise). */
+  fitPadding?: number;
+  /** Controls of the view's own that are not plain buttons (a held button, a slider), last. */
+  children?: ReactNode;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -101,7 +109,7 @@ export function GraphControls({
       <CanvasButton
         label={t("erdModal.fitAll")}
         icon={<FitScreenIcon size={CONTROL_ICON} />}
-        onClick={() => cyRef.current && fitWhole(cyRef.current)}
+        onClick={() => cyRef.current && fitWhole(cyRef.current, fitPadding)}
         testId={`${testId}-fit-all`}
       />
       <FullscreenButton stageRef={stageRef} testId={testId} />
@@ -137,9 +145,11 @@ export function GraphControls({
           label={c.label}
           icon={c.icon}
           onClick={c.onClick}
+          pressed={c.pressed}
           testId={c.testId}
         />
       ))}
+      {children}
       {/* The copy said done, beside the bar, for as long as the check shows. */}
       {copy && copied && (
         <span className="pg-copied" role="status">
