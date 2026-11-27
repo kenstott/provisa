@@ -155,12 +155,16 @@ def wired(monkeypatch):
     async def checkers(state):
         return CHECKERS
 
+    async def type_checks(state, member_ids):
+        return {}
+
     monkeypatch.setattr(lineage_router, "_fetch_tables", tables)
     monkeypatch.setattr(lineage_router, "_product_exists", exists)
     monkeypatch.setattr(lineage_router, "_fetch_view_rows", view_rows)
     monkeypatch.setattr(lineage_router, "_fetch_registry_columns", columns)
     monkeypatch.setattr(lineage_router, "_native_tables", natives)
     monkeypatch.setattr(lineage_router, "_fetch_checkers", checkers)
+    monkeypatch.setattr(lineage_router, "_fetch_type_checks", type_checks)
     monkeypatch.setattr(app_module.state, "contexts", contexts, raising=False)
 
 
@@ -312,6 +316,47 @@ def test_the_products_data_quality_is_classified_on_its_readers_lineage(wired) -
 def test_a_check_on_a_column_the_reader_cannot_read_is_in_no_list(wired) -> None:
     # The analyst reads orders.amount, not orders.cost: orders_dq is not theirs to see.
     assert _dq("analyst") == {"expectations": [], "promises": [6], "related": [], "unattached": []}
+
+
+def test_a_members_type_check_is_a_builtin_promise_named_declared_logical_types(
+    wired, monkeypatch
+) -> None:
+    """REQ-2158 (amended 2026-11-27): each member's latest type check is shown among the
+    promises as Declared logical types, with its failing columns and no result relation."""
+    asked: list[set[int]] = []
+    failing = [{"offer_id": 4, "column": "amount", "declared": "number", "live": "varchar"}]
+
+    async def type_checks(state, member_ids):
+        asked.append(set(member_ids))
+        return {
+            3: {"outcome": "fail", "checked_at": "2026-11-27T10:00:00+00:00", "failing": failing}
+        }
+
+    monkeypatch.setattr(lineage_router, "_fetch_type_checks", type_checks)
+    promises = _lineage("analyst")["dq"]["promises"]
+    assert asked == [{3}]
+    assert [p["checker_table_id"] for p in promises] == [6, None]
+    builtin = promises[1]
+    assert builtin == {
+        "checker_table_id": None,
+        "domain_id": "sales",
+        "table_name": None,
+        "alias": None,
+        "description": None,
+        "owner_product_ids": ["p1"],
+        "checked_table_id": 3,
+        "checked_table": {"id": 3, "domain_id": "sales", "table_name": "mart", "alias": None},
+        "rules": [{"check_type": "contract_logical_type", "column_name": "", "args": {}}],
+        "latest_outcome": "fail",
+        "latest_run_at": "2026-11-27T10:00:00+00:00",
+        "failing_checks": [
+            {"name": "contract_logical_type", "column": "amount", "outcome": "fail"}
+        ],
+        "builtin": "contract_logical_type",
+        "name": "Declared logical types",
+        "failing_columns": failing,
+    }
+    assert promises[0]["builtin"] is None
 
 
 def test_a_role_without_a_request_reads_the_same_answer(wired) -> None:

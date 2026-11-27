@@ -1091,6 +1091,9 @@ async def set_data_product_members(  # REQ-1634
             await _refuse_table_outside_selection(conn, table_id)
         await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
     await _rebuild_schemas()
+    from provisa.dq.scan import reschedule_org_checkers
+
+    await reschedule_org_checkers()  # REQ-2158: a member's type check follows its membership
     return {"ok": True}
 
 

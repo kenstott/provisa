@@ -758,8 +758,44 @@ async def _product_lineage(
         members=member_ids,
         inputs={i["table_id"] for i in out["inputs"] if i["kind"] != "source"},
         served=served_columns_for(state, role_id),
+        type_checks=await _fetch_type_checks(state, member_ids),
+        checked_tables={
+            t["id"]: {
+                "id": t["id"],
+                "domain_id": t["domain_id"],
+                "table_name": t["table_name"],
+                "alias": t["alias"],
+            }
+            for t in members
+        },
     )
     return out, graph, natives
+
+
+async def _fetch_type_checks(state, member_ids: set[int]) -> dict[int, dict]:
+    """Each of ``member_ids``' latest declared-logical-type check (REQ-2158, contract_type_checks),
+    by table id: its outcome, when it ran and its failing columns."""
+    assert state.model_db is not None, "the org's model store is bound with its runtime"
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import contract_type_checks as latest
+
+    async with state.model_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(
+                    latest.c.table_id, latest.c.checked_at, latest.c.outcome, latest.c.failing
+                ).where(latest.c.table_id.in_(sorted(member_ids)))
+            )
+        ).fetchall()
+    return {
+        int(r.table_id): {
+            "outcome": r.outcome,
+            "checked_at": r.checked_at.isoformat(),
+            "failing": list(r.failing),
+        }
+        for r in rows
+    }
 
 
 def _consumer(table: dict) -> dict:

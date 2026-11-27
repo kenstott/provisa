@@ -155,7 +155,15 @@ async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(c
     }
 
     def lists(product: str, member: int) -> dict[str, list[int]]:
-        out = product_dq(product, checkers, members={member}, inputs=inputs[product], served=served)
+        out = product_dq(
+            product,
+            checkers,
+            members={member},
+            inputs=inputs[product],
+            served=served,
+            type_checks={},
+            checked_tables={},
+        )
         return {name: [e["checker_table_id"] for e in entries] for name, entries in out.items()}
 
     assert lists("q", M) == {
