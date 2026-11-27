@@ -43319,7 +43319,7 @@
     the ops and meta domains, relationships and views) before the first sign-in completes. The claiming
     identity is written as a member of 'root' holding platform_admin — so they administer root as well
     as the deployment — and 'root' is their active_org_id, so the first screen after the welcome modal
-    renders real data and a real role.
+    renders real data and a real role. (Amended 2026-11-27 by the maintainer. The admin who claims the install holds platform_admin, which has no data capability, and is also seated with a data role in root, so the role selector offers that role and the demo tables show under it. Root carries the demo assets (sources, tables, the ops and meta domains) before the first sign-in, and a test proves it.)
   use_case: The first sign-in on a wiped multitenant deployment claimed the slot and then rendered "No
     roles configured" and "You do not have permission to view this page" with no tables, no ops or meta
     domain, and no demo data. Nothing in REQ-1288/1290/1292/1294 said what a freshly claimed platform admin should hold (those cover only the claim ceremony), so the post-claim state was unspecified
