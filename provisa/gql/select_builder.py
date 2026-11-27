@@ -355,9 +355,25 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         path_step_info = getattr(self, "_path_steps", {}).get(path_var)
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info
-            return self._build_path_json(
+            path = self._build_path_json(
                 step_nodes, step_edges, getattr(self, "_path_step_either_way", {}).get(path_var)
             )
+            if path_var not in getattr(self, "_optional_paths", set()):
+                return path
+            # An OPTIONAL MATCH's path that matched nothing is null, never a path of null nodes.
+            absent = exp.or_(
+                *(
+                    exp.Is(
+                        this=exp.Column(
+                            this=exp.Identifier(this=nm.id_column, quoted=True),
+                            table=exp.Identifier(this=alias),
+                        ),
+                        expression=exp.Null(),
+                    )
+                    for alias, nm in step_nodes
+                )
+            )
+            return exp.Case(ifs=[exp.If(this=absent, true=exp.Null())], default=path)
         one_node = self._zero_hop_paths().get(path_var)
         if one_node is not None:
             return self._one_node_path(one_node)
@@ -499,15 +515,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             is_reversed: bool = False,
             via: "tuple[str, JunctionMapping] | None" = None,
         ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if is_reversed:
+                # Traversed against its stored direction: the relationship as stored, its start
+                # the node it leaves and its end the node it enters (Neo4j), and its identity
+                # the same either way (as show-children names it).
+                src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
             src_id_cast = node_key_text(src_alias, src_nm)
             tgt_id_cast = node_key_text(tgt_alias, tgt_nm)
-            # When the edge is traversed in reverse of its canonical direction,
-            # use canonical order (canonical_src-canonical_tgt) for identity so it
-            # matches the identity produced by show-children (which always uses canonical direction).
-            if is_reversed:
-                identity_first, identity_second = tgt_id_cast, src_id_cast
-            else:
-                identity_first, identity_second = src_id_cast, tgt_id_cast
             identity = exp.DPipe(
                 this=exp.DPipe(
                     this=exp.DPipe(
@@ -515,11 +529,11 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                             this=_type_value(rel_type),
                             expression=exp.Literal.string(":"),
                         ),
-                        expression=identity_first,
+                        expression=src_id_cast,
                     ),
                     expression=exp.Literal.string("-"),
                 ),
-                expression=identity_second,
+                expression=tgt_id_cast,
             )
             if via is not None and via[1].identity_column is not None:
                 # REQ-2176: an edge of its own row is named by it, as a bare edge is.
