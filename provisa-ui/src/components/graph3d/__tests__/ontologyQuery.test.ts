@@ -277,14 +277,16 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     );
 
   it("reads at its root the terms holding every item, by name or definition, any case", () => {
-    expect(searched('cust "lost order"')).toContain(
+    // The matches alone: All's root, its hops walked (a fixed hop count reaches out from them).
+    const matches = (query: string) => searched(query, { depth: Infinity });
+    expect(matches('cust "lost order"')).toContain(
       "on_terms(where: { _and: [" +
         '{ _or: [{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }] }, ' +
         '{ _or: [{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] }' +
         "] })",
     );
     // or joins the items either side of it: a term holding either.
-    expect(searched('cust OR "lost order"')).toContain(
+    expect(matches('cust OR "lost order"')).toContain(
       "on_terms(where: { _or: [" +
         '{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }, ' +
         '{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] })',
@@ -301,18 +303,20 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
   });
 
   it("reads each match's neighbourhood both ways, each hop's terms with their grounding", () => {
-    // REQ-2174 (amended 2026-11-26): a search's two hops nest under its matches, both ways: each
-    // edge's end read whole (with what it touches) while hops remain, by its id past the last.
+    // REQ-2174 (amended 2026-11-27): a search's two hops are its root's where -- the terms two
+    // steps or fewer from a match, either way -- each term read once, its edges' ends by id.
     const q = searched("cust");
-    // The matches, each end of theirs (out and in), and each end of those: 1 + 2 + 4 terms read whole.
-    expect(q.match(/refs \{/g)).toHaveLength(7);
-    expect(q.match(/ domains \{/g)).toHaveLength(7);
+    expect(q.match(/refs \{/g)).toHaveLength(1);
+    expect(q.match(/ domains \{/g)).toHaveLength(1);
     expect(q).toContain("edgesIn");
-    expect(q).toContain("sourceTerm { id name");
-    expect(q).toContain("targetTerm { id name");
-    // Past the last hop an end is its id alone.
+    expect(q).not.toContain("sourceTerm { id name");
+    expect(q).not.toContain("targetTerm { id name");
     expect(q).toContain("sourceTerm { id }");
     expect(q).toContain("targetTerm { id }");
+    // Two steps of reach name the match 2^3 - 1 times: itself, and each way twice over.
+    expect(q.match(/\{ name: \{ ilike: "%cust%" \} \}/g)).toHaveLength(7);
+    expect(q).toContain("edgesIn: { sourceTerm: { _or: [");
+    expect(q).toContain("edgesOut: { targetTerm: { _or: [");
     // All's walk past its root reads each hop's terms with what they touch (REQ-2174, amended
     // 2026-11-12: a term drawn brings its grounding).
     const s = scope(["ontology", "domains", "columns"], {
@@ -327,14 +331,14 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     // A fixed hop count is never walked.
     expect(() =>
       ontologyHopQuery(reader(), { ...s, depth: 2 }, 1, [3, 4]),
-    ).toThrow(/nested under its root/);
+    ).toThrow(/read by its reach filter/);
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
     expect(flat.match(/refs \{/g)).toHaveLength(1);
     expect(flat).not.toContain("edgesIn");
   });
 
-  it("counts what its root would read, by id with each term's domains", () => {
+  it("counts what its read would read, by id with each term's domains", () => {
     const q = squash(
       ontologyCountQuery(reader(), scope(["ontology"], { search: searchItems("cust") })),
     );
@@ -356,8 +360,12 @@ describe("REQ-2174: a focus's hops, read as steps across the term links", () => 
         }),
       ),
     );
-  // Each term read in full (with what it touches) is one refs selection; each level nests both ways.
+  // Each term read in full (with what it touches) is one refs selection.
   const fullTerms = (q: string) => q.match(/refs \{/g)?.length ?? 0;
+  // How many hops the root's where reaches: each step names the focus once more and twice over
+  // either way, 2^(depth + 1) - 1 times; ``per``, how often the focus names ``seed``.
+  const reach = (q: string, seed: string, per = 1) =>
+    Math.log2((q.split(seed).length - 1) / per + 1) - 1;
 
   it("counts a term's hops from the term: each hop a step", () => {
     for (const depth of [1, 2, 3, 4, Infinity])
@@ -374,34 +382,37 @@ describe("REQ-2174: a focus's hops, read as steps across the term links", () => 
     ).toEqual([1, 2, 3, 4, Infinity]);
   });
 
-  it("nests a product's hops under its own terms, the root the same at All", () => {
-    // REQ-2174 (amended 2026-11-26): its tables, columns and terms are the product's own terms,
-    // the root; each hop nests one level under it, both ways.
-    expect(fullTerms(focused("p:c360", 1))).toBe(3);
-    expect(fullTerms(focused("p:c360", 2))).toBe(7);
-    expect(fullTerms(focused("p:c360", 3))).toBe(15);
+  it("reaches a product's hops from its own terms, its root alone at All", () => {
+    // REQ-2174 (amended 2026-11-27): its tables, columns and terms are the product's own terms,
+    // the seed; each hop one more step either way in the root's where, each term read once.
+    const seed = 'productId: { eq: "c360" }';
+    for (const depth of [1, 2, 3]) {
+      const q = focused("p:c360", depth);
+      expect(fullTerms(q)).toBe(1);
+      // Named twice in its focus: its columns' terms, its tables' class terms.
+      expect(reach(q, seed, 2)).toBe(depth);
+    }
     // All's root is read alone, its hops walked.
     const all = focused("p:c360", Infinity);
     expect(fullTerms(all)).toBe(1);
+    expect(reach(all, seed, 2)).toBe(0);
     expect(all).toContain("targetTerm { id }");
   });
 
-  it("reads a product's first hop as one step across the links, both ways", () => {
-    // The product's terms, and the terms a link reaches either way, read whole.
+  it("reaches a product's first hop by one step across the links, both ways", () => {
     const q = focused("p:c360", 1);
-    expect(q).toContain("edgesIn");
-    expect(q).toContain("sourceTerm { id name");
-    expect(q).toContain("targetTerm { id name");
+    expect(q).toContain("edgesIn: { sourceTerm: {");
+    expect(q).toContain("edgesOut: { targetTerm: {");
+    expect(q).toContain("sourceTerm { id }");
+    expect(q).toContain("targetTerm { id }");
   });
 
-  it("reads a term's graph in one query, a level nested for each hop", () => {
-    for (const [depth, terms] of [
-      [1, 3],
-      [2, 7],
-      [3, 15],
-      [4, 31],
-    ])
-      expect(fullTerms(focused("term:7", depth))).toBe(terms);
+  it("reads a term's graph in one query, each term once, a step of reach for each hop", () => {
+    for (const depth of [1, 2, 3, 4]) {
+      const q = focused("term:7", depth);
+      expect(fullTerms(q)).toBe(1);
+      expect(reach(q, "{ id: { eq: 7 } }")).toBe(depth);
+    }
     // One root field, whatever the depth.
     const four = ontologyQuery(
       reader(),

@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-11-26, A CONNECTED ONTOLOGY GRAPH IS ONE QUERY): hops are nesting, not
-// more root fields. Each edge's target or source term carries the full term selection, nested to
-// the chosen hop count under one root field, so the graph is read in one round trip and the query
-// it opens as is the text it read. All hops, which no fixed nesting can express, opens as a Cypher
-// variable-length query.
+// REQ-2174 (amended 2026-11-27, THE ONE QUERY IS A REACH FILTER; supersedes 2026-11-26's nesting):
+// a connected ontology graph is one root field whose where keeps the terms within the chosen number
+// of hops of the focus, each term read once with its full selection and its edges' far ends by id,
+// in one round trip; the query it opens as is that text. All hops, which no fixed filter can
+// express, opens as a Cypher variable-length query.
 
 import { describe, expect, it, vi } from "vitest";
 import { ontologyGraph, ontologyQuery } from "../ontologyData";
@@ -70,28 +70,33 @@ const snippet = (depth: number, focus = "term:7"): QueryScope => ({
   depth,
 });
 
-/** How deep the term selection nests under the root along edgesOut: each level a targetTerm. */
-function nesting(query: string): number {
-  let deepest = 0;
-  const walk = (fields: ReturnType<typeof parse>, level: number) => {
+/** The terms read whole under ``query``'s root: an edge's far end is its id alone. */
+function wholeEnds(query: string): number {
+  let n = 0;
+  const walk = (fields: ReturnType<typeof parse>) => {
     for (const f of fields) {
-      const next = f.name === "targetTerm" && f.fields.some((g) => g.name === "name");
-      if (next) deepest = Math.max(deepest, level + 1);
-      walk(f.fields, next ? level + 1 : level);
+      if ((f.name === "targetTerm" || f.name === "sourceTerm") && f.fields.length > 1) n++;
+      walk(f.fields);
     }
   };
-  walk(parse(query), 0);
-  return deepest;
+  walk(parse(query));
+  return n;
 }
 
-describe("a focus's hops, nested under one root field", () => {
+/** How many steps the root's where reaches from the focus: its where names the focus once, then
+ * twice over for each step, 2^(depth + 1) - 1 times. */
+const reach = (query: string) =>
+  Math.log2((query.match(/\{ id: \{ eq: 7 \} \}/g)?.length ?? 0) + 1) - 1;
+
+describe("a focus's hops, one root field kept by its reach", () => {
   for (const depth of [1, 2, 3, 4])
-    it(`is one root field, nested ${depth} deep, read once, opened as itself, at ${depth} hops`, async () => {
+    it(`is one root field reaching ${depth} hops, each term read once, opened as itself`, async () => {
       const s = snippet(depth);
       const query = ontologyQuery(reader(), s) as string;
       expect(parse(query)).toHaveLength(1);
-      expect(nesting(query)).toBe(depth);
-      // Both ways: an edge reaching a term brings its source term too.
+      expect(wholeEnds(query)).toBe(0);
+      expect(reach(query)).toBe(depth);
+      // Both ways: an edge reaching a term is read too, its source by id.
       expect(query).toContain("sourceTerm {");
       const srv = server(WORLD);
       const got = await readOntology(reader(), s, srv.read);
@@ -113,19 +118,21 @@ describe("a focus's hops, nested under one root field", () => {
     expect(await terms(4)).toEqual(["term:1", "term:2", "term:3", "term:4", "term:5", "term:7"]);
   });
 
-  it("merges a term reached by two paths into one, by its id", async () => {
-    const s = snippet(2);
+  it("reads a term reached by two paths once, and drops an edge to a term not read", async () => {
+    const s = snippet(1);
     const srv = server(WORLD);
     const got = await readOntology(reader(), s, srv.read);
-    // The answer holds term 1 more than once: from 7, and through 2.
+    // Term 1 is a step from 7 directly and through 2's link: in the answer once.
     const answer = srv.sent[0].answer;
-    expect(answer.match(/"name":"term 1"/g)?.length).toBeGreaterThan(1);
+    expect(answer.match(/"name":"term 1"/g)).toHaveLength(1);
     const ids = (got.rows._terms ?? []).map((t) => t.id);
-    expect(ids).toEqual([...new Set(ids)]);
-    expect([...ids].sort()).toEqual([1, 2, 3, 7]);
+    expect([...ids].sort()).toEqual([1, 2, 7]);
     const g = sorted(ontologyGraph(got.rows, s));
-    expect(g.nodes.filter((n) => n === "term:1")).toHaveLength(1);
     expect(g.edges.filter((e) => e === "term_edge:term:2>term:1:RELATED_TO")).toHaveLength(1);
+    // 1's edge to 3, two steps off, is read with 1 and not drawn: 3 was not read.
+    expect(answer).toContain('"toTermId":3');
+    expect(g.nodes).not.toContain("term:3");
+    expect(g.edges.some((e) => e.includes("term:3"))).toBe(false);
   });
 });
 

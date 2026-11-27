@@ -17,7 +17,7 @@
 // model's real schema (tests/fixtures/graphql_golden/meta_schema.json).
 
 import { describe, expect, it, vi } from "vitest";
-import { ontologyGraph, readTerms } from "../ontologyData";
+import { ontologyGraph, type TermRow } from "../ontologyData";
 import { readOntology } from "../ontologyRead";
 import { loadOntology } from "../useOntology";
 import { snippetLayers, termGraph, termPreset } from "../ontologyPresets";
@@ -150,8 +150,8 @@ describe("a term's snippet, read in one query", () => {
   it("reads every term within three links, each with its grounding, the last hop's too", async () => {
     const { sent } = await drawn(3);
     const [answer] = sent.map((s) => JSON.parse(s.answer) as { _terms: Row[] });
-    const read = readTerms(answer._terms as never);
-    // Every term within three links, each once once merged by id.
+    const read = answer._terms as unknown as TermRow[];
+    // Every term within three links, each once.
     expect(read.map((t) => t.id).sort()).toEqual(GROUNDED);
     // A term drawn brings its grounding, whatever the hop it is reached at.
     expect(
@@ -249,7 +249,7 @@ describe("a snippet opened as a query: the one query that drew it", () => {
       const got = await readOntology(reader(), s, server(WORLD).read);
       const graph = sorted(ontologyGraph(got.rows, s));
       expect(graph.nodes).toContain("p:p1");
-      // A product's own terms are its root, at no hop; each hop a step across the links, nested.
+      // A product's own terms are its seed, at no hop; each hop a step across the links.
       expect(got.queries).toHaveLength(1);
       expect(drawnTerms(graph)).toEqual(terms);
       expect(await ran(WORLD, graphqlOf(got.opened), s)).toEqual(graph);

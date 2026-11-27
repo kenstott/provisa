@@ -198,7 +198,7 @@ function corpus(): Record<string, string> {
   for (const [key, s] of snippetScopes()) {
     add(`ontology snippet: ${key}`, ontologyQuery(m, s));
     add(`ontology snippet count: ${key}`, ontologyCountQuery(m, s));
-    // REQ-2174 (amended 2026-11-26): a fixed hop count is nested under the root, the query read
+    // REQ-2174 (amended 2026-11-27): a fixed hop count is the root's reach filter, the query read
     // and opened; All's walk past its root reads each hop by the ids of the terms it reaches.
     if (!Number.isFinite(termLevels(s)))
       add(`ontology snippet hop 1: ${key}`, ontologyHopQuery(m, s, 1, [1, 2]));
@@ -254,8 +254,8 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
   });
 
   it("reads a term's snippet from the term, and a product's from the terms its tables are", () => {
-    // REQ-2174: the root names the focus; its neighbourhood is nested under it to the depth
-    // (amended 2026-11-26), and walked a hop at a time only at All.
+    // REQ-2174: the root names the focus; its neighbourhood is kept by the root's where to the
+    // depth (amended 2026-11-27), and walked a hop at a time only at All.
     const m = reader();
     const [, base] = snippetScopes()[0];
     const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
@@ -270,9 +270,10 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(product).toContain('productId: { eq: "1" }');
     // The product itself is read, that product alone.
     expect(product).toMatch(/m__dataProducts\(where: \{ id: \{ eq: "1" \} \}\)/);
-    // A deeper read nests one more level under the same root field.
+    // A deeper read reaches one more step in the same root field's where, each term read once.
     const deeper = ontologyQuery(m, { ...base, focus: "term:7", depth: 3 }) as string;
-    expect(deeper.split("edgesOut").length).toBeGreaterThan(term.split("edgesOut").length);
+    expect(deeper.split("id: { eq: 7 }").length).toBeGreaterThan(term.split("id: { eq: 7 }").length);
+    expect(deeper.split("refs {")).toHaveLength(2);
     expect(deeper.split("\n").filter((l) => /^ {2}\w/.test(l))).toHaveLength(1);
     // All reads its root alone, then walks each hop by its terms' ids.
     const all = { ...base, focus: "term:7", depth: Infinity };

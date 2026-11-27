@@ -33,11 +33,10 @@ import {
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, columnFacts, facts, type ColumnFacts } from "./columnFacts";
 import { ownersFact, PRODUCT_NAMED, type OwnerRow } from "./productFacts";
-import { searchWhere } from "./ontologySearch";
+import { focusProducts, seedWhere, within } from "./ontologyFocus";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
 import { TERM_STATUSES } from "./graphModel";
-import { readTerms } from "./ontologyTerms";
 import type {
   GraphData,
   GraphEdge,
@@ -48,7 +47,7 @@ import type {
   TermStatus,
 } from "./graphModel";
 
-export { COLUMN_FACTS, columnFacts, facts, readTerms };
+export { COLUMN_FACTS, columnFacts, facts };
 
 /** A product's node id. */
 export const productNode = (id: string) => `p:${id}`;
@@ -259,14 +258,11 @@ export function termLevels(s: Pick<QueryScope, "search" | "focus" | "depth">): n
 
 /** A term's selection: its edges, and what it touches -- its grounding, drawn with every term
  * whatever the hop it is read at (REQ-2174, amended 2026-11-12). Under a search or a focus a term
- * is read with its edges both ways, each edge's end kept by the filters. (Amended 2026-11-26, A
- * CONNECTED ONTOLOGY GRAPH IS ONE QUERY:) hops are nesting: ``nest`` more hops each carry the end
- * term's full selection, nested again, so the whole neighbourhood is one root field read in one
- * round trip; at the last hop an edge's end is its id alone, and an edge to a term no hop read has
- * no end to draw. With neither every term is read at the root, the edges leaving it. */
-function termSelection(s: QueryScope, nest: number): Selection {
-  if (!Number.isInteger(nest) || nest < 0)
-    throw new Error(`a term's selection nests a whole number of hops, not ${nest}`);
+ * is read with its edges both ways, each edge's end kept by the filters. (Amended 2026-11-27, THE
+ * ONE QUERY IS A REACH FILTER:) each term is read once with this selection, each edge's far end by
+ * its id alone; an edge to a term not read has no end to draw. With neither every term is read at
+ * the root, the edges leaving it. */
+function termSelection(s: QueryScope): Selection {
   const depth = termLevels(s);
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
@@ -276,10 +272,8 @@ function termSelection(s: QueryScope, nest: number): Selection {
       // Under a search the term an edge reaches is read: one the filters leave out is not.
       ...(depth > 0 && kept ? [{ [other]: kept }] : []),
     ]);
-  // A term's edges are read with it: an end the role cannot read is null. Each end is read whole,
-  // nested, while hops remain; past the last, by its id, and an edge to a term not read has no end
-  // to draw.
-  const end: Selection = nest > 0 ? termSelection(s, nest - 1) : { fields: ["id"] };
+  // A term's edges are read with it, each far end by its id: null where the role cannot read it.
+  const end: Selection = { fields: ["id"] };
   if (s.layers.has("ontology")) {
     rels.edgesOut = {
       sel: {
@@ -352,63 +346,29 @@ function termSelection(s: QueryScope, nest: number): Selection {
   return { fields: TERM_FIELDS, rels };
 }
 
-/** Every node ``s`` is focused on: none, one, or several (QueryScope.focus). */
-export function foci(s: Pick<QueryScope, "focus">): readonly string[] {
-  if (s.focus === null) return [];
-  if (typeof s.focus === "string") return [s.focus];
-  if (s.focus.length === 0) throw new Error("a scope focused on nothing has a null focus");
-  return s.focus;
-}
-
-/** The products a focus names (their ids); none for a term's focus or none. */
-function focusProducts(s: Pick<QueryScope, "focus">): string[] {
-  return foci(s)
-    .filter((f) => f.startsWith("p:"))
-    .map((f) => f.slice(2));
-}
-
-/** The terms a focus starts from: the term itself, or a product's -- those its tables' columns
- * are, and those its tables are (a class). */
-function focusWhere(focus: string): Where {
-  if (focus.startsWith("term:")) return { id: { eq: Number(focus.slice("term:".length)) } };
-  if (focus.startsWith("p:")) {
-    const member = { dataProductTables: { product_id: { eq: focus.slice(2) } } };
-    return { _or: [{ refs: { registeredTable: member } }, { tables: member }] };
-  }
-  throw new Error(`a graph's focus is a term or a product, not ${focus}`);
-}
-
-/** The terms ``s`` reads at the root: those its filters keep, under a search those it matches,
- * and under a focus those it starts from (from any of several). */
+/** The terms ``s`` reads, each once: those its filters keep, and under a search or a focus those
+ * within its hop count of the matches or of the focus (any of several). All hops, which no fixed
+ * filter expresses, keeps the matches or the focus alone, and its hops are walked (readOntology). */
 function rootWhere(s: QueryScope): Where | undefined {
   const kept = termKept(s);
-  const searched = searchWhere(s.search);
-  const focused = foci(s);
+  const seed = seedWhere(s);
+  const levels = termLevels(s);
+  const hops = Number.isFinite(levels) && s.layers.has("ontology") ? levels : 0;
   return all([
     ...(kept ? [kept] : []),
     ...(s.orphans ? [] : [related(s)]),
-    ...(searched ? [searched] : []),
-    ...(focused.length === 1 ? [focusWhere(focused[0])] : []),
-    ...(focused.length > 1 ? [{ _or: focused.map(focusWhere) }] : []),
+    ...(seed ? [within(seed, hops, kept, s.edgeTypes)] : []),
   ]);
 }
 
-/** The hops nested under the root (termSelection): termLevels', but for All, which no fixed
- * nesting can express -- its root is read alone and its hops walked (readOntology). */
-const nestedHops = (s: QueryScope) => {
-  const levels = termLevels(s);
-  return Number.isFinite(levels) ? levels : 0;
-};
-
 function termsField(m: MetaReader, s: QueryScope): string | null {
-  // REQ-2174 (amended 2026-11-26): under a search or a focus the root's terms are hop 0, each hop
-  // nested under them, one root field; else they are all there is.
-  return rootField(m, "_terms", termSelection(s, nestedHops(s)), rootWhere(s));
+  // REQ-2174 (amended 2026-11-27): one root field, its where the reach, each term read once.
+  return rootField(m, "_terms", termSelection(s), rootWhere(s));
 }
 
 /** REQ-2174: All's walk past its root -- ``ids``, the terms the last hop's edges reach that no hop
  * has read -- with their edges and what they touch; null when the role cannot read the terms. A
- * fixed hop count is nested under the root and never walked. */
+ * fixed hop count is one read (rootWhere) and never walked. */
 export function ontologyHopQuery(
   m: MetaReader,
   s: QueryScope,
@@ -416,13 +376,14 @@ export function ontologyHopQuery(
   ids: number[],
 ): string | null {
   if (Number.isFinite(termLevels(s)))
-    throw new Error("a fixed hop count is nested under its root, never walked a hop at a time");
-  const field = rootField(m, "_terms", termSelection(s, 0), { id: { in: ids } });
+    throw new Error("a fixed hop count is read by its reach filter, never walked a hop at a time");
+  const field = rootField(m, "_terms", termSelection(s), { id: { in: ids } });
   return field === null ? null : operation(`OntologyHop${hop}`, [field]);
 }
 
-/** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
- * else every term the filters keep -- read as their ids alone, before the graph is. */
+/** REQ-2143: how many terms the view's query would read -- those within its hops of a search's
+ * matches or a focus, else every term the filters keep -- read as their ids alone, before the graph
+ * is. */
 export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null {
   // Each term's domains with it: the overview counts the terms in each.
   const field = rootField(
@@ -586,7 +547,7 @@ export function readsTerms(s: QueryScope): boolean {
 /** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
  * Ontology layer, what it grounds, and those tables' data products under Data, with the data
  * products readsProducts says; null when the role cannot read the terms. A part the role cannot
- * read is left out. Without ``terms`` (the count found none at the root, so none nests under it)
+ * read is left out. Without ``terms`` (the count found none at the root)
  * it reads the products alone, and is null when it reads none. */
 export function ontologyQuery(m: MetaReader, s: QueryScope, terms = true): string | null {
   const fields = ontologyFields(m, s, terms);
@@ -672,9 +633,8 @@ export interface TermRow {
   domains?: { domainId: string }[] | null;
   // Its experts (its stewards); null when it has none.
   experts?: { userId: string; kind: string }[] | null;
-  // Under Ontology: the edges leaving the term (null when none; see rowsOf), each end read whole
-  // while hops remain, else by its id (null where the role cannot read it). Under a search or a
-  // focus, the edges reaching it too.
+  // Under Ontology: the edges leaving the term (null when none; see rowsOf), each far end by its
+  // id (null where the role cannot read it). Under a search or a focus, the edges reaching it too.
   edgesOut?: (TermEdgeRow & { targetTerm?: TermEnd | null })[] | null;
   edgesIn?: (TermEdgeRow & { sourceTerm?: TermEnd | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
@@ -703,8 +663,8 @@ export interface TermRow {
     | null;
 }
 
-/** An edge's end as read: the whole term, nested, while hops remain; past the last, its id. */
-export type TermEnd = TermRow | { id: number };
+/** An edge's far end as read: its id. */
+export type TermEnd = { id: number };
 
 export interface ProductRow {
   id: string;
@@ -959,12 +919,10 @@ function columnCount(keys: { columnKey: string }[] | null | undefined): { column
   return rows === undefined ? {} : { columns: rows.length };
 }
 
-/** The graph the ontology's query answer draws, under the rules ``s`` reads it by: each term once
- * (a search's or a focus's hops are nested under its root, a term met on two paths merged by id:
- * readTerms), with its edges --
- * the Ontology preset's term reach, or the Product map's with its products. */
+/** The graph the ontology's query answer draws, under the rules ``s`` reads it by: each term once,
+ * with its edges -- the Ontology preset's term reach, or the Product map's with its products. */
 export function ontologyGraph(rows: OntologyRows, s?: Pick<QueryScope, "products">): GraphData {
-  const terms = readTerms(rows._terms ?? []);
+  const terms = rows._terms ?? [];
   return s?.products
     ? productMapGraph(terms, termEdges(terms), rows.data_products ?? [])
     : glossaryGraph(terms, termEdges(terms));

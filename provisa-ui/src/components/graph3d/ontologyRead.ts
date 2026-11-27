@@ -8,19 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-11-26, A CONNECTED ONTOLOGY GRAPH IS ONE QUERY): the ontology's read. A
-// search's or a focus's hops are nesting -- each edge's end term read whole under the last, to the
-// hop count chosen -- under one root field, read in one round trip, and the query it opens as is
-// that same text. All hops, which no fixed nesting can express, is walked a hop at a time from its
-// root (each term read once, R509-C2), and opens as one Cypher variable-length query from the terms
-// its root read (ontologyCypher.ts).
+// REQ-2174 (amended 2026-11-27, THE ONE QUERY IS A REACH FILTER): the ontology's read. A search's
+// or a focus's hops are one root field whose where keeps the terms within the hop count chosen,
+// each read once, in one round trip, and the query it opens as is that same text. All hops, which
+// no fixed filter can express, is walked a hop at a time from its root (each term read once,
+// R509-C2), and opens as one Cypher variable-length query from the terms its root read
+// (ontologyCypher.ts).
 
 import type { MetaReader } from "../../api/metaGraph";
 import type { QueryScope } from "./graphModel";
 import {
   ontologyHopQuery,
   ontologyQuery,
-  readTerms,
   termLevels,
   type OntologyRows,
   type TermRow,
@@ -36,7 +35,7 @@ const reached = (t: TermRow): number[] => [
  * variable-length query from the terms its root read (allHopsCypher, with the server's label). */
 export type Opened = { language: "graphql"; query: string } | { language: "cypher"; roots: number[] };
 
-/** What a read of the ontology answered -- its terms each once (readTerms) -- the queries it sent,
+/** What a read of the ontology answered -- its terms each once -- the queries it sent,
  * in order, and what it opens as: null when the role cannot read the terms. ``over``: All's walk
  * stopped, the terms read past the budget, before it was done. */
 export interface OntologyRead {
@@ -50,8 +49,8 @@ const graphql = (query: string | null): Opened | null =>
   query === null ? null : { language: "graphql", query };
 
 /** REQ-2174: the ontology as ``s`` reads it, through ``read`` (one query's answer). The root --
- * ontologyQuery's, its terms only with ``terms`` -- with a search's or a focus's hops nested under
- * it: one read, opened as itself. At All (termLevels Infinity) the root is read alone, then each
+ * ontologyQuery's, its terms only with ``terms`` -- keeps a search's or a focus's hops by its
+ * where: one read, opened as itself. At All (termLevels Infinity) the root is read alone, then each
  * hop's terms -- those the last hop's edges reach that no hop has read, by their ids -- to the end
  * of the connected part, or until more terms are read than ``budget`` (each a node drawn): ``over``.
  */
@@ -67,7 +66,7 @@ export async function readOntology(
   if (root === null)
     return { rows: { _terms: [] }, queries: [], opened: graphql(ontologyQuery(m, s)), over: false };
   const rows = await read(root);
-  const got = readTerms(rows._terms ?? []);
+  const got = [...(rows._terms ?? [])];
   if (Number.isFinite(termLevels(s)) || got.length === 0)
     return { rows: { ...rows, _terms: got }, queries: [root], opened: graphql(root), over: false };
   const roots = got.map((t) => t.id);

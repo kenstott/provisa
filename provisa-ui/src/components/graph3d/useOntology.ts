@@ -68,8 +68,8 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (counted.length > NODE_BUDGET)
     return { over: counted.length, rows: counted, query, language: "graphql" };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
-  // alone. Else a search's or a focus's neighbourhood is nested under its root, one read; All's is
-  // walked a hop at a time, each term once.
+  // alone. Else a search's or a focus's neighbourhood is kept by its root's where, one read; All's
+  // is walked a hop at a time, each term once.
   const { rows, opened, over } = await readOntology(
     m,
     scope,
@@ -81,8 +81,8 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   // past it the reads stop, and that it is past is said, as at the root.
   const past = { over: NODE_BUDGET, rows: counted, query, language: "graphql", hops: true } as const;
   if (over) return past;
-  // REQ-2136, REQ-2174 (amended 2026-11-26): what the view opens as is the one query that read it,
-  // its hops nested in it; All's, the Cypher variable-length query from its root's terms.
+  // REQ-2136, REQ-2174 (amended 2026-11-27): what the view opens as is the one query that read it,
+  // its hops its reach filter; All's, the Cypher variable-length query from its root's terms.
   if (opened === null) return null;
   const data = ontologyGraph(rows, scope);
   if (termLevels(scope) > 0 && data.nodes.length > NODE_BUDGET) return past;

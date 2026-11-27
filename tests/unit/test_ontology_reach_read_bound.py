@@ -8,15 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2174 (A CONNECTED ONTOLOGY GRAPH IS ONE QUERY): the deepest ontology snippet -- four hops
-nested both ways under one root field, with each term's full selection -- compiles and answers
-within a bound over a scaled ontology on the control plane's PostgreSQL.
+"""REQ-2174 (amended 2026-11-27, THE ONE QUERY IS A REACH FILTER): an ontology snippet -- one
+root field whose where keeps the terms within the chosen hops of the focus, each term read once
+with its full selection and its edges' far ends by id -- compiles and answers within a bound over
+a scaled ontology on the control plane's PostgreSQL, at every fixed hop count.
 
-Each edge's where had joined every edge level as rows, so sibling lists (edges out, edges in)
-multiplied one another's rows level by level: no answer within two minutes at depth 3 or 4. A
-where is now applied inside the grouped read (rel_read), one row per root term at any depth. The
-nested path tree itself still repeats each term once per path reaching it (a product's depth-4
-answer is about 13 MB over 300 terms), which this bound holds the snippet's query shape to.
+Nesting the hops both ways (2026-11-26) repeated a term once per path reaching it: at depth 4 a
+product's answer was about 13 MB over 300 terms and took 6-9 s. The reach filter reads each term
+once, so the answer is at most one row per term.
 
 The ontology is the startup seed's views over 300 terms, 600 typed edges, 60 tables of five
 columns, refs from two thirds of the terms, class terms and ten data products; the queries are
@@ -43,10 +42,11 @@ _REPO = Path(__file__).resolve().parents[2]
 _READS = json.loads(
     (_REPO / "tests" / "fixtures" / "graphql_golden" / "ontology_queries.json").read_text()
 )
-#: Seconds each of compiling and answering the depth-4 snippet may take.
+#: Seconds each of compiling and answering a snippet may take.
 _BOUND_S = 2.0
 _TERMS = 300
 _FOCI = ("term:7", "p:1")
+_DEPTHS = (1, 2, 3, 4)
 
 
 def _golden():
@@ -202,14 +202,15 @@ def scaled_ontology(embedded_postgres, control_plane_template):
         plane.close()
 
 
+@pytest.mark.parametrize("depth", _DEPTHS)
 @pytest.mark.parametrize("focus", _FOCI)
-def test_a_depth_4_snippet_compiles_and_answers_within_the_bound(scaled_ontology, focus):
+def test_a_snippet_compiles_and_answers_within_the_bound(scaled_ontology, focus, depth):
     import psycopg
 
     golden = _golden()
     schema, ctx = golden.model(golden.META_MODEL)
     view_sql = golden._view_sql(golden.META_MODEL)
-    text = _READS[f"ontology snippet: focus={focus} lanes=false depth=4"]
+    text = _READS[f"ontology snippet: focus={focus} lanes=false depth={depth}"]
     read = golden.CorpusRead("bound", golden.META_MODEL, text)
     started = time.perf_counter()
     stmts = golden.physical_statements(schema, ctx, read, view_sql)
@@ -225,5 +226,5 @@ def test_a_depth_4_snippet_compiles_and_answers_within_the_bound(scaled_ontology
             answered = time.perf_counter() - started
         assert answered < _BOUND_S, f"{stmt['root_field']} answered in {answered:.2f}s"
         if stmt["root_field"] == "_terms":
-            # One row per root term: the hops are nested in it, never joined as rows.
+            # Each term within reach once: never once per path reaching it.
             assert 1 <= len(rows) <= _TERMS
