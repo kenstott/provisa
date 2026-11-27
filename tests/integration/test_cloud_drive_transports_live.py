@@ -45,6 +45,7 @@ import pyarrow.csv as pac
 import pytest
 
 from provisa.api_source.oauth_grants import service_account_token
+from provisa.core import org_files
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.core.request_context import reset_current_org, set_current_org
@@ -113,6 +114,9 @@ def _preflight_app_only_drive(user: str, token: str, call_get) -> None:
 
 @pytest.fixture(autouse=True)
 def _org():
+    # The org's folder is made ready as its runtime's build does (REQ-1992); the source's pgwire
+    # server keeps its state in it.
+    org_files.folder("req2280_live").mkdir(parents=True, exist_ok=True)
     token = set_current_org("req2280_live")  # tokens are held per organization
     yield
     reset_current_org(token)
