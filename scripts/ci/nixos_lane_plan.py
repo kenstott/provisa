@@ -13,7 +13,10 @@ core file that must run alone in a job of its own.
 
 A file runs alone when its bound measures the host and the guest's 4 vCPUs shared with a whole
 core shard miss it: test_demo_open_steady_e2e.py keeps its 20 s bound (REQ-2006) and runs with no
-other test beside it (maintainer 2026-11-26). Its core shards deselect it, so each core file still
+other test beside it (maintainer 2026-11-26). test_master_key_survives_recreate_compose.py builds
+the app image inside its fixture (about 300 s on an Ubuntu runner): in a core shard's guest, beside
+the session's running stacks, the build took 767 s of its 900 s bound (run 45912217581) and then
+passed it (run 45921735865, core 12/21). Its core shards deselect each, so each core file still
 runs exactly once. A targeted run (PROVISA_LANE_TESTS) runs only what it names, as run_lane.py
 routes it.
 
@@ -30,7 +33,10 @@ import sys
 GUEST_MINUTES = 45
 
 #: Core files that run alone on NixOS, each in its own job.
-ALONE = ("tests/integration/test_demo_open_steady_e2e.py",)
+ALONE = (
+    "tests/integration/test_demo_open_steady_e2e.py",
+    "tests/integration/test_master_key_survives_recreate_compose.py",
+)
 
 
 def plan(matrix: dict, targeted: bool) -> dict:

@@ -63,8 +63,16 @@ def test_the_module_runs_the_flakes_package_as_an_unprivileged_service_user():
         assert option in _MODULE, option
     assert "isSystemUser = true;" in _MODULE
     assert 'User = "provisa";' in _MODULE
-    # No sudo user, no source checkout, no Docker.
-    for absent in ("wheel", "sudo", "isNormalUser", "/home/provisa", ".venv", "docker"):
+    # No sudo user, no source checkout, and the module neither enables Docker nor joins its group.
+    for absent in (
+        "wheel",
+        "sudo",
+        "isNormalUser",
+        "/home/provisa",
+        ".venv",
+        "virtualisation.docker",
+        "extraGroups",
+    ):
         assert absent not in _MODULE, absent
 
 
@@ -270,10 +278,24 @@ def test_the_settings_give_nix_ld_the_harfbuzz_its_pango_needs():
     assert re.search(r"^\s*harfbuzz$", libraries, flags=re.M)
 
 
+def _trusted_interfaces(nix: str) -> list[str]:
+    (block,) = re.findall(r"networking\.firewall\.trustedInterfaces = \[(.*?)\];", nix, re.S)
+    return re.findall(r'"([^"]+)"', block)
+
+
 def test_the_ci_host_lets_a_container_dial_a_server_on_the_host():
     """Trino in a compose network dials a code source's sidecar on the host; the NixOS firewall
-    dropped it (run 45903556292). Docker's bridges are trusted on the CI host only."""
+    dropped it (run 45903556292). Docker's bridges are trusted on the CI host."""
     ci_host = (_NIXOS / "configuration.nix").read_text()
-    trusted = ci_host.split("networking.firewall.trustedInterfaces = [", 1)[1].split("];", 1)[0]
-    assert '"docker0"' in trusted and '"br-+"' in trusted
+    assert _trusted_interfaces(ci_host) == ["docker0", "br-+"]
     assert "trustedInterfaces" not in (_NIXOS / "preinstall.nix").read_text()
+
+
+def test_the_module_trusts_the_docker_bridges_as_the_ci_host_does():
+    """REQ-1900 (maintainer 2026-11-26): a user's host trusts docker0 and the compose br-*
+    bridges, so the federation engine in its compose network reaches the sidecars on the host;
+    the module sets it whether or not openFirewall opens the API and UI ports."""
+    ci_host = (_NIXOS / "configuration.nix").read_text()
+    assert _trusted_interfaces(_MODULE) == _trusted_interfaces(ci_host) == ["docker0", "br-+"]
+    config = _MODULE.split("config = mkIf cfg.enable {", 1)[1]
+    assert re.search(r"^    networking\.firewall\.trustedInterfaces = \[", config, re.M)

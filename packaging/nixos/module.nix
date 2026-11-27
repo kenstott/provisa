@@ -112,6 +112,16 @@ in
       cfg.uiPort
     ];
 
+    # The federation engine runs in a compose network and dials the servers Provisa starts on the
+    # host: a code source's sidecar, bound at the default bridge's gateway. The NixOS firewall
+    # drops those connections, so Docker's own bridges (docker0 and each compose network's br-*)
+    # are trusted, as on the CI host (configuration.nix); every other interface keeps the firewall
+    # (REQ-1900, maintainer 2026-11-26).
+    networking.firewall.trustedInterfaces = [
+      "docker0"
+      "br-+"
+    ];
+
     systemd.services.provisa = {
       description = "Provisa";
       wantedBy = [ "multi-user.target" ];

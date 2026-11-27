@@ -35,6 +35,7 @@ ALONE, GUEST_MINUTES, plan = (
     nixos_lane_plan.plan,
 )
 _STEADY = "tests/integration/test_demo_open_steady_e2e.py"
+_MASTER_KEY = "tests/integration/test_master_key_survives_recreate_compose.py"
 _CORE = {
     "include": [
         {"lane": "core", "shard": "1/2", "timeout": 60},
@@ -54,13 +55,23 @@ def test_the_steady_open_bound_stays_20_seconds_and_its_file_runs_alone():
     assert _STEADY in ALONE
 
 
+def test_the_file_that_builds_the_app_image_runs_alone():
+    """Its fixture builds the app image: beside a core shard's stacks the guest's build used up
+    the 900 s test bound (run 45921735865, core 12/21)."""
+    assert "docker" in (_ROOT / _MASTER_KEY).read_text()
+    assert _MASTER_KEY in ALONE
+
+
 def test_each_core_shard_deselects_the_alone_file_and_it_gets_a_job_of_its_own():
     include = plan(_CORE, targeted=False)["include"]
     shards = [e for e in include if e["lane"] == "core" and "alone" not in e]
     assert [e["shard"] for e in shards] == ["1/2", "2/2"]
-    assert all(e["deselect"] == f"--deselect {_STEADY}" for e in shards)
-    (alone,) = [e for e in include if e.get("alone")]
-    assert alone == {"lane": "core", "shard": "", "alone": _STEADY, "timeout": 60 + GUEST_MINUTES}
+    assert all(e["deselect"] == f"--deselect {_STEADY} --deselect {_MASTER_KEY}" for e in shards)
+    alone = [e for e in include if e.get("alone")]
+    assert alone == [
+        {"lane": "core", "shard": "", "alone": f, "timeout": 60 + GUEST_MINUTES}
+        for f in (_STEADY, _MASTER_KEY)
+    ]
     (long,) = [e for e in include if e["lane"] == "core_long"]
     assert "deselect" not in long and long["timeout"] == 80 + GUEST_MINUTES
 
@@ -76,7 +87,7 @@ def test_a_targeted_run_or_a_run_without_core_is_only_given_the_guest_s_minutes(
 
 
 def test_the_planner_reads_a_targeted_run_from_the_dispatch_s_named_tests():
-    for named, alone_jobs in (("", 1), (_STEADY, 0)):
+    for named, alone_jobs in (("", 2), (_STEADY, 0)):
         done = subprocess.run(
             [sys.executable, str(_PLANNER), json.dumps(_CORE)],
             capture_output=True,
