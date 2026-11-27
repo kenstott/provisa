@@ -1980,10 +1980,14 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     def suggest_reverse_rel_alias(
-        self, graphql_alias: Optional[str] = None, cypher_alias: Optional[str] = None
+        self,
+        info: StrawberryInfo,
+        graphql_alias: Optional[str] = None,
+        cypher_alias: Optional[str] = None,
     ) -> ReverseAliasSuggestionType:
         """The GraphQL and Cypher aliases suggested for the reverse of a relationship with these
         aliases, the GraphQL one under the org's GraphQL convention."""
+        require_capability(info, "create_relationship")
         from provisa.compiler import naming
 
         gql, cql = naming.suggest_reverse_rel_alias(
@@ -1992,23 +1996,28 @@ class Query:  # REQ-021, REQ-042
         return ReverseAliasSuggestionType(graphql_alias=gql, cypher_alias=cql)
 
     @strawberry.field
-    def suggest_column_aliases(self, columns: list[str]) -> list[Optional[str]]:
+    def suggest_column_aliases(
+        self, info: StrawberryInfo, columns: list[str]
+    ) -> list[Optional[str]]:
         """The alias suggested for each newly registered column, in order: None where the column
         is already named so (naming.suggest_column_alias)."""
+        require_capability(info, "table_registration")
         from provisa.compiler import naming
 
         return [naming.suggest_column_alias(c) for c in columns]
 
     @strawberry.field
-    def suggest_metric_name(self, fact: str, column: str, agg: str) -> str:
+    def suggest_metric_name(self, info: StrawberryInfo, fact: str, column: str, agg: str) -> str:
         """The governed metric name proposed for an aggregate of a fact's measure."""
+        require_capability(info, "table_registration")
         from provisa.compiler import naming
 
         return naming.suggest_metric_name(fact, column, agg)
 
     @strawberry.field
-    def suggest_junction_name(self, left_table: str, right_table: str) -> str:
+    def suggest_junction_name(self, info: StrawberryInfo, left_table: str, right_table: str) -> str:
         """The junction table name proposed for linking two tables."""
+        require_capability(info, "table_registration")
         from provisa.compiler import naming
 
         return naming.suggest_junction_name(left_table, right_table)
