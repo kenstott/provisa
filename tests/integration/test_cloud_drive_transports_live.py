@@ -113,7 +113,7 @@ def _preflight_app_only_drive(user: str, token: str, call_get) -> None:
 
 @pytest.fixture(autouse=True)
 def _org():
-    token = set_current_org("req2280-live")  # tokens are held per organization
+    token = set_current_org("req2280_live")  # tokens are held per organization
     yield
     reset_current_org(token)
 
