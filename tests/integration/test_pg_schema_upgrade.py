@@ -422,6 +422,7 @@ _CREATE_ONLY = {
         "cost_usd created_at"
     ),
     "code_source_vectors": "source_id item_id vector text item_metadata",
+    "column_rules": "id tag_id classification role_id action mask tenant_id",
     "config_stamp": "kind stamp",
     "connectors": (
         'name git ref "commit" path build_command language image digest code_hash arch requires'
