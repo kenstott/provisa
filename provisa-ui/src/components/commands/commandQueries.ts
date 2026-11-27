@@ -14,9 +14,10 @@
 // read a GET with each argument a query parameter, a write a POST with them as the body), and gRPC
 // with its call's name and arguments. A relation argument is the one value the argument takes on
 // every surface: a table reference, the text of a query, or rows (their JSON text where a surface
-// takes a string, the array itself where it takes JSON). A read runs on opening; a write only when
-// Run is pressed. SPARQL has no call of a command, and the JSON:API Explore page reads tables only,
-// so neither is offered.
+// takes a string, the array itself where it takes JSON). JSON:API calls it at its command path too:
+// a read a GET with each argument a query parameter, a write a POST with them as the body's meta.
+// A read runs on opening; a write only when Run is pressed. SPARQL has no call of a command, so it
+// is not offered.
 
 import type { ActionArg } from "../../api/actions";
 import type { MetaReader } from "../../api/metaGraph";
@@ -34,7 +35,7 @@ export interface ServedCommand {
 }
 
 /** The surfaces a command is called on, in the order a table's links are drawn. */
-export const COMMAND_SURFACES = ["cypher", "sql", "graphql", "rest", "grpc"] as const;
+export const COMMAND_SURFACES = ["cypher", "sql", "graphql", "rest", "grpc", "jsonapi"] as const;
 export type CommandSurface = (typeof COMMAND_SURFACES)[number] & RelationshipSurface;
 
 /** A command as its call is written: its registered name, its kind and its arguments. */
@@ -75,6 +76,8 @@ export function commandSurfaces(
     graphql: reader !== null,
     rest: served.names.rest !== null,
     grpc: true,
+    // The JSON:API command route is bound by the command's REST name (generator.py command_at).
+    jsonapi: served.names.rest !== null,
   };
   return COMMAND_SURFACES.filter((s) => offered[s]);
 }
@@ -199,6 +202,23 @@ export function commandQueryLink(
       return {
         to: "/openapi",
         state: { openApiUrl: `GET ${path}${query ? `?${query}` : ""}`, autoRun },
+      };
+    }
+    case "jsonapi": {
+      const state = {
+        jsonapiCommand: nameIn(served, "rest"),
+        jsonapiDomain: served.domain_id,
+        jsonapiWrite: write,
+        autoRun,
+      };
+      return {
+        to: "/jsonapi",
+        state: {
+          ...state,
+          jsonapiArgs: Object.fromEntries(
+            args.map(([n, v]) => [n, write ? jsonValue(v) : plainValue(v)]),
+          ),
+        },
       };
     }
     case "grpc": {
