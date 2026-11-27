@@ -269,6 +269,8 @@ render_env_file() {
   cat <<EOF
 # Written by install-host.sh on every run; edit the script's flags, not this file.
 PROVISA_CONFIG=$1/provisa.yaml
+# REQ-1296: the bootstrap org id is 'root'; the resolver's own default is not an install's.
+ORG_ID=root
 TRINO_HOST=127.0.0.1
 TRINO_PORT=$3
 PROVISA_TRINO_ETC_DIR=$2/trino

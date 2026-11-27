@@ -758,6 +758,47 @@ async def test_set_column_fake_is_checked_then_saved_with_the_whole_table(monkey
     assert saved.profiler_source_id == "prof"
 
 
+_CONTACT_TEMPLATE = '{"email": email(), "phone": phone_number(), "kind": "x"}'
+
+
+async def test_set_column_fake_declares_a_json_template_on_a_json_column(monkeypatch, app_state):
+    """REQ-2279: a json column's fake is a template, checked field by field by the real check and
+    saved as written; the tool's spec names the template form so Polly declares one."""
+    _use_db(monkeypatch, app_state, {})
+    update_table, captured = _saved()
+    table = _table(columns=[_column("contact", "json")])
+    with (
+        patch("provisa.api.mcp.table_edit.read_table", new=AsyncMock(return_value=table)),
+        patch("provisa.api.admin.db_queries.fetch_tables", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.db_queries.fetch_relationships", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.schema_mutation.Mutation.update_table", new=update_table),
+    ):
+        out = await model_tools.set_column_fake(
+            app_state, "steward", _request("steward"), 7, "contact", fake=_CONTACT_TEMPLATE
+        )
+    assert out["fake"] == _CONTACT_TEMPLATE
+    assert captured[0][1].columns[0].fake == _CONTACT_TEMPLATE
+    spec = next(s for s in model_tool_specs.SPECS if s["name"] == "set_column_fake")
+    assert "template" in spec["description"] and "email()" in spec["description"]
+
+
+async def test_set_column_fake_refuses_a_template_on_a_non_json_column(monkeypatch, app_state):
+    _use_db(monkeypatch, app_state, {})
+    update_table, captured = _saved()
+    with (
+        patch("provisa.api.mcp.table_edit.read_table", new=AsyncMock(return_value=_table())),
+        patch("provisa.api.admin.db_queries.fetch_tables", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.db_queries.fetch_relationships", new=AsyncMock(return_value=[])),
+        patch("provisa.api.admin.schema_mutation.Mutation.update_table", new=update_table),
+    ):
+        with pytest.raises(ApiError) as caught:
+            await model_tools.set_column_fake(
+                app_state, "steward", _request("steward"), 7, "email", fake=_CONTACT_TEMPLATE
+            )
+    assert caught.value.code == "schema.fake_refused"
+    assert captured == []
+
+
 async def test_set_column_fake_passes_the_check_refusal_back_verbatim(monkeypatch, app_state):
     _use_db(monkeypatch, app_state, {})
     update_table, captured = _saved()

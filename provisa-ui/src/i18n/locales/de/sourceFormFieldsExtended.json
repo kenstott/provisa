@@ -235,6 +235,13 @@
     "qbSignIn": "Mit QuickBooks anmelden",
     "qbSignedIn": "Bei Firma {{realm}} angemeldet. Speichern Sie die Quelle, um dies zu behalten.",
     "qbSignInFailed": "Die Anmeldung konnte nicht abgeschlossen werden.",
-    "wikidataEndpointHint": "Der Wikidata-Abfragedienst. Ohne Anmeldedaten; Tabellen werden täglich aktualisiert."
+    "wikidataEndpointHint": "Der Wikidata-Abfragedienst. Ohne Anmeldedaten; Tabellen werden täglich aktualisiert.",
+    "gdriveAuth_service_account": "Dienstkonto",
+    "gdriveAuth_oauth": "OAuth (Aktualisierungstoken)",
+    "gdriveServiceAccountKey": "Dienstkontoschlüssel (JSON)",
+    "gdriveServiceAccountKeyHint": "Geben Sie den Ordner für die E-Mail-Adresse des Dienstkontos frei: Ein Dienstkonto hat keinen eigenen Speicher.",
+    "gdriveRefreshToken": "Aktualisierungstoken",
+    "gdriveSubject": "Handelt als Benutzer (optional)",
+    "gdriveSubjectHint": "Mit domänenweiter Delegierung liest das Dienstkonto das Drive dieses Workspace-Benutzers. Leer lassen, um als das Dienstkonto selbst zu lesen."
   }
 }

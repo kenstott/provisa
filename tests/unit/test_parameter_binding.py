@@ -365,6 +365,26 @@ def test_a_correlated_join_on_the_parameter_binds_from_the_table_around_it():
     assert rows == [(3, 105), (5, 107)]
 
 
+def test_a_relationship_fields_grouped_read_binds_from_the_table_it_joins_by_key():
+    """The form a GraphQL relationship field compiles to (``sql_selection.rel_read``, #362): a
+    grouped read of the target keyed by the parameter, LEFT JOINed to the source on its key. The
+    parameter is given the source's join column, under the source's own conditions."""
+    sql = (
+        f'SELECT o.order_id, "t1_read"."_value" FROM {_ORDERS} LEFT JOIN '
+        '(SELECT "_key0", "_value" FROM '
+        f'(SELECT p."_nf_petId" AS "_key0", p.id AS "_value", '
+        f'ROW_NUMBER() OVER (PARTITION BY p."_nf_petId") AS "_row" FROM {_PET}) AS "_rows" '
+        'WHERE "_row" = 1) AS "t1_read" ON "t1_read"."_key0" = o.pet '
+        "WHERE o.status = 'shut'"
+    )
+    assert [j.query for j in bind_parameters(sql, [], _TYPES).joins] == [
+        _KEYS + " WHERE o.status = 'shut'"
+    ]
+    rows, source = _answer(sql)
+    assert sorted(c["petId"] for c in source.calls) == [5, 7]
+    assert rows == [(3, 105), (5, 107)]
+
+
 def test_a_join_that_gives_no_key_makes_no_call_and_joins_no_row():
     rows, source = _answer(
         f'SELECT o.order_id, p.id FROM {_ORDERS} LEFT JOIN {_PET} ON p."_nf_petId" = o.pet '

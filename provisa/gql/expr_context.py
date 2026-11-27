@@ -271,6 +271,11 @@ def _label_names(nm: "NodeMapping", labels: list[str]) -> bool:
     )
 
 
+#: Meta key on the node object startNode(r) or endNode(r) lowers to (_path_endpoint): the read of
+#: a property of it, by name, as the end's own column (oriented per row where the relationship
+#: matched either way) and null where the relationship is absent.
+ENDPOINT_OF = "provisa_endpoint"
+
 #: A graph function read from the JSON of a path or relationship a list holds or a WITH carries
 #: (_element_part): its key in that JSON, and whether it is a list (JSON[]).
 _ELEMENT_PARTS: dict[str, tuple[str, bool]] = {
@@ -343,6 +348,27 @@ class TranslatorExprContext:
         # a computed object) falls through to a quoted member access on the lowered object.
         var = obj.name if isinstance(obj, exp.Column) and not obj.table else None
         t = self._t
+        endpoint = obj.meta.get(ENDPOINT_OF)
+        if endpoint is not None:
+            # startNode(r).name, endNode(r).name: the end's own column, null where r is absent.
+            return endpoint(name)
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._cte_sources
+            and t._element_vars.get(obj.name) == "node"
+        ):
+            # A node a WITH carries as its JSON object (WITH startNode(r) AS s): its property,
+            # of the one type the labels it is drawn from give it.
+            from provisa.gql.translator_union import union_type
+
+            value = _anon(
+                "JSON_EXTRACT_SCALAR",
+                obj.copy(),
+                exp.Literal.string("$.properties." + json.dumps(name)),
+            )
+            held = union_type(name, t._element_list_labels.get(obj.name, []), t._lm)
+            return value if held is None else exp.Cast(this=value, to=held)
         # A union's node or edge a WITH carries is read as a column of that WITH's rows.
         carried_in = (
             obj.table
@@ -434,21 +460,7 @@ class TranslatorExprContext:
                 return exp.Null()
             info = t._var_table.get(var)
             if info and info[1] is not None:
-                nm = info[1]
-                if name == NODE_KEY_PROPERTY:
-                    return node_key(info[0], nm)
-                sql_alias = nm.properties.get(name)
-                if sql_alias:
-                    return _col(sql_alias, info[0])
-                parameter = nm.parameter_column(name)
-                if parameter is not None:
-                    # REQ-1986: the parameter's column, which the statement's binding step
-                    # assigns by equality or IN and refuses under any other condition.
-                    return _col(parameter, info[0])
-                # A property the label has not -- one it does not publish, or the role may not
-                # see -- is null, as a graph's missing property is: a column is never read by a
-                # name the label does not give it.
-                return exp.Null()
+                return self._node_property(info[0], info[1], name)
             return _col(name, info[0] if info else var)
         if (
             isinstance(obj, exp.Column)
@@ -491,6 +503,24 @@ class TranslatorExprContext:
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
+
+    @staticmethod
+    def _node_property(alias: str, nm: NodeMapping, name: str) -> exp.Expression:
+        """Property ``name`` of the node of table ``nm`` read under ``alias``: its column."""
+        if name == NODE_KEY_PROPERTY:
+            return node_key(alias, nm)
+        sql_alias = nm.properties.get(name)
+        if sql_alias:
+            return _col(sql_alias, alias)
+        parameter = nm.parameter_column(name)
+        if parameter is not None:
+            # REQ-1986: the parameter's column, which the statement's binding step
+            # assigns by equality or IN and refuses under any other condition.
+            return _col(parameter, alias)
+        # A property the label has not -- one it does not publish, or the role may not
+        # see -- is null, as a graph's missing property is: a column is never read by a
+        # name the label does not give it.
+        return exp.Null()
 
     def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:
         """True exactly where :meth:`resolve_property` answers with a registered table's (or a
@@ -1253,20 +1283,53 @@ class TranslatorExprContext:
         t = self._t
         endpoints = t._rel_var_endpoints.get(var)
         if endpoints:
+            either_way = t._rel_var_forward_when.get(var)
 
-            def end_node(ends: RelEndpoints) -> exp.Expression:
+            def end_of(ends: RelEndpoints) -> tuple[str, NodeMapping]:
                 src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = ends
                 disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
                 disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
-                return t._build_node_object_expr(*(disp_start if start else disp_end))
+                return disp_start if start else disp_end
 
-            return oriented_rel(endpoints, t._rel_var_forward_when.get(var), end_node)
+            # Matched either way (REQ-348), the end as each row matched it, and null where the
+            # OPTIONAL hop matched nothing: oriented_rel's default is that relationship's only
+            # null guard.
+            absent = None if either_way is not None else self.resolve_graph_absent(var)
+            if isinstance(absent, exp.Boolean) and not absent.this:
+                absent = None
+
+            def guarded(value: exp.Expression) -> exp.Expression:
+                if absent is None:
+                    return value
+                # Of a relationship an OPTIONAL MATCH found none of, null: never the node the
+                # MATCH bound at its near end.
+                return exp.Case(ifs=[exp.If(this=absent.copy(), true=exp.Null())], default=value)
+
+            node = guarded(
+                oriented_rel(
+                    endpoints,
+                    either_way,
+                    lambda ends: t._build_node_object_expr(*end_of(ends)),
+                )
+            )
+            # What a property read of it resolves against (resolve_property).
+            node.meta[ENDPOINT_OF] = lambda name: guarded(
+                oriented_rel(
+                    endpoints,
+                    either_way,
+                    lambda ends: self._node_property(*end_of(ends), name),
+                )
+            )
+            return node
         path_info = t._path_vars.get(var)
         if path_info:
             node_alias = path_info[0] if start else path_info[1]
             node_info = t._var_table.get(node_alias)
             if node_info and node_info[1] is not None:
-                return t._build_node_object_expr(node_alias, node_info[1])
+                node = t._build_node_object_expr(node_alias, node_info[1])
+                end_alias, end_nm = node_info[0], node_info[1]
+                node.meta[ENDPOINT_OF] = lambda name: self._node_property(end_alias, end_nm, name)
+                return node
             return exp.Column(this=exp.Star(), table=exp.to_identifier(node_alias))
         if var in t._all_rels_rel_vars:
             # A relationship of a read of every relationship (or a session hop): the end its

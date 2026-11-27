@@ -13,10 +13,12 @@ site/
   _headers              Cloudflare Pages caching + security headers
   assets/               product screenshots (graph view, query explorer)
   wrangler.jsonc        Pages project config (name, output dir, D1 binding)
-  functions/_lib/       license.js — canonicalization/signing shared by the two endpoints below
-  functions/api/        Pages Functions — subscribe.js (mailing list), register.js +
-                         register/confirm.js (double opt-in license registration)
-  schema.sql            D1 tables for the mailing list and license registrations
+  functions/_lib/       license.js — canonicalization/signing for license registration;
+                         releases.js — pending release signups and the Resend release list
+  functions/api/        Pages Functions — subscribe.js + subscribe/confirm.js (double opt-in
+                         release emails, REQ-2362), register.js + register/confirm.js (double
+                         opt-in license registration, REQ-1793)
+  schema.sql            D1 tables for release signups and license registrations
   deploy.sh             manual Cloudflare Pages deploy
 ```
 
@@ -73,15 +75,23 @@ One-time: create the `provisa-dev` Pages project and bind the `provisa.dev`
 custom domain in the Cloudflare dashboard. `_headers` sets caching + security
 headers (honored by Cloudflare Pages).
 
-The page is also portable to any static host (GitHub Pages, Netlify, S3, or the app's own static mount), but the mailing-list signup only runs on Cloudflare Pages (it needs the Pages Function + D1).
+The page is also portable to any static host (GitHub Pages, Netlify, S3, or the app's own static mount), but the release-email signup only runs on Cloudflare Pages (it needs the Pages Function + D1).
 
-## Mailing list (private, account-only)
+## Release emails (double opt-in, REQ-2362)
 
-The signup form POSTs `{name, email}` to `/api/subscribe`
-([functions/api/subscribe.js](functions/api/subscribe.js)), which appends a row
-to a **D1** database — a private SQLite file only your Cloudflare account can read.
-A honeypot field silently drops bots; emails are de-duplicated (email is the
-primary key).
+The form under the download section (footer link: Release emails) POSTs `{name, email}` to
+`/api/subscribe` ([functions/api/subscribe.js](functions/api/subscribe.js)), which stores a
+pending row in the private **D1** table `release_signups` and emails a confirmation link from
+`releases@provisa.dev`. Clicking it ([functions/api/subscribe/confirm.js](functions/api/subscribe/confirm.js))
+adds the address to the **Resend** release segment and marks the row confirmed. Nobody joins the
+list without that click. The license form's optional release box does the same, confirmed by the
+license confirmation link instead of a second email. A honeypot field silently drops bots; one row
+per email.
+
+Release emails themselves are Resend **Broadcasts** sent to that segment. Resend adds the
+per-recipient unsubscribe link (`{{{RESEND_UNSUBSCRIBE_URL}}}`) and skips unsubscribed contacts,
+so Resend, not D1, is the list to send to. Each broadcast's footer needs a postal address
+(CAN-SPAM).
 
 One-time setup:
 
@@ -89,23 +99,29 @@ One-time setup:
 # 1. Create the database, then paste the printed id into wrangler.jsonc (database_id)
 npx --yes wrangler d1 create provisa-subscribers
 
-# 2. Apply the schema
+# 2. Apply the schema (adds release_signups; existing tables are untouched)
 npx --yes wrangler d1 execute provisa-subscribers --remote --file=site/schema.sql
 
-# 3. Deploy (the Function + binding ship with the site)
+# 3. In Resend: create a segment for release emails, and make sure RESEND_API_KEY has full
+#    access (a sending-only key can't manage contacts). Then set the segment id:
+npx --yes wrangler pages secret put RESEND_RELEASES_SEGMENT_ID --project-name provisa-dev
+
+# 4. Deploy (the Functions + binding ship with the site)
 ./site/deploy.sh
 ```
 
-Read the list any time:
+Read the signups any time:
 
 ```bash
-# CSV to stdout
 npx --yes wrangler d1 execute provisa-subscribers --remote \
-  --command "SELECT created_at, name, email FROM subscribers ORDER BY created_at" --json
+  --command "SELECT created_at, confirmed_at, name, email FROM release_signups ORDER BY created_at" --json
 
 # or a full SQL backup file
 npx --yes wrangler d1 export provisa-subscribers --remote --output=subscribers.sql
 ```
+
+The older `subscribers` table holds signups from the original "Keep me posted" form. Those
+addresses were never confirmed, so they aren't added to the Resend list automatically.
 
 Local dev with a working endpoint (needs a local D1):
 
@@ -126,7 +142,7 @@ role, name, email, machine ID), stores them unconfirmed in D1, and emails a conf
 ([functions/api/register/confirm.js](functions/api/register/confirm.js)) signs the license with
 the production Ed25519 key and emails `license.json`. Nothing is signed or sent before that click, so an email you don't control can never receive a working license.
 
-One-time setup (in addition to the mailing-list steps above, same D1 database):
+One-time setup (in addition to the release-email steps above, same D1 database):
 
 ```bash
 # 1. Generate the ONE production signing keypair (do this once, ever, offline)
@@ -139,8 +155,8 @@ python3 scripts/generate_license_keypair.py
 npx --yes wrangler pages secret put RESEND_API_KEY --project-name provisa-dev
 npx --yes wrangler pages secret put LICENSE_PRIVATE_KEY_PKCS8_B64 --project-name provisa-dev
 
-# 4. Apply the schema addition (same command as the mailing list; schema.sql now
-#    has both tables, and CREATE TABLE IF NOT EXISTS is idempotent)
+# 4. Apply the schema addition (same command as for release emails; CREATE TABLE IF
+#    NOT EXISTS is idempotent)
 npx --yes wrangler d1 execute provisa-subscribers --remote --file=site/schema.sql
 
 # 5. Deploy

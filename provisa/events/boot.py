@@ -68,6 +68,10 @@ class NodeSpec:
     # An MV's committed refresh, told to what a read asks whether the view is fresh
     # (MVTableProcessor.on_refreshed). None for a source node.
     on_refreshed: Callable[[tuple[str, dict] | None], Awaitable[None]] | None = None
+    # REQ-1632: a source node whose table has a replica in the store -- one it lands rows into,
+    # or whose whole copy the data replicator builds. Boot posts it nothing: the boot reconcile
+    # has kept its matching replica or created a missing one empty, and the refresh fills it.
+    replica: bool = False
 
 
 def _probe_factory(
@@ -80,6 +84,7 @@ def _probe_factory(
     source_path: str | None = None,
     file_glob: str | None = None,
     loader_probe: Probe | None = None,
+    storage_options: Any = None,
 ) -> Callable[[], Probe]:
     """Build a node's probe factory from its resolved ``probe_type`` (REQ-982). Each fire yields a
     fresh transport (``() -> str | None``) via :func:`probes.build_probe`; ``check_node`` compares the
@@ -98,6 +103,7 @@ def _probe_factory(
             source_path=source_path,
             file_glob=file_glob,
             loader_probe=loader_probe,
+            storage_options=storage_options,
         )
 
     return factory
@@ -236,7 +242,8 @@ def build_source_node_spec(
     from provisa.core.change_signal import PUSH_SOURCE_TYPES
 
     stype = src.type.value if hasattr(src.type, "value") else str(src.type)
-    if live or stype in PUSH_SOURCE_TYPES:
+    handle_lands = not (live or stype in PUSH_SOURCE_TYPES)
+    if not handle_lands:
         # Read where it lies, or fed by its push listener (kafka, websocket: push_wiring lands each
         # batch and posts it here): nothing lands through this node, which has no whole copy to
         # build -- asking for one was refused, and retried, for ever. A change is posted to the
@@ -273,6 +280,7 @@ def build_source_node_spec(
     # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
     from provisa.compiler.naming import source_to_catalog
     from provisa.core.secrets import resolve_secrets
+    from provisa.file_source.cloud_drive import drive_storage_options
 
     ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
     factory = (
@@ -284,6 +292,8 @@ def build_source_node_spec(
             sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
             source_path=resolve_secrets(getattr(src, "path", "") or "") or None,  # REQ-788
             file_glob=getattr(tbl, "file_glob", None),  # REQ-788
+            # REQ-2280: a onedrive:// or gdrive:// glob is stat'd with the source's sign-in.
+            storage_options=drive_storage_options(src) if getattr(tbl, "file_glob", None) else None,
             # The source's own adapter may ask its provider whether the table changed.
             loader_probe=source_probe(src, tbl) if source_probe is not None else None,
         )
@@ -306,10 +316,12 @@ def build_source_node_spec(
         # polled like one that states it: the timer is what runs a probing table's probe.
         poll_seconds=declared_cache_ttl(tbl, src),
         # Poll sources refresh on their own cadence (register_runtime schedules the injector);
-        # push sources are driven by their listener. Boot lands the first copy either way.
+        # push sources are driven by their listener. Boot lands no rows either way (REQ-1632).
         probe_factory=factory,
         probe_type=args.probe_type,
         preprocess=make_rows_evaluator(getattr(tbl, "mv_preprocess", None), node),  # REQ-1165
+        # REQ-1632: a node that lands or builds has a replica; a signal node lands nothing.
+        replica=handle_lands,
     )
 
 
@@ -548,9 +560,9 @@ def register_runtime(
     job (its injector action at its cadence). Push nodes' listeners are started by the processor
     (``consume_kafka``) — the app wires the consumer; this registers only the scheduled side.
 
-    ``seed`` controls the one-shot boot-create (seed every source's first land + drain the DAG). True
-    at boot; False on a RE-wire (e.g. after a runtime MV create) so poll jobs get (re)registered
-    WITHOUT re-landing every source. Re-registration is idempotent (replace_existing throughout).
+    ``seed`` controls the one-shot boot job (``boot_create``, then drain the DAG). True at boot;
+    False on a RE-wire (e.g. after a runtime MV create) so poll jobs get (re)registered without a
+    boot job. Re-registration is idempotent (replace_existing throughout).
 
     REQ-1266: ``org_id`` namespaces every job id (``events:tick:org_<id>`` …) so one org's wiring
     never clobbers another's under ``replace_existing``, and binds the org's ``current_org``
@@ -584,8 +596,9 @@ def register_runtime(
             _unbind(tok)
 
     async def _boot() -> None:
-        # Design: replicas are BUILT at boot, then REFRESHED by events. Seed each source's first land
-        # and drain the DAG so every replica (and its MVs) exists; the poll/push jobs keep them fresh.
+        # REQ-1632: boot copies no rows into a replica. The boot reconcile (reconcile_landed_tables)
+        # has already kept each matching replica and created each missing one empty; the poll/push
+        # jobs fill and refresh them. Boot seeds only the nodes that hold no replica, then drains.
         tok = _bind()
         try:
             await boot_create(db, specs)
@@ -623,14 +636,20 @@ def register_runtime(
 
 
 async def boot_create(db: Any, specs: list[NodeSpec]) -> int:
-    """Seed the initial landing of every source node so all replicas exist after boot (REQ-941): the
-    design is replicas are BUILT at boot, then REFRESHED by events. Posts one ``replace`` event per
-    source node; the caller drains the DAG so each lands its current rows and fans out to its MVs.
-    Idempotent — a ``replace`` re-lands the source's full current state, so re-running on every boot
-    is safe. Returns the number of source nodes seeded."""
+    """Boot's part in the source nodes (REQ-941, REQ-1632): no rows are copied into a replica.
+
+    A node that holds a replica (``NodeSpec.replica``) is posted nothing. Its table was checked by
+    the boot's schema-currency reconcile (``reconcile_landed_tables``, run before the event loop is
+    wired): a replica whose columns match is left as it stands, a missing or drifted one is created
+    empty with the table's columns, and the refresh cadence -- its poll job, its push listener, or
+    the build the model's convergence requests -- fills it. Never a full reload per boot.
+
+    A node that holds none (a watched live table, a push source) lands nothing through the node: it
+    is posted one ``replace`` event, its change to the views over it, so the caller's drain gives
+    those views their first build. Returns the number of nodes seeded."""
     seeded = 0
     for spec in specs:
-        if spec.kind != "source":
+        if spec.kind != "source" or spec.replica:
             continue
         async with db.acquire() as conn:
             event_id = await queue.post_event(

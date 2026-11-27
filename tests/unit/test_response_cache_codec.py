@@ -153,6 +153,32 @@ def test_entry_is_zstd_compressed_arrow_ipc():
     with pa.ipc.new_stream(uncompressed, table.schema) as w:
         w.write_table(table)
     assert len(data) < uncompressed.getvalue().size / 2
+    assert _compressions(data) == {True}
+
+
+_ZSTD_FRAME = b"\x28\xb5\x2f\xfd"  # the magic number that opens every zstd frame
+
+
+def _compressions(data: bytes) -> set[bool]:
+    """Whether each record batch message of an IPC stream has a zstd-compressed body."""
+    reader = pa.ipc.MessageReader.open_stream(data)
+    found: set[bool] = set()
+    while True:
+        try:
+            message = reader.read_next_message()
+        except StopIteration:
+            return found
+        if message.type == "record batch":
+            found.add(_ZSTD_FRAME in message.body.to_pybytes())
+
+
+def test_a_small_entry_is_kept_uncompressed_and_reads_back_the_same():
+    """REQ-1867 (a hit is never slower than its miss): zstd decompresses each buffer on its own,
+    so a point lookup's one row is kept uncompressed, and decodes to the same values."""
+    rows = [(7, "east", decimal.Decimal("123.45"))]
+    data = encode_rows_entry(rows, ["n", "t", "d"], ["BIGINT", "VARCHAR", "NUMERIC(12,2)"])
+    assert _compressions(data) == {False}
+    assert entry_as_result(decode_entry(data)).rows == rows
 
 
 def test_an_entry_without_a_kind_is_refused():
