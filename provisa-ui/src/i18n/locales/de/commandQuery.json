@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} in {{surface}}",
+    "linkLabel": "{{name}} in {{surface}} aufrufen",
+    "open": "Öffnen",
+    "givenAs": "Wie {{name}} angegeben wird",
+    "sourceTable": "Tabelle",
+    "sourceQuery": "Abfrage",
+    "sourceRows": "Zeilen",
+    "tableHint": "Eine Tabelle, die Sie lesen dürfen; ihre ersten {{cap}} Zeilen werden übergeben.",
+    "queryHint": "Ihre ersten {{cap}} Zeilen werden übergeben.",
+    "rowsHint": "CSV, dessen erste Zeile die Spalten benennt, oder ein JSON-Array von Objekten; höchstens {{cap}} Zeilen.",
+    "missing": "Nicht angegeben: {{names}}",
+    "notNumber": "{{name}} ist keine Zahl",
+    "notBoolean": "{{name}} ist weder true noch false",
+    "notJson": "{{name}} ist kein JSON",
+    "notRows": "{{name}}: CSV einfügen, dessen erste Zeile die Spalten benennt, oder ein JSON-Array von Objekten",
+    "overCap": "{{name}}: höchstens {{cap}} Zeilen",
+    "notReadable": "{{name}}: Die gewählte Tabelle dürfen Sie nicht lesen"
+  }
+}

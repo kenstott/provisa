@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} en {{surface}}",
+    "linkLabel": "Llamar a {{name}} en {{surface}}",
+    "open": "Abrir",
+    "givenAs": "Cómo se indica {{name}}",
+    "sourceTable": "Tabla",
+    "sourceQuery": "Consulta",
+    "sourceRows": "Filas",
+    "tableHint": "Una tabla que puede leer; se pasan sus primeras {{cap}} filas.",
+    "queryHint": "Se pasan sus primeras {{cap}} filas.",
+    "rowsHint": "CSV cuya primera línea nombra las columnas, o un array JSON de objetos; como máximo {{cap}} filas.",
+    "missing": "Sin indicar: {{names}}",
+    "notNumber": "{{name}} no es un número",
+    "notBoolean": "{{name}} no es true ni false",
+    "notJson": "{{name}} no es JSON",
+    "notRows": "{{name}}: pegue un CSV cuya primera línea nombre las columnas, o un array JSON de objetos",
+    "overCap": "{{name}}: como máximo {{cap}} filas",
+    "notReadable": "{{name}}: la tabla elegida no es una que pueda leer"
+  }
+}

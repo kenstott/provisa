@@ -83,7 +83,9 @@ describe("the argument form", () => {
     const onOpen = open({ name: "enrich", kind: "query", arguments: [input] });
     await source("input", "Table");
     await userEvent.click(screen.getByTestId("command-arg-input-table"));
-    await userEvent.click(await screen.findByRole("option", { name: "sales.orders", hidden: true }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "sales.orders", hidden: true }),
+    );
     await press();
     expect(onOpen).toHaveBeenCalledWith({
       input: {
@@ -183,7 +185,9 @@ describe("the argument form", () => {
     const onOpen = open({ name: "load", kind: "query", arguments: [ref] });
     expect(screen.queryByTestId("command-arg-src-source")).toBeNull();
     await userEvent.click(screen.getByTestId("command-arg-src-table"));
-    await userEvent.click(await screen.findByRole("option", { name: "sales.orders", hidden: true }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "sales.orders", hidden: true }),
+    );
     await press();
     expect(onOpen).toHaveBeenCalledWith({
       src: { kind: "relation", text: `"sales"."orders"`, rows: null },

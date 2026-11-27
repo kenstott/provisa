@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} em {{surface}}",
+    "linkLabel": "Chamar {{name}} em {{surface}}",
+    "open": "Abrir",
+    "givenAs": "Como {{name}} é informado",
+    "sourceTable": "Tabela",
+    "sourceQuery": "Consulta",
+    "sourceRows": "Linhas",
+    "tableHint": "Uma tabela que você pode ler; as primeiras {{cap}} linhas são passadas.",
+    "queryHint": "As primeiras {{cap}} linhas são passadas.",
+    "rowsHint": "CSV cuja primeira linha nomeia as colunas, ou um array JSON de objetos; no máximo {{cap}} linhas.",
+    "missing": "Não informado: {{names}}",
+    "notNumber": "{{name}} não é um número",
+    "notBoolean": "{{name}} não é true nem false",
+    "notJson": "{{name}} não é JSON",
+    "notRows": "{{name}}: cole um CSV cuja primeira linha nomeie as colunas, ou um array JSON de objetos",
+    "overCap": "{{name}}: no máximo {{cap}} linhas",
+    "notReadable": "{{name}}: a tabela escolhida não é uma que você pode ler"
+  }
+}

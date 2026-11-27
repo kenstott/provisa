@@ -14,10 +14,10 @@
 // Open checks on press (REQ-1968): a required argument not given, or one that does not read as its
 // type, is marked and refused by name, and nothing opens.
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Button, SegmentedControl, Select, Stack, TextInput, Textarea } from "@mantine/core";
+import { Button, SegmentedControl, Select, TextInput, Textarea } from "@mantine/core";
 import type { ActionArg } from "../../api/actions";
 import type { SqlNamedTable } from "../../naming";
 import { ModalLayout } from "../modal/ModalLayout";
@@ -186,10 +186,9 @@ export function CommandArgumentsModal({
           const d = drafts[a.name];
           if (!isRelationArg(a)) {
             return (
-              <FormField size="medium" key={a.name}>
+              <FormField size="medium" key={a.name} hint={a.type}>
                 <TextInput
                   label={a.name}
-                  description={a.type}
                   value={d.text}
                   onChange={(e) => set(a.name, { text: e.currentTarget.value })}
                   data-testid={`command-arg-${a.name}`}
@@ -200,9 +199,9 @@ export function CommandArgumentsModal({
           }
           const sources = relationSources(a);
           return (
-            <FormField size="full" key={a.name}>
-              <Stack gap={6}>
-                {sources.length > 1 && (
+            <Fragment key={a.name}>
+              {sources.length > 1 && (
+                <FormField size="medium">
                   <SegmentedControl
                     size="xs"
                     aria-label={t("commandQuery.givenAs", { name: a.name })}
@@ -211,11 +210,15 @@ export function CommandArgumentsModal({
                     data={sources.map((s) => ({ value: s, label: sourceLabels[s] }))}
                     data-testid={`command-arg-${a.name}-source`}
                   />
-                )}
-                {d.source === "table" && (
+                </FormField>
+              )}
+              {d.source === "table" && (
+                <FormField
+                  size="medium"
+                  hint={t("commandQuery.tableHint", { cap: RELATION_ROW_CAP })}
+                >
                   <Select
                     label={a.name}
-                    description={t("commandQuery.tableHint", { cap: RELATION_ROW_CAP })}
                     data={tables.map((tb) => ({ value: tableKey(tb), label: tableLabel(tb) }))}
                     value={d.table}
                     onChange={(v) => set(a.name, { table: v })}
@@ -223,11 +226,15 @@ export function CommandArgumentsModal({
                     data-testid={`command-arg-${a.name}-table`}
                     {...controlProps(a)}
                   />
-                )}
-                {d.source === "query" && (
+                </FormField>
+              )}
+              {d.source === "query" && (
+                <FormField
+                  size="full"
+                  hint={t("commandQuery.queryHint", { cap: RELATION_ROW_CAP })}
+                >
                   <Textarea
                     label={a.name}
-                    description={t("commandQuery.queryHint", { cap: RELATION_ROW_CAP })}
                     autosize
                     minRows={3}
                     ff="monospace"
@@ -236,11 +243,12 @@ export function CommandArgumentsModal({
                     data-testid={`command-arg-${a.name}-query`}
                     {...controlProps(a)}
                   />
-                )}
-                {d.source === "rows" && (
+                </FormField>
+              )}
+              {d.source === "rows" && (
+                <FormField size="full" help={t("commandQuery.rowsHint", { cap: RELATION_ROW_CAP })}>
                   <Textarea
                     label={a.name}
-                    description={t("commandQuery.rowsHint", { cap: RELATION_ROW_CAP })}
                     autosize
                     minRows={3}
                     ff="monospace"
@@ -249,9 +257,9 @@ export function CommandArgumentsModal({
                     data-testid={`command-arg-${a.name}-rows`}
                     {...controlProps(a)}
                   />
-                )}
-              </Stack>
-            </FormField>
+                </FormField>
+              )}
+            </Fragment>
           );
         })}
         {/* Open is not a save: it keeps its word, first, and Cancel follows. */}
