@@ -115,9 +115,62 @@ def test_linux_uses_pinned_official_installers():
     assert "get.docker.com" in dp.install_command("docker", None, "Linux", False)
 
 
-def test_macos_without_brew_names_the_way_out():
-    with pytest.raises(ValueError, match="Homebrew"):
-        dp.install_command("go", "1.27.3", "Darwin", False)
+@pytest.mark.parametrize(
+    "machine,node_arch,go_arch", [("arm64", "arm64", "arm64"), ("x86_64", "x64", "amd64")]
+)
+def test_macos_without_brew_uses_pinned_tarballs_without_sudo(
+    monkeypatch, machine, node_arch, go_arch
+):
+    monkeypatch.setattr(dp.platform, "machine", lambda: machine)
+    node = dp.install_command("node", "24.22.3", "Darwin", False)
+    go = dp.install_command("go", "1.27.3", "Darwin", False)
+    assert f"https://nodejs.org/dist/v24.22.3/node-v24.22.3-darwin-{node_arch}.tar.xz" in node
+    assert "~/.local/node" in node and "sudo" not in node and "brew" not in node
+    assert f"https://go.dev/dl/go1.27.3.darwin-{go_arch}.tar.gz" in go
+    assert "~/.local" in go and "sudo" not in go and "brew" not in go
+
+
+@pytest.mark.parametrize("machine,prefix", [("arm64", "/opt/homebrew"), ("x86_64", "/usr/local")])
+def test_macos_docker_without_brew_installs_homebrew_first(monkeypatch, machine, prefix):
+    monkeypatch.setattr(dp.platform, "machine", lambda: machine)
+    cmd = dp.install_command("docker", None, "Darwin", False)
+    assert cmd.index(dp.HOMEBREW_INSTALLER) < cmd.index("brew install --cask docker")
+    assert f"{prefix}/bin/brew shellenv" in cmd
+
+
+def test_homebrew_offer_then_docker_install():
+    det = {**ALL_OK, "docker": None}
+    prompts = []
+
+    def ask(p):
+        prompts.append(p)
+        return True
+
+    installs, unresolved = dp.plan(PINS, det, "Darwin", False, False, ask)
+    assert [t for t, _ in installs] == ["docker"] and unresolved == []
+    assert "brew install --cask docker" in installs[0][1]
+    assert len(prompts) == 1 and "Homebrew" in prompts[0] and "password" in prompts[0]
+
+
+def test_declining_homebrew_leaves_docker_unresolved_and_setup_continues():
+    det = {**ALL_OK, "docker": None}
+    installs, unresolved = dp.plan(PINS, det, "Darwin", False, False, lambda _p: False)
+    assert installs == [] and [f.tool for f in unresolved] == ["docker"] and unresolved[0].optional
+
+
+def test_yes_does_not_install_homebrew():
+    det = {**ALL_OK, "docker": None}
+    installs, unresolved = dp.plan(PINS, det, "Darwin", False, True, _no_ask)
+    assert installs == [] and [f.tool for f in unresolved] == ["docker"]
+
+
+def test_main_prints_docker_desktop_link_when_declined(monkeypatch, capsys):
+    monkeypatch.setattr(dp.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(dp.shutil, "which", lambda _c: None)
+    monkeypatch.setattr(dp, "detect", lambda: {**ALL_OK, "docker": None})
+    monkeypatch.setattr(dp, "_ask_tty", lambda _p: False)
+    assert dp.main([]) == 0
+    assert dp.DOCKER_DESKTOP_URL in capsys.readouterr().out
 
 
 def test_unsupported_platform_is_refused():
