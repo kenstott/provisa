@@ -9,6 +9,12 @@
     "scope_column": "カラム",
     "scope_relationship": "リレーションシップ",
     "scope_command": "コマンド",
+    "scope_command_column": "コマンドの列",
+    "commandColumnsTitle": "コマンドの出力列",
+    "commandColumnsNone": "出力列を宣言しているコマンドはありません。",
+    "colCommand": "コマンド",
+    "colOutputColumn": "出力列",
+    "colTags": "タグ",
     "scope_product": "データプロダクト",
     "scope_term": "用語集の用語",
     "scope_rls_rule": "行ルール",
@@ -48,7 +54,6 @@
     "colAssignments": "割り当て",
     "colActions": "操作",
     "empty": "このスコープにタグはありません",
-    "noMatch": "フィルターに一致するタグはありません",
     "systemTag": "システムタグ(読み取り専用)",
     "editTag": "タグ {{id}} を編集",
     "deleteTag": "タグ {{id}} を削除",
@@ -65,6 +70,7 @@
     "outsideTitle": "許可ドメイン外の割り当て",
     "outsideBody": "保存後もこれらの割り当ては残っています。不要になったオブジェクトからはタグを外してください。",
     "outsideItem": "{{kind}} {{name}}（{{domains}}）",
-    "templateSection": "テンプレート"
+    "templateSection": "テンプレート",
+    "noMatch": "フィルターに一致するタグはありません"
   }
 }

@@ -135,7 +135,9 @@ def test_the_table_is_the_target_of_the_join_the_rule_names():
 def test_a_table_the_engine_attaches_keeps_its_one_json_value():
     ctx = _row_level()
     sql = _semantic(ctx, _compiled(ctx))
-    assert "LEFT JOIN" not in sql
+    # The field is its grouped read's one JSON value (#362), not the table's rows joined flat.
+    assert '"t2_read"."_value" AS "orderDoc"' in sql
+    assert 'LEFT JOIN "perf_bench"."order_docs"' not in sql
 
 
 def test_the_answer_is_the_same_object_and_null_for_a_missing_document():

@@ -46,6 +46,9 @@ _TABLES = (
     "glossary_term_domains",
     "glossary_term_edges",
     "glossary_term_experts",
+    # REQ-1159: a term's domains include those of the commands whose output columns it means.
+    "tracked_functions",
+    "tracked_webhooks",
     "profiler_classifications",
     "rls_rules",
     "roles",

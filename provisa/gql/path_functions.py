@@ -776,6 +776,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         )
         if clause.variable is not None:
             self._path_steps[clause.variable] = (step_nodes, step_edges)  # type: ignore[attr-defined]
+            if clause.optional:
+                self._optional_paths.add(clause.variable)  # type: ignore[attr-defined]
         for extra_path in candidate_paths[1:]:
             self._register_extra_path_branch(clause, extra_path, src_var, tgt_var, src_nm, tgt_nm)
         return primary_from, primary_joins
@@ -947,11 +949,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             else:
                 joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
             step_nodes.append((nxt_alias, nxt_nm))
-            # Detect if this edge is traversed in reverse of its canonical direction.
-            # Canonical source_label is stored on the original RelationshipMapping in self._lm.
-            canonical_rel = self._lm.relationships.get(rel_mapping.rel_type)
-            is_reversed = (
-                canonical_rel is not None and canonical_rel.source_label != rel_mapping.source_label
+            # Traversed against its stored direction: an undirected walk's step the model declares
+            # no relationship of its type for from this end (find_paths' reverse copy).
+            is_reversed = not any(
+                r.rel_type == rel_mapping.rel_type
+                and r.source_label == rel_mapping.source_label
+                and r.target_label == rel_mapping.target_label
+                for r in self._lm.relationships.values()
             )
             step_edges.append(
                 (

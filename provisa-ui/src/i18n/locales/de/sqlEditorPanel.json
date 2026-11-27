@@ -21,6 +21,7 @@
     "analyze": "Analysieren",
     "analyzing": "Wird analysiert…",
     "analyzeTitle": "Den Plan der Engine für diese Anweisung anzeigen, mit hervorgehobenen Optimierungen von Provisa",
+    "analyzeWhich": "Welche Anweisung analysieren?",
     "saveViewTitle": "Aktuelles SQL als Definition der Sicht \"{{tableName}}\" speichern",
     "saving": "Wird gespeichert…",
     "updateView": "\"{{tableName}}\" aktualisieren",

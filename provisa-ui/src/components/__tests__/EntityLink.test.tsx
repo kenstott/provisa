@@ -17,6 +17,7 @@ const auth = vi.hoisted(() => ({ capabilities: [] as string[] }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => auth }));
 
 import { EntityLink } from "../EntityLink";
+import { entityName } from "../entityName";
 
 describe("EntityLink", () => {
   it("links a term for a viewer who reads the glossary", () => {
@@ -39,5 +40,27 @@ describe("EntityLink", () => {
     expect(screen.getByTestId("m")).not.toHaveAttribute("href");
     expect(screen.getByTestId("m")).toHaveTextContent("revenue");
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  // REQ-2277 rule 6: a role and an environment are named by their links too.
+  it("links a role and an environment to their panels", () => {
+    auth.capabilities = ["access_config", "environment_management"];
+    render(
+      <>
+        {entityName("role", "analyst", "r")}
+        {entityName("environment", "staging", "e")}
+      </>,
+    );
+    expect(screen.getByTestId("r")).toHaveAttribute("href", "/security/roles?role=analyst");
+    expect(screen.getByTestId("e")).toHaveAttribute(
+      "href",
+      "/admin/environments?environment=staging",
+    );
+  });
+
+  it("names nothing where no object is set", () => {
+    expect(entityName("domain", "")).toBeNull();
+    expect(entityName("domain", null)).toBeNull();
+    expect(entityName("domain", undefined)).toBeNull();
   });
 });

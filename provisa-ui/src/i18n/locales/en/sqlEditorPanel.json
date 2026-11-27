@@ -21,6 +21,7 @@
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
     "analyzeTitle": "Show the engine's plan for this statement, with Provisa's optimizations called out",
+    "analyzeWhich": "Analyze which statement?",
     "saveViewTitle": "Save current SQL as the definition for view \"{{tableName}}\"",
     "saving": "Saving…",
     "updateView": "Update \"{{tableName}}\"",

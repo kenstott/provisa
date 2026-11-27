@@ -18,7 +18,7 @@ from provisa.compiler.sql_literals import sql_literal
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import (
@@ -541,14 +541,24 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                                 target_expr=escaped_lit,
                             )
                         else:
-                            rev = RelationshipMapping(
-                                rel_type=rel.rel_type,
+                            # The relationship read from its target: its join expressions and
+                            # a junction's foreign keys trade places too (REQ-1586).
+                            via = rel.via
+                            rev = replace(
+                                rel,
                                 source_label=rel.target_label,
                                 target_label=rel.source_label,
                                 join_source_column=rel.join_target_column,
                                 join_target_column=rel.join_source_column,
-                                field_name=rel.field_name,
-                                alias=rel.alias,
+                                source_expr=rel.target_expr,
+                                target_expr=rel.source_expr,
+                                via=None
+                                if via is None
+                                else replace(
+                                    via,
+                                    source_columns=via.target_columns,
+                                    target_columns=via.source_columns,
+                                ),
                             )
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results

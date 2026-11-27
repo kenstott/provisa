@@ -11,13 +11,14 @@
 """``$expand``: a navigation property read in its parent's one statement (REQ-2193).
 
 A navigation property is a relationship field of the read's GraphQL text, compiled as GraphQL
-compiles it: one correlated JSON subquery per field, so a parent stays one row whatever it expands,
-and two to-many fields do not multiply each other. GraphQL's own ``where`` and ``order_by`` on a
-relationship compile to a lateral join instead, which repeats the parent per related row, so a
-nested ``$filter``, ``$orderby`` and ``$skip`` are added to that subquery's rows here, as ``$filter``
-is added to the root's. ``validate_sql`` and ``apply_governance`` then read the subquery as they read
-any SELECT: the related table's masks, row rules and column grants are theirs, and a role's row
-ceiling bounds the list.
+compiles it: one grouped read per field, joined by key (``sql_selection.rel_read``), so a parent
+stays one row whatever it expands, and two to-many fields do not multiply each other. GraphQL's own
+``where`` and ``order_by`` on a relationship compile to a lateral join instead, which repeats the
+parent per related row, so a nested ``$filter``, ``$orderby`` and ``$skip`` are added to that read's
+rows here, as ``$filter`` is added to the root's: the filter on its rows, the order the one each
+key's rows are numbered and listed in, the skip the numbers the page starts past.
+``validate_sql`` and ``apply_governance`` then read the read as they read any SELECT: the related
+table's masks, row rules and column grants are theirs, and a role's row ceiling bounds the list.
 
 A to-many field reads one row past its page: that row says the list has more, and is not returned.
 The rest is read from ``set(key)/navigation``, which is the same read for one parent, so the parent
@@ -177,11 +178,21 @@ def _from_of(select: exp.Select) -> exp.Expr:
     return (select.args.get("from_") or select.args["from"]).this
 
 
-def _rows_of(value: exp.Expr, collection: bool) -> exp.Select:
-    """The SELECT that reads a relationship's rows: ``_build_rel_json_expr``'s forms, of which a
-    to-many field always takes the limited one."""
-    select = (value.this if isinstance(value, exp.Coalesce) else value).this
-    return _from_of(select).this if collection else select
+def _read_of(select: exp.Select, value: exp.Expr) -> tuple[exp.Select, exp.Select]:
+    """The grouped read a relationship field's ``value`` is the column of
+    (``sql_selection.rel_read``: ``r._value``, a list's coalesced to []), joined in ``select``,
+    and the SELECT of its rows that builds each one's json_object: the read's numbered rows (a
+    to-one, a list with a cap -- a to-many expansion always has one), else the read itself."""
+    from provisa.compiler.sql_selection import READ_ROWS
+
+    column = value.this if isinstance(value, exp.Coalesce) else value
+    assert isinstance(column, exp.Column), value.sql()
+    join = next(j for j in select.args.get("joins") or [] if j.this.alias == column.table)
+    read = join.this.this
+    source = _from_of(read)
+    if isinstance(source, exp.Subquery) and source.alias == READ_ROWS:
+        return read, source.this
+    return read, read
 
 
 def _ordering(rows: exp.Select, plan: Plan) -> list[exp.Ordered]:
@@ -200,26 +211,53 @@ def _ordering(rows: exp.Select, plan: Plan) -> list[exp.Ordered]:
     return keys
 
 
-def _narrow(rows: exp.Select, plan: Plan, params: list) -> None:
+def _narrow(read: exp.Select, rows: exp.Select, plan: Plan, params: list) -> None:
+    """The expansion's filter on the read's rows, its order the order each key's rows are
+    numbered and listed in, and its skip the numbers the list starts past."""
+    from provisa.compiler.sql_selection import READ_ROW, READ_ROWS
+
     if plan.options.filter is not None:
         where, bound = filter_condition(plan.target, plan.options.filter, len(params) + 1)
         rows.where(where, copy=False)
         params.extend(bound)
     keys = _ordering(rows, plan)
     if keys:
-        rows.order_by(*keys, copy=False)
+        numbering = next(p.this for p in rows.expressions if p.alias == READ_ROW)
+        assert isinstance(numbering, exp.Window)
+        numbering.set("order", exp.Order(expressions=keys))
+        listed = read.find(exp.JSONArrayAgg)
+        assert listed is not None
+        listed.set(
+            "this",
+            exp.Order(
+                this=listed.this,
+                expressions=[exp.Ordered(this=exp.column(READ_ROW, table=READ_ROWS, quoted=True))],
+            ),
+        )
     if plan.options.skip:
-        rows.offset(plan.options.skip, copy=False)
+        # The page's numbers: past the skip, as many as the read's cap reads.
+        cap = read.args["where"].this
+        assert isinstance(cap, exp.LTE), cap.sql()
+        cap.set(
+            "expression",
+            exp.Literal.number(int(cap.expression.name) + plan.options.skip),
+        )
+        read.where(
+            exp.GT(
+                this=exp.column(READ_ROW, quoted=True),
+                expression=exp.Literal.number(plan.options.skip),
+            ),
+            copy=False,
+        )
 
 
 def _shape(select: exp.Select, plans: tuple[Plan, ...], params: list) -> None:
     for plan in plans:
         if plan.page == 0:
             continue
-        collection = plan.navigation.collection
-        rows = _rows_of(_value_of(select, plan.navigation.name), collection)
-        if collection:
-            _narrow(rows, plan, params)
+        read, rows = _read_of(select, _value_of(select, plan.navigation.name))
+        if plan.navigation.collection:
+            _narrow(read, rows, plan, params)
         _shape(rows, plan.children, params)
 
 

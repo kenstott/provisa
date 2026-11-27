@@ -156,6 +156,10 @@ async def _run(
         stack.enter_context(
             patch("provisa.core.repositories.connector.list_all", AsyncMock(return_value=[]))
         )
+        # REQ-2278
+        stack.enter_context(
+            patch("provisa.core.repositories.column_rule.list_all", AsyncMock(return_value=[]))
+        )
         return await config_export.build_live_config()
 
 

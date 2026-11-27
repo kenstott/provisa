@@ -9,6 +9,12 @@
     "scope_column": "欄",
     "scope_relationship": "關係",
     "scope_command": "命令",
+    "scope_command_column": "命令欄",
+    "commandColumnsTitle": "命令的輸出欄",
+    "commandColumnsNone": "沒有命令宣告輸出欄。",
+    "colCommand": "命令",
+    "colOutputColumn": "輸出欄",
+    "colTags": "標籤",
     "scope_product": "數據產品",
     "scope_term": "詞彙表術語",
     "scope_rls_rule": "行規則",
@@ -48,7 +54,6 @@
     "colAssignments": "指派",
     "colActions": "操作",
     "empty": "此範圍沒有標籤",
-    "noMatch": "沒有符合篩選條件的標籤",
     "systemTag": "系統標籤（唯讀）",
     "editTag": "編輯標籤 {{id}}",
     "deleteTag": "刪除標籤 {{id}}",
@@ -65,6 +70,7 @@
     "outsideTitle": "允許的網域以外的指派",
     "outsideBody": "儲存後保留了這些指派。請從不再適用的物件上移除此標籤。",
     "outsideItem": "{{kind}} {{name}}，位於 {{domains}}",
-    "templateSection": "範本"
+    "templateSection": "範本",
+    "noMatch": "沒有符合篩選條件的標籤"
   }
 }

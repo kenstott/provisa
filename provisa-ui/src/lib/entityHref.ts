@@ -35,6 +35,9 @@ export type EntityKind =
   | "classification"
   // REQ-2259: a reference library document, on the Context group's Documents page.
   | "document"
+  // REQ-2277 rule 6: a role, on Security's Roles page; an environment, on Admin's Environments.
+  | "role"
+  | "environment"
   // REQ-2208: a section of a library document, on its panel's Sections tab.
   | "section";
 
@@ -92,6 +95,10 @@ export function entityHref(
       return detailHref("classification", id);
     case "document":
       return detailHref("library", id);
+    case "role":
+      return detailHref("roles", id);
+    case "environment":
+      return detailHref("environments", id);
     case "section":
       return section
         ? detailHref("library", id, "sections", { at: section })

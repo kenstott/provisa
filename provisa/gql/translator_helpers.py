@@ -30,12 +30,18 @@ from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapp
 RelEndpoints = tuple[str, NodeMapping, str, NodeMapping, bool]
 
 
+#: The column of either_way_joins' directions table: true for the forward direction.
+_WAY_FORWARD = "forward"
+
 #: Where a relationship matched either way (either_way_joins) matched forward, and backward.
 EitherWay = tuple["exp.Expression", "exp.Expression"]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
 def either_way_joins(
-    forward: "list[dict]", backward: "list[dict]"
+    forward: "list[dict]",
+    backward: "list[dict]",
+    same_node: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    way_alias: str,
 ) -> "tuple[list[dict], EitherWay]":
     """REQ-348: an undirected hop of a self-referential type, under OPTIONAL MATCH, as one outer
     join matching either direction, and the conditions a row matched it forward and backward
@@ -43,14 +49,38 @@ def either_way_joins(
 
     ``forward`` and ``backward`` are the two ways' joins (_make_rel_joins) over the same tables
     and aliases: one FK join, or a junction join and its far end's. The junction joins a row by
-    either of its two keys; the far end is the one across from the key that joined it.
+    either of its two keys; the far end is the one across from the key that joined it, so each
+    junction row is one relationship and one row.
+
+    An FK pair of nodes can hold two relationships, one each way (a.fk = b and b.fk = a): the
+    matched row is joined to ``way_alias``, the directions it matched (one row each), so each
+    relationship is its own row. A self-loop (``same_node``: the two ends are one row) matches
+    both ways and is one relationship, read forward. A row that matched neither way stays one
+    row, its direction null.
     """
     if len(forward) == 1:
         (fwd,), (bwd,) = forward, backward
-        return [{**fwd, "on": exp.or_(fwd["on"].copy(), bwd["on"].copy())}], (
-            fwd["on"].copy(),
-            bwd["on"].copy(),
+        # Unquoted as the table's alias is, so a mixed-case alias names it on every engine.
+        way = exp.Column(
+            this=exp.to_identifier(_WAY_FORWARD, quoted=True), table=exp.to_identifier(way_alias)
         )
+        ways = exp.Values(
+            expressions=[exp.Tuple(expressions=[exp.true()]), exp.Tuple(expressions=[exp.false()])],
+            alias=exp.TableAlias(
+                this=exp.to_identifier(way_alias),
+                columns=[exp.to_identifier(_WAY_FORWARD, quoted=True)],
+            ),
+        )
+        way_join = {
+            "table": ways,
+            "on": exp.or_(
+                exp.and_(way.copy(), fwd["on"].copy()),
+                exp.and_(exp.not_(way.copy()), bwd["on"].copy(), exp.not_(same_node.copy())),
+            ),
+            "join_type": fwd["join_type"],
+        }
+        node_join = {**fwd, "on": exp.or_(fwd["on"].copy(), bwd["on"].copy())}
+        return [node_join, way_join], (way.copy(), exp.not_(way.copy()))
     (fwd_via, fwd_far), (bwd_via, bwd_far) = forward, backward
     via = {**fwd_via, "on": exp.or_(fwd_via["on"].copy(), bwd_via["on"].copy())}
     far = {

@@ -36,7 +36,6 @@ import {
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { domainAliasMap, domainGqlAlias, type Domain } from "../../types/admin";
 import { assignableDomainIds } from "../../lib/internalDomains";
-import { matchesQuery } from "../../lib/searchItems";
 import { OwnerResolutionIcon } from "../OwnerResolution";
 import { PageTitle } from "../PageTitle";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
@@ -49,6 +48,7 @@ import { PanelDelete } from "../list/PanelDelete";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useListSelection } from "../list/listSelection";
 import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { pageItems, useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
@@ -118,27 +118,30 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
     return domains.filter((d) => assignable.has(d.id));
   }, [domains]);
   // REQ-1940: sort and group are the shared list mechanism.
-  const shownDomains = useMemo(
+  // REQ-2277 rule 9: a domain is open only while the search shows its row.
+  const searchNarrowed = useMemo(
     () =>
-      userDomains.filter((d) =>
+      searchNarrowing<Domain>(
+        t,
+        search,
+        () => setSearch(""),
         // Every text a domain's row shows.
-        matchesQuery(
-          [
-            d.id,
-            d.description,
-            aliases[d.id],
-            d.parentDomainId,
-            ...shownStewards(d),
-            namedStewards(d).length === 0 &&
-            d.stewards.length === 0 &&
-            d.effectiveStewards.length > 0
-              ? t("adminPage.stewardInherited")
-              : "",
-          ],
-          search,
-        ),
+        (d) => [
+          d.id,
+          d.description,
+          aliases[d.id],
+          d.parentDomainId,
+          ...shownStewards(d),
+          namedStewards(d).length === 0 && d.stewards.length === 0 && d.effectiveStewards.length > 0
+            ? t("adminPage.stewardInherited")
+            : "",
+        ],
       ),
-    [userDomains, aliases, search, t],
+    [t, search, setSearch, aliases],
+  );
+  const shownDomains = useMemo(
+    () => shownBy(userDomains, [searchNarrowed]),
+    [userDomains, searchNarrowed],
   );
   const columns: ListColumn<Domain>[] = [
     { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
@@ -169,7 +172,13 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
   // `?domain=<id>` (a graph's or a refused delete's link, detailHref) opens that domain's panel.
   const detail = useRememberedDetail(
     "domains",
-    loading || !domainsEnabled ? null : userDomains.map((d) => d.id),
+    detailListOf(
+      t,
+      loading || !domainsEnabled ? null : userDomains,
+      (d) => d.id,
+      (d) => d.id,
+      [searchNarrowed],
+    ),
   );
   const open = userDomains.find((d) => d.id === detail.id) ?? null;
   // A linked domain (a graph's or a refused delete's link) is shown on its page of the list and
@@ -422,6 +431,7 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
         )}
         {domainsEnabled && (
           <SplitPane
+            outOfList={detail.outOfList}
             testId="domains-split"
             storageKey="provisa.domains.detailWidth"
             title={adding ? t("adminPage.addDomain") : (open?.id ?? "")}

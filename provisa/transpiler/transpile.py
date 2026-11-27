@@ -448,17 +448,21 @@ def _is_json_list_literal(node: exp.Expression) -> bool:  # pyright: ignore[repo
 
 def _is_json_text_aggregate(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
     """A list field's aggregate as Trino holds it: json_format(...) text
-    (_rewrite_json_arrayagg_for_trino), inline as a subquery or as the value column of the joined
-    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val)."""
+    (_rewrite_json_arrayagg_for_trino), inline as a subquery, as the value column of the joined
+    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val), or as the value column of
+    the compiler's grouped read of the field (sql_selection.rel_read: <alias>_read._value)."""
+    from provisa.compiler.sql_selection import READ_VALUE
+
     value = node
     if isinstance(node, exp.Subquery) and isinstance(node.this, exp.Select):
         selects = node.this.selects
         value = selects[0].unalias() if len(selects) == 1 else node
     if isinstance(value, exp.JSONFormat):
         return True
-    return (
-        isinstance(value, exp.Column) and value.name == "_val" and value.table.startswith("_grel_")
-    )
+    if not isinstance(value, exp.Column):
+        return False
+    hoisted = value.name == "_val" and value.table.startswith("_grel_")
+    return hoisted or (value.name == READ_VALUE and value.table.endswith("_read"))
 
 
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
@@ -717,9 +721,15 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     def _list(inner: exp.Expression, where: exp.Expression | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Recurse: transform is pre-order and skips a replaced node's children, so a nested
         # json_arrayagg would survive unrewritten.
-        collected: exp.Expression = exp.ArrayAgg(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            this=exp.Anonymous(this="JSON_PARSE", expressions=[inner.transform(_transform)])
+        ordered = inner if isinstance(inner, exp.Order) else None
+        value = inner.this if ordered is not None else inner
+        parsed: exp.Expression = exp.Anonymous(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            this="JSON_PARSE", expressions=[value.transform(_transform)]
         )
+        if ordered is not None:
+            # json_agg(x ORDER BY k) (an OData expansion's order): array_agg keeps the order.
+            parsed = exp.Order(this=parsed, expressions=[e.copy() for e in ordered.expressions])
+        collected: exp.Expression = exp.ArrayAgg(this=parsed)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is not None:
             # REQ-005's list cap: the filter is the aggregate's, inside the conversion.
             collected = exp.Filter(this=collected, expression=where.transform(_transform))
@@ -2125,6 +2135,14 @@ def transpile(
     pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
+    if target_dialect == "clickhouse" and generated and _JSON_BUILT.search(pg_sql):
+        # #362: a compiled statement's JSON (a relationship field's object and list) in
+        # ClickHouse's text, before a form reads a function the grid would refuse untyped.
+        from provisa.transpiler.clickhouse_json import relationship_json
+
+        lowered = relationship_json(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
@@ -2275,6 +2293,9 @@ def transpile(
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
+
+#: A statement that builds JSON: a json_object, a json_agg, or a list field's empty default.
+_JSON_BUILT = re.compile(r"\bjson_(?:object|agg)\s*\(|\bjsonb_agg\s*\(|AS JSON\)", re.IGNORECASE)
 
 _REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
 

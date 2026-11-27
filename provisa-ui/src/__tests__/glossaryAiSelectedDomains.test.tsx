@@ -73,6 +73,7 @@ const TERM = {
   is_abstract: false,
   domains: ["sales", "hr"],
   refs: [],
+  command_refs: [],
   edges_out: [],
   edges_in: [],
   experts: [],
