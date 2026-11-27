@@ -22,6 +22,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Modal,
@@ -51,6 +52,7 @@ import { DescriptionField } from "../../pages/tables/DescriptionField";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
+import { PanelBody } from "../list/PanelBody";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
 import { GlossaryRelationships } from "./GlossaryRelationships";
@@ -348,7 +350,7 @@ export function TermEditForm({
     });
 
   return (
-    <Stack gap="md" pb="md" data-testid="glossary-edit-form">
+    <PanelBody data-testid="glossary-edit-form">
       <FormLayout>
         <FormField size="medium">
           <TextInput
@@ -582,14 +584,16 @@ export function TermEditForm({
         draft.tables
           .filter((id) => !read.tables.includes(id))
           .map((id) => (
-            <Stack key={id} gap={2} data-testid={`glossary-bind-impact-${id}`}>
-              <Text size="xs" fw={500}>
-                {t("glossaryTab.impactTitle_bind", {
-                  term: `${term.name} → ${tableOptions.find((o) => o.value === String(id))?.label ?? id}`,
-                })}
-              </Text>
-              <TermImpactPreview termId={term.id} action="bind" extra={{ table_id: id }} />
-            </Stack>
+            <Box key={id} data-testid={`glossary-bind-impact-${id}`}>
+              <Stack gap={2}>
+                <Text size="xs" fw={500}>
+                  {t("glossaryTab.impactTitle_bind", {
+                    term: `${term.name} → ${tableOptions.find((o) => o.value === String(id))?.label ?? id}`,
+                  })}
+                </Text>
+                <TermImpactPreview termId={term.id} action="bind" extra={{ table_id: id }} />
+              </Stack>
+            </Box>
           ))}
       {said("tables")}
 
@@ -622,27 +626,29 @@ export function TermEditForm({
       {said("relationships")}
 
       <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
-      <Stack gap={4}>
-        {draft.experts.map((expert) => (
-          <Group key={expert.user_id} gap="xs" data-testid={`glossary-expert-${expert.user_id}`}>
-            <Text size="sm">{expert.user_id}</Text>
-            <Badge size="sm" variant="light">
-              {t(`glossaryTab.kind_${expert.kind}`)}
-            </Badge>
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              size="sm"
-              aria-label={t("glossaryTab.removeExpert")}
-              onClick={() =>
-                set({ experts: draft.experts.filter((e) => e.user_id !== expert.user_id) })
-              }
-            >
-              <Trash2 size={13} />
-            </ActionIcon>
-          </Group>
-        ))}
-      </Stack>
+      <Box>
+        <Stack gap={4}>
+          {draft.experts.map((expert) => (
+            <Group key={expert.user_id} gap="xs" data-testid={`glossary-expert-${expert.user_id}`}>
+              <Text size="sm">{expert.user_id}</Text>
+              <Badge size="sm" variant="light">
+                {t(`glossaryTab.kind_${expert.kind}`)}
+              </Badge>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size="sm"
+                aria-label={t("glossaryTab.removeExpert")}
+                onClick={() =>
+                  set({ experts: draft.experts.filter((e) => e.user_id !== expert.user_id) })
+                }
+              >
+                <Trash2 size={13} />
+              </ActionIcon>
+            </Group>
+          ))}
+        </Stack>
+      </Box>
       <FormLayout>
         <FieldGroup row>
           <FormField size="medium">
@@ -717,6 +723,6 @@ export function TermEditForm({
           />
         </Modal>
       )}
-    </Stack>
+    </PanelBody>
   );
 }
