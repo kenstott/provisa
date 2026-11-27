@@ -36,7 +36,6 @@ Credentials (CI secrets; absent, the test fails naming what is missing -- a skip
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import os
 from datetime import datetime, timezone
@@ -91,30 +90,6 @@ def _ok(resp: httpx.Response) -> None:
         )
 
 
-#: Any one of these application roles lets an app-only token reach a user's OneDrive.
-DRIVE_ROLES = ("Files.ReadWrite.All", "Files.Read.All", "Sites.ReadWrite.All")
-
-
-def _preflight_app_only_drive(user: str, token: str, call_get) -> None:
-    """Prints the token's `roles` claim (never the token) and GET /users/<user>/drive, UPN masked;
-    fails naming the missing application permission or with the drive call's own body."""
-    claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
-    roles = claims.get("roles") or []
-    print(f"onedrive preflight: token roles = {roles}", flush=True)
-    resp = call_get(f"{GRAPH}/users/{user}/drive")
-    body = resp.text.replace(user, "<upn>")
-    print(f"onedrive preflight: GET /users/<upn>/drive -> {resp.status_code} {body}", flush=True)
-    if not any(r in roles for r in DRIVE_ROLES):
-        pytest.fail(
-            f"the app-only token lacks an application permission for OneDrive "
-            f"(need one of {', '.join(DRIVE_ROLES)}; token roles: {roles}). "
-            f"GET drive: {resp.status_code} {body}",
-            pytrace=False,
-        )
-    if resp.is_error:
-        pytest.fail(f"GET /users/<upn>/drive: {resp.status_code} {body}", pytrace=False)
-
-
 @pytest.fixture(autouse=True)
 def _org():
     # The org's folder is made ready as its runtime's build does (REQ-1992); the source's pgwire
@@ -140,33 +115,12 @@ def _reads_as_the_file_does(tmp_path, found: list[dict], url: str, opts: dict) -
         assert pac.read_csv(f).equals(pac.read_csv(str(local)))
 
 
-def _print_server_log(source_id: str) -> None:
-    """The end of the source's connector server's own log, so a failed read shows what the
-    server's file adapter saw (the log is in the org's folder on this node)."""
-    for log in org_files.folder("req2280_live").glob(
-        f"nodes/*/pgwire/*/{source_id}/{pr.SERVER_LOG_NAME}"
-    ):
-        print(f"--- {log} (last 150 lines)")
-        print("\n".join(log.read_text(errors="replace").splitlines()[-150:]))
-        model = json.loads((log.parent / "model" / "model.json").read_text())
-        for schema in model.get("schemas", []):
-            operand = schema.get("operand", {})
-            config = {
-                k: ("<redacted>" if "ecret" in k or "assword" in k or k.endswith("Key") else v)
-                for k, v in operand.get("storageConfig", {}).items()
-            }
-            print(f"--- model schema {schema.get('name')}: {dict(operand, storageConfig=config)}")
-
-
 def _engine_reads_as_the_file_does(source: Source) -> None:
     """The source's Calcite pgwire server reads ``orders`` live from the drive (the file adapter's
     drive storage provider, signed in with the source's fields) and answers the file's rows."""
     replica = pr.ConnectorReplica(source)
     try:
         rows = asyncio.run(replica.load("orders"))
-    except Exception:
-        _print_server_log(source.id)
-        raise
     finally:
         replica.close()
     assert sorted(rows, key=lambda r: r["id"]) == ROWS
@@ -199,11 +153,6 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
         _ok(resp)
         return resp
 
-    _preflight_app_only_drive(
-        user,
-        token(),
-        lambda url: client.request("GET", url, headers={"Authorization": f"Bearer {token()}"}),
-    )
     folder = call(
         "POST",
         f"{drive}/root/children",
@@ -218,28 +167,16 @@ def test_onedrive_folder_csv_reads_as_the_file_does(tmp_path):
         _reads_as_the_file_does(
             tmp_path, found, f"onedrive://{user}/{RUN}/{INNER}/orders.csv", opts
         )
-        try:
-            _engine_reads_as_the_file_does(
-                Source(
-                    id="od-live",
-                    type=SourceType.files,
-                    path=source.path,
-                    database=source.database,
-                    username=source.username,
-                    password=source.password,
-                )
+        _engine_reads_as_the_file_does(
+            Source(
+                id="od-live",
+                type=SourceType.files,
+                path=source.path,
+                database=source.database,
+                username=source.username,
+                password=source.password,
             )
-        except Exception:
-            # What Graph answers to the nested folder named by its path, as one %2F-encoded
-            # segment and as slashes (a diagnostic; the failure is re-raised).
-            for sub in (f"{RUN}/{INNER}", f"{RUN}%2F{INNER}"):
-                for tail in ("", "/children"):
-                    resp = client.get(
-                        f"{drive}/root:/{sub}:{tail}",
-                        headers={"Authorization": f"Bearer {token()}"},
-                    )
-                    print(f"graph probe root:/{sub}:{tail} -> {resp.status_code}")
-            raise
+        )
     finally:
 
         def delete() -> None:
