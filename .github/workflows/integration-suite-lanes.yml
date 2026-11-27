@@ -1042,6 +1042,8 @@ jobs:
       M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
       M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
       # Optional: the test of a mailbox the client may not read runs only when it is set.
+      # Where the downloaded bundles live (default_cache_root).
+      PROVISA_RUNTIME_DEPS_CACHE: ${{ github.workspace }}/.runtime-deps
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1063,6 +1065,11 @@ jobs:
             echo "::error::microsoft_365 lane cannot run; secrets of environment live not set:$missing"
             exit 1
           fi
+
+      # REQ-294: a running Provisa never fetches a bundle; the OneDrive live test reads a folder
+      # through the pgwire-file bundle, staged here for the lane.
+      - name: Stage the file pgwire bundle
+        run: uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --github-release
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py microsoft_365 --junitxml results/microsoft_365/junit.xml
