@@ -197,6 +197,13 @@ class Grid:
                         # The name the pattern writes, where sqlglot reads it as a node of another
                         # name (log10 as log of base 10): a quoted call of it is that node too.
                         self._typed_names.add(_written_name(rule.pattern))
+        # Each column's rewrite functions, in the grid's order, found once: the walk reads them at
+        # every node of every statement, and most rules have no rewrite on a given column.
+        self._rewrites_on = {c: _rewrites_of(self._rewrites, c) for c in DIALECTS}
+        self._first_on = {c: _rewrites_of(self._first, c) for c in DIALECTS}
+        #: Each column's first rules less those of the features skipped, by the ids of those
+        #: features, the features kept with them (so no id is reused while it is a key).
+        self._first_kept: dict[tuple[str, tuple[int, ...]], _Kept] = {}
 
     @staticmethod
     def _check(feature: Feature, side: Side) -> None:
@@ -274,10 +281,7 @@ class Grid:
                     return Applied(feature, rule, form, bindings)
         if column is None:
             return None
-        for feature, rule in self._rewrites:
-            form = rule.forms.get(column)
-            if not isinstance(form, Rewrite):
-                continue
+        for feature, rule, form in self._rewrites_on[column]:
             rewritten = form.function(node, dialect)
             if rewritten is not None:
                 return Applied(feature, rule, form, {}, rewritten)
@@ -292,15 +296,21 @@ class Grid:
         column = column_of(dialect)
         if column is None:
             return None
-        for feature, rule in self._first:
-            if feature in skipped:
-                continue
-            form = rule.forms.get(column)
-            if isinstance(form, Rewrite):
-                rewritten = form.function(node, dialect)
-                if rewritten is not None:
-                    return Applied(feature, rule, form, {}, rewritten)
+        for feature, rule, form in self._first_not_skipped(column, skipped):
+            rewritten = form.function(node, dialect)
+            if rewritten is not None:
+                return Applied(feature, rule, form, {}, rewritten)
         return None
+
+    def _first_not_skipped(self, column: str, skipped: tuple[Feature, ...]) -> _Found:
+        """``column``'s first rules but those of a feature in ``skipped``, found once per column
+        and set of skipped features."""
+        key = (column, tuple(map(id, skipped)))
+        kept = self._first_kept.get(key)
+        if kept is None:
+            found = tuple(f for f in self._first_on[column] if f[0] not in skipped)
+            kept = self._first_kept[key] = (skipped, found)
+        return kept[1]
 
     def _typed(self, node: exp.Expr) -> exp.Expr | None:
         """A call written by a name sqlglot leaves a plain call (quoted, or by pg_catalog), as the
@@ -334,6 +344,21 @@ class Grid:
     def on(self, dialect: str) -> tuple[Feature, ...]:
         """The features with a polyfill or a limitation on ``dialect``: what its page lists."""
         return tuple(f for f in self.features if self.status(f, dialect) is not Status.NATIVE)
+
+
+#: A column's rules of a rewrite function: each with its feature and the column's Rewrite.
+_Found = tuple[tuple[Feature, Rule, Rewrite], ...]
+#: The features skipped, and a column's first rules less theirs.
+_Kept = tuple[tuple[Feature, ...], _Found]
+
+
+def _rewrites_of(rules: list[tuple[Feature, Rule]], column: str) -> _Found:
+    """The rules of ``rules`` whose form on ``column`` is a rewrite function, in their order."""
+    return tuple(
+        (feature, rule, form)
+        for feature, rule in rules
+        if isinstance(form := rule.forms.get(column), Rewrite)
+    )
 
 
 def _called(node: exp.Expr) -> tuple[str, ...]:
