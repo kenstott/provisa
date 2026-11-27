@@ -347,6 +347,7 @@ def test_the_env_file_names_the_config_and_leaves_the_engine_to_it():
     env = dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))
     assert env == {
         "PROVISA_CONFIG": "/srv/etc/provisa.yaml",
+        "ORG_ID": "root",
         "TRINO_HOST": "127.0.0.1",
         "TRINO_PORT": "9080",
         "PROVISA_TRINO_ETC_DIR": "/srv/data/trino",
