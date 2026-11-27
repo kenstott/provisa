@@ -1318,10 +1318,6 @@ def served_commands(schema: Any) -> list[dict]:
     :data:`_CALL_LANGUAGES` (None when it is excluded from one, REQ-2168)."""
     from provisa.api.command_fields import command_fields
 
-    # A surface holding no GraphQL schema (a role served only its context) offers no command
-    # field: there is nothing to list, and it is not an error (REQ-1159, amended 2026-11-27).
-    if schema is None:
-        return []
     return [
         {
             "command": cf.command,
