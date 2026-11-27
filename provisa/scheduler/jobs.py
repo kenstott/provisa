@@ -1144,6 +1144,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.dq.scan import register_org_checkers
 
         await register_org_checkers(scheduler, org_id)
+        # REQ-2158: and each product member's declared-logical-type check, every cache_ttl.
+        from provisa.dq.scan import register_org_type_checks
+
+        await register_org_type_checks(scheduler, org_id)
         # REQ-506: and its service level, evaluated against the operator's limits.
         from provisa.audit.sla_monitor import register_org_sla
 

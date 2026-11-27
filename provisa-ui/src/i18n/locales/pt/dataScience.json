@@ -10,6 +10,7 @@
     "rowsShown": "A mostrar {{shown}} de {{total}} linhas",
     "figure": "Figura {{n}}",
     "resizeLabel": "Redimensionar o editor e a saída",
+    "output": "Saída",
     "notebookFrame": "Notebook Jupyter",
     "copyCode": "Copiar código",
     "clearCode": "Limpar o editor",

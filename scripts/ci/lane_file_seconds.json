@@ -99,6 +99,7 @@
   "tests/integration/test_config_sync_workers.py": 1203.4,
   "tests/integration/test_configured_provider_surfaces.py": 0.0,
   "tests/integration/test_connection_thread_execution.py": 1.0,
+  "tests/integration/test_contract_type_check_e2e.py": 45.0,
   "tests/integration/test_control_plane_env_capability.py": 94.1,
   "tests/integration/test_control_plane_psycopg.py": 0.1,
   "tests/integration/test_cosmosdb_emulator_search_spike.py": 25.6,

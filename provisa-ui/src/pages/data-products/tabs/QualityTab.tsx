@@ -18,7 +18,12 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Anchor, Badge, Group, List, Stack, Text } from "@mantine/core";
 import { ListChecks, Table as TableIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { ProductDq, ProductDqEntry, ProductLineage } from "../../../api/lineage";
+import {
+  isCheckerEntry,
+  type ProductDq,
+  type ProductDqEntry,
+  type ProductLineage,
+} from "../../../api/lineage";
 import type { Offer } from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { Tip } from "../../../components/Tip";
@@ -157,6 +162,9 @@ export function QualityTab({
   /** The product's checks and their latest results. */
   const dqChecks = () => {
     if (!dq) return null;
+    // REQ-2158: the checker tables' rows; the built-in Declared logical types promise is drawn by
+    // its own row (CONTRACT-TYPE-CHECK-UI), and counted in the offers' quality below.
+    const rows = { ...dq, promises: dq.promises.filter(isCheckerEntry) };
     return (
       <Stack gap="sm" data-testid={`data-product-card-dataQuality-${productId}`}>
         {/* The section's own row is its one heading (THE PRODUCT PAGE IS SUMMARY ROWS). */}
@@ -166,7 +174,7 @@ export function QualityTab({
         {/* REQ-2132: the product's promises, the checks it makes on its tables. */}
         <ClaimsCallout
           kind="promises"
-          checks={dq.promises}
+          checks={rows.promises}
           testId={`data-product-detail-promises-${productId}`}
         />
         {outputTables !== undefined && outputTables.length === 0 && (
@@ -178,7 +186,7 @@ export function QualityTab({
               <List.Item key={tb.id} ff="monospace">
                 {modelName(tb)}
                 <DqIcon
-                  checks={dq.promises}
+                  checks={rows.promises}
                   tableId={tb.id}
                   testId={`data-product-detail-port-dq-${tb.id}`}
                 />
@@ -186,7 +194,7 @@ export function QualityTab({
             ))}
           </List>
         )}
-        {shownDqRows.every((row) => dq[row].length === 0) &&
+        {shownDqRows.every((row) => rows[row].length === 0) &&
         (!owner || dq.unattached.length === 0) ? (
           <Text size="sm" c="dimmed">
             {t("dataProductsTab.detail.dataQualityEmpty")}
@@ -197,7 +205,7 @@ export function QualityTab({
           <div data-testid={`data-product-detail-dq-tables-${productId}`}>
             <Collapsibles id="data-product.dq-rows">
               {shownDqRows.map((row) => {
-                const status = dqStatus(dq[row]);
+                const status = dqStatus(rows[row]);
                 return (
                   <CollapsibleItem
                     key={row}
@@ -210,7 +218,7 @@ export function QualityTab({
                           {t(`dataProductCore.dqRow_${row}`)}
                         </Text>
                         <Badge size="sm" variant="light" color="gray">
-                          {dq[row].length}
+                          {rows[row].length}
                         </Badge>
                         {status && (
                           <Badge size="sm" variant="light" color={COLOR[status]}>
@@ -220,12 +228,12 @@ export function QualityTab({
                       </Group>
                     }
                   >
-                    {dq[row].length === 0 ? (
+                    {rows[row].length === 0 ? (
                       <Text size="sm" c="dimmed">
                         {t("dataProductCore.dqRowEmpty")}
                       </Text>
                     ) : (
-                      <List size="sm">{dq[row].map((c) => dqItem(c, row === "related"))}</List>
+                      <List size="sm">{rows[row].map((c) => dqItem(c, row === "related"))}</List>
                     )}
                   </CollapsibleItem>
                 );

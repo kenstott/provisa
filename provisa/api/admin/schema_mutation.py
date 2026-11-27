@@ -769,6 +769,9 @@ async def _set_data_product_members(
                 params={"data_product": product_id, **refused.params},
             )
     await _rebuild_schemas()  # membership is read by the runtime build (exports, meta, lineage)
+    from provisa.dq.scan import reschedule_org_checkers
+
+    await reschedule_org_checkers()  # REQ-2158: a member's type check follows its membership
     return MutationResult(
         success=True,
         message=f"Data product {product_id!r} members set",
@@ -6570,6 +6573,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.source_not_found",
                     params={"source": source_id},
                 )
+        from provisa.dq.scan import reschedule_org_checkers
+
+        await reschedule_org_checkers()  # REQ-2158: a member's type check runs on its new interval
         return MutationResult(
             success=True,
             message=f"Cache settings updated for source {source_id!r}",

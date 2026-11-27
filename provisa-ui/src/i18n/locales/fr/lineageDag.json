@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "tâche OpenLineage",
     "outsideModel": "hors du modèle",
-    "reportedEdge": "signalé par OpenLineage"
+    "reportedEdge": "signalé par OpenLineage",
+    "columns_one": "{{count}} colonne",
+    "columns_other": "{{count}} colonnes",
+    "unused": "+{{count}} inutilisées",
+    "materialized": "matérialisée",
+    "feedbackCycle": "dans un cycle de rétroaction",
+    "errorCycle": "dans un cycle en erreur",
+    "clickToExpand": "Cliquer pour développer",
+    "clickToCollapse": "Cliquer pour réduire",
+    "doubleClickToOpen": "double-cliquer pour ouvrir",
+    "expandAll": "Développer tous les jeux de données",
+    "collapseAll": "Réduire tous les jeux de données",
+    "enlarge": "Agrandir",
+    "stats": "{{columns}} colonnes · {{edges}} arêtes"
   }
 }

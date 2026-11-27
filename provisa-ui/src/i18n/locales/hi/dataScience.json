@@ -10,6 +10,7 @@
     "rowsShown": "{{total}} में से {{shown}} पंक्तियाँ दिखाई जा रही हैं",
     "figure": "चित्र {{n}}",
     "resizeLabel": "एडिटर और आउटपुट का आकार बदलें",
+    "output": "आउटपुट",
     "notebookFrame": "Jupyter नोटबुक",
     "copyCode": "कोड कॉपी करें",
     "clearCode": "एडिटर खाली करें",

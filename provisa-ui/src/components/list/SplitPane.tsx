@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A list with a detail panel on its right. The panel pushes the list narrower rather than covering
-// it; its left edge resizes it (the mechanism Polly's panel uses, useResizableWidth) and the width
+// it; its left edge resizes it (the mechanism Polly's panel uses, useResizableSize) and the width
 // is kept per browser; it expands to the full width and back. Where the row is too narrow for a
 // list and a panel side by side, the list gives way: the panel takes its place, with a way back.
 //
@@ -28,7 +28,7 @@ import {
 import { createPortal } from "react-dom";
 import { ActionIcon, Button, Title } from "@mantine/core";
 import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
-import { useResizableWidth } from "../../hooks/useResizableWidth";
+import { useResizableSize } from "../../hooks/useResizableSize";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
 import {
@@ -40,6 +40,7 @@ import {
 } from "./panelActions";
 import { DetailOutOfList } from "./DetailOutOfList";
 import { PanelHeadStyle } from "./PanelHeadStyle";
+import { SplitHandle } from "./SplitHandle";
 import type { OutOfList } from "./useDetailParam";
 import { PanelLeaveContext, usePanelLeave, type PanelLeave } from "./panelLeave";
 
@@ -121,7 +122,12 @@ export function SplitPane({
   // disabled until it settles -- and marks its item's row in the list as being deleted.
   const { locked, deleting, api: deletingApi } = usePanelDeleting(open, onClose);
 
-  const { ref, width, startResize, onHandleKeyDown } = useResizableWidth<HTMLElement>(storageKey, {
+  const {
+    ref,
+    size: width,
+    startResize,
+    onHandleKeyDown,
+  } = useResizableSize<HTMLElement>(storageKey, {
     // Not moved yet: the panel takes its share of the row (see `shown`).
     initial: 0,
     min: PANEL_MIN,
@@ -206,18 +212,13 @@ export function SplitPane({
       {open && (
         <>
           {!alone && (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={labels.resize}
-              tabIndex={0}
-              className="split-pane__handle"
+            <SplitHandle
+              orientation="vertical"
+              label={labels.resize}
               onPointerDown={startResize}
               onKeyDown={onHandleKeyDown}
-              data-testid={`${testId}-handle`}
-            >
-              <div />
-            </div>
+              testId={`${testId}-handle`}
+            />
           )}
           <aside
             ref={ref}

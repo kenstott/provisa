@@ -19,13 +19,7 @@ export interface LineageTransformOp {
   // REQ-2001: command_write names the statement command that writes the target; REQ-2116: rename
   // says how a source's raw field became the registered column (path, alias, naming).
   kind:
-    | "sql_function"
-    | "operator"
-    | "command"
-    | "identity"
-    | "constant"
-    | "command_write"
-    | "rename";
+    "sql_function" | "operator" | "command" | "identity" | "constant" | "command_write" | "rename";
   args?: string[]; // REQ-1160: literal arguments, so an edge reads as a formula — substring(1, 3)
 }
 
@@ -130,6 +124,45 @@ export interface ProductDqEntry {
   latest_run_at: string | null;
   /** The checks of its latest run that did not pass; none when it passed or never ran. */
   failing_checks: ProductFailingCheck[];
+  /** REQ-2158: a checker table is no built-in check. */
+  builtin?: null;
+}
+
+/** REQ-2158: a member's built-in Declared logical types promise: every offer contract on the
+ *  member checked against its source's live column types. It has no checker table and no result
+ *  relation; it is one check (one rule), each failing column one failing check. */
+export interface ProductTypeCheckPromise {
+  builtin: "contract_logical_type";
+  name: string; // "Declared logical types"
+  checker_table_id: null;
+  domain_id: string;
+  table_name: null;
+  alias: null;
+  description: null;
+  owner_product_ids: string[];
+  checked_table_id: number;
+  checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
+  rules: ProductDqRule[];
+  latest_outcome: "pass" | "fail";
+  latest_run_at: string;
+  failing_checks: ProductFailingCheck[];
+  failing_columns: ProductTypeMismatch[];
+}
+
+/** REQ-2158: a column whose live type no longer fits its declared logicalType (live null: gone). */
+export interface ProductTypeMismatch {
+  offer_id: number;
+  column: string;
+  declared: string;
+  live: string | null;
+}
+
+/** A product's promise: a checker table on a member, or a member's built-in type check. */
+export type ProductPromise = ProductDqEntry | ProductTypeCheckPromise;
+
+/** Whether a promise is a checker table's (the built-in type check is not). */
+export function isCheckerEntry(p: ProductPromise): p is ProductDqEntry {
+  return p.builtin == null;
 }
 
 /** One check of a checker's latest run that did not pass: its name, column and outcome. */
@@ -144,7 +177,7 @@ export interface ProductFailingCheck {
  *  own checks on neither -- a curation gap its owner sees. Each cut to the reader's rights. */
 export interface ProductDq {
   expectations: ProductDqEntry[];
-  promises: ProductDqEntry[];
+  promises: ProductPromise[];
   related: ProductDqEntry[];
   unattached: ProductDqEntry[];
 }

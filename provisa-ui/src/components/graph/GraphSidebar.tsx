@@ -24,6 +24,7 @@ import {
   type RelContextMenuState,
 } from "./graph-context-menus";
 import { Tip } from "../Tip";
+import { SplitHandle } from "../list/SplitHandle";
 import { getStored, setStored } from "../../lib/browserStorage";
 
 /** What a class's menu is opened on, as a right click on its pill does. */
@@ -245,27 +246,35 @@ export function Sidebar({
     setRenamingId(null);
   }, [renamingId, renameValue, onFavoriteRename]);
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // The handle starts the drag on pointerdown, whose preventDefault suppresses the compatibility
+  // mouse events: the drag follows pointer events (REQ-2277).
+  const onResizeStart = useCallback(
+    (e: React.PointerEvent) => {
       e.preventDefault();
       dragging.current = true;
       const startX = e.clientX;
       const startW = width;
-      const onMove = (ev: MouseEvent) => {
+      const onMove = (ev: PointerEvent) => {
         if (!dragging.current) return;
         const next = Math.max(160, Math.min(480, startW + ev.clientX - startX));
         onWidthChange(next);
       };
       const onUp = () => {
         dragging.current = false;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
       };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
     },
     [width, onWidthChange],
   );
+
+  const onHandleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    onWidthChange(Math.max(160, Math.min(480, width + (e.key === "ArrowRight" ? 32 : -32))));
+  };
 
   const handleNodeRightClick = useCallback(
     (e: React.MouseEvent, node: SchemaNodeLabel) => {
@@ -1004,14 +1013,16 @@ export function Sidebar({
         )}
       </div>
 
-      <div
-        className="graph-sidebar-resizer"
-        onMouseDown={onMouseDown}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("graphSidebar.resizeSidebar")}
-        tabIndex={0}
-      />
+      {/* REQ-2277: the splitter every Explore surface uses; it stands at the sidebar's right edge. */}
+      <div className="graph-sidebar-resizer">
+        <SplitHandle
+          orientation="vertical"
+          label={t("graphSidebar.resizeSidebar")}
+          onPointerDown={onResizeStart}
+          onKeyDown={onHandleKeyDown}
+          testId="graph-sidebar-handle"
+        />
+      </div>
 
       {contextMenu && (
         <NodeContextMenu

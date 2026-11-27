@@ -427,6 +427,7 @@ _CREATE_ONLY = {
     "connectors": (
         'name git ref "commit" path build_command language image digest code_hash arch requires'
     ),
+    "contract_type_checks": "table_id checked_at outcome failing",
     "creation_requests": (
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"

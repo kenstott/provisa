@@ -92,6 +92,10 @@ def test_a_check_that_calls_services_is_never_an_sql_probe():
 # -- the services, bound in-process ---------------------------------------------------------------
 
 
+#: REQ-2158: a member's built-in declared-logical-type promise, as product_dq lists it.
+_BUILTIN = {"checker_table_id": None, "builtin": "contract_logical_type"}
+
+
 @pytest.fixture
 def answered(monkeypatch):
     """Provisa's services as the check reaches them: each call recorded with its grant, answered by
@@ -237,8 +241,14 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
             {"table_id": 11, "product_id": "p1"}, {"table_id": 11, "product_id": "p2"}
         ]),
     ]  # fmt: skip
-    meta.lists["p1"] = {"expectations": [{"checker_table_id": 11, "checked_table_id": 7}]}
-    meta.lists["p2"] = {"related": [{"checker_table_id": 11, "checked_table_id": 7}]}
+    meta.lists["p1"] = {
+        "expectations": [{"checker_table_id": 11, "checked_table_id": 7, "builtin": None}],
+        # REQ-2158: the member's built-in type check is no checker table of the dataset.
+        "promises": [{**_BUILTIN, "checked_table_id": 7}],
+    }
+    meta.lists["p2"] = {
+        "related": [{"checker_table_id": 11, "checked_table_id": 7, "builtin": None}]
+    }
     found = await dq.dataset("sales.orders", "analyst", view_products=("p1", "p2"))
     assert found["dataset"] == "sales.orders" and found["dataset_id"] == 7
     soda, gx = found["checker_tables"]
@@ -295,8 +305,12 @@ async def test_a_product_answers_each_check_by_how_it_shows_it(meta):
         ("WHERE id IN (11, 12)", [_checker(11, "out_soda"), _checker(12, "stale_soda", ran=False)]),
     ]  # fmt: skip
     meta.lists["p1"] = {
-        "promises": [{"checker_table_id": 11, "checked_table_id": 7}],
-        "unattached": [{"checker_table_id": 12, "checked_table_id": 9}],
+        "promises": [
+            {"checker_table_id": 11, "checked_table_id": 7, "builtin": None},
+            # REQ-2158: the built-in type check is no checker table; this answer lists those.
+            {**_BUILTIN, "checked_table_id": 7},
+        ],
+        "unattached": [{"checker_table_id": 12, "checked_table_id": 9, "builtin": None}],
     }
     found = await dq.product("p1", "steward")
     assert [c["checker_table"] for c in found["promises"]] == ["dq.out_soda"]

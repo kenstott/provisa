@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "משימת OpenLineage",
     "outsideModel": "מחוץ למודל",
-    "reportedEdge": "דווח על ידי OpenLineage"
+    "reportedEdge": "דווח על ידי OpenLineage",
+    "columns_one": "עמודה {{count}}",
+    "columns_other": "{{count}} עמודות",
+    "unused": "+{{count}} לא בשימוש",
+    "materialized": "ממומש",
+    "feedbackCycle": "במעגל משוב",
+    "errorCycle": "במעגל שגוי",
+    "clickToExpand": "לחצו להרחבה",
+    "clickToCollapse": "לחצו לכיווץ",
+    "doubleClickToOpen": "לחיצה כפולה לפתיחה",
+    "expandAll": "הרחבת כל מערכי הנתונים",
+    "collapseAll": "כיווץ כל מערכי הנתונים",
+    "enlarge": "הגדלה",
+    "stats": "{{columns}} עמודות · {{edges}} קשתות"
   }
 }

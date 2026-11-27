@@ -1,9 +1,11 @@
 # ProvisaGraph: the one 2D graph component (REQ-2239)
 
-Every 2D graph view (the ERD, the graph explorer's lane diagram, the ontology graph and any later
-one) is drawn by `ProvisaGraph`. It is the only code that imports cytoscape or a cytoscape
-extension (`src/components/__tests__/graphGuard.test.ts` holds this). The 3D view and text
-diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
+Every 2D model diagram (the ERD, the ontology graph's lane diagram, product lineage and the
+Lineage page) is drawn by `ProvisaGraph`. It is the only code that imports cytoscape or a cytoscape
+extension (`src/components/__tests__/graphGuard.test.ts` holds this). Two kinds keep their own
+look and are exempt by rule (amended 2026-11-27): the network graph (the Cypher and SPARQL
+explorers, `components/graph/`, after Neo4j Browser) and the 3D view (a three.js scene). Text
+diagrams (mermaid in Analyze) are not graph views.
 
 ## What a view passes
 
@@ -14,7 +16,10 @@ diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
 - `edges`: `{ id, source, target, label?, arrow?, dashed?, tone?, data? }`.
 - `groups`: `{ id, label, description?, collapsed? }`.
 - `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (fixed lanes left to right,
-  sorted and placed by the component, no layout library), or `"force"` (fCoSE).
+  sorted and placed by the component, no layout library), `"flow"` (ELK layered left to right,
+  lineage's), or `"force"` (fCoSE).
+- `commands`: the view's own commands, at the end of the controls (lineage: expand all, collapse
+  all, enlarge).
 
 A view sets no colour, shape, size, font or control of its own. `data` carries the view's own
 identifiers (a table id, a relationship id) back to it on a click; it is never styled.
@@ -195,6 +200,17 @@ titled the same way.
   lines keep the generic edge label. Crossings that no placement removes are accepted. The same
   graph is always drawn the same way. Each lane's box bounds its own nodes (and the term lane's
   lines beside it and their names), its title above them, the boxes `LANE_GAP` apart.
+- `flow` (REQ-2239, amended 2026-11-27: lineage works like the 2D ontology graph): ELK layered,
+  left to right, the read order of lineage (`flow.ts`). A group's nodes are one column in the
+  order the view gives (a relation's fields); every group is laid out, and what no line reaches (a
+  group none of whose nodes has a line, a node with none) is then packed under the rest to the
+  pane's shape, as the layered preset packs its orphans. Lineage draws an open relation as a group
+  of its fields, a collapsed one as one node; a field's role (source, intermediate, result,
+  command, native field, OpenLineage job, outside the model) is its node type; each line carries
+  its transform as its label and is dashed where it is indirect (read through views not drawn, or
+  reported by OpenLineage). A click on a group or a collapsed relation's node toggles it, a double
+  click opens where the relation is defined (`onDoubleClick`); hovering a field lights everything
+  upstream and downstream of it.
 - `force`: fCoSE.
 
 ## Owned by the component

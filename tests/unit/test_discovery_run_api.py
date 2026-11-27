@@ -634,9 +634,10 @@ async def _prepared(scope: discovery.RunScope) -> Any:
 
 async def _facts(db: Database, ids: list[int]) -> dict[str, Any]:
     async with db.acquire() as conn:
-        tables = await gather.table_facts(
+        tables, unread = await gather.table_facts(
             discovery.state, cast(Any, conn), ids, context.SAMPLE_VALUES
         )
+    assert unread == [], unread
     return {t.table_name: t for t in tables}
 
 
@@ -820,11 +821,13 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
         ),
     ],
 )
-async def test_a_table_whose_read_is_refused_fails_the_run_by_name(
+async def test_a_table_whose_read_is_refused_is_left_out_by_name_and_the_run_goes_on(
     monkeypatch, tmp_path, refusal, at, reason
 ):
     """The count before Run reads nothing, so it is answered; the run reads the table, and one
-    that cannot be read fails it, named."""
+    that cannot be read takes no part in it: the run goes on over the rest and its result names
+    the table with why. A run over every table of the model failed whole on one GraphQL table
+    whose read failed ("table 'schedules' cannot be read: Binder Error: ...")."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _pet_store(db)
     world = _pet_world(monkeypatch, db)
@@ -838,11 +841,15 @@ async def test_a_table_whose_read_is_refused_fails_the_run_by_name(
     counted = await discovery.count_run(_REQUEST, scope)
     assert counted["source_tables"] == 4 and world.reads.sql == []
     run = await _run(world, scope)
-    assert run["status"] == "failed"
-    assert "'pets' cannot be read" in run["error"] and reason in run["error"]
-    with pytest.raises(gather.TableUnreadable) as caught:
-        await _prepared(scope)
-    assert caught.value.table == "pets" and reason in caught.value.reason
+    assert run["status"] == "done", run["error"]
+    [unread] = run["report"]["tables_unread"]
+    assert unread["table_id"] == _PETS and unread["table"] == "pet-store.pets"
+    assert reason in unread["reason"]
+    assert run["report"]["source_tables"] == 3
+    assert run["report"]["source_left_out"] == 0
+    prepared = await _prepared(scope)
+    assert _PETS not in prepared.source_ids and len(prepared.source) == 3
+    assert [(u.table, reason in u.reason) for u in prepared.unread] == [("pet-store.pets", True)]
 
 
 async def test_a_chosen_model_whose_vendor_has_no_key_is_refused(monkeypatch):
