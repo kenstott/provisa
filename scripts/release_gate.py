@@ -370,8 +370,8 @@ def _accepted_listing(accepted: list[tuple[str, dict]], sha: str) -> str:
         lines += "".join(f"  - `{c[:10]}`: {why}\n" for c, why in found["commits"])
     return (
         "\n## Runs accepted from an earlier commit\n\n"
-        f"These last ran green on an earlier commit than {sha}; every commit since is covered "
-        f"(REQ-1989):\n\n{lines}"
+        f"These last ran green on an earlier commit than {sha}; every commit since is covered:"
+        f"\n\n{lines}"
     )
 
 
