@@ -19,6 +19,7 @@ import type {
   GraphNodeSpec,
   GraphSpec,
 } from "../../../components/provisa-graph/model";
+import { transformLabel } from "../../../components/lineage/lineage-layout";
 
 export const LANE_INPUTS = "inputs";
 export const LANE_TABLES = "tables";
@@ -50,6 +51,9 @@ export function productLineageSpec(
   }
   // Relation hops, each once.
   const feeds = new Map<string, Set<string>>(); // relation -> the relations it reads
+  // REQ-2239: the transforms the column edges of each relation hop apply, each once.
+  const hopTransforms = new Map<string, Set<string>>();
+  const hop = (source: string, target: string) => `${source}\u0000${target}`;
   for (const e of g.edges) {
     const source = relationOf.get(e.source);
     const target = relationOf.get(e.target);
@@ -57,7 +61,20 @@ export function productLineageSpec(
     const read = feeds.get(target) ?? new Set<string>();
     read.add(source);
     feeds.set(target, read);
+    const transform = transformLabel(e);
+    if (transform) {
+      const named = hopTransforms.get(hop(source, target)) ?? new Set<string>();
+      named.add(transform);
+      hopTransforms.set(hop(source, target), named);
+    }
   }
+  /** The transforms along a drawn edge's relations, upstream to downstream, each once. */
+  const transformsAlong = (chain: string[]): string =>
+    [
+      ...new Set(
+        chain.slice(1).flatMap((target, k) => [...(hopTransforms.get(hop(chain[k], target)) ?? [])]),
+      ),
+    ].join(", ");
   const readers = new Map<string, Set<string>>(); // relation -> the relations reading it
   for (const [target, sources] of feeds)
     for (const source of sources) {
@@ -118,12 +135,17 @@ export function productLineageSpec(
       const id = `${source}->${target}`;
       if (seen.has(id)) continue;
       seen.add(id);
+      // REQ-2239: the line names its transforms, then the views it reads through.
+      const transforms = transformsAlong([source, ...via, target]);
+      const through = via.map(label).join(" → ");
+      const text = via.length > 0 ? [transforms, through].filter(Boolean).join(" via ") : transforms;
       edges.push({
         id,
         source,
         target,
         arrow: "target",
-        ...(via.length > 0 ? { dashed: true, label: via.map(label).join(" → ") } : {}),
+        ...(via.length > 0 ? { dashed: true } : {}),
+        ...(text ? { label: text } : {}),
       });
     }
   }
