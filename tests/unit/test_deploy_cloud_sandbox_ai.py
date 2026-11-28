@@ -28,11 +28,17 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _KEY_VALUE = "sk-or-v1-not-a-real-key"
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 
@@ -119,7 +125,7 @@ def test_a_node_without_the_key_is_refused_by_name_with_the_command_that_adds_it
 
 
 def test_every_arm_that_pushes_the_overlay_checks_the_tiers_node_first():
-    text = _SCRIPT.read_text()
+    text = _source()
     arms = text[text.index('case "$TARGET" in\n  ui)') :]
     for arm in re.findall(r"^    (.*;;)$", arms, re.MULTILINE):
         if "push_overlay" in arm or "deploy_sandbox_vm" in arm:

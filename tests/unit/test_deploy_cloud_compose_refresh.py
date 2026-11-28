@@ -26,11 +26,17 @@ import yaml
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _FIRST_LAUNCH = _REPO / "packaging" / "linux" / "first-launch.sh"
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 
@@ -271,7 +277,7 @@ def test_a_node_without_a_control_plane_compose_is_refused(tmp_path):
 
 @pytest.mark.parametrize("arm", ["api", "cfg", "all", "patch"])
 def test_every_arm_that_pushes_refreshes_the_compose_before_the_pushes(arm):
-    text = _SCRIPT.read_text()
+    text = _source()
     line = next(line for line in text.splitlines() if re.match(rf"\s+{arm}\)", line))
     body = text.split(line, 1)[1].split(";;", 1)[0]
     assert body.index("push_app") < body.index("push_cp_compose") < body.index("push_overlay")

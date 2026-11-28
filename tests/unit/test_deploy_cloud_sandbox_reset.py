@@ -31,6 +31,7 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 
 # A docker on the sandbox VM: its containers, its regions-tier stores and the databases each holds
 # (STORE_DBS: "store=db,db store=db"). psql into a database the store lacks fails as postgres does.
@@ -62,8 +63,13 @@ esac
 """
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 

@@ -30,11 +30,17 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _FIRST_LAUNCH = _REPO / "packaging" / "linux" / "first-launch.sh"
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    found = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", _SCRIPT.read_text(), re.S | re.M)
+    found = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", _source(), re.S | re.M)
     assert found is not None, f"deploy-cloud.sh has no {name}"
     return found.group(0)
 
@@ -116,7 +122,7 @@ def test_a_deploy_fails_naming_the_variable_when_the_api_container_lacks_it(runn
 
 
 def test_every_deploy_arm_that_pushes_the_overlay_verifies_the_base_domain():
-    arms = _SCRIPT.read_text().rsplit('case "$TARGET" in', 1)[1]
+    arms = _source().rsplit('case "$TARGET" in', 1)[1]
     for arm in re.findall(r"^  \w[\w-]*\)\n(.*?);;", arms, re.S | re.M):
         if "push_overlay" in arm:
             assert "verify_org_base" in arm

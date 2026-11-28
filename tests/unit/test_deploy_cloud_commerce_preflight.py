@@ -31,6 +31,7 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _FIRST_LAUNCH = _REPO / "packaging" / "linux" / "first-launch.sh"
 
 _PRICES = {
@@ -61,15 +62,20 @@ _PLUGIN_SETTINGS = {
 }
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 
 
 def _keys_block(name: str) -> str:
     """The `NAME="..."` assignment, which spans continuation lines."""
-    text = _SCRIPT.read_text()
+    text = _source()
     match = re.search(rf'^{name}="[^"]*"$', text, re.MULTILINE)
     assert match, name
     return match.group(0)
@@ -187,7 +193,7 @@ def test_first_launch_forwards_exactly_the_plugins_settings():
 
 def _target_steps(target: str) -> list[str]:
     """The function calls a deploy target runs, in order, from the script's case arm."""
-    text = _SCRIPT.read_text()
+    text = _source()
     arm = re.search(
         rf"^  {re.escape(target)}\)\n(.*?)\n    ;;$|^  {re.escape(target)}\)\n(.*?) ;;$",
         text,
@@ -234,7 +240,7 @@ def test_a_container_environment_larger_than_a_pipe_buffer_passes(tmp_path):
 def test_no_check_in_the_deploy_stops_reading_a_pipe_early():
     # `producer | grep -q` exits at the first match, and under pipefail the producer's broken
     # pipe fails the check whenever it was still writing. Every match reads a variable instead.
-    lines = _SCRIPT.read_text().splitlines()
+    lines = _source().splitlines()
     early = [
         f"{n}: {line.strip()}"
         for n, line in enumerate(lines, 1)
