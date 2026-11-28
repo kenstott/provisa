@@ -384,6 +384,23 @@ def _each_boot_seeds_its_own_deployment(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True, scope="module")
+def _coordinator_starts_seen_end_with_their_module():
+    """REQ-2073: the coordinator starts a process has seen (engine_wake._start_generations) are
+    process-wide; in production the process ends with its application. A module that boots an app
+    on a live Trino records that coordinator's start, and every later module's query path then
+    asked its own terminal for its coordinator's start -- a stand-in state's MagicMock connection
+    address, retried as a restarting coordinator until the request timed out. A module-scoped
+    autouse fixture is set up before the module's own module-scoped boots and torn down after
+    them, so this puts back what was seen before the module."""
+    from provisa.federation import engine_wake
+
+    seen = dict(engine_wake._start_generations)
+    yield
+    engine_wake._start_generations.clear()
+    engine_wake._start_generations.update(seen)
+
+
+@pytest.fixture(autouse=True, scope="module")
 def _reset_app_state():
     """Reset global app state between test modules.
 
