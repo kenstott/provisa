@@ -203,6 +203,16 @@ class JunctionMapping:  # REQ-1586
     #: (``-[:T* {k: v}]->``, RelPattern.every_hop): each (junction column, SQL value) a row it
     #: takes holds. Empty for a relationship's own mapping (REQ-348).
     hop_conditions: tuple[tuple[str, Any], ...] = ()
+    #: REQ-1586: the name the junction is registered under where the model reads it through
+    #: another relation (the ontology's _term_edges through _term_edges_ontology:
+    #: TableMeta.original_table_name); "" where ``table_name`` is the registered name.
+    registered_table_name: str = ""
+
+    @property
+    def registered_name(self) -> str:
+        """The junction's registered table name (REQ-1586): what a client knows it by, never the
+        relation the model reads it through."""
+        return self.registered_table_name or self.table_name
 
 
 @dataclass
@@ -1014,6 +1024,7 @@ def _junction_mapping(
         type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
+        registered_table_name=via.table.original_table_name,
     )
 
 

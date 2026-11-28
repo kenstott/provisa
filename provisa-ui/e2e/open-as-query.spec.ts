@@ -10,6 +10,7 @@
 
 import { test, expect, type Page } from "./coverage";
 import type { Request } from "@playwright/test";
+import { parse, print } from "graphql";
 import { addLateralEdge } from "./ontology-lateral-edge";
 
 /**
@@ -71,6 +72,11 @@ async function filteredView(page: Page) {
   return viewed;
 }
 
+/** Whether ``q`` is the view's read ``viewed``, as written: the GraphQL page opens a handed query
+ * prettified (as its Prettify button leaves it), so it runs the same operation in another layout. */
+const sameRead = (q: string, viewed: string) =>
+  ontologyRead(q) && print(parse(q)) === print(parse(viewed));
+
 /** Every string value in ``v``, at any depth. */
 function strings(v: unknown, out = new Set<string>()): Set<string> {
   if (typeof v === "string") out.add(v);
@@ -105,7 +111,7 @@ test.describe("Open as query", () => {
 
     const run = await nextRead(
       page,
-      (q) => q === viewed.query,
+      (q) => sameRead(q, viewed.query),
       async () => {
         await expect(page.locator(".graphiql-execute-button")).toBeEnabled({ timeout: 60_000 });
         // The editor holds the view's query once the hand-off has opened its tab.
@@ -153,7 +159,7 @@ test.describe("Open as query", () => {
     // REQ-2136: the view opens as the one query that read it, and run, it answers what it read.
     const run = await nextRead(
       page,
-      (q) => q === viewed.query,
+      (q) => sameRead(q, viewed.query),
       async () => {
         await expect(page.locator(".graphiql-execute-button")).toBeEnabled({ timeout: 60_000 });
         await expect(page.locator(".graphiql-query-editor")).toContainText("query Ontology", {

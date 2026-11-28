@@ -1286,10 +1286,11 @@ async def graph_schema(
                     "type": r.rel_type,
                     "source": label_map.nodes[r.source_label].label,
                     "target": label_map.nodes[r.target_label].label,
-                    # REQ-1586: the associative table a junction-backed edge traverses, and the
-                    # columns of it that read as relationship properties. Both are absent on an
+                    # REQ-1586: the associative table a junction-backed edge traverses, by the
+                    # name it is registered under, and the columns of it that read as
+                    # relationship properties. Both are absent on an
                     # FK/PK-backed edge, which is how a client tells the two apart.
-                    "junction_table_name": r.via.table_name if r.via else None,
+                    "junction_table_name": r.via.registered_name if r.via else None,
                     "properties": sorted(r.properties.keys()),
                     # REQ-2135: what it joins, the same for a join declared from both ends.
                     "join": r.join,

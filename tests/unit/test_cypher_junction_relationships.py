@@ -601,7 +601,7 @@ def test_graph_schema_relationship_payload_distinguishes_the_two_edge_shapes():
     def payload(r):
         return {
             "type": r.rel_type,
-            "junction_table_name": r.via.table_name if r.via else None,
+            "junction_table_name": r.via.registered_name if r.via else None,
             "properties": sorted(r.properties.keys()),
         }
 
@@ -611,3 +611,38 @@ def test_graph_schema_relationship_payload_distinguishes_the_two_edge_shapes():
         "properties": ["note"],
     }
     assert payload(fk) == {"type": "OWNER", "junction_table_name": None, "properties": []}
+
+
+def test_a_junction_read_through_another_relation_is_named_by_its_registered_name():
+    """REQ-1586: /data/graph-schema names a junction by the table a client knows, never the relation
+    the model reads it through: the ontology's term links are rows of _term_edges, read through the
+    _term_edges_ontology view, and a client finds them by _term_edges (REQ-2174: the Ontology View
+    writes its own Cypher over exactly those link types)."""
+    from provisa.compiler.sql_types import JunctionMeta, TableMeta
+    from provisa.gql.label_map import _junction_mapping
+
+    via = JunctionMeta(
+        table=TableMeta(
+            table_id=7,
+            field_name="on_term_edges",
+            type_name="OnTermEdges",
+            source_id="provisa-admin",
+            catalog_name="provisa_admin",
+            schema_name="public",
+            table_name="_term_edges_ontology",
+            domain_id="ontology",
+            original_table_name="_term_edges",
+        ),
+        source_columns=("from_term_id",),
+        target_columns=("to_term_id",),
+        type_column="rel_type",
+        type_value="KIND_OF",
+        label_source="column",
+    )
+    mapped = _junction_mapping(via, {})
+    assert mapped is not None
+    # SQL reads the relation; the client is told the registered name.
+    assert mapped.table_name == "_term_edges_ontology"
+    assert mapped.registered_name == "_term_edges"
+    # A junction read under its own name is named by it.
+    assert _junction().registered_name == "glossary_term_edges"
