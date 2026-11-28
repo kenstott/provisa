@@ -6,7 +6,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Sn
 
 This page lists every feature that has a polyfill or a limitation on Snowflake. A feature Snowflake does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
-When Snowflake is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
+When Snowflake is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source at the end of this page.
 
 Rules on this page: 401, of which 264 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
@@ -1030,3 +1030,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+## Hints
+
+A hint is a row of the grid for a difference from PostgreSQL that one engine writing Snowflake's SQL shows, on its own tables or reading one source it attaches, which the rows above do not, with its fix: a rule that replaces the row's there. Each comes with the test that reproduced the difference and checks the answer. No hint is known on Snowflake.

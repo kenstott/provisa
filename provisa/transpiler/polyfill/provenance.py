@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from provisa.transpiler.polyfill.grid import DIALECTS, Grid, RuleError
+from provisa.transpiler.polyfill.grid import DIALECTS, Grid, Hint, RuleError
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,40 @@ class Provenance:
             raise RuleError("a provenance with a verifying run names the legs it judged")
         if not set(self.verified_on) <= set(self.made_on):
             raise RuleError("a row is verified only on a leg it is made on")
+
+
+@dataclass(frozen=True)
+class HintProvenance:
+    """What a hint was made and verified on (REQ-2236, a hint on its engine and source pair): the
+    docker-compose.test.yml service its reproducing test runs the engine and source in, and that
+    service's image, as the configuration names it."""
+
+    service: str
+    image: str
+
+    def __post_init__(self) -> None:
+        if not self.service or not self.image:
+            raise RuleError("a hint's provenance names its service and the service's image")
+
+
+def hints_required(provenance: Mapping[str, HintProvenance], grid: Grid) -> None:
+    """Refuses a hint provenance that leaves out a hint's service: every hint names its own."""
+    missing = sorted({h.service for h in grid.hints} - set(provenance))
+    if missing:
+        raise RuleError(f"hints with no provenance of service {missing}")
+
+
+def hint_line(hint: Hint, provenance: Mapping[str, HintProvenance]) -> str:
+    """What a hint prints of its provenance, as plain text."""
+    of = provenance.get(hint.service)
+    if of is None:
+        raise RuleError(f"hint {hint.name}: no provenance of service {hint.service!r}")
+    on = "its own tables" if hint.source is None else f"source {hint.source}"
+    setting = "" if hint.setting is None else f" ({hint.setting})"
+    return (
+        f"Made and verified on: {hint.engine}, {on}{setting}, in docker-compose.test.yml service"
+        f" {of.service} ({of.image}), by its reproducing test {hint.test}."
+    )
 
 
 def required(provenance: Mapping[str, Provenance], grid: Grid) -> None:

@@ -15,10 +15,11 @@ tables, one per dialect. The grid stays keyed by dialect; only the pages pivot i
 printed as the grid holds it; a rule that is a function name is printed with the function's
 one-line purpose. Each row prints its provenance: what it was made and verified on, and the last
 run that verified it (provisa.transpiler.polyfill.provenance), with the legs' images at the top of
-its dialect's page.
+its dialect's page. Each page lists its dialect's hints under each source, each with its fix, its
+reproducing test and what it was made and verified on (REQ-2352).
 scripts/gen_polyfill_docs.py writes them; nothing here is edited by hand."""
 
-# Requirements: REQ-2236
+# Requirements: REQ-2236, REQ-2352
 
 from __future__ import annotations
 
@@ -26,9 +27,9 @@ import html
 from collections.abc import Mapping
 
 from provisa.transpiler.polyfill import provenance as provenances
-from provisa.transpiler.polyfill.grid import DIALECTS, Feature, Grid, Rule, Side
+from provisa.transpiler.polyfill.grid import DIALECTS, Feature, Grid, Hint, Rule, Side
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
-from provisa.transpiler.polyfill.provenance import Provenance
+from provisa.transpiler.polyfill.provenance import HintProvenance, Provenance
 
 #: Where the pages are written, from the repository's root.
 DIRECTORY = "docs/conformance/polyfill"
@@ -173,7 +174,66 @@ def _legs(dialect: str, provenance: Mapping[str, Provenance]) -> str:
     )
 
 
-def dialect_page(grid: Grid, dialect: str, provenance: Mapping[str, Provenance]) -> str:
+def _source(hint: Hint) -> str:
+    """The heading a hint is listed under: its engine and the source it reads."""
+    on = "its own tables" if hint.source is None else f"source `{hint.source}`"
+    setting = "" if hint.setting is None else f" ({html.escape(hint.setting)})"
+    return f"`{hint.engine}` on {on}{setting}"
+
+
+def _hint(hint: Hint, provenance: Mapping[str, HintProvenance]) -> str:
+    rows = ", ".join(f"`{name}`" for name in hint.features)
+    lines = [] if hint.rule.pattern is None else [hint.rule.pattern, "=>"]
+    fix = _code("\n".join((*lines, _form(hint.form))))
+    return "\n".join(
+        (
+            f"#### {html.escape(hint.name)}",
+            "",
+            f"Known difference: {html.escape(hint.difference)}",
+            "",
+            f"Rows it refines: {rows}.",
+            "",
+            "Fix:",
+            "",
+            fix,
+            "",
+            f"Reproducing test: `{hint.test}`.",
+            "",
+            f"<em>{html.escape(provenances.hint_line(hint, provenance))}</em>",
+            "",
+        )
+    )
+
+
+def hints_section(grid: Grid, dialect: str, provenance: Mapping[str, HintProvenance]) -> str:
+    """``dialect``'s hints, listed under each engine and source they apply to (REQ-2236, A HINT IS
+    A REWRITE FOR AN ENGINE AND SOURCE PAIR; REQ-2352), or the statement that none is known."""
+    title = DIALECTS[dialect].title
+    hints = grid.hints_on(dialect)
+    lead = (
+        "## Hints\n\nA hint is a row of the grid for a difference from PostgreSQL that one engine"
+        f" writing {title}'s SQL shows, on its own tables or reading one source it attaches, which"
+        " the rows above do not, with its fix: a rule that replaces the row's there. Each comes"
+        " with the test that reproduced the difference and checks the answer."
+    )
+    if not hints:
+        return f"{lead} No hint is known on {title}.\n"
+    sections: list[str] = [lead, ""]
+    heading = None
+    for hint in hints:
+        if _source(hint) != heading:
+            heading = _source(hint)
+            sections += [f"### {heading}", ""]
+        sections.append(_hint(hint, provenance))
+    return "\n".join(sections)
+
+
+def dialect_page(
+    grid: Grid,
+    dialect: str,
+    provenance: Mapping[str, Provenance],
+    hint_provenance: Mapping[str, HintProvenance],
+) -> str:
     """The page of ``dialect``."""
     title = DIALECTS[dialect].title
     rules, functions = _counts(grid, dialect)
@@ -196,7 +256,8 @@ def dialect_page(grid: Grid, dialect: str, provenance: Mapping[str, Provenance])
             "",
             f"When {title} is a serving engine reading a source it attaches directly, it may push"
             " work into that source, with the source's semantics, so a result can depend on the"
-            " pair; the cases known are fixed by hints, listed under each source.",
+            " pair; the cases known are fixed by hints, listed under each source at the end of this"
+            " page.",
             "",
             f"Rules on this page: {rules}, of which {functions} are only the name of a rewrite"
             " function. A rule is printed as the translator runs it: the PostgreSQL pattern, its"
@@ -204,8 +265,17 @@ def dialect_page(grid: Grid, dialect: str, provenance: Mapping[str, Provenance])
             "",
             f"{_legs(dialect, provenance)}{dialect_table(grid, dialect, provenance)}",
             "",
+            hints_section(grid, dialect, hint_provenance),
         )
     )
+
+
+def _hint_count(grid: Grid, dialect: str) -> str:
+    """The index's line of ``dialect``'s hints: how many, and where they are listed."""
+    count = len(grid.hints_on(dialect))
+    if not count:
+        return "No hint is known."
+    return f"Hints: {count}, listed under each source on [its page]({dialect}.md#hints)."
 
 
 def summary_page(grid: Grid, provenance: Mapping[str, Provenance]) -> str:
@@ -216,6 +286,8 @@ def summary_page(grid: Grid, provenance: Mapping[str, Provenance]) -> str:
                 f"## [{DIALECTS[dialect].title}]({dialect}.md)",
                 "",
                 dialect_table(grid, dialect, provenance),
+                "",
+                _hint_count(grid, dialect),
             )
         )
         for dialect in DIALECTS
@@ -240,14 +312,20 @@ def summary_page(grid: Grid, provenance: Mapping[str, Provenance]) -> str:
     )
 
 
-def pages(grid: Grid, provenance: Mapping[str, Provenance]) -> dict[str, str]:
+def pages(
+    grid: Grid,
+    provenance: Mapping[str, Provenance],
+    hint_provenance: Mapping[str, HintProvenance],
+) -> dict[str, str]:
     """Each page's path, from the repository's root, and its text. ``provenance``: each dialect's,
-    by dialect; a dialect with a row and no provenance is refused."""
+    by dialect; a dialect with a row and no provenance is refused. ``hint_provenance``: each
+    hint's service's, by service; a hint with none is refused."""
     provenances.required(provenance, grid)
+    provenances.hints_required(hint_provenance, grid)
     return {
         f"{DIRECTORY}/index.md": summary_page(grid, provenance),
         **{
-            f"{DIRECTORY}/{dialect}.md": dialect_page(grid, dialect, provenance)
+            f"{DIRECTORY}/{dialect}.md": dialect_page(grid, dialect, provenance, hint_provenance)
             for dialect in DIALECTS
         },
     }
