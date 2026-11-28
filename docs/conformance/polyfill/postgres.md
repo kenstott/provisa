@@ -6,7 +6,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Po
 
 This page lists every feature that has a polyfill or a limitation on PostgreSQL. A feature PostgreSQL does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
-When PostgreSQL is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
+When PostgreSQL is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source at the end of this page.
 
 Rules on this page: 0, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
@@ -14,3 +14,23 @@ Rules on this page: 0, of which 0 are only the name of a rewrite function. A rul
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
+
+## Hints
+
+A hint is a row of the grid for a difference from PostgreSQL that one engine writing PostgreSQL's SQL shows, on its own tables or reading one source it attaches, which the rows above do not, with its fix: a rule that replaces the row's there. Each comes with the test that reproduced the difference and checks the answer.
+
+### `opengauss` on its own tables
+
+#### bytea LIKE, matched byte-wise
+
+Known difference: openGauss matches bytea LIKE (like, notlike, bytealike, byteanlike, ~~ and !~~ on bytea) as multibyte text on a UTF-8 database, reading past the end of a value that ends in an incomplete UTF-8 sequence, so its answer varies from run to run. Its rawlike and rawnlike match byte-wise, as PostgreSQL does.
+
+Rows it refines: `like(bytea, bytea)`, `notlike(bytea, bytea)`, `bytealike(bytea, bytea)`, `byteanlike(bytea, bytea)`.
+
+Fix:
+
+<pre><code>function provisa.transpiler.opengauss_bytea_like.rewritten: A LIKE on bytea written as openGauss&#x27;s byte-wise rawlike or rawnlike.</code></pre>
+
+Reproducing test: `tests/integration/test_opengauss_bytea_like.py`.
+
+<em>Made and verified on: opengauss, its own tables, in docker-compose.test.yml service opengauss (opengauss/opengauss@sha256:67f83a8136117cf624a78ec76736d7189db8a536b70dc3d974f168ca2af75843), by its reproducing test tests/integration/test_opengauss_bytea_like.py.</em>

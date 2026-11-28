@@ -6,7 +6,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Db
 
 This page lists every feature that has a polyfill or a limitation on Db2. A feature Db2 does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
-When Db2 is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
+When Db2 is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source at the end of this page.
 
 Rules on this page: 411, of which 143 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
@@ -1090,3 +1090,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>text&#x27;s bound</strong><br>text and an unbounded varchar.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>A cast to text, and an unbounded varchar, is VARCHAR(8168 CODEUNITS32), Db2&#x27;s longest: a longer value raises.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string comparison</strong><br>a = b, a &lt; b of strings.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td></td><td><ul><li>String equality ignores trailing blanks: &#x27;a&#x27; = &#x27;a &#x27; is true.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
+
+## Hints
+
+A hint is a row of the grid for a difference from PostgreSQL that one engine writing Db2's SQL shows, on its own tables or reading one source it attaches, which the rows above do not, with its fix: a rule that replaces the row's there. Each comes with the test that reproduced the difference and checks the answer. No hint is known on Db2.
