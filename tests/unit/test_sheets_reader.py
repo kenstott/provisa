@@ -458,3 +458,152 @@ def test_the_loader_is_wired_where_the_engine_has_no_live_sheets_reach():
         )
     )
     assert "google_sheets" not in build_adapter_loaders(state, trino)
+
+
+# --- discovery: the columns Register Table offers ---------------------------------------------
+
+
+def _number(value, number_format=None):
+    grid_cell: dict = {"effectiveValue": {"numberValue": value}}
+    if number_format is not None:
+        grid_cell["effectiveFormat"] = {"numberFormat": {"type": number_format}}
+    return grid_cell
+
+
+def _text(value):
+    return {"effectiveValue": {"stringValue": value}}
+
+
+def _bool(value):
+    return {"effectiveValue": {"boolValue": value}}
+
+
+class _Grid:
+    """A spreadsheet whose one sheet the Sheets API answers as grid data: every request seen."""
+
+    def __init__(self, title: str, rows: list[list[dict]], row_count: int, columns: int) -> None:
+        self.title = title
+        self.rows = rows
+        self.row_count = row_count
+        self.columns = columns
+        self.requests: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        assert request.url.path.endswith(f"/{SHEET_ID}")
+        query = parse_qs(urlparse(str(request.url)).query)
+        if "includeGridData" in query:
+            assert query["includeGridData"] == ["true"]
+            assert "effectiveFormat.numberFormat.type" in query["fields"][0]
+            data = [{"rowData": [{"values": row} for row in self.rows]}]
+            return httpx.Response(200, json={"sheets": [{"data": data}]})
+        properties = {
+            "title": self.title,
+            "index": 0,
+            "gridProperties": {"rowCount": self.row_count, "columnCount": self.columns},
+        }
+        return httpx.Response(200, json={"sheets": [{"properties": properties}]})
+
+    def ranges_asked(self) -> list[list[str]]:
+        return [
+            parse_qs(urlparse(str(r.url)).query)["ranges"]
+            for r in self.requests
+            if "includeGridData" in parse_qs(urlparse(str(r.url)).query)
+        ]
+
+
+def _grid_api(grid: _Grid) -> SheetsApi:
+    return SheetsApi(SHEET_ID, lambda: "tok", httpx.Client(transport=httpx.MockTransport(grid)))
+
+
+def test_a_sheets_columns_are_its_header_typed_by_every_value_under_it():
+    rows = [
+        [_text("id"), _text("qty"), _text("price"), _text("placed"), _text("at"), _text("paid")]
+        + [_text("when"), _text("mixed"), _text("blank")],
+        [_text("w1"), _number(1), _number(2), _number(45000, "DATE"), _number(0.5, "TIME")]
+        + [_bool(True), _number(45000, "DATE"), _number(1)],
+        [_text("w2"), _number(3), _number(2.5), _number(45001, "DATE"), _number(0.75, "TIME")]
+        + [_bool(False), _number(45000.5, "DATE_TIME"), _text("two")],
+        [],  # a blank sheet row
+    ]
+    grid = _Grid("gs", rows, row_count=4, columns=9)
+    columns = sheets_reader.sheet_columns(_grid_api(grid), _source(), "gs")
+    assert columns == [
+        ("id", "text"),
+        ("qty", "bigint"),
+        ("price", "double"),  # integers with a fraction among them
+        ("placed", "date"),
+        ("at", "time"),
+        ("paid", "boolean"),
+        ("when", "timestamp"),  # dates with a date-time among them
+        ("mixed", "text"),
+        ("blank", "text"),  # no value under the header
+    ]
+    # The sheet's properties, then its whole grid in one request.
+    assert len(grid.requests) == 2
+    assert grid.ranges_asked() == [["'gs'!A1:I4"]]
+
+
+def test_the_columns_a_sheet_offers_land_as_they_are_typed():
+    # What discovery types a column as is what a landing reads each of its cells as.
+    rows = [
+        [_text("id"), _text("qty"), _text("placed")],
+        [_text("w1"), _number(1), _number(45000, "DATE")],
+    ]
+    columns = sheets_reader.sheet_columns(_grid_api(_Grid("gs", rows, 2, 3)), _source(), "gs")
+    assert [cell(v, ir, "c") for v, (_, ir) in zip(["w1", 1, 45000], columns)] == [
+        "w1",
+        1,
+        date(2023, 3, 15),
+    ]
+
+
+def test_a_column_with_no_header_cell_is_no_column_and_a_numeric_header_is_its_text():
+    rows = [[_text("id"), {}, _number(2024)], [_text("w1"), _number(9), _number(1.5)]]
+    columns = sheets_reader.sheet_columns(_grid_api(_Grid("gs", rows, 2, 3)), _source(), "gs")
+    assert columns == [("id", "text"), ("2024", "double")]
+
+
+def test_a_sheet_with_no_header_row_is_refused_naming_it():
+    grid = _Grid("gs", [], row_count=3, columns=2)
+    with pytest.raises(SheetsReadError, match=r"Table gs\.gs: sheet 'gs' has no header row"):
+        sheets_reader.sheet_columns(_grid_api(grid), _source(), "gs")
+
+
+def test_the_columns_of_a_table_naming_no_sheet_are_refused_naming_the_sheets():
+    grid = _Grid("First", [[_text("id")]], row_count=1, columns=1)
+    with pytest.raises(SheetsReadError, match=r"no sheet named 'Nope'.*'First'"):
+        sheets_reader.sheet_columns(_grid_api(grid), _source(), "Nope")
+
+
+@pytest.mark.asyncio
+async def test_register_table_lists_a_landed_sheets_columns_through_the_api(monkeypatch):
+    # The engine has no gsheets extension, so it lands the source (FETCH) and holds no catalog of
+    # it: the columns are read through the Sheets API (nightly run 46028932485 found none).
+    from provisa.api.admin import schema_query
+    from provisa.api.app import state
+    from provisa.federation.connector import Mechanism
+
+    engine = SimpleNamespace(
+        dialect="duckdb",
+        connectors={"google_sheets": SimpleNamespace(mechanism=Mechanism.FETCH)},
+    )
+    monkeypatch.setattr(state, "source_types", {"gs": "google_sheets"}, raising=False)
+    monkeypatch.setattr(state, "federation_engine", SimpleNamespace(engine=engine), raising=False)
+    source = _source()
+
+    async def source_for(source_id):
+        assert source_id == "gs"
+        return source
+
+    asked: list[tuple] = []
+
+    def read(src, table_name):
+        asked.append((src, table_name))
+        return [("id", "text"), ("qty", "bigint")]
+
+    monkeypatch.setattr(schema_query, "_source_for_introspection", source_for)
+    monkeypatch.setattr(sheets_reader, "read_sheet_columns", read)
+    columns = await schema_query.resolve_available_columns_metadata("gs", "main", "gs")
+    assert asked == [(source, "gs")]
+    assert [(c.name, c.data_type) for c in columns] == [("id", "text"), ("qty", "bigint")]
