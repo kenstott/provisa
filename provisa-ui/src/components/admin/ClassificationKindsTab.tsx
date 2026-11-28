@@ -49,6 +49,7 @@ import { contextPlaceTexts } from "../contextPlaceTexts";
 import { PageTitle } from "../PageTitle";
 import { Tip } from "../Tip";
 import { DetailFields } from "../detail/DetailFields";
+import { EntityPageLink } from "../EntityLink";
 import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { ListRow } from "../list/ListTable";
 import { PanelDelete } from "../list/PanelDelete";
@@ -496,7 +497,19 @@ export function ClassificationKindsTab({
             value: `${Math.round(k.threshold * 100)}%`,
           },
           { label: t("classificationKinds.maskHeader"), value: maskLabel(k) },
-          { label: t("classificationKinds.termLabel"), value: k.term },
+          {
+            label: t("classificationKinds.termLabel"),
+            // REQ-2277 rule 6: the kind names its term by name, which a term of each domain may
+            // take (glossary_repo._find_or_create_term), so it links to the Glossary narrowed by it.
+            value: (
+              <EntityPageLink
+                href={`/context/glossary?search=${encodeURIComponent(k.term)}`}
+                testId={`classification-kind-read-term-${k.id}`}
+              >
+                {k.term}
+              </EntityPageLink>
+            ),
+          },
           { label: t("classificationKinds.enabledHeader"), value: enabledLabel(k) },
           ...(detections
             ? [

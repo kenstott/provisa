@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A source that was created is saved: its detail panel shows it read, in its sections, once its
-// tables are registered and Your data is closed, and equally when registering them is skipped.
+// tables are registered and Review samples is closed, and equally when registering them is skipped.
 // Nothing is offered to save, and its edit form opens only when the person presses Edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -175,8 +175,8 @@ async function registerPicked(): Promise<void> {
   await waitFor(() => expect(submit).toHaveTextContent("Register 2 tables"));
   await userEvent.click(submit);
   await waitFor(() => expect(registerTables).toHaveBeenCalledTimes(1));
-  expect(await panel().findByTestId("your-data-step")).toBeInTheDocument();
-  // Your data is step 2 of the same strip.
+  // REQ-2234 (amended 2026-11-27): Review samples is step 2 of the same strip.
+  expect(await panel().findByTestId("review-samples-step")).toBeInTheDocument();
   expect(panel().getByTestId("source-setup-stepper")).toHaveAttribute("data-active", "2");
 }
 
@@ -221,7 +221,7 @@ const KINDS: { name: string; type: string; made: Source; fill: () => Promise<voi
 ];
 
 describe.each(KINDS)("$name, created and its tables registered", ({ type, made, fill }) => {
-  it("leaves Your data by Finish later for the source read, and opens its edit form on Edit alone", async () => {
+  it("leaves Review samples by Finish later for the source read, and opens its edit form on Edit alone", async () => {
     await create(type, made, fill);
     await registerPicked();
     await waitFor(() =>
@@ -231,7 +231,7 @@ describe.each(KINDS)("$name, created and its tables registered", ({ type, made, 
       }),
     );
     await userEvent.click(panel().getByTestId("source-setup-finish-later"));
-    await waitFor(() => expect(screen.queryByTestId("your-data-step")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("review-samples-step")).toBeNull());
     await panel().findByTestId("source-read");
     expectReadView(made.id);
     // The person's own action opens the edit form, on the same sections.
@@ -240,7 +240,7 @@ describe.each(KINDS)("$name, created and its tables registered", ({ type, made, 
     expect(panel().getByTestId("source-section-connection")).toBeInTheDocument();
   });
 
-  it("shows the source read when the panel is closed on Your data and the source opened again", async () => {
+  it("shows the source read when the panel is closed on Review samples and the source opened again", async () => {
     await create(type, made, fill);
     await registerPicked();
     await userEvent.click(screen.getByTestId("sources-split-close"));

@@ -86,7 +86,7 @@ const wh: TrackedWebhook = {
 
 describe("a function's read view", () => {
   it("shows every value, with the fields of its implementation", () => {
-    render(<FunctionRead fn={fn} productNames={["Refunds", "Payouts"]} />);
+    render(<FunctionRead fn={fn} productNames={["Refunds", "Payouts"]} entered={null} />);
     expect(fields("function-read-fields")).toEqual([
       ["Name", "refund_order"],
       ["Type", "DB Function"],
@@ -113,6 +113,7 @@ describe("a function's read view", () => {
       <FunctionRead
         fn={{ ...fn, implKind: "source_procedure", binding: {}, returns: "public.refunds" }}
         productNames={[]}
+        entered={null}
       />,
     );
     const shown = Object.fromEntries(fields("function-read-fields"));
@@ -133,13 +134,14 @@ describe("a function's table (REQ-1986)", () => {
       <FunctionRead
         fn={{ ...fn, implKind: "source_operation", kind: "query", exposedAsTable: false }}
         productNames={[]}
+        entered={null}
       />,
     );
     expect(Object.fromEntries(fields("function-read-fields"))["Also a table"]).toBe("No");
   });
 
   it("says nothing of a table for a function with no table form", () => {
-    render(<FunctionRead fn={fn} productNames={[]} />);
+    render(<FunctionRead fn={fn} productNames={[]} entered={null} />);
     expect(Object.fromEntries(fields("function-read-fields"))["Also a table"]).toBeUndefined();
   });
 });
@@ -194,7 +196,7 @@ describe("a statement command's panel (REQ-2001)", () => {
   };
 
   it("shows what its statement declares", () => {
-    render(<FunctionRead fn={statement} productNames={[]} />);
+    render(<FunctionRead fn={statement} productNames={[]} entered={null} />);
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Declares"]).toBe(
       "reads support.tickets, writes kb.docs (upsert), returns a row count",
@@ -209,7 +211,7 @@ describe("a statement command's panel (REQ-2001)", () => {
       ...statement,
       contract: { ...contract, broken: "Column 'subject' could not be resolved" },
     };
-    render(<FunctionRead fn={broken} productNames={[]} />);
+    render(<FunctionRead fn={broken} productNames={[]} entered={null} />);
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Broken"]).toBe("Column 'subject' could not be resolved");
     expect(shown["Declares"]).toBeUndefined();
@@ -239,7 +241,7 @@ describe("a command's SQL in the code editor (REQ-1984)", () => {
   ];
 
   it.each(cases)("shows %s read-only, highlighted as SQL", (_, over, testId, sql) => {
-    render(<FunctionRead fn={{ ...fn, ...over }} productNames={[]} />);
+    render(<FunctionRead fn={{ ...fn, ...over }} productNames={[]} entered={null} />);
     const view = editorOf(testId);
     expect(view.state.doc.toString()).toBe(sql);
     expect(languageOf(view)).toBe("sql");
@@ -249,9 +251,39 @@ describe("a command's SQL in the code editor (REQ-1984)", () => {
 
   it("shows the empty mark when there is no SQL", () => {
     render(
-      <FunctionRead fn={{ ...fn, implKind: "sql_expression", binding: {} }} productNames={[]} />,
+      <FunctionRead
+        fn={{ ...fn, implKind: "sql_expression", binding: {} }}
+        productNames={[]}
+        entered={null}
+      />,
     );
     expect(screen.queryByTestId("function-read-template")).toBeNull();
     expect(Object.fromEntries(fields("function-read-fields"))["SQL expression"]).toBe("—");
+  });
+});
+
+// REQ-1159 (amended 2026-11-27): a command written as entered code reads as the form edits it.
+describe("a command written as entered code", () => {
+  const code = "@query\ndef greet(name: str) -> str:\n    return name";
+  const entered = { enteredCode: code, enteredDependencies: "requests\nnumpy" };
+
+  it("shows its code read-only in the Python editor, its dependencies and its function", () => {
+    render(
+      <FunctionRead
+        fn={{ ...fn, implKind: "code_command", schemaName: "code", functionName: "greet" }}
+        productNames={[]}
+        entered={entered}
+      />,
+    );
+    const view = editorOf("function-read-entered-code");
+    expect(view.state.doc.toString()).toBe(code);
+    expect(languageOf(view)).toBe("python");
+    expect(view.state.readOnly).toBe(true);
+    const shown = Object.fromEntries(fields("function-read-fields"));
+    expect(shown["Implementation"]).toBe("Code (entered)");
+    expect(shown["Dependencies"]).toBe("requests\nnumpy");
+    expect(shown["Function Name"]).toBe("greet");
+    expect(shown["Return Type"]).toBeUndefined();
+    expect(shown["Materialize (admin/definer identity)"]).toBeUndefined();
   });
 });
