@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "सभी विस्तृत करें",
-    "collapseAll": "सभी संक्षिप्त करें"
+    "collapseAll": "सभी संक्षिप्त करें",
+    "hidePanel": "पैनल छिपाएँ",
+    "showPanel": "पैनल दिखाएँ"
   }
 }

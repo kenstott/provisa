@@ -66,9 +66,13 @@ export function GraphStage({
   testId,
   controls,
   bare = false,
+  refit = 0,
 }: {
   s: StageState;
   command: CameraCommand | null;
+  /** REQ-2239: changes when the canvas has changed width (its side panel hidden or shown), so the
+   * graph is fitted to it again. */
+  refit?: number;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
@@ -134,6 +138,9 @@ export function GraphStage({
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
   useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
+  useEffect(() => {
+    if (scene && refit > 0) scene.fitToStage();
+  }, [scene, refit]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();

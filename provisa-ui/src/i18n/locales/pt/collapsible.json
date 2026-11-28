@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "Expandir tudo",
-    "collapseAll": "Recolher tudo"
+    "collapseAll": "Recolher tudo",
+    "hidePanel": "Ocultar o painel",
+    "showPanel": "Mostrar o painel"
   }
 }

@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "הרחבת הכול",
-    "collapseAll": "כיווץ הכול"
+    "collapseAll": "כיווץ הכול",
+    "hidePanel": "הסתרת החלונית",
+    "showPanel": "הצגת החלונית"
   }
 }

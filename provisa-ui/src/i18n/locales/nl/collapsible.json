@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "Alles uitvouwen",
-    "collapseAll": "Alles samenvouwen"
+    "collapseAll": "Alles samenvouwen",
+    "hidePanel": "Paneel verbergen",
+    "showPanel": "Paneel tonen"
   }
 }
