@@ -192,15 +192,21 @@ AWS)
   ok "AppImage found."
 
   S3_DIR="$(dirname "$APPIMAGE_S3_KEY")"
-  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
-  IMAGES_KEY="${S3_DIR}/${IMAGES_ZIP}"
-  info "Verifying s3://${APPIMAGE_S3_BUCKET}/${IMAGES_KEY}..."
-  aws s3api head-object \
-    --bucket "$APPIMAGE_S3_BUCKET" \
-    --key "$IMAGES_KEY" \
-    --region "$REGION" &>/dev/null \
-    || fatal "Core-images zip not found: s3://${APPIMAGE_S3_BUCKET}/${IMAGES_KEY}"
-  ok "Core-images zip found."
+  # The core image assets: their manifest and every asset it lists (one per image, a large
+  # image in parts), staged beside the AppImage.
+  IMAGES_MANIFEST="provisa-core-images-amd64-${PROVISA_VERSION}.sha256"
+  info "Verifying s3://${APPIMAGE_S3_BUCKET}/${S3_DIR}/${IMAGES_MANIFEST} and the assets it lists..."
+  IMAGES_ASSETS="$(aws s3 cp "s3://${APPIMAGE_S3_BUCKET}/${S3_DIR}/${IMAGES_MANIFEST}" - --region "$REGION" 2>/dev/null | awk '{print $2}')" \
+    || fatal "Core images manifest not found: s3://${APPIMAGE_S3_BUCKET}/${S3_DIR}/${IMAGES_MANIFEST}"
+  [ -n "$IMAGES_ASSETS" ] || fatal "Core images manifest lists no assets: s3://${APPIMAGE_S3_BUCKET}/${S3_DIR}/${IMAGES_MANIFEST}"
+  for asset in $IMAGES_ASSETS; do
+    aws s3api head-object \
+      --bucket "$APPIMAGE_S3_BUCKET" \
+      --key "${S3_DIR}/${asset}" \
+      --region "$REGION" &>/dev/null \
+      || fatal "Core image asset not found: s3://${APPIMAGE_S3_BUCKET}/${S3_DIR}/${asset}"
+  done
+  ok "Core image assets found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")
@@ -311,16 +317,28 @@ Azure)
   ok "AppImage found."
 
   BLOB_DIR="$(dirname "$APPIMAGE_BLOB")"
-  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
-  [ "$BLOB_DIR" = "." ] && IMAGES_BLOB="$IMAGES_ZIP" || IMAGES_BLOB="${BLOB_DIR}/${IMAGES_ZIP}"
-  info "Verifying core-images blob ${IMAGES_BLOB}..."
-  az storage blob show \
+  # The core image assets: their manifest and every asset it lists (one per image, a large
+  # image in parts), staged beside the AppImage.
+  IMAGES_MANIFEST="provisa-core-images-amd64-${PROVISA_VERSION}.sha256"
+  [ "$BLOB_DIR" = "." ] && IMAGES_PREFIX="" || IMAGES_PREFIX="${BLOB_DIR}/"
+  info "Verifying core images blob ${IMAGES_PREFIX}${IMAGES_MANIFEST} and the assets it lists..."
+  IMAGES_ASSETS="$(az storage blob download \
     --account-name "$STORAGE_ACCOUNT" \
     --container-name "$STORAGE_CONTAINER" \
-    --name "$IMAGES_BLOB" \
-    --auth-mode login &>/dev/null \
-    || fatal "Core-images zip not found: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${IMAGES_BLOB}"
-  ok "Core-images zip found."
+    --name "${IMAGES_PREFIX}${IMAGES_MANIFEST}" \
+    --file /dev/stdout \
+    --auth-mode login 2>/dev/null | awk '{print $2}')" \
+    || fatal "Core images manifest not found: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${IMAGES_PREFIX}${IMAGES_MANIFEST}"
+  [ -n "$IMAGES_ASSETS" ] || fatal "Core images manifest lists no assets: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${IMAGES_PREFIX}${IMAGES_MANIFEST}"
+  for asset in $IMAGES_ASSETS; do
+    az storage blob show \
+      --account-name "$STORAGE_ACCOUNT" \
+      --container-name "$STORAGE_CONTAINER" \
+      --name "${IMAGES_PREFIX}${asset}" \
+      --auth-mode login &>/dev/null \
+      || fatal "Core image asset not found: ${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${IMAGES_PREFIX}${asset}"
+  done
+  ok "Core image assets found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")
@@ -432,11 +450,18 @@ GCP)
   ok "AppImage found."
 
   GCS_DIR="$(dirname "$GCS_OBJECT")"
-  IMAGES_ZIP="provisa-core-images-amd64-${PROVISA_VERSION}.zip"
-  info "Verifying gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}..."
-  gsutil stat "gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}" &>/dev/null \
-    || fatal "Core-images zip not found: gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_ZIP}"
-  ok "Core-images zip found."
+  # The core image assets: their manifest and every asset it lists (one per image, a large
+  # image in parts), staged beside the AppImage.
+  IMAGES_MANIFEST="provisa-core-images-amd64-${PROVISA_VERSION}.sha256"
+  info "Verifying gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_MANIFEST} and the assets it lists..."
+  IMAGES_ASSETS="$(gsutil cat "gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_MANIFEST}" 2>/dev/null | awk '{print $2}')" \
+    || fatal "Core images manifest not found: gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_MANIFEST}"
+  [ -n "$IMAGES_ASSETS" ] || fatal "Core images manifest lists no assets: gs://${GCS_BUCKET}/${GCS_DIR}/${IMAGES_MANIFEST}"
+  for asset in $IMAGES_ASSETS; do
+    gsutil stat "gs://${GCS_BUCKET}/${GCS_DIR}/${asset}" &>/dev/null \
+      || fatal "Core image asset not found: gs://${GCS_BUCKET}/${GCS_DIR}/${asset}"
+  done
+  ok "Core image assets found."
 
   echo
   SSH_ENABLED=$(pick "Enable SSH access to nodes?" "Yes" "No")

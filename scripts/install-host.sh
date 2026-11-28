@@ -52,11 +52,14 @@ INSTALL_HOST_DEFAULT_ZAYCHIK_PORT=8480
 INSTALL_HOST_PG_IMAGE="pgvector/pgvector:pg16-trixie"
 INSTALL_HOST_MINIO_IMAGE="bitnamilegacy/minio:latest"
 INSTALL_HOST_MINIO_CLIENT_IMAGE="bitnamilegacy/minio-client:latest"
-# Zaychik is built by the release: provisa/zaychik:local inside its core-images asset (a dry run's
-# assets, and on aarch64 the published release's too: REQ-2269, amended 2026-11-26), or on x86_64
-# ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published (that image is amd64 only).
+# Zaychik is built by the release: provisa/zaychik:local in its zaychik-local core image asset (a
+# dry run's assets, and on aarch64 the published release's too: REQ-2269, amended 2026-11-26), or
+# on x86_64 ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published (that image is
+# amd64 only).
 INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE="provisa/zaychik:local"
-INSTALL_HOST_ZAYCHIK_IMAGE_FILE="zaychik-local.tar.gz"
+# The image's name in the release's core image set (scripts/ci/package_core_images.sh: the asset
+# provisa-core-image-<name>-<arch>-<tag>.tar.gz, as parts .part1.. when it is 1 GiB or more).
+INSTALL_HOST_ZAYCHIK_IMAGE_NAME="zaychik-local"
 INSTALL_HOST_PG_CONTAINER="provisa-postgres"
 INSTALL_HOST_MINIO_CONTAINER="provisa-minio"
 INSTALL_HOST_ZAYCHIK_CONTAINER="provisa-zaychik"
@@ -292,14 +295,36 @@ select_assets() {
   [ -z "$missing" ] || die "release ${tag} is missing asset(s):${missing}"
 }
 
-core_images_asset_name() {
-  # $1 tag, $2 machine. The release's core-images asset for the machine
-  # (.github/actions/release-metadata: core_images_amd64_name, core_images_name).
-  case "$2" in
-    x86_64 | amd64) printf 'provisa-core-images-amd64-%s.zip\n' "$1" ;;
-    aarch64 | arm64) printf 'provisa-core-images-%s.tar.gz\n' "$1" ;;
-    *) die "unsupported machine '$2': Provisa ships Linux wheels for x86_64 and aarch64" ;;
+core_images_arch() {
+  # $1 machine (uname -m). The architecture the release's core image assets are named for.
+  case "$1" in
+    x86_64 | amd64) printf 'amd64\n' ;;
+    aarch64 | arm64) printf 'arm64\n' ;;
+    *) die "unsupported machine '$1': Provisa ships Linux wheels for x86_64 and aarch64" ;;
   esac
+}
+
+core_images_manifest_name() {
+  # $1 tag, $2 machine. The manifest of the release's core image assets for the machine: sha256sum
+  # lines, one per asset (.github/actions/release-metadata: core_images_manifest_name,
+  # core_images_amd64_manifest_name).
+  local arch
+  arch="$(core_images_arch "$2")" || return 1
+  printf 'provisa-core-images-%s-%s.sha256\n' "$arch" "$1"
+}
+
+core_image_asset_name() {
+  # $1 image name, $2 tag, $3 machine. The image's asset (scripts/ci/package_core_images.sh); an
+  # image of 1 GiB or more is published as <asset>.part1, .part2, ... in its place.
+  local arch
+  arch="$(core_images_arch "$3")" || return 1
+  printf 'provisa-core-image-%s-%s-%s.tar.gz\n' "$1" "$arch" "$2"
+}
+
+core_image_entries() {
+  # $1 manifest file, $2 image asset name. Prints the manifest's lines for the image: the asset,
+  # or its parts in order.
+  awk -v asset="$2" '$2 == asset || index($2, asset ".part") == 1' "$1"
 }
 
 zaychik_image() {
@@ -620,7 +645,7 @@ preflight() {
   [ "$(uname -s)" = "Linux" ] || die "install-host.sh installs on Linux; this is $(uname -s)"
   [ "$(id -u)" -eq 0 ] || die "run as root (sudo), or from a workstation with --ssh"
   local tool
-  for tool in curl tar systemctl docker useradd install; do
+  for tool in curl tar sha256sum systemctl docker useradd install; do
     command -v "$tool" >/dev/null 2>&1 || die "required command '$tool' is not installed"
   done
   docker info >/dev/null 2>&1 || die "Docker is installed but the daemon is not reachable (docker info failed)"
@@ -822,10 +847,10 @@ start_core() {
 
 load_zaychik_image() {
   # $1 the release's assets directory on this host. Sets IH_ZAYCHIK_IMAGE: loaded from the
-  # release's core-images asset (the one in --assets-dir, or on aarch64 the published release's,
-  # downloaded into $1 and removed once loaded: it carries every core image and only Zaychik is
-  # taken from it), or on x86_64 pulled from the published release's registry image.
-  local machine name file downloaded=false
+  # release's zaychik-local core image asset (in --assets-dir, or on aarch64 the published
+  # release's, downloaded into $1 and removed once loaded), checked against the release's core
+  # images manifest, or on x86_64 pulled from the published release's registry image.
+  local machine manifest image dir entries asset files=() downloaded=false
   machine="$(uname -m)"
   IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_REPO" "$IH_VERSION" "$IH_ASSETS_DIR" "$machine")"
   if [ "$IH_ZAYCHIK_IMAGE" != "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ]; then
@@ -833,34 +858,42 @@ load_zaychik_image() {
     docker pull "$IH_ZAYCHIK_IMAGE" >/dev/null || die "pulling $IH_ZAYCHIK_IMAGE failed"
     return 0
   fi
-  name="$(core_images_asset_name "$IH_VERSION" "$machine")"
-  [ -n "$name" ] || die "no core-images asset for machine $machine"
+  manifest="$(core_images_manifest_name "$IH_VERSION" "$machine")"
+  image="$(core_image_asset_name "$INSTALL_HOST_ZAYCHIK_IMAGE_NAME" "$IH_VERSION" "$machine")"
   if [ -n "$IH_ASSETS_DIR" ]; then
-    file="$IH_ASSETS_DIR/$name"
-    [ -f "$file" ] || die "--assets-dir $IH_ASSETS_DIR lacks $name, the release's core images (Zaychik)"
+    dir="$IH_ASSETS_DIR"
+    [ -f "$dir/$manifest" ] ||
+      die "--assets-dir $IH_ASSETS_DIR lacks $manifest, the release's core images manifest (Zaychik)"
   else
-    file="$1/$name"
-    mkdir -p "$1"
-    info "downloading $name"
-    curl -fL --retry 3 --retry-delay 5 -o "$file.part" \
-      "$(release_download_url "$IH_REPO" "$IH_VERSION" "$name")" ||
-      die "download of $name from release $IH_VERSION failed"
-    mv "$file.part" "$file"
+    dir="$1"
+    mkdir -p "$dir"
+    _download_release_asset "$manifest" "$dir"
     downloaded=true
   fi
-  info "loading $IH_ZAYCHIK_IMAGE from $name"
-  case "$file" in
-    *.zip)
-      command -v unzip >/dev/null 2>&1 || die "required command 'unzip' is not installed"
-      unzip -p "$file" "$INSTALL_HOST_ZAYCHIK_IMAGE_FILE" | docker load >/dev/null ||
-        die "loading $INSTALL_HOST_ZAYCHIK_IMAGE_FILE from $name failed"
-      ;;
-    *)
-      tar -xzOf "$file" "./$INSTALL_HOST_ZAYCHIK_IMAGE_FILE" | docker load >/dev/null ||
-        die "loading $INSTALL_HOST_ZAYCHIK_IMAGE_FILE from $name failed"
-      ;;
-  esac
-  [ "$downloaded" = false ] || rm -f "$file"
+  entries="$(core_image_entries "$dir/$manifest" "$image")"
+  [ -n "$entries" ] || die "$manifest lists no $image, the release's Zaychik image"
+  while read -r _ asset; do
+    files+=("$dir/$asset")
+    if [ "$downloaded" = true ]; then
+      _download_release_asset "$asset" "$dir"
+    else
+      [ -f "$dir/$asset" ] || die "--assets-dir $IH_ASSETS_DIR lacks $asset, listed in $manifest (Zaychik)"
+    fi
+  done <<<"$entries"
+  (cd "$dir" && printf '%s\n' "$entries" | sha256sum -c --quiet - >/dev/null) ||
+    die "$image does not match its sha256 in $manifest"
+  info "loading $IH_ZAYCHIK_IMAGE from $image"
+  cat "${files[@]}" | docker load >/dev/null || die "loading $IH_ZAYCHIK_IMAGE from $image failed"
+  [ "$downloaded" = false ] || rm -f "$dir/$manifest" "${files[@]}"
+}
+
+_download_release_asset() {
+  # $1 asset name, $2 directory. Downloads the asset of release $IH_VERSION into the directory.
+  info "downloading $1"
+  curl -fL --retry 3 --retry-delay 5 -o "$2/$1.part-download" \
+    "$(release_download_url "$IH_REPO" "$IH_VERSION" "$1")" ||
+    die "download of $1 from release $IH_VERSION failed"
+  mv "$2/$1.part-download" "$2/$1"
 }
 
 start_zaychik() {

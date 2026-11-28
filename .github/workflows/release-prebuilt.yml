@@ -35,8 +35,8 @@ jobs:
     outputs:
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
-      core_images_name: ${{ steps.meta.outputs.core_images_name }}
-      core_images_amd64_name: ${{ steps.meta.outputs.core_images_amd64_name }}
+      core_images_manifest_name: ${{ steps.meta.outputs.core_images_manifest_name }}
+      core_images_amd64_manifest_name: ${{ steps.meta.outputs.core_images_amd64_manifest_name }}
       trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
       trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
@@ -257,6 +257,12 @@ jobs:
 
       # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
       # to the draft directly, never through an artifact.
+      # GitHub refuses a release asset of 2 GiB or more; a dry run fails here as a release would.
+      - name: Check the trino image tarball is under 2 GiB
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: "trino-image/${{ needs.metadata.outputs.trino_image_name }}"
+
       - name: Upload trino image tarball
         if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
@@ -283,7 +289,7 @@ jobs:
           compression-level: 0
 
   pull-images-core-amd64:
-    name: Pull core Docker images (amd64) for OVA
+    name: Pull core Docker images (amd64)
     runs-on: ubuntu-latest
     permissions:
       contents: write   # attaches what it builds to the draft release
@@ -372,6 +378,12 @@ jobs:
 
       # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
       # to the draft directly, never through an artifact.
+      # GitHub refuses a release asset of 2 GiB or more; a dry run fails here as a release would.
+      - name: Check the amd64 trino image tarball is under 2 GiB
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: "trino-image/${{ needs.metadata.outputs.trino_image_amd64_name }}"
+
       - name: Upload amd64 trino image tarball
         if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
@@ -505,7 +517,6 @@ jobs:
       # The attach action and the tag's notes page (ensure-release's body), first: a checkout
       # empties the workspace.
       - name: Checkout
-        if: inputs.publish
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -521,6 +532,12 @@ jobs:
       - name: Package as single tarball
         run: |
           tar -czf "${{ needs.metadata.outputs.obs_images_name }}" -C obs-images/ .
+
+      # GitHub refuses a release asset of 2 GiB or more; a dry run fails here as a release would.
+      - name: Check the obs images tarball is under 2 GiB
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: "${{ needs.metadata.outputs.obs_images_name }}"
 
       # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
       # to the draft directly, never through an artifact.
@@ -551,7 +568,6 @@ jobs:
       # The attach action and the tag's notes page (ensure-release's body), first: a checkout
       # empties the workspace.
       - name: Checkout
-        if: inputs.publish
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -567,6 +583,12 @@ jobs:
       - name: Package as single tarball
         run: |
           tar -czf "${{ needs.metadata.outputs.demo_images_name }}" -C demo-images/ .
+
+      # GitHub refuses a release asset of 2 GiB or more; a dry run fails here as a release would.
+      - name: Check the demo images tarball is under 2 GiB
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: "${{ needs.metadata.outputs.demo_images_name }}"
 
       # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
       # to the draft directly, never through an artifact.
@@ -588,21 +610,21 @@ jobs:
           files: "${{ needs.metadata.outputs.demo_images_name }}"
 
   package-core-images:
-    name: Package core image tarballs for release
+    name: Package core image assets for release
     runs-on: ubuntu-latest
     permissions:
       contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-core]
     steps:
-      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
-      # empties the workspace.
+      # The packaging scripts, the attach action and the tag's notes page (ensure-release's body),
+      # first: a checkout empties the workspace.
       - name: Checkout
-        if: inputs.publish
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             .github/actions
             docs/releases
+            scripts/ci
 
       - name: Download core image tarballs
         uses: actions/download-artifact@v4
@@ -610,45 +632,51 @@ jobs:
           name: docker-images-core
           path: core-images/
 
-      - name: Package as single tarball
+      # One asset per image, an image of 1 GiB or more as numbered parts, and the manifest that
+      # lists them: the one archive outgrew GitHub's 2 GiB per-asset limit (alpha.513, run
+      # 46058735167). The script fails here when any asset is 2 GiB or more, so a dry run, which
+      # uploads nothing to the release, fails as the release would.
+      - name: Package as per-image assets under 2 GiB
         run: |
-          tar -czf "${{ needs.metadata.outputs.core_images_name }}" -C core-images/ .
+          bash scripts/ci/package_core_images.sh core-images arm64 "${{ inputs.version }}" \
+            core-assets-arm64 1073741824
+          test -f "core-assets-arm64/${{ needs.metadata.outputs.core_images_manifest_name }}"
 
-      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
-      # to the draft directly, never through an artifact.
-      - name: Upload core images tarball
+      # A dry run keeps them in the run (their only home: nothing is attached); a release attaches
+      # them to the draft directly, never through an artifact.
+      - name: Upload core image assets
         if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: core-images-tarball
-          path: "${{ needs.metadata.outputs.core_images_name }}"
+          path: core-assets-arm64/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
 
-      - name: Attach the core images tarball to the draft release
+      - name: Attach the core image assets to the draft release
         if: inputs.publish
         uses: ./.github/actions/attach-release-assets
         with:
           tag: ${{ inputs.version }}
-          files: "${{ needs.metadata.outputs.core_images_name }}"
+          files: "core-assets-arm64/*"
 
   package-core-images-amd64:
-    name: Package amd64 core image tarballs for Windows release
+    name: Package amd64 core image assets for release
     runs-on: ubuntu-latest
     permissions:
       contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-core-amd64]
     steps:
-      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
-      # empties the workspace.
+      # The packaging scripts, the attach action and the tag's notes page (ensure-release's body),
+      # first: a checkout empties the workspace.
       - name: Checkout
-        if: inputs.publish
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             .github/actions
             docs/releases
+            scripts/ci
 
       - name: Download amd64 core image tarballs
         uses: actions/download-artifact@v4
@@ -656,26 +684,31 @@ jobs:
           name: docker-images-core-amd64
           path: core-images-amd64/
 
-      - name: Package as zip (tarballs already compressed — store only)
+      # One asset per image, an image of 1 GiB or more as numbered parts, and the manifest that
+      # lists them: the one archive outgrew GitHub's 2 GiB per-asset limit (alpha.513, run
+      # 46058735167). The script fails here when any asset is 2 GiB or more, so a dry run, which
+      # uploads nothing to the release, fails as the release would.
+      - name: Package as per-image assets under 2 GiB
         run: |
-          cd core-images-amd64
-          zip -0 "../${{ needs.metadata.outputs.core_images_amd64_name }}" *.tar.gz
+          bash scripts/ci/package_core_images.sh core-images-amd64 amd64 "${{ inputs.version }}" \
+            core-assets-amd64 1073741824
+          test -f "core-assets-amd64/${{ needs.metadata.outputs.core_images_amd64_manifest_name }}"
 
-      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
-      # to the draft directly, never through an artifact.
-      - name: Upload amd64 core images zip
+      # A dry run keeps them in the run (their only home: nothing is attached); a release attaches
+      # them to the draft directly, never through an artifact.
+      - name: Upload amd64 core image assets
         if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: core-images-amd64-tarball
-          path: "${{ needs.metadata.outputs.core_images_amd64_name }}"
+          path: core-assets-amd64/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
 
-      - name: Attach the amd64 core images zip to the draft release
+      - name: Attach the amd64 core image assets to the draft release
         if: inputs.publish
         uses: ./.github/actions/attach-release-assets
         with:
           tag: ${{ inputs.version }}
-          files: "${{ needs.metadata.outputs.core_images_amd64_name }}"
+          files: "core-assets-amd64/*"

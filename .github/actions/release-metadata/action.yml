@@ -37,10 +37,10 @@ outputs:
     value: ${{ steps.meta.outputs.obs_images_name }}
   demo_images_name:
     value: ${{ steps.meta.outputs.demo_images_name }}
-  core_images_name:
-    value: ${{ steps.meta.outputs.core_images_name }}
-  core_images_amd64_name:
-    value: ${{ steps.meta.outputs.core_images_amd64_name }}
+  core_images_manifest_name:
+    value: ${{ steps.meta.outputs.core_images_manifest_name }}
+  core_images_amd64_manifest_name:
+    value: ${{ steps.meta.outputs.core_images_amd64_manifest_name }}
   trino_image_name:
     value: ${{ steps.meta.outputs.trino_image_name }}
   trino_image_amd64_name:
@@ -92,8 +92,12 @@ runs:
         echo "npm_version=$NPM_VERSION"                                  >> "$GITHUB_OUTPUT"
         echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
         echo "demo_images_name=provisa-demo-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
-        echo "core_images_name=provisa-core-images-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
-        echo "core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip" >> "$GITHUB_OUTPUT"
+        # The core images ship one asset per image, an image of 1 GiB or more as numbered parts
+        # (scripts/ci/package_core_images.sh: provisa-core-image-<name>-<arch>-<tag>.tar.gz[.partN]),
+        # each under GitHub's 2 GiB per-asset limit, which the one archive outgrew in alpha.513.
+        # The manifest lists them, with their sha256; every installer reads it first.
+        echo "core_images_manifest_name=provisa-core-images-arm64-${TAG}.sha256"       >> "$GITHUB_OUTPUT"
+        echo "core_images_amd64_manifest_name=provisa-core-images-amd64-${TAG}.sha256" >> "$GITHUB_OUTPUT"
         # The Trino engine image ships as its own asset: bundled with the rest it pushed the
         # core-images archives past GitHub's 2 GiB per-asset limit (alpha.308-310 failures).
         echo "trino_image_name=provisa-trino-image-${TAG}.tar.gz"          >> "$GITHUB_OUTPUT"

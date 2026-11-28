@@ -241,11 +241,13 @@ locals {
 
   appimage_url = "https://${var.storage_account_name}.blob.core.windows.net/${var.storage_container}/${var.appimage_blob}"
 
-  # Core-images zip lives in the same container as the AppImage blob. When the blob
-  # name carries a virtual-directory prefix, keep it; a bare blob name (dirname ".")
-  # means the zip sits at the container root alongside it.
-  images_zip  = "provisa-core-images-amd64-${var.provisa_version}.zip"
-  images_blob = dirname(var.appimage_blob) == "." ? local.images_zip : "${dirname(var.appimage_blob)}/${local.images_zip}"
+  # The core image assets live in the same container as the AppImage blob: their manifest
+  # lists one asset per image (a large image in parts, each under GitHub's 2 GiB asset
+  # limit) with its sha256 (scripts/ci/package_core_images.sh). When the blob name carries a
+  # virtual-directory prefix, keep it; a bare blob name (dirname ".") means the assets sit at
+  # the container root alongside it.
+  images_manifest = "provisa-core-images-amd64-${var.provisa_version}.sha256"
+  images_prefix   = dirname(var.appimage_blob) == "." ? "" : "${dirname(var.appimage_blob)}/"
 
   # ── Protocol surface ─────────────────────────────────────────────────────────
   # One row per externally-reachable protocol. `enabled` gates the whole chain: NSG
@@ -280,9 +282,11 @@ locals {
       - az login --identity --username ${azurerm_user_assigned_identity.provisa.client_id}
       - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${var.appimage_blob} --file /opt/Provisa.AppImage --auth-mode login
       - chmod +x /opt/Provisa.AppImage
-      # Stage the amd64 core-images zip beside the AppImage; first-launch docker-loads
-      # it locally (airgap path) when run from /opt with PROVISA_VERSION set (below).
-      - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${local.images_blob} --file /opt/${local.images_zip} --auth-mode login
+      # Stage the amd64 core image assets beside the AppImage: the manifest and every asset
+      # it lists. first-launch checks each against its sha256 and docker-loads them locally
+      # (airgap path) when run from /opt with PROVISA_VERSION set (below).
+      - az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name ${local.images_prefix}${local.images_manifest} --file /opt/${local.images_manifest} --auth-mode login
+      - for asset in $(awk '{print $2}' /opt/${local.images_manifest}); do az storage blob download --account-name ${var.storage_account_name} --container-name ${var.storage_container} --name "${local.images_prefix}$asset" --file "/opt/$asset" --auth-mode login || exit 1; done
     %{~if var.tls_cert_pem != "" && var.tls_key_pem != ""~}
       # Operator-supplied wildcard TLS cert (REQ-1239). Written here and adopted by
       # first-launch's ensure_tls_certs via PROVISA_TLS_CERT/KEY (in deploy_env below),

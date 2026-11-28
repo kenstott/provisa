@@ -55,8 +55,8 @@ git tag v1.2.3 && git push origin v1.2.3
 | `Provisa-Container-<tag>-windows-x64.exe` | שדרוג שכבת-container ל-Windows x64 (WSL2 + Trino) |
 | `provisa-jdbc-<tag>.jar` | דרייבר JDBC — Tableau, PowerBI, DBeaver |
 | `provisa_client-<pep440>-py3-none-any.whl` | לקוח Python (גם PyPI) |
-| `provisa-core-images-<tag>.tar.gz` | tarballs‏ image של שירותי ליבה (arm64, air-gapped) |
-| `provisa-core-images-amd64-<tag>.zip` | image-י שירותי ליבה (amd64, שכבת-container של Windows / air-gap) |
+| `provisa-core-images-<arch>-<tag>.sha256` | מניפסט image-י שירותי ליבה (arm64, amd64): כל asset של image עם ה-sha256 שלו |
+| `provisa-core-image-<name>-<arch>-<tag>.tar.gz` | image אחד של שירותי ליבה (arm64, amd64; air-gap); image של 1 GiB ומעלה מתפרסם כ-`.part1`, `.part2`, ... |
 | `provisa-obs-images-<tag>.tar.gz` | image-י מחסנית Observability (אופציונלי) |
 | `provisa-demo-images-<tag>.tar.gz` | image-י חבילת נתוני הדגמה (אופציונלי) |
 | `provisa-trino-plugins-<tag>.tar.gz` | מחברי מנוע תיאום (SharePoint, Splunk, File) |

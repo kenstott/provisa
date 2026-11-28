@@ -254,9 +254,11 @@ Two tiers, in parity with the macOS DMG (native venv default, Docker for Trino/o
   or `--no-index --find-links ${APPDIR}/wheels` airgapped. Writes `runtime: native`.
   Single-node; `--role secondary` is rejected. No Docker.
 - **Docker tier** (Trino engine and/or obs/demo on Docker): starts the **bundled
-  rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), acquires
-  `provisa-core-images-amd64-<ver>.zip` **on demand** (local-first beside the
-  AppImage for airgap, else download), `docker load`s it, and runs `docker compose`.
+  rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), acquires the core image
+  assets listed in `provisa-core-images-amd64-<ver>.sha256` **on demand** (local-first
+  beside the AppImage for airgap, else download; one asset per image, a large image in
+  parts, each under GitHub's 2 GiB asset limit), checks each against its sha256,
+  `docker load`s them, and runs `docker compose`.
   Writes `runtime: bundled`, `image_source: tarball`. No VM: Linux runs containers natively.
 
 `packaging/linux/build-appimage.sh` builds a **slim** AppImage: the native

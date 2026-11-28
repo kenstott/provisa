@@ -225,8 +225,9 @@ build_appdir() {
   chmod +x "${APPDIR}/bin/"*
 
   # Slim AppImage: images are NOT bundled (native payload + images would exceed the
-  # 2 GB asset limit). The Docker tier acquires provisa-core-images-amd64-<ver>.zip
-  # on demand at first launch (local-first beside the AppImage, else download).
+  # 2 GB asset limit). The Docker tier acquires the core image assets listed in
+  # provisa-core-images-amd64-<ver>.sha256 on demand at first launch (local-first beside
+  # the AppImage, else download).
 
   # Copy compose files and config (core only; obs images are not bundled, so the obs
   # overlay is intentionally omitted — the CLI won't auto-start obs without it. Demo

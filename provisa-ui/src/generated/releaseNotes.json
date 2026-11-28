@@ -438,13 +438,15 @@
       "scope": "release",
       "entries": [
         "DMG dry run: one plugin artifact upload, SDK tests in the project env, docs link",
-        "A dry run's app image stages the provisa-duckdb-ext wheels its own run built"
+        "A dry run's app image stages the provisa-duckdb-ext wheels its own run built",
+        "Core images ship one asset per image under 2 GiB, with a sha256 manifest"
       ]
     },
     {
       "scope": "release-gate",
       "entries": [
-        "Accept a suite's green run from an ancestor when every later commit is docs-only or proved by its targeted runs"
+        "Accept a suite's green run from an ancestor when every later commit is docs-only or proved by its targeted runs",
+        "The release notes the UI bundles count as documentation, so a re-cut accepts the previous cut's notes commit"
       ]
     },
     {

@@ -182,8 +182,9 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-prebuilt.yml", "pull-images-core-amd64"): ("outputs.trino_image_amd64_name",),
     ("release-prebuilt.yml", "package-obs-images"): ("outputs.obs_images_name",),
     ("release-prebuilt.yml", "package-demo-images"): ("outputs.demo_images_name",),
-    ("release-prebuilt.yml", "package-core-images"): ("outputs.core_images_name",),
-    ("release-prebuilt.yml", "package-core-images-amd64"): ("outputs.core_images_amd64_name",),
+    # The core images: one asset per image (parts for a large one) and the manifest listing them.
+    ("release-prebuilt.yml", "package-core-images"): ("core-assets-arm64/*",),
+    ("release-prebuilt.yml", "package-core-images-amd64"): ("core-assets-amd64/*",),
     # The DMGs are notarized after the builds: the notarize workflow's job attaches them
     # (tests/unit/test_notarize_workflow.py).
     ("release-windows.yml", "build-windows-core"): ("outputs.windows_name",),
@@ -289,6 +290,11 @@ def test_the_attach_action_drafts_and_uploads_and_never_undrafts():
     assert steps[0]["with"] == {"tag": "${{ inputs.tag }}"}
     run = steps[1]["run"]
     assert 'gh release upload "$TAG" "${upload[@]}" --clobber' in run
+    # GitHub refuses an asset of 2 GiB or more: the action checks every file before uploading any.
+    assert run.index('bash "$CHECK" "${upload[@]}"') < run.index("gh release upload")
+    assert steps[1]["env"]["CHECK"] == (
+        "${{ github.action_path }}/../check-release-asset-size/check.sh"
+    )
     assert '[ "$missing" = 0 ]' in run
     assert "gh release edit" not in text and "--draft=false" not in text
     assert "if" not in steps[0] and "if" not in steps[1]
@@ -618,3 +624,61 @@ def test_the_macos_native_runtime_prunes_test_payload_before_signing():
     assert (_ROOT / "packaging" / "macos" / "prune_runtime.py").is_file()
     main_body = script.split("\nmain() {", 1)[1]
     assert main_body.index("bundle_native_payload") < main_body.index("sign_native_payload")
+
+
+_SIZE_CHECK = _ROOT / ".github" / "actions" / "check-release-asset-size" / "check.sh"
+
+
+def test_the_size_check_refuses_an_asset_of_2_gib_or_more(tmp_path):
+    """alpha.513: `gh release upload` refused the core images archive with HTTP 422 "size must be
+    less than 2147483648", which the dry run, uploading nothing, never met. The check fails at
+    exactly that size and passes one byte under it (sparse files: no disk is written)."""
+    import subprocess
+
+    under, at = tmp_path / "under.tar.gz", tmp_path / "at.tar.gz"
+    with under.open("wb") as f:
+        f.truncate(2147483647)
+    with at.open("wb") as f:
+        f.truncate(2147483648)
+    ok = subprocess.run(["bash", str(_SIZE_CHECK), str(under)], capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    refused = subprocess.run(
+        ["bash", str(_SIZE_CHECK), str(under), str(at)], capture_output=True, text=True
+    )
+    assert refused.returncode == 1
+    assert f"::error::{at} is 2147483648 bytes" in refused.stdout
+    missing = subprocess.run(
+        ["bash", str(_SIZE_CHECK), str(tmp_path / "absent")], capture_output=True, text=True
+    )
+    assert missing.returncode == 1 and "no release asset file" in missing.stdout
+
+
+def test_every_image_package_is_size_checked_before_a_dry_run_keeps_it():
+    """A dry run attaches nothing, so each image job checks its assets' size itself, before the
+    dry run's artifact upload: the core image jobs through package_core_images.sh, the others
+    through the check action."""
+    jobs = _load("release-prebuilt.yml")["jobs"]
+    checked = {
+        "package-obs-images": "Upload obs images tarball",
+        "package-demo-images": "Upload demo images tarball",
+        "pull-images-core": "Upload trino image tarball",
+        "pull-images-core-amd64": "Upload amd64 trino image tarball",
+    }
+    for job, upload in checked.items():
+        names = [s.get("name") for s in jobs[job]["steps"]]
+        uses = [s.get("uses") for s in jobs[job]["steps"]]
+        check = uses.index("./.github/actions/check-release-asset-size")
+        assert check < names.index(upload), job
+    for job, arch in (("package-core-images", "arm64"), ("package-core-images-amd64", "amd64")):
+        steps = jobs[job]["steps"]
+        names = [s.get("name") for s in steps]
+        package = names.index("Package as per-image assets under 2 GiB")
+        assert "scripts/ci/package_core_images.sh" in steps[package]["run"], job
+        assert f"core-assets-{arch}" in steps[package]["run"], job
+        upload = next(
+            i for i, s in enumerate(steps) if s.get("uses") == "actions/upload-artifact@v4"
+        )
+        assert package < upload, job
+        assert steps[upload]["with"]["path"] == f"core-assets-{arch}/", job
+    script = (_ROOT / "scripts" / "ci" / "package_core_images.sh").read_text()
+    assert ".github/actions/check-release-asset-size/check.sh" in script
