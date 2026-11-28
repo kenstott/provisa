@@ -262,6 +262,19 @@ describe("ClassificationKindsTab", () => {
     expect(panel).toHaveTextContent("employee id");
   });
 
+  // REQ-2277 rule 6: the kind names its term by name, so it links to the Glossary narrowed by it.
+  it("links its term to the Glossary narrowed by the term's name", async () => {
+    auth.capabilities = ["sensitive_data", "glossary_read"];
+    render(<ClassificationKindsTab title="Classification" />);
+    fireEvent.click(await screen.findByTestId("classification-kind-us_ssn"));
+    const link = screen.getByTestId("classification-kind-read-term-us_ssn");
+    expect(link).toHaveTextContent("us social security number");
+    expect(link).toHaveAttribute(
+      "href",
+      "/context/glossary?search=us%20social%20security%20number",
+    );
+  });
+
   it("offers no change to a caller without sensitive_data", async () => {
     auth.capabilities = ["glossary_read"];
     render(<ClassificationKindsTab title="Classification" />);

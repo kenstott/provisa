@@ -60,7 +60,9 @@ vi.mock("../api/dataProductContracts", () => ({
   fetchProductContract: () => Promise.resolve({}),
   fetchContractVersions: () => Promise.resolve([]),
 }));
-vi.mock("../api/lineage", () => ({
+vi.mock("../api/lineage", async (importOriginal) => ({
+  // The module's pure helpers (isCheckerEntry, read by the Quality tab) as they are.
+  ...(await importOriginal<typeof import("../api/lineage")>()),
   fetchProductLineage: () =>
     Promise.resolve({
       nodes: [],
