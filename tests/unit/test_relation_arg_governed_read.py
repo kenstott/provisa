@@ -12,8 +12,9 @@
 through the one governed pipeline as the calling role (REQ-1159, amended 2026-11-28): the role's
 row filters, masks and column visibility hold, and only the declared input columns are read. A
 physical source.schema.table is refused by name. A relation argument read from a table or a query
-is read whole: not cut to the role's default row limit, held only to the role's hard row cap, and
-a read past that cap is refused by name (REQ-1159, amended 2026-11-28).
+is held to the role's hard row cap -- its own max_rows, else the default row limit unless it holds
+FULL_RESULTS, which reads it whole -- and a read past that cap is refused by name, never cut
+(REQ-1159, amended 2026-11-28).
 
 These run the real names table and the real governance stage, with routing stood in for: what
 reaches routing is what would be read."""
@@ -78,7 +79,12 @@ def _tables(hidden: set[str]) -> list[dict]:
     ]
 
 
-def _state(*, hidden: set[str] = frozenset({"secret"}), max_rows: int | None = None) -> RoleState:
+def _state(
+    *,
+    hidden: set[str] = frozenset({"secret"}),
+    max_rows: int | None = None,
+    full_results: bool = False,
+) -> RoleState:
     """``analyst`` reads pet_store.orders (physically pg.public.orders): its EU rows only, its
     card masked, its secret column not visible."""
     ctx = CompilationContext()
@@ -96,7 +102,10 @@ def _state(*, hidden: set[str] = frozenset({"secret"}), max_rows: int | None = N
         roles={
             "analyst": {
                 "id": "analyst",
-                "capabilities": ["ignore_relationships"],
+                "capabilities": [
+                    "ignore_relationships",
+                    *(["full_results"] if full_results else []),
+                ],
                 "domain_access": ["*"],
                 **({"max_rows": max_rows} if max_rows is not None else {}),
             }
@@ -221,30 +230,42 @@ _QUERY = 'SELECT "id", "card" FROM "pet_store"."orders"'
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
-async def test_a_relation_read_is_not_cut_to_the_default_row_limit(monkeypatch, given):
+async def test_a_role_with_no_max_rows_is_held_to_the_default_row_limit(monkeypatch, given):
     governed = await _read(monkeypatch, _state(), _fn(["id", "card"]), given)
+    assert governed.upper().rstrip().endswith(f"LIMIT {_DEFAULT_ROW_LIMIT}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
+async def test_a_full_results_role_reads_the_relation_whole(monkeypatch, given):
+    governed = await _read(monkeypatch, _state(full_results=True), _fn(["id", "card"]), given)
     assert "LIMIT" not in governed.upper()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
-async def test_a_relation_read_is_held_to_the_roles_hard_row_cap(monkeypatch, given):
-    governed = await _read(monkeypatch, _state(max_rows=500), _fn(["id", "card"]), given)
+@pytest.mark.parametrize("full_results", [False, True])
+async def test_a_relation_read_is_held_to_the_roles_hard_row_cap(monkeypatch, given, full_results):
+    state = _state(max_rows=500, full_results=full_results)
+    governed = await _read(monkeypatch, state, _fn(["id", "card"]), given)
     assert governed.upper().rstrip().endswith("LIMIT 500")
 
 
-def _pipeline_answering(monkeypatch, rows: int, outcome: str | None, cap: int | None) -> list:
+def _pipeline_answering(
+    monkeypatch, rows: int, outcome: str | None, cap: int | None, kind: str = "role"
+) -> list:
     """The pipeline stood in for: a read answering ``rows`` rows, bounded at ``cap`` (the role's
-    hard row cap) with what the check past it found (``outcome``: cut | unchecked | None)."""
+    ceiling, or a table's: ``kind``) with what the check past it found (``outcome``: cut |
+    unchecked | None)."""
     from types import SimpleNamespace
 
-    from provisa.compiler.row_limit import ROLE, RowLimit
+    from provisa.compiler.row_limit import RowLimit
     from provisa.executor.result import QueryResult
     from provisa.pgwire import _pipeline
 
     asked: list = []
     plan = SimpleNamespace(
-        row_limit=RowLimit(cap, ROLE) if cap is not None else None, limit_outcome=None
+        row_limit=RowLimit(cap, kind) if cap is not None else None, limit_outcome=None
     )
 
     async def _govern(sql, role_id, **kw):
@@ -266,30 +287,59 @@ def _pipeline_answering(monkeypatch, rows: int, outcome: str | None, cap: int | 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
-async def test_a_150_row_relation_arrives_whole(monkeypatch, given):
+async def test_a_150_row_relation_arrives_whole_for_a_full_results_role(monkeypatch, given):
     asked = _pipeline_answering(monkeypatch, 150, None, None)
     payload, _refs = await fd._prepare_args(
-        _fn(["id", "card"]), {"input": given}, _state(), "analyst"
+        _fn(["id", "card"]), {"input": given}, _state(full_results=True), "analyst"
     )
     assert [kw for _sql, _role, kw in asked] == [{"relation_argument": True}]
     assert len(payload["input"]["rows"]) == 150
+
+
+async def _refused(monkeypatch, given: str, state: RoleState, outcome: str, cap: int, kind: str):
+    _pipeline_answering(monkeypatch, cap, outcome, cap, kind)
+    with pytest.raises(ApiError) as refused:
+        await fd._prepare_args(_fn(["id", "card"]), {"input": given}, state, "analyst")
+    assert refused.value.status_code == 400
+    assert refused.value.code == "functions.relation_over_row_cap"
+    return refused.value
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
 @pytest.mark.parametrize("outcome", ["cut", "unchecked"])
 async def test_a_relation_past_the_hard_row_cap_is_refused_by_name(monkeypatch, given, outcome):
-    _pipeline_answering(monkeypatch, 150, outcome, 150)
-    with pytest.raises(ApiError) as refused:
-        await fd._prepare_args(_fn(["id", "card"]), {"input": given}, _state(), "analyst")
-    assert refused.value.status_code == 400
-    assert refused.value.code == "functions.relation_over_row_cap"
-    assert refused.value.params == {
+    refused = await _refused(monkeypatch, given, _state(max_rows=150), outcome, 150, "role")
+    assert refused.params == {
         "name": "input",
         "cap": 150,
         "cap_kind": "role",
         "role": "analyst",
         "outcome": outcome,
     }
-    detail = refused.value.detail
+    detail = refused.detail
     assert "'input'" in detail and "150 rows" in detail and "'analyst'" in detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("given", ["pet_store.orders", _QUERY])
+async def test_a_relation_past_the_default_row_limit_is_refused_naming_the_default(
+    monkeypatch, given
+):
+    """A role with no max_rows and no FULL_RESULTS: governance bounds the read at the default
+    row limit as the role's ceiling, and the refusal names the default as whose cap it is."""
+    import provisa.compiler.sql_gen as sql_gen
+
+    monkeypatch.setattr(sql_gen, "_get_default_row_limit", lambda: _DEFAULT_ROW_LIMIT)
+    refused = await _refused(monkeypatch, given, _state(), "cut", _DEFAULT_ROW_LIMIT, "role")
+    assert refused.params["cap"] == _DEFAULT_ROW_LIMIT
+    assert refused.params["cap_kind"] == "default"
+    assert "default row limit" in refused.detail
+
+
+@pytest.mark.asyncio
+async def test_a_relation_past_a_tables_row_cap_is_refused_naming_the_table(monkeypatch):
+    refused = await _refused(monkeypatch, _QUERY, _state(full_results=True), "cut", 40, "table")
+    assert refused.params["cap"] == 40
+    assert refused.params["cap_kind"] == "table"
+    assert "a table role 'analyst' reads" in refused.detail

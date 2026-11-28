@@ -1904,7 +1904,7 @@ async def govern_statement(
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
 
     ``relation_argument`` (REQ-1159, amended 2026-11-28): the statement reads a command's relation
-    argument, read whole: bounded only by the role's hard row cap, not its default row limit.
+    argument, bounded by the role's hard row cap (stage2.hard_row_cap) and refused past it.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
     the profiler's read of a table, which pairs the table with itself, or discovery's key value
@@ -1978,7 +1978,7 @@ async def govern_statement(
             *([("provisa.product_statement", "1")] if product_statement else []),
             # Nor is a catalog statement, whose guard is its own (REQ-2190).
             *([("provisa.catalog", "1")] if current_catalog_request.get() is not None else []),
-            # Nor is a command's relation argument, which no default row limit bounds (REQ-1159).
+            # Nor is a command's relation argument, held to the hard row cap and refused past it (REQ-1159).
             *([("provisa.relation_argument", "1")] if relation_argument else []),
             # A request-level as-of decides which bitemporal views keep their reference.
             *([("provisa.as_of", as_of)] if as_of else []),
@@ -2054,13 +2054,14 @@ async def govern_statement(
         # as does a ceiling set on a table; the role's context, shared by its statements, is kept.
         gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=None)
     elif relation_argument:
-        # REQ-1159 (amended 2026-11-28): a command's relation argument is read whole -- not cut to
-        # the role's default row limit, held only to the role's hard row cap (its own max_rows)
+        # REQ-1159 (amended 2026-11-28): a command's relation argument is held to the role's hard
+        # row cap -- its own max_rows, else the default row limit unless it holds FULL_RESULTS --
         # and a ceiling set on a table it reads. A read that cap cuts is refused by its caller
         # (the plan's limit_outcome), never handed on truncated.
         from provisa.compiler.stage2 import hard_row_cap
 
-        gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=hard_row_cap(role))
+        cap = hard_row_cap(role)
+        gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=None if cap is None else cap.limit)
     # REQ-2219: the first governance rule. Every object the statement touches is in the person's
     # mask, before any other rule reads the statement or any view is read for this reader.
     from provisa.compiler.entitlement_rule import entitlement_violations

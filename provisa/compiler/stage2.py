@@ -15,7 +15,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -27,6 +27,9 @@ from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import extracts_paths, stored_path
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.security.masking import mask_expression
+
+if TYPE_CHECKING:
+    from provisa.compiler.row_limit import RowLimit
 
 
 # --------------------------------------------------------------------------- #
@@ -177,12 +180,19 @@ def resolve_row_cap(
     return _get_default_row_limit()
 
 
-def hard_row_cap(role: dict) -> int | None:  # REQ-005, REQ-1159
-    """The role's hard row cap: its own ``max_rows``, None when it sets none. Unlike
-    :func:`resolve_row_cap`, the configured default row limit -- the bound a role's displayed
-    answer takes when it sets no ceiling of its own -- is no part of it."""
+def hard_row_cap(role: dict) -> RowLimit | None:  # REQ-005, REQ-1159
+    """The hard row cap a command's relation argument is read under (REQ-1159, amended
+    2026-11-28), and whose it is (compiler/row_limit.RowLimit): the role's own ``max_rows``
+    (``role``); else, for a role without FULL_RESULTS, the configured default row limit
+    (``default``); None for a role holding FULL_RESULTS, whose read is whole. A read past it is
+    refused by its caller, never cut."""
+    from provisa.compiler.row_limit import DEFAULT, ROLE, RowLimit
+
     explicit = role.get("max_rows")
-    return None if explicit is None else int(explicit)
+    if explicit is not None:
+        return RowLimit(int(explicit), ROLE)
+    cap = resolve_row_cap(role)
+    return None if cap is None else RowLimit(cap, DEFAULT)
 
 
 def _readable_term_predicate(column: str, domains: frozenset[str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]

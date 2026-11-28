@@ -313,8 +313,9 @@ async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | N
     """A relation argument given as a query: run through the one governed pipeline as the
     caller's role, as any statement the caller writes is (REQ-1159, amended 2026-11-27).
 
-    It is read whole (REQ-1159, amended 2026-11-28): not cut to the role's default row limit,
-    held only to the role's hard row cap; a read past that cap is refused by name."""
+    It is held to the role's hard row cap (REQ-1159, amended 2026-11-28): its own max_rows,
+    else the default row limit unless it holds FULL_RESULTS; a read past that cap is refused by
+    name, never cut."""
     from provisa.executor.serialize import result_records
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
@@ -328,7 +329,7 @@ async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | N
     plan = await _govern_and_route(sql, role_id, relation_argument=True)
     result = await _execute_plan(plan, state)
     if plan.limit_outcome is not None:
-        _refuse_over_row_cap(fn, name, plan, role_id)
+        _refuse_over_row_cap(fn, name, plan, state, role_id)
     return {
         "kind": "result_set",
         "columns": list(result.column_names),
@@ -336,14 +337,30 @@ async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | N
     }
 
 
-def _refuse_over_row_cap(fn: dict, name: str, plan, role_id: str) -> None:
+def _refuse_over_row_cap(fn: dict, name: str, plan, state, role_id: str) -> None:
     """A relation argument's read that the hard row cap bounding it cut (``cut``), or filled
     with whether more rows match unknown (``unchecked``), is refused naming the argument, the
-    cap and the role: the command is never handed a truncated relation (REQ-1159)."""
+    cap, whose cap it is (``role``: the role's max_rows; ``default``: the configured default
+    row limit, the role setting none; ``table``: a table's), and the role: the command is never
+    handed a truncated relation (REQ-1159)."""
+    from provisa.compiler.row_limit import DEFAULT, ROLE, TABLE
+    from provisa.compiler.stage2 import hard_row_cap
+    from provisa.security.rights import effective_domain_access_role
+
     cap = plan.row_limit.limit
-    whose = (
-        f"role {role_id!r}" if plan.row_limit.kind == "role" else f"a table role {role_id!r} reads"
-    )
+    if plan.row_limit.kind == TABLE:
+        cap_kind = TABLE
+    else:
+        held = hard_row_cap(effective_domain_access_role(role_id, state.roles))
+        if held is None:
+            # The role's ceiling bounded this read, so governance gave the role a hard row cap.
+            raise RuntimeError(f"role {role_id!r} has no hard row cap, yet one bounded {name!r}")
+        cap_kind = held.kind
+    whose = {
+        TABLE: f"the row cap of a table role {role_id!r} reads",
+        ROLE: f"the row cap of role {role_id!r}",
+        DEFAULT: f"the default row limit, role {role_id!r} setting no row cap of its own",
+    }[cap_kind]
     found = (
         "more rows match than that"
         if plan.limit_outcome == "cut"
@@ -353,10 +370,10 @@ def _refuse_over_row_cap(fn: dict, name: str, plan, role_id: str) -> None:
         400,
         "functions.relation_over_row_cap",
         f"argument {name!r} of {fn.get('name')!r} is read whole, and its read is held to {cap} "
-        f"rows, the row cap of {whose}: {found}. Narrow the relation or raise the cap.",
+        f"rows, {whose}: {found}. Narrow the relation or raise the cap.",
         name=name,
         cap=cap,
-        cap_kind=plan.row_limit.kind,
+        cap_kind=cap_kind,
         role=role_id,
         outcome=plan.limit_outcome,
     )

@@ -31,6 +31,9 @@ from provisa.core.statement_warnings import ServerWarning
 
 ROLE = "role"
 TABLE = "table"
+# A role's cap that is the configured default row limit, the role setting no max_rows of its own
+# (REQ-1159): named only where a relation argument's read is refused (stage2.hard_row_cap).
+DEFAULT = "default"
 
 
 @dataclass(frozen=True)
