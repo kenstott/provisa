@@ -269,7 +269,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric</strong><br>An integer as a numeric.<br><em>Made on: redshift. Verified on: none (run 46114094088, the last measured, judged none of its legs).</em></td><td><pre><code>numeric($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb); a call of (double precision), (real) at some of its values. <code>0A000</code> numeric() has no form on redshift</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb); a call of (double precision), (real) with an argument the statement says is of that type, not a NULL. <code>0A000</code> numeric() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.<br><em>Made on: redshift. Verified on: none (run 46114094088, the last measured, judged none of its legs).</em></td><td><pre><code>bool($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1042,5 +1042,5 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.<br><em>Made on: redshift. Verified on: none (run 46114094088, the last measured, judged none of its legs).</em></td><td><pre><code>encode($a, $f)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on redshift</li></ul></td><td></td><td></td></tr>
 </tbody></table>

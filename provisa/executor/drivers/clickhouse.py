@@ -46,7 +46,7 @@ from provisa.executor.drivers.arrow_result import arrow_table_rows, source_arrow
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.clickhouse_arrow import (
     ARROW_SETTINGS,
-    described_types,
+    CHType,
     needs_types,
     row_builder,
     row_values_batch,
@@ -102,6 +102,15 @@ def _is_broken(exc: BaseException) -> bool:
     from clickhouse_connect.driver.exceptions import InterfaceError, OperationalError
 
     return isinstance(exc, (OperationalError, InterfaceError))
+
+
+def described_types(client: Any, sql: str, parameters: dict[str, Any] | None) -> list[CHType]:  # noqa: ANN401 — a clickhouse-connect client
+    """The result columns' ClickHouse types, from ClickHouse's own ``DESCRIBE (query)``, as
+    clickhouse-connect's registry parses them (the ``CHType`` ``clickhouse_arrow`` converts by)."""
+    from clickhouse_connect.datatypes.registry import get_from_name
+
+    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
+    return [get_from_name(row[1]) for row in described.result_rows]
 
 
 def _read_arrow(

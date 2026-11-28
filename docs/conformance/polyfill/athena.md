@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on Athena. A f
 
 When Athena is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 506, of which 313 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 506, of which 314 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 No Conformance (functions) leg runs Athena. No run has verified them: function_legs.yaml has no leg whose engine runs this dialect. Each row prints this provenance, read from scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json, never written by hand.
 
@@ -1164,5 +1164,5 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, integer). <code>0A000</code> substr() has no form on athena</li><li>Refused for a call of (bytea, integer), (bit, integer), (bytea, integer), (text, text). <code>0A000</code> substring() has no form on athena</li><li>Refused for a call of (bytea, integer, integer). <code>0A000</code> substr() has no form on athena</li><li>Refused for a call of (bytea, integer, integer), (bit, integer, integer), (bytea, integer, integer), (text, text, text). <code>0A000</code> substring() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>encode($a, $f)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: encode($a, $f). <code>0A000</code> encode() has no form on athena</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on athena</li></ul></td><td></td><td></td></tr>
 </tbody></table>

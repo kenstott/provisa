@@ -105,14 +105,6 @@ def _ambiguous(t: pa.DataType) -> bool:
     )
 
 
-def described_types(client: Any, sql: str, parameters: dict[str, Any] | None) -> list[CHType]:  # noqa: ANN401 — a clickhouse-connect client
-    """The result columns' ClickHouse types, from ClickHouse's own ``DESCRIBE (query)``."""
-    from clickhouse_connect.datatypes.registry import get_from_name
-
-    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
-    return [get_from_name(row[1]) for row in described.result_rows]
-
-
 def _check_width(types: Sequence[CHType], width: int) -> None:
     if len(types) != width:
         raise ValueError(f"DESCRIBE named {len(types)} columns for an Arrow result of {width}")
