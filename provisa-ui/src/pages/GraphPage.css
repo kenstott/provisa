@@ -881,6 +881,14 @@
   overflow: clip;
 }
 
+/* The stats view: a flex child of .gf-body-content that takes the remaining height and scrolls
+ * its cards inside it (a flex item's default min-height:auto would grow it past the frame). */
+.gf-stats-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .gf-error {
   padding: 0.75rem 1rem;
   color: var(--destructive);
