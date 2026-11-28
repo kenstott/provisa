@@ -172,6 +172,22 @@ export function tableSqlRef(table: SqlNamedTable): string {
   return `${quoteIdent(domainToSqlName(table.domainId))}.${quoteIdent(table.alias || table.tableName)}`;
 }
 
+/** A registered table's served SQL names, as the server's names table gives them (REQ-2361). */
+export interface ServedSqlTable {
+  sqlSchema: string | null;
+  sqlName: string | null;
+}
+
+/**
+ * REQ-2361: the quoted, schema-qualified name a statement uses for a saved table, read from the
+ * server's names table (the table's `sqlSchema` and `sqlName`) and never computed here. Null when
+ * the published build names no such table: it is not served, so nothing names it.
+ */
+export function servedSqlRef(table: ServedSqlTable): string | null {
+  if (!table.sqlSchema || !table.sqlName) return null;
+  return `${quoteIdent(table.sqlSchema)}.${quoteIdent(table.sqlName)}`;
+}
+
 /** A column of a registered table as a statement names it: the table's SQL name, then the column. */
 export function columnSqlRef(table: SqlNamedTable, columnName: string): string {
   return `${quoteIdent(table.alias || table.tableName)}.${quoteIdent(columnName)}`;

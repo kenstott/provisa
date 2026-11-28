@@ -44,7 +44,8 @@ import type {
   CyInstance,
 } from "./cytoscape-types";
 import cytoscape from "cytoscape";
-import "./canvas/cytoscape-extensions";
+// Registers the graph library's extensions, once, as the graph component does.
+import "../provisa-graph/core";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
 import {
@@ -56,7 +57,7 @@ import {
   type HeldDrawing,
 } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
-import { CanvasControls } from "./canvas/CanvasControls";
+import { ResultGraphControls } from "./canvas/ResultGraphControls";
 import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
 import { useGraphLayout } from "./canvas/use-graph-layout";
 
@@ -96,6 +97,8 @@ export function GraphCanvas({
   onClearHighlight,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The canvas's box with its controls: what the command bar's full screen puts full screen.
+  const stageRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
   // these refs (not closures) so they always see current prop values without
@@ -910,6 +913,7 @@ export function GraphCanvas({
 
   return (
     <div
+      ref={stageRef}
       className="gf-canvas-wrap"
       // The canvas is the graph tokens' canvas, the colour the label boxes are drawn in, so a
       // label box never shows as a patch on the canvas (and matches provisa-graph's canvas).
@@ -936,8 +940,9 @@ export function GraphCanvas({
         hullDragRef={hullDragRef}
         toggleCollapse={toggleCollapse}
       />
-      <CanvasControls
+      <ResultGraphControls
         cyRef={cyRef}
+        stageRef={stageRef}
         layoutMode={layoutMode}
         toggleLayout={toggleLayout}
         nudgeHeldRef={nudgeHeldRef}

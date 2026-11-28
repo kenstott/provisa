@@ -111,6 +111,12 @@ export const NODE_TYPES = {
   class: { colour: hue("yellow", 7), icon: "book" },
   property: { colour: hue("lime", 7), icon: "book" },
   command: { colour: hue("pink"), icon: "terminal" },
+  // Lineage's fields, by their role in the flow (REQ-1665, REQ-2116, REQ-2229).
+  intermediate: { colour: hue("cyan"), icon: "merge" },
+  output: { colour: hue("blue"), icon: "column" },
+  native: { colour: hue("orange"), icon: "database" },
+  job: { colour: hue("orange", 8), icon: "terminal" },
+  external: { colour: hue("gray"), icon: "column" },
   checker: { colour: hue("red"), icon: "shield" },
   profile: { colour: hue("green"), icon: "chart" },
   tag: { colour: hue("violet"), icon: "tag" },

@@ -13,6 +13,7 @@
 
 import cytoscape from "cytoscape";
 import fcoseRaw from "cytoscape-fcose";
+import layoutUtilitiesRaw from "cytoscape-layout-utilities";
 import svgRaw from "cytoscape-svg";
 import provisaElk, { PROVISA_ELK } from "./elkLayout";
 
@@ -28,6 +29,8 @@ function register(type: "layout" | "core", name: string, m: CyExtModule): void {
   if (!registered) cytoscape.use(ext(m));
 }
 register("layout", "fcose", fcoseRaw as CyExtModule);
+// fCoSE packs disconnected components only when layout-utilities is registered.
+register("core", "layoutUtilities", layoutUtilitiesRaw as CyExtModule);
 register("layout", PROVISA_ELK, provisaElk as unknown as CyExtModule);
 register("core", "svg", svgRaw as CyExtModule);
 

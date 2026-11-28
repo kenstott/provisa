@@ -32,6 +32,7 @@ import "@graphiql/plugin-explorer/style.css";
 import "@graphiql/plugin-doc-explorer/style.css";
 import "graphiql/graphiql.css";
 import "./QueryPage.css";
+import { ExploreShell } from "../components/explore/ExploreShell";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
@@ -57,8 +58,14 @@ import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserS
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { operationNameOf } from "./graphqlOperationName";
 import { savedActiveTab } from "./graphiqlSavedTab";
+import { editorTypeOptions } from "./graphiqlEditorType";
 import { useScreenEditor } from "../mcp/screenState";
 import { StopButton } from "../components/StopButton";
+
+// REQ-2277: every GraphiQL editor is given the query editors' type as it is created.
+monaco.editor.onDidCreateEditor((created) =>
+  created.updateOptions(editorTypeOptions(document.documentElement)),
+);
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -985,135 +992,150 @@ export function QueryPage() {
 
   /* eslint-disable-next-line react-hooks/refs --
      the fetcher reads noQuerySaidRef at run time, inside saidNoQuery, never during render */
-  if (!role || !fetcher || !plugins) return <div className="page">{t("queryPage.selectRole")}</div>;
+  if (!role || !fetcher || !plugins)
+    return (
+      <ExploreShell testId="query-page" className="query-page">
+        {t("queryPage.selectRole")}
+      </ExploreShell>
+    );
 
   return (
-    <div className="query-page" ref={pageRef}>
-      <Group className="query-options" gap="md" wrap="nowrap" px="sm" py={6}>
-        <Group gap="xs" wrap="nowrap">
-          <Text size="xs" fw={500}>
-            {t("queryPage.redirectLabel")}
-          </Text>
-          <Select
-            size="xs"
-            aria-label={t("queryPage.redirectLabel")}
-            data-testid="redirect-format-select"
-            data={REDIRECT_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
-            value={redirectFormat}
-            onChange={onFormatChange}
-            allowDeselect={false}
-            w={140}
-          />
-        </Group>
-        <NumberInput
-          label={t("queryPage.thresholdLabel")}
-          size="xs"
-          min={0}
-          placeholder={t("queryPage.thresholdPlaceholder")}
-          value={redirectThreshold === "" ? "" : Number(redirectThreshold)}
-          onChange={onThresholdChange}
-          data-testid="redirect-threshold-input"
-          w={100}
-          style={{ visibility: redirectFormat ? "visible" : "hidden" }}
-        />
-        <Text
-          className="query-hint"
-          size="xs"
-          fs="italic"
-          c="dimmed"
-          style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}
-        >
-          {t("queryPage.redirectHint")}
-        </Text>
-        {queryElapsedMs !== null && (
-          <Text className="query-elapsed" size="xs" ml="auto">
-            {Math.round(queryElapsedMs)} ms
-          </Text>
-        )}
-        <Checkbox
-          label={t("queryPage.queryStats")}
-          checked={statsEnabled}
-          onChange={onStatsChange}
-          data-testid="query-stats-checkbox"
-          ml={queryElapsedMs !== null ? undefined : "auto"}
-        />
-      </Group>
-      {schemaError && (
-        <Alert color="red" variant="light" py={4} radius={0}>
-          {t("queryPage.schemaError", { message: schemaError })}
-        </Alert>
-      )}
-      {redirectResult && (
-        <Alert color={redirectResult.note ? "yellow" : "green"} variant="light" py={4} radius={0}>
-          <Group gap="md" wrap="nowrap">
-            <Text size="xs" c={redirectResult.note ? "yellow.8" : "green"}>
-              {t("queryPage.redirectReady", {
-                rowCount: redirectResult.row_count,
-                contentType: redirectResult.content_type,
-              })}
-            </Text>
-            <Text
-              component="a"
-              href={redirectResult.url}
-              download
+    <div className="query-page-root" ref={pageRef}>
+      <ExploreShell
+        testId="query-page"
+        className="query-page"
+        toolbar={
+          <Group className="query-options" gap="md" wrap="nowrap">
+            <Group gap="xs" wrap="nowrap">
+              <Text size="xs" fw={500}>
+                {t("queryPage.redirectLabel")}
+              </Text>
+              <Select
+                size="xs"
+                aria-label={t("queryPage.redirectLabel")}
+                data-testid="redirect-format-select"
+                data={REDIRECT_FORMAT_OPTIONS.map((o) => ({
+                  value: o.value,
+                  label: t(o.labelKey),
+                }))}
+                value={redirectFormat}
+                onChange={onFormatChange}
+                allowDeselect={false}
+                w={140}
+              />
+            </Group>
+            <NumberInput
+              label={t("queryPage.thresholdLabel")}
               size="xs"
-              fw={600}
-              c="green"
-              td="underline"
+              min={0}
+              placeholder={t("queryPage.thresholdPlaceholder")}
+              value={redirectThreshold === "" ? "" : Number(redirectThreshold)}
+              onChange={onThresholdChange}
+              data-testid="redirect-threshold-input"
+              w={100}
+              style={{ visibility: redirectFormat ? "visible" : "hidden" }}
+            />
+            <Text
+              className="query-hint"
+              size="xs"
+              fs="italic"
+              c="dimmed"
+              style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}
             >
-              {t("queryPage.download")}
+              {t("queryPage.redirectHint")}
             </Text>
-            <ActionIcon
-              variant="transparent"
-              color={redirectResult.note ? "yellow" : "green"}
-              size="sm"
-              ml="auto"
-              aria-label={t("queryPage.dismissRedirect")}
-              onClick={() => setRedirectResult(null)}
-            >
-              <X size={14} />
-            </ActionIcon>
+            {queryElapsedMs !== null && (
+              <Text className="query-elapsed" size="xs" ml="auto">
+                {Math.round(queryElapsedMs)} ms
+              </Text>
+            )}
+            <Checkbox
+              label={t("queryPage.queryStats")}
+              checked={statsEnabled}
+              onChange={onStatsChange}
+              data-testid="query-stats-checkbox"
+              ml={queryElapsedMs !== null ? undefined : "auto"}
+            />
           </Group>
-          {redirectResult.note && (
-            <Text size="xs" c="yellow.8" mt={2}>
-              {redirectResult.note}
-            </Text>
-          )}
-        </Alert>
-      )}
-      <GraphiQL
-        fetcher={fetcher}
-        plugins={plugins}
-        forcedTheme={graphiqlTheme}
-        schema={domainSchema ?? undefined}
-        visiblePlugin={initialVisiblePlugin}
-        onTogglePluginVisibility={onPluginVisibilityChange}
-        defaultEditorToolsVisibility={initialEditorTab}
-        shouldPersistHeaders
-        storage={graphiqlStorage}
-        defaultTabs={defaultTabs}
-        initialQuery={savedTab?.query}
-        initialVariables={savedTab?.variables}
-        initialHeaders={savedTab?.headers}
+        }
       >
-        <GraphiQL.Toolbar>
-          {({ prettify, merge, copy }) => (
-            <>
-              <StopQuery />
-              <NoQueryResponse saidRef={noQuerySaidRef} />
-              {prettify}
-              {merge}
-              {copy}
-            </>
-          )}
-        </GraphiQL.Toolbar>
-        <PublishToScreen />
-        {handed && <OpenFromNav key={handed.seq} query={handed.query} autoRun={handed.autoRun} />}
-        <GraphiQL.Footer>
-          <ResponseTableOverlay />
-          <HeadersQuickInsert />
-        </GraphiQL.Footer>
-      </GraphiQL>
+        {schemaError && (
+          <Alert color="red" variant="light" py={4} radius={0}>
+            {t("queryPage.schemaError", { message: schemaError })}
+          </Alert>
+        )}
+        {redirectResult && (
+          <Alert color={redirectResult.note ? "yellow" : "green"} variant="light" py={4} radius={0}>
+            <Group gap="md" wrap="nowrap">
+              <Text size="xs" c={redirectResult.note ? "yellow.8" : "green"}>
+                {t("queryPage.redirectReady", {
+                  rowCount: redirectResult.row_count,
+                  contentType: redirectResult.content_type,
+                })}
+              </Text>
+              <Text
+                component="a"
+                href={redirectResult.url}
+                download
+                size="xs"
+                fw={600}
+                c="green"
+                td="underline"
+              >
+                {t("queryPage.download")}
+              </Text>
+              <ActionIcon
+                variant="transparent"
+                color={redirectResult.note ? "yellow" : "green"}
+                size="sm"
+                ml="auto"
+                aria-label={t("queryPage.dismissRedirect")}
+                onClick={() => setRedirectResult(null)}
+              >
+                <X size={14} />
+              </ActionIcon>
+            </Group>
+            {redirectResult.note && (
+              <Text size="xs" c="yellow.8" mt={2}>
+                {redirectResult.note}
+              </Text>
+            )}
+          </Alert>
+        )}
+        <GraphiQL
+          fetcher={fetcher}
+          plugins={plugins}
+          forcedTheme={graphiqlTheme}
+          schema={domainSchema ?? undefined}
+          visiblePlugin={initialVisiblePlugin}
+          onTogglePluginVisibility={onPluginVisibilityChange}
+          defaultEditorToolsVisibility={initialEditorTab}
+          shouldPersistHeaders
+          storage={graphiqlStorage}
+          defaultTabs={defaultTabs}
+          initialQuery={savedTab?.query}
+          initialVariables={savedTab?.variables}
+          initialHeaders={savedTab?.headers}
+        >
+          <GraphiQL.Toolbar>
+            {({ prettify, merge, copy }) => (
+              <>
+                <StopQuery />
+                <NoQueryResponse saidRef={noQuerySaidRef} />
+                {prettify}
+                {merge}
+                {copy}
+              </>
+            )}
+          </GraphiQL.Toolbar>
+          <PublishToScreen />
+          {handed && <OpenFromNav key={handed.seq} query={handed.query} autoRun={handed.autoRun} />}
+          <GraphiQL.Footer>
+            <ResponseTableOverlay />
+            <HeadersQuickInsert />
+          </GraphiQL.Footer>
+        </GraphiQL>
+      </ExploreShell>
     </div>
   );
 }

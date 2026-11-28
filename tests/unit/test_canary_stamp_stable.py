@@ -143,21 +143,23 @@ def test_merge_commit_with_nothing_new_rewrites_nothing_and_does_not_deploy(
     assert deploys == []
 
 
-def test_merge_reissues_a_canary_both_sides_copied(repo: Path, stamper) -> None:
+def test_hook_reports_a_shared_canary_and_rewrites_no_file(
+    repo: Path, stamper, capsys: pytest.CaptureFixture[str]
+) -> None:
     _stamp_and_commit(repo, stamper)
     base_canary = _canary(repo / "base.py")
     header = (repo / "base.py").read_text()
-    _git(repo, "checkout", "-q", "-b", "side")
-    (repo / "z_side.py").write_text(header)
-    _commit(repo, "side copies base header")
-    _git(repo, "checkout", "-q", "main")
-    (repo / "z_main.py").write_text(header)
-    _commit(repo, "main copies base header")
-    _git(repo, "merge", "-q", "--no-ff", "--no-edit", "side")
+    (repo / "z_copy.py").write_text(header)
+    _commit(repo, "copies base header")
+    capsys.readouterr()
     stamper.main()
-    canaries = [_canary(repo / n) for n in ("base.py", "z_main.py", "z_side.py")]
-    assert canaries[0] == base_canary
-    assert all(canaries) and len(set(canaries)) == 3
+    out = capsys.readouterr().out
+    assert f"Duplicate canary {base_canary}: base.py, z_copy.py" in out
+    assert _canary(repo / "base.py") == base_canary
+    assert _canary(repo / "z_copy.py") == base_canary
+    assert (repo / "z_copy.py").read_text() == header
+    registry = json.loads((repo / ".canary_registry.json").read_text())
+    assert registry["files"][base_canary]["path"] == "base.py"
 
 
 def test_entries_written_without_credentials_deploy_on_the_next_credentialed_run(

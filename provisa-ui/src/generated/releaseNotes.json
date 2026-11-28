@@ -1,34 +1,59 @@
 {
-  "version": "v0.1.0-alpha.512",
-  "previous": "v0.1.0-alpha.511",
-  "date": "2026-11-24",
+  "version": "v0.1.0-alpha.513",
+  "previous": "v0.1.0-alpha.512",
+  "date": "2026-11-27",
   "features": [
+    {
+      "category": "Authentication",
+      "entries": [
+        {
+          "text": "First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password path.",
+          "changes": []
+        }
+      ]
+    },
     {
       "category": "Business Glossary & Ontology",
       "entries": [
         {
-          "text": "Bulk RDF export of the governed graph, the counterpart of the Neo4j export, so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa's data: we work with what you have.",
+          "text": "Maintainer 2026-11-19.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Correctness",
+      "entries": [
+        {
+          "text": "New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five SourceTypes that don't fit the plain register-a-table-and-SELECT shape well enough to share source-to-query.spec.ts: google_sheets, govdata, grpc_remote, soda, great_expectations.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Data Governance",
+      "entries": [
+        {
+          "text": "PII is on columns, and Provisa offers to cover every column with the same meaning, including future ones.",
+          "changes": []
+        }
+      ]
+    },
+    {
+      "category": "Installer & Packaging",
+      "entries": [
+        {
+          "text": "Maintainer 2026-11-22 (idea raised 2026-11-20).",
           "changes": [
-            "Bulk RDF export -- Turtle file, streamed N-Triples, Graph Store load"
+            "install-host.sh installs Provisa with Trino on a Linux host",
+            "Config federation_engine wins over the native launch profile's default",
+            "Register the platform-config provider before the deployment engine is built",
+            "Trino owns its exchange spool; a refused selection stops install-host",
+            "install-host starts PostgreSQL, MinIO and Zaychik beside Trino",
+            "aarch64 loads Zaychik from the release's core-images asset",
+            "Trino's materialize store is the install's PostgreSQL",
+            "installed-host smoke config is one file on the install's engine"
           ]
-        }
-      ]
-    },
-    {
-      "category": "Deployment & Infrastructure",
-      "entries": [
-        {
-          "text": "Wildcard TLS for `*.provisa.dev` via ACME DNS-01.",
-          "changes": []
-        }
-      ]
-    },
-    {
-      "category": "Environments",
-      "entries": [
-        {
-          "text": "Maintainer 2026-11-20.",
-          "changes": []
         }
       ]
     },
@@ -36,50 +61,35 @@
       "category": "Naming Convention",
       "entries": [
         {
-          "text": "Query-language dataset name resolution via centralized identity service (extends).",
+          "text": "The naming authority is the single source of truth for all client-facing names.",
           "changes": [
-            "SQL, Cypher and GraphQL resolve model names through the names table",
-            "Keep names_of; resolve a root field's table by id; tests name served variants",
-            "A root field's table is the one held under its own field; tests name served variants",
-            "Test stand-ins carry what the names table reads; O(1) context stamp"
+            "The names table spans the data estate",
+            "Dataplex, OpenLineage and Snowflake Horizon record catalog bindings",
+            "Dataplex, OpenLineage and Snowflake Horizon bind each column they publish",
+            "Collibra, DataHub, DataZone, OpenMetadata and Unity Catalog bind each column they publish"
           ]
         }
       ]
     },
     {
-      "category": "Org Membership",
+      "category": "Protocol Conformance",
       "entries": [
         {
-          "text": "Org membership is pull-based via org_join_requests, the inverse of org_invites.",
+          "text": "Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and psql's \\d commands send when they connect and browse a schema are captured from each tool at a pinned version, stored as statements, and replayed against both PostgreSQL 17 and a Provisa test instance serving the same fixture model; the answers are compared as the catalog check compares them.",
           "changes": [
-            "Org join requests with silent invite-only refusal",
-            "Gate POST /admin/orgs/{org_id}/join-requests",
-            "held_assignments judges tenant roles by the state it was given"
+            "A scalar function in a catalog statement's FROM is its one row"
           ]
         }
       ]
     },
     {
-      "category": "Protocol Support",
+      "category": "Public Data Publishing",
       "entries": [
         {
-          "text": "GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it.",
+          "text": "Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the request is bound to a built-in read-only 'public' role scoped to that org.",
           "changes": [
-            "REST, OpenAPI and JSON:API commands derive from the role's GraphQL command fields",
-            "SPARQL fixture relationship takes its junction's name as its GraphQL field"
-          ]
-        }
-      ]
-    },
-    {
-      "category": "Registration & Governance",
-      "entries": [
-        {
-          "text": "Maintainer 2026-11-20.",
-          "changes": [
-            "Key names kind and either-way scope for the review after registration",
-            "Create relationships after registering tables opens the scoped review",
-            "Edit a candidate's name and cardinality before accepting it"
+            "Refuse an import granting the public role a write, by name",
+            "An imported public role starts with only the read rights it may hold"
           ]
         }
       ]
@@ -88,14 +98,8 @@
       "category": "Security",
       "entries": [
         {
-          "text": "Provisa ships standard roles: named collections of capabilities, maintained by Provisa, that organisations extend with their own roles.",
+          "text": "Per-reader masks: a column's masking is one ordered list of entries, each {to: a grant list (composites allowed), a mask or unmasked}; the first entry matching the request's roles applies, and an entry for everyone last is the default.",
           "changes": []
-        },
-        {
-          "text": "Maintainer 2026-11-20.",
-          "changes": [
-            "Product and docs obey the five main unit guards"
-          ]
         }
       ]
     },
@@ -103,42 +107,38 @@
       "category": "Source Connectors",
       "entries": [
         {
-          "text": "A Node or Python code source's tables are reached two more ways beside landing. [SUPERSEDED by the 2026-10-23 CODE TABLES ARE LANDED amendment below -- a read of a code table is landed and run by the engine; no read is answered from the function.",
+          "text": "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace.",
           "changes": [
-            "@discover for Python code sources, v0",
-            "built-in OpenAPI code source on the @discover contract"
+            "Forward PROVISA_SERVICES into terminals and debug sessions; ship the.vsix as a release asset",
+            "Serve a dev-mode source's services on its developer's PAT route; shims accept https"
           ]
         },
         {
-          "text": "A code-source function (Node, or Python,) tagged @columns is a batch column transform, the batched form of's column transform.",
+          "text": "Maintainer 2026-11-23 (Spark is the default expectation for data engineers; this work is done before the feature freeze).",
           "changes": [
-            "A masked value keeps its column's type",
-            "A stored view's kept rule inputs reach no reader; every read names the view's columns",
-            "A bridge's rows are filtered through the junction through it"
+            "Spark command table arguments read over Arrow Flight SQL",
+            "Provisa data source e2e against a one-node Spark, docs page, lock",
+            "Describe a governed relation's masked column under SELECT *",
+            "get_flight_info's minted-token dispatch runs inside _run_rpc",
+            "Describe a masked column by its declared type in the quick path",
+            "JVM DataSource V2 jar for spark.read.format(\"provisa\") over Arrow Flight"
           ]
         }
       ]
     },
     {
-      "category": "Table Processor (Shared)",
+      "category": "Table Registration",
       "entries": [
         {
-          "text": "The Python preflight check can call Provisa's services, the provisa_services module a code source's worker gets, plus a dq service that finds everything about the data quality of any dataset or data product.",
+          "text": "A table declares its parameters: the values a caller passes to the source to read the table.",
           "changes": [
-            "Preflight worker starts on a framework Python, a cancel ends it, idle workers are reaped"
+            "A table a derived table reads through a call's arguments is not deleted under it",
+            "The refusal of a table something still reads is worded in every locale",
+            "A retired view's storage row blocks none of the tables it read"
           ]
-        }
-      ]
-    },
-    {
-      "category": "UI",
-      "entries": [
-        {
-          "text": "A feature demo, environments and test data: The model's git-branch environments (dev, test, prod) with fake data generated per environment and masking, over a demo's schema (weblogs'): the same queries return production-shaped but generated rows in dev and test, and real rows only in prod.",
-          "changes": []
         },
         {
-          "text": "Maintainer 2026-11-20.",
+          "text": "A table Provisa reads itself for each statement (a parameterized or native-query table: a MongoDB pipeline, a Cosmos DB query, a Qdrant search, a code source's function, a live-only table's part) is kept for its TTL, [SUPERSEDED by 2026-10-23 -- a parameterized table's TTL is its own, else 0; only a table with no parameter takes the chain.",
           "changes": []
         }
       ]
@@ -146,605 +146,409 @@
   ],
   "changes": [
     {
-      "scope": "access-review",
-      "entries": [
-        "Team page access review section, schedule, export; integration test",
-        "Scheduled review posts to a signed webhook; identity provider roles listed read-only; locales"
-      ]
-    },
-    {
-      "scope": "actions",
-      "entries": [
-        "Governed action rows use InlineRows; the VALUES-CTE builder reads column_types"
-      ]
-    },
-    {
       "scope": "api",
       "entries": [
-        "/data/domains keeps reach beside the readable-table test (meta's SQL tier)",
-        "neo4j and sparql admin routes use provisa's app state (#345)"
+        "Sized numeric is exact digits on GraphQL, gRPC and Bolt; filters compare as numbers"
       ]
     },
     {
-      "scope": "auth",
+      "scope": "bolt",
       "entries": [
-        "A credential-less request on an org host is that org's public visitor",
-        "Scheduled triggers ask query_development",
-        "Metric authoring asks create_view",
-        "revokeRoleFromObject asks create_view for a metric",
-        "Build the approval hook at each schema build, after the config loads (#344)"
-      ]
-    },
-    {
-      "scope": "auth,ui",
-      "entries": [
-        "Union of held roles by default; member roles and entitlement lists in one save"
-      ]
-    },
-    {
-      "scope": "bench",
-      "entries": [
-        "Device 3 is brought up by naming its services, which compose refuses with --scale seeder=0",
-        "ClickHouse events per order are a mean, as items are",
-        "Device 1 builds the image its engine runs",
-        "The login the server runs as can read the commit of the clone root owns",
-        "Rsync in one process, which on macOS hung with the devices billing; quota and per-unit cost in the methodology"
+        "A Bolt row keeps a decimal for its exact digits; update mutation and REST tests to the String contract"
       ]
     },
     {
       "scope": "cache",
       "entries": [
-        "VALUES CTE casts every typed literal to its column type",
-        "hot-held rows keep their registered column types in the VALUES CTE",
-        "hot-tier stored rows keep the registered column types"
+        "A rows entry's mixed-scale Decimals read back as Decimal",
+        "Request pre-key; GraphQL text-only kept document",
+        "Encoded responses kept beside the Arrow result entry"
       ]
     },
     {
-      "scope": "calcite pin",
+      "scope": "ch",
       "entries": [
-        "Cloudops and servicenow lanes on engine-v0.128.8"
+        "Untyped NULL column described by PostgreSQL's type of the call on both ClickHouse engines"
       ]
     },
     {
-      "scope": "catalog",
+      "scope": "clickhouse",
       "entries": [
-        "postgresql_fdw_validator checks each option's name"
+        "DIRECT reads arrive as Arrow; a server older than 26 is refused at connect",
+        "A DIRECT read gives DateTime and Date as the Arrow temporals their integers encode"
       ]
     },
     {
-      "scope": "catalog-import",
+      "scope": "code-sources",
       "entries": [
-        "Glossary reading on its own inbound port; MetadataExport stays outbound-only"
+        "@discover relationships, call warnings, credentials as secret references"
       ]
     },
     {
-      "scope": "cloudops",
+      "scope": "codehost",
       "entries": [
-        "A source's pgwire server gets credentials only for the clouds it names",
-        "A source's pgwire server inherits no cloud credential variable at all"
-      ]
-    },
-    {
-      "scope": "code-resolver",
-      "entries": [
-        "A resolver set saves only its bridge and junction"
+        "A native connector host listens on loopback alone",
+        "DuckDB preserve_insertion_order=False with threads>=2 returns batches in parallel-completion order, breaking FETCH on a cursor without ORDER BY under CPU contention (xdist)"
       ]
     },
     {
       "scope": "codesource",
       "entries": [
-        "A command or query returning the loader union is refused by name"
+        "A local Python worker reads its table arguments through a Flight listener minted for the call",
+        "The services PAT route refuses every bad token opaquely and serves the token's environment",
+        "Pgwire sidecar for dev-mode code sources",
+        "Write @discover relationships once both tables are registered; offer them in the registration review"
       ]
     },
     {
       "scope": "compiler",
       "entries": [
-        "GraphQL serves junction-backed relationship fields",
-        "A composite relationship key relates two tables only when joined on all of it"
-      ]
-    },
-    {
-      "scope": "config-export",
-      "entries": [
-        "Addressed export with JSON Pointer refs and resourcePath"
+        "Judge a stored view's code-command table argument as the call's read",
+        "A code call's table read keeps the caller's relationship-guard setting"
       ]
     },
     {
       "scope": "conformance",
       "entries": [
-        "W3C SPARQL 1.1 suite workflow against /data/sparql",
-        "Map hash namespaces, keep open patterns from fixture scaffolding; CONSTRUCT WHERE",
-        "The DBeaver capture also opens the Session Manager and the Dashboard",
-        "DBeaver 25.1.4 catalog capture, by hand, incl. Session Manager and Dashboard",
-        "Report a column call skipped by design by its group",
-        "Polyfill check probes with the run's NULL call",
-        "SPARQL fixture refuses a predicate spanning target tables",
-        "SPARQL graph management by design by its refusal in every directory",
-        "Take opengauss like/notlike(bytea, bytea) off functions.json",
-        "openGauss counts for bytealike/byteanlike now answering"
-      ]
-    },
-    {
-      "scope": "context",
-      "entries": [
-        "Record confirmed tag losses; Tags lost card counts this period",
-        "Record each publish per data product; Data Products sync status; Context Sync product filter"
-      ]
-    },
-    {
-      "scope": "core",
-      "entries": [
-        "Declare glossary_tag_losses.term_id as a link in the integrity inventory"
-      ]
-    },
-    {
-      "scope": "customer360",
-      "entries": [
-        "entity-resolution registry, matching job and shipped narrow bridges",
-        "Spell the four short Jira customers in full and plant one fuzzy organization",
-        "Register the entity-resolution rerun as Provisa commands",
-        "entity_steward gets developer as a second parent, which holds write"
+        "Documented limit as its own category in every conformance report",
+        "Functions edge counts carry documented limits, so base passed is the edge sides' sum",
+        "REST/OpenAPI, JSON:API, gRPC and MCP conformance runs",
+        "A value-free answer holds its NULLs and its types text forms",
+        "functions.json and polyfill docs from run 45453337906 at c82a9c938c",
+        "mysql-family interval_out/intervaltypmodout refuse by name, not wrong answers",
+        "MySQL-family intervaltypmodout refuses both edges by name"
       ]
     },
     {
       "scope": "cypher",
       "entries": [
-        "Seeded junction hops are GraphQL-only; joinThrough mutation gated; proposal via columns in schema.sql"
+        "A sized numeric is its exact digit string on Cypher HTTP, the Neo4j Query API and NL jobs",
+        "A float literal is a DOUBLE, compared as written"
       ]
     },
     {
-      "scope": "db2",
+      "scope": "data-products",
       "entries": [
-        "Db2 sqlglot dialect for the db2 federation engine, refuse-by-name allowlist",
-        "Refuse a cast to an integer type of a value not known to be integral"
+        "Demo contracts offer pet_analyst; a role reading nothing says so",
+        "Preview offer contracts as the acting role",
+        "The decision hook decides a cancel sent to a hook",
+        "Signed external decisions through the decision hook",
+        "Suggest a product from a listed table"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "customer360 entity_steward takes write from data_writer, not developer",
-        "Opioids public audience is its own role, resident; cloudpolicy trigger step asks query_development"
+        "A demo rebuild replaces only what its config declares; admin registrations survive a restart",
+        "A sandbox template keeps the full rebuild; a demo org's boot keeps admin work",
+        "customer360's entity resolution reads its tables over Flight; archive repacked",
+        "Local test cluster from the pinned pyspark sdist on PyPI"
       ]
     },
     {
-      "scope": "demos",
+      "scope": "deploy",
       "entries": [
-        "Insider over three systems -- Microsoft 365 mail from declared rows, the watch list workbook, the bank's Postgres"
+        "Install the release's python dependency set on every node deploy-cloud pushes to"
       ]
     },
     {
-      "scope": "discovery",
+      "scope": "direct",
       "entries": [
-        "A junction's registered legs are the relationships registered",
-        "One junction suggestion per pair of ends"
+        "Flight DIRECT, airport scan and replica read the driver's Arrow batches cast to registered types"
+      ]
+    },
+    {
+      "scope": "drivers",
+      "entries": [
+        "Snowflake, Databricks and BigQuery read DIRECT results as Arrow",
+        "Athena reads DIRECT results as Arrow; an unreadable output location is refused",
+        "Athena reads no result file for a statement with no result set; an empty result is a typed empty Arrow table"
+      ]
+    },
+    {
+      "scope": "duckdb-ext",
+      "entries": [
+        "DuckDB installs outside the mirror; the fill reads only the mirror's layout"
       ]
     },
     {
       "scope": "executor",
       "entries": [
-        "Trino reads reach Provisa as Arrow through the Zaychik proxy"
-      ]
-    },
-    {
-      "scope": "fabric",
-      "entries": [
-        "Item read-back after workspace delete treats 401/403 as gone once the workspace answers 404"
+        "DIRECT streams carry the driver Arrow batches end to end",
+        "Oracle DIRECT reads results as Arrow through fetch_df_all/fetch_df_batches",
+        "Oracle Arrow casts ROWID, UROWID, JSON and XMLTYPE in the database",
+        "Sized numerics exact in redirect JSON/NDJSON, CSV, and Parquet"
       ]
     },
     {
       "scope": "federation",
       "entries": [
-        "Custom connector templates take raw values, quoted per engine (SEC-C6b)",
-        "Engine dialect from the one SOURCE_TO_DIALECT table; refuse no-dialect engines at build",
-        "DETACH every raw attach before closing a DuckDB connection",
-        "SqlAlchemyFederationRuntime.refresh_live_relations no-op"
-      ]
-    },
-    {
-      "scope": "file_source",
-      "entries": [
-        "A files source's glob decides its files (#337)"
+        "Roll back the SQLAlchemy runtime's held connection after a failed statement"
       ]
     },
     {
       "scope": "files",
       "entries": [
-        "A glob table registered on a running files source is served under its name",
-        "Glob tables registered through the admin API restart the files server"
+        "A glob table on a files source created in the admin restarts its server",
+        "Every start of a files server reads the glob tables the build recorded",
+        "A file pattern's files of more than one type are refused by name"
       ]
     },
     {
-      "scope": "glossary",
+      "scope": "generated-plan",
       "entries": [
-        "same-named terms shown together carry their domains",
-        "Every term lookup takes the column table's domain",
-        "Every term records when it last changed; the Glossary's recent sort reads it"
-      ]
-    },
-    {
-      "scope": "governance",
-      "entries": [
-        "V003 judges every column in every clause where it resolves",
-        "V003 judges whole-row t.* in expressions, only a view body's list, nothing-resolves over enclosing scopes",
-        "Only FROM items provide names a column resolves to, not a scalar subquery"
+        "A sized numeric filter's shape is kept, its digits bound as their decimal"
       ]
     },
     {
       "scope": "graph",
       "entries": [
-        "Cypher graph labels follow their edges and the zoom; a caption change restyles every node",
-        "A label governance refuses is uncounted with its reason, not a 403 for the page"
+        "One label's or relationship's refused read is its own entry, never the whole answer",
+        "Show each relationship type auto-impute could not read, with its reason"
       ]
     },
     {
-      "scope": "graphql",
+      "scope": "graph-session",
       "entries": [
-        "Hasura x_stream streaming subscriptions for Hasura-preset tables",
-        "Refuse an x_stream whose cursor column the role reads masked",
-        "A Hasura-preset table's group-by and connection take its one bool_exp"
+        "A region node starts hearing graph sessions once its state store is bound"
       ]
     },
     {
-      "scope": "graphql_remote",
+      "scope": "graph-session-cache",
       "entries": [
-        "Remote GraphQL as a built-in code source on @discover"
+        "Stale G0 notification must not drop a fresh G0+1 copy",
+        "A stopped listener has closed its connection when stop returns"
+      ]
+    },
+    {
+      "scope": "grpc",
+      "entries": [
+        "A sized numeric parameter stays a double, as its GraphQL argument"
       ]
     },
     {
       "scope": "helm",
       "entries": [
-        "Size the API container to its boot; the 512Mi limit OOM-killed it"
+        "Production sizing in values.yaml; minikube lane deploys lean ci-values.yaml"
       ]
     },
     {
-      "scope": "how-to-scale",
+      "scope": "i18n",
       "entries": [
-        "Correct deployment.md anchor from #kubernetes--helm to #kubernetes-helm"
+        "Every locale's translation memory records the English its key was translated from",
+        "owner/steward strings follow the glossary; TM keys carry the locale prefix",
+        "Drop TM entries for the removed ownerPlaceholder and ownerRole keys"
       ]
     },
     {
-      "scope": "insider",
+      "scope": "install-host",
       "entries": [
-        "The watch list workbook's sheets read with their header row"
+        "Trino reads the install's files directory; a wildcard bind names localhost"
       ]
     },
     {
-      "scope": "lineage",
+      "scope": "mcp",
       "entries": [
-        "A malformed OpenLineage facet is skipped and reported, the event kept"
-      ]
-    },
-    {
-      "scope": "live",
-      "entries": [
-        "A live poll is narrowed to its subscriber's entitlements"
-      ]
-    },
-    {
-      "scope": "macos",
-      "entries": [
-        "The DuckDB extensions asset holds no AppleDouble files"
-      ]
-    },
-    {
-      "scope": "materialize",
-      "entries": [
-        "A joined search's carried words inline as text, not its vector type"
-      ]
-    },
-    {
-      "scope": "meta",
-      "entries": [
-        "A retired seeded relationship is removed at startup"
-      ]
-    },
-    {
-      "scope": "meta-views",
-      "entries": [
-        "No requirement ids inside served view SQL",
-        "Drop requirement id from served pg_catalog view SQL comment"
+        "Route native tools through offered_tables and add table_registration gate",
+        "Hooks over the native tools change; requirements edits are the lead's",
+        "Polly reads the docs the app serves in every run mode"
       ]
     },
     {
       "scope": "metadata-export",
       "entries": [
-        "Write the Provisa address to Snowflake Horizon and Unity Catalog"
+        "An unreadable DQ checker table publishes as status unreadable"
       ]
     },
     {
-      "scope": "naming",
+      "scope": "mv",
       "entries": [
-        "Recorded supplement word list for inflection",
-        "Hasura hasura-default/graphql-default name rules; import picks customization.naming_convention"
+        "A view over a code command's call reads its table argument from its lowered SQL"
       ]
     },
     {
-      "scope": "node",
+      "scope": "owner-j2j4",
       "entries": [
-        "Optional @provisa/sdk typed wrappers, read as their JSDoc tags",
-        "A bundle without @provisa/sdk reads as before; a loader must take its context"
+        "Every owner-row path rewrites object_owners; expiry ends owner rows"
       ]
     },
     {
-      "scope": "openapi",
+      "scope": "owners",
       "entries": [
-        "Brands pass through base URL setup, instance spec and client credentials (WIP)",
-        "Page a nested cursor and take the required array as rows",
-        "DataHub brand over its OpenAPI v3 spec; live spec test",
-        "Read DataHub's v3 spec from its springdoc group 10-openapi-v3",
-        "Call a spec's relative server on the host it was read from; DataHub address from its spec",
-        "Read a source's spec with the credential its data calls carry"
-      ]
-    },
-    {
-      "scope": "opengauss",
-      "entries": [
-        "Bytea LIKE matches hextoraw(encode(x, 'hex')), not a bytea-to-raw cast"
+        "Test doubles follow the owners rewrite and the renamed seeded_domains",
+        "Owners reached through per-kind owners meta views",
+        "Owners views list named principals as entered with their kind; pages show them",
+        "Boot key pass skips computed owners views; hook test names its owner by a data_product_owner row",
+        "call.fetchall() on execute_core result in owned_objects"
       ]
     },
     {
       "scope": "packaging",
       "entries": [
-        "Prune third-party test payload from the macOS runtime before signing"
+        "Assets come from package repositories",
+        "Prune third-party test payload from the macOS runtime before signing",
+        "Bound every AppImage build download with retries and a named failure"
       ]
     },
     {
       "scope": "pgwire",
       "entries": [
-        "pg_timezone_names offsets from pinned tzdata; PostgreSQL text for list clocks",
-        "A pg_catalog table function is named by its OUT parameters up front",
-        "postgresql_fdw_validator on DuckDB raises 42601 for an unlisted option",
-        "Describe a NULL-only result column of an untyped engine as the statement declares",
-        "Transpile DIRECT Db2/HANA statements with registered column types",
-        "COLLATE takes a collation name, not a column; engine-compared collations dropped off PostgreSQL",
-        "Describe BI tools catalog unions, regclass in CASE, current_catalog and integer division as PostgreSQL does",
-        "A one-column set-returning function alias names its column",
-        "Typed arrays read natively on PostgreSQL/DuckDB and described as arrays",
-        "Name an unaliased call as PostgreSQL spells it",
-        "Name a scalar subquery by its inner output column as PostgreSQL does",
-        "string_to_array in FROM is a client table function on a catalog statement",
-        "Read string_to_array in FROM as PostgreSQL does on a catalog statement",
-        "Describe an information_schema domain column as its base type, as PostgreSQL does",
-        "Describe an information_schema domain column with the domain's typmod"
+        "char(n) is listed as bpchar; prove char/varchar typmods and JSON surfaces"
+      ]
+    },
+    {
+      "scope": "pip-path",
+      "entries": [
+        "Every host outside PyPI, Maven Central and npm is listed with its move; Swagger UI from npm"
       ]
     },
     {
       "scope": "polly",
       "entries": [
-        "Tags on screen in read_screen; tag edits as agent tools",
-        "Add /context/glossary page entry"
+        "search_docs and read_doc read the shipped docs site",
+        "source-type descriptor, source_types tool and the no-secret-in-chat rule",
+        "Add owners/ownerRoles to RelationshipInput prompt; strip provisa-ui/ prefix in focused-tests CI"
       ]
     },
     {
       "scope": "polyfill",
       "entries": [
-        "Db2 and SAP HANA refusals and limitations live in the grid, a page per engine",
-        "Array rows refuse on Db2 and SAP HANA; conformance check follows engine_dialect",
-        "postgresql_fdw_validator of a NULL option element raises 22004",
-        "Rows state the translator's refusals and the engines' measured edge bounds",
-        "Leave the ClickHouse rows of triage groups G4, G5, G6 and G11 to their own change",
-        "DuckDB decode escape and to_char of an instant, substr of constant bounds the engine's own; functions baseline from run 45073449513"
-      ]
-    },
-    {
-      "scope": "python",
-      "entries": [
-        "Refuse a TableRef parameter on a generated query or command by name"
-      ]
-    },
-    {
-      "scope": "quickbooks",
-      "entries": [
-        "Sign in with QuickBooks beside the refresh token field"
-      ]
-    },
-    {
-      "scope": "redaction",
-      "entries": [
-        "Match a secret value only as a whole token"
+        "ClickHouse forms the 24.3 server takes; rows state only real bounds",
+        "ClickHouse regexp_count of an empty match, replace and typed-NULL tests, pages",
+        "DuckDB float edges raise PostgreSQL's SQLSTATE",
+        "DuckDB literals past their type raise PostgreSQL's SQLSTATE",
+        "A TRY_CAST past its type answers NULL, not PostgreSQL's refusal",
+        "DuckDB arrays of more than one dimension read as PostgreSQL does",
+        "J2 refusals in their own module; interval past its type is 22008 in measured rows",
+        "DuckDB guards NULL and integer-extreme edges with PostgreSQL's answer",
+        "DuckDB answers PostgreSQL's infinite dates and timestamps",
+        "DuckDB answers PostgreSQL's text and character edges",
+        "DuckDB format() writes each value as its output function does",
+        "Add generated= to transpile() calls and add max_character to GRID",
+        "Regenerate polyfill pages; state max/min of character(n) as enforced"
       ]
     },
     {
       "scope": "relationships",
       "entries": [
-        "Rel type (fk/jct/dim) and prop badge in the Relationships list, Discover results and Cypher detail; Never suggest wording",
-        "A joined relationship names its tables by virtual name"
+        "A save of what is stored keeps its version"
       ]
     },
     {
       "scope": "release",
       "entries": [
-        "Download Pyodide before build-macos-core builds the notebook",
-        "The macOS container build downloads Pyodide before it builds the notebook"
+        "DMG dry run: one plugin artifact upload, SDK tests in the project env, docs link",
+        "A dry run's app image stages the provisa-duckdb-ext wheels its own run built"
       ]
     },
     {
-      "scope": "requests",
+      "scope": "release-gate",
       "entries": [
-        "(5) approve_view/approve_relationship decide requests; server sets the deciding right by type; approved views carried out on the approval's authority"
+        "Accept a suite's green run from an ancestor when every later commit is docs-only or proved by its targeted runs"
       ]
     },
     {
-      "scope": "role-surface",
+      "scope": "setup",
       "entries": [
-        "Dropping a part of an unbuilt role builds nothing"
+        "setup.sh checks and installs the dev toolchain at the dev container pins",
+        "macOS without Homebrew installs Node and Go from pinned tarballs, offers Homebrew for Docker"
       ]
     },
     {
-      "scope": "runtime_deps",
+      "scope": "smoke",
       "entries": [
-        "Pin calcite engine-v0.128.10"
+        "Register the parquet table where Trino's file catalog exposes it (main.products)"
       ]
     },
     {
-      "scope": "saphana",
+      "scope": "sources",
       "entries": [
-        "SAP HANA sqlglot dialect for the saphana federation engine, refuse-by-name allowlist"
+        "Stripe and Shopify are brands only; drop their SourceType stubs",
+        "The site picker reads the descriptor; Spark counted in the docs index and the tour",
+        "Form builders read keys, flags, choices and defaults from the source-type descriptor",
+        "The remaining inline builders read their keys from the source-type descriptor"
       ]
     },
     {
-      "scope": "scripts",
+      "scope": "spark",
       "entries": [
-        "Purview legacy listing uses Atlas basic search on the Data Map base",
-        "Purview legacy dm_search body is the class method, not the Protocol stub"
-      ]
-    },
-    {
-      "scope": "sdk",
-      "entries": [
-        "Optional Python SDK, decorators that write the docstring tag",
-        "A loader's promise may resolve to rows or a mapping; typing negative count 17",
-        "The server's sdk.d.ts takes the loader union the package declares",
-        "Rust SDK README; rustfmt",
-        "SDK tests run with only the SDK installed; regenerate services stubs"
-      ]
-    },
-    {
-      "scope": "security",
-      "entries": [
-        "A constant mask on a non-text column reads as NULL (WIP)",
-        "Public is a built-in read-only standard role",
-        "Strip query strings from httpx request log lines"
+        "Org default Spark cluster setting, connection test, admin tab; unit tests",
+        "Polly entry for /admin/spark-cluster; probe through the grpc owner; generic secret name in a message",
+        "Hold the cluster connection test to sandbox egress before any dial",
+        "The demo's Spark Connect server is checked ready on loopback, not through probe",
+        "The script validation panel in 12 locales",
+        "Spark is a built-in source type in the Code group; cluster as structured fields",
+        "Register spark code loader so replica uses function path not engine"
       ]
     },
     {
       "scope": "sparql",
       "entries": [
-        "VALUES, each row a group with its terms in the triples",
-        "EXISTS, NOT EXISTS, MINUS, ORDER BY a subject, a variable predicate's constant object",
-        "Answer TSV; read EXISTS beside another FILTER",
-        "Previews limit the pattern producing rows; SPARQL query timeout is an operator setting",
-        "SPARQL Update over the shared governed write planner"
+        "SPARQL Update session objects in the Cypher session tables",
+        "Reasoner as a precompiled Maven Central jar on jdk4py's Java",
+        "Reads of session objects; WITH, USING, DELETE WHERE and GRAPH in WHERE on session graphs",
+        "RDF export test stub reads the SessionRead; refresh sparql expected list from run 45191380582",
+        "A session property of many values answers one solution per value; a variable in several graphs joins across them",
+        "Refuse a reasoner source reading its own tables' output",
+        "A sparql source reads its endpoint under its declared credential"
       ]
     },
     {
-      "scope": "sparql-conformance",
+      "scope": "surface",
       "entries": [
-        "Follow main's job assignments, dispatch-only workflow, release gate"
-      ]
-    },
-    {
-      "scope": "syncing",
-      "entries": [
-        "Read a catalog's values back, review differences and apply a side",
-        "Standing choices per entry, direction and kind",
-        "Difference list and standing choices in the entry panel",
-        "unsupported-read refusal names the provider the reader refused, not the entry's",
-        "A direction that is off lists none of its differences",
-        "Scheduled import applies standing choices",
-        "Import schedule field, Run import now, last import run",
-        "Tell the last import run error through client_value",
-        "Record hold reasons as codes with params; render via i18n in 12 locales"
+        "role_tables reads visibility through _build_visible_tables; role-surface stand-in finds its tables"
       ]
     },
     {
       "scope": "tables",
       "entries": [
-        "Names per domain; every table registration names a domain; domain move in the editor",
-        "The register form refuses a registration with no domain; Domain select tests"
+        "Suggest dialog's tables field is long, tests wait for the opened dialog",
+        "suggestion-count badge per table opens its suggestions"
       ]
     },
     {
-      "scope": "transpile",
+      "scope": "test-setup",
       "entries": [
-        "Sqlglot 30.29 SHA2Digest for sha256/384/512; regen engine anomalies"
+        "Polyfill Range.getClientRects for CodeMirror in jsdom; guard bindStorageScope/bindViewer for node env; stub useAuth in openapiBrand and wikidata tests"
       ]
     },
     {
       "scope": "transpiler",
       "entries": [
-        "bind-once row read inside a FROM relation is a CTE, not a sibling join",
-        "postgresql_fdw_validator raises 42601 for an option the catalog does not list",
-        "Typed Db2/HANA transpile input; HANA integer division truncates toward zero",
-        "FunctionRefused reaches pgwire as 0A000, a row's sqlstate wins",
-        "Trino EXTRACT(EPOCH) is written by Trino's own extract_sql again",
-        "postgresql_fdw_validator reads a multidimensional options array as its elements, as untransformRelOptions does",
-        "openGauss bytea LIKE as byte-wise rawlike/rawnlike"
-      ]
-    },
-    {
-      "scope": "trino",
-      "entries": [
-        "The driver's value mappers come from its owner; docs name no requirements",
-        "floats, double aggregates, literals, clocks and char at PostgreSQL's edges (WIP)",
-        "money, arrays, texts, date parts, substr and chr at PostgreSQL's edges",
-        "Years BC, abs of an integer's least and mod by zero as PostgreSQL's",
-        "Integers of NaN and the day's end 24:00:00 as PostgreSQL's",
-        "Calls of a two-dimensional array as array.c answers them",
-        "Trino's forms written in Trino's SQL on Athena and Presto too",
-        "Refuse a two-dimensional array_cat another call reads; replay engine errors",
-        "BC years, held literals and real aggregates at PostgreSQL's edges",
-        "EXTRACT(YEAR) of a column before Christ answers PostgreSQL's year",
-        "Arrays arrive as Arrow lists, written as PostgreSQL array text"
+        "PostgreSQL's array dimensions only for client SQL; graph IR keeps nested lists",
+        "Every caller states the statement's origin; generated has no default",
+        "DuckDB reads and writes dates and timestamps BC as PostgreSQL does",
+        "DuckDB's BC year correction leaves an interval's years and to_char's ISO year alone",
+        "DuckDB's to_char reads ISO's year from PostgreSQL's EXTRACT",
+        "DuckDB's year-of-era form lives in pg_literals, which the code image carries",
+        "Use provisa_raise in _said_refusal so MySQL-family dialects raise instead of answering '0'",
+        "Revert _said_refusal to CAST approach; drop 7 stale psycopg expected failures",
+        "Folded refusal raises by engine capability, CAST where provisa_raise is absent"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "hide/show schema panel, restore size, close wording in all locales",
-        "Glossary page labels in every locale, e2e spec, rendered layout",
-        "Wikidata registration registers starters and a custom table at once; SPARQL columns from the SELECT, Preview optional",
-        "A SPARQL-defined table shows and edits its query in Identity",
-        "A class reached by browsing shows in the Class field and is not searched for",
-        "Table editor offers the AI describe while a table is being created",
-        "OpenAPI brand setup asks for declared fields and client credentials",
-        "DataHub source type, catalog brand strings in 12 locales, counts to 82",
-        "Relationship detail query links survive a stale table list",
-        "ER diagram exit control reads Restore size in every locale",
-        "org_admin acts shown only to an org_admin",
-        "model, commands, roles, row rule and bulk gates",
-        "Term edit/delete only where the server accepts them; Domains picker lists only domains with a readable table",
-        "Glossary filters sit in FormField",
-        "Proposal edit dialog in FormLayout with the shared footer",
-        "Context Health cards in every locale; stale nav, metric and form-guard tests follow",
-        "Context Health's Tags lost card says losses are not yet recorded",
-        "graphql-default naming preset label, mirror and locales",
-        "Top nav in build order, Derived before Context",
-        "Standard field loader on the register Tables picker while listing, and on the glob while checked",
-        "Leave untouched data product files as they were",
-        "Table query links refresh on table writes, drawn as relationship links; API tab aggregate links",
-        "Polly status and tag tools refresh the Ontology page",
-        "Source picker groups flow in 210px columns; long names wrap to two lines",
-        "required-field guard with a shrinking not-yet-converted list",
-        "Local users form validates on Save instead of disabling it",
-        "Wikidata Continue stays enabled with no domain and asks for one on press",
-        "Unit tests follow nav order and gates; sync status uses the one tooltip"
-      ]
-    },
-    {
-      "scope": "wikidata",
-      "entries": [
-        "Class search offers only classes with instances; browse view of top-level classes; columns from the SELECT",
-        "Read a row's own label right after its anchor, before optional values multiply the rows",
-        "Read item values' labels before the plain values multiply the rows",
-        "Read each label once per grouped row, joined on a bound id",
-        "Show progress while the class search and class fetch run"
-      ]
-    },
-    {
-      "scope": "zaychik",
-      "entries": [
-        "An org reads its own coordinator through the proxy when declared"
+        "File Crawler Path / Glob takes the long field width, its hint behind (?)",
+        "Relationship panel links its source, target and junction tables",
+        "Vite refuses to start naming a missing npm package",
+        "Connector script field in the code editor",
+        "Code source views in the code editor",
+        "Code source dialog links its language's reference section; /docs opens a page at a section",
+        "Remaining code fields in the code editor",
+        "Command read view shows SQL in the code editor",
+        "Polly reads and fills every code-editor field",
+        "Green r513 UI unit tests — useAuth stubs, namedOwners/owners fixtures, golden recapture, formRequiredGuard, oneTableSqlName",
+        "SparkClusterFields and SuggestProductModal validate on click"
       ]
     },
     {
       "scope": "",
       "entries": [
-        "Store lineage edges by executemany and show a failed backend startup",
-        "GET /auth/invite/{token} is documented as needing a session, and a test pins it",
-        "Remove GET /auth/invite/{token}; no caller, signed-out lookup is /public/invite-info/",
-        "SDK launchers for provisa code check",
-        "Code check test bundles use an inputs object",
-        "Fdw validator form sizes arrays per engine; Trino error message ends before query_id; pg test takes pg_dsn fixture",
-        "A table named commands is refused by name on every registration path",
-        "Release builds and publishes the Python and TypeScript SDKs",
-        "Fdw validator form: NULL option elements coalesced for constant ClickHouse message; parenthesized subscript for pg",
-        "Go SDK module test reads generic function signatures with nested type brackets",
-        "A table derived from a function is not moved to another region on its own",
-        "Trino BC year correction reads YEAR(value) so regenerated SQL is not corrected again",
-        "Fdw validator refuses an unlisted option by name on ClickHouse; psycopg2 errors read as PostgreSQL's",
-        "provisa_raise's two overloads as one statement each",
-        "Three integration failures of release 512 (R512-INTEG3)"
+        "Free worker lane on cursor close and exit sidecar on bridge EOF",
+        "Shutdown bridge socket before close so sidecar sees EOF on Linux",
+        "r513 integration blockers — bulk_copy INTRANS, domain-alias collision, and test fixes",
+        "Spark setup values on the request's loop, perf ClickHouse 26, test drift to/2219/2135 and glob serving"
       ]
     }
   ]

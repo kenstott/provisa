@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from provisa.api.metadata_export.model import OfferExport
 from provisa.core.cache_ttl import NEVER_EXPIRES
 from provisa.core.models import DEFAULT_OFFER, TERMS_OF_USE
+from provisa.dq.contract_types import logical_type
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -77,27 +78,6 @@ ODCS_API_VERSION = "v3.1.0"
 UNVERSIONED = "unversioned"
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-# A column's declared type as ODCS's logical types name it. A type outside these is published by
-# its physical name alone: guessing a logical type would misstate it.
-_LOGICAL = (
-    (re.compile(r"\[\]$|^array"), "array"),
-    (re.compile(r"^(small|big)?int(eger)?\d*$|^(tiny|medium)int$|^serial|^long$"), "integer"),
-    (re.compile(r"^(numeric|decimal|number|double|float|real)"), "number"),
-    (re.compile(r"^bool"), "boolean"),
-    (re.compile(r"^timestamp|^datetime"), "timestamp"),
-    (re.compile(r"^date$"), "date"),
-    (re.compile(r"^time(\b|$)"), "time"),
-    (re.compile(r"^(json|jsonb|object|struct|map|variant)"), "object"),
-    (re.compile(r"^(text|string|varchar|char|character|uuid|citext|nvarchar|nchar)"), "string"),
-)
-
-
-def logical_type(data_type: str) -> str | None:
-    """The ODCS logical type of a declared column type, or None when it has none to name."""
-    lowered = data_type.strip().lower()
-    return next((logical for pattern, logical in _LOGICAL if pattern.search(lowered)), None)
-
 
 #: REQ-1634 STATUS: Provisa's lifecycle in ODPS 1.0's status vocabulary (draft, active,
 #: deprecated, retired; the schema's examples, not a closed enum).

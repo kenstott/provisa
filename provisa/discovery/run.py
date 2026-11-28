@@ -204,6 +204,8 @@ class Prepared:
     target: list[TableFacts] | None
     #: The semantic calls; None when semantics is not asked.
     plan: Plan | None
+    #: The tables of the sets whose read failed: left out of the run, each named with why.
+    unread: list[gather.Unread]
 
     @property
     def tables(self) -> dict[int, TableFacts]:
@@ -235,9 +237,15 @@ def sizes(source: list[TableFacts], target: list[TableFacts] | None) -> dict[str
     }
 
 
-def _left_out(named: tuple[int, ...] | None, kept: list[TableFacts]) -> int:
-    """How many of the tables chosen by name a set left out; none were when none were named."""
-    return 0 if named is None else len(set(named)) - len(kept)
+def _left_out(
+    named: tuple[int, ...] | None, kept: list[TableFacts], unread: list[gather.Unread]
+) -> int:
+    """How many of the tables chosen by name a set left out for being outside it (a system
+    domain's, one out of service); none were when none were named. A table whose read failed is
+    named in ``tables_unread`` instead."""
+    if named is None:
+        return 0
+    return len(set(named) - {t.table_id for t in kept} - {u.table_id for u in unread})
 
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
@@ -265,17 +273,18 @@ async def prepare(
         conn = cast("Connection", _conn)
         source_ids, target_ids = await table_sets(conn, spec)
         ids = set(source_ids) | set(target_ids or [])
-        facts = {
-            t.table_id: t
-            for t in await gather.table_facts(
-                state, conn, sorted(ids), spec.samples_per_column, on_table
-            )
-        }
-    source = [facts[i] for i in source_ids]
-    target = None if target_ids is None else [facts[i] for i in target_ids]
+        read, unread = await gather.table_facts(
+            state, conn, sorted(ids), spec.samples_per_column, on_table
+        )
+    facts = {t.table_id: t for t in read}
+    # A table whose read failed takes no part in the run; the result names it (REQ-413).
+    source = [facts[i] for i in source_ids if i in facts]
+    target = None if target_ids is None else [facts[i] for i in target_ids if i in facts]
     if model is None:
-        return Prepared(source, target, None)
-    return Prepared(source, target, plan(source, target, model.input_tokens, model.output_tokens))
+        return Prepared(source, target, None, unread)
+    return Prepared(
+        source, target, plan(source, target, model.input_tokens, model.output_tokens), unread
+    )
 
 
 #: What the count's ``requests`` are (REQ-413): the most a run of the scope makes, never fewer
@@ -541,14 +550,18 @@ async def perform(
             "source_domains": sorted({t.domain_id for t in prepared.source}),
             "target_domains": sorted({t.domain_id for t in prepared.target or prepared.source}),
             # Tables chosen by name that the run left out (a system domain's, one out of service).
-            "source_left_out": _left_out(spec.source_tables, prepared.source),
+            "source_left_out": _left_out(spec.source_tables, prepared.source, prepared.unread),
             "target_left_out": (
-                0 if spec.same_as_source else _left_out(spec.target_tables, prepared.target or [])
+                0
+                if spec.same_as_source
+                else _left_out(spec.target_tables, prepared.target or [], prepared.unread)
             ),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),
             # REQ-1986: suggestions with a table that is never read, so no values were compared.
             "on_reduced_information": sum(1 for p in outcome.kept if reduced_tables(p, tables)),
+            # Tables whose read failed: left out of the run, each named with why.
+            "tables_unread": [u.as_dict() for u in prepared.unread],
         }
         if "foreign_keys" in spec.kinds:
             out["foreign_keys"] = {

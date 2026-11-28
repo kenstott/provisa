@@ -27,6 +27,7 @@ import {
 } from "./openapi/swaggerDocs";
 import { currentDataAddress, pageAtDataAddress } from "../lib/dataAddress";
 import "./OpenApiPage.css";
+import { ExploreShell } from "../components/explore/ExploreShell";
 
 // How long a driven call's response may take: a query on a loaded demo answers in seconds.
 const RESPONSE_WAIT_MS = 60000;
@@ -252,7 +253,7 @@ export function OpenApiPage() {
   }, [handoff, frameLoaded, frameKey, drive]);
 
   return (
-    <div className="openapi-page page" data-answered={answered ? "" : undefined}>
+    <ExploreShell testId="openapi-page" className="openapi-page" answered={answered}>
       {loadError && (
         <p className="openapi-load-error">{t("openApiPage.loadError", { error: loadError })}</p>
       )}
@@ -267,6 +268,6 @@ export function OpenApiPage() {
           onLoad={() => setFrameLoaded(frameKey)}
         />
       )}
-    </div>
+    </ExploreShell>
   );
 }

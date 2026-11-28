@@ -171,25 +171,16 @@ def stamp_file(path: Path) -> str:
     return stamp_py_file(path, content)
 
 
-def reissue_canary(path: Path) -> str:
-    """Replace an already-claimed canary with a fresh one.
-
-    Splitting a module copies its header into the new file, so two paths end up sharing a
-    uuid. That is the one thing the canary cannot tolerate: a leaked file must resolve to a
-    single path, and the uuid-keyed registry keeps only the last writer besides. The first
-    path to claim a uuid (walk order is sorted, so the choice is stable) keeps it; every
-    later claimant is reissued here.
-    """
-    content = path.read_text(encoding="utf-8")
-    is_ts = path.suffix in TS_EXTENSIONS
-    canary_re = TS_CANARY_RE if is_ts else PY_CANARY_RE
-    prefix = "//" if is_ts else "#"
-    canary_id = str(uuid.uuid4())
-    content, count = canary_re.subn(f"{prefix} Canary: {canary_id}", content, count=1)
-    if count != 1:
-        raise RuntimeError(f"{path}: canary line vanished between read and reissue")
-    path.write_text(content, encoding="utf-8")
-    return canary_id
+def report_duplicates(owners: dict[str, list[str]]) -> int:
+    """Print every canary id claimed by more than one file, naming each file. The hook never
+    rewrites an existing canary: a rewrite left a file modified after every commit and conflicted
+    in batch merges. A duplicate is fixed deliberately, by hand, in its own commit."""
+    count = 0
+    for canary_id, paths in sorted(owners.items()):
+        if len(paths) > 1:
+            count += 1
+            print(f"Duplicate canary {canary_id}: {', '.join(paths)}")
+    return count
 
 
 def existing_stamped_at(canary_id: str, rel_path: str) -> str | None:
@@ -295,20 +286,18 @@ def stamp_and_publish() -> None:
     source_files = find_source_files()
     file_canaries: dict[str, str] = {}
 
-    claimed: dict[str, str] = {}
-    reissued = 0
+    owners: dict[str, list[str]] = {}
 
     for path in source_files:
         rel = str(path.relative_to(PROJECT_ROOT))
         canary_id = stamp_file(path)
-        if canary_id in claimed:
-            canary_id = reissue_canary(path)
-            reissued += 1
-        claimed[canary_id] = rel
-        file_canaries[rel] = canary_id
+        owners.setdefault(canary_id, []).append(rel)
 
-    if reissued:
-        print(f"Reissued {reissued} duplicate canaries")
+    # The registry is keyed by canary id, so a duplicate keeps its first path (walk order is sorted).
+    for canary_id, paths in owners.items():
+        file_canaries[paths[0]] = canary_id
+
+    report_duplicates(owners)
 
     registry = build_registry(file_canaries)
     REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")

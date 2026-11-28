@@ -2,6 +2,19 @@
   "lineageDag": {
     "job": "OpenLineage जॉब",
     "outsideModel": "मॉडल से बाहर",
-    "reportedEdge": "OpenLineage द्वारा रिपोर्ट किया गया"
+    "reportedEdge": "OpenLineage द्वारा रिपोर्ट किया गया",
+    "columns_one": "{{count}} कॉलम",
+    "columns_other": "{{count}} कॉलम",
+    "unused": "+{{count}} अप्रयुक्त",
+    "materialized": "मटीरियलाइज़्ड",
+    "feedbackCycle": "फ़ीडबैक चक्र में",
+    "errorCycle": "त्रुटिपूर्ण चक्र में",
+    "clickToExpand": "विस्तार के लिए क्लिक करें",
+    "clickToCollapse": "संक्षिप्त करने के लिए क्लिक करें",
+    "doubleClickToOpen": "खोलने के लिए डबल-क्लिक करें",
+    "expandAll": "सभी डेटासेट विस्तृत करें",
+    "collapseAll": "सभी डेटासेट संक्षिप्त करें",
+    "enlarge": "बड़ा करें",
+    "stats": "{{columns}} कॉलम · {{edges}} किनारे"
   }
 }

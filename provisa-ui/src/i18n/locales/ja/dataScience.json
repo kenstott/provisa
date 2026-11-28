@@ -10,6 +10,7 @@
     "rowsShown": "{{total}} 行中 {{shown}} 行を表示",
     "figure": "図 {{n}}",
     "resizeLabel": "エディターと出力のサイズを変更",
+    "output": "出力",
     "notebookFrame": "Jupyter ノートブック",
     "copyCode": "コードをコピー",
     "clearCode": "エディターを消去",

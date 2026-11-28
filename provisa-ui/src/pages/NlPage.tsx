@@ -18,9 +18,6 @@ import {
   Button,
   Group,
   Loader,
-  Paper,
-  ScrollArea,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -29,6 +26,9 @@ import {
 } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { HelpBubble } from "../components/HelpBubble";
+import { ExploreMain, ExploreShell } from "../components/explore/ExploreShell";
+import { ResultPanel } from "../components/explore/ResultPanel";
+import "./NlPage.css";
 import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
 import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
@@ -279,122 +279,124 @@ export function NlPage() {
   );
 
   return (
-    <Stack gap="md" p="md" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-      <GuidanceBanner />
-      <Group align="flex-start" gap="sm" wrap="nowrap">
-        {/* Every explanation on this row is a HelpBubble, the same card the rest of the app
+    <ExploreShell testId="nl-page" className="nl-page">
+      <ExploreMain className="nl-main">
+        <GuidanceBanner />
+        <Group align="flex-start" gap="sm" wrap="nowrap">
+          {/* Every explanation on this row is a HelpBubble, the same card the rest of the app
             uses; the control is its own hover target so the row keeps its shape. */}
-        <HelpBubble
-          title={t("nlPage.questionHelpTitle")}
-          paragraphs={[t("nlPage.questionTooltip")]}
-          ariaLabel={t("nlPage.questionLabel")}
-          testId="nl-question-help"
-          target={
-            <Textarea
-              aria-label={t("nlPage.questionLabel")}
-              placeholder={t("nlPage.questionPlaceholder")}
-              value={question}
-              rows={2}
-              autosize
-              minRows={2}
-              style={{ flex: 1 }}
-              data-testid="nl-question-input"
-              onChange={(e) => {
-                setQuestion(e.currentTarget.value);
-                setStored(NL_QUESTION_KEY, e.currentTarget.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSubmit();
-                }
-              }}
-            />
-          }
-        />
-        <HelpBubble
-          title={t("nlPage.strictHelpTitle")}
-          paragraphs={[t("nlPage.strictModeTooltip")]}
-          ariaLabel={t("nlPage.strictMode")}
-          testId="nl-strict-help"
-          target={
-            <Tip text={strictLocked && t("nlPage.strictLocked")}>
-              <span>
-                <Switch
-                  label={t("nlPage.strictMode")}
-                  checked={effectiveStrict}
-                  disabled={strictLocked}
-                  onChange={(e) => {
-                    const next = e.currentTarget.checked;
-                    setStrict(next);
-                    setStored(NL_STRICT_KEY, next ? "1" : "0");
-                  }}
-                  data-testid="nl-strict-toggle"
-                />
-              </span>
-            </Tip>
-          }
-        />
-        <HelpBubble
-          title={t("nlPage.generateHelpTitle")}
-          paragraphs={[t("nlPage.generateTooltip")]}
-          ariaLabel={t("nlPage.generate")}
-          testId="nl-generate-help"
-          target={
-            <Button
-              disabled={submitting || !question.trim()}
-              onClick={() => void handleSubmit()}
-              loading={submitting}
-              data-testid="nl-submit-button"
-            >
-              {submitting ? t("nlPage.generating") : t("nlPage.generate")}
-            </Button>
-          }
-        />
-        {/* Hand the same question to the MCP chat assistant, which runs it agentically. */}
-        <HelpBubble
-          title={t("nlPage.mcpChatHelpTitle")}
-          paragraphs={[t("nlPage.mcpChatTooltip")]}
-          ariaLabel={t("nlPage.mcpChat")}
-          testId="nl-mcp-chat-help"
-          target={
-            <Button
-              variant="light"
-              disabled={!question.trim()}
-              onClick={() => navigate("/explore", { state: { mcpQuestion: question.trim() } })}
-              data-testid="nl-mcp-chat-button"
-            >
-              {t("nlPage.mcpChat")}
-            </Button>
-          }
-        />
-      </Group>
+          <HelpBubble
+            title={t("nlPage.questionHelpTitle")}
+            paragraphs={[t("nlPage.questionTooltip")]}
+            ariaLabel={t("nlPage.questionLabel")}
+            testId="nl-question-help"
+            target={
+              <Textarea
+                aria-label={t("nlPage.questionLabel")}
+                placeholder={t("nlPage.questionPlaceholder")}
+                value={question}
+                rows={2}
+                autosize
+                minRows={2}
+                style={{ flex: 1 }}
+                data-testid="nl-question-input"
+                onChange={(e) => {
+                  setQuestion(e.currentTarget.value);
+                  setStored(NL_QUESTION_KEY, e.currentTarget.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSubmit();
+                  }
+                }}
+              />
+            }
+          />
+          <HelpBubble
+            title={t("nlPage.strictHelpTitle")}
+            paragraphs={[t("nlPage.strictModeTooltip")]}
+            ariaLabel={t("nlPage.strictMode")}
+            testId="nl-strict-help"
+            target={
+              <Tip text={strictLocked && t("nlPage.strictLocked")}>
+                <span>
+                  <Switch
+                    label={t("nlPage.strictMode")}
+                    checked={effectiveStrict}
+                    disabled={strictLocked}
+                    onChange={(e) => {
+                      const next = e.currentTarget.checked;
+                      setStrict(next);
+                      setStored(NL_STRICT_KEY, next ? "1" : "0");
+                    }}
+                    data-testid="nl-strict-toggle"
+                  />
+                </span>
+              </Tip>
+            }
+          />
+          <HelpBubble
+            title={t("nlPage.generateHelpTitle")}
+            paragraphs={[t("nlPage.generateTooltip")]}
+            ariaLabel={t("nlPage.generate")}
+            testId="nl-generate-help"
+            target={
+              <Button
+                disabled={submitting || !question.trim()}
+                onClick={() => void handleSubmit()}
+                loading={submitting}
+                data-testid="nl-submit-button"
+              >
+                {submitting ? t("nlPage.generating") : t("nlPage.generate")}
+              </Button>
+            }
+          />
+          {/* Hand the same question to the MCP chat assistant, which runs it agentically. */}
+          <HelpBubble
+            title={t("nlPage.mcpChatHelpTitle")}
+            paragraphs={[t("nlPage.mcpChatTooltip")]}
+            ariaLabel={t("nlPage.mcpChat")}
+            testId="nl-mcp-chat-help"
+            target={
+              <Button
+                variant="light"
+                disabled={!question.trim()}
+                onClick={() => navigate("/explore", { state: { mcpQuestion: question.trim() } })}
+                data-testid="nl-mcp-chat-button"
+              >
+                {t("nlPage.mcpChat")}
+              </Button>
+            }
+          />
+        </Group>
 
-      {globalError && (
-        <Alert
-          color="red"
-          variant="light"
-          className="nl-global-error"
-          data-testid="nl-global-error"
-        >
-          {globalError}
-        </Alert>
-      )}
+        {globalError && (
+          <Alert
+            color="red"
+            variant="light"
+            className="nl-global-error"
+            data-testid="nl-global-error"
+          >
+            {globalError}
+          </Alert>
+        )}
 
-      {hasResults && (
-        <SimpleGrid data-tour="nl-panels" cols={{ base: 1, md: 3 }} spacing="sm">
-          {TARGETS.map((tk) => (
-            <BranchPanel
-              key={tk}
-              label={LABELS[tk]}
-              target={tk}
-              branch={branches[tk]}
-              onOpen={openInExplorer}
-            />
-          ))}
-        </SimpleGrid>
-      )}
-    </Stack>
+        {hasResults && (
+          <div data-tour="nl-panels" className="nl-branches">
+            {TARGETS.map((tk) => (
+              <BranchPanel
+                key={tk}
+                label={LABELS[tk]}
+                target={tk}
+                branch={branches[tk]}
+                onOpen={openInExplorer}
+              />
+            ))}
+          </div>
+        )}
+      </ExploreMain>
+    </ExploreShell>
   );
 }
 
@@ -412,28 +414,16 @@ function BranchPanel({
   const { t } = useTranslation();
   const notApplicable = branch.error === "NOT_APPLICABLE";
   return (
-    <Paper
-      withBorder
-      radius="md"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 200,
-        maxHeight: 400,
-        overflow: "hidden",
-      }}
-      data-testid={`nl-branch-panel-${target}`}
-    >
-      <Group
-        justify="space-between"
-        px="sm"
-        py={6}
-        style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
-      >
+    <ResultPanel
+      testId={`nl-branch-panel-${target}`}
+      title={
         <Badge variant="light" size="sm">
           {label}
         </Badge>
-        {!branch.loading && branch.query && (
+      }
+      actions={
+        !branch.loading &&
+        branch.query && (
           <HelpBubble
             title={t("nlPage.openIn", { label })}
             paragraphs={[t("nlPage.openInExplorerHelp", { label })]}
@@ -450,52 +440,51 @@ function BranchPanel({
               </Button>
             }
           />
+        )
+      }
+    >
+      <Stack gap="xs" p="sm">
+        {branch.loading && (
+          <Group gap={6}>
+            <Loader size="xs" />
+            <Text size="sm" c="dimmed" fs="italic">
+              {t("nlPage.generating")}
+            </Text>
+          </Group>
         )}
-      </Group>
-      <ScrollArea style={{ flex: 1 }} p="sm">
-        <Stack gap="xs">
-          {branch.loading && (
-            <Group gap={6}>
-              <Loader size="xs" />
-              <Text size="sm" c="dimmed" fs="italic">
-                {t("nlPage.generating")}
-              </Text>
-            </Group>
-          )}
-          {!branch.loading && notApplicable && (
-            <Text size="sm" c="dimmed" fs="italic">
-              {t("nlPage.notApplicable")}
-            </Text>
-          )}
-          {!branch.loading && !notApplicable && branch.error && (
-            <Text size="sm" c="red">
-              {branch.error}
-            </Text>
-          )}
-          {!branch.loading && branch.query && (
-            <Text
-              component="pre"
-              size="xs"
-              c="cyan"
-              style={{
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                fontFamily: "var(--mantine-font-family-monospace, monospace)",
-              }}
-            >
-              {branch.query}
-            </Text>
-          )}
-          {!branch.loading && !branch.query && !branch.error && (
-            <Text size="sm" c="dimmed" fs="italic">
-              {t("nlPage.noQueryGenerated")}
-            </Text>
-          )}
-          {!branch.loading && branch.result != null && <ResultTable result={branch.result} />}
-        </Stack>
-      </ScrollArea>
-    </Paper>
+        {!branch.loading && notApplicable && (
+          <Text size="sm" c="dimmed" fs="italic">
+            {t("nlPage.notApplicable")}
+          </Text>
+        )}
+        {!branch.loading && !notApplicable && branch.error && (
+          <Text size="sm" c="red">
+            {branch.error}
+          </Text>
+        )}
+        {!branch.loading && branch.query && (
+          <Text
+            component="pre"
+            size="xs"
+            c="cyan"
+            style={{
+              margin: 0,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontFamily: "var(--mantine-font-family-monospace, monospace)",
+            }}
+          >
+            {branch.query}
+          </Text>
+        )}
+        {!branch.loading && !branch.query && !branch.error && (
+          <Text size="sm" c="dimmed" fs="italic">
+            {t("nlPage.noQueryGenerated")}
+          </Text>
+        )}
+        {!branch.loading && branch.result != null && <ResultTable result={branch.result} />}
+      </Stack>
+    </ResultPanel>
   );
 }
 
@@ -546,7 +535,7 @@ function ResultTable({ result }: { result: unknown }) {
   );
 
   return (
-    <Paper withBorder radius="sm" style={{ overflow: "auto" }}>
+    <div className="nl-result-table">
       <Table striped fz="xs">
         <Table.Thead>
           <Table.Tr>
@@ -572,6 +561,6 @@ function ResultTable({ result }: { result: unknown }) {
           {t("nlPage.showingRows", { shown: TOP_LIMIT, total: rows.length })}
         </Text>
       )}
-    </Paper>
+    </div>
   );
 }

@@ -17,6 +17,8 @@
 // line the Relationships page shows. Then one table of every proposal it read, each ticked to
 // accept, ticked not to be recommended again, or left undecided, and one Apply. New run sits beside
 // Apply above the table, whose rows scroll beneath its pinned header while the block stays in view.
+// A table of its sets that could not be read took no part in it: each is listed with why, beneath
+// the block, while it runs and after.
 
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Group, Progress, Stack, Text } from "@mantine/core";
@@ -118,6 +120,8 @@ export function DiscoverRunView({
   // The shown run first, then the others going.
   const lines = [...(running ? [run] : []), ...going.filter((r) => r.id !== run.id)];
   const waiting = proposals.proposals === null ? null : waitingCount(proposals.proposals);
+  // REQ-413: a table whose read failed is left out and the run goes on; each is named with why.
+  const unread = report?.tables_unread ?? [];
 
   return (
     <>
@@ -161,6 +165,23 @@ export function DiscoverRunView({
           </CollapsibleItem>
         </Collapsibles>
       </div>
+      {unread.length > 0 && (
+        <Alert
+          color="yellow"
+          mb="md"
+          style={{ flexShrink: 0 }}
+          title={t("discoverDialog.unreadTitle", { count: unread.length })}
+          data-testid="discover-unread"
+        >
+          <Stack gap={2}>
+            {unread.map((u) => (
+              <Text key={u.table_id} fz="sm" data-testid={`discover-unread-${u.table_id}`}>
+                {t("discoverDialog.unreadTable", { table: u.table, reason: u.reason })}
+              </Text>
+            ))}
+          </Stack>
+        </Alert>
+      )}
       {readError && (
         <Alert color="red" mb="md" style={{ flexShrink: 0 }} data-testid="discover-read-error">
           {readError}

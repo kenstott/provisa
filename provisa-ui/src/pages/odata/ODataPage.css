@@ -1,7 +1,12 @@
-/* REQ-2193: the OData explorer. The page fills the height the app gives it; the list of entity
- * sets and the detail panel beside it each scroll by themselves. */
-.odata-page {
-  padding: 1rem 1.25rem;
+/* REQ-2193: the OData explorer. The page fills the height the app gives it (its gutter is the
+ * Explore shell's, REQ-2277); the list of entity sets and the detail panel beside it each scroll by
+ * themselves. */
+.odata-page .explore-main > * {
+  flex: 0 0 auto;
+}
+.odata-page .explore-main > .split-pane {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .odata-addresses > * {
@@ -20,7 +25,6 @@
 .odata-results {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
 /* The results grid scrolls inside a box of its own; the panel keeps its head and the builder. */
@@ -29,4 +33,11 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* The results stand in the detail panel's scroll, below the builder: sized by their grid. */
+.odata-results > .result-panel,
+.odata-results .result-panel__body {
+  flex: 0 0 auto;
+  overflow: visible;
 }

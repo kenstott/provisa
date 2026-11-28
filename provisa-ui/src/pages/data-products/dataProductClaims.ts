@@ -10,7 +10,7 @@
 
 // REQ-2132: a product's checks summarised: which state each is in, and how their latest runs went.
 
-import type { ProductDqEntry } from "../../api/lineage";
+import type { ProductPromise } from "../../api/lineage";
 
 export type DqStatus = "passing" | "failing" | "notRun";
 
@@ -19,7 +19,7 @@ export const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red
 
 /** The summary of ``checks``' latest runs: some failing, else not yet run, else all passing; null
  * when there are none. */
-export function dqStatus(checks: ProductDqEntry[]): DqStatus | null {
+export function dqStatus(checks: ProductPromise[]): DqStatus | null {
   if (checks.length === 0) return null;
   const outcomes = checks.map((c) => c.latest_outcome);
   if (outcomes.includes("fail")) return "failing";

@@ -250,7 +250,8 @@ async def dataset(name: str, role: str, view_products: Sequence[str] = ()) -> di
             int(e["checker_table_id"]): name
             for name, entries in lists.items()
             for e in entries
-            if int(e["checked_table_id"]) == dataset_id
+            # REQ-2158: the built-in type check is no checker table.
+            if e["builtin"] is None and int(e["checked_table_id"]) == dataset_id
         }
     products = await _products_of([int(row["id"]) for row in checkers], role)
     checks = []
@@ -287,7 +288,9 @@ async def product(product_id: str, role: str) -> dict | None:
         return None
     lists = await _product_dq(product_id, role) or {}
     by_state: dict[str, list[int]] = {
-        state: [int(e["checker_table_id"]) for e in lists.get(state, [])] for state in STATES
+        # REQ-2158: the built-in type check is no checker table; this answer lists checker tables.
+        state: [int(e["checker_table_id"]) for e in lists.get(state, []) if e["builtin"] is None]
+        for state in STATES
     }
     ids = sorted({i for found in by_state.values() for i in found})
     rows: dict[int, dict] = {}

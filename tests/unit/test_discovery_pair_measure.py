@@ -192,7 +192,7 @@ async def test_the_source_read_stops_at_the_sample_size():
     m = got.measure
     assert m is not None
     assert m.source.values == 40 and m.source.more is True
-    assert 'WHERE "code" IS NOT NULL LIMIT 40)' in reader.queries[0][1]
+    assert "AS r WHERE v IS NOT NULL LIMIT 40)" in reader.queries[0][1]
 
 
 async def test_nulls_never_count_and_the_sample_size_counts_non_null_values():
@@ -353,10 +353,15 @@ async def test_a_pair_is_measured_by_one_governed_query_joining_a_limited_source
     assert len(pipeline.calls) == 1
     sql, role = pipeline.calls[0]
     assert role == "steward"
-    source = 'SELECT "permit_id" AS v FROM "city"."inspections" WHERE "permit_id" IS NOT NULL'
-    assert f"s AS ({source} LIMIT 500)" in sql
-    assert 'JOIN "city"."building_permits" AS s_in ON s.v = s_in."permit_id"' in sql
-    assert 'JOIN "city"."inspections" AS t_in ON t.v = t_in."permit_id"' in sql
+    # The column is only projected, never filtered on: a masked one is read under its mask.
+    source = 'SELECT v FROM (SELECT "permit_id" AS v FROM "city"."inspections") AS r'
+    assert f"s AS ({source} WHERE v IS NOT NULL LIMIT 500)" in sql
+    assert (
+        'JOIN (SELECT "permit_id" AS v FROM "city"."building_permits") AS s_in ON s.v = s_in.v'
+        in sql
+    )
+    assert 'JOIN (SELECT "permit_id" AS v FROM "city"."inspections") AS t_in ON t.v = t_in.v' in sql
+    assert '"permit_id" IS' not in sql
     # A distinct count is taken only of the rows read, never of a whole column.
     assert sql.count("COUNT(DISTINCT") == 4
     assert "COUNT(DISTINCT v) FROM s)" in sql and "COUNT(DISTINCT v) FROM t)" in sql

@@ -32,7 +32,8 @@ import { fetchWikidataStarters, type WikidataStarter } from "../../api/wikidata"
 import { useRegisterTables, type TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
 import { draftFromRegistration } from "./draftTable";
-import { previewedColumn } from "./queryTables";
+import { previewedColumns } from "./queryTables";
+import { useSuggestColumnAliases } from "../../hooks/useNameSuggestions";
 import { QueryTableFields } from "./QueryTableFields";
 import { registeredColumns } from "./registrationColumns";
 import { registrationOf } from "./registrationDefaults";
@@ -106,6 +107,8 @@ export function WikidataRegisterForm(props: Props) {
   const { t } = useTranslation();
   const { sourceId, domainId, setError } = props;
   const { registerTables } = useRegisterTables();
+  // REQ-2361: each column's alias is the naming authority's suggestion.
+  const suggestColumnAliases = useSuggestColumnAliases();
   const [starters, setStarters] = useState<WikidataStarter[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [mode, setMode] = useState<CustomMode>("none");
@@ -209,8 +212,10 @@ export function WikidataRegisterForm(props: Props) {
       description: chosen.description,
       watermarkColumn: "",
       columns: registeredColumns(
-        chosen.columns.map((c) =>
-          previewedColumn({ name: c.name, dataType: c.data_type }, props.roleIds),
+        await previewedColumns(
+          chosen.columns.map((c) => ({ name: c.name, dataType: c.data_type })),
+          props.roleIds,
+          suggestColumnAliases,
         ),
         null,
       ),

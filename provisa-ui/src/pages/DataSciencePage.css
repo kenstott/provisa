@@ -75,3 +75,10 @@
   z-index: 299;
   background: rgb(0 0 0 / 45%);
 }
+
+/* REQ-2277: each panel stands in the Explore shell; its body is a column (a tab strip above the
+   editor, or the notebook's frame), and the notebook's answer marker is placed against it. */
+.ds-shell .explore-shell__body {
+  flex-direction: column;
+  position: relative;
+}

@@ -11,7 +11,6 @@
 // A table registered from a query (REQ-1670 neo4j, REQ-1683 sparql, REQ-1980 MongoDB pipeline):
 // the columns its preview suggests, and a pipeline's arguments, as the form's column rows.
 
-import { toSnakeCase } from "../../naming";
 import type { ColumnForm } from "./types";
 
 /** How a pipeline argument reaches the source (REQ-1986). */
@@ -40,17 +39,23 @@ export const NATIVE_QUERY_MODES = {
 } as const;
 const NF_PREFIX = "_nf_";
 
-/** A column the preview suggests, granted to every role, as the steward then edits it. */
+/** The server's alias suggestion for each column, in order (REQ-2361: the naming authority's;
+ * null where the column is already named so). */
+export type SuggestColumnAliases = (columns: string[]) => Promise<(string | null)[]>;
+
+/** A column the preview suggests, granted to every role, as the steward then edits it, with the
+ * alias the naming authority suggests for it (REQ-2361; null: it is already named so). */
 export function previewedColumn(
   c: { name: string; dataType: string; path?: string | null },
   roleIds: string[],
+  suggestedAlias: string | null,
 ): ColumnForm {
-  const snake = toSnakeCase(c.name);
   return {
     name: c.name,
     visibleTo: roleIds,
     masks: [],
-    alias: snake !== c.name ? snake : "",
+    // The form holds "no alias" as "": the authority's null says the column needs none.
+    alias: suggestedAlias === null ? "" : suggestedAlias,
     description: "",
     selected: true,
     nativeFilterType: null,
@@ -61,11 +66,21 @@ export function previewedColumn(
   };
 }
 
+/** The columns a preview suggests, each with the alias the naming authority suggests for it. */
+export async function previewedColumns(
+  columns: { name: string; dataType: string; path?: string | null }[],
+  roleIds: string[],
+  suggestColumnAliases: SuggestColumnAliases,
+): Promise<ColumnForm[]> {
+  const aliases = await suggestColumnAliases(columns.map((c) => c.name));
+  return columns.map((c, i) => previewedColumn(c, roleIds, aliases[i]));
+}
+
 /** A pipeline argument as a parameter column of the table: optional unless the steward makes it
  * required; a pipeline requires nothing of its own. */
 export function pipelineArgument(name: string, dataType: string): ColumnForm {
   return {
-    ...previewedColumn({ name: NF_PREFIX + name, dataType }, []),
+    ...previewedColumn({ name: NF_PREFIX + name, dataType }, [], null),
     alias: "",
     nativeFilterType: QUERY_ARG,
     nativeFilterRequired: false,

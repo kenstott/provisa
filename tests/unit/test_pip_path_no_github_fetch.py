@@ -344,7 +344,6 @@ HOSTS: dict[str, str] = {
     "cloud.getdbt.com": _UI_LINK,
     "dbpedia.org": _UI_LINK,
     "en.wikipedia.org": _UI_LINK,
-    "js.cytoscape.org": _UI_LINK,
     "vscode.dev": _UI_LINK,
     "js.stripe.com": "Stripe.js for the hosted billing page; Stripe requires it be loaded from "
     "js.stripe.com, never bundled (provisa-ui/src/api/billing.ts). A hosted-billing service the "

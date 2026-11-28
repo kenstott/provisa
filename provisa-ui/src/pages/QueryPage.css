@@ -11,13 +11,42 @@
   --color-error: 0, 84%, 60%;
 }
 
-/* query-page fills remaining height via #root flex layout */
-.query-page {
+/* query-page fills remaining height via #root flex layout; it is an Explore shell (REQ-2277), whose
+ * body holds the notices and GraphiQL in a column. */
+.query-page-root {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+.query-page .explore-shell__body {
+  flex-direction: column;
+}
+
+/* REQ-2277: GraphiQL is themed to Provisa's tokens through its own custom properties -- the panel
+ * radius, the editors' mono type, the primary color (above) -- and laid flush in the Explore shell:
+ * no outer rounded card around its sessions. Its panes, tabs and keys are its own, untouched. */
+.query-page .graphiql-container {
+  --font-family-mono: var(--editor-font-mono);
+  --font-size-inline-code: var(--editor-font-size);
+  --border-radius-12: 0.5rem;
+  --border-radius-8: 0.375rem;
+  --border-radius-4: 0.25rem;
+  /* The toolbar's icons are its width less two 8px insets: the Explore toolbar icon size. */
+  --toolbar-width: calc(var(--explore-icon-size) + 16px);
+}
+.query-page .graphiql-container .graphiql-sessions {
+  margin: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+.query-page .graphiql-container .graphiql-sidebar {
+  padding-inline-start: 0;
+}
+.query-page .graphiql-container .graphiql-sidebar button > svg {
+  width: var(--explore-icon-size);
+  height: var(--explore-icon-size);
 }
 
 /* GraphiQL makes each .monaco-editor position: absolute and unsets its .overflow-guard clip, so an
@@ -35,9 +64,8 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 6px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--surface-alt);
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   color: var(--text);
 }

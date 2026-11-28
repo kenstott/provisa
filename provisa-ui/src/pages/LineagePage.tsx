@@ -382,7 +382,6 @@ export function LineagePage(): React.ReactElement {
             <LineageDag
               graph={graph}
               height="100%"
-              legend
               stats
               describeColumn={describeColumn}
               links={links}
@@ -414,7 +413,6 @@ export function LineagePage(): React.ReactElement {
             <LineageDag
               graph={graph}
               height="calc(90vh - 120px)"
-              legend
               stats
               describeColumn={describeColumn}
               links={links}

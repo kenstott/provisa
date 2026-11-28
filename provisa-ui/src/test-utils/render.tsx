@@ -19,6 +19,28 @@ import { theme } from "../theme/theme";
 import i18n from "../i18n";
 import { PollyProvider } from "../context/PollyContext";
 import { FormLayout } from "../components/form/FormLayout";
+import { SuggestColumnAliases } from "../hooks/admin.graphql";
+import { toSnakeCase } from "../naming";
+
+// REQ-2361: the admin's column alias suggestion (naming.suggest_column_alias: a column's snake-case
+// name, or null where it is already so named), answered here as the server answers it so every
+// form that previews columns gets its suggestions. namingVectors.test.ts pins toSnakeCase to the
+// server's rule. A test asserting on a suggestion passes its own mock first.
+const COLUMN_ALIAS_SUGGESTIONS: MockedResponse<
+  { suggestColumnAliases: (string | null)[] },
+  { columns: string[] }
+> = {
+  request: { query: SuggestColumnAliases, variables: () => true },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: ({ columns }) => ({
+    data: {
+      suggestColumnAliases: columns.map((c) => {
+        const snake = toSnakeCase(c);
+        return snake !== c ? snake : null;
+      }),
+    },
+  }),
+};
 
 // Wraps components in the same MantineProvider + i18n runtime the app uses so
 // component tests exercise real theming and translated strings (REQ-1016). The
@@ -35,7 +57,7 @@ function makeWrapper(
 ) {
   return function AllProviders({ children }: { children: ReactNode }) {
     return (
-      <MockedProvider mocks={mocks}>
+      <MockedProvider mocks={[...mocks, COLUMN_ALIAS_SUGGESTIONS]}>
         <MantineProvider theme={theme} defaultColorScheme="dark">
           <I18nextProvider i18n={i18n}>
             <MemoryRouter initialEntries={initialEntries}>

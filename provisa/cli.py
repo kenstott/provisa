@@ -133,10 +133,23 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     profile's materialize store belongs to the profile's engine and is applied only with it: under
     a config-named engine the store is that engine's own declared default (Trino's is the
     control-plane PostgreSQL), unless the environment names one.
+
+    The control plane (REQ-2269, amended 2026-11-26): with PLATFORM_DATABASE_URL and
+    TENANT_DATABASE_URL both set (a host install's own PostgreSQL), it is that server and no
+    embedded one starts; one without the other is refused.
     """
     from provisa.core.desktop_profile import load_profile
 
-    profile = load_profile("native", data_dir=data_dir)
+    url_keys = ("PLATFORM_DATABASE_URL", "TENANT_DATABASE_URL")
+    named = [key for key in url_keys if os.environ.get(key)]
+    if len(named) == 1:
+        (missing,) = set(url_keys) - set(named)
+        raise SystemExit(
+            f"{named[0]} is set but {missing} is not: set both to run on that PostgreSQL, "
+            "or neither for the embedded control plane"
+        )
+    control_plane = "postgresql" if named else None
+    profile = load_profile("native", data_dir=data_dir, control_plane=control_plane)
     config_engine = _config_names_engine()
     for key, value in profile.env.items():
         if key in _PROFILE_ENGINE_KEYS and config_engine:
@@ -270,12 +283,18 @@ async def _announce_ready(
 KEEP_ALIVE_SECONDS = 620
 
 
+_WILDCARD_BINDS = frozenset({"0.0.0.0", "::", ""})  # nosec B104 - compared, never bound
+
+
 def _name_local_address(host: str, api_port: int) -> None:
     """REQ-2135: a local start names the address its API listens on; the boot stores it as
     server.public_url when that is unset (provisa/core/local_install.py)."""
     from provisa.core.local_install import LOCAL_ADDRESS_ENV
 
-    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{host}:{api_port}")
+    # A wildcard bind (every address) is no address a client names; on this host the server it
+    # starts is reached as localhost (release 513's installed host stored http://0.0.0.0:8000).
+    address = "localhost" if host in _WILDCARD_BINDS else host
+    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{address}:{api_port}")
 
 
 async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:

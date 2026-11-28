@@ -1,0 +1,2782 @@
+{
+ "capacity_per_release": 30,
+ "capacity_unit": "missing product rules",
+ "basis": "Capacity is planned in missing product rules, not requirements: about 30 per 2-day release. Basis: 53 requirements reached complete in the 14 days to 2026-11-27, at about 3.9 delivered rules each (the verification's mean), so about 15 rules a day. It is recalibrated after each release from the product rules actually delivered. Rules are counted from the 2026-11-27 rule-by-rule verification (req-verify-1127 batches 1-7) against origin/main 9a5d7e81ed; REQ-2196 counts 7 (seven source types) and REQ-2018 counts 10 (ten native-query sources). Coverage-only gaps are not features and are not planned. 513 and 514 list what their code ships: a requirement belongs to the first release whose branch (tag v0.1.0-alpha.512, origin/release/v0.1.0-alpha.513, origin/main for 514) holds every test named for its delivered rules, plus the requirements v1 recorded as completed in that window; requirements whose delivered tests were already at 512 are in the appendix. From 515: the 78 split requirements (REQ-2283..REQ-2360) and the not-started requirements, ordered in-progress first, then MUST, SHOULD, MAY, then remaining work of shipped features and correctness before new surface (demos last within a priority), dependencies first. 138 requirements, 286 product rules.",
+ "releases": [
+  {
+   "version": "513",
+   "date": "2026-11-27",
+   "status": "converging",
+   "topics": [
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2204",
+       "feature": "BI-tool catalog query replay",
+       "benefit": "DBeaver, Metabase, Grafana and psql browse Provisa schemas the same way they browse PostgreSQL, tested against captured real tool traffic.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2176",
+       "feature": "Ephemeral session objects in every language",
+       "benefit": "Users create temporary nodes, rows and graphs in a session without writing to sources, for what-if analysis.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-1986",
+       "feature": "Parameterized tables",
+       "benefit": "API and native-query tables take typed parameters, so a caller can read an endpoint like /orders/{id} as a table without custom code.",
+       "priority": "MUST",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2112",
+       "feature": "VS Code extension for code sources",
+       "benefit": "Developers see which functions Provisa will serve, with inferred columns, and test edits live from their editor before registering anything.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2270",
+       "feature": "Spark reads governed Provisa tables",
+       "benefit": "Data engineers read a governed table as a Spark DataFrame, with row rules and masks applied before data leaves Provisa.",
+       "priority": "MUST",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2138",
+       "feature": "OWL reasoning on SPARQL sources",
+       "benefit": "Inferred class memberships from an ontology become queryable, so rule-derived categories need no hand-maintained tables.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-1058",
+       "feature": "Anonymous access to published data",
+       "benefit": "An org can publish data to the open web from its own subdomain with no login, served only through a read-only public role.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2059",
+       "feature": "Per-reader masks",
+       "benefit": "One column can show cleartext to some roles and different masks to others, in a visible precedence order an auditor can check.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2145",
+       "feature": "PII tag by meaning, including future columns",
+       "benefit": "Tagging a business term as PII covers every column with that meaning, including columns added later, so new data is not left unprotected.",
+       "priority": "MUST",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2219",
+       "feature": "Per-person entitlements on coarse roles (delivered rules; the rest is REQ-2348)",
+       "benefit": "The identity provider grants a person specific tables and columns as attributes, so roles stay few instead of one role per person.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Identity & organizations",
+     "features": [
+      {
+       "req": "REQ-1246",
+       "feature": "Firebase sign-in creates the user profile",
+       "benefit": "Users who sign in with Google or email links get an account on first login without a separate password to manage.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-194",
+       "feature": "One naming authority for client-facing names",
+       "benefit": "Every client sees the same governed names on SQL, GraphQL and Cypher, and physical column names never leak to users.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-2259",
+       "feature": "Context navigation group",
+       "benefit": "Glossary, ontology, metrics, tags, classification and documents sit under one menu, so stewards find the context layer in one place.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-2269",
+       "feature": "One-script Linux host install with Trino",
+       "benefit": "An operator installs Provisa with a Trino engine on an existing Linux VM or server with one command, without Kubernetes.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-2003",
+       "feature": "Freshness rules for per-statement tables",
+       "benefit": "Native-query and parameterized tables have predictable caching, so users know when they see live data and when a kept copy.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-1919",
+       "feature": "The model store (delivered rules; the rest is REQ-2308)",
+       "benefit": "Sources, tables, roles, rules and products are held in one versioned store per org, the base for environments, sync and git projection.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2122",
+       "feature": "Catalogs admin panel (publish and read) (delivered rules; the rest is REQ-2331)",
+       "benefit": "Each catalog connection is set up once and used both to publish and to read metadata.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & naming",
+     "features": [
+      {
+       "req": "REQ-194",
+       "feature": "Names across the whole data estate",
+       "benefit": "Every admitted object, export and grounded column term gets a checked, clash-free name, and only the worker that changed the model rewrites the names, so names stay consistent as the model grows.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "514",
+   "date": "2026-11-29",
+   "status": "on main (cut from main)",
+   "topics": [
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2194",
+       "feature": "Rust pgwire row encoder",
+       "benefit": "SQL clients over the PostgreSQL protocol get large results many times faster (measured 14x text, 40x binary) with every PostgreSQL type supported.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-1961",
+       "feature": "Exact numeric precision and scale",
+       "benefit": "Money and decimal columns keep their exact digits on every engine and protocol, so financial figures never round differently by client.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-2262",
+       "feature": "Relate tables right after registering them",
+       "benefit": "Source setup ends with proposed relationships for the new tables, so a first query can join them minutes after connecting.",
+       "priority": "MUST",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2239",
+       "feature": "One 2D graph component",
+       "benefit": "The ERD, lane diagram and ontology graph look and behave alike, so users read every diagram the same way.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "AI assistance",
+     "features": [
+      {
+       "req": "REQ-2115",
+       "feature": "Polly operates the UI visibly",
+       "benefit": "The assistant fills forms and presses buttons while the user watches, so new users learn the product by seeing each step done.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-1212",
+       "feature": "Docker image builds its own UI",
+       "benefit": "Every published image carries the UI built from the same commit, so the console always matches the server.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-1874",
+       "feature": "Wrapper-catalog services as brands (delivered rules; the rest is REQ-2306)",
+       "benefit": "Stripe, OpenMetadata and DataHub connect as brands over the OpenAPI source, with no API spec to find.",
+       "priority": "MAY",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2225",
+       "feature": "Spark connector in Sources (delivered rules; the rest is REQ-2350)",
+       "benefit": "Teams connect a Spark cluster as a source from the UI with the cluster as structured fields, without writing glue code.",
+       "priority": "SHOULD",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2267",
+       "feature": "Discovered code-source tables and live API sources (delivered rules; the rest is REQ-2360)",
+       "benefit": "A code source can generate its own tables and relationships at discovery, and OpenAPI and GraphQL sources run as built-in code sources.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2180",
+       "feature": "Data product access requests (delivered rules; the rest is REQ-2340)",
+       "benefit": "A user who can see a product but not read it asks its owner in one step, and the grant is recorded instead of handled by email.",
+       "priority": "MUST",
+       "state": "complete"
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2278",
+       "feature": "Column rules by tag or classification",
+       "benefit": "One rule hides or masks every column carrying a tag such as PII, wherever it appears, instead of maintaining rules column by column.",
+       "priority": "MUST",
+       "state": "complete"
+      },
+      {
+       "req": "REQ-2279",
+       "feature": "Template fakes for JSON columns",
+       "benefit": "Masked JSON columns return realistic fake objects with the right shape, so test and demo environments work without real personal data.",
+       "priority": "SHOULD",
+       "state": "complete"
+      }
+     ]
+    }
+   ],
+   "notes": [
+    "Provisa's GitHub organization becomes simpleishard-llc with this release: the repository, release assets and container images (ghcr.io/simpleishard-llc) move there (maintainer 2026-11-27)."
+   ]
+  },
+  {
+   "version": "515",
+   "date": "2026-12-01",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Identity & organizations",
+     "features": [
+      {
+       "req": "REQ-1022",
+       "feature": "Email approvers on new requests",
+       "benefit": "Approvers get an email with approve and deny links when a creation request is raised, so requests do not sit unseen.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2290",
+       "feature": "Generated break-glass password with forced rotation",
+       "benefit": "The emergency admin account cannot be used from a leaked config file or a reused password.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2291",
+       "feature": "Last-platform-admin guard and recovery",
+       "benefit": "An installation can never lock itself out of platform administration.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 4
+      },
+      {
+       "req": "REQ-2293",
+       "feature": "Audit entry for org deletion",
+       "benefit": "Auditors can see who deleted an org and when, after its data is gone.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-1459",
+       "feature": "High availability as published recovery time",
+       "benefit": "Every tier gets a stated recovery time in minutes, so buyers can plan around it without paying for an HA upgrade.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2288",
+       "feature": "Every protocol on secondary nodes",
+       "benefit": "Clients on pgwire, Bolt, gRPC or MCP are load-balanced across every node of a cluster.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2289",
+       "feature": "cert-manager certificates in Helm",
+       "benefit": "Kubernetes operators get certificates issued and renewed automatically instead of managing TLS Secrets by hand.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-2284",
+       "feature": "Tier-keyed Trino resource groups",
+       "benefit": "Higher tiers get more concurrency and memory on shared Trino, so paying tenants are not throttled like free ones.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2300",
+       "feature": "Schema-only boot replicas on every engine",
+       "benefit": "Restarts are fast and never re-copy source data.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2307",
+       "feature": "Edit conflicts and one reconcile path",
+       "benefit": "Two admins can no longer silently overwrite each other's model edits.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2294",
+       "feature": "URI reserved words and rename aliases",
+       "benefit": "Catalogs that stored an object's old address still find it after a rename.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2296",
+       "feature": "OneLake catalog target; user descriptions kept",
+       "benefit": "Microsoft Fabric shops publish to OneLake, and no catalog path overwrites descriptions people wrote.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-2298",
+       "feature": "Bind environment sources from the CLI",
+       "benefit": "Environment setup is scriptable in CI without the UI.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2299",
+       "feature": "Present-and-inert environment state",
+       "benefit": "Admins see at a glance which environments still need data bindings.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2308",
+       "feature": "Model store owns every write",
+       "benefit": "Every model change is versioned and synced the same way, whatever was edited.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2302",
+       "feature": "Complete typed engine authorization",
+       "benefit": "No engine statement runs without a verified authorization, closing the last ungoverned paths.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2319",
+       "feature": "Public metrics",
+       "benefit": "Company-wide metrics are defined once and visible to every domain.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & naming",
+     "features": [
+      {
+       "req": "REQ-2361",
+       "feature": "One naming authority end to end",
+       "benefit": "Names suggested before saving and names shown after saving come from one place, so a table or relationship is called the same thing in the UI, the API and every query language.",
+       "priority": "MUST",
+       "state": "in-progress"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "516",
+   "date": "2026-12-03",
+   "status": "planned",
+   "planned_rules": 28,
+   "topics": [
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2320",
+       "feature": "Portable JSON operations",
+       "benefit": "JSON queries give the same answer on every engine, and type drift is caught instead of returning wrong data.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 5
+      },
+      {
+       "req": "REQ-2337",
+       "feature": "Total landing of subtypes",
+       "benefit": "inet, money and range columns are always readable on every engine.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2352",
+       "feature": "Polyfill provenance and hint rows",
+       "benefit": "Buyers see where each PostgreSQL equivalence was verified and which source-specific hints apply.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-1987",
+       "feature": "Shared named types on every surface",
+       "benefit": "Nested objects and enums appear as named, reused types in GraphQL and gRPC, so generated client code stays small and stable.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2323",
+       "feature": "Generated files always in the org folder",
+       "benefit": "One org's generated code and data never land where another org's process can read them.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2342",
+       "feature": "Metric ownership by domain",
+       "benefit": "Each metric has an accountable owner, and only they or an org admin change it.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2330",
+       "feature": "Alation export target",
+       "benefit": "Alation customers get Provisa's model in their catalog like the other supported catalogs.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2336",
+       "feature": "Contract type check and alias names",
+       "benefit": "Consumers are warned when a source breaks a data contract, and never see physical column names.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2340",
+       "feature": "Role and column requests; suggestion outcomes",
+       "benefit": "Buyers ask for the role and columns they need in one form and see what was decided.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 4
+      }
+     ]
+    },
+    {
+     "topic": "Demos & website",
+     "features": [
+      {
+       "req": "REQ-2286",
+       "feature": "Contact-sales form",
+       "benefit": "Enterprise prospects reach sales from the site without needing a mail client.",
+       "priority": "MUST",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-1042",
+       "feature": "Separate interactive and batch workloads",
+       "benefit": "Materialized-view refreshes cannot slow interactive queries.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2283",
+       "feature": "Opt out of view answers per request",
+       "benefit": "An analyst who needs the live base-table answer bypasses pre-aggregated views for one query without changing the model.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-2285",
+       "feature": "Single-node Trino and queue-aware autoscaling",
+       "benefit": "A small Helm install runs Trino in one pod, and larger ones add workers when queries queue, not only when CPU is busy.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Identity & organizations",
+     "features": [
+      {
+       "req": "REQ-2292",
+       "feature": "Mandatory config download on org deletion",
+       "benefit": "No org is deleted without a restorable copy of its configuration.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "517",
+   "date": "2026-12-05",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-2295",
+       "feature": "Ops trend, usage and freshness reports",
+       "benefit": "Operators see trends, resource use and data freshness in built-in reports instead of ad-hoc log queries.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 4
+      },
+      {
+       "req": "REQ-2314",
+       "feature": "Prometheus metrics and cluster health",
+       "benefit": "Operators monitor Provisa in their existing Prometheus and OpenTelemetry stack.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2315",
+       "feature": "Helm values schema",
+       "benefit": "A wrong Helm value fails at install with a clear message instead of a broken deployment.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2316",
+       "feature": "WSL2 network bindings",
+       "benefit": "Windows users on WSL2 reach the UI from their Windows browser without manual port setup.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-2297",
+       "feature": "column_tags relation",
+       "benefit": "Analysts join tag assignments with data in SQL and see only what their role may see.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2301",
+       "feature": "Domain in Horizon listings",
+       "benefit": "Snowflake consumers see which business domain owns a listed product.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2303",
+       "feature": "Crawl-scope fields in the source form",
+       "benefit": "Admins limit what an HTTP crawl follows from the UI instead of editing config.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2309",
+       "feature": "Wikidata endpoints, Atlassian brands, Wikidata grounding",
+       "benefit": "Atlassian Cloud or Data Center and custom Wikidata endpoints connect by brand, and terms can point to shared Wikidata meanings.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2311",
+       "feature": "Scalar OpenAPI and gRPC operations as functions",
+       "benefit": "Single-value API calls are used in queries as functions, the same as GraphQL scalars.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2313",
+       "feature": "Google Sheets OAuth, per-sheet tables, refresh",
+       "benefit": "Each tab of a spreadsheet becomes its own table under the user's own Google sign-in.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2317",
+       "feature": "Protobuf topics and schema evolution",
+       "benefit": "Protobuf Kafka topics are queryable, and schema changes are caught before they break readers.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2318",
+       "feature": "Exclusions in the source form",
+       "benefit": "Admins hide unwanted API endpoints from the UI without editing config.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-2305",
+       "feature": "Cached rewrite on Flight SQL, Cypher and Bolt",
+       "benefit": "Repeated queries over Flight SQL, Cypher and Bolt return faster.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2312",
+       "feature": "One Cypher and GraphQL catalog",
+       "benefit": "Graph tools see the same labels whether they connect over Bolt or HTTP.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-2321",
+       "feature": "Confirm every delete",
+       "benefit": "Users cannot remove saved settings with one accidental click.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2322",
+       "feature": "Deprecate metrics, roles and row rules",
+       "benefit": "Teams retire any model object with a warning period, not only tables and columns.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "AI assistance",
+     "features": [
+      {
+       "req": "REQ-2324",
+       "feature": "Sandbox and daily assistant budgets",
+       "benefit": "Trial assistant use has a hard, visible spending cap.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "518",
+   "date": "2026-12-07",
+   "status": "planned",
+   "planned_rules": 24,
+   "topics": [
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2327",
+       "feature": "Jira Data Center",
+       "benefit": "Self-hosted Jira shops query issues the same way Cloud users do.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2328",
+       "feature": "Registered remote hosts for code sources",
+       "benefit": "Code sources run on the customer's own machines, close to their data.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2335",
+       "feature": "Custom classification kinds",
+       "benefit": "Organizations detect their own identifiers, such as employee ids, the way built-in kinds are detected.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2343",
+       "feature": "Teradata, Db2, Vertica, Netezza, Informix, Sybase, Spanner sources",
+       "benefit": "Enterprises with legacy warehouses query them directly beside modern sources.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 7
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2329",
+       "feature": "Catalog approvers and Alation data products",
+       "benefit": "Catalog users request access from the right approvers, and Alation shops see products too.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2331",
+       "feature": "Catalog pick list, refresh and lock",
+       "benefit": "Stewards reuse descriptions already written in their catalog and keep one source of truth.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 4
+      }
+     ]
+    },
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-2332",
+       "feature": "Ontology graph export; focus carried to queries",
+       "benefit": "Teams take the governed ontology into other RDF tools and keep their focus when moving to a query.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2338",
+       "feature": "One-request ontology graph",
+       "benefit": "Large ontology graphs open in one request.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-2334",
+       "feature": "owl:sameAs and Purview term roles",
+       "benefit": "Ontology counts are per real-world entity, and Purview shows each term's role.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2341",
+       "feature": "Workbook row citations; uncited passages",
+       "benefit": "Citations to spreadsheets stay correct as the sheet changes.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "AI assistance",
+     "features": [
+      {
+       "req": "REQ-2339",
+       "feature": "Found terms to relationships",
+       "benefit": "Terms found in a document turn into model relationships in one step.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "519",
+   "date": "2026-12-09",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2344",
+       "feature": "Policy tags with gates and why-not answers",
+       "benefit": "Every refusal explains which policy caused it, and policy tags enforce exports and promotion without custom code.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 9
+      },
+      {
+       "req": "REQ-2348",
+       "feature": "Entitlements tab, why-not trace, preview as",
+       "benefit": "Admins see and test exactly what a person can reach without signing in as them.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 3
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2349",
+       "feature": "Code connector catalog, setup fields and Flight",
+       "benefit": "Organizations build full connectors in code, with typed setup forms and fast Arrow reads.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 5
+      },
+      {
+       "req": "REQ-2350",
+       "feature": "Spark named demo",
+       "benefit": "Prospects see Spark data governed and joined with other sources end to end.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2360",
+       "feature": "One serving path for OpenAPI and GraphQL",
+       "benefit": "API sources behave identically however they were added, with one code path to fix and secure.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-2351",
+       "feature": "dbt tests as data quality",
+       "benefit": "dbt test results show up as Provisa data quality, with no second test framework.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2353",
+       "feature": "Ontology releases with reviewed differences",
+       "benefit": "Teams adopt new versions of standard ontologies like FIBO deliberately, seeing what changed.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2355",
+       "feature": "Sync schedules, webhooks and full take-from-catalog",
+       "benefit": "Catalog and Provisa stay in step on a schedule, with differences decided by people or the customer's own workflow.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 6
+      },
+      {
+       "req": "REQ-2356",
+       "feature": "Restore on re-register; retired-link findings",
+       "benefit": "Undoing a removal keeps history and links, and broken references are found, not discovered by users.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "520",
+   "date": "2026-12-11",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-454",
+       "feature": "Identical remote-schema handling for all adapters",
+       "benefit": "GraphQL, gRPC and OpenAPI sources classify and register operations the same way, so behavior is predictable across source types.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2186",
+       "feature": "HTML lists read as tables",
+       "benefit": "Bulleted and numbered lists on web pages become tables, widening what a file source can read.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2304",
+       "feature": "Visible discovery failures",
+       "benefit": "Admins see why no tables were discovered instead of an empty list.",
+       "priority": "MAY",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2254",
+       "feature": "Shared pgwire-calcite runtime",
+       "benefit": "The Calcite connector runtime loads once and is shared by every pgwire server, cutting memory and start time per source.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2255",
+       "feature": "pgwire-calcite protocol parity",
+       "benefit": "Sources reached through Calcite report column sizes and types like Provisa's own server, so SQL tools display them correctly.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2256",
+       "feature": "Calcite dialect fixes at the source",
+       "benefit": "SQL sent to JDBC sources is fixed in the Calcite dialect, so every source on that dialect benefits.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2257",
+       "feature": "Production Db2, Trino, Vertica and Firebolt dialects",
+       "benefit": "These four databases get correct pushed-down SQL, so queries against them return right answers.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-1062",
+       "feature": "Org branding on portal surfaces",
+       "benefit": "An org publishing a data portal shows its own brand on the glossary and Explore pages it exposes.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "AI assistance",
+     "features": [
+      {
+       "req": "REQ-1955",
+       "feature": "One endpoint for valid join paths",
+       "benefit": "Agents and the join guard get the same list of valid paths between two tables, so AI-generated joins follow approved relationships.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2357",
+       "feature": "Domain-scoped generated descriptions",
+       "benefit": "AI-written descriptions never read or change tables outside the domains a steward is working in.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2177",
+       "feature": "Citations agents can hand over intact",
+       "benefit": "Agent answers carry a citation of the governed path and its trust, so a person can verify where an answer came from.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 3
+      }
+     ]
+    },
+    {
+     "topic": "Demos & website",
+     "features": [
+      {
+       "req": "REQ-2325",
+       "feature": "Customer 360 demo: match quality and a second question",
+       "benefit": "Prospects see entity-resolution quality measured, not asserted.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 4
+      },
+      {
+       "req": "REQ-2326",
+       "feature": "OSV data in the vulnerabilities demo",
+       "benefit": "The demo answers exposure questions with real public vulnerability data.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-1060",
+       "feature": "Rate and cost caps on public endpoints",
+       "benefit": "Published anonymous endpoints have the tightest limits, so a public data portal cannot run up engine costs or be abused.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-1969",
+       "feature": "One consequences gate on every model save",
+       "benefit": "Every create, update or delete from UI, API, config load or agent is checked the same way before it reaches the model.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 5
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-1329",
+       "feature": "Base and derived relations without a sentinel source",
+       "benefit": "Views and metrics show their real lineage instead of a placeholder source, so provenance reads correctly.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2181",
+       "feature": "Buyer view of a data product",
+       "benefit": "A user who cannot yet read a product sees what it offers and how to request it, which turns the catalog into a self-serve storefront.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "521",
+   "date": "2026-12-13",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2258",
+       "feature": "JDBC packs for hard-to-reach sources",
+       "benefit": "SQL Server, Oracle, ClickHouse, Redshift, Exasol and others are reached through a dedicated JDBC pack where the engines' own connectors fall short.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2272",
+       "feature": "Spark Connect catalog as a source",
+       "benefit": "Provisa reads a Spark cluster's databases and tables through Spark Connect, so lakehouse tables join with other sources in one query.",
+       "priority": "MUST",
+       "state": "accepted",
+       "rules": 3
+      }
+     ]
+    },
+    {
+     "topic": "Identity & organizations",
+     "features": [
+      {
+       "req": "REQ-1251",
+       "feature": "Approve or deny org join requests",
+       "benefit": "Org admins approve people who ask to join, so teams onboard colleagues without a support ticket.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2346",
+       "feature": "Role members from SCIM, LDAP, Graph and Google",
+       "benefit": "Reviews and reports see who actually holds a role, whatever system manages membership.",
+       "priority": "SHOULD",
+       "state": "in-progress",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-1507",
+       "feature": "Environments gated by entitlement",
+       "benefit": "Environments are enabled by license feature rather than product name, so edition upgrades turn them on without a reinstall.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      }
+     ]
+    },
+    {
+     "topic": "Install & ops",
+     "features": [
+      {
+       "req": "REQ-2164",
+       "feature": "Redacted log export for support",
+       "benefit": "Operators send support a log file with secrets and personal data removed.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-2183",
+       "feature": "Edge index via relationship materialize",
+       "benefit": "Graph traversals over a materialized relationship read a prebuilt edge index, speeding large-graph queries.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2206",
+       "feature": "Volatile tables never served from copies",
+       "benefit": "Tables marked volatile always read live, so time-critical data is never stale.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2209",
+       "feature": "Periodic access reviews with attestation",
+       "benefit": "Roles, rules and masks carry review schedules with recorded sign-off, which auditors ask for.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 7
+      },
+      {
+       "req": "REQ-2210",
+       "feature": "Access requests from the catalog",
+       "benefit": "Users ask for a table or column they found, and the request becomes a reviewed grant.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 4
+      },
+      {
+       "req": "REQ-2211",
+       "feature": "Effective-access explainer",
+       "benefit": "Admins see exactly what a set of roles and session values can read and why, answering access questions in seconds.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "522",
+   "date": "2026-12-15",
+   "status": "planned",
+   "planned_rules": 28,
+   "topics": [
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2212",
+       "feature": "SQL dialect per connection",
+       "benefit": "A client written for SQL Server or another database connects without rewriting its SQL.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2213",
+       "feature": "Text search as an API query pattern",
+       "benefit": "Tables offer stemmed text search from their API tab with no search engine to set up.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      },
+      {
+       "req": "REQ-2268",
+       "feature": "Tags in the Cypher graph",
+       "benefit": "Tags appear as nodes linked to the tables and columns they mark, so graph queries can traverse governance.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2310",
+       "feature": "Bind parameters in command calls",
+       "benefit": "Commands are called from SQL and Cypher with parameters and column values, so queries stay parameterised.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2345",
+       "feature": "Case-insensitive SQL names",
+       "benefit": "SQL users and BI tools find tables regardless of letter case.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Engines & performance",
+     "features": [
+      {
+       "req": "REQ-2271",
+       "feature": "Engine impersonation (opt-in)",
+       "benefit": "Engines can run queries as the requesting user, so engine-side audit logs name the real person.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Governance & security",
+     "features": [
+      {
+       "req": "REQ-2287",
+       "feature": "Published data over pgwire and Bolt",
+       "benefit": "Published open data is readable from SQL clients and graph tools without a login, not only over HTTP.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-2347",
+       "feature": "Production access requests built on branches",
+       "benefit": "Production users get access through a reviewed, time-limited request instead of new roles.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 5
+      }
+     ]
+    },
+    {
+     "topic": "AI assistance",
+     "features": [
+      {
+       "req": "REQ-2354",
+       "feature": "Assistant tests columns against policy sections",
+       "benefit": "Stewards get a fast, governed first check of policy compliance without the assistant making legal claims.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-2358",
+       "feature": "OpenLineage import of sources and tables",
+       "benefit": "Teams that already emit OpenLineage bootstrap their Provisa model from it instead of registering tables by hand.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-2359",
+       "feature": "Collibra, Alation, Atlan, OneLake and Dataplex as sources",
+       "benefit": "Governance teams query catalog metadata beside live data to find where catalog and enforcement disagree.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 3
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-1872",
+       "feature": "Engine discover() introspection fix",
+       "benefit": "Source introspection through each engine returns complete table lists.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-1941",
+       "feature": "Copy or move a table to another source",
+       "benefit": "A table is copied under governance to another source, for migrations or offloading.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "523",
+   "date": "2026-12-17",
+   "status": "planned",
+   "planned_rules": 30,
+   "topics": [
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-1966",
+       "feature": "dbt and Cube model export",
+       "benefit": "The model exports to dbt semantic and Cube formats, so existing BI layers reuse it.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 4
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-1995",
+       "feature": "Refer creation requests to another domain",
+       "benefit": "Stewards hand a request to the right domain with a note instead of rejecting it.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2178",
+       "feature": "Terms linked to commands",
+       "benefit": "Process terms such as \"close of day\" point to the commands that carry them out.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2018",
+       "feature": "Prometheus tables from PromQL",
+       "benefit": "Metrics from a PromQL query join business data in SQL, so operations and business numbers sit in one report.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 10
+      },
+      {
+       "req": "REQ-2028",
+       "feature": "gRPC tables from request templates",
+       "benefit": "A unary gRPC call becomes a parameterized table.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2029",
+       "feature": "Full Qdrant Query API tables",
+       "benefit": "Hybrid dense and sparse vector search with fusion is available as a table.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2192",
+       "feature": "Generic OData source",
+       "benefit": "SAP and Microsoft OData services connect from a service URL with no handwritten spec.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 6
+      }
+     ]
+    },
+    {
+     "topic": "Platform principles",
+     "features": [
+      {
+       "req": "REQ-2169",
+       "feature": "Drivers for sources, engines and secrets",
+       "benefit": "Every built-in implementation is a driver, so partners extend Provisa the same way.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 4
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": "524",
+   "date": "2026-12-19",
+   "status": "planned",
+   "planned_rules": 26,
+   "topics": [
+    {
+     "topic": "UI & modeling",
+     "features": [
+      {
+       "req": "REQ-2207",
+       "feature": "My Reports (saved queries)",
+       "benefit": "Users save a named query and return to it, without creating a shared view.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 4
+      }
+     ]
+    },
+    {
+     "topic": "Sources",
+     "features": [
+      {
+       "req": "REQ-2251",
+       "feature": "One descriptor per source type",
+       "benefit": "Each source type's facts live in one descriptor, so adding a source type touches one place.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 2
+      },
+      {
+       "req": "REQ-2273",
+       "feature": "Spark time travel",
+       "benefit": "Delta, Iceberg and Hudi tables on Spark answer as-of queries, so audits and restatements read past versions directly.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2274",
+       "feature": "Spark change data",
+       "benefit": "Inserts, updates and deletes on Delta and Iceberg tables are served as change data for downstream sync.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2275",
+       "feature": "Spark procedures as commands",
+       "benefit": "Maintenance such as compaction and snapshot expiry runs as governed commands from Provisa.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2280",
+       "feature": "OneDrive and Google Drive file crawling",
+       "benefit": "Hosted and server installs read files straight from OneDrive and Google Drive, with no desktop sync client.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2306",
+       "feature": "Twelve SaaS brands over OpenAPI",
+       "benefit": "Teams connect common SaaS tools by picking a brand and signing in, with no API spec to find.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-1664",
+       "feature": "Custom Great Expectations checks as commands",
+       "benefit": "Teams extend quality checks with their own Python functions through the same governed command surface.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2264",
+       "feature": "Marquez source",
+       "benefit": "Lineage held in Marquez is queryable through its public API.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2276",
+       "feature": "Databricks catalog functions and models",
+       "benefit": "Unity Catalog functions and MLflow models are offered as governed functions.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Modeling & semantic layer",
+     "features": [
+      {
+       "req": "REQ-2281",
+       "feature": "Entity resolution from tags",
+       "benefit": "Records that refer to the same customer or product across sources are linked in one shared map, so cross-source questions return one answer per entity.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2282",
+       "feature": "Entities found in text",
+       "benefit": "Notes and documents link to the products and tables they mention, so unstructured text joins structured data.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Demos & website",
+     "features": [
+      {
+       "req": "REQ-2139",
+       "feature": "Beneficial ownership demo",
+       "benefit": "Shows KYC ownership chains with OWL transitive control reasoning.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2182",
+       "feature": "Internal data marketplace demo",
+       "benefit": "Shows products offered to an organisation's own people with existing primitives.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2220",
+       "feature": "Masked-column request demo",
+       "benefit": "Shows an analyst seeing why a column is masked, requesting it, and getting a governed grant.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2232",
+       "feature": "dbt project demo",
+       "benefit": "Shows a dbt project governed by role with lineage, unchanged.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-2250",
+       "feature": "Wildfire exposure demo",
+       "benefit": "Shows insured value inside this week's wildfire perimeter and which policyholders to call first.",
+       "priority": "SHOULD",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Environments & change control",
+     "features": [
+      {
+       "req": "REQ-1499",
+       "feature": "Replicate a whole environment",
+       "benefit": "An org copies an environment with bindings, secrets and users when it wants the control plane as it stands.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      },
+      {
+       "req": "REQ-1500",
+       "feature": "Export an environment to desktop",
+       "benefit": "A developer works against a non-prod environment's model on their own machine.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    },
+    {
+     "topic": "Querying & protocols",
+     "features": [
+      {
+       "req": "REQ-2333",
+       "feature": "SPARQL Update to curation and commands",
+       "benefit": "RDF tools curate the ontology and run commands under the same rights as the UI.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 2
+      }
+     ]
+    },
+    {
+     "topic": "Catalog & data products",
+     "features": [
+      {
+       "req": "REQ-1646",
+       "feature": "Horizon _provisa exposure views",
+       "benefit": "Snowflake users see governed views organized by domain in a clean database.",
+       "priority": "MAY",
+       "state": "accepted",
+       "rules": 1
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "decisions": [
+  {
+   "req": "REQ-1367, REQ-1991, REQ-1756, REQ-2235, REQ-2277, REQ-2167",
+   "decision": "Standing principles or processes, off the release train (amended; REQ-2277 accepted)."
+  },
+  {
+   "req": "REQ-1027, REQ-1240, REQ-1563, REQ-1564, REQ-1779",
+   "decision": "Cloud-dev operations track, off the release train (amended)."
+  },
+  {
+   "req": "REQ-818",
+   "decision": "Superseded by REQ-2176 and REQ-1925 (superseded_by REQ-2176); REQ-346 repointed to REQ-2176 and REQ-798 to REQ-1925, since a superseded requirement cannot be a successor."
+  },
+  {
+   "req": "REQ-1536",
+   "decision": "Superseded by REQ-2014."
+  },
+  {
+   "req": "REQ-1871, REQ-1366",
+   "decision": "Spikes closed complete with findings recorded in the description."
+  },
+  {
+   "req": "REQ-1859, REQ-1860",
+   "decision": "Results internal: REQ-1860 complete with its public format withdrawn; REQ-1859 stays open as internal work, off the train."
+  },
+  {
+   "req": "REQ-1964",
+   "decision": "Accepted and handed to the govdata session, off the train."
+  },
+  {
+   "req": "REQ-1793",
+   "decision": "Kept; behaviour present since 2026-09, completes once tested (no product work planned)."
+  },
+  {
+   "req": "all proposed",
+   "decision": "Accepted (maintainer accept-all); every one is planned below or completed."
+  },
+  {
+   "req": "REQ-1742",
+   "decision": "Complete in 513, but it is end-to-end test coverage, not a product feature, so it is left out of the release notes."
+  },
+  {
+   "req": "REQ-2166",
+   "decision": "Accepted; no product work remains (only tests), so not planned as a feature."
+  },
+  {
+   "req": "REQ-2242",
+   "decision": "Accepted and parked until sqlglot allows interpreted subclasses of its compiled classes; not planned."
+  }
+ ],
+ "already_shipped": [
+  {
+   "req": "REQ-116",
+   "title": "Kafka Schema Registry integration",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2317"
+  },
+  {
+   "req": "REQ-259",
+   "title": "Apollo Federation v2 subgraph as a declared role",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-450",
+   "title": "One-to-many nested fields carry target's root args",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-451",
+   "title": "Object relationships expose no collection args",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-453",
+   "title": "Scalar remote operations become tracked functions",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2311"
+  },
+  {
+   "req": "REQ-469",
+   "title": "One catalog module per query language",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2312"
+  },
+  {
+   "req": "REQ-477",
+   "title": "use_domains=false forces domain_prefix off",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-491",
+   "title": "Google Sheets source",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2313"
+  },
+  {
+   "req": "REQ-506",
+   "title": "SLA monitoring with stored breaches",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2314"
+  },
+  {
+   "req": "REQ-507",
+   "title": "Helm chart",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2315"
+  },
+  {
+   "req": "REQ-509",
+   "title": "WSL2 install handling",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2316"
+  },
+  {
+   "req": "REQ-882",
+   "title": "Aggregate queries answered from pre-aggregating views",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2283"
+  },
+  {
+   "req": "REQ-1040",
+   "title": "Per-org Trino resource groups by tier",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2284"
+  },
+  {
+   "req": "REQ-1041",
+   "title": "Trino worker scale-out path and autoscaling",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2285"
+  },
+  {
+   "req": "REQ-1051",
+   "title": "Hosted docs on Cloudflare Pages",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1052",
+   "title": "Marketing site calls to action",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2286"
+  },
+  {
+   "req": "REQ-1059",
+   "title": "Publishing via a built-in public role",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2287"
+  },
+  {
+   "req": "REQ-1211",
+   "title": "AppImage stages compose files to a writable home",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1230",
+   "title": "Secondary cluster nodes run the app tier only",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2288"
+  },
+  {
+   "req": "REQ-1256",
+   "title": "Helm chart serves the UI",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1257",
+   "title": "Helm chart TLS on every endpoint",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1258",
+   "title": "Helm Service exposes every protocol port",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1259",
+   "title": "Helm certificate source: Secret or cert-manager",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2289"
+  },
+  {
+   "req": "REQ-1261",
+   "title": "Self-service multi-tenant onboarding",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1264",
+   "title": "Seeded break-glass platform admin account",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2290"
+  },
+  {
+   "req": "REQ-1296",
+   "title": "Claimed platform admin lands in a populated root org",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1299",
+   "title": "Never zero platform admins",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2291"
+  },
+  {
+   "req": "REQ-1300",
+   "title": "Deleting an organization",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1303",
+   "title": "Audited recovery of an org's administration",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1304",
+   "title": "Org config downloaded before deletion",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2292"
+  },
+  {
+   "req": "REQ-1305",
+   "title": "Offboarding a member from both planes",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1312",
+   "title": "Deletion scrubs personal data, keeps the record",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2293"
+  },
+  {
+   "req": "REQ-1327",
+   "title": "Platform admin is control-plane only; administration layers",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1364",
+   "title": "Config export JSON Pointer refs and resourcePath",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1382",
+   "title": "IdP vs local user attributes precedence",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1383",
+   "title": "Attributes in user.* namespace with provenance display",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1385",
+   "title": "provisa:// semantic URIs on exported assets",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2294"
+  },
+  {
+   "req": "REQ-1386",
+   "title": "Ops-domain management reports",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2295"
+  },
+  {
+   "req": "REQ-1389",
+   "title": "Catalog upsert preserves human enrichment",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2296"
+  },
+  {
+   "req": "REQ-1414",
+   "title": "Tag assignments as a queryable SQL relation",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2297"
+  },
+  {
+   "req": "REQ-1498",
+   "title": "Environment operations on the CLI",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2298"
+  },
+  {
+   "req": "REQ-1501",
+   "title": "Environments: Hasura structure, LaunchDarkly state",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2299"
+  },
+  {
+   "req": "REQ-1508",
+   "title": "Environment vs lane vocabulary",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1632",
+   "title": "Boot-time replicas are schema-only and idempotent",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2300"
+  },
+  {
+   "req": "REQ-1639",
+   "title": "Data product Related Tables section",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1645",
+   "title": "Horizon listing description from product page",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2301"
+  },
+  {
+   "req": "REQ-1760",
+   "title": "Typed authorization on every engine execution",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2302"
+  },
+  {
+   "req": "REQ-1783",
+   "title": "Kaggle two-step source form",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1785",
+   "title": "HTTP crawl scope settings",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2303"
+  },
+  {
+   "req": "REQ-1786",
+   "title": "Table discovery on every source creation",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2304"
+  },
+  {
+   "req": "REQ-1787",
+   "title": "Skip Kaggle refresh when unchanged",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1788",
+   "title": "Files source Calcite refreshInterval passthrough",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1793",
+   "title": "Double opt-in web license registration",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1866",
+   "title": "Cache semantic rewrite on raw-SQL surfaces",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2305"
+  },
+  {
+   "req": "REQ-1914",
+   "title": "Model/governance changes reach every worker",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2307"
+  },
+  {
+   "req": "REQ-1923",
+   "title": "Branded sources over generic API sources",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2309"
+  },
+  {
+   "req": "REQ-1928",
+   "title": "Command calls take bind params and column refs",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2310"
+  },
+  {
+   "req": "REQ-1932",
+   "title": "Platform state store",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1953",
+   "title": "Data product shows its tables' profiles",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "in-progress",
+   "remainder": null
+  },
+  {
+   "req": "REQ-1957",
+   "title": "Exclusions on spec-built sources",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2318"
+  },
+  {
+   "req": "REQ-1959",
+   "title": "Public items served to all domains",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2319"
+  },
+  {
+   "req": "REQ-1965",
+   "title": "Nested columns as JSON; typed arrays in the IR",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2320"
+  },
+  {
+   "req": "REQ-1975",
+   "title": "Non-modal working surfaces and delete confirmation",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2321"
+  },
+  {
+   "req": "REQ-1979",
+   "title": "Deprecated tag on every model object",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2322"
+  },
+  {
+   "req": "REQ-1992",
+   "title": "Per-org file folder with vault-keyed encryption",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2323"
+  },
+  {
+   "req": "REQ-2005",
+   "title": "Customer sizing guide and sizing tool docs",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2006",
+   "title": "Live demos page and no-signup demo sandboxes",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2012",
+   "title": "Polly spend metering and sandbox caps",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2324"
+  },
+  {
+   "req": "REQ-2016",
+   "title": "Sonnets named demo and demo setup.yaml/extras",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2017",
+   "title": "Elasticsearch native search tables",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2030",
+   "title": "Reviews named demo (MongoDB, Elasticsearch, Neo4j)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2032",
+   "title": "Files named demo (instant data lake)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2034",
+   "title": "Customer 360 demo with hub and entity resolution",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2325"
+  },
+  {
+   "req": "REQ-2036",
+   "title": "Vulnerabilities named demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2326"
+  },
+  {
+   "req": "REQ-2038",
+   "title": "Pharma vertical demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2040",
+   "title": "Audit firm vertical demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2050",
+   "title": "timestamptz instant type end to end",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2051",
+   "title": "Data quality medallion demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2056",
+   "title": "Insider review demo at an investment bank",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2058",
+   "title": "Composite (all-of) grant entries",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2069",
+   "title": "Jira Cloud source through a Calcite pgwire adapter",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2327"
+  },
+  {
+   "req": "REQ-2071",
+   "title": "Explore Python and Notebook tabs on self-hosted Pyodide",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2092",
+   "title": "Benchmark governance knobs and local pass",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2098",
+   "title": "Remote hosts for Node/Python code sources",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2328"
+  },
+  {
+   "req": "REQ-2107",
+   "title": "Banking end-of-day reporting demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2118",
+   "title": "Data product listings in internal catalogs",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2329"
+  },
+  {
+   "req": "REQ-2119",
+   "title": "Real-service e2e test for every metadata export target",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "in-progress",
+   "remainder": "REQ-2330"
+  },
+  {
+   "req": "REQ-2136",
+   "title": "Ontology graph: Open as query and graph export",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2332"
+  },
+  {
+   "req": "REQ-2137",
+   "title": "SPARQL Update lowered to governed writes",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2333"
+  },
+  {
+   "req": "REQ-2141",
+   "title": "Term roles: Class, Property, Concept; table grounding",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2334"
+  },
+  {
+   "req": "REQ-2143",
+   "title": "Ontology View reads its graph on the server; budget, search syntax",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2147",
+   "title": "Profiler classification kinds (SSN, IBAN, cities...)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2335"
+  },
+  {
+   "req": "REQ-2150",
+   "title": "Term read view neighbourhood graph",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2158",
+   "title": "Data contracts per output port (ODPS/ODCS)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2336"
+  },
+  {
+   "req": "REQ-2168",
+   "title": "APOC calls and command bindings",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2171",
+   "title": "IR subtypes (inet, money, ranges...) and per-dialect function rules",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2337"
+  },
+  {
+   "req": "REQ-2172",
+   "title": "Demo: Give an agent your data (agentdata)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2174",
+   "title": "3D/2D graph stage: best view, layouts, lanes, one ontology graph",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2338"
+  },
+  {
+   "req": "REQ-2179",
+   "title": "Find terms in a document",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2339"
+  },
+  {
+   "req": "REQ-2184",
+   "title": "Deploy a single-source view to its source",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2185",
+   "title": "Reference library with graph retrieval",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2341"
+  },
+  {
+   "req": "REQ-2188",
+   "title": "Row rules with R/U/D rights; product ownership via rules",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2342"
+  },
+  {
+   "req": "REQ-2190",
+   "title": "pgwire catalog answered from the meta domain",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2196",
+   "title": "Teradata, Db2, Vertica, Netezza, Informix, Sybase, Spanner source types",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2343"
+  },
+  {
+   "req": "REQ-2203",
+   "title": "PostgreSQL drivers' own test suites against pgwire",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2205",
+   "title": "Dev container and three-step Codespace demo",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2208",
+   "title": "Policy citations and the tag builder (tags explain why)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2344"
+  },
+  {
+   "req": "REQ-2214",
+   "title": "SQL names are case-insensitive",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2345"
+  },
+  {
+   "req": "REQ-2215",
+   "title": "Resolve a role to its members across membership sources",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2346"
+  },
+  {
+   "req": "REQ-2217",
+   "title": "Access built in branches; production access requests",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2347"
+  },
+  {
+   "req": "REQ-2221",
+   "title": "Organization code connectors built from git",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2349"
+  },
+  {
+   "req": "REQ-2222",
+   "title": "Config-driven CLI: validate, diff, apply, export, query, explain",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2228",
+   "title": "dbt source type",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2351"
+  },
+  {
+   "req": "REQ-2231",
+   "title": "provisa.dev home page structure",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2233",
+   "title": "Works-with pages on the site",
+   "evidence": "behaviour present, no test dates it",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2236",
+   "title": "Polyfill grid (PostgreSQL behaviour on other engines)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2352"
+  },
+  {
+   "req": "REQ-2237",
+   "title": "Import external ontologies (OWL/RDF, Ossie)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2353"
+  },
+  {
+   "req": "REQ-2240",
+   "title": "Select and bulk delete in every list",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2244",
+   "title": "UI wording pairs (Show/Hide, Expand/Collapse, Enlarge, Stop, Derived)",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": null
+  },
+  {
+   "req": "REQ-2245",
+   "title": "Assistant tests a column against a cited section",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2354"
+  },
+  {
+   "req": "REQ-2247",
+   "title": "Syncing page: catalog differences with Accept and standing choices",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2355"
+  },
+  {
+   "req": "REQ-2248",
+   "title": "Retire, never hard-delete, model objects",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2356"
+  },
+  {
+   "req": "REQ-2253",
+   "title": "AI features work only within selected domains",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2357"
+  },
+  {
+   "req": "REQ-2263",
+   "title": "OpenLineage as a way to add sources and tables",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2358"
+  },
+  {
+   "req": "REQ-2265",
+   "title": "Governance catalogs as live branded sources",
+   "evidence": "tests present at v0.1.0-alpha.512",
+   "state_after_edit": "complete",
+   "remainder": "REQ-2359"
+  }
+ ],
+ "off_train": [
+  "REQ-818",
+  "REQ-1027",
+  "REQ-1240",
+  "REQ-1366",
+  "REQ-1367",
+  "REQ-1536",
+  "REQ-1563",
+  "REQ-1564",
+  "REQ-1756",
+  "REQ-1779",
+  "REQ-1859",
+  "REQ-1860",
+  "REQ-1871",
+  "REQ-1964",
+  "REQ-1991",
+  "REQ-2167",
+  "REQ-2235",
+  "REQ-2277"
+ ]
+}

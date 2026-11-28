@@ -15,7 +15,7 @@
 // those promised.
 
 import { useTranslation } from "react-i18next";
-import type { ProductDqEntry } from "../../api/lineage";
+import type { ProductPromise } from "../../api/lineage";
 import type { Offer } from "../../api/dataProductOffers";
 
 /** The worst outcome among the checks: one failing, else one not yet run, else all passing. */
@@ -37,7 +37,7 @@ export interface QualitySummary {
 /** The summary of ``promises``: each checker's checks are its rules; a run checker's failing
  *  checks are those its latest run did not pass, the rest of its rules passing; a checker never
  *  run has every rule not yet run. */
-export function qualitySummary(promises: ProductDqEntry[]): QualitySummary {
+export function qualitySummary(promises: ProductPromise[]): QualitySummary {
   let total = 0;
   let passing = 0;
   let failing = 0;
@@ -53,9 +53,7 @@ export function qualitySummary(promises: ProductDqEntry[]): QualitySummary {
     }
     failing += c.failing_checks.length;
     passing += checks - c.failing_checks.length;
-    failingNames.push(
-      ...c.failing_checks.map((f) => [f.column, f.name].filter(Boolean).join(" ")),
-    );
+    failingNames.push(...c.failing_checks.map((f) => [f.column, f.name].filter(Boolean).join(" ")));
     if (lastRun === null || Date.parse(c.latest_run_at) > Date.parse(lastRun)) {
       lastRun = c.latest_run_at;
     }
@@ -66,7 +64,7 @@ export function qualitySummary(promises: ProductDqEntry[]): QualitySummary {
 }
 
 /** The product's promises an offer gives: those on the datasets its contracts cover. */
-export function offerPromises(offer: Offer, promises: ProductDqEntry[]): ProductDqEntry[] {
+export function offerPromises<P extends ProductPromise>(offer: Offer, promises: P[]): P[] {
   const covered = new Set(offer.contracts.map((c) => c.table_id));
   return promises.filter((c) => covered.has(c.checked_table_id));
 }

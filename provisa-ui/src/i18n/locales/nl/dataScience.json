@@ -10,6 +10,7 @@
     "rowsShown": "{{shown}} van {{total}} rijen getoond",
     "figure": "Afbeelding {{n}}",
     "resizeLabel": "Formaat van editor en uitvoer wijzigen",
+    "output": "Uitvoer",
     "notebookFrame": "Jupyter-notebook",
     "copyCode": "Code kopiëren",
     "clearCode": "Editor leegmaken",
