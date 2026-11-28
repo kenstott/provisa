@@ -10,9 +10,10 @@
 
 // REQ-2136: a graph view's "Open as query" (→): the query the view runs, its filters inside it,
 // opened ready to edit in the surface chosen -- GraphQL (the query itself), SQL (its compiled
-// semantic SQL), Cypher (where it maps to Cypher) or SPARQL (where its one root maps). A focus
-// (the page's search, or a node focused) is drawn as a neighbourhood the query does not state,
-// so with one set the view does not open as its query.
+// semantic SQL), Cypher or SPARQL (where its one root maps). A focus (the page's search, or a node
+// focused) is drawn as a neighbourhood the query does not state, so with one set the view does not
+// open as its GraphQL. A view that says its own Cypher (the ontology's: its terms and their links,
+// REQ-2174) opens as it in every state, focused or not.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -62,10 +63,17 @@ function compiledOf(raw: CompileResult | { queries: CompileResult[] }): Compiled
   };
 }
 
+/** A view's own Cypher, written when the menu opens: ``key`` names what it writes. */
+export interface CypherOf {
+  key: string;
+  build: () => Promise<string>;
+}
+
 export function OpenAsQuery({
   query,
   language,
   focused,
+  cypher = null,
   testId,
 }: {
   /** The view's query as it runs now; null while there is none (not read yet). */
@@ -76,6 +84,9 @@ export function OpenAsQuery({
   language: QueryLanguage | null;
   /** A focus is set: the view draws a neighbourhood its query does not state. */
   focused: boolean;
+  /** The view's own Cypher, which it opens as in place of its GraphQL's compiled Cypher; null for
+   * a view with none. */
+  cypher?: CypherOf | null;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -89,6 +100,23 @@ export function OpenAsQuery({
     error: string | null;
   } | null>(null);
   const current = compiled !== null && compiled.query === query ? compiled : null;
+  // The view's own Cypher, written when the menu opens, for the view then.
+  const [written, setWritten] = useState<{
+    key: string;
+    text: string | null;
+    error: string | null;
+  } | null>(null);
+  const own = cypher !== null && written !== null && written.key === cypher.key ? written : null;
+
+  const write = () => {
+    if (cypher === null || language === "cypher" || own) return;
+    const { key } = cypher;
+    cypher.build().then(
+      (text) => setWritten({ key, text, error: null }),
+      (e: unknown) =>
+        setWritten({ key, text: null, error: e instanceof Error ? e.message : String(e) }),
+    );
+  };
 
   const compile = () => {
     if (query === null || language !== "graphql" || actingRoles === null || focused || current)
@@ -113,13 +141,17 @@ export function OpenAsQuery({
     unavailable ?? current?.error ?? (current ? null : t("graph3d.openAsQueryCompiling"));
   const cypherWhy = cypherOnly
     ? null
-    : (unavailable ??
-      current?.error ??
-      (current
-        ? current.result?.cypher
-          ? null
-          : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
-        : t("graph3d.openAsQueryCompiling")));
+    : cypher !== null
+      ? own
+        ? own.error
+        : t("graph3d.openAsQueryCompiling")
+      : (unavailable ??
+        current?.error ??
+        (current
+          ? current.result?.cypher
+            ? null
+            : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
+          : t("graph3d.openAsQueryCompiling")));
 
   const sparqlWhy =
     unavailable ??
@@ -148,7 +180,15 @@ export function OpenAsQuery({
   };
 
   return (
-    <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }} onOpen={compile}>
+    <Menu
+      position="bottom-end"
+      withinPortal
+      transitionProps={{ duration: 0 }}
+      onOpen={() => {
+        compile();
+        write();
+      }}
+    >
       <Menu.Target>
         <Tip text={t("graph3d.openAsQuery")} named>
           <ActionIcon
@@ -169,7 +209,11 @@ export function OpenAsQuery({
           navigate("/sql", { state: { sql: current?.result?.sql, autoRun: true } }),
         )}
         {item("cypher", cypherWhy, () =>
-          navigate("/graph", { state: { query: cypherOnly ? query : current?.result?.cypher } }),
+          navigate("/graph", {
+            state: {
+              query: cypherOnly ? query : cypher !== null ? own?.text : current?.result?.cypher,
+            },
+          }),
         )}
         {item("sparql", sparqlWhy, () =>
           navigate("/sparql", { state: { query: current?.result?.sparql } }),

@@ -14,8 +14,9 @@ All hops opens as one Cypher variable-length query from the terms the view's roo
 (provisa-ui graph3d/ontologyCypher.ts allHopsCypher): typed to the term links, its ends terms,
 bounded by the depth the view walked, the walk starting only from the roots. Here a glossary of a
 few hundred terms, a KIND_OF tree crossed by RELATED_TO links that close many cycles, is written to
-the control plane's own tables; the query is compiled by the Cypher translator and run on
-PostgreSQL. It answers the connected part -- each term once, and the links between them -- as a
+the control plane's own tables; the query is compiled as the Cypher endpoints compile it (the
+translator, its graph values, the semantic SQL transpiled for PostgreSQL as a read sent DIRECT to
+it) and run on PostgreSQL. It answers the connected part -- each term once, and the links between them -- as a
 breadth-first walk finds it, within the time the view allows.
 """
 
@@ -32,8 +33,10 @@ import pytest_asyncio
 from provisa.core.glossary import TERM_EDGE_TYPES
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.cypher.parser import parse_cypher
+from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping, RelationshipMapping
 from provisa.gql.translator import cypher_to_sql
+from provisa.transpiler.transpile import direct_physical, transpile
 
 pytestmark = [pytest.mark.integration]
 
@@ -145,16 +148,17 @@ async def test_all_hops_answers_the_connected_part_in_seconds(tenant_db):
             seen |= frontier
             depth += 1
 
-        ast, _, _ = cypher_to_sql(
-            parse_cypher(_all_hops(root, depth)), _label_map(where["db"], where["sch"]), {}
-        )
-        sql = ast.sql(dialect="postgres")
+        label_map = _label_map(where["db"], where["sch"])
+        ast, _, graph_vars = cypher_to_sql(parse_cypher(_all_hops(root, depth)), label_map, {})
+        semantic = apply_graph_rewrites(ast, graph_vars, label_map).sql(dialect="postgres")
+        sql = direct_physical(transpile(semantic, "postgres", generated=True), "postgres")
         started = time.monotonic()
         rows = await conn.fetch(sql)
         took = time.monotonic() - started
 
     assert took < _SECONDS, f"All hops took {took:.1f}s over {_TERMS} terms at depth {depth}"
-    # Each row is a term reached (a), its id first, a link from it (r), and the link's far end.
-    assert {r[0] for r in rows} == seen
+    # Each row is a term reached (a), a link from it (r), and the link's far end (b), each once.
+    assert len(rows) == len({(r["a"]["id"], r["r"] and r["r"]["identity"]) for r in rows})
+    assert {r["a"]["properties"]["id"] for r in rows} == seen
     edges = {(r["r"]["start"], r["r"]["end"]) for r in rows if r["r"] is not None}
     assert edges == {(a, b) for a, b, _t in links}

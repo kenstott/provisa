@@ -121,16 +121,32 @@ def _label_map() -> CypherLabelMap:
 
 
 def _all_hops(roots: list[int], depth: int) -> str:
-    """The All hops query as ontologyCypher.allHopsCypher writes it."""
+    """The view's query as ontologyCypher.allHopsCypher writes it, for every Hops value."""
     typed = "|".join(_LINKS)
+    links = f"OPTIONAL MATCH (a)-[r:{typed}]->(b:Terms) RETURN DISTINCT a, r, b"
+    among = f"[{', '.join(map(str, roots))}]"
+    if depth == 0:
+        start = (
+            f"MATCH (a:Terms {{id: {roots[0]}}})"
+            if len(roots) == 1
+            else f"MATCH (a:Terms) WHERE a.id IN {among}"
+        )
+        return f"{start} {links}"
     start, where = (
         (f"(t:Terms {{id: {roots[0]}}})", "")
         if len(roots) == 1
-        else ("(t:Terms)", f" WHERE t.id IN [{', '.join(map(str, roots))}]")
+        else ("(t:Terms)", f" WHERE t.id IN {among}")
     )
+    return f"MATCH {start}-[:{typed}*0..{depth}]-(a:Terms){where} {links}"
+
+
+def _drawn(terms: list[int]) -> str:
+    """The terms a focus draws as ontologyCypher.drawnCypher writes them."""
+    typed = "|".join(_LINKS)
+    among = f"[{', '.join(map(str, terms))}]"
     return (
-        f"MATCH {start}-[:{typed}*0..{depth}]-(a:Terms){where} "
-        f"OPTIONAL MATCH (a)-[r:{typed}]->(b:Terms) RETURN DISTINCT a, r, b"
+        f"MATCH (a:Terms) WHERE a.id IN {among} "
+        f"OPTIONAL MATCH (a)-[r:{typed}]->(b:Terms) WHERE b.id IN {among} RETURN a, r, b"
     )
 
 
@@ -241,3 +257,168 @@ def test_it_answers_the_connected_part_and_its_links() -> None:
     assert links == {(2, 1), (3, 1), (2, 3), (4, 3), (5, 4), (6, 5)}
     # 7 and 8, linked only to each other, are never reached; three steps stop short of 6.
     assert answer(3)[0] == {1, 2, 3, 4, 5}
+
+
+# The query as the Cypher endpoints run it (bolt/session.py, api/flight/server.py): the
+# translation, its graph values built (apply_graph_rewrites), the semantic SQL written for
+# PostgreSQL, then transpiled for the engine or the source that runs it.
+
+
+def _semantic(query: str) -> str:
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+
+    label_map = _label_map()
+    ast, _, graph_vars = cypher_to_sql(parse_cypher(query), label_map, {})
+    return apply_graph_rewrites(ast, graph_vars, label_map).sql(dialect="postgres")
+
+
+def _physical(query: str, target: str) -> str:
+    from provisa.transpiler.transpile import (
+        direct_physical,
+        rewrite_json_object_to_build_object,
+        transpile,
+    )
+
+    semantic = _semantic(query)
+    if target == "postgres":
+        # The pg engine's form (PgBackend.transpile_physical) and a read sent DIRECT to a
+        # PostgreSQL source (direct_physical) are one.
+        engine = rewrite_json_object_to_build_object(
+            transpile(semantic, "postgres", generated=True)
+        )
+        assert (
+            direct_physical(transpile(semantic, "postgres", generated=True), "postgres") == engine
+        )
+        return engine
+    return transpile(semantic, target, generated=True)
+
+
+def _distinct_selects(sql: str, dialect: str) -> list:
+    import sqlglot
+    from sqlglot import exp
+
+    tree = sqlglot.parse_one(sql, read=dialect)
+    return [s for s in tree.find_all(exp.Select) if s.args.get("distinct")]
+
+
+_JSON_BUILDERS = re.compile(
+    r"\b(json_object|json_build_object|jsonb_build_object|tojson)\s*\(", re.I
+)
+
+
+@pytest.mark.parametrize("depth", [1, 2, 4])
+@pytest.mark.parametrize("roots", [[7], [15, 16]])
+def test_postgres_runs_it_as_postgresql_spells_it(roots: list[int], depth: int) -> None:
+    # PostgreSQL 16 has no variadic json_object(k, v, ...): the objects are json_build_object,
+    # and the DISTINCT compares the columns they are built from, never json, which PostgreSQL
+    # cannot compare ("could not identify an equality operator for type json").
+    sql = _physical(_all_hops(roots, depth), "postgres")
+    assert re.search(r"\bjson_object\s*\(", sql, re.I) is None, sql
+    assert "JSON_BUILD_OBJECT(" in sql.upper()
+    distinct = _distinct_selects(sql, "postgres")
+    assert len(distinct) == 1, sql
+    assert _JSON_BUILDERS.search(distinct[0].sql(dialect="postgres")) is None
+
+
+@pytest.mark.parametrize("target", ["duckdb", "trino", "clickhouse"])
+def test_each_engine_compares_columns_not_json(target: str) -> None:
+    sql = _physical(_all_hops([7], 3), target)
+    distinct = _distinct_selects(sql, target)
+    assert len(distinct) == 1, sql
+    projected = " ".join(e.sql(dialect=target) for e in distinct[0].expressions)
+    assert _JSON_BUILDERS.search(projected) is None, projected
+    # The walk is still seeded by the root alone, and bounded.
+    assert "hops < 3" in sql
+
+
+def test_duckdb_answers_it_as_the_endpoints_run_it() -> None:
+    import json
+
+    con = duckdb.connect()
+    _world(con)
+
+    def answer(depth: int) -> tuple[list[tuple[int, str | None]], set[tuple[int, int]]]:
+        rel = con.execute(_physical(_all_hops([1], depth), "duckdb"))
+        cols = [d[0] for d in rel.description]
+        rows = [dict(zip(cols, row)) for row in rel.fetchall()]
+        keys = [
+            (
+                json.loads(row["a"])["properties"]["id"],
+                row["r"] and json.loads(row["r"])["identity"],
+            )
+            for row in rows
+        ]
+        links = {
+            (link["start"], link["end"])
+            for link in (json.loads(row["r"]) for row in rows if row["r"] is not None)
+        }
+        return keys, links
+
+    keys, links = answer(4)
+    # Each term and each link from it once, though the cycle 1-2-3 reaches 2 and 3 twice.
+    assert len(keys) == len(set(keys))
+    assert {k[0] for k in keys} == {1, 2, 3, 4, 5, 6}
+    assert links == {(2, 1), (3, 1), (2, 3), (4, 3), (5, 4), (6, 5)}
+    assert {k[0] for k in answer(3)[0]} == {1, 2, 3, 4, 5}
+
+
+def _answer(con: duckdb.DuckDBPyConnection, query: str) -> tuple[list, set[tuple[int, int]]]:
+    import json
+
+    rel = con.execute(_physical(query, "duckdb"))
+    cols = [d[0] for d in rel.description]
+    rows = [dict(zip(cols, row)) for row in rel.fetchall()]
+    keys = [
+        (json.loads(row["a"])["properties"]["id"], row["r"] and json.loads(row["r"])["identity"])
+        for row in rows
+    ]
+    links = {
+        (link["start"], link["end"])
+        for link in (json.loads(row["r"]) for row in rows if row["r"] is not None)
+    }
+    return keys, links
+
+
+@pytest.mark.parametrize(
+    ("roots", "depth", "terms", "links"),
+    [
+        # No search and no focus: every term the filters keep, at no hop, and the links leaving it.
+        (
+            [1, 2, 3, 4, 5, 6, 7, 8],
+            0,
+            {1, 2, 3, 4, 5, 6, 7, 8},
+            {(2, 1), (3, 1), (2, 3), (4, 3), (5, 4), (6, 5), (7, 8)},
+        ),
+        ([3], 0, {3}, {(3, 1)}),
+        ([3], 1, {1, 2, 3, 4}, {(2, 1), (3, 1), (2, 3), (4, 3)}),
+        ([3], 2, {1, 2, 3, 4, 5}, {(2, 1), (3, 1), (2, 3), (4, 3), (5, 4)}),
+        ([6, 7], 1, {5, 6, 7, 8}, {(5, 4), (6, 5), (7, 8)}),
+    ],
+)
+def test_every_hops_value_answers_as_it_opens(
+    roots: list[int], depth: int, terms: set[int], links: set[tuple[int, int]]
+) -> None:
+    con = duckdb.connect()
+    _world(con)
+    keys, got = _answer(con, _all_hops(roots, depth))
+    assert len(keys) == len(set(keys))
+    assert {k[0] for k in keys} == terms
+    assert got == links
+
+
+def test_a_focus_opens_as_the_terms_it_draws() -> None:
+    con = duckdb.connect()
+    _world(con)
+    keys, links = _answer(con, _drawn([1, 2, 4]))
+    assert len(keys) == len(set(keys))
+    assert {k[0] for k in keys} == {1, 2, 4}
+    # Only the links between the terms drawn: 4's link to 3 is not.
+    assert links == {(2, 1)}
+
+
+@pytest.mark.parametrize("query", [_all_hops([3], 0), _drawn([1, 2, 4])])
+def test_the_other_shapes_run_on_postgres_as_it_spells_them(query: str) -> None:
+    sql = _physical(query, "postgres")
+    assert re.search(r"\bjson_object\s*\(", sql, re.I) is None, sql
+    for distinct in _distinct_selects(sql, "postgres"):
+        assert _JSON_BUILDERS.search(distinct.sql(dialect="postgres")) is None

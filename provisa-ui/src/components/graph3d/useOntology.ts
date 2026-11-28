@@ -37,7 +37,7 @@ import {
   type TableColumnsRow,
 } from "./tableColumns";
 import { readOntology } from "./ontologyRead";
-import { allHopsCypher, termsCypherGraph } from "./ontologyCypher";
+import { allHopsCypher, drawnCypher, termsCypherGraph } from "./ontologyCypher";
 import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
@@ -48,10 +48,28 @@ export type QueryLanguage = "graphql" | "cypher";
 /** What a read of the ontology came to: the graph and the query that read it, in ``language``, or
  * -- past the budget -- how many terms it would have read, with each term's domains; ``hops``: its
  * root was within the budget, and its hops (All's, or a few hops of a dense part) took it past, so
- * it would draw more than the budget, ``over``. */
+ * it would draw more than the budget, ``over``. ``walk``: the view's terms as one Cypher query
+ * reads them, whatever its Hops (allHopsCypher); null when it reads no term (the Product map's
+ * products apart). */
 export type Loaded =
-  | { data: GraphData; query: string; language: QueryLanguage; over?: undefined }
-  | { over: number; rows: CountRow[]; query: string; language: "graphql"; hops?: true };
+  | { data: GraphData; query: string; language: QueryLanguage; walk: Walk | null; over?: undefined }
+  | {
+      over: number;
+      rows: CountRow[];
+      query: string;
+      language: "graphql";
+      walk: Walk | null;
+      hops?: true;
+    };
+
+/** A view's terms as one Cypher query reads them (allHopsCypher): from ``roots`` -- the terms its
+ * root reads: a search's matches, a focus's terms, or with neither every term its filters keep --
+ * ``depth`` steps over the links of ``edgeTypes`` (every link type, when none). */
+export interface Walk {
+  roots: number[];
+  depth: number;
+  edgeTypes: string[];
+}
 
 /** The ontology as ``scope`` reads it, opened as one query (REQ-2136), by the rules it reads by
  * (QueryScope.products): its terms counted first, and read only within the budget (REQ-2143);
@@ -65,8 +83,13 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (query === null || (terms && count === null)) return null;
   const counted =
     count === null ? [] : (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
+  // REQ-2136, REQ-2174: the view as one Cypher query, for every Hops value: from the terms its
+  // root reads -- those counted -- walked as far as the view reads.
+  const walk = (depth: number): Walk | null =>
+    terms ? { roots: counted.map((r) => r.id), depth, edgeTypes: [...scope.edgeTypes] } : null;
+  // Past the budget at the root, the view draws the terms counted alone (the overview's).
   if (counted.length > NODE_BUDGET)
-    return { over: counted.length, rows: counted, query, language: "graphql" };
+    return { over: counted.length, rows: counted, query, language: "graphql", walk: walk(0) };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
   // alone. Else a search's or a focus's neighbourhood is kept by its root's where, one read; All's
   // is walked a hop at a time, each term once.
@@ -77,6 +100,13 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
     counted.length > 0,
     NODE_BUDGET,
   );
+  if (opened === null) return null;
+  // A fixed Hops value is its own bound (none without a search or a focus); All's, the steps its
+  // walk took to the end of the connected part, or as far as it went.
+  const levels = termLevels(scope);
+  const walked = walk(
+    Number.isFinite(levels) ? levels : opened.language === "cypher" ? opened.depth : 0,
+  );
   // REQ-2174 (amended 2026-11-12): All follows the connected part to its end under the budget --
   // past it the reads stop, and that it is past is said, as at the root.
   const past = {
@@ -84,17 +114,17 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
     rows: counted,
     query,
     language: "graphql",
+    walk: walked,
     hops: true,
   } as const;
   if (over) return past;
   // REQ-2136, REQ-2174 (amended 2026-11-27): what the view opens as is the one query that read it,
   // its hops its reach filter; All's, the Cypher variable-length query from its root's terms.
-  if (opened === null) return null;
   const data = ontologyGraph(rows, scope);
-  if (termLevels(scope) > 0 && data.nodes.length > NODE_BUDGET) return past;
+  if (levels > 0 && data.nodes.length > NODE_BUDGET) return past;
   const said =
     opened.language === "graphql"
-      ? { query: opened.query, language: opened.language }
+      ? { query: opened.query, language: opened.language, walk: walked }
       : {
           query: allHopsCypher(
             await termsCypherGraph(role),
@@ -103,6 +133,7 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
             scope.edgeTypes,
           ),
           language: opened.language,
+          walk: walked,
         };
   // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];
@@ -141,6 +172,15 @@ function everything(preset: OntologyPreset, on: readonly LayerId[]): QueryScope 
     depth: preset.depth,
     products: preset.products,
   };
+}
+
+/** The view's terms as one Cypher query, written when it is asked for (Open as query): the walk
+ * the view's read states (``walk``), or the terms a focus draws within it (``drawn``). ``key``
+ * names the walk, so a query written is the view's while the key holds. */
+export interface ViewCypher {
+  key: string;
+  walk: () => Promise<string>;
+  drawn: (terms: readonly number[]) => Promise<string>;
 }
 
 /** What a read came to, and how the view says it. */
@@ -315,6 +355,20 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
         : scoped.query.replace(/\n}$/, `\n  ${columnsField}\n}`);
   // The language ``text`` is written in; none while there is no text.
   const language: QueryLanguage | null = text === null || scoped === null ? null : scoped.language;
+  // REQ-2136, REQ-2174: the view opens as Cypher in every state: its terms walked as its read
+  // walks them, written with the server's label and link types when it is asked for.
+  const walk = text === null || scoped === null ? null : scoped.walk;
+  const walkKey = walk === null ? null : JSON.stringify(walk);
+  const cypher = useMemo((): ViewCypher | null => {
+    if (walkKey === null || actingRoles === null) return null;
+    const w = JSON.parse(walkKey) as Walk;
+    return {
+      key: walkKey,
+      walk: async () =>
+        allHopsCypher(await termsCypherGraph(actingRoles), w.roots, w.depth, w.edgeTypes),
+      drawn: async (terms) => drawnCypher(await termsCypherGraph(actingRoles), terms, w.edgeTypes),
+    };
+  }, [walkKey, actingRoles]);
   const notice =
     scoped?.over !== undefined && !overview
       ? t(scoped.hops ? "graph3d.overBudgetHops" : "graph3d.overBudget", { count: scoped.over })
@@ -325,6 +379,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     onExpanded,
     text,
     language,
+    cypher,
     notice,
     overview,
     ...(focus === null ? {} : { own: focus }),

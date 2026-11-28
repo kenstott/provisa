@@ -14,7 +14,7 @@
 // through the whole graph (an untyped, unbounded [*] timed out over 185k nodes, 2026-11-28).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allHopsCypher, termsCypherGraph } from "../ontologyCypher";
+import { allHopsCypher, drawnCypher, termsCypherGraph } from "../ontologyCypher";
 
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -48,11 +48,29 @@ describe("allHopsCypher", () => {
     );
   });
 
-  it("reads the roots and their links among themselves when the walk took no hop", () => {
-    expect(allHopsCypher(GRAPH, [1, 2], 0, [])).toBe(
-      "MATCH (t:Ontology:Terms)-[:KIND_OF|PART_OF|RELATED_TO*0..0]-(a:Ontology:Terms) " +
-        "WHERE t.id IN [1, 2] " +
+  it("reads the roots and the links leaving them at no hop (no search, no focus)", () => {
+    expect(allHopsCypher(GRAPH, [2, 1], 0, [])).toBe(
+      "MATCH (a:Ontology:Terms) WHERE a.id IN [1, 2] " +
         "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF|RELATED_TO]->(b:Ontology:Terms) RETURN DISTINCT a, r, b",
+    );
+    expect(allHopsCypher(GRAPH, [7], 0, [])).toBe(
+      "MATCH (a:Ontology:Terms {id: 7}) " +
+        "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF|RELATED_TO]->(b:Ontology:Terms) RETURN DISTINCT a, r, b",
+    );
+  });
+
+  it("is bounded by each Hops value the view walks, 1, 2, ... and All's depth", () => {
+    for (const depth of [1, 2, 3, 9]) {
+      const q = allHopsCypher(GRAPH, [7], depth, []);
+      expect(q).toContain(`*0..${depth}]`);
+      expect(q).not.toMatch(/\[\*\]|\*\]|\*\.\.\]/);
+      expect(q).toContain("RETURN DISTINCT a, r, b");
+    }
+  });
+
+  it("answers no term for a root that read none, as the view draws none", () => {
+    expect(allHopsCypher(GRAPH, [], 2, [])).toBe(
+      "MATCH (a:Ontology:Terms) WHERE a.id IN [] RETURN a",
     );
   });
 
@@ -65,10 +83,25 @@ describe("allHopsCypher", () => {
     );
   });
 
-  it("refuses a walk of no roots or of a depth that is not a whole number of hops", () => {
-    expect(() => allHopsCypher(GRAPH, [], 2, [])).toThrow(/none/);
+  it("refuses a depth that is not a whole number of hops", () => {
     expect(() => allHopsCypher(GRAPH, [7], Infinity, [])).toThrow(/whole number/);
     expect(() => allHopsCypher(GRAPH, [7], -1, [])).toThrow(/whole number/);
+  });
+});
+
+describe("drawnCypher", () => {
+  it("reads the terms a focus draws and the links between them", () => {
+    expect(drawnCypher(GRAPH, [4, 1, 2, 1], ["RELATED_TO", "KIND_OF"])).toBe(
+      "MATCH (a:Ontology:Terms) WHERE a.id IN [1, 2, 4] " +
+        "OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Ontology:Terms) WHERE b.id IN [1, 2, 4] " +
+        "RETURN a, r, b",
+    );
+  });
+
+  it("reads the terms alone when the view keeps no link type served", () => {
+    expect(drawnCypher(GRAPH, [3], ["ANTONYM_OF"])).toBe(
+      "MATCH (a:Ontology:Terms) WHERE a.id IN [3] RETURN a",
+    );
   });
 });
 
