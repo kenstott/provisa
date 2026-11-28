@@ -10,17 +10,17 @@
 
 // One command of a page header's action row (PageActions): the control, what it does, and its
 // documentation (maintainer 2026-11-28). In the row, hovering the control opens a card with the
-// description and a "Read the documentation" link; the card is a HoverCard, so the pointer can move
-// onto it and follow the link. Moved into the (...) menu, the control shows the same text and link
+// description and a "Read the documentation" link; the card stays open while the pointer is over the
+// control or the card (useStayOpen, as the page's (?) does), so the link can be followed. Moved into the (...) menu, the control shows the same text and link
 // beneath it. toolbarGuard fails a PageActions child that is not a PageCommand with a description
 // and a docs target.
 
 import type { ReactNode } from "react";
-import { HoverCard, Stack, Text } from "@mantine/core";
+import { Popover, Stack, Text } from "@mantine/core";
 import { DocsLink } from "./DocsLink";
 import type { DocsTarget } from "./docsTarget";
-import { PAGE_HELP_CLOSE_DELAY_MS } from "./PageHelp";
 import { TIP_MAX_WIDTH, TIP_OPEN_DELAY_MS } from "./Tip";
+import { useStayOpen } from "./useStayOpen";
 
 export interface PageCommandProps {
   /** What the command does: one plain sentence, translated. */
@@ -46,27 +46,54 @@ export function PageCommand({ description, docs, children, inMenu = false }: Pag
     );
   }
   return (
-    <HoverCard
-      openDelay={TIP_OPEN_DELAY_MS}
-      closeDelay={PAGE_HELP_CLOSE_DELAY_MS}
+    <InRow description={description} docs={docs}>
+      {children}
+    </InRow>
+  );
+}
+
+function InRow({ description, docs, children }: Omit<PageCommandProps, "inMenu">) {
+  const { opened, open, closeSoon, set } = useStayOpen();
+  return (
+    <Popover
+      opened={opened}
+      onChange={set}
       position="bottom-end"
       width={TIP_MAX_WIDTH}
-      shadow="md"
       withArrow
+      shadow="md"
+      closeOnEscape
+      closeOnClickOutside
     >
-      <HoverCard.Target>
-        <span className="page-command" data-testid="page-command">
+      <Popover.Target>
+        <span
+          className="page-command"
+          data-testid="page-command"
+          // A pointer crossing the row opens nothing; one that rests on the command does.
+          onMouseEnter={() => open(TIP_OPEN_DELAY_MS)}
+          onMouseLeave={closeSoon}
+          // Pressing the command runs it (or opens its own menu): the card gives way.
+          onClickCapture={() => set(false)}
+          onFocus={(e) => {
+            if ((e.target as HTMLElement).matches(":focus-visible")) open();
+          }}
+          onBlur={closeSoon}
+        >
           {children}
         </span>
-      </HoverCard.Target>
-      <HoverCard.Dropdown data-testid="page-command-card">
+      </Popover.Target>
+      <Popover.Dropdown
+        data-testid="page-command-card"
+        onMouseEnter={() => open()}
+        onMouseLeave={closeSoon}
+      >
         <Stack gap="xs">
           <Text size="xs" data-testid="page-command-description">
             {description}
           </Text>
           <DocsLink target={docs} testId="page-command-docs" />
         </Stack>
-      </HoverCard.Dropdown>
-    </HoverCard>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
