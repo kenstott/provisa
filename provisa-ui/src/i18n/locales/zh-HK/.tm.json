@@ -3850,6 +3850,7 @@
   "zh-HK/lineageDag.json::lineageDag.reportedEdge": "reported by OpenLineage",
   "zh-HK/lineageDag.json::lineageDag.stats": "{{columns}} columns · {{edges}} edges",
   "zh-HK/lineageDag.json::lineageDag.unused": "+{{count}} unused",
+  "zh-HK/lineageDag.json::lineageDag.via": "via {{views}}",
   "zh-HK/lineagePage.json::lineagePage.allRoles": "All roles",
   "zh-HK/lineagePage.json::lineagePage.complete": "Complete Lineage",
   "zh-HK/lineagePage.json::lineagePage.copied": "Copied",

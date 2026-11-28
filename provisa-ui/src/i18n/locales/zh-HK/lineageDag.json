@@ -5,6 +5,7 @@
     "reportedEdge": "由 OpenLineage 回報",
     "columns_one": "{{count}} 個欄位",
     "columns_other": "{{count}} 個欄位",
+    "via": "經由 {{views}}",
     "unused": "+{{count}} 個未使用",
     "materialized": "已實體化",
     "feedbackCycle": "處於回饋循環中",

@@ -19,12 +19,17 @@ import {
   ROW_H,
   buildLineageModel,
   edgeText,
+  edgeWords,
   lanesFrom,
   rowPosition,
   transformLabel,
   viewsBetween,
 } from "../lineage-layout";
 import type { LineageGraphData } from "../../../api/lineage";
+import i18n from "../../../i18n";
+
+/** The edge words as English reads them. */
+const EN = edgeWords(i18n.getFixedT("en"));
 
 const op = (name: string, kind: "sql_function" | "identity" = "sql_function") => ({ name, kind });
 
@@ -200,7 +205,7 @@ describe("buildLineageModel", () => {
       expect(m.edges).toHaveLength(1);
       expect(m.edges[0]).toMatchObject({ source: "a.x", target: "m.x", via: ["v1"] });
       expect(m.edges[0].label).toBe("upper trim");
-      expect(edgeText(m.edges[0])).toBe("upper trim via v1");
+      expect(edgeText(m.edges[0], EN)).toBe("upper trim via v1");
     });
 
     it("names both views of a chain, in the order the column passes through them", () => {
@@ -208,7 +213,7 @@ describe("buildLineageModel", () => {
       expect(m.boxes.map((b) => b.relation).sort()).toEqual(["a", "m"]);
       expect(m.edges).toHaveLength(1);
       expect(m.edges[0]).toMatchObject({ source: "a.x", target: "m.x", via: ["v1", "v2"] });
-      expect(edgeText(m.edges[0])).toBe("upper trim lower via v1, v2");
+      expect(edgeText(m.edges[0], EN)).toBe("upper trim lower via v1, v2");
     });
 
     it("names a view as the page names its relation", () => {
@@ -216,7 +221,7 @@ describe("buildLineageModel", () => {
         lanesAround: around,
         relationLabel: (r) => `sales.${r}`,
       });
-      expect(edgeText(m.edges[0])).toBe("upper trim via sales.v1");
+      expect(edgeText(m.edges[0], EN)).toBe("upper trim via sales.v1");
     });
 
     it("leaves a direct input-to-member edge as it is, with no via", () => {
@@ -229,7 +234,7 @@ describe("buildLineageModel", () => {
       const m = buildLineageModel(direct, undefined, { lanesAround: around });
       expect(m.edges).toHaveLength(1);
       expect(m.edges[0].via).toEqual([]);
-      expect(edgeText(m.edges[0])).toBe("upper");
+      expect(edgeText(m.edges[0], EN)).toBe("upper");
     });
 
     it("finds the views between, not the inputs, members or what lies beyond an input", () => {
@@ -342,7 +347,7 @@ describe("buildLineageModel", () => {
     expect(orders.rows).toHaveLength(2); // kept for the header count, not drawn
     const folded = m.edges.find((e) => e.source === "rel:orders")!;
     expect(folded).toMatchObject({ target: "cte.total", count: 2, label: "*" });
-    expect(edgeText(folded)).toBe("* · 2 columns");
+    expect(edgeText(folded, EN)).toBe("* · 2 columns");
   });
 
   // REQ-2239 (amended 2026-11-27): both lineage views label edges with their transforms.
@@ -367,12 +372,15 @@ describe("buildLineageModel", () => {
     const m = buildLineageModel(g, new Set(["o", "r"]));
     expect(m.edges).toHaveLength(1);
     expect(m.edges[0]).toMatchObject({ count: 3, label: "SUM, COUNT" });
-    expect(edgeText(m.edges[0])).toBe("SUM, COUNT · 3 columns");
+    expect(edgeText(m.edges[0], EN)).toBe("SUM, COUNT · 3 columns");
   });
 
   it("names a cast as its op names it, and a function by its literal arguments", () => {
     expect(
-      transformLabel({ transform: "CAST(a AS INT)", ops: [{ name: "CAST", kind: "sql_function" }] }),
+      transformLabel({
+        transform: "CAST(a AS INT)",
+        ops: [{ name: "CAST", kind: "sql_function" }],
+      }),
     ).toBe("CAST");
     expect(
       transformLabel({

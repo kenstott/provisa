@@ -5,6 +5,7 @@
     "reportedEdge": "von OpenLineage gemeldet",
     "columns_one": "{{count}} Spalte",
     "columns_other": "{{count}} Spalten",
+    "via": "über {{views}}",
     "unused": "+{{count}} ungenutzt",
     "materialized": "materialisiert",
     "feedbackCycle": "in einem Rückkopplungszyklus",

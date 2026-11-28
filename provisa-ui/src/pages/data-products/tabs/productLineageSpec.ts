@@ -19,7 +19,7 @@ import type {
   GraphNodeSpec,
   GraphSpec,
 } from "../../../components/provisa-graph/model";
-import { transformLabel } from "../../../components/lineage/lineage-layout";
+import { type EdgeWords, transformLabel } from "../../../components/lineage/lineage-layout";
 
 export const LANE_INPUTS = "inputs";
 export const LANE_TABLES = "tables";
@@ -36,6 +36,7 @@ export interface ProductLineageView {
 export function productLineageSpec(
   g: ProductLineage,
   label: (relation: string) => string,
+  words: Pick<EdgeWords, "via">,
 ): ProductLineageView {
   const members = new Set(g.members);
   const inputs = new Set(g.inputs.map((i) => i.relation));
@@ -72,7 +73,9 @@ export function productLineageSpec(
   const transformsAlong = (chain: string[]): string =>
     [
       ...new Set(
-        chain.slice(1).flatMap((target, k) => [...(hopTransforms.get(hop(chain[k], target)) ?? [])]),
+        chain
+          .slice(1)
+          .flatMap((target, k) => [...(hopTransforms.get(hop(chain[k], target)) ?? [])]),
       ),
     ].join(", ");
   const readers = new Map<string, Set<string>>(); // relation -> the relations reading it
@@ -138,7 +141,13 @@ export function productLineageSpec(
       // REQ-2239: the line names its transforms, then the views it reads through.
       const transforms = transformsAlong([source, ...via, target]);
       const through = via.map(label).join(" → ");
-      const text = via.length > 0 ? [transforms, through].filter(Boolean).join(" via ") : transforms;
+      // A hop of plain copies through views names the views alone.
+      const text =
+        via.length > 0
+          ? transforms
+            ? `${transforms} ${words.via(through)}`
+            : through
+          : transforms;
       edges.push({
         id,
         source,
