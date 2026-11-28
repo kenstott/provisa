@@ -119,6 +119,8 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT regexp_replace('abc', 'b', '[\\x]') AS v", "a[\\x]c"),
     ("SELECT regexp_replace('abc', 'b', '[\\\\]') AS v", "a[\\]c"),
     ("SELECT regexp_replace('abc', 'b', '[\\0]') AS v", "a[\\0]c"),
+    # A word boundary matches the empty text: each match counted as PostgreSQL finds it.
+    ("SELECT regexp_count('a b', '\\y') AS v", "4"),
 ]
 
 #: Calls PostgreSQL raises on, or a form raises on within its stated bound: (statement, SQLSTATE).
@@ -136,8 +138,6 @@ RAISED = [
     ("SELECT regexp_replace('été', '\\w', 'X') AS v", "0A000"),
     ("SELECT regexp_replace('a\u3000b', '\\s', '-') AS v", "0A000"),
     ("SELECT regexp_count('été', '[[:alpha:]]') AS v", "0A000"),
-    # A pattern that matches the empty text where the function counts it (a stated bound).
-    ("SELECT regexp_count('a b', '\\y') AS v", "0A000"),
 ]
 
 #: What RE2 cannot express: refused by name (0A000), with the reason.

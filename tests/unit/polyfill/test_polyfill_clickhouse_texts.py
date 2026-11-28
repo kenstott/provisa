@@ -697,6 +697,13 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT pg_catalog.regexp_substr('foo123bar45'::text, '[0-9]+'::text, 1, 2) AS v", "45"),
     ("SELECT pg_catalog.regexp_substr('foo123bar45'::text, '\\d+'::text, 5) AS v", "23"),
     ("SELECT pg_catalog.regexp_substr('it''s'::text, '''s'::text) AS v", "'s"),
+    # PostgreSQL counts each empty match (regexp_count('abc', '') is 4), where countMatches and
+    # extractAll skip them: a pattern that can match the empty text is searched as PostgreSQL
+    # searches it (REQ-2236).
+    ("SELECT pg_catalog.regexp_count('abc'::text, ''::text) AS v", "4"),
+    ("SELECT pg_catalog.regexp_count('abc'::text, 'x*'::text) AS v", "4"),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, 'b*'::text) AS v", ""),
+    ("SELECT pg_catalog.regexp_substr('abc'::text, '^'::text) AS v", ""),
     # The empty pattern matches the empty text before each character and at the end (REQ-2236).
     ("SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text) AS v", ""),
     ("SELECT pg_catalog.\"regexp_substr\"('abc'::text, ''::text, 3::integer) AS v", ""),
@@ -945,13 +952,6 @@ RAISED = [
     ("SELECT pg_catalog.bpchar('abcdef'::character(6), 7, false) AS v", "22001"),
     ("SELECT '4294967296'::oid AS v", "22003"),
     ("SELECT 'x'::oid AS v", "22P02"),
-    # PostgreSQL 17 counts each empty match (regexp_count('abc', '') is 4); ClickHouse's
-    # countMatches skips them, so a pattern that matches the empty text is its stated 0A000.
-    ("SELECT pg_catalog.regexp_count('abc'::text, ''::text) AS v", "0A000"),
-    ("SELECT pg_catalog.regexp_count('abc'::text, 'x*'::text) AS v", "0A000"),
-    # extractAll skips an empty match too: regexp_substr('abc', 'b*') is '' on PostgreSQL.
-    ("SELECT pg_catalog.regexp_substr('abc'::text, 'b*'::text) AS v", "0A000"),
-    ("SELECT pg_catalog.regexp_substr('abc'::text, '^'::text) AS v", "0A000"),
     # A pattern no form here searches as PostgreSQL does (no literal, or a replacement that is no
     # literal) raises 0A000 where it matches the empty text.
     (
