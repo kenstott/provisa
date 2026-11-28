@@ -177,6 +177,35 @@ class TestViewSqlPhysicalRewrite:
         assert '"custRef"."id"' in out
         assert 'AS "custRef"' in out
 
+    def test_mixed_case_governed_relation_alias_is_quoted_with_its_qualifiers(self, schema_and_ctx):
+        """Governance puts a derived table in a table's place under the statement's alias, its
+        inner table aliased the same name. Once that inner alias is quoted, every column qualifier
+        of the name is quoted, so the derived table's own alias must be too: an unquoted
+        ``AS mRegisteredTa`` folds to ``mregisteredta`` and ``"mRegisteredTa"."id"`` outside it
+        names nothing (Cypher explorer, 2026-11-28: "missing FROM-clause entry for table").
+        """
+        import sqlglot
+
+        from provisa.compiler.sql_rewrite import normalize_table_refs
+
+        _, ctx = schema_and_ctx
+        sql = (
+            'SELECT mRegisteredTa."id" FROM customers AS n LEFT JOIN '
+            '(SELECT "mRegisteredTa"."id" AS "id" FROM orders AS "mRegisteredTa") AS mRegisteredTa '
+            'ON mRegisteredTa."id" = n."id"'
+        )
+        out = normalize_table_refs(sql, ctx)
+        assert ') AS "mRegisteredTa"' in out
+        assert '"mRegisteredTa"."id" = "n"."id"' in out
+        # Every alias of the name and every qualifier read it in one case, as PostgreSQL binds.
+        tree = sqlglot.parse_one(out, read="postgres")
+        names = {
+            (a.this.this, a.this.quoted)
+            for a in tree.find_all(sqlglot.exp.TableAlias)
+            if a.this.this.lower() == "mregisteredta"
+        }
+        assert names == {("mRegisteredTa", True)}
+
 
 class TestMaterializedViewPhysicalCompile:
     """Regression: a materialized user-view MV must have its semantic SQL compiled to a

@@ -512,6 +512,15 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         tbl_id = col.args.get("table")
         if isinstance(tbl_id, exp.Identifier) and tbl_id.this in quoted_aliases:
             tbl_id.set("quoted", True)
+    # A derived table under one of those names -- governance's relation in a table's place keeps
+    # the statement's alias (stage2), its inner table aliased the same -- is bound by the
+    # qualifiers just quoted, so its alias is quoted with them: unquoted, PostgreSQL folds a
+    # mixed-case `AS mRegisteredTa` and `"mRegisteredTa"."id"` names nothing.
+    for sub in tree.find_all(exp.Subquery):
+        sub_alias = sub.args.get("alias")
+        ident = sub_alias.this if isinstance(sub_alias, exp.TableAlias) else None
+        if isinstance(ident, exp.Identifier) and ident.this in quoted_aliases:
+            ident.set("quoted", True)
 
     return tree.sql(dialect="postgres", copy=False)
 

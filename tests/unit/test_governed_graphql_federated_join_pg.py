@@ -140,7 +140,7 @@ def test_the_pg_engine_statement_is_mains_read_through_governed_relations():
         'FROM (SELECT "t1"."event_id" AS "event_id", "t1"."order_id" AS "order_id", '
         '"t1"."event_type" AS "event_type" '
         'FROM "ch"."perf_bench"."order_events" AS "t1") AS "t1" '
-        'WHERE "t1"."order_id" >= $1 AND "t1"."order_id" <= $2) AS t1 '
+        'WHERE "t1"."order_id" >= $1 AND "t1"."order_id" <= $2) AS "t1" '
         'GROUP BY "t1"."order_id") AS "t1_read" ON "t1_read"."_key0" = "t0"."order_id" '
         'LEFT JOIN (SELECT "_key0", "_value" FROM (SELECT "t2"."order_id" AS "_key0", '
         'JSON_OBJECT(\'status\': "t2"."status") AS "_value", '

@@ -181,6 +181,29 @@ def test_a_path_is_answered_with_its_nodes_and_edges(instance):
     assert all(e["type"] == "HAS_PETS" for e in path["edges"]), path
 
 
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        # A junction hop: its junction (_term_refs) is a governed relation under rTableColumns__via.
+        "MATCH (n:Ontology:Terms) OPTIONAL MATCH "
+        "(n)-[rTableColumns:REFERENCED_BY]-(mTableColumns:Meta:TableColumns) "
+        "RETURN n, rTableColumns, mTableColumns LIMIT 1000",
+        # An FK hop: its far node is a governed relation under mRegisteredTa.
+        "MATCH (n:Meta:TableColumns) OPTIONAL MATCH "
+        "(n)-[rRegisteredTa:HAS_TABLE_COLUMNS]-(mRegisteredTa:Meta:RegisteredTables) "
+        "RETURN n, rRegisteredTa, mRegisteredTa LIMIT 2500",
+    ],
+    ids=["junction", "fk"],
+)
+def test_an_explorer_label_click_hop_under_mixed_case_variables_is_answered(instance, cypher):
+    """The Cypher explorer's label-click statement (2026-11-28): each relation of the OPTIONAL
+    hop, governed under a mixed-case variable, binds the qualifiers that read it."""
+    body = _cypher_ok(instance, cypher)
+    assert body["rows"], body
+    far = body["columns"][2]  # the hop's far node, the third returned
+    assert any(row[far] is not None for row in body["rows"]), body["rows"][:3]
+
+
 def test_a_cypher_answer_says_whether_it_came_from_the_cache(instance):
     """REQ-536: every data response names its cache status; a HIT also names its age."""
     resp = _cypher(instance, "MATCH (n:Meta:RegisteredTables) RETURN n LIMIT 1")
