@@ -33,12 +33,14 @@ import functools
 import logging
 import time
 import os
+import weakref
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, Literal
 
 from provisa.api.mcp import tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.org_resolve import OrgResolutionError
+from provisa.auth import bearer
 from provisa.core import request_deadline
 from provisa.core.request_context import require_current_org, reset_current_org, set_current_org
 from provisa.core.request_thread import run_on_request_thread
@@ -49,6 +51,9 @@ from provisa.api.engine_error_names import client_text
 from provisa.security.rights import capabilities_for_claims
 
 log = logging.getLogger(__name__)
+
+# The MCP specification's log levels (RFC 5424's), least to most severe.
+_LOG_LEVELS = ("debug", "info", "notice", "warning", "error", "critical", "alert", "emergency")
 _tracer = _get_tracer(__name__)
 
 
@@ -432,6 +437,19 @@ def build_mcp_server(state: Any):
     # there (the import is deferred to keep ``mcp`` optional at module import time).
     globals()["Context"] = Context
 
+    # MCP logging (the specification's server utilities): the server sends log notifications
+    # (REQ-1137's license nag, REQ-1350's statement warnings), so it declares the logging
+    # capability and answers logging/setLevel. A session sent no level gets every notification.
+    session_levels: weakref.WeakKeyDictionary[Any, str] = weakref.WeakKeyDictionary()
+
+    async def _log_to_session(
+        ctx: Context, level: Literal["debug", "info", "warning", "error"], message: str
+    ) -> None:
+        floor = session_levels.get(ctx.session)
+        if floor is not None and _LOG_LEVELS.index(level) < _LOG_LEVELS.index(floor):
+            return
+        await ctx.log(level, message)
+
     async def _emit_mcp_nag(ctx: Context) -> None:
         """Emit the REQ-1137 license nag once per session as an MCP notifications/message (an
         out-of-band log notification — never part of a tool result). Best-effort; never fails a call."""
@@ -441,7 +459,7 @@ def build_mcp_server(state: Any):
             key = f"mcp:{getattr(ctx, 'client_id', None) or id(getattr(ctx, 'session', ctx))}"
             msg = _lic_emit.nag_for_connection(key)
             if msg:
-                await ctx.info(msg.replace("\n", " "))
+                await _log_to_session(ctx, "info", msg.replace("\n", " "))
         except Exception:
             log.debug("MCP license nag emission skipped", exc_info=True)
 
@@ -457,6 +475,10 @@ def build_mcp_server(state: Any):
     )
     global _session_bounds
     _session_bounds = (mcp.settings.session_idle_timeout, mcp.settings.max_sessions)
+
+    @mcp._mcp_server.set_logging_level()
+    async def _set_level(level: str) -> None:
+        session_levels[mcp.get_context().session] = level
 
     from provisa.security.meta_role import RoleNotHeld
 
@@ -686,7 +708,7 @@ def build_mcp_server(state: Any):
             )
         result = _with_warnings(result, found)
         for warning in found:
-            await ctx.warning(warning.message)
+            await _log_to_session(ctx, "warning", warning.message)
         await _emit_mcp_nag(ctx)  # REQ-1137: out-of-band license nag, once per session
         return result
 
@@ -1323,6 +1345,7 @@ def _install_tool_groups(mcp: Any, offer: Any, rights: Any, call_command: Any) -
     from mcp.server.fastmcp.exceptions import ToolError
     from mcp.server.fastmcp.utilities.func_metadata import _convert_to_content
     from mcp.server.lowlevel import NotificationOptions
+    from mcp.shared.exceptions import McpError
 
     from provisa.api.mcp import tool_groups
 
@@ -1373,6 +1396,22 @@ def _install_tool_groups(mcp: Any, offer: Any, rights: Any, call_command: Any) -
     low.list_tools()(_listed)
     # As FastMCP registers its own: each built-in tool validates its arguments by its own model.
     low.call_tool(validate_input=False)(_called)
+    answer_call = low.request_handlers[types.CallToolRequest]
+
+    async def _known_or_refused(request: types.CallToolRequest) -> types.ServerResult:
+        """The MCP specification's tools/call: a name that is no built-in tool and no command
+        tool the session's role sees is a protocol error (-32602), not a tool result. The SDK's
+        handler turns every exception into a tool result, so the name is checked before it."""
+        name = request.params.name
+        if mcp._tool_manager.get_tool(name) is None:
+            _held, commands = await offer()
+            if name not in {c.name for c in commands}:
+                raise McpError(
+                    types.ErrorData(code=types.INVALID_PARAMS, message=f"Unknown tool: {name}")
+                )
+        return await answer_call(request)
+
+    low.request_handlers[types.CallToolRequest] = _known_or_refused
     # The capability that tells a client its tool list changes (tools.listChanged).
     low.create_initialization_options = _functools.partial(
         low.create_initialization_options, NotificationOptions(tools_changed=True)
@@ -1512,8 +1551,9 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             # of the principal's roles run on this request's own thread; the MCP loop only
             # receives and relays.
             identity, role, may_name, org_id = await run_on_request_thread(_resolve_principal)
-        except (PermissionError, ValueError) as exc:
-            # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
+        except bearer.CREDENTIAL_ERRORS as exc:
+            # Token present but rejected (bad/expired/malformed token, or no mapped role) — fail
+            # closed. A session JWT that does not decode raises the JWT library's own error.
             await _send_401(send, str(exc))
             return
         except OrgResolutionError as exc:

@@ -121,6 +121,33 @@ async def test_invalid_bearer_is_401_fail_closed(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_bearer_that_is_not_a_jwt_is_401_with_a_challenge(monkeypatch):
+    """The basic provider decodes a session JWT; a bearer that is not one raises the JWT
+    library's own error, which is a rejected credential (401 with WWW-Authenticate), never 500."""
+    import jwt
+
+    async def _reject(token, state):
+        raise jwt.exceptions.DecodeError("Not enough segments")
+
+    monkeypatch.setattr(mcp_server, "_validate_mcp_token", _reject)
+    downstream = _Recorder()
+    app = mcp_server._wrap_role_auth(
+        downstream,
+        SimpleNamespace(
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
+        ),
+        require_token=False,
+    )
+
+    sent = await _drain(app, _http_scope([(b"authorization", b"Bearer not-a-token")]))
+
+    assert not downstream.called
+    assert _status(sent) == 401
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    assert (b"www-authenticate", b"Bearer") in start["headers"]
+
+
+@pytest.mark.asyncio
 async def test_no_bearer_off_loopback_is_401():
     downstream = _Recorder()
     app = mcp_server._wrap_role_auth(
