@@ -251,12 +251,12 @@ async def test_a_disabled_kind_is_not_tested(control_plane):
     db = control_plane.org()
     assert {k.id for k in await classifications.enabled_kinds(db)} == {k.id for k in catalogue()}
     await write_org_overrides(
-        db, {"classification": classifications.setting_for({"city", "us_passport"})}, updated_by="a"
+        db, {"classification": {"disabled": ["city", "us_passport"]}}, updated_by="a"
     )
     enabled = {k.id for k in await classifications.enabled_kinds(db)}
     assert enabled == {k.id for k in catalogue()} - {"city", "us_passport"}
     await write_org_overrides(
-        db, {"classification": classifications.setting_for(set())}, updated_by="a"
+        db, {"classification": classifications.setting_of(classifications.SHIPPED)}, updated_by="a"
     )
     assert len(await classifications.enabled_kinds(db)) == len(catalogue())
 
@@ -297,7 +297,9 @@ async def test_the_kinds_are_listed_and_switched_by_the_decisions_own_right(
 
 def test_an_unknown_disabled_kind_is_refused_by_name():
     with pytest.raises(ValueError, match="horoscope_sign"):
-        classifications.setting_for({"horoscope_sign"})
+        classifications.setting_of(
+            classifications.KindSettings(frozenset({"horoscope_sign"}), {}, ())
+        )
     with pytest.raises(ValueError, match="horoscope_sign"):
         classifications.disabled_of({"classification": {"disabled": ["horoscope_sign"]}})
 
@@ -343,7 +345,7 @@ def test_the_first_passing_kind_becomes_the_columns_plausible_type():
         ),
         classifications.Suggestion("tax_id", "tax_id", Match(kind_of("us_ssn"), 50, 49)),
     ]
-    run.classified_plausible_types(results, suggestions, "customers")
+    run.classified_plausible_types(results, suggestions, "customers", catalogue())
     tax, note = results["plausible_type"]
     assert tax["plausible_type"] == "us_ssn"  # first in the catalogue, not the highest share
     assert tax["confidence"] == 49 / 50

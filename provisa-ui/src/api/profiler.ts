@@ -98,7 +98,7 @@ export interface SourceRunOutcome {
 async function call<T>(
   op: string,
   path: string,
-  method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "GET",
   headers: Record<string, string> = {},
   body?: unknown,
 ): Promise<T> {
@@ -320,17 +320,39 @@ export interface ClassificationAccepted {
   maskPreset?: string | null;
 }
 
+/** REQ-2147: a classification kind. A shipped kind (``custom`` false) has a coded test, named by
+ * its id; a custom kind (amended 2026-11-25) is the org's own, tested by ``pattern``, its optional
+ * shipped ``check`` and the characters it ``ignore``s, and labelled by the org's ``label``. */
 export interface ClassificationKind {
   id: string;
   label: string;
+  custom: boolean;
   sensitive: boolean;
   test: string;
+  pattern: string | null;
+  check: string | null;
+  ignore: string | null;
   families: string[];
   threshold: number;
   term: string;
   maskPreset: string | null;
   enabled: boolean;
 }
+
+/** A custom kind as its form sends it. */
+export interface CustomKindInput {
+  label: string;
+  pattern: string;
+  check: string | null;
+  ignore: string | null;
+  threshold: number;
+  sensitive: boolean;
+  maskPreset: string | null;
+  term: string;
+}
+
+/** A change to one kind: of a shipped kind only enabled, threshold, sensitive and maskPreset. */
+export type KindChange = Partial<CustomKindInput> & { enabled?: boolean };
 
 const classificationsPath = (tableId: number) => `/admin/tables/${tableId}/profile-classifications`;
 
@@ -361,6 +383,14 @@ export const forgetClassification = (tableId: number, physicalColumn: string, ki
     },
   );
 
+/** The kinds, and what a custom kind's form offers: the shipped checks by name and the mask
+ * presets. Every change to the kinds answers the same. */
+export interface ClassificationKinds {
+  kinds: ClassificationKind[];
+  checks: string[];
+  masks: string[];
+}
+
 // REQ-1159 (amended 2026-11-25): a steward's classifications of a command's output columns. No profile
 // run reads a command's output, so a decision cites none (table_id and run_id are null).
 export interface CommandClassificationDecision {
@@ -380,15 +410,40 @@ export const fetchCommandClassifications = (command: string) =>
   );
 
 export const fetchClassificationKinds = () =>
-  call<{ kinds: ClassificationKind[] }>("fetchClassificationKinds", "/admin/classification-kinds");
+  call<ClassificationKinds>("fetchClassificationKinds", "/admin/classification-kinds");
 
 export const setEnabledClassificationKinds = (enabled: string[]) =>
-  call<{ kinds: ClassificationKind[] }>(
+  call<ClassificationKinds>(
     "setEnabledClassificationKinds",
     "/admin/classification-kinds",
     "PUT",
     {},
     { enabled },
+  );
+
+export const createClassificationKind = (input: CustomKindInput) =>
+  call<ClassificationKinds & { id: string }>(
+    "createClassificationKind",
+    "/admin/classification-kinds",
+    "POST",
+    {},
+    input,
+  );
+
+export const changeClassificationKind = (id: string, change: KindChange) =>
+  call<ClassificationKinds>(
+    "changeClassificationKind",
+    `/admin/classification-kinds/${encodeURIComponent(id)}`,
+    "PATCH",
+    {},
+    change,
+  );
+
+export const deleteClassificationKind = (id: string) =>
+  call<ClassificationKinds>(
+    "deleteClassificationKind",
+    `/admin/classification-kinds/${encodeURIComponent(id)}`,
+    "DELETE",
   );
 
 // REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
@@ -408,6 +463,7 @@ export interface SensitiveHint {
   column: string;
   kind: string;
   label: string;
+  custom: boolean;
   sensitive: boolean;
   valuesTested: number;
   valuesMatched: number;

@@ -32,7 +32,7 @@ import functools
 import gzip
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -64,6 +64,8 @@ class Kind:
     threshold: float
     term: str
     mask_preset: str | None
+    # REQ-2147 (amended 2026-11-25): an org admin's own kind, stored in the model, not shipped.
+    custom: bool = False
 
     @property
     def reference(self) -> str | None:
@@ -319,7 +321,7 @@ def reference_list(name: str) -> frozenset[str]:
         return frozenset(line for line in f.read().splitlines() if line)
 
 
-def _kind(entry: dict) -> Kind:
+def _kind(entry: dict, *, custom: bool = False) -> Kind:
     sensitive = entry["sensitive"]
     pattern = entry.get("pattern")
     contained = entry.get("contained_pattern")
@@ -342,6 +344,7 @@ def _kind(entry: dict) -> Kind:
         threshold=float(entry["threshold"]),
         term=entry["term"],
         mask_preset=entry.get("mask_preset"),
+        custom=custom,
     )
     if kind.reference is not None:
         if pattern or contained or check or ignore:
@@ -376,10 +379,105 @@ def catalogue() -> tuple[Kind, ...]:
 
 
 def kind_of(kind_id: str) -> Kind:
-    for k in catalogue():
+    """A shipped kind, as the catalogue declares it."""
+    return kind_in(catalogue(), kind_id)
+
+
+def kind_in(kinds: Sequence[Kind], kind_id: str) -> Kind:
+    """The kind of ``kinds`` with ``kind_id``; an unknown one is refused by name."""
+    for k in kinds:
         if k.id == kind_id:
             return k
     raise KeyError(f"unknown classification kind {kind_id!r}")
+
+
+# -- the org's kinds (REQ-2147, amended 2026-11-25) ------------------------------------------------
+#
+# A shipped kind keeps its coded test; the org may change its share that must pass, whether it is
+# sensitive and the mask it offers. A custom kind is the org's own: a name, a regular expression
+# with an optional check of CHECKS, the characters ignored before matching, the share that must
+# pass, whether it is sensitive, its mask and the glossary term a confirmed column takes. Both are
+# the org's ``classification`` setting, part of the model, so they move with it across
+# environments (provisa.core.env_classes carries the setting).
+
+CUSTOM_PREFIX = "custom."
+# The settings of a shipped kind an org may change.
+CHANGEABLE = ("threshold", "sensitive", "mask_preset")
+
+
+def custom_id(name: str) -> str:
+    """A custom kind's id, from the name it was created with: ``custom.`` and the name in lower
+    case, each run of other characters than letters and digits one underscore."""
+    slug = re.sub(r"[^a-z0-9]+", "_", name.casefold()).strip("_")
+    if not slug:
+        raise ValueError(f"classification kind name {name!r} has no letter or digit")
+    return CUSTOM_PREFIX + slug
+
+
+def custom_kind(entry: dict) -> Kind:
+    """A custom kind from its stored entry, checked as a shipped one is at load: the pattern (and
+    the ignored characters) compile, the check is one of CHECKS, the share is in (0, 1], and a mask
+    is a sensitive kind's. A custom kind's test applies to text values and to the whole numbers of
+    a number column, as a shipped pattern kind's may."""
+    name = entry["label"]
+    try:
+        return _custom_kind(entry, name)
+    except re.error as exc:
+        raise ValueError(
+            f"classification kind {name!r}: the pattern does not compile: {exc}"
+        ) from exc
+
+
+def _custom_kind(entry: dict, name: str) -> Kind:
+    return _kind(
+        {
+            "id": entry["id"],
+            "label": name,
+            "noun": name,
+            "passes": "pass its test",
+            "sensitive": entry["sensitive"],
+            "pattern": entry["pattern"],
+            "check": entry["check"],
+            "ignore": entry["ignore"],
+            "families": list(FAMILIES),
+            "threshold": entry["threshold"],
+            "term": entry["term"],
+            "mask_preset": entry["mask_preset"],
+        },
+        custom=True,
+    )
+
+
+def changed_kind(kind: Kind, change: dict) -> Kind:
+    """A shipped ``kind`` with the org's ``change`` (some of :data:`CHANGEABLE`), checked as the
+    catalogue's own entries are."""
+    unknown = set(change) - set(CHANGEABLE)
+    if unknown:
+        raise ValueError(
+            f"classification kind {kind.id!r}: only {CHANGEABLE} of a shipped kind may change, "
+            f"not {sorted(unknown)}"
+        )
+    changed = replace(kind, **change)
+    if changed.sensitive != (changed.mask_preset is not None):
+        raise ValueError(f"classification kind {kind.id!r}: a mask preset is a sensitive kind's")
+    if not 0 < changed.threshold <= 1:
+        raise ValueError(f"classification kind {kind.id!r}: threshold must be in (0, 1]")
+    return changed
+
+
+def org_catalogue(changed: dict[str, dict], custom: Sequence[dict]) -> tuple[Kind, ...]:
+    """Every kind of an org: the shipped ones with its changes, then its custom ones, sensitive
+    kinds first (where several kinds pass, the first is the column's plausible type)."""
+    shipped = {k.id for k in catalogue()}
+    unknown = set(changed) - shipped
+    if unknown:
+        raise ValueError(f"the org changes unknown classification kinds {sorted(unknown)}")
+    kinds = [changed_kind(k, changed[k.id]) if k.id in changed else k for k in catalogue()]
+    kinds += [custom_kind(e) for e in custom]
+    ids = [k.id for k in kinds]
+    if len(set(ids)) != len(ids):
+        raise ValueError("classification kinds repeat an id")
+    return tuple(sorted(kinds, key=lambda k: not k.sensitive))
 
 
 def matches_whole_value(kind: Kind, value: str) -> bool:
@@ -390,7 +488,23 @@ def matches_whole_value(kind: Kind, value: str) -> bool:
     text = re.sub(kind.ignore, "", value) if kind.ignore else value.strip()
     if _whole_pattern(kind.pattern, kind.ignore_case).fullmatch(text) is None:
         return False
-    return kind.check is None or CHECKS[kind.check](text)
+    return _check_passes(kind, text)
+
+
+def _check_passes(kind: Kind, text: str) -> bool:
+    """Whether ``text``, as the kind's pattern matched it, passes the kind's check (none: it does).
+    A shipped kind's pattern only ever hands its check text of the shape it reads. A custom kind
+    pairs its own pattern with a shipped check (REQ-2147, amended 2026-11-25), so its pattern may
+    match text the check cannot read (letters where it reads digits, fewer characters than it
+    counts): such a value does not pass the check, as a value failing its checksum does not."""
+    if kind.check is None:
+        return True
+    if not kind.custom:
+        return CHECKS[kind.check](text)
+    try:
+        return CHECKS[kind.check](text)
+    except (ValueError, IndexError):
+        return False
 
 
 @functools.cache
@@ -409,7 +523,7 @@ def contains(kind: Kind, value: str) -> bool:
     assert pattern is not None, kind.id
     for found in _contained_pattern(pattern, kind.ignore_case).finditer(value):
         text = re.sub(kind.ignore, "", found.group()) if kind.ignore else found.group()
-        if kind.check is None or CHECKS[kind.check](text):
+        if _check_passes(kind, text):
             return True
     return False
 

@@ -52,6 +52,7 @@ from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import TOKENS_PER_PAIR, bound, per_call, plan
 from provisa.llm.client import Completion
 from provisa.llm.limits import CHARS_PER_TOKEN, DEFAULT_LIMITS, limits_for
+from provisa.profiler.classify import catalogue
 from tests.unit.discovery_answers import from_ids, listed_pairs
 
 
@@ -363,7 +364,7 @@ def test_the_request_count_counts_calls_and_table_pairs():
     # customers x orders shares whole numbers and uuids; neither table pairs with itself.
     assert [p.key for c in planned.calls for p in c.pairs] == [(2, 1)]
     # The count before Run: the date column is in no group.
-    assert bound([t1, t2], None, *DEFAULT_LIMITS, SAMPLE_VALUES) == (27, 1, 1)
+    assert bound([t1, t2], None, *DEFAULT_LIMITS, SAMPLE_VALUES, catalogue()) == (27, 1, 1)
 
 
 async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothing():
@@ -385,8 +386,11 @@ async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothi
     )
     planned = plan([orders, shipments], None, *DEFAULT_LIMITS)
     assert planned.calls == []
-    assert bound([orders, shipments], None, *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
-    assert bound([orders], [shipments], *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
+    assert bound([orders, shipments], None, *DEFAULT_LIMITS, SAMPLE_VALUES, catalogue())[1:] == (
+        0,
+        0,
+    )
+    assert bound([orders], [shipments], *DEFAULT_LIMITS, SAMPLE_VALUES, catalogue())[1:] == (0, 0)
     asked: list[str] = []
     measured: list = []
 

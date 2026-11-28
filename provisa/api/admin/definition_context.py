@@ -34,6 +34,7 @@ from sqlalchemy import select
 
 from provisa.discovery.columns import classes_of
 from provisa.discovery.context import sample_text
+from provisa.profiler.classifications import org_kinds_on
 from provisa.discovery.gather import (
     TableUnreadable,
     _classified_now,
@@ -99,11 +100,13 @@ async def column_samples(
     if matched is None:
         matched = await _classified_now(state, table_id, table_name)
     decided = await _decided(conn, [table_id])
+    kinds = await org_kinds_on(conn)
     out: dict[str, tuple[str, ...]] = {}
     for name in columns:
         if name not in exposed:
             continue
-        if _sensitive(classes_of(matched.get(name, set()), decided.get((table_id, name), set()))):
+        classes = classes_of(matched.get(name, set()), decided.get((table_id, name), set()))
+        if _sensitive(classes, kinds):
             continue
         col = _quote(exposed[name])
         try:

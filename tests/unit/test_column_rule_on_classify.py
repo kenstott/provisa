@@ -68,7 +68,11 @@ def wired(monkeypatch):
     async def _true(*args, **kwargs):
         return True
 
+    async def _org_kinds(model_db):
+        return classifications.settings_of({}).kinds
+
     monkeypatch.setattr(router_mod, "_db", lambda: _Db())
+    monkeypatch.setattr(classifications, "org_kinds", _org_kinds)
     monkeypatch.setattr(router_mod, "_member", _member)
     monkeypatch.setattr(router_mod, "_steward_of", _noop)
     monkeypatch.setattr(router_mod, "_command_steward", _command)
