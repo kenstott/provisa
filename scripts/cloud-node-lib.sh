@@ -275,7 +275,9 @@ node_containers() {
 # The source hot-patch's host tree (deploy-cloud.sh push_overlay) and the compose extension that
 # bind-mounts it over the image's /app. A release install removes the extension, so the node runs
 # the release image's own code, UI and configs.
+# shellcheck disable=SC2034  # read by the scripts that source this library
 OVERLAY_DIR="/root/.provisa/overlay"
+# shellcheck disable=SC2034  # read by the scripts that source this library
 OVERLAY_EXT="/root/.provisa/extensions/overlay/docker-compose.overlay.yml"
 
 # The systemd EnvironmentFile first-launch.sh writes; the containers' environment comes from it.
@@ -412,6 +414,7 @@ diagnose_containers() {
     return
   fi
   echo "   containers on $NODE (name state exit restarts health):" >&2
+  # shellcheck disable=SC2001  # indents every line of a multi-line value
   sed 's/^/     /' <<<"$states" >&2
   for c in $(failing_containers <<<"$states"); do
     echo "   $c is down; its last 40 log lines:" >&2

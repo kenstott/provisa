@@ -9,21 +9,27 @@
 # them, for one tag. Nothing from this checkout's source tree reaches the node; the checkout
 # supplies only this script, its library and the private plugin hook (push_plugins).
 #
-#   scripts/deploy-cloud-release.sh <tag>      # e.g. v0.1.0-alpha.513
+#   scripts/deploy-cloud-release.sh <tag>                # e.g. v0.1.0-alpha.513
+#   scripts/deploy-cloud-release.sh --check-only <tag>   # check, render and asset check; nothing
+#                                                        # on the node is touched
 #
 # Steps, in order, each failing by name:
-#   check     the tag is a published release with the assets the node's installer downloads,
-#             and its engine images are on the registry
+#   check     the tag is a published release and its engine images are on the registry
+#   render    the release's own installer: terraform/gcp-saas's coordinator startup-script at the
+#             tag, rendered by a terraform plan of that instance (-refresh=false, -lock=false, on a
+#             copy of the deployment's state and variables, $CLOUD_TF_DIR). The plan is read and
+#             thrown away: nothing is applied, so the instance's metadata is not changed. Then every
+#             asset the rendered script downloads is checked against the release's assets, and one
+#             the release lacks is refused by name.
 #   wake      the node is started by a hit on the site (the front door wakes it), then awaited
 #             until GCE reports RUNNING and ssh answers
 #   wait      the node's own startup script has finished and the current stack is up
 #             (compose-provisa-1 running, /health 200)
-#   install   the node's own installer, run for the tag: the instance's startup-script from its
-#             metadata, with its release version replaced by the tag, run detached on the node. It
-#             downloads the tag's assets, checks them against the release's sha256 manifest, loads
-#             the images and writes the tag's compose and config. provisa.env keeps every key the
-#             installer does not set (write_env_file). The source hot-patch's overlay is removed
-#             first, so the stack runs the release image's own code.
+#   install   the rendered startup-script, run detached on the node. It downloads the tag's
+#             assets, checks them against the release's sha256 manifest, loads the images and
+#             writes the tag's compose and config. provisa.env keeps every key the installer does
+#             not set (write_env_file). The source hot-patch's overlay is removed first, so the
+#             stack runs the release image's own code.
 #   recreate  the release's engine images pinned, the stack recreated on the new images and
 #             proven to run them
 #   reset     accounts and orgs back to the first start, as deploy-cloud.sh reset does
@@ -33,7 +39,11 @@
 #
 # The sandbox tier's VM is not touched: it installs its release from its own startup script.
 #
-# Env overrides: those of scripts/cloud-node-lib.sh, and GITHUB_REPO.
+# Env overrides: those of scripts/cloud-node-lib.sh, GITHUB_REPO, and CLOUD_TF_DIR: the directory
+# holding the deployment's terraform.tfvars, *.auto.tfvars, terraform.tfstate and initialised
+# providers (.terraform/providers), by default terraform/gcp-saas in this repository's primary
+# checkout, where the deployment is applied from. A variable the tag's module requires that those
+# files do not set is given as TF_VAR_<name>, or the render fails naming it.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,45 +53,141 @@ trap '[ -z "$KEEPALIVE_PID" ] || kill "$KEEPALIVE_PID" 2>/dev/null; rm -rf "$STA
 # shellcheck source=cloud-node-lib.sh
 . "$REPO/scripts/cloud-node-lib.sh"
 
+CHECK_ONLY=""
+if [ "${1:-}" = --check-only ]; then
+  CHECK_ONLY=1
+  shift
+fi
 TAG="${1:-}"
 case "$TAG" in
   v[0-9]*) ;;
-  *) echo "usage: $(basename "$0") <release tag, e.g. v0.1.0-alpha.513>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") [--check-only] <release tag, e.g. v0.1.0-alpha.513>" >&2; exit 2 ;;
 esac
 
 GITHUB_REPO="${GITHUB_REPO:-simpleishard-llc/provisa}"
+CLOUD_TF_DIR="${CLOUD_TF_DIR:-$(git -C "$REPO" worktree list --porcelain | sed -n '1s/^worktree //p')/terraform/gcp-saas}"
+# The rendered installer and the release's asset list (render_startup, check_startup_assets).
+STARTUP="$STAGE/startup.sh"
+ASSETS="$STAGE/assets"
 # Where the tag's installer runs and logs on the node, root-only: the startup script it runs
 # carries the deployment's secrets.
 RELEASE_DIR="/root/.provisa/release/$TAG"
 INSTALL_UNIT="provisa-release-install"
-STARTUP_DONE="/var/lib/provisa-startup.sha256"
 SENTINEL="/root/.provisa/.first-launch-complete"
 IMAGES_MARKER="/root/.provisa/images/.version"
 APP_IMAGE="provisa/provisa:local"
 
-# The assets the node's installer downloads for a release (terraform/gcp-saas/main.tf
-# base_startup): the AppImage, the core images manifest and every asset it lists, the plugins.
+# The release published, and the engine pods' images on the registry, which GKE pulls by the tag
+# push_engine_env pins. What the installer downloads is checked against $ASSETS after the render.
 check_release() {
   echo "== check: release $TAG"
-  local assets name manifest="provisa-core-images-amd64-$TAG.sha256"
-  assets="$(gh release view "$TAG" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name')" \
+  gh release view "$TAG" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name' > "$ASSETS" \
     || { echo "check: $TAG is not a release of $GITHUB_REPO" >&2; exit 1; }
-  for name in "Provisa-$TAG-linux-x86_64.AppImage" "$manifest" "provisa-trino-plugins-$TAG.tar.gz"; do
-    grep -qxF "$name" <<<"$assets" || { echo "check: release $TAG has no asset $name" >&2; exit 1; }
-  done
-  gh release download "$TAG" --repo "$GITHUB_REPO" --pattern "$manifest" --dir "$STAGE" \
-    || { echo "check: cannot download $manifest from release $TAG" >&2; exit 1; }
-  while read -r _ name; do
-    grep -qxF "$name" <<<"$assets" \
-      || { echo "check: $manifest lists $name, which release $TAG does not have" >&2; exit 1; }
-  done < "$STAGE/$manifest"
-  echo "   $(wc -l < "$STAGE/$manifest" | tr -d ' ') core image assets listed, all published"
-  # The engine pods' images, which GKE pulls by the tag push_engine_env pins.
+  echo "   $(wc -l < "$ASSETS" | tr -d ' ') assets published"
+  local name
   for name in provisa-trino-engine provisa-zaychik; do
     docker manifest inspect "$IMAGE_REGISTRY/$name:$TAG" >/dev/null \
       || { echo "check: $IMAGE_REGISTRY/$name:$TAG is not on the registry" >&2; exit 1; }
   done
   echo "   $IMAGE_REGISTRY/{provisa-trino-engine,provisa-zaychik}:$TAG present"
+}
+
+# The release's own installer: the coordinator's startup-script as the tag's terraform/gcp-saas
+# renders it for this deployment. The tag's tree (the module reads files from elsewhere in it), a
+# copy of the deployment's variables and state, and a plan of the coordinator alone: -refresh=false
+# reads nothing back from GCP, -lock=false takes no lock on a state that is only a copy. The plan
+# is the render; it is never applied, so no standing state changes. A plan that would do more than
+# update the instance in place (a replace, a create) has values it cannot know yet, and is refused.
+render_startup() {
+  echo "== render: terraform/gcp-saas startup-script at $TAG"
+  local src="$STAGE/src" tf="$STAGE/src/terraform/gcp-saas" f actions
+  [ -f "$CLOUD_TF_DIR/terraform.tfstate" ] \
+    || { echo "render: no terraform.tfstate in $CLOUD_TF_DIR (CLOUD_TF_DIR)" >&2; exit 1; }
+  [ -d "$CLOUD_TF_DIR/.terraform/providers" ] \
+    || { echo "render: no initialised providers in $CLOUD_TF_DIR/.terraform/providers (CLOUD_TF_DIR)" >&2; exit 1; }
+  git -C "$REPO" fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" \
+    || { echo "render: cannot fetch tag $TAG" >&2; exit 1; }
+  mkdir -p "$src"
+  git -C "$REPO" archive "$TAG" | tar -x -C "$src" \
+    || { echo "render: cannot extract the tree of $TAG" >&2; exit 1; }
+  [ -f "$tf/main.tf" ] || { echo "render: $TAG has no terraform/gcp-saas/main.tf" >&2; exit 1; }
+  for f in "$CLOUD_TF_DIR"/terraform.tfvars "$CLOUD_TF_DIR"/*.auto.tfvars "$CLOUD_TF_DIR"/terraform.tfstate; do
+    [ -f "$f" ] && install -m 600 "$f" "$tf/"
+  done
+  ( cd "$tf" && terraform init -input=false -no-color -plugin-dir="$CLOUD_TF_DIR/.terraform/providers" ) \
+    > "$STAGE/tf-init.log" 2>&1 \
+    || { echo "render: terraform init failed:" >&2; tail -n 30 "$STAGE/tf-init.log" >&2; exit 1; }
+  ( cd "$tf" && terraform plan -input=false -no-color -refresh=false -lock=false \
+      -target=google_compute_instance.coordinator \
+      -var "provisa_version=$TAG" -var "github_repo=$GITHUB_REPO" -out=coordinator.tfplan ) \
+    > "$STAGE/tf-plan.log" 2>&1 \
+    || { echo "render: terraform plan failed:" >&2; grep -A12 '^Error' "$STAGE/tf-plan.log" >&2; exit 1; }
+  ( cd "$tf" && terraform show -json coordinator.tfplan ) > "$STAGE/plan.json" \
+    || { echo "render: cannot read the plan" >&2; exit 1; }
+  actions="$(jq -r '.resource_changes[] | select(.address == "google_compute_instance.coordinator") | .change.actions | join(",")' "$STAGE/plan.json")"
+  case "$actions" in
+    update | no-op) ;;
+    *) echo "render: the plan would ${actions:-not touch} google_compute_instance.coordinator, not update it in place" >&2; exit 1 ;;
+  esac
+  jq -e -r '.resource_changes[] | select(.address == "google_compute_instance.coordinator") | .change.after.metadata["startup-script"] // empty' \
+    "$STAGE/plan.json" > "$STARTUP" && [ -s "$STARTUP" ] \
+    || { echo "render: the plan renders no startup-script for google_compute_instance.coordinator" >&2; exit 1; }
+  chmod 600 "$STARTUP"
+  bash -n "$STARTUP" || { echo "render: the rendered startup-script does not parse" >&2; exit 1; }
+  grep -qE "^[[:space:]]*export PROVISA_VERSION=\"$TAG\"[[:space:]]*$" "$STARTUP" \
+    || { echo "render: the rendered startup-script does not export PROVISA_VERSION=$TAG" >&2; exit 1; }
+  grep -qF -- "--role control-plane" "$STARTUP" \
+    || { echo "render: the rendered startup-script does not install a control plane" >&2; exit 1; }
+  echo "   $(wc -l < "$STARTUP" | tr -d ' ') lines, release $TAG"
+}
+
+# Every download in the rendered startup-script is an asset of the release. Arguments: the script,
+# the release's asset names (one per line), the release (owner/name), the tag. Its downloads are
+# "$gh_base/<name>" (gh_base must be the release's download URL) and the manifest loop
+# `for asset in $(awk '{print $2}' /opt/<manifest>)`, whose manifest is fetched from the release
+# here and read. Any other download, or a name it cannot resolve, is refused by name.
+check_startup_assets() {
+  local script="$1" assets="$2" repo="$3" tag="$4"
+  local want="https://github.com/$repo/releases/download/$tag" base name manifest fetched=0 bad=0
+  echo "== check: the startup-script's downloads against release $tag"
+  base="$(sed -n 's/^[[:space:]]*gh_base="\([^"]*\)"[[:space:]]*$/\1/p' "$script")"
+  [ -n "$base" ] || { echo "check: the startup-script sets no gh_base" >&2; return 1; }
+  [ "$(grep -c . <<<"$base")" = 1 ] || { echo "check: the startup-script sets gh_base more than once" >&2; return 1; }
+  [ "$base" = "$want" ] || { echo "check: the startup-script downloads from $base, not $want" >&2; return 1; }
+  # A release URL written out instead of through gh_base is a download this check would not see.
+  if grep -v '^[[:space:]]*gh_base=' "$script" | grep -F "releases/download/" >/dev/null; then
+    echo "check: the startup-script downloads from a release URL other than gh_base:" >&2
+    grep -v '^[[:space:]]*gh_base=' "$script" | grep -F "releases/download/" >&2
+    return 1
+  fi
+  # The names are the startup-script's own text ("$gh_base/<name>"), matched as written: the
+  # single-quoted $ is literal on purpose.
+  # shellcheck disable=SC2016
+  while read -r name; do
+    case "$name" in
+      '$asset')
+        manifest="$(sed -n "s|^[[:space:]]*for asset in \$(awk '{print \$2}' /opt/\([^)]*\)); do[[:space:]]*$|\1|p" "$script")"
+        [ "$(grep -c . <<<"$manifest")" = 1 ] \
+          || { echo "check: the startup-script downloads \$gh_base/\$asset outside one manifest loop" >&2; return 1; }
+        grep -qF "\"\$gh_base/$manifest\"" "$script" \
+          || { echo "check: the startup-script reads /opt/$manifest without downloading it from the release" >&2; return 1; }
+        grep -qxF "$manifest" "$assets" || continue  # refused as its own download below
+        gh release download "$tag" --repo "$repo" --pattern "$manifest" --dir "$STAGE" --clobber </dev/null \
+          || { echo "check: cannot download $manifest from release $tag" >&2; return 1; }
+        while read -r _ name; do
+          fetched=$((fetched + 1))
+          grep -qxF "$name" "$assets" \
+            || { echo "check: release $tag has no asset $name (listed in $manifest)" >&2; bad=1; }
+        done < "$STAGE/$manifest" ;;
+      *'$'*) echo "check: the startup-script downloads \$gh_base/$name, a name this check cannot resolve" >&2; return 1 ;;
+      *)
+        fetched=$((fetched + 1))
+        grep -qxF "$name" "$assets" || { echo "check: release $tag has no asset $name" >&2; bad=1; } ;;
+    esac
+  done < <(grep -o '"\$gh_base/[^"]*"' "$script" | sed 's|^"\$gh_base/||; s|"$||' | sort -u)
+  [ "$fetched" -gt 0 ] || { echo "check: the startup-script downloads nothing from release $tag" >&2; return 1; }
+  [ "$bad" = 0 ] || return 1
+  echo "   $fetched downloads, all assets of release $tag"
 }
 
 node_status() {
@@ -163,32 +269,17 @@ check_sandbox_tier() {
     || { echo "install: the sandbox tier runs on $NODE; this deploy installs only a control-plane-only coordinator (sandbox VM $SANDBOX_NODE)" >&2; exit 1; }
 }
 
-# What runs on the node, as root, detached (install_release). Arguments: the tag, the overlay
-# extension to remove.
+# What runs on the node, as root, detached (install_release), beside the rendered startup.sh.
+# Arguments: the tag, the overlay extension to remove.
 write_node_installer() {
   cat > "$1" <<'NODE'
 #!/bin/bash
 set -euo pipefail
 tag="$1" overlay_ext="$2"
 dir="$(dirname "$0")"
-# The node's own installer: terraform/gcp-saas/main.tf's startup-script, as the instance holds it.
-curl -fsS -H 'Metadata-Flavor: Google' \
-  http://metadata.google.internal/computeMetadata/v1/instance/attributes/startup-script \
-  > "$dir/startup.metadata.sh" \
-  || { echo "install: cannot read the instance's startup-script from metadata" >&2; exit 1; }
-old="$(sed -n 's/^[[:space:]]*export PROVISA_VERSION="\([^"]*\)"[[:space:]]*$/\1/p' "$dir/startup.metadata.sh" | head -1)"
-[ -n "$old" ] || { echo "install: the startup-script exports no PROVISA_VERSION" >&2; exit 1; }
-# Every place the script names its release (the asset URLs and names, PROVISA_VERSION, an engine
-# image tag) names the tag instead. A digit may not follow, so alpha.51 never rewrites alpha.513.
-OLD="$old" NEW="$tag" perl -pe 's/\Q$ENV{OLD}\E(?![0-9])/$ENV{NEW}/g' \
-  "$dir/startup.metadata.sh" > "$dir/startup.sh"
-grep -qE "^[[:space:]]*export PROVISA_VERSION=\"$tag\"[[:space:]]*$" "$dir/startup.sh" \
-  || { echo "install: the rewritten startup-script does not export PROVISA_VERSION=$tag" >&2; exit 1; }
-grep -qF "releases/download/$tag" "$dir/startup.sh" \
-  || { echo "install: the rewritten startup-script downloads nothing from release $tag" >&2; exit 1; }
-grep -qF -- "--role control-plane" "$dir/startup.sh" \
-  || { echo "install: the startup-script does not install a control plane" >&2; exit 1; }
-echo "install: startup-script release $old -> $tag"
+# The release's own installer, rendered from the tag's terraform/gcp-saas (render_startup).
+[ -s "$dir/startup.sh" ] || { echo "install: no startup.sh beside $0" >&2; exit 1; }
+echo "install: release $tag"
 # The source hot-patch's tree is bind-mounted over the image's /app; the release runs its own.
 rm -f "$overlay_ext"
 # A redeploy of the tag the images were staged for would reuse tarballs a source deploy rebuilt
@@ -197,7 +288,7 @@ rm -f /root/.provisa/images/.version
 # The marker of the last complete run: present and current, the startup-script exits at once.
 rm -f /var/lib/provisa-startup.sha256
 # Other releases' assets, several GB each, which the boot disk does not hold twice.
-find /opt -maxdepth 1 -type f \( -name 'provisa-core-image-*' -o -name 'provisa-core-images-*.sha256' \
+find /opt -maxdepth 1 -type f \( -name 'provisa-core-image-*' -o -name 'provisa-core-images-*' \
   -o -name 'provisa-trino-plugins-*' \) ! -name "*-$tag.*" -print -delete
 bash "$dir/startup.sh"
 NODE
@@ -210,6 +301,10 @@ install_release() {
   ssh_node "sudo install -d -m 700 $RELEASE_DIR \
     && sudo install -m 700 /tmp/provisa-release-install.sh $RELEASE_DIR/node-install.sh \
     && rm -f /tmp/provisa-release-install.sh"
+  # The rendered startup-script carries the deployment's secrets: sent on stdin, straight into the
+  # root-only release directory, never through a world-readable /tmp file.
+  ssh_node "sudo sh -c 'umask 077 && cat > $RELEASE_DIR/startup.sh'" < "$STARTUP" \
+    || { echo "install: could not send the rendered startup-script to $NODE" >&2; exit 1; }
   # Detached under systemd, so a dropped ssh session cannot cut the install off half way. The
   # log is root-only: the startup-script copies the break-glass banner into its output.
   ssh_node "sudo systemctl stop $INSTALL_UNIT >/dev/null 2>&1; sudo systemctl reset-failed $INSTALL_UNIT >/dev/null 2>&1; \
@@ -272,6 +367,12 @@ restart_app() {
 }
 
 check_release
+render_startup
+check_startup_assets "$STARTUP" "$ASSETS" "$GITHUB_REPO" "$TAG" || exit 1
+if [ -n "$CHECK_ONLY" ]; then
+  echo "== check-only: release $TAG renders an installer whose every download is published"
+  exit 0
+fi
 wake_node
 keep_awake
 wait_for_stack "the current stack on $NODE" before-install

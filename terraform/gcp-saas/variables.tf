@@ -35,7 +35,7 @@ variable "provisa_version" {
 variable "github_repo" {
   description = "Public GitHub repo (owner/name) the VMs curl release assets from at boot."
   type        = string
-  default     = "kenstott/provisa"
+  default     = "simpleishard-llc/provisa"
 }
 
 variable "disk_gb" {

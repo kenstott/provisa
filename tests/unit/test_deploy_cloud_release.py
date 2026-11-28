@@ -55,7 +55,9 @@ def _node_installer(tmp_path: Path) -> str:
     return out.read_text()
 
 
-@pytest.mark.parametrize("args", [[], ["latest"], ["0.1.0-alpha.513"]])
+@pytest.mark.parametrize(
+    "args", [[], ["latest"], ["0.1.0-alpha.513"], ["--check-only"], ["--check-only", "latest"]]
+)
 def test_a_release_tag_is_required(args):
     done = subprocess.run(["bash", str(_SCRIPT), *args], capture_output=True, text=True, timeout=30)
     assert done.returncode == 2
@@ -121,16 +123,22 @@ def test_no_source_is_pushed():
     assert "deploy-cloud.sh" not in text
     # Nothing from the checkout is packed for the node: the one file sent is the installer
     # this script writes.
-    assert not re.search(r"\btar\s", text)
+    # The one tar extracts the tag's tree here, for the render; nothing is packed.
+    assert re.findall(r"\btar\s[^\n]*", text) == ['tar -x -C "$src" \\']
     assert re.findall(r"scp_node ([^ ]+)", text) == ['"$STAGE/node-install.sh"']
 
 
-def test_the_installer_is_the_nodes_own_startup_script(tmp_path):
+def test_the_installer_runs_the_rendered_startup_script_not_the_metadata_copy(tmp_path):
+    # The instance's metadata holds the startup-script of whatever terraform apply last ran (491
+    # when 513 was deployed: a .zip asset 513 does not ship, from the repo before its move). The
+    # release's installer is rendered from the tag's own terraform/gcp-saas instead.
     installer = _node_installer(tmp_path)
-    assert "computeMetadata/v1/instance/attributes/startup-script" in installer
     assert installer.rstrip().endswith('bash "$dir/startup.sh"')
     done = subprocess.run(["bash", "-n"], input=installer, capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+    for text in (installer, _SCRIPT.read_text()):
+        assert "computeMetadata" not in text
+        assert "perl -pe" not in text
 
 
 def test_the_installer_clears_what_would_stop_or_shadow_the_install(tmp_path):
@@ -144,32 +152,182 @@ def test_the_installer_clears_what_would_stop_or_shadow_the_install(tmp_path):
         assert installer.index(cleared) < run, cleared
 
 
-def test_the_version_rewrite_names_the_tag_everywhere_and_nothing_else(tmp_path):
-    installer = _node_installer(tmp_path)
-    rewrite = next(line for line in installer.splitlines() if "perl -pe" in line)
-    command = rewrite.split("perl -pe ", 1)[1].rsplit(" \\", 1)[0]
-    startup = (
-        'export PROVISA_VERSION="v0.1.0-alpha.51"\n'
-        'gh_base="https://github.com/o/r/releases/download/v0.1.0-alpha.51"\n'
-        'manifest="provisa-core-images-amd64-v0.1.0-alpha.51.sha256"\n'
-        'engine="ghcr.io/o/provisa-trino-engine:v0.1.0-alpha.51"\n'
-        'unrelated="v0.1.0-alpha.512"\n'
+def test_the_render_plans_the_tags_module_and_applies_nothing():
+    body = _function("render_startup")
+    assert 'git -C "$REPO" archive "$TAG"' in body
+    plan = body[body.index("terraform plan") : body.index("-out=coordinator.tfplan")]
+    for flag in (
+        "-refresh=false",
+        "-lock=false",
+        "-target=google_compute_instance.coordinator",
+        '"provisa_version=$TAG"',
+        '"github_repo=$GITHUB_REPO"',
+    ):
+        assert flag in plan, flag
+    # The plan is the render. Nothing changes the deployment's state or the instance's metadata.
+    text = re.sub(r"^\s*#.*$", "", _SCRIPT.read_text(), flags=re.M)
+    assert "terraform apply" not in text
+    assert "add-metadata" not in text
+    # The deployment's state is copied, never used in place.
+    assert 'cd "$CLOUD_TF_DIR"' not in text
+    assert 'install -m 600 "$f" "$tf/"' in body
+    # Only an in-place update renders known values.
+    assert "update | no-op) ;;" in body
+
+
+def test_the_rendered_script_reaches_the_node_without_a_tmp_copy():
+    body = _function("install_release")
+    assert "umask 077 && cat > $RELEASE_DIR/startup.sh" in body
+    assert '< "$STARTUP"' in body
+
+
+def test_the_render_and_asset_check_come_before_the_node_is_touched():
+    steps = _steps()
+    assert steps.index("check_release") < steps.index("render_startup")
+    assert steps.index("render_startup") < steps.index("check_startup_assets")
+    assert steps.index("check_startup_assets") < steps.index("wake_node")
+    text = _SCRIPT.read_text()
+    check_only = text[text.index('if [ -n "$CHECK_ONLY" ]') :]
+    assert check_only.index("exit 0") < check_only.index("wake_node")
+
+
+_TAG = "v0.1.0-alpha.513"
+_REPO_NAME = "simpleishard-llc/provisa"
+_BASE = f"https://github.com/{_REPO_NAME}/releases/download/{_TAG}"
+_MANIFEST = f"provisa-core-images-amd64-{_TAG}.sha256"
+_PARTS = [
+    f"provisa-core-image-provisa-amd64-{_TAG}.tar.gz.part1",
+    f"provisa-core-image-provisa-amd64-{_TAG}.tar.gz.part2",
+    f"provisa-core-image-redis-amd64-{_TAG}.tar.gz",
+]
+_NAMED = [
+    f"Provisa-{_TAG}-linux-x86_64.AppImage",
+    _MANIFEST,
+    f"provisa-trino-plugins-{_TAG}.tar.gz",
+]
+
+
+def _startup(base: str = _BASE, extra: str = "") -> str:
+    return (
+        "#!/bin/bash\n"
+        f'gh_base="{base}"\n'
+        f'curl -fSL "$gh_base/{_NAMED[0]}" -o /opt/Provisa.AppImage\n'
+        f'curl -fSL "$gh_base/{_MANIFEST}" -o /opt/{_MANIFEST}\n'
+        f"for asset in $(awk '{{print $2}}' /opt/{_MANIFEST}); do\n"
+        '  curl -fSL "$gh_base/$asset" -o "/opt/$asset"\n'
+        "done\n"
+        f'curl -fSL "$gh_base/{_NAMED[2]}" -o /opt/{_NAMED[2]}\n'
+        f"{extra}"
+        f'export PROVISA_VERSION="{_TAG}"\n'
     )
-    done = subprocess.run(
-        ["bash", "-c", f"perl -pe {command}"],
-        input=startup,
+
+
+def _check_assets(
+    tmp_path: Path, startup: str, assets: list[str], manifest: list[str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """check_startup_assets against a release whose assets are `assets`; `gh` serves its manifest."""
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    published = tmp_path / "published"
+    published.mkdir()
+    listed = manifest if manifest is not None else _PARTS
+    (published / _MANIFEST).write_text("".join(f"{'0' * 64}  {name}\n" for name in listed))
+    # gh release download <tag> --repo <r> --pattern <name> --dir <dir> --clobber
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/bash\n"
+        'while [ $# -gt 0 ]; do case "$1" in --pattern) p="$2"; shift ;; --dir) d="$2"; shift ;;'
+        " esac; shift; done\n"
+        f'cp "{published}/$p" "$d/$p"\n'
+    )
+    gh.chmod(0o755)
+    script = tmp_path / "startup.sh"
+    script.write_text(startup)
+    listing = tmp_path / "assets"
+    listing.write_text("".join(f"{a}\n" for a in assets))
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'{_function("check_startup_assets")}\ncheck_startup_assets "$@"',
+            "_",
+            str(script),
+            str(listing),
+            _REPO_NAME,
+            _TAG,
+        ],
         capture_output=True,
         text=True,
-        env={"OLD": "v0.1.0-alpha.51", "NEW": "v0.1.0-alpha.513", "PATH": "/usr/bin:/bin"},
+        timeout=30,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "STAGE": str(stage)},
     )
+
+
+def test_every_download_of_a_complete_release_passes(tmp_path):
+    done = _check_assets(tmp_path, _startup(), _NAMED + _PARTS)
     assert done.returncode == 0, done.stderr
-    assert done.stdout == (
-        'export PROVISA_VERSION="v0.1.0-alpha.513"\n'
-        'gh_base="https://github.com/o/r/releases/download/v0.1.0-alpha.513"\n'
-        'manifest="provisa-core-images-amd64-v0.1.0-alpha.513.sha256"\n'
-        'engine="ghcr.io/o/provisa-trino-engine:v0.1.0-alpha.513"\n'
-        'unrelated="v0.1.0-alpha.512"\n'
+    # The manifest's own download plus the AppImage, the plugins and every listed part.
+    assert f"{len(_NAMED) + len(_PARTS)} downloads" in done.stdout
+
+
+def test_a_named_asset_the_release_lacks_is_refused_by_name(tmp_path):
+    done = _check_assets(tmp_path, _startup(), [_NAMED[0], _MANIFEST, *_PARTS])
+    assert done.returncode == 1
+    assert f"release {_TAG} has no asset {_NAMED[2]}" in done.stderr
+
+
+def test_a_manifest_entry_the_release_lacks_is_refused_by_name(tmp_path):
+    done = _check_assets(tmp_path, _startup(), _NAMED + _PARTS[:1] + _PARTS[2:])
+    assert done.returncode == 1
+    assert f"has no asset {_PARTS[1]} (listed in {_MANIFEST})" in done.stderr
+
+
+def test_a_missing_manifest_is_refused_by_name(tmp_path):
+    done = _check_assets(tmp_path, _startup(), [_NAMED[0], _NAMED[2], *_PARTS])
+    assert done.returncode == 1
+    assert f"has no asset {_MANIFEST}" in done.stderr
+
+
+def test_the_old_zip_layout_is_refused_by_name(tmp_path):
+    # What the 491 metadata copy fetched for 513 (deploy-release-513b.log: curl 404).
+    zip_name = f"provisa-core-images-amd64-{_TAG}.zip"
+    startup = (
+        f'gh_base="{_BASE}"\n'
+        f'curl -fSL "$gh_base/{_NAMED[0]}" -o /opt/Provisa.AppImage\n'
+        f'curl -fSL "$gh_base/{zip_name}" -o /opt/{zip_name}\n'
     )
+    done = _check_assets(tmp_path, startup, _NAMED + _PARTS)
+    assert done.returncode == 1
+    assert f"has no asset {zip_name}" in done.stderr
+
+
+def test_a_download_from_another_repository_is_refused(tmp_path):
+    old = f"https://github.com/kenstott/provisa/releases/download/{_TAG}"
+    done = _check_assets(tmp_path, _startup(base=old), _NAMED + _PARTS)
+    assert done.returncode == 1
+    assert f"downloads from {old}, not {_BASE}" in done.stderr
+
+
+def test_a_release_url_outside_gh_base_is_refused(tmp_path):
+    extra = f'curl -fSL "{_BASE}/other.tar.gz" -o /opt/other.tar.gz\n'
+    done = _check_assets(tmp_path, _startup(extra=extra), _NAMED + _PARTS)
+    assert done.returncode == 1
+    assert "a release URL other than gh_base" in done.stderr
+
+
+def test_a_download_name_it_cannot_resolve_is_refused(tmp_path):
+    extra = 'curl -fSL "$gh_base/$other" -o /opt/other\n'
+    done = _check_assets(tmp_path, _startup(extra=extra), _NAMED + _PARTS)
+    assert done.returncode == 1
+    assert "$gh_base/$other, a name this check cannot resolve" in done.stderr
+
+
+def test_a_script_with_no_downloads_is_refused(tmp_path):
+    done = _check_assets(tmp_path, f'gh_base="{_BASE}"\n', _NAMED + _PARTS)
+    assert done.returncode == 1
+    assert "downloads nothing" in done.stderr
 
 
 def test_the_install_runs_detached_and_is_checked_after():
