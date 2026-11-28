@@ -41,6 +41,7 @@ export function HullSvgOverlay({
   return (
     <svg
       ref={hullSvgRef}
+      className="gf-hulls"
       style={{
         position: "absolute",
         inset: 0,

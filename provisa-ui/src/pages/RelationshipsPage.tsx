@@ -32,7 +32,11 @@ import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverRunLine } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
 import { NEW_RUN, useDiscoverParam } from "../components/relationships/useDiscoverParam";
-import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
+import { fetchRejectedCount, clearRejectedCandidates } from "../api/admin";
+import {
+  useSuggestReverseRelAlias,
+  type ReverseAliasSuggestion,
+} from "../hooks/useNameSuggestions";
 import {
   useRelationships,
   useAllRelationships,
@@ -67,7 +71,7 @@ import {
 } from "../components/relationships/RelationshipModals";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { applyConvention, domainToSqlName } from "../naming";
+import { domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 
@@ -111,10 +115,8 @@ export function RelationshipsPage() {
     retry: { kind: "add" } | { kind: "save" } | { kind: "delete"; id: string };
   } | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
-  // REQ-194: the deployment's GraphQL convention, which names the GraphQL alias a reverse is
-  // offered. Until it is read the reverse cannot be offered; a failed read is said on the page.
-  const [gqlConvention, setGqlConvention] = useState<string | null>(null);
-  const [settingsError, setSettingsError] = useState("");
+  // REQ-2361, REQ-194: the aliases a reverse is offered are the naming authority's suggestion.
+  const suggestReverseRelAlias = useSuggestReverseRelAlias();
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   // The link names the filter, also on a page already open: a tour step moving on within the page
@@ -170,11 +172,6 @@ export function RelationshipsPage() {
   useEffect(() => {
     load();
   }, [load]);
-  useEffect(() => {
-    fetchSettings()
-      .then((s) => setGqlConvention(s.naming.convention))
-      .catch((e: Error) => setSettingsError(e.message));
-  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // The page's own content is the relationships table, so only its two queries can withhold it.
@@ -501,27 +498,10 @@ export function RelationshipsPage() {
   );
 
   const buildReverse = useCallback(
-    (r: Relationship, convention: string): RelForm => {
+    (r: Relationship, suggestion: ReverseAliasSuggestion): RelForm => {
       // One-to-one reads the same both ways.
       const flipCardinality = (c: string) =>
         c === "one-to-one" ? c : c === "many-to-one" ? "one-to-many" : "many-to-one";
-      const suggestCqlAlias = (alias: string | null) => {
-        if (!alias) return "";
-        if (alias.endsWith("_BY")) return alias.slice(0, -3);
-        if (alias.endsWith("_OF")) return alias.slice(0, -3);
-        return `${alias}_BY`;
-      };
-      // REQ-194: the Cypher alias's words, named by the deployment's GraphQL convention.
-      const cqlToGql = (cql: string) => applyConvention(cql.toLowerCase(), convention);
-      const suggestGqlAlias = (gql: string | null, cqlSuggestion: string) => {
-        if (gql) {
-          if (gql.endsWith("By")) return gql.slice(0, -2);
-          if (gql.endsWith("Of")) return gql.slice(0, -2);
-          return `${gql}By`;
-        }
-        return cqlSuggestion ? cqlToGql(cqlSuggestion) : "";
-      };
-      const cqlSuggestion = suggestCqlAlias(r.alias ?? r.computedCypherAlias ?? null);
       return {
         ...EMPTY_FORM,
         id: `${r.targetTableName}-to-${r.sourceTableName}`,
@@ -533,8 +513,8 @@ export function RelationshipsPage() {
         targetDomain: r.sourceDomainId ?? "",
         targetColumn: r.sourceColumn,
         cardinality: flipCardinality(r.cardinality),
-        alias: cqlSuggestion,
-        graphqlAlias: suggestGqlAlias(r.graphqlAlias, cqlSuggestion),
+        alias: suggestion.cypherAlias,
+        graphqlAlias: suggestion.graphqlAlias,
         materialize: r.materialize,
         refreshInterval: String(r.refreshInterval ?? 300),
       };
@@ -726,14 +706,18 @@ export function RelationshipsPage() {
         setForm(duplicateOf(selectedRel));
         setShowForm(true);
       }}
-      onReverse={
-        gqlConvention === null
-          ? undefined
-          : () => {
-              setSaveProblem("");
-              setReverseForm(buildReverse(selectedRel, gqlConvention));
-            }
-      }
+      onReverse={async () => {
+        setSaveProblem("");
+        try {
+          const suggestion = await suggestReverseRelAlias(
+            selectedRel.graphqlAlias,
+            selectedRel.alias ?? selectedRel.computedCypherAlias ?? null,
+          );
+          setReverseForm(buildReverse(selectedRel, suggestion));
+        } catch (err) {
+          setSaveProblem(err instanceof Error ? err.message : String(err));
+        }
+      }}
       onDelete={() => handleDelete(String(selectedRel.id))}
       onChangeResolver={rs.change}
       onRetireResolver={rs.retire}
@@ -841,11 +825,6 @@ export function RelationshipsPage() {
       {discoverError && (
         <Alert color="red" mb="md" data-testid="rels-discover-error">
           {discoverError}
-        </Alert>
-      )}
-      {settingsError && (
-        <Alert color="red" mb="md" data-testid="rels-settings-error">
-          {settingsError}
         </Alert>
       )}
       <DiscoverRunLine

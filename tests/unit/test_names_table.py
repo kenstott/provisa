@@ -369,3 +369,11 @@ def test_a_field_pointing_at_a_registered_type_leaves_the_name_to_its_relationsh
 def test_a_data_column_and_a_relationship_of_one_name_are_still_refused():
     with pytest.raises(NamesClashRefused, match="relationship Orders.customer"):
         build_names_table(model_name_rows(_reference_model(governed=False), []))
+
+
+def test_sql_address_is_the_tables_schema_and_sql_name():  # REQ-2361
+    table = _build()
+    assert table.sql_address(1) == ("sales", "orders")
+    assert table.sql_address(2) == ("sales", "customers")
+    with pytest.raises(KeyError):
+        table.sql_address(99)

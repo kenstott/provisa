@@ -37,7 +37,7 @@ import {
   requiredParamColumns,
   requiredParamsSatisfied,
 } from "./nativeParams";
-import { tableSqlRef } from "../naming";
+import { servedSqlRef } from "../naming";
 
 // REQ-1444: rows per statement while reading the whole relation for an export. Larger than any
 // on-screen page size (the reader is a file, not a viewport) and still bounded, so one export is a
@@ -198,11 +198,10 @@ export function GovernedTableViewer({
   // actually fetched the exported rows — same call, same arguments — not a reconstruction.
   // REQ-1444: the export issues it once per chunk with OFFSET advancing by EXPORT_CHUNK_SIZE.
   const provenanceFor = (params: Record<string, string>): ProvenanceEntry[] => {
+    const served = servedSqlRef(table);
     const entries: ProvenanceEntry[] = [
-      {
-        label: t("tablePreview.provRelation"),
-        value: tableSqlRef(table),
-      },
+      // REQ-2361: the relation as the server's names table names it; an unserved table has none.
+      ...(served === null ? [] : [{ label: t("tablePreview.provRelation"), value: served }]),
       { label: t("tablePreview.provRegistered"), value: `${table.schemaName}.${table.tableName}` },
       { label: t("tablePreview.provSource"), value: table.sourceId },
     ];

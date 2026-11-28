@@ -8,6 +8,7 @@
 (scripts/canary_stamp.py) sweeps all tracked files, so an unstamped one is stamped, and left
 modified, by an unrelated commit."""
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -41,3 +42,23 @@ def test_every_tracked_source_file_is_stamped() -> None:
         if "Canary: " not in p.read_text(encoding="utf-8"):
             unstamped.append(rel)
     assert unstamped == []
+
+
+def test_no_two_tracked_source_files_share_a_canary() -> None:
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True
+    ).stdout.decode("utf-8")
+    owners: dict[str, list[str]] = {}
+    for rel in filter(None, listed.split("\0")):
+        p = ROOT / rel
+        if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
+            continue
+        if p.suffix not in STAMPABLE_SUFFIXES:
+            continue
+        m = re.search(
+            r"^(?:#|//) Canary:\s+([0-9a-f-]{36})\s*$", p.read_text(encoding="utf-8"), re.M
+        )
+        if m:
+            owners.setdefault(m.group(1), []).append(rel)
+    shared = {k: v for k, v in owners.items() if len(v) > 1}
+    assert shared == {}, "\n".join(f"{k}: {' and '.join(v)}" for k, v in shared.items())
