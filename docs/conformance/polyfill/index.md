@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-638 of the grid's 638 features are native on PostgreSQL and left out.
+639 of the grid's 639 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-271 of the grid's 638 features are native on DuckDB and left out.
+271 of the grid's 639 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.<br><em>Made on: duckdb, motherduck. Verified on: duckdb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -591,6 +591,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: duckdb, motherduck. Verified on: duckdb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: numeric &#x27;-0.000000000000000000001&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: duckdb, motherduck. Verified on: duckdb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: duckdb, motherduck. Verified on: duckdb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1047,7 +1050,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-179 of the grid's 638 features are native on Trino and left out.
+179 of the grid's 639 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.<br><em>Made on: trino. Verified on: trino, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -1743,6 +1746,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: trino. Verified on: trino, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on trino</li><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_mod() of a numeric of scale past 18 has no exact form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: trino. Verified on: trino, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.<br><em>Made on: trino. Verified on: trino, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: trino. Verified on: trino, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
@@ -2199,7 +2205,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-180 of the grid's 638 features are native on Presto and left out.
+180 of the grid's 639 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -2895,6 +2901,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_mod() of a numeric of scale past 18 has no exact form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
@@ -3350,7 +3359,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Athena](athena.md)
 
-180 of the grid's 638 features are native on Athena and left out.
+180 of the grid's 639 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4046,6 +4055,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on athena</li><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_mod() of a numeric of scale past 18 has no exact form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
@@ -4501,7 +4513,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-86 of the grid's 638 features are native on ClickHouse and left out.
+86 of the grid's 639 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td><ul><li>Of an array the statement writes with nested braces only: a column&#x27;s array of arrays keeps each call&#x27;s own form. array_larger and array_smaller of arrays of different dimensions are refused by name: either is the answer, and ClickHouse&#x27;s CASE answers one type. <code>0A000</code> array_larger() of arrays of different dimensions has no form on clickhouse</li><li>array_smaller of arrays of different dimensions is refused by name. <code>0A000</code> array_smaller() of arrays of different dimensions has no form on clickhouse</li><li>array_cat of an array of more than one dimension is refused by name where another call reads its answer: that call would read an array of arrays as an array of one dimension. <code>0A000</code> array_cat() of an array of more than one dimension read by another call has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -5198,6 +5210,9 @@ function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timesta
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) WHEN $b = 0 THEN CAST(throwIf(1, &#x27;postgresql-error 22012: division by zero&lt;end of postgresql-error&gt;&#x27;) AS Nullable(String)) ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(76, 38))) % CAST(nullIf($b, 0) AS Nullable(Decimal(76, 38))), greatest(toUInt8OrZero(extract(toTypeName($a), &#x27;Decimal\\(\\d+, (\\d+)\\)&#x27;)), toUInt8OrZero(extract(toTypeName($b), &#x27;Decimal\\(\\d+, (\\d+)\\)&#x27;)))), &#x27;.&#x27;) END</code></pre></td><td><ul><li>The scale is each operand&#x27;s type&#x27;s: a column holds one scale for all its values, where PostgreSQL&#x27;s numeric holds each value&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Int32)) WHEN position(toTypeName($x), &#x27;Decimal(&#x27;) &gt; 0 THEN CAST(toUInt8OrZero(extract(toTypeName($x), &#x27;Decimal\\(\\d+, (\\d+)\\)&#x27;)) AS Nullable(Int32)) WHEN position(toString($x), &#x27;.&#x27;) &gt; 0 THEN CAST(length(splitByChar(&#x27;.&#x27;, toString($x))[2]) AS Nullable(Int32)) ELSE CAST(0 AS Nullable(Int32)) END</code></pre></td><td><ul><li>A numeric&#x27;s scale is its Decimal type&#x27;s, trailing zeros among its digits: a column holds one scale for all its values, where PostgreSQL&#x27;s numeric holds each value&#x27;s own. A literal of no precision said is read at its own scale (up to 38 digits after its point; past it 0A000).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: ClickHouse&#x27;s own currentSchemas answers its database, not PostgreSQL&#x27;s search path.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: clickhouse, clickhouse-server. Verified on: clickhouse, clickhouse-server, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
@@ -5748,7 +5763,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-281 of the grid's 638 features are native on Snowflake and left out.
+281 of the grid's 639 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: snowflake. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -6327,6 +6342,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: snowflake. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: snowflake. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: snowflake. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on snowflake</li></ul></td><td></td><td></td></tr>
@@ -6780,7 +6798,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-281 of the grid's 638 features are native on Databricks and left out.
+281 of the grid's 639 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -7359,6 +7377,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: databricks. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on databricks</li></ul></td><td></td><td></td></tr>
@@ -7812,7 +7833,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-281 of the grid's 638 features are native on BigQuery and left out.
+281 of the grid's 639 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: bigquery. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -8391,6 +8412,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: bigquery. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: bigquery. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: bigquery. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on bigquery</li></ul></td><td></td><td></td></tr>
@@ -8844,7 +8868,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-281 of the grid's 638 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+281 of the grid's 639 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: mssql, fabric, synapse. Verified on: mssql, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -9423,6 +9447,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: mssql, fabric, synapse. Verified on: mssql, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: mssql, fabric, synapse. Verified on: mssql, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: mssql, fabric, synapse. Verified on: mssql, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on tsql</li></ul></td><td></td><td></td></tr>
@@ -9876,7 +9903,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-281 of the grid's 638 features are native on Redshift and left out.
+281 of the grid's 639 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: redshift. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -10455,6 +10482,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: redshift. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: redshift. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: redshift. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on redshift</li></ul></td><td></td><td></td></tr>
@@ -10908,7 +10938,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-281 of the grid's 638 features are native on MySQL and left out.
+281 of the grid's 639 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: mysql, mariadb, tidb. Verified on: mysql, mariadb, tidb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -11487,6 +11517,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: mysql, mariadb, tidb. Verified on: mysql, mariadb, tidb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: mysql, mariadb, tidb. Verified on: mysql, mariadb, tidb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: mysql, mariadb, tidb. Verified on: mysql, mariadb, tidb, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -11940,7 +11973,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-281 of the grid's 638 features are native on SingleStore and left out.
+281 of the grid's 639 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: singlestore. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -12519,6 +12552,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: singlestore. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: singlestore. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: singlestore. Verified on: none (run 45453337906, the last measured, judged none of its legs).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on singlestore</li></ul></td><td></td><td></td></tr>
@@ -12972,7 +13008,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-281 of the grid's 638 features are native on SQLite and left out.
+281 of the grid's 639 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -13551,6 +13587,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on sqlite</li></ul></td><td></td><td></td></tr>
@@ -14004,7 +14043,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-281 of the grid's 638 features are native on Oracle and left out.
+281 of the grid's 639 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: oracle. Verified on: oracle, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -14583,6 +14622,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: oracle. Verified on: oracle, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: oracle. Verified on: oracle, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: oracle. Verified on: oracle, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on oracle</li></ul></td><td></td><td></td></tr>
@@ -15036,7 +15078,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-281 of the grid's 638 features are native on Hive and left out.
+281 of the grid's 639 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -15615,6 +15657,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on hive</li></ul></td><td></td><td></td></tr>
@@ -16068,7 +16113,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-281 of the grid's 638 features are native on Exasol and left out.
+281 of the grid's 639 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: exasol. Verified on: exasol, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -16647,6 +16692,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: exasol. Verified on: exasol, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: exasol. Verified on: exasol, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: exasol. Verified on: exasol, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on exasol</li></ul></td><td></td><td></td></tr>
@@ -17100,7 +17148,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-281 of the grid's 638 features are native on Druid and left out.
+281 of the grid's 639 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -17679,6 +17727,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -18132,7 +18183,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Db2](db2.md)
 
-241 of the grid's 638 features are native on Db2 and left out.
+241 of the grid's 639 features are native on Db2 and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -18738,6 +18789,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on db2</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: db2. Verified on: db2, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on db2</li></ul></td><td></td><td></td></tr>
@@ -19224,7 +19278,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SAP HANA](saphana.md)
 
-228 of the grid's 638 features are native on SAP HANA and left out.
+228 of the grid's 639 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -19830,6 +19884,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: saphana. Verified on: saphana, last by run 45453337906 at c82a9c938c.</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on saphana</li></ul></td><td></td><td></td></tr>

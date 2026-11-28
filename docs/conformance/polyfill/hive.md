@@ -8,11 +8,11 @@ This page lists every feature that has a polyfill or a limitation on Hive. A fea
 
 When Hive is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 406, of which 257 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 258 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 No Conformance (functions) leg runs Hive. No run has verified them: function_legs.yaml has no leg whose engine runs this dialect. Each row prints this provenance, read from scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json, never written by hand.
 
-281 of the grid's 638 features are native on Hive and left out.
+281 of the grid's 639 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -591,6 +591,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on hive</li></ul></td><td></td><td></td></tr>
