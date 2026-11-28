@@ -40,7 +40,6 @@
     "noWebhooks": "Keine Webhooks registriert",
     "noFunctionsMatch": "Keine Funktionen entsprechen dem Filter",
     "noWebhooksMatch": "Keine Webhooks entsprechen dem Filter",
-    "customSchema": "Dataset",
     "dash": "—",
     "all": "alle",
     "contract": "Erklärt",

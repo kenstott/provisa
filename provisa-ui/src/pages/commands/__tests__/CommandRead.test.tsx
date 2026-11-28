@@ -97,7 +97,8 @@ describe("a function's read view", () => {
       ["Endpoint URL", "https://pay.example.com/refund"],
       ["Method", "POST"],
       ["Materialize (admin/definer identity)", "Yes"],
-      ["Return Type", "Dataset (columns)"],
+      ["Return Type", "Own columns"],
+      ["Returns", "card: string, status: string"],
       ["Visible To (roles, comma-separated)", "support"],
       ["Writes table", "public.orders"],
       ["Requires approval", "Yes"],
@@ -120,8 +121,8 @@ describe("a function's read view", () => {
     expect(shown["Source"]).toBe("sales-pg");
     expect(shown["Schema"]).toBe("public");
     expect(shown["Data products"]).toBe("—");
-    expect(shown["Return Type"]).toBe("Registered Table");
-    expect(shown["Returns (table)"]).toBe("public.refunds");
+    expect(shown["Return Type"]).toBe("Registered table");
+    expect(shown["Returns"]).toBe("public.refunds");
     expect(shown["Endpoint URL"]).toBeUndefined();
     expect(shown["Materialize (admin/definer identity)"]).toBeUndefined();
     expect(screen.queryByTestId("function-read-columns-card")).toBeNull();
@@ -285,5 +286,58 @@ describe("a command written as entered code", () => {
     expect(shown["Function Name"]).toBe("greet");
     expect(shown["Return Type"]).toBeUndefined();
     expect(shown["Materialize (admin/definer identity)"]).toBeUndefined();
+  });
+});
+
+// REQ-1159 (amended 2026-11-28): Returns is the shape of the dataset the command returns.
+describe("a function's Returns", () => {
+  const returns = (over: Partial<TrackedFunction>) => {
+    render(<FunctionRead fn={{ ...fn, ...over }} productNames={[]} entered={null} />);
+    return Object.fromEntries(fields("function-read-fields"))["Returns"];
+  };
+
+  it("is a code source's declared columns, each with its type", () => {
+    expect(
+      returns({
+        implKind: "code_command",
+        schemaName: "code",
+        functionName: "greet",
+        kind: "query",
+        outputColumns: [
+          { name: "name", type: "text" },
+          { name: "times", type: "bigint" },
+        ],
+      }),
+    ).toBe("name: text, times: bigint");
+  });
+
+  it("is a statement mutation's result columns, as its statement declares them", () => {
+    expect(
+      returns({
+        implKind: "statement",
+        binding: { sql: "UPDATE orders SET status = 'x' RETURNING id, status" },
+        outputColumns: null,
+        contract: {
+          version: "1",
+          statement_hash: "h",
+          kind: "mutation",
+          writes: "orders",
+          upsert: false,
+          reads: [],
+          outputs: [
+            { name: "id", type: "bigint" },
+            { name: "status", type: "text" },
+          ],
+          arguments: [],
+          lineage: {},
+          write_select: null,
+          broken: null,
+        },
+      }),
+    ).toBe("id: bigint, status: text");
+  });
+
+  it("is empty for a command that declares no columns", () => {
+    expect(returns({ outputColumns: [] })).toBe("—");
   });
 });

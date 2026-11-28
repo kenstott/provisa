@@ -220,6 +220,81 @@ describe("the Commands lists' search", () => {
   });
 });
 
+// REQ-1159 (amended 2026-11-28): Returns is the shape of the dataset each command returns.
+describe("the functions list's Returns", () => {
+  const returnsCell = (name: string) => screen.getByTestId(`commands-fn-returns-${name}`);
+
+  it("shows the registered table, a code source's declared columns, or the command's own", async () => {
+    ACTIONS = {
+      functions: [
+        fn("refund_order"),
+        {
+          ...fn("greet"),
+          implKind: "code_command",
+          schemaName: "code",
+          kind: "query",
+          returns: "",
+          outputColumns: [
+            { name: "name", type: "text" },
+            { name: "times", type: "bigint" },
+          ],
+        } as unknown as TrackedFunction,
+        {
+          ...fn("enrich"),
+          implKind: "http",
+          returns: "",
+          outputColumns: [
+            { name: "id", type: "bigint" },
+            { name: "embedding", type: "json" },
+          ],
+        } as unknown as TrackedFunction,
+      ],
+      webhooks: [],
+    };
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-fn-row-greet");
+    expect(returnsCell("refund_order")).toHaveTextContent(/^public\.orders$/);
+    expect(returnsCell("greet")).toHaveTextContent(/^name, times$/);
+    expect(returnsCell("greet")).toHaveAttribute("title", "name: text, times: bigint");
+    expect(returnsCell("enrich")).toHaveTextContent(/^id, embedding$/);
+    expect(returnsCell("enrich")).toHaveAttribute("title", "id: bigint, embedding: json");
+    expect(screen.getByTestId("commands-functions-list")).not.toHaveTextContent(/\bdataset\b/);
+  });
+
+  it("shows a mutation's result columns, as its statement declares them", async () => {
+    ACTIONS = {
+      functions: [
+        {
+          ...fn("close_period"),
+          implKind: "statement",
+          returns: "",
+          outputColumns: null,
+          contract: {
+            version: "1",
+            statement_hash: "h",
+            kind: "mutation",
+            writes: "periods",
+            upsert: false,
+            reads: [],
+            outputs: [
+              { name: "period_id", type: "bigint" },
+              { name: "status", type: "text" },
+            ],
+            arguments: [],
+            lineage: {},
+            write_select: null,
+            broken: null,
+          },
+        } as unknown as TrackedFunction,
+      ],
+      webhooks: [],
+    };
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-fn-row-close_period");
+    expect(returnsCell("close_period")).toHaveTextContent(/^period_id, status$/);
+  });
+});
+
 describe("a command's detail is a panel at the right of the lists", () => {
   it("shows nothing until a row is chosen, then that command, one at a time across both lists", async () => {
     render(<CommandsPage />);
