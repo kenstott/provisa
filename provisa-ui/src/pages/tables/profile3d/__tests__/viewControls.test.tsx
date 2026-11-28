@@ -10,8 +10,8 @@
 
 // REQ-2239 (amended 2026-11-11, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D): every 3D view -- the
 // ontology graph and the four table-profile views -- has the one hover stack of the 2D graphs in its
-// canvas, holding Reset view, Full screen and Download, then Rotate and Grid (where the scene draws a
-// floor grid). Rotate and Grid are toggles that show their state and read and write the settings the
+// canvas, holding the shared commands first -- Reset view, Zoom in, Zoom out, Full screen and Download
+// (amended 2026-11-27) -- then Rotate and Grid (where the scene draws a floor grid). Rotate and Grid are toggles that show their state and read and write the settings the
 // toolbar's pills did; no toolbar holds Rotate, Grid or Reset view. jsdom has no WebGL, so each
 // three.js scene is replaced by a recorder.
 
@@ -40,6 +40,7 @@ const recorder = vi.hoisted(
           "setData",
           "setSelected",
           "focus",
+          "zoom",
           ...extra,
         ])
           calls[m] = vi.fn();
@@ -204,7 +205,7 @@ beforeEach(() => {
 });
 
 describe.each(VIEWS)("$name's view controls", (v) => {
-  it("sit in one stack in its canvas: Reset view, Full screen, Download, Rotate, Grid", async () => {
+  it("sit in one stack in its canvas: Reset view, Zoom in, Zoom out, Full screen, Download, Rotate, Grid", async () => {
     render(v.draw());
     await waitFor(() => expect(made.scenes.some((s) => s.kind === v.kind)).toBe(true));
     const stack = stackOf(v);
@@ -216,6 +217,8 @@ describe.each(VIEWS)("$name's view controls", (v) => {
     // 3D view's own.
     expect(names).toEqual([
       "Reset view",
+      "Zoom in",
+      "Zoom out",
       "Full screen",
       "Download",
       "Rotate",
@@ -269,6 +272,20 @@ describe.each(VIEWS)("$name's view controls", (v) => {
     await waitFor(() => expect(made.scenes.some((s) => s.kind === v.kind)).toBe(true));
     fireEvent.click(within(stackOf(v)).getByTestId(`${v.id}-reset`));
     await waitFor(() => expect(scene(v.kind).resetView).toHaveBeenCalled());
+  });
+
+  it("zoom the camera in and out from the stack, by one step each way", async () => {
+    render(v.draw());
+    await waitFor(() => expect(made.scenes.some((s) => s.kind === v.kind)).toBe(true));
+    const zoomIn = await waitFor(() => {
+      const b = within(stackOf(v)).getByTestId(`${v.id}-zoom-in`);
+      expect(b).not.toBeDisabled();
+      return b;
+    });
+    fireEvent.click(zoomIn);
+    expect(scene(v.kind).zoom).toHaveBeenLastCalledWith(1.3);
+    fireEvent.click(within(stackOf(v)).getByTestId(`${v.id}-zoom-out`));
+    expect(scene(v.kind).zoom).toHaveBeenLastCalledWith(1 / 1.3);
   });
 
   it("put the stage itself full screen, so the stack is still there", async () => {

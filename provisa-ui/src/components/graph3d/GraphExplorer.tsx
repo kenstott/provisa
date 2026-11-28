@@ -709,14 +709,8 @@ export function GraphExplorer({
             </Tip>
           </>
         )}
-        {/* REQ-2239: in 3D, Reset view is in the canvas's controls (Stage3D). The lane diagram's
-            stays here: it folds every table back as well as fitting, where its canvas's Fit fits
-            the whole image only. */}
-        {flat && (
-          <Button size="xs" variant="default" onClick={resetView} data-testid={`${testId}-reset`}>
-            {t("profile3d.resetView")}
-          </Button>
-        )}
+        {/* REQ-2239 (amended 2026-11-27): fitting is one control in the canvas's bar, Fit all in
+            2D (GraphControls) and Reset view in 3D (Stage3D); no toolbar button repeats it. */}
         {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}

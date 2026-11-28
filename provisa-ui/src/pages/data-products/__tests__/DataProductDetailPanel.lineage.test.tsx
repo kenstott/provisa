@@ -32,10 +32,15 @@ vi.mock("../../../components/graph3d/OntologyGraph", () => ({
 }));
 // The graph as drawn: what it is given.
 const drawn = vi.hoisted(() => ({
-  last: null as null | { graph: GraphSpec; preset: string; lanes?: LanesOptions },
+  last: null as null | { graph: GraphSpec; preset: string; lanes?: LanesOptions; hint?: string },
 }));
 vi.mock("../../../components/provisa-graph/ProvisaGraph", () => ({
-  ProvisaGraph: (props: { graph: GraphSpec; preset: string; lanes?: LanesOptions }) => {
+  ProvisaGraph: (props: {
+    graph: GraphSpec;
+    preset: string;
+    lanes?: LanesOptions;
+    hint?: string;
+  }) => {
     drawn.last = props;
     return <div data-testid="provisa-graph" />;
   },
@@ -148,6 +153,13 @@ describe("the product's Lineage tab", () => {
         label: "staging.v",
       }),
     ]);
+  });
+
+  // REQ-2239 (amended 2026-11-27): every graph shows the pan and zoom hint.
+  it("shows the shared graph's pan and zoom hint", () => {
+    panel();
+    openSection("lineage", "pet_health");
+    expect(drawn.last?.hint).toBe("Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom");
   });
 
   it("names its lanes Inputs and This product's tables, each further lane by hops beyond the inputs", () => {
