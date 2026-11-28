@@ -167,6 +167,27 @@ def test_two_organisations_are_never_described_each_others_service(deployment):
     assert [m.name for m in globex.service[0].method] == ["QueryRefunds"]
 
 
+@pytest.mark.parametrize("package", ["grpc.reflection.v1", "grpc.reflection.v1alpha"])
+def test_reflection_is_served_under_v1_and_v1alpha(deployment, package):
+    """grpc/grpc doc/server-reflection.md: a client asks grpc.reflection.v1 (grpcurl, Postman,
+    current grpcio-reflection clients) or its predecessor v1alpha; both list the caller's
+    service and both reflection services."""
+    _state, channel = deployment
+    call = channel.stream_stream(
+        f"/{package}.ServerReflection/ServerReflectionInfo",
+        request_serializer=reflection_pb2.ServerReflectionRequest.SerializeToString,
+        response_deserializer=reflection_pb2.ServerReflectionResponse.FromString,
+    )
+    request = reflection_pb2.ServerReflectionRequest(list_services="")
+    (response,) = call(iter([request]), metadata=_as("acme"))
+    names = [s.name for s in response.list_services_response.service]
+    assert sorted(names) == [
+        "grpc.reflection.v1.ServerReflection",
+        "grpc.reflection.v1alpha.ServerReflection",
+        "provisa.v1.ProvisaService",
+    ]
+
+
 def test_a_call_is_decoded_and_answered_with_its_organisations_own_messages(deployment):
     state, channel = deployment
     (row,) = _query(channel, "acme", "Orders", 7)
