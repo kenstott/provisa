@@ -14,7 +14,7 @@
 // command by naming it, sending no arguments or columns; the command opens with its declared
 // arguments and columns, and editing it reopens its code.
 
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { editorOf, typeInto } from "../../test-utils/codeEditor";
@@ -76,7 +76,16 @@ const held = vi.hoisted(() => ({
   sources: [] as unknown[],
   // What the server holds after a save; the sources are read again from it.
   saved: [] as unknown[],
+  // The commands the acting role is served, by name: what the server's graph schema answers now.
+  served: [] as string[],
 }));
+const servedCommand = (name: string) => ({
+  command: name,
+  domain_id: "sales",
+  graphql_root: "Query",
+  graphql_field: `sales__${name}`,
+  names: { sql: name, cypher: name, rest: name },
+});
 const createSource = vi.fn();
 const updateSource = vi.fn();
 const NO_DOMAINS = vi.hoisted(() => ({ domains: [], loading: false, refetch: () => undefined }));
@@ -104,6 +113,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   useAuth: () => ({
     role: "admin",
     selectedRoles: ["admin"],
+    actingRoles: "admin",
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
     activeOrgId: "acme",
@@ -136,7 +146,25 @@ beforeEach(() => {
   createSource.mockReset().mockResolvedValue({ success: true, message: "" });
   updateSource.mockReset().mockResolvedValue({ success: true, message: "" });
   vi.mocked(saveFunction).mockClear();
+  held.served = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      String(url).startsWith("/data/graph-schema")
+        ? new Response(
+            JSON.stringify({
+              node_labels: [],
+              relationship_types: [],
+              root_fields: [],
+              commands: held.served.map(servedCommand),
+            }),
+            { status: 200 },
+          )
+        : new Response("{}", { status: 404 }),
+    ),
+  );
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("+ Command, Code (entered)", () => {
   it("saves the code as entered code, then registers the function it names", async () => {
@@ -183,6 +211,41 @@ describe("+ Command, Code (entered)", () => {
     expect(screen.getByTestId("command-entered-columns")).toHaveTextContent("result: text");
     expect(screen.getByTestId("command-entered-kind")).toHaveTextContent("Query");
     expect(editorOf("command-entered-code").state.doc.toString()).toBe(CODE);
+  });
+
+  it("shows the saved command's Query it line at once, read from what the role is served now", async () => {
+    // Another command is read first, so what the role is served has been read once already.
+    held.actions = {
+      functions: [{ ...greet(), name: "haversine", sourceId: "haversine" }],
+      webhooks: [],
+    };
+    held.served = ["haversine"];
+    render(<CommandsPage />);
+    await userEvent.click(await screen.findByTestId("commands-fn-row-haversine"));
+    expect(await screen.findByTestId("command-query-links")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("commands-toggle-form"));
+    fireEvent.change(within(panel()).getByLabelText(/^Name/), { target: { value: "greet" } });
+    fireEvent.click(screen.getByTestId("command-impl-kind-select"));
+    fireEvent.click(await screen.findByRole("option", { name: "Code (entered)", hidden: true }));
+    fireEvent.change(screen.getByTestId("command-entered-function"), {
+      target: { value: "greet" },
+    });
+    act(() => typeInto(editorOf("command-entered-code"), CODE));
+    // The server rebuilt what the role is served before it answered the save.
+    held.saved = [greetSource(CODE)];
+    held.actions = {
+      functions: [{ ...greet(), name: "haversine", sourceId: "haversine" }, greet()],
+      webhooks: [],
+    };
+    held.served = ["haversine", "greet"];
+    fireEvent.submit(panel().querySelector("form")!);
+    await vi.waitFor(() => expect(saveFunction).toHaveBeenCalledTimes(1));
+    await screen.findByTestId("command-entered-arguments");
+    // Leaving the edit shows the command read, with its Query it line.
+    await userEvent.click(within(panel()).getByRole("button", { name: "Cancel" }));
+    const line = await screen.findByTestId("command-query-links");
+    expect(within(line).getByTestId("command-query-sql")).toHaveAccessibleName(/greet/);
   });
 
   it("does not register the command when its code is refused", async () => {

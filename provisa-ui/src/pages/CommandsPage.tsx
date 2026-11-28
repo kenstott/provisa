@@ -11,6 +11,7 @@
 import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import { CommandQueryLinks } from "../components/commands/CommandQueryLinks";
+import { servedSchemasChanged } from "../api/metaGraph";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -459,6 +460,9 @@ export function CommandsPage() {
           editingName,
         );
       }
+      // REQ-2252, REQ-1159: the server rebuilt the served schemas before it answered the save, so
+      // what each role is served -- the command's Query it line -- is read again.
+      servedSchemasChanged();
       setMsg(t("commandsPage.savedMessage", { type: form.actionType, name: form.name }));
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
@@ -714,6 +718,7 @@ export function CommandsPage() {
                       testId={`command-delete-fn-${fn.name}`}
                       onDelete={async () => {
                         await deleteFunction(fn.name);
+                        servedSchemasChanged();
                         await load();
                         detail.close({ only: commandId("function", fn.name) });
                       }}
@@ -771,6 +776,7 @@ export function CommandsPage() {
                       testId={`command-delete-wh-${wh.name}`}
                       onDelete={async () => {
                         await deleteWebhook(wh.name);
+                        servedSchemasChanged();
                         await load();
                         detail.close({ only: commandId("webhook", wh.name) });
                       }}
