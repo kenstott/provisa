@@ -230,7 +230,35 @@ def engine_env(engine: str, ports: dict[str, int]) -> dict[str, str]:
     return {}
 
 
-def start_server(engine: str, ports: dict[str, int], etc_dir: Path) -> Any:
+def start_receiver(port: int, log_dir: Path) -> subprocess.Popen:
+    """The trace receiver that tallies request spans' stages (noop_otlp_receiver.py --tally)."""
+    import local_pass
+
+    return local_pass.start_receiver(port, log_dir)
+
+
+def telemetry_config(tmp: Path, receiver_port: int) -> str:
+    """The perf config with its traces sent to the receiver, written under ``tmp``."""
+    import three_device
+
+    path = tmp / "perf-telemetry-on.yaml"
+    path.write_text(
+        three_device.run_config(
+            (lp.PERF / "config.yaml").read_text(),
+            telemetry="on",
+            collector_url=f"http://127.0.0.1:{receiver_port}",
+        )
+    )
+    return str(path)
+
+
+def start_server(
+    engine: str,
+    ports: dict[str, int],
+    etc_dir: Path,
+    config: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> Any:
     server = lp._proof_server_class()(  # noqa: SLF001
         f"benchtrial{os.getpid()}{engine}",
         engine=engine,
@@ -239,11 +267,12 @@ def start_server(engine: str, ports: dict[str, int], etc_dir: Path) -> Any:
         enable_bolt=True,
         await_flight=True,
         await_grpc=True,
-        config=str(lp.PERF / "config.yaml"),
+        config=config or str(lp.PERF / "config.yaml"),
         env={
             **lp._server_env(ports),  # noqa: SLF001
             **lp._mcp_env(ports),  # noqa: SLF001
             **engine_env(engine, ports),
+            **(extra_env or {}),
             # The server renders Trino's config into this tree (a run's launch-settings.env among
             # it); the default is the checkout's own, which a run must leave clean.
             "PROVISA_TRINO_ETC_DIR": str(etc_dir),
@@ -253,7 +282,7 @@ def start_server(engine: str, ports: dict[str, int], etc_dir: Path) -> Any:
     return server
 
 
-def run_matrix(server: Any, engine: str, out: Path) -> int:
+def run_matrix(server: Any, engine: str, out: Path, stage_tally_url: str | None = None) -> int:
     cmd = [
         sys.executable,
         str(HERE / "run_benchmark.py"),
@@ -281,6 +310,8 @@ def run_matrix(server: Any, engine: str, out: Path) -> int:
         str(out),
         "--skip-saturation",
     ]
+    if stage_tally_url is not None:
+        cmd += ["--stage-tally-url", stage_tally_url]
     lp.log("$ " + " ".join(cmd))
     return subprocess.run(cmd, cwd=str(HERE), check=False).returncode
 
@@ -515,7 +546,16 @@ def main() -> int:
         help="A report to compare each engine's timings with (bench_sanity.py); default: the "
         "newest report already in <output-dir>/<engine>",
     )
+    parser.add_argument(
+        "--stage-spans",
+        action="store_true",
+        help="Run the server with traces on, exported to a tallying receiver, and report the "
+        "neo4j_materialize_cold cell's per-stage time per request. Tracing adds its own cost to "
+        "every cell, so a run to compare with one that did not use it must not set this.",
+    )
     args = parser.parse_args()
+    if args.stage_spans and (args.optimistic or args.chaos):
+        parser.error("--stage-spans applies to the query matrix only")
     if args.orders < MIN_ORDERS:
         parser.error(f"--orders below {MIN_ORDERS} leaves queries with no rows to compare")
     if CONTAINER_ENGINES & set(args.engine) and sys.platform != "linux":
@@ -537,6 +577,7 @@ def main() -> int:
         "minio-console",
         "zaychik",
         "mcp",
+        "otlp",
     )
     ports = dict(zip(names, lease_ports(len(names))))
     lp.ORDERS = lp.NEO4J_ORDERS = args.orders
@@ -552,6 +593,7 @@ def main() -> int:
         str(compose_file(ports, tmp, args.engine, args.pg_image)),
     ]
     verdicts: dict[str, dict[str, Any]] = {}
+    receiver = None
     shutil.copytree(REPO / "trino", tmp / "trino-etc")
     try:
         services = ["postgresql", "mongodb", "clickhouse", "neo4j"]
@@ -563,6 +605,14 @@ def main() -> int:
             create_otel_bucket(ports)
         lp.seed(ports)
         lp.control_plane_on_stack(ports)
+        stage_url = None
+        server_config = None
+        server_env: dict[str, str] = {}
+        if args.stage_spans:
+            receiver = start_receiver(ports["otlp"], out)
+            stage_url = f"http://127.0.0.1:{ports['otlp']}"
+            server_config = telemetry_config(tmp, ports["otlp"])
+            server_env = {"OTEL_SDK_DISABLED": "false"}
         for engine in args.engine:
             server = None
             before = set((out / engine).glob("*.json")) | set(
@@ -577,11 +627,11 @@ def main() -> int:
                         verdicts[engine]["exit_code"] = 1
                         lp.log(f"{engine} chaos: {result['problems']}")
                     continue
-                server = start_server(engine, ports, tmp / "trino-etc")
+                server = start_server(engine, ports, tmp / "trino-etc", server_config, server_env)
                 if args.optimistic:
                     code = run_optimistic(server, engine, out, ports)
                 else:
-                    code = run_matrix(server, engine, out)
+                    code = run_matrix(server, engine, out, stage_url)
                 verdict = read_verdict(out, engine, args.optimistic, before)
                 verdict["exit_code"] = code
                 if not args.optimistic:
@@ -595,6 +645,8 @@ def main() -> int:
                     (out / f"{engine}-server.stderr").write_text(server.dump_stderr_debug())
                     server.stop_process()
     finally:
+        if receiver is not None:
+            receiver.terminate()
         subprocess.run([*compose, "down", "-v", "--remove-orphans"], check=False)
     failed = [
         engine

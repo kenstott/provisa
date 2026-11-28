@@ -41,9 +41,12 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.discovery.columns import NOT_READ, UNKNOWN, ColumnFacts, TableFacts
+
+if TYPE_CHECKING:
+    from provisa.profiler.classify import Kind
 
 #: The characters one sample value takes in a request, as written there (escapes counted, its
 #: quotes not): a longer value is cut to fit. A uuid and a timestamp fit whole.
@@ -104,17 +107,14 @@ def sample_text(value: Any) -> str:
     return text
 
 
-def widest(column: ColumnFacts, samples_per_column: int) -> ColumnFacts:
+def widest(column: ColumnFacts, samples_per_column: int, kinds: Sequence["Kind"]) -> ColumnFacts:
     """``column`` with the longest classes and sample values a run could send for it, whatever
-    its table holds: every kind of the classifier's catalogue and no values (one of them is
+    its table holds: every kind of the org's (``kinds``, its custom ones too) and no values (one of them is
     sensitive), or the kinds that are not sensitive and ``samples_per_column`` (the run's) values
     of :data:`SAMPLE_VALUE_CHARS` characters, whichever is longer. A column of a table that is never
     read sends what it has: nothing is read to add to it."""
     if NOT_READ in column.classes:
         return column
-    from provisa.profiler.classify import catalogue
-
-    kinds = catalogue()
     every = replace(column, classes=tuple(sorted(k.id for k in kinds)), sensitive=True, samples=())
     plain = tuple(sorted(k.id for k in kinds if not k.sensitive)) or (UNKNOWN,)
     valued = replace(

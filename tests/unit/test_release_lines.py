@@ -685,8 +685,10 @@ def test_no_workflow_merges_the_release_or_needs_a_merge_token():
                 assert "release_merge.py" not in step.get("run", ""), path.name
     leg = _load("release-publish.yml")
     assert "merge-release" not in leg["jobs"]
-    assert "secrets" not in _on(leg)["workflow_call"]
-    assert "secrets" not in _load("build-dmg.yml")["jobs"]["publish"]
+    # The one secret the leg takes is the registry token its image pushes need
+    # (ghcr.io/simpleishard-llc), never a token that pushes branches.
+    assert set(_on(leg)["workflow_call"]["secrets"]) == {"GHCR"}
+    assert _load("build-dmg.yml")["jobs"]["publish"]["secrets"] == {"GHCR": "${{ secrets.GHCR }}"}
 
 
 _VERSION_6 = "v0.1.0-alpha.6"

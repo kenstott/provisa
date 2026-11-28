@@ -8,14 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2199: a modeling wizard's step in the + Model panel: which step of how many, the step's own
-// question in its method's words, and Next / Back / Cancel as the panel's actions.
+// REQ-2199: a modeling wizard's step in the + Model panel: the step strip, which shows the progress
+// made, the step's own question in its method's words, and (amended 2026-11-27, after the source
+// setup flow of REQ-2234) the step's choices as the panel's command bar: the step's primary
+// action, Skip step where no later step reads the step's answers, Back after the first step, and
+// Close.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "@mantine/core";
 import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { PanelBody, PanelSection, PanelStrip } from "../../../components/list/PanelBody";
+import { useLeaveGuard } from "../../../components/list/panelLeave";
 import { useScreenInputs } from "../../../mcp/screenState";
 import { StepStrip, type Step } from "../../../components/StepStrip";
 import { FieldLabel } from "../FieldLabel";
@@ -26,6 +30,7 @@ import { FieldLabel } from "../FieldLabel";
  */
 export function WizardStep({
   index,
+  progress,
   steps,
   onStep,
   title,
@@ -33,9 +38,12 @@ export function WizardStep({
   testId,
   children,
 }: {
+  /** The step on screen. */
   index: number;
+  /** The furthest step reached: the strip shows progress, not the step on screen. */
+  progress: number;
   steps: readonly Step[];
-  /** A completed step in the strip was pressed. */
+  /** A step in the strip, up to the progress, was pressed: it opens. */
   onStep: (index: number) => void;
   title: string;
   intro: string;
@@ -51,8 +59,9 @@ export function WizardStep({
       <PanelStrip>
         <StepStrip
           steps={steps}
-          active={index}
+          active={progress}
           onStepClick={onStep}
+          currentSelectable
           label={t("modelingWizard.stepsLabel")}
           testId="wizard-steps"
         />
@@ -94,46 +103,72 @@ export function AddButton({
   );
 }
 
-/** The step's actions: Next (Review on the last question), Back after the first, and Cancel. */
+/**
+ * The step's choices, the panel's command bar (its pinned head, as in the source setup flow): the
+ * primary action (Next, Review on the last question, Create on the review), Skip step where the
+ * step offers it, Back from the second step on, and Close, which leaves through the panel's
+ * unsaved-changes guard.
+ */
 export function WizardFooter({
-  first,
-  nextLabel,
-  onNext,
-  onBack,
-  onCancel,
-  problem,
-  busy = false,
-  nextTestId = "wizard-next",
+  primaryLabel,
+  onPrimary,
+  primaryTestId = "wizard-next",
   creates = false,
+  busy = false,
+  onSkip,
+  onBack,
+  onClose,
+  problem,
 }: {
-  first: boolean;
-  nextLabel: string;
-  onNext: () => void;
-  onBack: () => void;
-  onCancel: () => void;
-  problem: string | null;
-  busy?: boolean;
-  nextTestId?: string;
-  /** Next creates the model (the review's Create); every other step's Next only moves on. */
+  primaryLabel: string;
+  onPrimary: () => void;
+  primaryTestId?: string;
+  /** The primary action creates the model (the review's Create); every other step's only moves on. */
   creates?: boolean;
+  busy?: boolean;
+  /** Offered only on a step no later step reads: drops the step's answers and moves on. */
+  onSkip?: () => void;
+  /** Left out on the first step. */
+  onBack?: () => void;
+  onClose: () => void;
+  problem: string | null;
 }) {
   const { t } = useTranslation();
+  const guard = useLeaveGuard();
   return (
     <FormFooter
       panel
-      onCancel={onCancel}
       problem={problem}
       action={
         <>
-          {/* REQ-2115: Polly asks the user before she presses Create, not Next or Back. */}
-          <Button onClick={onNext} loading={busy} data-changes={creates} data-testid={nextTestId}>
-            {nextLabel}
+          {/* REQ-2115: Polly asks the user before she presses Create, and nothing else here. */}
+          <Button
+            onClick={onPrimary}
+            loading={busy}
+            data-changes={creates}
+            data-testid={primaryTestId}
+          >
+            {primaryLabel}
           </Button>
-          {!first && (
+          {onSkip && (
+            <Button onClick={onSkip} disabled={busy} data-changes={false} data-testid="wizard-skip">
+              {t("modelingWizard.skipStep")}
+            </Button>
+          )}
+          {onBack && (
             <Button onClick={onBack} disabled={busy} data-changes={false} data-testid="wizard-back">
               {t("modelingWizard.back")}
             </Button>
           )}
+          <Button
+            className="panel-head-end"
+            onClick={() => guard(onClose)}
+            disabled={busy}
+            data-changes={false}
+            data-testid="wizard-close"
+          >
+            {t("modelingWizard.close")}
+          </Button>
         </>
       }
     />

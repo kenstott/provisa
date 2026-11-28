@@ -75,7 +75,8 @@ export function SensitiveHintText({ column, hints }: { column: string; hints: Se
       {hints.map((h) => (
         <Text key={h.kind} size="xs" c="orange.8">
           {t("sensitiveScan.hint", {
-            kind: t(`classificationKinds.noun.${h.kind}`),
+            // REQ-2147 (amended 2026-11-25): a custom kind is named by the org's label.
+            kind: h.custom ? h.label : t(`classificationKinds.noun.${h.kind}`),
             percent: Math.round(h.share * 100),
           })}
         </Text>

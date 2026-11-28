@@ -57,7 +57,13 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { TagsTab } from "../TagsTab";
 
-const KINDS = ["us_ssn", "email_address", "iban"];
+const KINDS = [
+  { id: "us_ssn", label: "US social security number", custom: false },
+  { id: "email_address", label: "Email address", custom: false },
+  { id: "iban", label: "IBAN", custom: false },
+  // REQ-2147 (amended 2026-11-25): a custom kind is named by the org's own label.
+  { id: "custom.employee_ssn", label: "Employee SSN", custom: true },
+];
 
 const PII: ContextTagUse = {
   id: "pii",
@@ -106,7 +112,7 @@ describe("the Tags list: one line per tag with counts", () => {
       "6 objects in 3 sources",
     );
     expect(screen.getByTestId("tags-dependents-summary-pii")).toHaveTextContent(
-      "3 classifications · 1 row rule",
+      "4 classifications · 1 row rule",
     );
     // No name is listed in the row.
     const row = screen.getByTestId("tags-row-pii");
@@ -165,7 +171,7 @@ describe("the tag's panel: grouped, collapsible, each name a link", () => {
   it("groups what depends on it by why, each header with its count", async () => {
     await openPii();
     expect(screen.getByTestId("tags-dependents-pii-classification-toggle")).toHaveTextContent(
-      "Assigned by classification (3)",
+      "Assigned by classification (4)",
     );
     expect(screen.getByTestId("tags-dependents-pii-row-rules-toggle")).toHaveTextContent(
       "Row rules (1)",
@@ -191,10 +197,14 @@ describe("the tag's panel: grouped, collapsible, each name a link", () => {
       "href",
       "/context/classification?kind=us_ssn",
     );
+    expect(screen.getByTestId("tags-classification-pii-custom.employee_ssn")).toHaveTextContent(
+      "Employee SSN",
+    );
     fireEvent.change(screen.getByTestId("tags-classifications-filter-pii"), {
       target: { value: "social" },
     });
     expect(screen.getByTestId("tags-classification-pii-us_ssn")).toBeInTheDocument();
+    expect(screen.queryByTestId("tags-classification-pii-custom.employee_ssn")).toBeNull();
     expect(screen.queryByTestId("tags-classification-pii-iban")).toBeNull();
     expect(screen.queryByTestId("tags-classification-pii-email_address")).toBeNull();
   });

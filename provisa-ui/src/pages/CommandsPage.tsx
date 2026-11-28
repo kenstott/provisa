@@ -46,7 +46,11 @@ import {
   useDomains,
   useAvailableFunctionsLazy,
   useDataProducts,
+  useCreateSource,
+  useUpdateSource,
 } from "../hooks/useAdminQueries";
+import { refusalError } from "../i18n/serverMessage";
+import type { Source } from "../types/admin";
 import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
@@ -69,7 +73,9 @@ import {
   CODE_SCHEMA,
   deriveReturnSchema,
   columnsFromReturnSchema,
+  CODE_ENTERED,
 } from "./commands/types";
+import { enteredCommandInput, enteredFieldsOf, enteredSourceInput } from "./commands/enteredCode";
 import { CommandFormFields } from "./commands/CommandFormFields";
 import {
   CommandBindingsFields,
@@ -95,7 +101,9 @@ interface CommandRow {
 
 export function CommandsPage() {
   const { t } = useTranslation();
-  const { sources } = useSources();
+  const { sources, refetch: refetchSources } = useSources();
+  const { createSource } = useCreateSource();
+  const { updateSource } = useUpdateSource();
   const { tables } = useTables();
   const { domains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634: command <-> data product picker
@@ -247,11 +255,17 @@ export function CommandsPage() {
   const formFor = (
     actionType: ActionType,
     name: string,
-    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] },
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[]; sources: Source[] },
   ): FormState | null => {
     if (actionType === "function") {
       const fn = held.functions.find((f) => f.name === name);
       if (!fn) return null;
+      // REQ-1159 (amended 2026-11-27): a code command whose source holds entered code is edited
+      // as the code it was written as.
+      const entered = enteredFieldsOf(
+        fn.implKind ?? "",
+        held.sources.find((s) => s.id === fn.sourceId),
+      );
       // REQ-1159: output is a dataset. A registered table → "table" mode; anything else is an
       // IR-typed column list. Legacy commands carry only return_schema → reverse-project it.
       const outputColumns = fn.outputColumns ?? columnsFromReturnSchema(fn.returnSchema);
@@ -272,7 +286,7 @@ export function CommandsPage() {
         inlineReturnType: [],
         kind: fn.kind ?? "mutation",
         returnSchemaMode: fn.returns ? "table" : "dataset",
-        implKind: fn.implKind ?? "source_procedure",
+        implKind: entered ? CODE_ENTERED : (fn.implKind ?? "source_procedure"),
         binding: fn.binding ?? {},
         materialize: fn.materialize ?? false,
         requiresApproval: fn.requiresApproval ?? false, // REQ-1924
@@ -280,6 +294,8 @@ export function CommandsPage() {
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
         exposedAsTable: fn.exposedAsTable ?? null, // REQ-1986
+        enteredCode: entered?.enteredCode ?? "",
+        enteredDependencies: entered?.enteredDependencies ?? "",
       };
     }
     const wh = held.webhooks.find((w) => w.name === name);
@@ -309,6 +325,8 @@ export function CommandsPage() {
       outputColumns: [],
       languageBindings: {},
       exposedAsTable: null, // REQ-1986: a webhook has no table form
+      enteredCode: "",
+      enteredDependencies: "",
     };
   };
 
@@ -317,7 +335,11 @@ export function CommandsPage() {
   const handleEdit = (
     actionType: ActionType,
     name: string,
-    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] } = { functions, webhooks },
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[]; sources: Source[] } = {
+      functions,
+      webhooks,
+      sources,
+    },
   ) => {
     const values = formFor(actionType, name, held);
     if (!values) return;
@@ -338,9 +360,11 @@ export function CommandsPage() {
   // under a new name. Its grants (who may see it) are not copied. A name that exists is refused
   // by the create on save.
   const handleDuplicate = (actionType: ActionType, name: string) => {
-    const values = formFor(actionType, name, { functions, webhooks });
+    const values = formFor(actionType, name, { functions, webhooks, sources });
     if (!values) return;
-    setForm({ ...values, name: `${name}_copy`, visibleTo: "" });
+    // An entered code command's copy keeps its code in a source of its own name, made on save.
+    const source = values.implKind === CODE_ENTERED ? { sourceId: "" } : {};
+    setForm({ ...values, ...source, name: `${name}_copy`, visibleTo: "" });
     setEditingName(null);
     setShowForm(true);
   };
@@ -355,7 +379,16 @@ export function CommandsPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      if (form.actionType === "function") {
+      if (form.actionType === "function" && form.implKind === CODE_ENTERED) {
+        // REQ-1159 (amended 2026-11-27): the code is saved as the entered code of the source of
+        // the command's name, then the command is registered on it by naming its function.
+        const sourceId = form.sourceId || form.name;
+        const stored = sources.find((s) => s.id === sourceId);
+        const input = enteredSourceInput(sourceId, form, stored);
+        const result = stored ? await updateSource(input) : await createSource(input);
+        if (!result.success) throw refusalError(result);
+        await saveFunction(enteredCommandInput(sourceId, form, visibleTo), editingName);
+      } else if (form.actionType === "function") {
         // REQ-1159: output is a dataset. In "dataset" mode the IR-typed columns are the sole
         // contract; return_schema (the GraphQL projection) is DERIVED, never authored.
         const outputColumns = form.outputColumns.filter((c) => c.name.trim() !== "");
@@ -417,9 +450,17 @@ export function CommandsPage() {
       const created = editingName ? null : { type: form.actionType, name: form.name };
       setEditingName(null);
       const held = await load();
+      // A command saved as entered code changed its source's code with it, so the sources are
+      // read again: the command opens, and is edited later, with the code just saved.
+      let heldSources = sources;
+      if (form.implKind === CODE_ENTERED) {
+        const refetched = await refetchSources();
+        if (!refetched.data) throw new Error("the sources were not read again after the save");
+        heldSources = refetched.data.sources;
+      }
       if (created && held) {
         openCommand(created.type, created.name);
-        handleEdit(created.type, created.name, held);
+        handleEdit(created.type, created.name, { ...held, sources: heldSources });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

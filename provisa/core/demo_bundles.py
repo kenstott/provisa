@@ -205,7 +205,7 @@ def link_declared(directory: Path, beside: Path) -> None:
 
 #: Where the project publishes its demos (demo-bundles.yml): what ``start-ui-install.sh --demo``
 #: and a deployment's sandbox tier pull from unless told another registry (a test's own).
-PUBLISHED_AT = "https://ghcr.io/kenstott"
+PUBLISHED_AT = "https://ghcr.io/simpleishard-llc"
 #: The one repository every demo's bundles are published to.
 REPOSITORY = "provisa-demos"
 
@@ -268,7 +268,7 @@ def unpack(blob: bytes, target: Path) -> None:
 
 
 class Registry:
-    """One registry namespace, e.g. ``https://ghcr.io/kenstott``. ``credentials`` (user, token)
+    """One registry namespace, e.g. ``https://ghcr.io/simpleishard-llc``. ``credentials`` (user, token)
     are passed to its token service when pushing."""
 
     def __init__(

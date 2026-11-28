@@ -411,3 +411,6 @@ async def drop_replica_table(state: Any, key: ReplicaKey) -> None:
         engine=StoreReadingEngine(backend, state),
     )
     await target.drop()
+    from provisa.federation.store_writer import forget_ensured
+
+    forget_ensured(address.schema, address.table)  # gone: the row cache ensures it again

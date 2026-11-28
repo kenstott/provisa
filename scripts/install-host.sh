@@ -54,7 +54,11 @@ INSTALL_HOST_MINIO_IMAGE="bitnamilegacy/minio:latest"
 INSTALL_HOST_MINIO_CLIENT_IMAGE="bitnamilegacy/minio-client:latest"
 # Zaychik is built by the release: provisa/zaychik:local inside its core-images asset (a dry run's
 # assets, and on aarch64 the published release's too: REQ-2269, amended 2026-11-26), or on x86_64
-# ghcr.io/<owner>/provisa-zaychik:<tag> once the release is published (that image is amd64 only).
+# $INSTALL_HOST_IMAGE_NAMESPACE/provisa-zaychik:<tag> once the release is published (that image is
+# amd64 only).
+# Where release-publish.yml pushes the release's images: the organization's namespace, whatever
+# repository the release is installed from.
+INSTALL_HOST_IMAGE_NAMESPACE="ghcr.io/simpleishard-llc"
 INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE="provisa/zaychik:local"
 INSTALL_HOST_ZAYCHIK_IMAGE_FILE="zaychik-local.tar.gz"
 INSTALL_HOST_PG_CONTAINER="provisa-postgres"
@@ -303,16 +307,16 @@ core_images_asset_name() {
 }
 
 zaychik_image() {
-  # $1 repo, $2 tag, $3 assets dir (empty: the published release), $4 machine (uname -m). Prints
+  # $1 tag, $2 assets dir (empty: the published release), $3 machine (uname -m). Prints
   # the Zaychik image the install runs: the one inside the release's core-images asset, or on
   # x86_64 the published release's registry image (release-publish.yml pushes it for amd64 only).
-  if [ -n "$3" ]; then
+  if [ -n "$2" ]; then
     printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE"
     return 0
   fi
-  case "$4" in
+  case "$3" in
     aarch64 | arm64) printf '%s\n' "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ;;
-    *) printf 'ghcr.io/%s/provisa-zaychik:%s\n' "${1%%/*}" "$2" ;;
+    *) printf '%s/provisa-zaychik:%s\n' "$INSTALL_HOST_IMAGE_NAMESPACE" "$1" ;;
   esac
 }
 
@@ -827,7 +831,7 @@ load_zaychik_image() {
   # taken from it), or on x86_64 pulled from the published release's registry image.
   local machine name file downloaded=false
   machine="$(uname -m)"
-  IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_REPO" "$IH_VERSION" "$IH_ASSETS_DIR" "$machine")"
+  IH_ZAYCHIK_IMAGE="$(zaychik_image "$IH_VERSION" "$IH_ASSETS_DIR" "$machine")"
   if [ "$IH_ZAYCHIK_IMAGE" != "$INSTALL_HOST_ZAYCHIK_LOCAL_IMAGE" ]; then
     info "pulling $IH_ZAYCHIK_IMAGE"
     docker pull "$IH_ZAYCHIK_IMAGE" >/dev/null || die "pulling $IH_ZAYCHIK_IMAGE failed"

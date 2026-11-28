@@ -50,9 +50,6 @@ const STATED_EXCEPTIONS: Readonly<Record<string, string>> = {
     "lists (one tab per granted region); regions are not created here, so there is no create " +
     "form to open. Granted regions and stores are duplicated in Admin › Region grants " +
     "(GrantEditor).",
-  "components/admin/ClassificationKindsTab.tsx":
-    "Admin › Classification: a kind is shipped with the product; its Edit only switches it on or " +
-    "off. Kinds are not created on this page, so there is no create form a copy could fill.",
   "components/admin/OrgsTab.tsx":
     "Admin › Orgs: an org's Edit sets only its tier. An org holds nothing a create form could " +
     "copy but a new id and name, which the create form asks for anyway.",

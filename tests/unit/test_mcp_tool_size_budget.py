@@ -22,7 +22,10 @@ from scripts.mcp_tool_size import estimate_tokens, mcp_tool_sizes
 # 88 tools, 2026-11-13). Raise it only deliberately, for a tool or text worth its cost.
 # Raised from 45_000 deliberately: the six tag-edit tools (assign, unassign, cite and uncite for
 # an assignment and for a definition) add 3,167 chars, condensed to the least a model needs.
-BUDGET_CHARS = 48_000
+# Raised from 48_000 deliberately (REQ-2147, amended 2026-11-25): the four classification-kind
+# tools (list, create, change, delete) bring the measured size to 50,535 chars; a custom kind's
+# pattern, check, ignore, threshold, mask and term are each a field a model must fill.
+BUDGET_CHARS = 51_000
 
 
 async def test_tool_definitions_fit_the_budget(monkeypatch):

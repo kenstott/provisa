@@ -16,6 +16,7 @@
     "notJson": "{{name}} は JSON ではありません",
     "notRows": "{{name}}: 1 行目で列名を指定した CSV、またはオブジェクトの JSON 配列を貼り付けてください",
     "overCap": "{{name}}: 最大 {{cap}} 行",
-    "notReadable": "{{name}}: 選択したテーブルは読み取り可能なテーブルではありません"
+    "notReadable": "{{name}}: 選択したテーブルは読み取り可能なテーブルではありません",
+    "noTableFits": "読み取り可能なテーブルに、列 {{columns}} を持つものはありません。"
   }
 }
