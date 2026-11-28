@@ -1144,7 +1144,7 @@ _CLIENT_TOOLS: list[Any] = [
             "user's own browser session, only after the user confirms the code and `summary` in "
             "the chat. The result is the upload's answer, {content_hash, filename}: the source's "
             "mappingJson.code is then {kind: 'upload', upload: <content_hash>}. Or 'Cancelled by "
-            "the user.'"
+            "the user.' " + code_upload.CODE_TAGS_RULE
         ),
         "input_schema": {
             "type": "object",
@@ -1507,6 +1507,9 @@ _SYSTEM = (
     "admin_rest_routes and reached with admin_request. Code you wrote for a code source is "
     "uploaded with upload_code, never by asking the user for a file; its answer's content_hash "
     "is the source's mappingJson.code {kind: 'upload', upload: <content_hash>}. "
+    + code_upload.CODE_TAGS_RULE
+    + " The same tags hold for code entered in a source's or a command's form "
+    "({kind: 'entered', source, dependencies}). "
     "'Create any relationships to <table>': "
     "run discover_relationships for it, show the candidates with present_choice (mode 'multi'), "
     "and accept each the user picks with admin_request POST "
