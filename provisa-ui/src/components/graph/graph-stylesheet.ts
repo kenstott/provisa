@@ -128,7 +128,15 @@ export function trackEdgeLabelRoom(cy: CyInstance): void {
   let pending = false;
   const restyle = () => {
     pending = false;
-    if (!cy.destroyed()) cy.edges().updateStyle();
+    if (cy.destroyed()) return;
+    const edges = cy.edges();
+    edges.updateStyle();
+    // Apply the new room now. Cytoscape applies a restyle lazily: a bounding box taken before the
+    // next frame (a fit after a layout or a resize) applied it mid-measure and kept a label box
+    // measured from the label's old width, which no later frame corrected while the nodes stayed
+    // put. The label's texture is that box, so the type was drawn clipped and askew. Applied here,
+    // the box is dropped and the label re-measured before any box is taken.
+    edges.forEach((e) => e.style("text-max-width"));
   };
   cy.on("position", "node", () => {
     if (pending) return;
