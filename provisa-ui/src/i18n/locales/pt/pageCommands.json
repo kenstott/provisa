@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Registre uma tabela de uma das suas fontes, para que possa ser consultada e governada.",
+    "addView": "Defina uma exibição: um conjunto de dados governado, calculado a partir de SQL ou de métricas.",
+    "addRelationship": "Declare um join entre duas tabelas, para que as consultas possam segui-lo.",
+    "clearRejections": "Permita que as sugestões que você rejeitou sejam sugeridas novamente.",
+    "addSource": "Conecte um banco de dados, arquivo, API ou serviço como fonte de tabelas.",
+    "addCommand": "Defina um command: uma ação que os chamadores executam, como uma gravação ou uma chamada de função.",
+    "addRole": "Adicione uma função que recebe direitos, ou uma derivada de um atributo do usuário.",
+    "addDataProduct": "Publique tabelas como um produto de dados com um proprietário, portas de saída e um contrato.",
+    "productMap": "Desenhe cada produto de dados, suas tabelas e os vínculos entre eles como um único grafo.",
+    "addMetric": "Defina uma métrica: uma medida nomeada que toda consulta calcula da mesma forma.",
+    "invite": "Convide uma pessoa por e-mail e escolha as funções que ela terá.",
+    "glossaryDomains": "Mostrar apenas os termos dos domínios escolhidos.",
+    "reviewsDue": "Mostrar apenas os documentos cuja data de revisão já passou.",
+    "reembedAll": "Recalcule os embeddings de busca dos documentos lidos com um modelo mais antigo.",
+    "addDocument": "Adicione um documento cujo texto o glossário e os agentes possam citar.",
+    "addDomain": "Adicione um domínio: um grupo de tabelas com seus próprios proprietários e direitos.",
+    "addPackageRegistry": "Adicione um registro do qual as fontes de código instalam seus pacotes.",
+    "addOrg": "Crie uma organização com seus próprios usuários, dados e configurações.",
+    "addInvite": "Convide uma pessoa para criar uma organização ou participar de uma.",
+    "addScheduledTask": "Agende um webhook ou uma instrução SQL para ser executado em um cron.",
+    "addClassificationKind": "Adicione um tipo em que o profiler pode classificar uma coluna.",
+    "addReport": "Adicione um relatório: uma exibição do domínio ops, lida nesta página.",
+    "addRegion": "Declare uma região: um motor e seus armazenamentos em um só lugar.",
+    "addContainerRegistry": "Adicione um registro do qual são obtidas as imagens dos resolvers de código.",
+    "addSecret": "Armazene um segredo que a configuração referencia pelo nome.",
+    "addTag": "Adicione uma tag para rotular tabelas, colunas e termos.",
+    "addEnvironment": "Crie um ambiente: uma cópia do modelo para alterar e testar antes de mesclá-la.",
+    "addSyncTarget": "Adicione um catálogo no qual o modelo é publicado."
+  }
+}

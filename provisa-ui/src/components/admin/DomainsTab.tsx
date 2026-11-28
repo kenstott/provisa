@@ -60,6 +60,7 @@ import {
   OrgProcessingCards,
 } from "./settingsCards";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 const PAGE_SIZE = 50;
 
@@ -398,14 +399,19 @@ export function DomainsTab({ title, domainsEnabled }: { title: string; domainsEn
         )}
         <PageActions>
           {domainsEnabled && (
-            <Button
-              variant={adding ? "outline" : "filled"}
-              onClick={() => (adding ? closeAdd() : setAdding(true))}
-              aria-label={adding ? t("adminPage.closeForm") : undefined}
-              data-testid="new-domain-open"
+            <PageCommand
+              description={t("pageCommands.addDomain")}
+              docs="access-model/#domain-hierarchy"
             >
-              {adding ? <X size={14} /> : t("adminPage.addDomain")}
-            </Button>
+              <Button
+                variant={adding ? "outline" : "filled"}
+                onClick={() => (adding ? closeAdd() : setAdding(true))}
+                aria-label={adding ? t("adminPage.closeForm") : undefined}
+                data-testid="new-domain-open"
+              >
+                {adding ? <X size={14} /> : t("adminPage.addDomain")}
+              </Button>
+            </PageCommand>
           )}
         </PageActions>
       </div>

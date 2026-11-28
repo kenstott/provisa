@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Registre una tabla de uno de sus orígenes para que pueda consultarse y gobernarse.",
+    "addView": "Defina una vista: un conjunto de datos gobernado calculado a partir de SQL o de métricas.",
+    "addRelationship": "Declare un join entre dos tablas para que las consultas puedan seguirlo.",
+    "clearRejections": "Permita que las sugerencias que rechazó se vuelvan a sugerir.",
+    "addSource": "Conecte una base de datos, un archivo, una API o un servicio como origen de tablas.",
+    "addCommand": "Defina un comando: una acción que ejecutan los llamadores, como una escritura o una llamada a función.",
+    "addRole": "Añada un rol al que se conceden derechos, o uno derivado de un atributo del usuario.",
+    "addDataProduct": "Publique tablas como un producto de datos con un propietario, puertos de salida y un contrato.",
+    "productMap": "Dibuje cada producto de datos, sus tablas y los vínculos entre ellos como un único grafo.",
+    "addMetric": "Defina una métrica: una medida con nombre que todas las consultas calculan de la misma manera.",
+    "invite": "Invite a una persona por correo electrónico y elija los roles que tendrá.",
+    "glossaryDomains": "Mostrar solo los términos de los dominios que elija.",
+    "reviewsDue": "Mostrar solo los documentos cuya fecha de revisión ya pasó.",
+    "reembedAll": "Vuelva a calcular los embeddings de búsqueda de los documentos leídos con un modelo anterior.",
+    "addDocument": "Añada un documento cuyo texto puedan citar el glosario y los agentes.",
+    "addDomain": "Añada un dominio: un grupo de tablas con sus propios propietarios y derechos.",
+    "addPackageRegistry": "Añada un registro desde el que los orígenes de código instalan sus paquetes.",
+    "addOrg": "Cree una organización con sus propios usuarios, datos y configuración.",
+    "addInvite": "Invite a una persona a crear una organización o a unirse a ella.",
+    "addScheduledTask": "Programe un webhook o una sentencia SQL para que se ejecute según un cron.",
+    "addClassificationKind": "Añada un tipo con el que el perfilador pueda clasificar una columna.",
+    "addReport": "Añada un informe: una vista del dominio ops que se lee en esta página.",
+    "addRegion": "Declare una región: un motor y sus almacenes en un lugar.",
+    "addContainerRegistry": "Añada un registro del que se descargan las imágenes de los resolvers de código.",
+    "addSecret": "Guarde un secreto al que la configuración hace referencia por su nombre.",
+    "addTag": "Añada una etiqueta para marcar tablas, columnas y términos.",
+    "addEnvironment": "Cree un entorno: una copia del modelo para cambiarla y probarla antes de hacer merge.",
+    "addSyncTarget": "Añada un catálogo en el que se publica el modelo."
+  }
+}

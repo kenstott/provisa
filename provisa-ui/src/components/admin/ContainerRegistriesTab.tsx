@@ -52,6 +52,7 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 /** An entry as the form holds it. */
 interface Draft {
@@ -317,14 +318,19 @@ export function ContainerRegistriesTab({ title }: { title: string }) {
           testId="container-registries-filter"
         />
         <PageActions>
-          <Button
-            variant={mode === "create" ? "outline" : "filled"}
-            onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
-            aria-label={mode === "create" ? t("containerRegistries.closeForm") : undefined}
-            data-testid="container-registries-add"
+          <PageCommand
+            description={t("pageCommands.addContainerRegistry")}
+            docs="code-sources/#deployment"
           >
-            {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
-          </Button>
+            <Button
+              variant={mode === "create" ? "outline" : "filled"}
+              onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
+              aria-label={mode === "create" ? t("containerRegistries.closeForm") : undefined}
+              data-testid="container-registries-add"
+            >
+              {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
+            </Button>
+          </PageCommand>
         </PageActions>
       </div>
       <Stack gap="md" data-testid="container-registries">

@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { docsHref, type DocsTarget } from "./docsTarget";
+
 // REQ-2277 rule 8: every page has the page help (?) in its header. This registry holds each page's
 // help, keyed by its route: the purpose line, any further paragraphs, and the documentation page it
 // links. pageHelpGuard.test.ts fails a route of the app's route table without an entry here, an
@@ -22,9 +24,8 @@ export interface PageHelpEntry {
   purpose: string;
   /** i18n keys of further paragraphs: the rules a reader cannot see on the screen. */
   more?: readonly string[];
-  /** The docs site page as /docs?page= takes it (a path under docs/ ending in /), with an
-   *  optional #section. */
-  docs: string;
+  /** The page's documentation (docsTargets.test.ts checks it is a published page and section). */
+  docs: DocsTarget;
   placement: PageHelpPlacement;
 }
 
@@ -267,6 +268,5 @@ export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
 
 /** The in-app Docs route for an entry's documentation page. */
 export function pageHelpDocsHref(entry: PageHelpEntry): string {
-  const [page, section] = entry.docs.split("#");
-  return `/docs?page=${page}${section === undefined ? "" : `#${section}`}`;
+  return docsHref(entry.docs);
 }

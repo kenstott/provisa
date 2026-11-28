@@ -75,6 +75,7 @@ import { GrantEditor } from "./GrantEditor";
 import { PlatformOrgEngines } from "./PlatformOrgEngine";
 import { PurposeBadges, PurposesLegend } from "./RegionPurposes";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 interface Picked {
   /** null: a new region. */
@@ -269,20 +270,25 @@ export function PlatformRegionsTab({ title }: { title: string }) {
         )}
         <PageActions>
           {onRegions && data !== null && !data.read_only && (
-            <Button
-              variant={creating !== null ? "outline" : "filled"}
-              aria-label={creating !== null ? t("platformRegions.closeForm") : undefined}
-              data-testid="platform-regions-add"
-              onClick={() => {
-                if (creating !== null) setCreating(null);
-                else {
-                  detail.close();
-                  setCreating({});
-                }
-              }}
+            <PageCommand
+              description={t("pageCommands.addRegion")}
+              docs="regions/#declaring-and-assigning-regions"
             >
-              {creating !== null ? <X size={14} /> : t("platformRegions.add")}
-            </Button>
+              <Button
+                variant={creating !== null ? "outline" : "filled"}
+                aria-label={creating !== null ? t("platformRegions.closeForm") : undefined}
+                data-testid="platform-regions-add"
+                onClick={() => {
+                  if (creating !== null) setCreating(null);
+                  else {
+                    detail.close();
+                    setCreating({});
+                  }
+                }}
+              >
+                {creating !== null ? <X size={14} /> : t("platformRegions.add")}
+              </Button>
+            </PageCommand>
           )}
         </PageActions>
       </div>

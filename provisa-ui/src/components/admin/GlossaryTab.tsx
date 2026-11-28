@@ -735,6 +735,7 @@ export function GlossaryTab() {
             paragraphs={[t("glossaryTab.purposeBody"), t("glossaryTab.purposeAdd")]}
             ariaLabel={t("glossaryTab.purposeAria")}
             testId="glossary-purpose-help"
+            docs="ontology/#building-a-glossary-that-grounds"
           />
         </Group>
       </Group>

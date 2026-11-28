@@ -9,43 +9,26 @@
 // permission from the copyright holder.
 
 // REQ-2187: the page toolbar's control swapping the ERD with the list, filled while the view is on,
-// as the Ontology view's is. The icon is the opaque thing here, so it is its own hover target.
+// as the Ontology view's is.
 
 import { ActionIcon } from "@mantine/core";
 import { Network } from "lucide-react";
-import { HelpBubble } from "../HelpBubble";
 import { useErdView } from "./useErdView";
 
-export function ErdToggle({
-  page,
-  title,
-  body,
-  label,
-}: {
-  page: "tables" | "relationships";
-  title: string;
-  body: string;
-  label: string;
-}) {
+/** The ERD view's on/off icon. What it draws is the page header's command description
+ *  (PageCommand), so the icon carries no card of its own. */
+export function ErdToggle({ page, label }: { page: "tables" | "relationships"; label: string }) {
   const { on, setOn } = useErdView();
   return (
-    <HelpBubble
-      title={title}
-      paragraphs={[body]}
-      ariaLabel={label}
-      testId={`${page === "tables" ? "tables" : "rels"}-erd-help`}
-      target={
-        <ActionIcon
-          data-tour={`${page === "tables" ? "tables" : "rels"}-erd`}
-          data-testid={`${page}-erd-toggle`}
-          variant={on ? "light" : "subtle"}
-          aria-label={label}
-          aria-pressed={on}
-          onClick={() => setOn(!on)}
-        >
-          <Network size={14} />
-        </ActionIcon>
-      }
-    />
+    <ActionIcon
+      data-tour={`${page === "tables" ? "tables" : "rels"}-erd`}
+      data-testid={`${page}-erd-toggle`}
+      variant={on ? "light" : "subtle"}
+      aria-label={label}
+      aria-pressed={on}
+      onClick={() => setOn(!on)}
+    >
+      <Network size={14} />
+    </ActionIcon>
   );
 }

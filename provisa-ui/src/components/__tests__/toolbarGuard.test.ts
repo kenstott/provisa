@@ -65,6 +65,9 @@ const of = (rule: ToolbarViolation["rule"]) =>
 
 describe("the toolbar rules fail what they are meant to fail", () => {
   const rules = (source: string) => checkToolbarRules("Sample.tsx", source).map((v) => v.rule);
+  /** One documented command of a PageActions. */
+  const cmd = (inner: string) =>
+    `<PageCommand description={t("d")} docs="p/">${inner}</PageCommand>`;
 
   it("a bordered or filled icon-only button, but not a borderless one", () => {
     expect(rules(`const x = <ActionIcon variant="default" aria-label="a" />;`)).toEqual([
@@ -94,15 +97,15 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     expect(rules(bar(`<ActionIcon variant="subtle" /><Button>Go</Button>`))).toEqual([
       "toolbar-order",
     ]);
-    expect(rules(bar(`<HelpBubble title="t" /><ExpandButton onClick={f} testId="e" />`))).toEqual([
-      "toolbar-order",
-    ]);
+    expect(
+      rules(bar(`<HelpBubble title="t" docs="d/" /><ExpandButton onClick={f} testId="e" />`)),
+    ).toEqual(["toolbar-order"]);
     expect(
       rules(
         bar(
           `<SegmentedControl data={[]} /><Tip text="t"><Button>Reset</Button></Tip>` +
             `{q && <OpenAsQuery query={q} />}<ExpandButton onClick={f} testId="e" />` +
-            `<HelpBubble title="t" target={<ActionIcon variant="subtle" />} /><HelpBubble title="?" />`,
+            `<HelpBubble title="t" target={<ActionIcon variant="subtle" />} /><HelpBubble title="?" docs="d/" />`,
         ),
       ),
     ).toEqual([]);
@@ -110,11 +113,10 @@ describe("the toolbar rules fail what they are meant to fail", () => {
 
   it("reads a page's (?) help as help, last", () => {
     const bar = (inner: string) => `const x = <Group data-toolbar>${inner}</Group>;`;
-    expect(rules(bar(`<PageHelp title="t" /><Button>Add</Button>`))).toEqual(["toolbar-order"]);
-    expect(rules(bar(`<PageHelp title="t" /><ExpandButton onClick={f} testId="e" />`))).toEqual([
-      "toolbar-order",
-    ]);
-    expect(rules(bar(`<Button>Add</Button><PageHelp title="t" />`))).toEqual([]);
+    const help = `<PageHelp title="t" docs={d} />`;
+    expect(rules(bar(`${help}<Button>Add</Button>`))).toEqual(["toolbar-order"]);
+    expect(rules(bar(`${help}<ExpandButton onClick={f} testId="e" />`))).toEqual(["toolbar-order"]);
+    expect(rules(bar(`<Button>Add</Button>${help}`))).toEqual([]);
   });
 
   it("reads a group marked data-toolbar as a toolbar", () => {
@@ -146,34 +148,77 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     expect(
       rules(
         `const x = <div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
-          `<PageActions><Button>Add</Button><HelpBubble title="t" /></PageActions></div>;`,
+          `<PageActions>${cmd(`<Button>Add</Button>`)}${cmd(`<HelpBubble title="t" docs="d/" />`)}` +
+          `</PageActions></div>;`,
       ),
     ).toEqual(["second-page-help"]);
     expect(
       rules(
-        `const x = <div className="page-header"><h2>T</h2><PageHelp title="a" />` +
-          `<div className="page-actions"><HelpBubble title="b" /></div></div>;`,
+        `const x = <div className="page-header"><h2>T</h2><PageHelp title="a" docs={d} />` +
+          `<div className="page-actions"><HelpBubble title="b" docs="d/" /></div></div>;`,
       ),
     ).toEqual(["second-page-help"]);
     expect(
       rules(
         `const x = <div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
-          `<PageActions><Button>Add</Button>` +
-          `<HelpBubble title="t" target={<ActionIcon variant="subtle" />} /></PageActions></div>;`,
+          `<PageActions>${cmd(`<Button>Add</Button>`)}` +
+          `${cmd(`<HelpBubble title="t" target={<ActionIcon variant="subtle" />} />`)}` +
+          `</PageActions></div>;`,
       ),
     ).toEqual([]);
   });
 
   it("reads the shared PageActions as a toolbar", () => {
     expect(
-      rules(`const x = <PageActions><HelpBubble title="t" /><Button>Add</Button></PageActions>;`),
+      rules(
+        `const x = <PageActions>${cmd(`<HelpBubble title="t" docs="d/" />`)}` +
+          `${cmd(`<Button>Add</Button>`)}</PageActions>;`,
+      ),
     ).toEqual(["toolbar-order"]);
+  });
+
+  it("a PageActions command that is no PageCommand, or has no description or literal docs", () => {
+    const actions = (inner: string) => `const x = <PageActions>${inner}</PageActions>;`;
+    expect(rules(actions(`<Button>Add</Button>`))).toEqual(["command-without-docs"]);
+    expect(rules(actions(`{ok && <Button>Add</Button>}`))).toEqual(["command-without-docs"]);
+    expect(
+      rules(actions(`<PageCommand description={t("d")}><Button>Add</Button></PageCommand>`)),
+    ).toEqual(["command-without-docs"]);
+    expect(rules(actions(`<PageCommand docs="p/"><Button>Add</Button></PageCommand>`))).toEqual([
+      "command-without-docs",
+    ]);
+    expect(
+      rules(
+        actions(
+          `<PageCommand description={t("d")} docs={target}><Button>Add</Button></PageCommand>`,
+        ),
+      ),
+    ).toEqual(["command-without-docs"]);
+    expect(
+      rules(
+        actions(
+          `{ok && ${cmd(`<Button>Add</Button>`)}}{on ? ${cmd(`<Button>A</Button>`)} : ` +
+            `${cmd(`<Button>B</Button>`)}}<CapabilityGate capability="c">` +
+            `${cmd(`<Button>C</Button>`)}</CapabilityGate>`,
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      rules(actions(`<CapabilityGate capability="c"><Button>C</Button></CapabilityGate>`)),
+    ).toEqual(["command-without-docs"]);
+  });
+
+  it("a (?) help with no docs target, but not an icon's own card", () => {
+    expect(rules(`const x = <HelpBubble title="t" />;`)).toEqual(["help-without-docs"]);
+    expect(rules(`const x = <PageHelp title="t" />;`)).toEqual(["help-without-docs"]);
+    expect(rules(`const x = <HelpBubble title="t" docs="p/" />;`)).toEqual([]);
+    expect(rules(`const x = <HelpBubble title="t" target={<Text>a</Text>} />;`)).toEqual([]);
   });
 
   it("reads a page's head actions as a toolbar too", () => {
     expect(
       rules(
-        `const x = <div className="page-actions"><HelpBubble title="t" /><Button>Add</Button></div>;`,
+        `const x = <div className="page-actions"><HelpBubble title="t" docs="d/" /><Button>Add</Button></div>;`,
       ),
     ).toEqual(["toolbar-order"]);
   });
@@ -192,6 +237,15 @@ describe("every page header", () => {
   it("draws one (?) help, its title's", () => {
     const wrong = of("second-page-help").map(
       ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line}`).join("; ")}`,
+    );
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe("every page command and every (?) help", () => {
+  it("names its documentation (maintainer 2026-11-28)", () => {
+    const wrong = [...of("command-without-docs"), ...of("help-without-docs")].map(
+      ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line} ${v.detail}`).join("; ")}`,
     );
     expect(wrong).toEqual([]);
   });

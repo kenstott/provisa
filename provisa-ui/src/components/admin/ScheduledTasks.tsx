@@ -60,6 +60,7 @@ import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/Form
 import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 const PAGE_SIZE = 50;
 
 type Kind = ScheduledTask["kind"];
@@ -698,14 +699,19 @@ export function ScheduledTasks({ title }: { title: string }) {
           testId="scheduled-tasks-filter"
         />
         <PageActions>
-          <Button
-            data-testid="scheduled-tasks-toggle-form"
-            variant={mode === "create" ? "outline" : "filled"}
-            aria-label={mode === "create" ? t("scheduledTasks.closeForm") : undefined}
-            onClick={() => (mode === "create" ? closePanel() : openCreate())}
+          <PageCommand
+            description={t("pageCommands.addScheduledTask")}
+            docs="configuration/#scheduled-triggers"
           >
-            {mode === "create" ? <X size={14} /> : t("scheduledTasks.addButton")}
-          </Button>
+            <Button
+              data-testid="scheduled-tasks-toggle-form"
+              variant={mode === "create" ? "outline" : "filled"}
+              aria-label={mode === "create" ? t("scheduledTasks.closeForm") : undefined}
+              onClick={() => (mode === "create" ? closePanel() : openCreate())}
+            >
+              {mode === "create" ? <X size={14} /> : t("scheduledTasks.addButton")}
+            </Button>
+          </PageCommand>
         </PageActions>
       </div>
       <Stack gap="md">

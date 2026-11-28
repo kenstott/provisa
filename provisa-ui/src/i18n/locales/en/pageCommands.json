@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Register a table from one of your sources, so it can be queried and governed.",
+    "addView": "Define a view: a governed dataset computed from SQL or from metrics.",
+    "addRelationship": "Declare a join between two tables, so queries can follow it.",
+    "clearRejections": "Let the suggestions you rejected be suggested again.",
+    "addSource": "Connect a database, file, API or service as a source of tables.",
+    "addCommand": "Define a command: an action callers run, such as a write or a function call.",
+    "addRole": "Add a role that is granted rights, or one derived from a user attribute.",
+    "addDataProduct": "Publish tables as a data product with an owner, output ports and a contract.",
+    "productMap": "Draw every data product, its tables and the links between them as one graph.",
+    "addMetric": "Define a metric: a named measure every query computes the same way.",
+    "invite": "Invite a person by email and choose the roles they hold.",
+    "glossaryDomains": "Show only the terms of the domains you pick.",
+    "reviewsDue": "Show only the documents whose review date has passed.",
+    "reembedAll": "Recompute the search embeddings of the documents read with an older model.",
+    "addDocument": "Add a document whose text the glossary and agents can cite.",
+    "addDomain": "Add a domain: a group of tables with its own owners and rights.",
+    "addPackageRegistry": "Add a registry that code sources install their packages from.",
+    "addOrg": "Create an organization with its own users, data and settings.",
+    "addInvite": "Invite a person to create or join an organization.",
+    "addScheduledTask": "Schedule a webhook or an SQL statement to run on a cron.",
+    "addClassificationKind": "Add a kind the profiler can classify a column as.",
+    "addReport": "Add a report: a view of the ops domain, read on this page.",
+    "addRegion": "Declare a region: an engine and its stores in one place.",
+    "addContainerRegistry": "Add a registry that code resolver images are pulled from.",
+    "addSecret": "Store a secret that configuration refers to by its name.",
+    "addTag": "Add a tag to label tables, columns and terms.",
+    "addEnvironment": "Create an environment: a copy of the model to change and test before you merge it.",
+    "addSyncTarget": "Add a catalog the model is published to."
+  }
+}
