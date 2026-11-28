@@ -30,16 +30,19 @@ def _clickhouse(port: int = 8123) -> Source:
 
 
 def test_clickhouse_jdbc_url_uses_the_http_port():
-    assert _clickhouse().jdbc_url() == "jdbc:clickhouse://clickhouse:8123/analytics"
+    assert _clickhouse().jdbc_url() == "jdbc:clickhouse://clickhouse:8123/analytics?compress=false"
 
 
 def test_clickhouse_jdbc_url_defaults_to_8123():
-    assert _clickhouse(port=0).jdbc_url() == "jdbc:clickhouse://clickhouse:8123/analytics"
+    assert (
+        _clickhouse(port=0).jdbc_url()
+        == "jdbc:clickhouse://clickhouse:8123/analytics?compress=false"
+    )
 
 
 def test_clickhouse_catalog_properties():
     assert _build_catalog_properties(_clickhouse(), "") == {
-        "connection-url": "jdbc:clickhouse://clickhouse:8123/analytics",
+        "connection-url": "jdbc:clickhouse://clickhouse:8123/analytics?compress=false",
         "connection-user": "default",
         "connection-password": "pw",
         "clickhouse.map-string-as-varchar": "true",

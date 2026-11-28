@@ -51,7 +51,9 @@ _AT = {
     # an array's alone, as $[n] reads an object's key "n" there; a negative counts from the end
     _T: "('$[' || CAST(CASE WHEN json_array_length(v) IS NULL THEN NULL WHEN {i} >= 0 THEN {i} "
     "WHEN json_array_length(v) + {i} >= 0 THEN json_array_length(v) + {i} END AS VARCHAR) || ']')",
-    _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), 0)",  # a key's place otherwise
+    # an array's alone: an object's or a scalar's is NULL, as PostgreSQL answers it, not an index
+    # of 0, which ClickHouse 26 no longer reads as no element
+    _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), NULL)",
 }
 _INDEX = {_D: "CAST(i AS BIGINT)", _T: "i", _C: "i"}
 _KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "TRY_CAST(k AS BIGINT)", _C: "toInt64OrNull(k)"}
