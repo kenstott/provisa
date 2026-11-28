@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import type { CyInstance } from "../components/graph/cytoscape-types";
 import {
+  GRAPH_OPENING_MAX_ZOOM,
   GRAPH_READABLE_ZOOM,
   fitClear,
   fitWhole,
@@ -142,6 +143,39 @@ describe("fitClear on a diagram taller than its canvas", () => {
     fitClear(tall.cy, 10);
     expect(tall.cy.zoom()).toBeCloseTo(0.6, 9);
     expect(tall.rendered().y1).toBeCloseTo(10, 9);
+  });
+
+  it("opens a small graph at natural size, centred, never magnified (REQ-2239, 2026-11-28)", () => {
+    expect(GRAPH_OPENING_MAX_ZOOM).toBe(1);
+    // Fitted at 1.4 (the role graph at 1280): opens at 1.0, centred in the canvas.
+    const small = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 500, y2: 500, w: 500, h: 500 });
+    fitClear(small.cy, 10);
+    expect(Math.min(1180 / 500, 700 / 500)).toBeCloseTo(1.4, 9);
+    expect(small.cy.zoom()).toBe(1);
+    const r = small.rendered();
+    expect(r.w).toBeCloseTo(500, 9);
+    expect((r.x1 + r.x2) / 2).toBeCloseTo(600, 9);
+    expect((r.y1 + r.y2) / 2).toBeCloseTo(10 + 700 / 2, 9);
+    // Below the legend, still centred in the room under it.
+    const legend = stage(1200, 720, 44, { x1: 0, y1: 0, x2: 500, y2: 500, w: 500, h: 500 });
+    fitClear(legend.cy, 10);
+    expect(legend.cy.zoom()).toBe(1);
+    expect(legend.rendered().y1).toBeGreaterThanOrEqual(44);
+    // Fitted at 0.7: opens fitted, at 0.7.
+    const mid = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 900, y2: 1000, w: 900, h: 1000 });
+    fitClear(mid.cy, 10);
+    expect(mid.cy.zoom()).toBeCloseTo(0.7, 9);
+    // Fitted at 0.35: opens at 0.6, from its top.
+    const big = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 900, y2: 2000, w: 900, h: 2000 });
+    fitClear(big.cy, 10);
+    expect(big.cy.zoom()).toBeCloseTo(GRAPH_READABLE_ZOOM, 9);
+    expect(big.rendered().y1).toBeCloseTo(10, 9);
+  });
+
+  it("the fit control still fills the canvas with a small graph: the reader zooms in by hand", () => {
+    const small = stage(1200, 720, 0, { x1: 0, y1: 0, x2: 500, y2: 500, w: 500, h: 500 });
+    fitWhole(small.cy, 10);
+    expect(small.cy.zoom()).toBeCloseTo(1.4, 9);
   });
 
   it("draws a diagram too wide to read at a fit from its left, at the readable zoom", () => {

@@ -19,7 +19,7 @@
 import { packBoxes } from "./arrange";
 import type { Core } from "./core";
 import { PROVISA_ELK } from "./elkLayout";
-import { textWidth } from "./model";
+import { GROUP_PAD, groupSizeOptions, textWidth } from "./model";
 import { SIZE } from "./tokens";
 
 /** The space between two things packed under the laid-out part, and above them. */
@@ -27,7 +27,7 @@ const PACK_GAP = 24;
 
 /** A group's ELK options: its nodes one column, in the view's order, with room for its title. */
 const GROUP_OPTIONS = {
-  "elk.padding": "[top=30,left=16,bottom=16,right=16]",
+  "elk.padding": `[top=30,left=${GROUP_PAD},bottom=${GROUP_PAD},right=${GROUP_PAD}]`,
   "elk.separateConnectedComponents": "false",
   "elk.spacing.nodeNode": "6",
   "elk.layered.spacing.nodeNodeBetweenLayers": "40",
@@ -54,7 +54,9 @@ export function flowLayout(eles: unknown, gap: number) {
     animate: false,
     fit: false,
     eles,
-    nodeLayoutOptions: (n: { isParent(): boolean }) => (n.isParent() ? GROUP_OPTIONS : {}),
+    // A group keeps at least its title's width (groupMinWidth, on its data as ``minW``).
+    nodeLayoutOptions: (n: { isParent(): boolean; data(k: string): unknown }) =>
+      n.isParent() ? { ...GROUP_OPTIONS, ...groupSizeOptions(n.data("minW") as number) } : {},
     elk: {
       algorithm: "layered",
       "elk.direction": "RIGHT",

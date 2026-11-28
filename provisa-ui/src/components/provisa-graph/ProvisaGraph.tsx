@@ -52,7 +52,7 @@ import {
 } from "./marks";
 import { graphElements, typesDrawn, type Detail, type GraphSpec } from "./model";
 import { readPlaces, standPlaces, type GraphPlaces, type Pt, type StandPlaces } from "./places";
-import { ERD_ELK_LAYOUT } from "./presets";
+import { GROUPED_ELK_LAYOUT } from "./presets";
 import { graphStylesheet } from "./stylesheet";
 import { bendPairs } from "./pairs";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
@@ -610,9 +610,9 @@ export function ProvisaGraph({
         cy.nodes('[kind = "node"]').forEach((n) => {
           if (!connected.has(n.id())) n.style("display", "none");
         });
-        // ELK through Provisa's own adapter (ERD_ELK_LAYOUT names it), which says a failure after
+        // ELK through Provisa's own adapter (GROUPED_ELK_LAYOUT names it), which says a failure after
         // the layout started.
-        laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
+        laying.run(cy.layout(GROUPED_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
           const opts = latest.current.options;
           const rect = box.getBoundingClientRect();
           const arranged = arrangeLayered(c, {

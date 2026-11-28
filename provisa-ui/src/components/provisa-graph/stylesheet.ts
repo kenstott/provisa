@@ -12,7 +12,7 @@
 // graphElements writes: the kind of element, its type, and the marks the component sets.
 
 import { NODE_TYPES, SIZE, type GraphTokens, type NodeType } from "./tokens";
-import { TEXT_LEFT } from "./model";
+import { GROUP_PAD, TEXT_LEFT } from "./model";
 
 type Ele = { data(k: string): unknown };
 
@@ -177,12 +177,18 @@ export function graphStylesheet(t: GraphTokens) {
         "text-background-padding": "3px",
         // Inside the room ELK keeps round a group (flow.ts GROUP_OPTIONS, presets.ts), so a drawn box
         // never reaches past the place it was laid out in.
-        padding: "16px",
+        padding: `${GROUP_PAD}px`,
         "compound-sizing-wrt-labels": "include",
         // The least size of what is inside the padding: a collapsed group, empty, is a one-row node's.
         "min-width": SIZE.nodeWidth,
         "min-height": SIZE.nodeHeight,
       },
+    },
+    {
+      // REQ-2239 (amended 2026-11-28): a group's box is at least as wide as its title
+      // (groupMinWidth), widened evenly round its nodes, as ELK keeps the room (groupSizeOptions).
+      selector: 'node[kind = "group"]',
+      style: { "min-width": "data(minInner)" },
     },
     {
       // A lane's box is drawn behind what is in it, and takes no pointer.

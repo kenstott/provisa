@@ -110,8 +110,23 @@ describe("a resize keeps the view's mode (REQ-2277)", () => {
     const g = stage(1900, 800, MODEL);
     fitClear(g.cy, PAD);
     expect(inside(g.whole(), 1900, 800, PAD)).toBe(true);
-    expect(g.resize(900, 800)).toBe("whole");
+    expect(g.resize(900, 800)).toBe("fitted");
     expect(inside(g.whole(), 900, 800, PAD)).toBe(true);
+  });
+
+  it("opened at natural size, a wider canvas keeps it at natural size (REQ-2239, 2026-11-28)", () => {
+    // 600 x 300 model px: would fit a 1280 canvas at about 2x; it opens at 1.0, centred.
+    const g = stage(1280, 800, bb(0, 0, 600, 300));
+    fitClear(g.cy, PAD);
+    expect(g.cy.zoom()).toBe(1);
+    expect(g.resize(1900, 900)).toBe("fitted");
+    expect(g.cy.zoom()).toBe(1);
+    const r = g.whole();
+    expect((r.x1 + r.x2) / 2).toBeCloseTo(950, 6);
+    // A narrower canvas than it fits at 1.0: fitted whole, below natural size.
+    expect(g.resize(400, 800)).toBe("fitted");
+    expect(g.cy.zoom()).toBeLessThan(1);
+    expect(inside(g.whole(), 400, 800, PAD)).toBe(true);
   });
 
   it("opened at the readable zoom (too big to fit), a resize opens it again", () => {

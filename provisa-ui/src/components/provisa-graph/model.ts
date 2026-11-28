@@ -138,6 +138,32 @@ export function boxWidth(name: string, rows: string[]): { w: number; text: numbe
   return { w, text: w - TEXT_LEFT - TEXT_RIGHT };
 }
 
+/** The room ELK keeps round a group's nodes at each side, and the padding its drawn box takes
+ * there (stylesheet, flow.ts GROUP_OPTIONS, presets.ts): one value, so the two agree. */
+export const GROUP_PAD = 16;
+/** The title's text background padding each side (stylesheet ``text-background-padding``). */
+const TITLE_BG_PAD = 3;
+/** The room a group's title keeps from the box's rounded corners, each side. */
+const TITLE_INSET = 8;
+
+/** REQ-2239 (amended 2026-11-28): the least width of a group's box, padding included, so its title
+ * (uppercase, bold, SIZE.groupLabel) lies inside its sides; never less than a one-node box's. */
+export function groupMinWidth(title: string): number {
+  const titled = textWidth(title, SIZE.groupLabel) * BOLD + 2 * TITLE_BG_PAD + 2 * TITLE_INSET;
+  return Math.ceil(Math.max(SIZE.nodeWidth + 2 * GROUP_PAD, titled));
+}
+
+/** A group's ELK options for its least width (groupMinWidth): ELK keeps that room for the group,
+ * its nodes centred across it, as the drawn box (min-width, centred on its nodes) takes it, so a
+ * neighbour never comes nearer than the group's title. */
+export function groupSizeOptions(minWidth: number): Record<string, string> {
+  return {
+    "elk.nodeSize.constraints": "[MINIMUM_SIZE]",
+    "elk.nodeSize.minimum": `(${minWidth}, 0)`,
+    "elk.contentAlignment": "[H_CENTER, V_TOP]",
+  };
+}
+
 /** The elements of ``spec``. Group ids, node ids and edge ids are the view's; each element also
  * carries its view data, handed back on a click. */
 export function graphElements(spec: GraphSpec, detail: Detail = "all"): Element[] {
@@ -148,6 +174,9 @@ export function graphElements(spec: GraphSpec, detail: Detail = "all"): Element[
       id: g.id,
       kind: "group",
       title: g.label.toUpperCase(),
+      // The least width of its box, padding included (groupMinWidth); its body's, inside it.
+      minW: groupMinWidth(g.label.toUpperCase()),
+      minInner: groupMinWidth(g.label.toUpperCase()) - 2 * GROUP_PAD,
       label: g.label,
       description: g.description ?? "",
       hue: groupHue(g.hue ?? g.id),
