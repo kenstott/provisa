@@ -317,6 +317,21 @@ def _source_type_of(body: FunctionInput) -> str | None:  # REQ-1986
     return body.sourceType if body.implKind == "source_operation" else None
 
 
+def _with_sent_governance(declared: list[dict], sent: list[dict] | None) -> list[dict]:
+    """REQ-2226, REQ-1159: a code function's declared output columns, each carrying the governance
+    the save sent for the column of its name (the Columns tab's grant list, masks, alias and
+    description). A column the declaration no longer has drops out with its governance; a renamed
+    one is a new column and has none. The name and type are the declaration's."""
+    from provisa.core.models import DatasetColumn
+
+    governance = set(DatasetColumn.model_fields) - {"name", "type"}
+    by_name = {c["name"]: c for c in sent or []}
+    return [
+        {**{k: v for k, v in by_name.get(c["name"], {}).items() if k in governance}, **c}
+        for c in declared
+    ]
+
+
 async def _as_code_command(body: FunctionInput) -> None:  # REQ-2226
     """A command registered on a code source that names one of its ``@command`` or ``@query``
     functions is that function. What it is follows from the declaration -- a @command a mutation
@@ -332,7 +347,8 @@ async def _as_code_command(body: FunctionInput) -> None:  # REQ-2226
     found = await registration(state, body.sourceId, body.functionName)
     if found is None:
         return
-    body.kind, body.arguments, body.outputColumns = found
+    body.kind, body.arguments, declared = found
+    body.outputColumns = _with_sent_governance(declared, body.outputColumns)
     body.implKind = CODE_COMMAND
     body.schemaName = SCHEMA
     body.returns = ""
@@ -376,7 +392,7 @@ async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
     body.materialize = False
     body.writesTable = None
     body.arguments = arguments
-    body.outputColumns = outputs
+    body.outputColumns = _with_sent_governance(outputs, body.outputColumns)
 
 
 def _as_statement(body: FunctionInput) -> None:  # REQ-2001
