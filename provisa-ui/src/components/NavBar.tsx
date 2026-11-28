@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
 import { ActionIcon, Badge, Button, Checkbox, Menu, Stack, Text } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
@@ -43,6 +44,12 @@ import {
 } from "./navGroups";
 import { Tip } from "./Tip";
 
+// REQ-2277 (amended 2026-11-27): the widest window in which the single-row bar no longer fits —
+// every page link and the Domains, Env and Role pickers shown, in the locale whose labels run
+// longest (ru: 1687px at the close spacing App.css gives this width, plus a scrollbar's 15px). Below it the bar is two rows: logo, pickers and icon actions first, the page
+// links beneath, next to the sub-navigation row.
+export const NAVBAR_ROWS_QUERY = "(max-width: 107em)";
+
 export function NavBar() {
   const { t } = useTranslation();
   const location = useLocation();
@@ -71,6 +78,10 @@ export function NavBar() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const subnavRef = useRef<HTMLElement>(null);
+  // The links follow the pickers in the document as they do on screen, so reading and tab order
+  // match what is seen at either width.
+  // Read on the first render, so a narrow window never paints the single row first.
+  const rows = useMediaQuery(NAVBAR_ROWS_QUERY, undefined, { getInitialValueInEffect: false });
 
   const routeGroup = activeGroupId(location.pathname);
   const adminGroup = NAV_GROUPS.find((g) => g.id === "admin");
@@ -176,190 +187,219 @@ export function NavBar() {
     setPinnedGroup(null);
   }
 
-  return (
+  const pageLinks = (
+    <div className="navbar-links">
+      {/* The bar's entries, in NAV_BAR order — the same list the landing page walks. */}
+      {NAV_BAR.map((entry) => {
+        if (entry.kind === "link") {
+          return (
+            <CapabilityGate
+              key={entry.to}
+              capability={entry.capability}
+              orCapability={entry.orCapability}
+              anyOf={entry.anyOf}
+              andCapability={entry.andCapability}
+              orAllOf={entry.orAllOf}
+            >
+              <NavLink to={entry.to} data-tour={entry.tour}>
+                {t(entry.labelKey)}
+              </NavLink>
+            </CapabilityGate>
+          );
+        }
+        const group = entry.group;
+        // REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
+        // rendering it left a tab that swallowed the click and never navigated.
+        if (barEntryTarget(entry, capabilities, billing) === undefined) return null;
+        const isActive = routeGroup === group.id || pinnedGroup === group.id;
+        return (
+          <button
+            key={group.id}
+            type="button"
+            data-tour={`nav-${group.id}`}
+            data-testid={`nav-group-${group.id}`}
+            className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
+            aria-expanded={isActive}
+            aria-current={isActive ? "true" : undefined}
+            onClick={() => toggleGroup(group.id)}
+          >
+            {t(group.labelKey)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const brand = (
+    <div className="navbar-brand">
+      <NavLink to="/" aria-label={t("navBar.home")}>
+        <BrandMark className="navbar-brand-mark" />
+        <span>{t("navBar.brand")}</span>
+      </NavLink>
+    </div>
+  );
+
+  // The org, the pickers and the icon actions: beside the links on one row, or row 1 with the logo.
+  const controls = (
     <>
-      <nav className="navbar" ref={navRef}>
-        <div className="navbar-brand">
-          <NavLink to="/" aria-label={t("navBar.home")}>
-            <BrandMark className="navbar-brand-mark" />
-            <span>{t("navBar.brand")}</span>
-          </NavLink>
-        </div>
-        <div className="navbar-links">
-          {/* The bar's entries, in NAV_BAR order — the same list the landing page walks. */}
-          {NAV_BAR.map((entry) => {
-            if (entry.kind === "link") {
-              return (
-                <CapabilityGate
-                  key={entry.to}
-                  capability={entry.capability}
-                  orCapability={entry.orCapability}
-                  anyOf={entry.anyOf}
-                  andCapability={entry.andCapability}
-                  orAllOf={entry.orAllOf}
+      <OrgSwitcher />
+      <div className="navbar-role">
+        {domainsEnabled && onDomainFilteredPage && domains.length > 0 && (
+          <div className="navbar-domain-wrapper">
+            <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+              <Menu.Target>
+                <button
+                  type="button"
+                  className="navbar-domain-btn"
+                  data-testid="navbar-domain-trigger"
                 >
-                  <NavLink to={entry.to} data-tour={entry.tour}>
-                    {t(entry.labelKey)}
-                  </NavLink>
-                </CapabilityGate>
-              );
-            }
-            const group = entry.group;
-            // REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
-            // rendering it left a tab that swallowed the click and never navigated.
-            if (barEntryTarget(entry, capabilities, billing) === undefined) return null;
-            const isActive = routeGroup === group.id || pinnedGroup === group.id;
-            return (
-              <button
-                key={group.id}
-                type="button"
-                data-tour={`nav-${group.id}`}
-                data-testid={`nav-group-${group.id}`}
-                className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
-                aria-expanded={isActive}
-                aria-current={isActive ? "true" : undefined}
-                onClick={() => toggleGroup(group.id)}
-              >
-                {t(group.labelKey)}
-              </button>
-            );
-          })}
-        </div>
-        <OrgSwitcher />
-        <div className="navbar-role">
-          {domainsEnabled && onDomainFilteredPage && domains.length > 0 && (
-            <div className="navbar-domain-wrapper">
-              <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
-                <Menu.Target>
-                  <button
-                    type="button"
-                    className="navbar-domain-btn"
-                    data-testid="navbar-domain-trigger"
-                  >
+                  <span className="navbar-domain-label">
                     {t("navBar.domainsToggle", {
                       checked: checkedDomains.size,
                       total: domains.length,
                     })}
-                    <ChevronDown size={14} aria-hidden />
-                  </button>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Label>{t("navBar.domainsLabel")}</Menu.Label>
-                  <Stack gap={4} px="sm" pb="xs">
-                    {domains.map((d) => (
-                      <Checkbox
-                        key={d}
-                        label={d}
-                        data-testid={`navbar-domain-item-${d}`}
-                        checked={checkedDomains.has(d)}
-                        onChange={() => toggleDomain(d)}
-                      />
-                    ))}
-                  </Stack>
-                </Menu.Dropdown>
-              </Menu>
-            </div>
-          )}
-          <EnvSwitcher />
-          <DataAddressSwitcher />
-          <RoleSelector />
-          <ColorSchemeToggle />
-          {/* No launcher where the viewer's rights open none of the tour's pages — a button
-              whose tour would be empty is worse than no button. */}
-          {tourAvailable && (
-            <Tip text={tourLabel} named>
-              <ActionIcon
-                variant="subtle"
-                size="lg"
-                aria-label={tourLabel}
-                className="navbar-tour-btn"
-                // The launch prefetch can run for seconds on a loaded machine; the button itself has
-                // to show that the click landed, or it gets clicked again while the tour is starting.
-                loading={tourStatus?.kind === "preparing"}
-                onClick={() => startTour()}
-              >
-                <Compass size={16} aria-hidden />
-              </ActionIcon>
-            </Tip>
-          )}
-          <div className="navbar-user-wrapper">
-            <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
-              <Menu.Target>
-                <ActionIcon
-                  variant="subtle"
-                  size="lg"
-                  className="navbar-user-btn"
-                  aria-label={displayName ?? email ?? t("navBar.userMenu")}
-                  data-testid="navbar-user-trigger"
-                >
-                  <User size={16} aria-hidden />
-                </ActionIcon>
+                  </span>
+                  <ChevronDown size={14} aria-hidden />
+                </button>
               </Menu.Target>
               <Menu.Dropdown>
-                {(displayName || email) && (
-                  <Menu.Label>
-                    {displayName && (
-                      <Text size="sm" fw={600}>
-                        {displayName}
-                      </Text>
-                    )}
-                    {email && (
-                      <Text size="xs" c="dimmed">
-                        {email}
-                      </Text>
-                    )}
-                    {devMode && (
-                      <Badge mt="xs" size="xs" color="orange" variant="filled" autoContrast>
-                        {t("navBar.dev")}
-                      </Badge>
-                    )}
-                  </Menu.Label>
-                )}
-                <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
-                {/* REQ-1327: no Settings entry. For an admin it opened the same page as Admin, so
-                    Admin (below the divider) is the one way into administration. */}
-                {/* REQ-1469: the plan, the running bill and the next charge are the org's
-                    commercial relationship, not an operational setting, so they sit with the
-                    account rather than under Admin. Shown only where the deployment mounts
-                    /billing (`billing` on /auth/me) — the right exists in every deployment, the
-                    routes do not — and only to the org right that owns the subscription. */}
-                {billing && (
-                  <CapabilityGate capability="org_settings" navigable>
-                    <Menu.Item
-                      onClick={() => navigate("/admin/billing")}
-                      data-testid="navbar-billing"
-                    >
-                      {t("navBar.itemBilling")}
-                    </Menu.Item>
-                  </CapabilityGate>
-                )}
-                {/* The release this UI was built with, from the notes bundled with it. */}
-                {RELEASE_NOTES && (
-                  <Menu.Item onClick={() => setWhatsNewOpen(true)} data-testid="navbar-whats-new">
-                    {t("navBar.whatsNew")}
-                  </Menu.Item>
-                )}
-                {/* Admin and Docs sit below a divider, not in the top navigation. Admin is offered
-                    to a caller holding an admin surface and opens the first one they hold; Docs is
-                    open to everyone. */}
-                <Menu.Divider data-testid="navbar-menu-divider" />
-                {adminEntry && (
-                  <Menu.Item onClick={() => navigate(adminEntry.to)} data-testid="navbar-admin">
-                    {t("navBar.groupAdmin")}
-                  </Menu.Item>
-                )}
-                <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
-                  {t("navBar.docs")}
-                </Menu.Item>
-                {authEnabled && (
-                  <Menu.Item color="red" onClick={handleLogout}>
-                    {t("navBar.logout")}
-                  </Menu.Item>
-                )}
+                <Menu.Label>{t("navBar.domainsLabel")}</Menu.Label>
+                <Stack gap={4} px="sm" pb="xs">
+                  {domains.map((d) => (
+                    <Checkbox
+                      key={d}
+                      label={d}
+                      data-testid={`navbar-domain-item-${d}`}
+                      checked={checkedDomains.has(d)}
+                      onChange={() => toggleDomain(d)}
+                    />
+                  ))}
+                </Stack>
               </Menu.Dropdown>
             </Menu>
           </div>
+        )}
+        <EnvSwitcher />
+        <DataAddressSwitcher />
+        <RoleSelector />
+        <ColorSchemeToggle />
+        {/* No launcher where the viewer's rights open none of the tour's pages — a button
+            whose tour would be empty is worse than no button. */}
+        {tourAvailable && (
+          <Tip text={tourLabel} named>
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              aria-label={tourLabel}
+              className="navbar-tour-btn"
+              // The launch prefetch can run for seconds on a loaded machine; the button itself has
+              // to show that the click landed, or it gets clicked again while the tour is starting.
+              loading={tourStatus?.kind === "preparing"}
+              onClick={() => startTour()}
+            >
+              <Compass size={16} aria-hidden />
+            </ActionIcon>
+          </Tip>
+        )}
+        <div className="navbar-user-wrapper">
+          <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+            <Menu.Target>
+              <ActionIcon
+                variant="subtle"
+                size="lg"
+                className="navbar-user-btn"
+                aria-label={displayName ?? email ?? t("navBar.userMenu")}
+                data-testid="navbar-user-trigger"
+              >
+                <User size={16} aria-hidden />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              {(displayName || email) && (
+                <Menu.Label>
+                  {displayName && (
+                    <Text size="sm" fw={600}>
+                      {displayName}
+                    </Text>
+                  )}
+                  {email && (
+                    <Text size="xs" c="dimmed">
+                      {email}
+                    </Text>
+                  )}
+                  {devMode && (
+                    <Badge mt="xs" size="xs" color="orange" variant="filled" autoContrast>
+                      {t("navBar.dev")}
+                    </Badge>
+                  )}
+                </Menu.Label>
+              )}
+              <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
+              {/* REQ-1327: no Settings entry. For an admin it opened the same page as Admin, so
+                  Admin (below the divider) is the one way into administration. */}
+              {/* REQ-1469: the plan, the running bill and the next charge are the org's
+                  commercial relationship, not an operational setting, so they sit with the
+                  account rather than under Admin. Shown only where the deployment mounts
+                  /billing (`billing` on /auth/me) — the right exists in every deployment, the
+                  routes do not — and only to the org right that owns the subscription. */}
+              {billing && (
+                <CapabilityGate capability="org_settings" navigable>
+                  <Menu.Item
+                    onClick={() => navigate("/admin/billing")}
+                    data-testid="navbar-billing"
+                  >
+                    {t("navBar.itemBilling")}
+                  </Menu.Item>
+                </CapabilityGate>
+              )}
+              {/* The release this UI was built with, from the notes bundled with it. */}
+              {RELEASE_NOTES && (
+                <Menu.Item onClick={() => setWhatsNewOpen(true)} data-testid="navbar-whats-new">
+                  {t("navBar.whatsNew")}
+                </Menu.Item>
+              )}
+              {/* Admin and Docs sit below a divider, not in the top navigation. Admin is offered
+                  to a caller holding an admin surface and opens the first one they hold; Docs is
+                  open to everyone. */}
+              <Menu.Divider data-testid="navbar-menu-divider" />
+              {adminEntry && (
+                <Menu.Item onClick={() => navigate(adminEntry.to)} data-testid="navbar-admin">
+                  {t("navBar.groupAdmin")}
+                </Menu.Item>
+              )}
+              <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
+                {t("navBar.docs")}
+              </Menu.Item>
+              {authEnabled && (
+                <Menu.Item color="red" onClick={handleLogout}>
+                  {t("navBar.logout")}
+                </Menu.Item>
+              )}
+            </Menu.Dropdown>
+          </Menu>
         </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <nav className={rows ? "navbar navbar-rows" : "navbar"} ref={navRef}>
+        {rows ? (
+          <>
+            <div className="navbar-row" data-testid="navbar-row-context">
+              {brand}
+              {controls}
+            </div>
+            {pageLinks}
+          </>
+        ) : (
+          <>
+            {brand}
+            {pageLinks}
+            {controls}
+          </>
+        )}
       </nav>
       {/* REQ-1559: Admin's entries are drawn as a left-hand rail (AdminRail) instead, because two
           dozen of them only crowd a horizontal bar. One navigation, in one place, never both. */}
