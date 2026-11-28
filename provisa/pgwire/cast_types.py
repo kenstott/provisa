@@ -190,10 +190,15 @@ def bytes_of_text(value: Any) -> Any:
 _CLOCK_TEXT = re.compile(r"(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?", re.ASCII)
 
 
+#: The time PostgreSQL holds and Python's ``time`` does not, passed on as its text, as
+#: executor.drivers.duckdb_arrow's rows hold it (REQ-2236): the encoder writes it as the time.
+_END_OF_DAY = "24:00:00"
+
+
 def clock_of_text(value: Any) -> Any:
     """A call's time an engine holds as time_out's text (ClickHouse's time is its text) as the time
-    it is. 24:00:00, which PostgreSQL's time holds, is no time of day here, and is refused."""
-    if not isinstance(value, str):
+    it is; 24:00:00, which PostgreSQL's time holds and no ``datetime.time`` does, as its text."""
+    if not isinstance(value, str) or value == _END_OF_DAY:
         return value
     clock = _CLOCK_TEXT.fullmatch(value)
     if clock is None or int(clock[1]) > 23 or int(clock[2]) > 59 or int(clock[3]) > 59:

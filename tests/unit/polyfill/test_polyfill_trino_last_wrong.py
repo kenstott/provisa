@@ -167,7 +167,7 @@ def test_no_flags_is_the_first_match_as_before():
 
 def test_clickhouse_reads_the_flags_by_the_same_row():
     assert transpile(_HELLO.format(flags="'i'::text"), "clickhouse", generated=False) == (
-        "SELECT replaceRegexpOne(CAST('Hello World' AS Nullable(String)), '(?i:[a-z]+)', "
+        "SELECT replaceRegexpOne(CAST('Hello World' AS Nullable(String)), '(?si:[a-z]+)', "
         "'Hello World') AS v"
     )
 

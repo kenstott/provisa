@@ -29,6 +29,7 @@ its NULL, the text, and the mark a form puts on a node whose value is a held tim
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Callable
 from typing import Literal
 
@@ -86,19 +87,10 @@ def held_null() -> exp.Expr:
     return node
 
 
-#: The refusal of 24:00:00 where a column of the select list shows it: PostgreSQL's time holds it,
-#: but pgwire reads no time of day past 23:59:59.999999 back (cast_types.clock_of_text).
-LAST_SHOWN = Refusal(
-    "0A000",
-    "time 24:00:00 in a result column has no form on clickhouse: pgwire reads no time of day "
-    "past 23:59:59.999999",
-)
-
-
-def text_sql(held: str, column: bool = False) -> str:
+def text_sql(held: str) -> str:
     """ClickHouse's SQL of time_out's text of a held time ``held`` (an Int64, maybe NULL): two
-    digits each of hours, minutes and seconds, and the fraction without its trailing zeros.
-    ``column``: the text is a result column's, which raises LAST_SHOWN of 24:00:00."""
+    digits each of hours, minutes and seconds, and the fraction without its trailing zeros;
+    24:00:00 the last, which pgwire passes on as its text (cast_types.clock_of_text)."""
     x = "provisa_clock"
 
     def two(count: str) -> str:
@@ -110,11 +102,6 @@ def text_sql(held: str, column: bool = False) -> str:
         f"':', {two(f'intDiv({x}, {SECOND_US}) % 60')}, "
         f"if({x} % {SECOND_US} = 0, '', concat('.', {fraction})))"
     )
-    if column:
-        last = ch_fail(LAST_SHOWN.sqlstate, LAST_SHOWN.message).format(
-            condition=f"({x} = {DAY_US})"
-        )
-        written = f"if({last} = 0, {written}, '')"
     return f"arrayElement(arrayMap({x} -> {written}, [toInt64({held})]), 1)"
 
 
@@ -130,20 +117,17 @@ def graft(template: str, **nodes: exp.Expr) -> exp.Expr:
     return tree.transform(grafted)
 
 
-def shown(node: exp.Expr, column: bool = False) -> exp.Expr:
+def shown(node: exp.Expr) -> exp.Expr:
     """``node``, a held time, as time_out's text: a literal's text where the held value is a
-    literal, a NULL of text for a NULL. ``column``: a result column's, which raises LAST_SHOWN of
-    24:00:00."""
+    literal, a NULL of text for a NULL."""
     value = node.unnest()
     if isinstance(value, exp.Anonymous) and value.name == "toInt64" and value.meta.get(HELD):
         micros = value.expressions[0]
         if isinstance(micros, exp.Literal) and not micros.is_string:
-            if column and int(micros.this) == DAY_US:
-                raise _refused("time_out", LAST_SHOWN)
             return exp.Literal.string(text_of(int(micros.this)))
     if isinstance(value, exp.Cast) and isinstance(value.this, exp.Null):
         return sqlglot.parse_one(NULL_TEXT, read=_CLICKHOUSE)
-    return graft(text_sql("provisa_held_clock", column), provisa_held_clock=node)
+    return graft(text_sql("provisa_held_clock"), provisa_held_clock=node)
 
 
 def time_valued(node: exp.Expr) -> bool:
@@ -336,7 +320,7 @@ def select_shown(before: exp.Expr, after: exp.Expr) -> exp.Expr:
         value = now.unalias()
         if isinstance(value, exp.Literal) and value.is_string:
             continue  # already its text
-        value.replace(shown(value, column=True))
+        value.replace(shown(value))
     return after
 
 
@@ -390,14 +374,30 @@ def time_of_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return exp.Cast(this=stamp.copy(), to=exp.DataType.build("time", dialect="postgres"))
 
 
+_INT4 = re.compile(r"[+-]?[0-9]+")
+
+
 def _integer(argument: exp.Expr) -> int | None | Literal[False]:
-    """An integer the statement writes (a literal, signed, maybe cast): its value; None for a NULL;
-    False for any other value."""
+    """An integer the statement writes (a literal, signed, maybe cast, or a quoted integer cast to
+    integer, '-2147483648'::integer): its value; None for a NULL; False for any other value."""
     value = argument.unnest()
+    typed: exp.DataType | None = None
     while isinstance(value, exp.Cast):
+        typed = value.to
         value = value.this.unnest()
     if isinstance(value, exp.Null):
         return None
+    if isinstance(value, exp.Literal) and value.is_string:
+        # int4in's value, and its 22003 of one past an integer.
+        text = value.this.strip()
+        if typed is None or not typed.is_type(exp.DataType.Type.INT) or not _INT4.fullmatch(text):
+            return False
+        if not -(2**31) <= int(text) < 2**31:
+            raise Refused(
+                Refusal("22003", f'value "{value.this}" is out of range for type integer'),
+                ruling=True,
+            )
+        return int(text)
     negative = isinstance(value, exp.Neg)
     if negative:
         value = value.this.unnest()

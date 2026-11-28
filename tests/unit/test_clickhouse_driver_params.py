@@ -29,6 +29,13 @@ from provisa.executor.drivers.clickhouse import ClickHouseDriver
 _SERVER_VERSION = "26.8.46.6"
 
 
+def _context(query=None, parameters=None, **_kw):
+    """clickhouse-connect's own query context, as the client makes it for a statement."""
+    from clickhouse_connect.driver.query import QueryContext
+
+    return QueryContext(query=query or "", parameters=parameters)
+
+
 def _arrow(rows, cols) -> pa.Table:
     """The table the server's Arrow output reads as for ``rows`` under ``cols`` (REQ-2194)."""
     columns = list(zip(*rows)) if rows else [[] for _ in cols]
@@ -43,6 +50,8 @@ class _FakeClient:
         self._cols = cols or []
         self.last_sql: str | None = None
         self.last_parameters = None
+
+    create_query_context = staticmethod(_context)
 
     def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
         self.last_sql = sql
@@ -135,6 +144,8 @@ class TestClickHouseDriverSessions:
                 self.overlapped = False
                 self.closed = False
 
+            create_query_context = staticmethod(_context)
+
             def query_arrow(self, sql, parameters=None, settings=None, use_strings=None):
                 import time
 
@@ -224,3 +235,82 @@ def test_a_pooled_client_names_no_server_session(monkeypatch):
     for kwargs in asked:
         assert kwargs["autogenerate_session_id"] is False
         assert "session_id" not in kwargs
+
+
+class TestServerVersionAtConnect:
+    """DIRECT results are read as Arrow, and a ClickHouse server before 26 refuses UUID in Arrow
+    output: an older server is refused at connect, by name and with its version (REQ-2194)."""
+
+    @staticmethod
+    def _connect(monkeypatch, version: str | None) -> list:
+        import clickhouse_connect
+
+        opened: list = []
+
+        class _Client:
+            def __init__(self) -> None:
+                self.server_version = version
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        def _get_client(**_kwargs):
+            client = _Client()
+            opened.append(client)
+            return client
+
+        monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+        driver = ClickHouseDriver()
+        asyncio.run(driver.connect("h", 8123, "default", "u", "p", min_pool=1, max_pool=2))
+        return opened
+
+    def test_a_server_older_than_26_is_refused_by_name_with_its_version(self, monkeypatch):
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
+
+        with pytest.raises(ClickHouseServerTooOld) as refused:
+            self._connect(monkeypatch, "24.3.18.7")
+        message = str(refused.value)
+        assert "ClickHouse server 24.3.18.7 is older than 26" in message
+        assert "ClickHouse 26 or later" in message
+        assert "UUID" in message
+
+    def test_the_refused_client_is_closed(self, monkeypatch):
+        import clickhouse_connect
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
+
+        made: list = []
+
+        class _Client:
+            server_version = "25.12.1.1"
+
+            def __init__(self) -> None:
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        def _get_client(**_kwargs):
+            made.append(_Client())
+            return made[-1]
+
+        monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+        with pytest.raises(ClickHouseServerTooOld, match="ClickHouse server 25.12.1.1"):
+            asyncio.run(ClickHouseDriver().connect("h", 8123, "default", "u", "p"))
+        assert made and all(c.closed for c in made)
+
+    def test_a_server_without_a_readable_version_is_refused(self, monkeypatch):
+        import pytest
+
+        from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
+
+        with pytest.raises(ClickHouseServerTooOld, match="no readable version"):
+            self._connect(monkeypatch, None)
+
+    def test_a_26_server_connects(self, monkeypatch):
+        opened = self._connect(monkeypatch, "26.10.12.13")
+        assert opened and not any(c.closed for c in opened)

@@ -86,7 +86,8 @@
 }
 .p3d-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* The stage, then its detail: 320px wide, or none where a side panel is hidden (REQ-2239). */
+  grid-template-columns: minmax(0, 1fr) auto;
   height: 480px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -252,6 +253,9 @@
   width: 8px;
   height: 10px;
   background: var(--p3d-null);
+}
+.p3d-body > .p3d-detail {
+  width: 320px;
 }
 .p3d-detail {
   min-width: 0;
@@ -439,6 +443,17 @@
   .p3d-detail {
     border-inline-start: 0;
     border-top: 1px solid var(--border);
+  }
+  .p3d-body > .p3d-detail,
+  .p3d-body > .provisa-side-panel {
+    width: auto;
+  }
+  /* Under the stage, the side panel's handle sits at the stage's lower inline-end corner. */
+  .p3d-body > .provisa-side-panel .provisa-side-panel-handle {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+    top: -40px;
+    transform: none;
   }
   .p3d-hint {
     display: none;

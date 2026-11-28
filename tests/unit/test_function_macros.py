@@ -420,7 +420,8 @@ def test_a_numeric_of_a_column_stays_as_said():
     ("dialect", "want"),
     [
         ("trino", "REGEXP_LIKE(a, '(?i)' || b)"),
-        ("clickhouse", "match(a, CONCAT('(?i)', b))"),
+        # The pattern as RE2 reads it as PostgreSQL does, its run-time checks beside (REQ-2236).
+        ("clickhouse", "match(a, concat('(?si)', "),
         ("duckdb", "REGEXP_MATCHES(a, b, 'i')"),
     ],
 )
@@ -571,3 +572,91 @@ def test_a_timestamp_range_is_compared_on_clickhouse():
         "SELECT a.v @> b.v AS r FROM s.t AS a CROSS JOIN s.t AS b", {("s", "t"): {"v": "tsrange"}}
     )
     assert "'\"', '')" in transpile(marked, "clickhouse", generated=False)
+
+
+def _column_named(sql: str, dialect: str) -> str:
+    """The name the transpiled statement gives its one result column."""
+    written = sqlglot.parse_one(transpile(sql, dialect, generated=False), read=dialect)
+    (item,) = written.selects
+    assert isinstance(item, sqlglot.exp.Alias), item.sql(dialect=dialect)
+    return item.alias
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect", "name"),
+    [
+        # REQ-2236: a polyfilled function call is named for its function, as PostgreSQL names it.
+        ("SELECT log10(x) FROM t", "duckdb", "log10"),
+        ("SELECT regexp_count(a, 'x') FROM t", "clickhouse", "regexp_count"),
+        ("SELECT array_cat(a, b) FROM t", "clickhouse", "array_cat"),
+        ("SELECT width_bucket(x, 0, 10, 5) FROM t", "trino", "width_bucket"),
+        ("SELECT sha256(a) FROM t", "trino", "sha256"),
+    ],
+)
+def test_an_unaliased_polyfilled_function_call_is_named_for_its_function(
+    sql: str, dialect: str, name: str
+):
+    assert _column_named(sql, dialect) == name
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect"),
+    [
+        # REQ-2236: PostgreSQL names an unaliased operator expression ?column?, never for the grid
+        # row or the function its form calls.
+        ("SELECT j #> '{a}' FROM t", "duckdb"),
+        ("SELECT a ~ b FROM t", "clickhouse"),
+        ("SELECT a ~* 'x' FROM t", "clickhouse"),
+        ("SELECT 'abc' SIMILAR TO 'a%'", "clickhouse"),
+        ("SELECT interval '1 day' * 2", "clickhouse"),
+        ("SELECT a @> b FROM t", "trino"),
+        ("SELECT ARRAY[1, 2] @> ARRAY[2]", "trino"),
+        ("SELECT j #> '{a}' FROM t", "trino"),
+    ],
+)
+def test_an_unaliased_polyfilled_operator_is_named_question_column(sql: str, dialect: str):
+    assert _column_named(sql, dialect) == "?column?"
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect", "name"),
+    [
+        # REQ-2236: an unaliased cast of a constant is named for its type, as PostgreSQL spells it.
+        ("SELECT '1'::int4", "clickhouse", "int4"),
+        ("SELECT 1.5::int", "clickhouse", "int4"),
+        ("SELECT '12'::int2", "clickhouse", "int2"),
+        ("SELECT '1 day'::interval", "clickhouse", "interval"),
+        ("SELECT '1'::int4", "trino", "int4"),
+        ("SELECT '12'::int2", "trino", "int2"),
+    ],
+)
+def test_an_unaliased_polyfilled_cast_is_named_for_its_type(sql: str, dialect: str, name: str):
+    assert _column_named(sql, dialect) == name
+
+
+@pytest.mark.parametrize(
+    ("expression", "name"),
+    [
+        # The rule itself, on every engine (DuckDB writes most of these natively): FigureColname.
+        ("a ~ b", "?column?"),
+        ("a || b", "?column?"),
+        ("ARRAY[1] @> ARRAY[2]", "?column?"),
+        ("lower(a) ~ b", "?column?"),
+        ("j -> 'k'", "?column?"),
+        ("'1'::int4", "int4"),
+        ("x::text", "x"),
+        ("CAST(a || b AS TEXT)", "text"),
+        ("lower(a)::text", "lower"),
+        ("substr(a, 2)", "substring"),
+        ("log10(x)", "log10"),
+        ("div(a, b)", "div"),
+        ("pg_catalog.cbrt(x)", "cbrt"),
+        ("string_agg(a, ',')", "string_agg"),
+        ("regexp_count(a, b)", "regexp_count"),
+        ("lag(x) OVER (ORDER BY y)", "lag"),
+        ("count(*) FILTER (WHERE x > 1)", "count"),
+    ],
+)
+def test_the_column_name_rule(expression: str, name: str):
+    (item,) = sqlglot.parse_one(f"SELECT {expression}", read="postgres").selects
+    assert function_macros.column_name(item) == name

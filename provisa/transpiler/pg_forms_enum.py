@@ -415,11 +415,14 @@ def _refuse_a_pattern_that_varies(tree: exp.Expr, dialect: str) -> None:
 
 
 def _refuse_six_argument_regexp_replace(tree: exp.Expr, dialect: str) -> None:
-    """REQ-2167 (amended 2026-11-02, Six-argument regexp_replace is not supported): the call with a
-    start, an occurrence and flags is refused by name, whatever its arguments; sqlglot reads it as
-    its own call, or, quoted, as no call of its own."""
+    """REQ-2167 (amended 2026-11-25): the call with a start, an occurrence and flags is answered
+    where an exact form exists, ClickHouse's (polyfill.regex, the Nth match's form with the flags'
+    option letters), and refused by name on every other engine, whatever its arguments; sqlglot
+    reads it as its own call, or, quoted, as no call of its own."""
     from provisa.transpiler.function_macros import FunctionRefused
 
+    if dialect == _C:
+        return
     for node in tree.find_all(exp.RegexpReplace, exp.Anonymous):
         if isinstance(node, exp.RegexpReplace):
             six = all(node.args.get(k) is not None for k in ("occurrence", "modifiers"))

@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "Развернуть все",
-    "collapseAll": "Свернуть все"
+    "collapseAll": "Свернуть все",
+    "hidePanel": "Скрыть панель",
+    "showPanel": "Показать панель"
   }
 }

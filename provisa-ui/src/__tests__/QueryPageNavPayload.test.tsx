@@ -18,6 +18,16 @@ import { MemoryRouter, useNavigate } from "react-router-dom";
 
 const actions = { addTab: vi.fn(), updateActiveTabValues: vi.fn(), run: vi.fn() };
 const editor = { setValue: vi.fn() };
+// GraphiQL's own default formatter (DEFAULT_PRETTIFY_QUERY in @graphiql/react), which the
+// toolbar's Prettify button calls through the store's onPrettifyQuery.
+async function graphiqlPrettify(query: string): Promise<string> {
+  const [prettier, { printers }, { parsers }] = await Promise.all([
+    import("prettier/standalone"),
+    import("prettier/plugins/graphql"),
+    import("prettier/parser-graphql"),
+  ]);
+  return prettier.format(query, { parser: "graphql", plugins: [{ printers }, { parsers }] });
+}
 
 vi.mock("graphiql", () => {
   const GraphiQL = ({ children }: { children?: React.ReactNode }) =>
@@ -34,6 +44,7 @@ vi.mock("@graphiql/react", async (importOriginal) => ({
   useGraphiQL: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       queryEditor: editor,
+      onPrettifyQuery: graphiqlPrettify,
       schema: null,
       tabs: [{ title: "Query", query: "" }],
       activeTabIndex: 0,
@@ -58,14 +69,27 @@ vi.mock("../plugins/headers-quick-insert", () => ({ HeadersQuickInsert: () => nu
 import { MantineProvider } from "@mantine/core";
 import { QueryPage } from "../pages/QueryPage";
 
-function Polly() {
+const PRETTY = "{\n  orders {\n    id\n  }\n}\n";
+
+function Polly({
+  query = "{ orders { id } }",
+  autoRun = true,
+}: {
+  query?: string;
+  autoRun?: boolean;
+}) {
   const navigate = useNavigate();
-  return (
-    <button
-      onClick={() => navigate("/query", { state: { query: "{ orders { id } }", autoRun: true } })}
-    >
-      polly
-    </button>
+  return <button onClick={() => navigate("/query", { state: { query, autoRun } })}>polly</button>;
+}
+
+function renderPage(polly: React.ReactElement = <Polly />) {
+  return render(
+    <MantineProvider>
+      <MemoryRouter initialEntries={["/query"]}>
+        {polly}
+        <QueryPage />
+      </MemoryRouter>
+    </MantineProvider>,
   );
 }
 
@@ -90,7 +114,7 @@ describe("QueryPage — a hand-off while the page is open", () => {
     expect(editor.setValue).not.toHaveBeenCalled();
 
     act(() => screen.getByText("polly").click());
-    await waitFor(() => expect(editor.setValue).toHaveBeenCalledWith("{ orders { id } }"));
+    await waitFor(() => expect(editor.setValue).toHaveBeenCalledWith(PRETTY));
     await waitFor(() => expect(actions.run).toHaveBeenCalledTimes(1));
 
     act(() => screen.getByText("polly").click());
@@ -111,9 +135,33 @@ describe("QueryPage — a hand-off while the page is open", () => {
     // An anonymous query has no name: the title of the tab it was opened from is not kept.
     await waitFor(() =>
       expect(actions.updateActiveTabValues).toHaveBeenCalledWith({
-        query: "{ orders { id } }",
+        query: PRETTY,
         operationName: null,
       }),
     );
+  });
+
+  it("opens a one-line query as the Prettify button formats it, comments kept", async () => {
+    const handed = "# complaints\n{ ps__complaints_2026_08(limit: 25) { complaint_id product } }";
+    renderPage(<Polly query={handed} autoRun={false} />);
+    act(() => screen.getByText("polly").click());
+    const expected = await graphiqlPrettify(handed);
+    expect(expected).toBe(
+      "# complaints\n{\n  ps__complaints_2026_08(limit: 25) {\n    complaint_id\n    product\n  }\n}\n",
+    );
+    await waitFor(() => expect(editor.setValue).toHaveBeenCalledWith(expected));
+    expect(actions.run).not.toHaveBeenCalled();
+  });
+
+  it("opens a query that does not parse exactly as written, and still runs it", async () => {
+    const handed = "{ orders { id ";
+    renderPage(<Polly query={handed} />);
+    act(() => screen.getByText("polly").click());
+    await waitFor(() => expect(editor.setValue).toHaveBeenCalledWith(handed));
+    expect(actions.updateActiveTabValues).toHaveBeenCalledWith({
+      query: handed,
+      operationName: null,
+    });
+    await waitFor(() => expect(actions.run).toHaveBeenCalledTimes(1));
   });
 });

@@ -36,3 +36,51 @@
   font-size: var(--mantine-font-size-sm);
   font-weight: 500;
 }
+
+/* REQ-2239: a side panel (SidePanel) beside a view's canvas, hidden and shown by the handle on its
+ * edge. Hidden, it takes no width and the canvas takes the full width. */
+.provisa-side-panel {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: var(--side-panel-width, 320px);
+}
+.provisa-side-panel.is-hidden {
+  width: 0;
+}
+.provisa-side-panel-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.provisa-side-panel-body > * {
+  flex: 1;
+  min-height: 0;
+}
+/* The handle sits on the panel's edge, over the canvas, its border what shows it there. */
+.provisa-side-panel .provisa-side-panel-handle {
+  position: absolute;
+  inset-inline-start: -13px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  width: 13px;
+  min-width: 13px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-inline-end: none;
+  border-start-start-radius: 4px;
+  border-end-start-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.55rem;
+}
+[dir="rtl"] .provisa-side-panel .provisa-side-panel-handle > span {
+  display: inline-block;
+  transform: scaleX(-1);
+}

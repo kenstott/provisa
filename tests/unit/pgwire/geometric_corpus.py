@@ -111,6 +111,9 @@ BRANCHES = (
     "SELECT polygon(1::integer, '<(1,2),3>'::circle) AS v",
     "SELECT polygon(1::integer, '<(10,10),0>'::circle) AS v",
     "SELECT polygon('<(10,10),0>'::circle) AS v",
+    "SELECT polygon('-2147483648'::integer, '<(0,0),1>'::circle) AS v",
+    "SELECT polygon(2147483647::integer, '<(0,0),1>'::circle) AS v",
+    "SELECT polygon(100000000::integer, '<(0,0),1>'::circle) AS v",
     "SELECT polygon('[(0,0),(2,2)]'::path) AS v",
     "SELECT path_add('[(0,0),(2,2)]'::path, '[(0,1),(0.5,3),(7,1)]'::path) AS v",
     "SELECT path_add('((0,0),(1,0),(1,1))'::path, '[(0,0),(2,2)]'::path) AS v",
@@ -126,6 +129,18 @@ BRANCHES = (
     "SELECT close_sb('[(-1,2),(5,2)]'::lseg, '(3,4),(0,0)'::box) AS v",
     "SELECT inter_lb('{1,-1,0}'::line, '(10,1),(8,0)'::box) AS v",
 )
+#: Shapes holding a coordinate that is not finite, as float8in reads them in any case: each takes
+#: each argument of each overload in turn, the others VALUES' first, then every argument at once.
+NOT_FINITE: dict[str, tuple[str, ...]] = {
+    "point": ("(NaN,1)", "(Infinity,-inf)"),
+    "lseg": ("[(0,0),(NaN,1)]", "[(-Infinity,0),(1,1)]"),
+    "box": ("(NaN,1),(0,0)", "(Infinity,1),(0,-inf)"),
+    "path": ("((0,0),(NaN,1),(1,1))", "[(0,0),(inf,1)]"),
+    "polygon": ("((0,0),(NaN,1),(1,1))", "((0,0),(Infinity,1),(1,1))"),
+    "circle": ("<(NaN,0),1>", "<(0,0),Infinity>"),
+    "line": ("{NaN,1,0}", "{1,-1,-Infinity}"),
+    "double precision": ("'NaN'", "'-Infinity'"),
+}
 _FLOAT = "double precision"
 #: width_bucket takes no shape: float8's and numeric's, through each path of each, what a bound or a
 #: count may not be, and its list, in order and not.
@@ -214,4 +229,28 @@ def statements() -> list[str]:
                 seen.append(f"SELECT {name}({args}) AS v")
             nulls = ", ".join(f"NULL::{t}" for t in types)
             seen.append(f"SELECT {name}({nulls}) AS v")
-    return list(dict.fromkeys((*seen, *BRANCHES, *BUCKETS)))
+    return list(dict.fromkeys((*seen, *BRANCHES, *BUCKETS, *_not_finite(names))))
+
+
+def _not_finite(names: list[str]) -> list[str]:
+    """Each overload of ``names`` of a shape not finite (NOT_FINITE)."""
+    seen: list[str] = []
+    for name in names:
+        for types in _overloads(name):
+            if any(t not in VALUES for t in types):
+                continue
+            usual = [VALUES[t][0] for t in types]
+            at = [i for i, t in enumerate(types) if t in NOT_FINITE]
+            for which in range(2):
+                calls = [[*usual[:i], NOT_FINITE[types[i]][which], *usual[i + 1 :]] for i in at]
+                if len(at) > 1:
+                    calls.append(
+                        [
+                            NOT_FINITE[t][which] if t in NOT_FINITE else v
+                            for t, v in zip(types, usual)
+                        ]
+                    )
+                for values in calls:
+                    args = ", ".join(_literal(t, v) for t, v in zip(types, values))
+                    seen.append(f"SELECT {name}({args}) AS v")
+    return seen

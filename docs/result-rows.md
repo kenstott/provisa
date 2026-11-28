@@ -81,6 +81,15 @@ so the source's credentials must include read access to that location. When you 
 source, Provisa runs one statement and reads its result. Without that access, Provisa refuses the
 source and names the location in the message.
 
+ClickHouse writes some types to Arrow as something other than their value. An IPv4 address and a
+`DateTime` arrive as 32-bit integers, an IPv6 address and a 128-bit integer as 16 bytes, an enum as
+its code. When a whole result holds such a column, Provisa asks ClickHouse for the result's types with
+`DESCRIBE`, which costs one more round trip, and converts each column in place. An address or a
+UUID becomes the text PostgreSQL writes for it. A `DateTime` becomes a timestamp in the column's
+zone, or in the server's zone when the column names none. An enum becomes its label, and a 128- or
+256-bit integer becomes a decimal. ClickHouse writes UUID to Arrow only from version 26, so Provisa
+refuses a ClickHouse source on an older server when it connects, and the message names the version.
+
 ## Choosing for large results
 
 For engine-routed queries, read large results over Flight SQL. On Snowflake, Databricks, BigQuery

@@ -31,6 +31,10 @@ const DELIBERATE: Readonly<Record<string, [number, string]>> = {
     1,
     "Run is the query bar's send: the one filled button, as a chat's send is",
   ],
+  "components/collapsible/SidePanel.tsx": [
+    1,
+    "a side panel's hide handle sits on the panel's edge, and its border is what shows it there",
+  ],
   "components/sql-modeling/SchemaSidebar.tsx": [
     1,
     "the sidebar's collapse handle sits on the panel's edge, and its border is what shows it there",

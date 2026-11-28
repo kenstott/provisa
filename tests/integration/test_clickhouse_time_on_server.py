@@ -35,7 +35,6 @@ import pytest
 from provisa.core.pg_error import from_engine
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
-from provisa.transpiler.polyfill import clocks
 from provisa.transpiler.polyfill.notation import Refused
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.type_io_corpus import same_answer
@@ -626,19 +625,15 @@ def _outcome(client: Any, sql: str) -> str | None:
 STILL_REFUSED = frozenset(
     {"timetz", "timestamptz", "time", "max", "min", "in_range", "make_time", "extract"}
 )
-#: The statements whose answer is 24:00:00, which PostgreSQL's time holds and pgwire reads no time
-#: of back (cast_types.clock_of_text): the time row's stated 0A000 (REQ-2236, AN EDGE CASE RAISES).
-EDGES = frozenset({"SELECT '24:00:00'::time AS v", "SELECT '23:59:59.9999995'::time AS v"})
 _REFUSED_NAMING = re.compile(r"refused: 0A000: (\w+)\(\) has no form on clickhouse")
 
 
 def _allowed(sql: str, why: str | None) -> bool:
-    """Whether ``why`` is no difference: PostgreSQL's answer or error, a stated edge's 0A000, or a
-    refusal by name of a function still refused."""
+    """Whether ``why`` is no difference: PostgreSQL's answer or error, or a refusal by name of a
+    function still refused. 24:00:00 is answered: pgwire passes it on as its text
+    (cast_types.clock_of_text, REQ-2236)."""
     if why is None:
         return True
-    if sql in EDGES:
-        return why == f"refused: 0A000: {clocks.LAST_SHOWN.message}"
     refused = _REFUSED_NAMING.fullmatch(why)
     return refused is not None and refused[1] in STILL_REFUSED
 

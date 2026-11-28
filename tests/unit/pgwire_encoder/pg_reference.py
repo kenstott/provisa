@@ -598,6 +598,16 @@ def _setattr(stack: ExitStack, obj: Any, name: str, value: Any) -> None:
     stack.callback(setattr, obj, name, original)
 
 
+def _time_binary(binary: Callable[[Any], bytes]) -> Callable[[Any], bytes]:
+    """time_send of a time read as its text (cast_types.clock_of_text): 24:00:00, which PostgreSQL
+    holds and no datetime.time does, is 86 400 000 000 microseconds (REQ-2236)."""
+
+    def send(v: Any) -> bytes:
+        return (86_400_000_000).to_bytes(8, "big") if v == "24:00:00" else binary(v)
+
+    return send
+
+
 @contextmanager
 def pg17() -> Iterator[None]:
     """Within: the product's encode path with each of DEFECTS corrected to PostgreSQL's answer."""
@@ -615,6 +625,7 @@ def pg17() -> Iterator[None]:
         table[t.CIDR] = (650, cidr_text, table[t.CIDR][2])
         table[t.TEXT] = (25, text_text, lambda v: text_text(v).encode("utf-8"))
         table[t.DATE] = (1082, date_text, date_binary)
+        table[t.TIME] = (1083, table[t.TIME][1], _time_binary(table[t.TIME][2]))
         for stamp, zoned in ((t.TIMESTAMP, False), (t.TIMESTAMPTZ, True)):
             oid, _, binary = table[stamp]
             table[stamp] = (oid, timestamp_text, _stamp_binary(binary, zoned))

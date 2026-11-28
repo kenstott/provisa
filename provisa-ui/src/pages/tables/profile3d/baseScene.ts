@@ -340,6 +340,14 @@ export abstract class BaseScene<H> {
    * when a turn pauses on idle. */
   abstract resetView(instant?: boolean): void;
 
+  /** REQ-2239: the resting view fitted to the stage as it is now. The stage is measured first, so
+   * a canvas that has just widened or narrowed (its side panel hidden or shown) is fitted at its
+   * new size rather than the size the resize observer last reported. */
+  fitToStage() {
+    this.resize();
+    this.resetView();
+  }
+
   /** Lays a size×size floor grid at height ``y`` in ``world``, drawn or not as setGrid last said. */
   protected layFloor(world: THREE.Object3D, size: number, y: number, mat: THREE.LineBasicMaterial) {
     const grid = new THREE.GridHelper(size, size, this.theme.grid, this.theme.grid);

@@ -24,6 +24,7 @@ import { ResetSettingsButton } from "../ResetSettingsButton";
 import { useGraphSettings } from "../graphSettings";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
+import { SidePanel } from "../../../../components/collapsible/SidePanel";
 import {
   buildRelations,
   edgesOf,
@@ -69,10 +70,14 @@ function RelationsStage({
   s,
   command,
   onReset,
+  refit,
 }: {
   s: Shared;
   command: CameraCommand | null;
   onReset: () => void;
+  /** REQ-2239: changes when the canvas has changed width (its side panel hidden or shown), so the
+   * graph is fitted to it again. */
+  refit: number;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: RelHover; x: number; y: number } | null>(null);
@@ -126,6 +131,9 @@ function RelationsStage({
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
   useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
+  useEffect(() => {
+    if (scene && refit > 0) scene.fitToStage();
+  }, [scene, refit]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();
@@ -313,6 +321,8 @@ function RelationsView({
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
+  // REQ-2239: counts the side panel's hides and shows, each fitting the graph to its canvas again.
+  const [refit, setRefit] = useState(0);
   return (
     <div
       className={`p3d${expanded ? " is-expanded" : ""}`}
@@ -351,14 +361,20 @@ function RelationsView({
         {onExpand && <ExpandButton onClick={onExpand} testId="relations-expand" />}
       </Group>
       <div className="p3d-body">
-        <RelationsStage s={s} command={command} onReset={() => move("reset", null)} />
-        <RelationsDetail
-          s={s}
-          onFocus={(id) => {
-            s.setRotate(false);
-            move("focus", id);
-          }}
-        />
+        <RelationsStage s={s} command={command} onReset={() => move("reset", null)} refit={refit} />
+        <SidePanel
+          view="profile-relations"
+          onToggle={() => setRefit((n) => n + 1)}
+          testId="relations-side-panel"
+        >
+          <RelationsDetail
+            s={s}
+            onFocus={(id) => {
+              s.setRotate(false);
+              move("focus", id);
+            }}
+          />
+        </SidePanel>
       </div>
     </div>
   );

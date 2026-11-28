@@ -28,7 +28,13 @@ REPO = Path(__file__).resolve().parents[2]
 REPLAYS = (
     "tests/integration/test_text_search_on_engines.py",
     "tests/integration/test_everyday_functions_on_engines.py",
-    "tests/integration/test_geometric_on_engines.py",
+    "tests/integration/test_geometric_on_duckdb.py",
+    "tests/integration/test_geometric_forms_on_duckdb_1.py",
+    "tests/integration/test_geometric_forms_on_duckdb_2.py",
+    "tests/integration/test_geometric_forms_on_duckdb_3.py",
+    "tests/integration/test_geometric_forms_on_duckdb_4.py",
+    "tests/integration/test_geometric_on_clickhouse.py",
+    "tests/integration/test_geometric_on_trino.py",
 )
 
 

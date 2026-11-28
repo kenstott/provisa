@@ -118,10 +118,13 @@ def test_an_overload_is_chosen_by_the_type_the_statement_says(sql, row):
         "pt_contained_circle('(1,1)'::point, '<(0,0),2>'::circle)",
     ],
 )
-def test_a_shape_on_trino_is_trinos_geometry_not_inline_arithmetic(sql):
+def test_a_shape_measure_on_trino_is_geo_ops_form_not_trinos_geometry(sql):
+    """REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED, and REQ-2236: Trino's ST_ functions do not
+    answer as PostgreSQL does of a shape holding NaN or an infinity, so a measure is geo_ops.c's
+    form (pg_forms_geometric.MEASURES), reading each coordinate as float8in reads it."""
     written = transpile(f"SELECT {sql} AS v", "trino", generated=False)
-    assert "ST_" in written.upper()
-    assert "SQRT" not in written.upper()
+    assert "ST_" not in written.upper()
+    assert "REGEXP_EXTRACT_ALL" in written.upper() and "[nN][aA][nN]" in written
     sqlglot.parse_one(written, read="trino")
 
 

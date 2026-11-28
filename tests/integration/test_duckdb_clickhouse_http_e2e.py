@@ -156,7 +156,7 @@ async def test_live_read_types_projection_and_pushdown(seeded):
         log = _query_log(seeded, '"order_id" IN (2, 4, 7)')
         assert len(log) == 1, log  # one GET — no HEAD re-execution
         method, read_rows, query = log[0]
-        assert method == 1  # HTTP GET
+        assert method == "GET"  # query_log.http_method is an Enum8 on ClickHouse 26
         assert 'WHERE "order_id" IN (2, 4, 7) AND "event_type" = \'shipped\'' in query
         assert read_rows < 100000  # ClickHouse's primary key index honored the pushed predicate
         # The credential rides in the http secret's headers — never in the URL ClickHouse logged.

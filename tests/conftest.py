@@ -230,6 +230,8 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_clickhouse": ["clickhouse"],
     # REQ-2194: the ClickHouse DIRECT source reads Arrow, which needs a server of 26 or later.
     "requires_clickhouse_26": ["clickhouse-26"],
+    # REQ-2194: a server older than 26, which the DIRECT source refuses at connect.
+    "requires_clickhouse_24": ["clickhouse-24"],
     "requires_firebird": ["firebird"],
     "requires_exasol": ["exasol"],
     "requires_splunk": ["splunk"],
@@ -292,6 +294,7 @@ _HEAVY_MARKERS = frozenset(
         "requires_cassandra",
         "requires_clickhouse",
         "requires_clickhouse_26",
+        "requires_clickhouse_24",
         "requires_firebird",
         "requires_exasol",
         "requires_splunk",
@@ -407,6 +410,7 @@ _ITEST_PORT_ENV = [
     "CASSANDRA_PORT",
     "CLICKHOUSE_PORT",
     "CLICKHOUSE_26_PORT",
+    "CLICKHOUSE_24_PORT",
     "FIREBIRD_PORT",
     "EXASOL_PORT",
     # The engines only Conformance (functions) starts (docker-compose.test.yml): leased all the

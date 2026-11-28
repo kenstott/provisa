@@ -188,7 +188,7 @@ def test_a_null_beside_a_value_past_the_bound_is_null(runtime):
 
 def test_the_stated_bound_is_the_one_enforced():
     feature = next(f for f in GRID.features if f.name == "timestamptz_lt")
-    (stated,) = feature.read.limitations["clickhouse"]
+    (stated,) = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
     assert instants.BOUND in stated.text
     assert instants.FIRST == datetime.datetime(1900, 1, 1)
     assert instants.LAST == datetime.datetime(2299, 12, 31, 23, 59, 59, 999999)
@@ -286,19 +286,34 @@ def test_a_function_of_one_instant_at_the_bound_answers(runtime, sql, answer):
 
 
 @pytest.mark.parametrize(
-    ("function", "sql"),
+    ("sql", "answer"),
     [
-        ("date", _of("date", "'1900-01-01 01:00:00+02'")),
-        ("timestamp", _of("timestamp", "'2300-01-01 00:00:00+00'")),
-        # One row of a VALUES list past the bound raises the aggregate, whatever the others hold.
-        ("max", _aggregate("max", "'2024-06-15 12:30:45+00'", "'2300-01-01 00:00:00+00'")),
-        ("min", _aggregate("min", "NULL", "'1899-12-31 23:59:59.999999+00'")),
-        ("date_trunc", _trunc("day", "'1899-12-31 12:00:00+00'")),
+        (_of("timestamp", "'2300-01-01 00:00:00+00'"), datetime.datetime(2300, 1, 1)),
+        # A VALUES list of literals past the bound, whose column max or min alone reads: each row
+        # held as its microseconds (polyfill.held_instants, REQ-2236 maintainer 2026-11-25).
+        (_aggregate("max", "'2024-06-15 12:30:45+00'", "'2300-01-01 00:00:00+00'"),
+         datetime.datetime(2300, 1, 1)),
+        (_aggregate("min", "NULL", "'1899-12-31 23:59:59.999999+00'"),
+         datetime.datetime(1899, 12, 31, 23, 59, 59, 999999)),
+        (_trunc("day", "'1899-12-31 12:00:00+00'"), datetime.datetime(1899, 12, 31)),
     ],
 )  # fmt: skip
-def test_a_function_of_one_instant_past_the_bound_raises(runtime, function, sql):
-    error = _raised(runtime, sql)
-    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+def test_a_function_of_one_instant_past_the_bound_answers_postgresql(runtime, sql, answer):
+    """Held exactly (REQ-2236, maintainer 2026-11-25: hold rather than refuse)."""
+    assert _one(runtime, sql).replace(tzinfo=None) == answer
+
+
+@pytest.mark.parametrize(
+    "sql", [_of("date", "'1900-01-01 01:00:00+02'"), _of("date", "'infinity'")]
+)
+def test_a_date_answer_past_the_bound_is_refused_by_name(sql):
+    """1899-12-31 and infinity: no ClickHouse type holds that date (Date32 clamps it)."""
+    with pytest.raises(RowRefused) as refused:
+        transpile(sql, "clickhouse", generated=False)
+    assert refused.value.sqlstate == "0A000"
+    assert str(refused.value) == (
+        "date() of a date answer outside 1900-01-01 .. 2299-12-31 has no form on clickhouse"
+    )
 
 
 def test_isfinite_reads_only_that_a_value_is_there(runtime):
@@ -309,8 +324,6 @@ def test_isfinite_reads_only_that_a_value_is_there(runtime):
 @pytest.mark.parametrize(
     ("sql", "function"),
     [
-        (_of("date", "'infinity'"), "date"),
-        (_aggregate("max", "'2024-06-15 12:30:45+00'", "'infinity'"), "max"),
         # A row of another type: PostgreSQL's coercion of it to an instant is not read here.
         ('SELECT pg_catalog."max"(c1) AS v FROM (VALUES (\'2024-06-15 12:30:45+00\'::timestamp with time zone), '
          "('2024-06-15'::date)) AS t(c1)", "max"),
@@ -352,7 +365,7 @@ def test_each_function_of_one_instant_states_its_bound():
         for stated in bounds:  # date_trunc: and at a zone
             assert instants.BOUND in stated.text and "{" not in stated.text
     isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
-    (stated,) = isfinite.read.limitations["clickhouse"]
+    (stated,) = [lim for lim in isfinite.read.limitations["clickhouse"] if lim.refusal is None]
     assert "{" not in stated.text and "infinity" in stated.text
 
 
@@ -443,18 +456,44 @@ def test_timezone_of_a_column_of_values_reads_each_row(runtime):
     ("function", "sql"),
     [
         ("overlaps", _overlaps("'1850-01-01 00:00:00+00'", "NULL", "'2000-01-05 00:00:00+00'", "NULL")),
-        ("date_part", _part("date_part", "'year'", "'2300-01-01 00:00:00+00'")),
         # Inside the bound in UTC, past it at Tokyo's wall time.
         ("timezone", _at("'Asia/Tokyo'", "'2299-12-31 20:00:00+00'")),
         ("timezone", _at("'America/New_York'", "'1900-01-01 02:00:00+00'")),
         # Inside the bound, rounded past it.
         ("timestamptz", _precise("'2299-12-31 23:59:59.999999+00'", "0")),
-        ("timestamptz", _precise("'1899-12-31 23:59:59+00'", "3")),
     ],
 )  # fmt: skip
 def test_a_call_of_an_instant_past_the_bound_raises(runtime, function, sql):
     error = _raised(runtime, sql)
     assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        (_aggregate("max", "'2024-06-15 12:30:45+00'", "'infinity'"), 2**63 - 1),
+        (_part("date_part", "'year'", "'2300-01-01 00:00:00+00'"), 2300.0),
+        (_precise("'1899-12-31 23:59:59+00'", "3"), -2208988801000000),
+        (_precise(_SAMPLES[0], "-1"), 1718454645000000),
+    ],
+)  # fmt: skip
+def test_a_value_past_the_bound_is_held(runtime, sql, answer):
+    """Held exactly (REQ-2236, maintainer 2026-11-25): a timestamp as its microseconds from 1970,
+    infinity at the Int64 end but one; no typmod (-1) leaves the value as it is."""
+    import pyarrow as pa
+
+    column = runtime.run_arrow(transpile(sql, "clickhouse", generated=False)).column(0)
+    value = column.cast(pa.int64()) if pa.types.is_timestamp(column.type) else column
+    assert value.to_pylist() == [answer]
+
+
+def test_a_precision_past_6_raises_22023():
+    with pytest.raises(RowRefused) as refused:
+        transpile(_precise(_SAMPLES[0], "7"), "clickhouse", generated=False)
+    assert (refused.value.sqlstate, str(refused.value)) == (
+        "22023",
+        "timestamp(7) precision must be between 0 and 6",
+    )
 
 
 @pytest.mark.parametrize(
@@ -464,8 +503,6 @@ def test_a_call_of_an_instant_past_the_bound_raises(runtime, function, sql):
         (_part("extract", "'epoch'", _SAMPLES[0]), "extract"),
         (_at("'EST'", _SAMPLES[0]), "timezone"),
         (_at("'+05'", _SAMPLES[0]), "timezone"),
-        (_precise(_SAMPLES[0], "7"), "timestamptz"),
-        (_precise(_SAMPLES[0], "-1"), "timestamptz"),
         # An instant ClickHouse computes: its wall time at a zone is not read here first.
         ("SELECT pg_catalog.\"timezone\"('Asia/Tokyo'::text, pg_catalog.\"timestamptz_larger\"("
          f"{_SAMPLES[0]}::{_TZ}, {_SAMPLES[1]}::{_TZ})) AS v", "timezone"),
