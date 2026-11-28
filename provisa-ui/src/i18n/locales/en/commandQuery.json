@@ -16,6 +16,7 @@
     "notJson": "{{name}} is not JSON",
     "notRows": "{{name}}: paste CSV whose first line names the columns, or a JSON array of objects",
     "overCap": "{{name}}: at most {{cap}} rows",
-    "notReadable": "{{name}}: the table picked is not one you can read"
+    "notReadable": "{{name}}: the table picked is not one you can read",
+    "noTableFits": "No table you can read has the columns {{columns}}."
   }
 }

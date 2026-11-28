@@ -16,6 +16,7 @@
     "notJson": "{{name}} is geen JSON",
     "notRows": "{{name}}: plak CSV waarvan de eerste regel de kolommen benoemt, of een JSON-array van objecten",
     "overCap": "{{name}}: hoogstens {{cap}} rijen",
-    "notReadable": "{{name}}: de gekozen tabel is geen tabel die u mag lezen"
+    "notReadable": "{{name}}: de gekozen tabel is geen tabel die u mag lezen",
+    "noTableFits": "Geen tabel die u mag lezen heeft de kolommen {{columns}}."
   }
 }
