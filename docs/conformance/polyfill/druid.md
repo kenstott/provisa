@@ -8,11 +8,11 @@ This page lists every feature that has a polyfill or a limitation on Druid. A fe
 
 When Druid is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source at the end of this page.
 
-Rules on this page: 401, of which 252 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 255 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 No Conformance (functions) leg runs Druid. No run has verified them: function_legs.yaml has no leg whose engine runs this dialect. Each row prints this provenance, read from scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json, never written by hand.
 
-275 of the grid's 629 features are native on Druid and left out.
+281 of the grid's 639 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>array_ndims($a::anyarray)
@@ -165,6 +165,13 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match), with flags or without.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: regexp_replace($s, $p, $r, $b::integer). <code>0A000</code> regexp_replace() has no form on druid</li><li>Refused: regexp_replace($s, $p, $r, $b::integer, $n::integer). <code>0A000</code> regexp_replace() has no form on druid</li><li>Refused: regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text). <code>0A000</code> regexp_replace() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -262,7 +269,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric</strong><br>An integer as a numeric.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb); a call of (double precision), (real) at some of its values. <code>0A000</code> numeric() has no form on druid</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb); a call of (double precision), (real) with an argument the statement says is of that type, not a NULL. <code>0A000</code> numeric() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>bool($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -440,6 +447,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>abs($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>mod of integers on trino</strong><br>The remainder of two integers; of a zero divisor, division by zero.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>gcd</strong><br>The greatest common divisor of two integers; out of range past the type.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>gcd($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lcm</strong><br>The least common multiple of two integers; out of range past the type.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>lcm($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -499,7 +510,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_size_pretty</strong><br>A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_size_pretty($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> pg_size_pretty() has no form on druid</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> pg_size_pretty() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_encoding_max_length($v). <code>0A000</code> pg_encoding_max_length() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -580,6 +591,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>numeric_mod($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>scale</strong><br>The digits after a numeric&#x27;s point, trailing zeros among them.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>scale($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on druid</li></ul></td><td></td><td></td></tr>

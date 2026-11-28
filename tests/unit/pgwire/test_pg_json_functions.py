@@ -147,7 +147,11 @@ def test_a_key_the_rows_hold_is_a_key_never_a_path(dialect: str, op: str):
 @pytest.mark.parametrize("dialect", _ENGINES)
 def test_an_index_the_rows_hold_is_an_arrays_index(dialect: str):
     written = _write("SELECT a -> i::int FROM t", dialect).upper()
-    assert "JSON_ARRAY_ELEMENT" in written  # the row's form, named for the function
+    # The row's form, its column named as PostgreSQL names an operator's.
+    assert {"duckdb": "AS BIGINT", "trino": "JSON_ARRAY_LENGTH", "clickhouse": "JSONEXTRACTRAW"}[
+        dialect
+    ] in written
+    assert '"?COLUMN?"' in written
 
 
 @pytest.mark.parametrize("dialect", ("trino", "clickhouse"))

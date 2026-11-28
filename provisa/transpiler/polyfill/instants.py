@@ -48,7 +48,9 @@ from dataclasses import dataclass
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import SqlglotError
 
+from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import current_zone
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
@@ -190,14 +192,25 @@ def input_outside(text: str, zoned: bool) -> bool | None:
     DateTime64(6, 'UTC') holds, which ClickHouse's cast holds at its type's end: an infinity, a year
     BC or past 9999, or an instant outside the bound (a timestamptz's offset read, one with none
     as UTC, as the cast reads it). None for a text not read here, whose cast is ClickHouse's own."""
-    if text.strip().lower() in _INFINITIES:
-        return True
+    side = input_side(text, zoned)
+    return None if side is None else side != 0
+
+
+def input_side(text: str, zoned: bool) -> int | None:
+    """Where a timestamp's (``zoned``: a timestamptz's) input text falls against the bound: -1
+    before it (-infinity, a year BC), 1 after it (infinity, a year past 9999), 0 inside; None for a
+    text not read here (:func:`input_outside`)."""
+    infinite = text.strip().lower()
+    if infinite in _INFINITIES:
+        return -1 if infinite.startswith("-") else 1
     written = _INPUT.fullmatch(text)
     if written is None:
         return None
     year, month, day, hour, minute, second, fraction, utc, sign, oh, om, os_, era = written.groups()
-    if (era or "").upper() == "BC" or int(year) > 9999:  # noqa: PLR2004 -- datetime's last year
-        return True
+    if (era or "").upper() == "BC":
+        return -1
+    if int(year) > 9999:  # noqa: PLR2004 -- datetime's last year
+        return 1
     micros = round(int((fraction or "0")[:7].ljust(7, "0")) / 10)
     try:
         wall = datetime.datetime(
@@ -209,7 +222,89 @@ def input_outside(text: str, zoned: bool) -> bool | None:
         offset = datetime.timedelta(hours=int(oh), minutes=int(om or 0), seconds=int(os_ or 0))
         wall -= offset if sign == "+" else -offset
     del utc  # Z, UTC and GMT are an offset of none
-    return not FIRST <= wall <= LAST
+    return -1 if wall < FIRST else 1 if wall > LAST else 0
+
+
+#: Whether a statement may hold a literal :func:`refuse_past_range` reads: a year of five digits or
+#: more, or an infinity.
+_PAST_MENTIONED = re.compile(r"'\s*\d{5,}-\d|infinity'", re.IGNORECASE)
+#: A date's text in ISO form after Christ, as date_in reads it.
+_AD_DATE = re.compile(r"\s*(\d{4,})-(\d{1,2})-(\d{1,2})\s*", re.ASCII)
+#: The last date PostgreSQL holds, and the first one its timestamp does not (END_TIMESTAMP).
+_LAST_DATE = (5874897, 12, 31)
+_FIRST_PAST_TIMESTAMP = (294277, 1, 1)
+#: The calls that read a date as a timestamp (date2timestamp, date2timestamptz): of a date from
+#: 294277-01-01 each raises 22008, date out of range for timestamp.
+_DATE_AS_TIMESTAMP = frozenset(
+    {"timestamp", "timestamptz", "datetime_pl", "timedate_pl", "date_pl_interval",
+     "date_mi_interval", "interval_pl_date", "date_part"}
+)  # fmt: skip
+
+
+def _date_text(node: exp.Expr) -> str | None:
+    """The text of a string literal cast to a date (not one answering NULL on failure)."""
+    node = node.unnest()
+    if not isinstance(node, exp.Cast) or isinstance(node, exp.TryCast):
+        return None
+    if not node.to.is_type(exp.DataType.Type.DATE):
+        return None
+    literal = node.this
+    return literal.this if isinstance(literal, exp.Literal) and literal.is_string else None
+
+
+def _ad_date(text: str) -> tuple[int, int, int] | None:
+    read = _AD_DATE.fullmatch(text)
+    return None if read is None else (int(read[1]), int(read[2]), int(read[3]))
+
+
+def _refuse_call(call: exp.Anonymous) -> None:
+    """PostgreSQL's error of a call of literals it raises for: a date read as a timestamp past
+    timestamp's range, the difference of an infinite date. A NULL argument answers NULL (each is
+    STRICT), so nothing is read."""
+    args = [a.unnest() for a in call.expressions]
+    if any(isinstance(a, exp.Null) or (isinstance(a, exp.Cast) and isinstance(a.this, exp.Null))
+           for a in args):  # fmt: skip
+        return
+    name = call.name.lower()
+    dates = [_date_text(a) for a in args]
+    if name in _DATE_AS_TIMESTAMP:
+        for text in dates:
+            day = None if text is None else _ad_date(text)
+            if day is not None and day >= _FIRST_PAST_TIMESTAMP:
+                raise PostgresError("22008", "date out of range for timestamp")
+    if name == "date_mi" and len(args) == 2 and None not in dates:  # noqa: PLR2004
+        if any(text.strip().lower() in _INFINITIES for text in dates if text is not None):
+            raise PostgresError("22008", "cannot subtract infinite dates")
+
+
+def refuse_past_range(pg_sql: str) -> None:
+    """PostgreSQL's error for a literal of ``pg_sql`` past its type's range, raised on ClickHouse
+    before any form reads it, as PostgreSQL reads a literal when it parses the statement (REQ-2236,
+    as on DuckDB: polyfill.duckdb_literals): a date past 5874897-12-31, a timestamp or a
+    timestamptz from 294277-01-01 (22008). Then, of a call of literals, the error PostgreSQL's
+    function raises of them: a date from 294277-01-01 read as a timestamp, the difference of an
+    infinite date (22008). A form would otherwise read the literal and refuse it by ClickHouse's
+    bound, or hold it."""
+    # Imported here: duckdb_literals reads trino_literals, which reads this family's module.
+    from provisa.transpiler.polyfill.duckdb_literals import far_stamp, stamp_cast
+
+    if _PAST_MENTIONED.search(pg_sql) is None:
+        return
+    try:
+        tree = sqlglot.parse_one(pg_sql, read="postgres")
+    except SqlglotError:
+        return  # a text sqlglot cannot read: the transpile that follows reports it
+    for node in tree.find_all(exp.Cast):
+        text = _date_text(node)
+        day = None if text is None else _ad_date(text)
+        if day is not None and day > _LAST_DATE:
+            raise PostgresError("22008", f'date out of range: "{text}"')
+        cast = stamp_cast(node)
+        far = None if cast is None else far_stamp(*cast)
+        if cast is not None and far is not None and far[0]:
+            raise PostgresError("22008", f'timestamp out of range: "{cast[0]}"')
+    for call in tree.find_all(exp.Anonymous):
+        _refuse_call(call)
 
 
 def _read(text: str, day_only: bool) -> datetime.datetime | None:
@@ -413,6 +508,60 @@ def _rewrite(
     return rewrite
 
 
+def _edge_text(argument: exp.Expr) -> str | None:
+    """The text of ``argument`` where it is a string literal cast to a timestamptz; None for any
+    other argument."""
+    value = argument.unnest()
+    if not (isinstance(value, exp.Cast) and _of_its_type(trino.said(value), _OF["timestamptz"])):
+        return None
+    literal = value.this.unnest()
+    return literal.this if isinstance(literal, exp.Literal) and literal.is_string else None
+
+
+def _beyond(argument: exp.Expr) -> int | None:
+    """-1 where ``argument`` is a literal instant before the bound (-infinity, a year BC among
+    them), 1 where after it (infinity, a year past 9999); None for any other argument."""
+    text = _edge_text(argument)
+    side = None if text is None else input_side(text, zoned=True)
+    return side or None
+
+
+def _ordered(
+    function: str, compared: Callable[[exp.Expr, str], exp.Expr | None], *, later: bool
+) -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """timestamptz_larger (``later``) or timestamptz_smaller of a literal outside the bound
+    (REQ-2236, amended 2026-11-24: CASE forms of the edge values): the other operand, exactly,
+    where the literal is on the side the call does not pick; the raise of 0A000 where the answer is
+    a literal outside the bound. Every other call is ``compared``'s."""
+    pattern = f"{function}($a, $b)"
+    losing = -1 if later else 1
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node)
+        if call is None or function not in call[0] or len(call[1]) != 2:  # noqa: PLR2004
+            return compared(node, dialect)
+        sides = [_beyond(argument) for argument in call[1]]
+        if sides == [None, None]:
+            return compared(node, dialect)
+        if current_zone.get() is not None:
+            return None  # a literal is read in the session's zone: refused by name off UTC
+        edge = 0 if sides[0] is not None else 1
+        other = call[1][1 - edge]
+        if sides[1 - edge] is None:
+            read = _checked(other, _OF["timestamptz"])
+            if read is None:
+                return None
+            if read is _Read.NULL or sides[edge] == losing:
+                hole = "$b" if edge == 0 else "$a"
+                return graft(
+                    replacement(hole, dialect, pattern), {"a": call[1][0], "b": call[1][1]}
+                )
+        _read_by_row(*call[1])
+        return raised(function, dialect, pattern, INSTANT)
+
+    return rewrite
+
+
 def _comparison(function: str, kinds: tuple[str, str], body: str) -> Callable[..., exp.Expr | None]:
     """The rewrite of one comparison of ``kinds``, its form ``body`` of {a} and {b}."""
     a = _AS_INSTANT[kinds[0]].format("$a")
@@ -420,6 +569,8 @@ def _comparison(function: str, kinds: tuple[str, str], body: str) -> Callable[..
     mixed = kinds != ("timestamptz", "timestamptz")
     returns = INSTANT if body in (_LARGER, _SMALLER) else None
     compared = _rewrite(function, kinds, body.format(a=a, b=b), zoned=mixed, returns=returns)
+    if body in (_LARGER, _SMALLER):
+        compared = _ordered(function, compared, later=body == _LARGER)
     compared.__doc__ = f"{function} of two values held as DateTime64(6, 'UTC'), in their bound."
     compared.__qualname__ = f"compared_{function}"
     compared.__name__ = compared.__qualname__
@@ -461,6 +612,14 @@ _HELD = (
     "form (a date, then a time to microseconds), infinity, and a value whose type no statement "
     "says are refused by name."
 )
+_ORDERED_HELD = (
+    "Held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31. A literal outside "
+    f"{BOUND} (a year BC, past 9999, infinity among them) beside a value the call picks over it "
+    "answers that value exactly; where the answer is a literal outside the bound, the call raises "
+    f"0A000 ({{}}() of a value outside {BOUND} has no exact form on clickhouse), as ClickHouse "
+    "would hold it at the nearest end of its range. A literal in no other ISO form, and a value "
+    "whose type no statement says, are refused by name."
+)
 _ZONED = (
     " On a session off UTC, a call of a literal instant{} is refused by name ({}() has no form "
     "on clickhouse): a literal with no offset is read in the session's zone, which the "
@@ -481,14 +640,34 @@ def _feature(function: str, kinds: tuple[str, str], body: str, summary: str) -> 
         **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
         _CLICKHOUSE: Rewrite(_comparison(function, kinds, body)),
     }
+    ordered = body in (_LARGER, _SMALLER)
+    held = (_ORDERED_HELD if ordered else _HELD).format(function)
+    refused = _refused_unread(function) if ordered else _refused(function)
     return Feature(
         function,
         FAMILY,
         summary,
         read=Side(
             rules=(Rule(f"{function}($a, $b)", forms, unlisted_keep=True),),
-            limitations={_CLICKHOUSE: (Limitation(_HELD.format(function) + zoned),)},
+            limitations={_CLICKHOUSE: (Limitation(held + zoned), refused)},
         ),
+    )
+
+
+def _refused(function: str) -> Limitation:
+    """A row's refusal by name of a call it does not read (a literal in no ISO form, infinity, a
+    year BC or past 9999; a call off UTC): the old table's 0A000, stated with its message."""
+    return Limitation(
+        "A literal in no ISO form (infinity, a year BC or past 9999 among them) is refused by name.",
+        Refusal("0A000", f"{function}() has no form on {_CLICKHOUSE}"),
+    )
+
+
+def _refused_unread(function: str) -> Limitation:
+    """:func:`_refused` of a row that reads infinity, a year BC and a year past 9999."""
+    return Limitation(
+        "A literal in no ISO form other than infinity, a year BC or past 9999 is refused by name.",
+        Refusal("0A000", f"{function}() has no form on {_CLICKHOUSE}"),
     )
 
 
@@ -538,10 +717,35 @@ def _of_one(
         function, ("timestamptz",), form, zoned=zoned, bounded=bounded, plain=plain,
         returns=_RETURNS.get(function),
     )  # fmt: skip
+    if function == "isfinite":
+        rewrite = _finite(rewrite)
     rewrite.__doc__ = purpose
     rewrite.__qualname__ = name
     rewrite.__name__ = name
     return Rewrite(rewrite)
+
+
+def _finite(
+    read: Callable[[exp.Expr, str], exp.Expr | None],
+) -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """isfinite of a literal outside the bound (REQ-2236, amended 2026-11-24: CASE forms of the
+    edge values): false of infinity and -infinity, true of a year BC or past 9999, as PostgreSQL
+    answers, the value itself never written. Every other call is ``read``'s."""
+    pattern = "isfinite($a)"
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node)
+        if call is None or "isfinite" not in call[0] or len(call[1]) != 1:
+            return read(node, dialect)
+        text = _edge_text(call[1][0])
+        if text is None or not input_side(text, zoned=True):
+            return read(node, dialect)
+        if current_zone.get() is not None:
+            return None  # a literal is read in the session's zone: refused by name off UTC
+        finite = text.strip().lower() not in _INFINITIES
+        return replacement("true" if finite else "false", dialect, pattern)
+
+    return rewrite
 
 
 _ONE_HELD = (
@@ -585,18 +789,20 @@ def _one_feature(
         rule = Rule(f"{function}($a)", forms, unlisted_keep=True)
     else:
         rule = Rule(None, {_CLICKHOUSE: rewrite})
+    refused = _refused_unread(function) if function == "isfinite" else _refused(function)
     return Feature(
         feature,
         FAMILY,
         summary,
-        read=Side(rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+        read=Side(rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated), refused)}),
     )
 
 
 _UNBOUNDED = (
-    "Held as DateTime64(6, 'UTC'): exact, as its answer reads only that a value is there "
-    "(ClickHouse holds no infinity). A literal not in ISO form, infinity, and a value whose type "
-    "no statement says are refused by name."
+    "Held as DateTime64(6, 'UTC'): exact, as its answer reads only that a value is there. A "
+    "literal ClickHouse holds none of answers as PostgreSQL's: infinity and -infinity false, a "
+    "year BC or past 9999 true. A literal in no other ISO form, and a value whose type no "
+    "statement says, are refused by name."
 )
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
@@ -829,6 +1035,18 @@ def _rounded(instant: datetime.datetime, scale: int) -> datetime.datetime:
     return _PG_EPOCH + step * _MICRO
 
 
+def _integer_literal(written: exp.Expr) -> int | None:
+    """The integer a literal writes, as a number or as a text int4's input reads; None for any
+    other value."""
+    if isinstance(written, exp.Neg):
+        negated = _integer_literal(written.this.unnest())
+        return None if negated is None else -negated
+    if not isinstance(written, exp.Literal):
+        return None
+    text = written.this.strip() if written.is_string else written.this
+    return int(text) if re.fullmatch(r"[+-]?\d+", text, re.ASCII) else None
+
+
 def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away
     from 2000-01-01 as PostgreSQL rounds. Each instant is a literal (or a NULL), rounded here
@@ -853,9 +1071,17 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return replacement(_NULL_INSTANT, dialect, pattern)
     written = digits.unnest()
     written = written.this.unnest() if isinstance(written, exp.Cast) else written
-    if not (isinstance(written, exp.Literal) and written.is_int and 0 <= int(written.this) <= 6):
-        return None  # a negative precision is PostgreSQL's error; past 6 its warning
-    scale = 10 ** (6 - int(written.this))
+    precision = _integer_literal(written)
+    if precision is None:
+        return None
+    if precision == -1:
+        precision = 6  # no typmod: the value as it is (AdjustTimestampForTypmod)
+    if not 0 <= precision <= 6:  # noqa: PLR2004 -- MAX_TIMESTAMP_PRECISION
+        if all(instant is None for instant in instants):
+            return replacement(_NULL_INSTANT, dialect, pattern)
+        message = f"timestamp({precision}) precision must be between 0 and 6"
+        raise Refused(Refusal("22023", message), ruling=True)
+    scale = 10 ** (6 - precision)
     for instant in instants:
         if instant is not None and not (_inside(instant) and _inside(_rounded(instant, scale))):
             return raised("timestamptz", dialect, pattern, INSTANT)

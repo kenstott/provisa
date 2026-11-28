@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Records what PostgreSQL 17 answers for geometric_corpus (REQ-2171), as pg17_geometric_answers.py.
-tests/integration/test_geometric_on_engines.py runs it against postgres:17.11 in CI, where containers
+tests/integration/test_geometric_recording.py runs it against postgres:17.11 in CI, where containers
 run, and leaves the file in results/."""
 
 # Requirements: REQ-2167, REQ-2171

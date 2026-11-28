@@ -376,6 +376,36 @@ def _bucket_row(args: list[exp.Expr]) -> str:
     return "width_bucket" if any(a.find(exp.Column) for a in args[:3]) else "width_bucket_float8"
 
 
+#: The functions that read an array's elements alone, in storage order, and none of its
+#: dimensions (array.c's hash_array): an array of any dimensions is the overload of its element's
+#: array, read as its elements (:func:`_flattened`).
+_OF_ELEMENTS_ALONE = frozenset({"hash_array", "hash_array_extended"})
+#: A type's array brackets, one dimension or more.
+_ONE_DIMENSION = re.compile(r"(?:\[\])+$")
+
+
+def _flattened(value: exp.Expr) -> exp.Expr:
+    """An array literal of more than one dimension as its elements in storage order, an array of
+    one dimension of its element's type; any other value as it is."""
+    node = value.unnest()
+    if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Array):
+        return value
+    element = node.to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    if node.to.expressions and node.to.expressions[0] is element:
+        return value  # one dimension already
+
+    def leaves(item: exp.Expr) -> list[exp.Expr]:
+        inner = item.unnest()
+        if isinstance(inner, exp.Array):
+            return [leaf for sub in inner.expressions for leaf in leaves(sub)]
+        return [item.copy()]
+
+    one = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element.copy()], nested=True)
+    return exp.Cast(this=exp.Array(expressions=leaves(node.this)), to=one)
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
@@ -384,7 +414,10 @@ def overload(name: str, args: list[exp.Expr]) -> str:
     said = said_type(args[0]) if args else None
     if said is None:
         return name
-    row = OVERLOADS.get((name, len(args), said.split("(")[0]), name)
+    key = said.split("(")[0]
+    if name in _OF_ELEMENTS_ALONE:
+        key = _ONE_DIMENSION.sub("[]", key)
+    row = OVERLOADS.get((name, len(args), key), name)
     if row in _ANSWERED_BY_A_NULL and isinstance(args[0].unnest().this, exp.Null):
         return name
     if row in _COLLATED and args[0].find(exp.Column) is None:
@@ -629,9 +662,7 @@ def _polyfilled_by_rule(
         args = [applied.bindings[p].transform(rewrite) for p in params]
         replacement = _replacement(form, dialect, applied.rule.pattern)
         written = _grafted(replacement, params, args, node, called, dialect)
-    if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
-        return exp.alias_(written, called)  # named for the function
-    return written
+    return _named(written, node)
 
 
 #: The functions that count the NULLs of any number of arguments: which of the two a form answers.
@@ -1395,6 +1426,7 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
     for SQL a client wrote alone (REQ-2236)."""
     if dialect in NATIVE:
         return tree
+    _figure_names(tree)
     # REQ-2236: SQL Provisa generated reads a list of lists as nested lists, never by dimensions.
     skipped = (polyfill_array_dimensions.FEATURE,) if generated else ()
     if dialect not in _DUCKDB:
@@ -1461,8 +1493,7 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
             )
             raise RowRefused(called, dialect, refused.refusal) from refused
         if first is not None and first.rewritten is not None:
-            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
-            return first.rewritten if in_select else first.rewritten.unalias()
+            return _named(first.rewritten.unalias(), node)
         # A substring of a range's own text (pg_ranges' mark): ASCII, which no row reads by
         # characters, so the grid is not read of it (its arguments would be read twice).
         tried = bool(node.meta.get(polyfill_texts.RANGE_TEXT))
@@ -1505,13 +1536,14 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
             args = [_digits_as_written(args[0]), *args[1:]]
         if name in _ARRAY_INPUT:
             args = [_array_elements_as_written(a) for a in args]
+        if name in pg_forms_hash.ARRAY_ROWS:
+            args = [_flattened(args[0]), *args[1:]]
         if name in pg_forms_hash.TEXT_ARRAY_ROWS:
             args = [_array_as_text(args[0]), *args[1:]]
         if any(_is_null(a) for a in args):
             answer = _strict_null(name, len(args), dialect)
             if answer is not None:
-                in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
-                return exp.alias_(answer, called) if in_select else answer
+                return _named(answer, node)
         if name == "substr" and _within_the_value(args):
             # A start of at least 1 and a length of none or at least 0 every engine reads as
             # PostgreSQL does: the engine's own, as a substring past no edge is (_past_the_edge).
@@ -1519,8 +1551,7 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
             written = exp.Substring(
                 this=args[0].transform(rewrite), start=args[1].transform(rewrite), length=length
             )
-            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
-            return exp.alias_(written, called) if in_select else written
+            return _named(written, node)
         digits = _said_scale(args[1], called, dialect) if name in _OF_A_SAID_SCALE else None
         if digits is not None:  # an engine takes a scale only as a constant
             args = [args[0], exp.Literal.number(digits)]
@@ -1541,11 +1572,54 @@ def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
         if digits is not None:  # the scale PostgreSQL's numeric answers with, 0 for one below it
             scaled = f"DECIMAL(38, {max(digits, 0)})"
             written = exp.Cast(this=written, to=exp.DataType.build(scaled, dialect="postgres"))
-        if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
-            return exp.alias_(written, called)  # named for the function
-        return written
+        return _named(written, node)
 
     return tree.transform(rewrite, copy=False)
+
+
+#: A select's meta key: PostgreSQL's name of each of its unaliased result columns, by its place.
+_PG_NAMES = "provisa_pg_names"
+
+
+def _figure_names(tree: exp.Expr) -> None:
+    """Each select of ``tree`` told PostgreSQL's name of each unaliased result column of a computed
+    value, figured on the statement before any form replaces what it computes: ``j -> 'k'`` is
+    ?column? though its form is a call of json_object_field."""
+    for select in tree.find_all(exp.Select):
+        select.meta[_PG_NAMES] = {
+            place: column_name(item)
+            for place, item in enumerate(select.expressions)
+            if not isinstance(item, (exp.Alias, exp.Column, exp.Star))
+        }
+
+
+def _named(written: exp.Expr, node: exp.Expr) -> exp.Expr:
+    """``written``, the form of ``node``: in a select list, named as PostgreSQL names the column
+    (REQ-2236: identical answers, their column names among them); elsewhere as it is. A select
+    a form wrote holds no names a statement figured (:func:`_figure_names`): its column is named
+    for ``node``."""
+    if not (isinstance(node.parent, exp.Select) and node.arg_key == "expressions"):
+        return written
+    figured = node.parent.meta.get(_PG_NAMES, {})
+    return exp.alias_(written, figured[node.index] if node.index in figured else column_name(node))
+
+
+def column_name(node: exp.Expr) -> str:
+    """The name PostgreSQL gives an unaliased result column of ``node`` (its FigureColname), as
+    far as sqlglot's node says how it was written: an operator's is ?column? (``a ~ b``,
+    ``a || b``, ``a @> b``), a cast's its type's or its operand's (``'1'::int4`` int4,
+    ``a::text`` a), and a function call's the function's: by the name this table reads the call
+    by (substr, log10, div), else by the name PostgreSQL writes its node with."""
+    # The one FigureColname rule, the one pgwire describes a column by; read here, as
+    # result_shape reads pg_money, which reads this module.
+    from provisa.compiler.result_shape import _pg_column_name
+
+    figured = _pg_column_name(node)
+    if figured == "?column?":
+        return figured  # an operator: sqlglot reads regexp_like(a, b) as a ~ b too
+    target = node.expression if isinstance(node, exp.Dot) else node  # pg_catalog.f(...)
+    call = _call(target)
+    return figured if call is None else _CALLED.get(call[0], call[0])
 
 
 #: The name and arguments of a call the table may hold, for the grid's rules that read calls.

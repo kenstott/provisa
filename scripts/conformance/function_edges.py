@@ -249,10 +249,20 @@ def edges_of(concrete: str, *, with_null: bool) -> tuple[Edge, ...]:
 #: The edge values of an argument given literals of its own (function_support.ARG_VALUES), by
 #: function and position: a regular expression's pattern, whose empty pattern matches the empty
 #: text everywhere (the ClickHouse regexp rows say it raises where it counts, places or splits).
-#: These are called first, so the round robin reaches them whatever the arity.
+#: regexp_replace's pattern also takes a pattern that is not empty but matches the empty text (x*
+#: at each character, a| at each character after the first a) and a pattern that is no literal and
+#: the empty text when run (lower('')): ClickHouse's replaceRegexpAll stops at an empty match,
+#: where PostgreSQL's g flag replaces it and goes on one character. These are all called first,
+#: before the round robin of the other arguments' edges.
 _EMPTY_PATTERN = (Edge(EMPTY, "''"),)
+_EMPTY_MATCHES = (
+    *_EMPTY_PATTERN,
+    Edge(SPECIAL, "'x*'"),
+    Edge(SPECIAL, "'a|'"),
+    Edge(EMPTY, "lower('')"),
+)
 GIVEN_EDGES: dict[tuple[str, int], tuple[Edge, ...]] = {
-    (name, 1): _EMPTY_PATTERN
+    (name, 1): _EMPTY_MATCHES if name == "regexp_replace" else _EMPTY_PATTERN
     for name in (
         "regexp_count",
         "regexp_instr",
@@ -273,17 +283,21 @@ def given_edges(function: str, position: int) -> tuple[Edge, ...]:
     return GIVEN_EDGES.get((function, position), ())
 
 
-def chosen(per_position: list[tuple[int, tuple[Edge, ...]]]) -> list[tuple[int, Edge]]:
-    """At most ``EDGE_CALLS_MAX`` (position, edge) pairs, round-robin over the positions: each
-    position's first edge, then each one's second, and so on."""
-    out: list[tuple[int, Edge]] = []
+def chosen(
+    given: list[tuple[int, tuple[Edge, ...]]], per_position: list[tuple[int, tuple[Edge, ...]]]
+) -> list[tuple[int, Edge]]:
+    """At most ``EDGE_CALLS_MAX`` (position, edge) pairs: every edge ``given`` (an argument's own,
+    ``GIVEN_EDGES``) first, then round-robin over ``per_position``: each position's first edge,
+    then each one's second, and so on."""
+    out: list[tuple[int, Edge]] = [(position, edge) for position, edges in given for edge in edges]
+    out = out[:EDGE_CALLS_MAX]
     depth = max((len(edges) for _, edges in per_position), default=0)
     for level in range(depth):
         for position, edges in per_position:
+            if len(out) == EDGE_CALLS_MAX:
+                return out
             if level < len(edges):
                 out.append((position, edges[level]))
-                if len(out) == EDGE_CALLS_MAX:
-                    return out
     return out
 
 

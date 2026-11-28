@@ -46,7 +46,8 @@ text read by the integer input (0x, 0o and 0b prefixes, underscores), and past t
 22003, a text the input does not read 22P02. A numeric: ClickHouse reads a number with a fraction as
 a Float64 (1.005 as 1.00499..., 0.1 at scale 30 as 0.1000000000000000090...) and truncates a text
 past the scale; the literal is cast from its text, rounded half away from zero to the scale,
-22003 past the precision, a value of no precision said held up to 38 digits (0A000 past them).
+22003 past the precision, a value of no precision said held up to 38 digits on either side of
+its point as a Decimal256 (0A000 past them).
 
 A date and a number of days by their operator (date + integer, integer + date, date - integer):
 date_pli's, integer_pl_date's or date_mii's ClickHouse form (polyfill.dates.ch_moved), of operands
@@ -71,6 +72,7 @@ from __future__ import annotations
 import calendar
 import decimal
 import functools
+import itertools
 import math
 import re
 import struct
@@ -594,8 +596,8 @@ TIME = Feature(
                     "date) is refused by name. ClickHouse's server has no Time64: a time is held as "
                     "an Int64 of its microseconds of the day (0 to 86400000000), compared as "
                     "integers, and the select list, or a cast to text, shows it as time_out's text. "
-                    "24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a "
-                    "column that shows it raises. A value whose type the statement does not say "
+                    "24:00:00 is held and compared, and a column that shows it answers its text, "
+                    "which pgwire passes on as the time. A value whose type the statement does not say "
                     "(a table's column) is read from its text at run time: a date before the clock "
                     "is read past, up to six fractional digits; any other text raises 22007, a "
                     "field past its range 22008, each without the value in its message. A "
@@ -972,10 +974,14 @@ TID_EXTREMES = Feature(
 )
 
 
-#: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
+#: The digits a literal of no precision said holds on either side of its point on ClickHouse: a
+#: Decimal256 (76 digits) at 38 places, which _NUMERIC_MOD and a range's bounds compute in exactly
+#: (REQ-2236).
 _MOST_DIGITS = 38
+_DECIMAL256 = 76
 _NUMERIC_OUT_OF_BOUND = (
-    f"numeric_in() of a value of more than {_MOST_DIGITS} digits has no exact form on clickhouse"
+    f"numeric_in() of a value of more than {_MOST_DIGITS} digits before or after its point has no "
+    "exact form on clickhouse"
 )
 
 
@@ -1034,10 +1040,11 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if said is None:
         _, digits, exponent = value.as_tuple()
         scale = max(0, -int(exponent))
-        if max(len(digits), scale) > _MOST_DIGITS:
+        whole = max(0, len(digits) - scale)
+        if whole > _MOST_DIGITS or scale > _MOST_DIGITS:
             raise Refused(Refusal("0A000", _NUMERIC_OUT_OF_BOUND))
         to = exp.DataType.build(
-            f"DECIMAL({min(_MOST_DIGITS, max(len(digits), scale) + 18)}, {scale})"
+            f"DECIMAL({min(_DECIMAL256, max(len(digits), scale) + 18)}, {scale})"
         )
     else:
         precision, scale = said
@@ -1056,6 +1063,14 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
         if decimal.Decimal(text) == value:
             return None  # a text of the scale's digits or fewer, which ClickHouse reads exactly
     return exp.Cast(this=exp.Literal.string(format(value, "f")), to=to)
+
+
+def numerics_read(node: exp.Expr) -> exp.Expr:
+    """``node`` with each numeric literal in it read as :func:`numeric_read` reads it. A rule of
+    no pattern writes its arguments as the statement says them (the walk does not descend into
+    what a rule writes): a literal past the old table's 38 digits stays a plain Decimal there,
+    which ClickHouse reads as Decimal(10, 0)."""
+    return node.transform(lambda n: numeric_read(n, "clickhouse") or n)
 
 
 NUMERIC = Feature(
@@ -1081,7 +1096,8 @@ NUMERIC = Feature(
                     "A number or a text the statement writes is cast from its text, rounded half "
                     "away from zero to the scale, as PostgreSQL rounds it; past the precision it "
                     "raises 22003, a text the input does not read 22P02. A value of no precision "
-                    f"said holds up to {_MOST_DIGITS} digits; one of more raises 0A000 "
+                    f"said holds up to {_MOST_DIGITS} digits before its point and "
+                    f"{_MOST_DIGITS} after it, as a Decimal256; one of more raises 0A000 "
                     f"({_NUMERIC_OUT_OF_BOUND}). NaN and infinity raise 0A000 ({_NUMERIC_NOT_FINITE}): "
                     "ClickHouse's Decimal holds neither. A column's cast keeps ClickHouse's own."
                 ),
@@ -1233,12 +1249,14 @@ STAMP = Feature(
             "clickhouse": (
                 Limitation(
                     "Held as DateTime64(6, 'UTC'). A text the statement writes is read where the "
-                    "statement is transpiled (provisa.transpiler.transpile): an "
+                    "statement is transpiled (provisa.transpiler.transpile). Of a timestamp, an "
                     "infinity, a year BC or past 9999, and a value outside "
-                    f"{instants.STAMP_BOUND} (a timestamp's) or {instants.BOUND} (a timestamptz's, its "
-                    "offset read) raise 0A000 "
-                    f"({instants.out_of_bound('timestamptz_in')}), where ClickHouse would hold "
-                    "it at its type's end. A timestamp's offset is dropped, as PostgreSQL's "
+                    f"{instants.STAMP_BOUND} raise 0A000 "
+                    f"({instants.out_of_bound('timestamp_in', instants.STAMP_BOUND)}); of a "
+                    "timestamptz, an infinity, a year BC or past 9999, and a value outside "
+                    f"{instants.BOUND} (its offset read) raise 0A000 "
+                    f"({instants.out_of_bound('timestamptz_in')}). ClickHouse would hold each at "
+                    "its type's end. A timestamp's offset is dropped, as PostgreSQL's "
                     "input drops it (ClickHouse's cast reads it). A text in another form, and a "
                     "text column's cast, keep ClickHouse's own read."
                 ),
@@ -1506,6 +1524,43 @@ NUMERIC_MOD = Feature(
     ),
 )
 
+#: scale(numeric): a Decimal's scale is its type's, which holds it (ClickHouse writes a Decimal's
+#: text without trailing zeros: scale('1.10'::numeric) read from the text answered 1); a value of
+#: any other type (an integer, a text) is read from its text, as the old table's form read it.
+_SCALE = (
+    "CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Int32)) "
+    f"WHEN position(toTypeName($x), 'Decimal(') > 0 THEN CAST({_scale_of('$x')} AS Nullable(Int32)) "
+    "WHEN position(toString($x), '.') > 0 "
+    "THEN CAST(length(splitByChar('.', toString($x))[2]) AS Nullable(Int32)) "
+    "ELSE CAST(0 AS Nullable(Int32)) END"
+)
+
+SCALE = Feature(
+    "scale",
+    FAMILY,
+    "The digits after a numeric's point, trailing zeros among them.",
+    read=Side(
+        rules=(
+            Rule(
+                "scale($x)",
+                # Every other dialect keeps the old table's form, as numeric_mod's row does.
+                {**trino.trino_only(trino.KEPT), "clickhouse": _SCALE},
+                unlisted_keep=True,
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A numeric's scale is its Decimal type's, trailing zeros among its digits: a "
+                    "column holds one scale for all its values, where PostgreSQL's numeric holds "
+                    "each value's own. A literal of no precision said is read at its own scale "
+                    f"(up to {_MOST_DIGITS} digits after its point; past it 0A000)."
+                ),
+            )
+        },
+    ),
+)
+
 _SEARCH_PATH = (
     "Refused by name: ClickHouse's own currentSchemas answers its database, not PostgreSQL's "
     "search path."
@@ -1534,35 +1589,7 @@ CURRENT_SCHEMAS = Feature(
     ),
 )
 
-#: A number as float8out writes it, the only text the bounding box hands back as it read it.
-_SHOWN_AS_POSTGRESQL_DOES = "^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$"
-_POINT_NUMBER = "-?[0-9.]+(?:e[-+]?[0-9]+)?"
 _SPG_POLY = "spg_poly_quad_compress($v)"
-
-
-def _polygon_extreme(axis: int, chosen: str) -> str:
-    """The text of a polygon's highest or lowest x (axis 1) or y (axis 2) of its numbers ``_n``."""
-    side = f"arrayFilter((_t, _i) -> _i % 2 = {axis % 2}, _n, arrayEnumerate(_n))"
-    extreme = f"{chosen}(arrayMap(_z -> toFloat64(_z), {side}))"
-    return f"arrayFilter(_y -> toFloat64(_y) = {extreme}, {side})[1]"
-
-
-def _polygon_box() -> str:
-    """spg_poly_quad_compress on ClickHouse: the bounding box, (high x, high y),(low x, low y),
-    of the polygon's numbers bound to ``_n``. ClickHouse evaluates every branch of a CASE in a
-    lambda, so the refusal of a number PostgreSQL would write otherwise is a throwIf beside the
-    answer, an empty text where it does not raise."""
-    other = f"arrayExists(_y -> NOT match(_y, '{_SHOWN_AS_POSTGRESQL_DOES}'), _n)"
-    refusal = ch_fail("0A000", "spg_poly_quad_compress does not read this value")
-    box = (
-        f"concat('(', {_polygon_extreme(1, 'arrayMax')}, ',', {_polygon_extreme(2, 'arrayMax')}, "
-        f"'),(', {_polygon_extreme(1, 'arrayMin')}, ',', {_polygon_extreme(2, 'arrayMin')}, ')', "
-        f"repeat('', {refusal.format(condition=other)}))"
-    )
-    return (
-        "CASE WHEN $v IS NULL THEN NULL ELSE "
-        f"arrayMap(_n -> {box}, [extractAll(toString($v), '{_POINT_NUMBER}')])[1] END"
-    )
 
 
 SPG_POLY_QUAD_COMPRESS = Feature(
@@ -1571,19 +1598,14 @@ SPG_POLY_QUAD_COMPRESS = Feature(
     "A polygon's bounding box, as the SP-GiST quad tree's compress function answers it.",
     read=Side(
         rules=(
-            Rule(
-                _SPG_POLY,
-                {
-                    **dict.fromkeys((*trino.OTHERS, *trino.TRINO), trino.KEPT),
-                    "clickhouse": _polygon_box(),
-                },
-            ),
+            Rule(_SPG_POLY, dict.fromkeys((*trino.OTHERS, *trino.TRINO, "clickhouse"), trino.KEPT)),
         ),
         limitations={
             "clickhouse": (
                 Limitation(
-                    "A polygon with a number PostgreSQL writes otherwise than as it was written "
-                    "(an exponent, a trailing zero) is refused by name when the statement runs."
+                    "make_bound_box's box as poly_box answers it (pg_forms_geometric.bounding_box, "
+                    "as on DuckDB and Trino): float8out's text of each extreme, NaN and infinities "
+                    "as float8 orders them."
                 ),
             )
         },
@@ -1612,6 +1634,7 @@ FEATURES: tuple[Feature, ...] = (
     *WINDOW_FEATURES,
     NTILE,
     NUMERIC_MOD,
+    SCALE,
     CURRENT_SCHEMAS,
     SPG_POLY_QUAD_COMPRESS,
 )
@@ -1684,3 +1707,32 @@ def typed_null_columns(written: str, pg_sql: str) -> str:
 
 
 _MENTIONS_NULL = re.compile(r"\bNULL\b", re.IGNORECASE)
+
+
+def distinct_result_names(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each alias of a select list that another of its columns is named by renamed
+    to a name no column of the list has: PostgreSQL answers two columns of one name (``SELECT
+    j -> 1, j -> 'a'``, both ?column?), where ClickHouse refuses two expressions of one alias
+    (MULTIPLE_EXPRESSIONS_FOR_ALIAS) and reads a column of an alias's name as that alias. The
+    rows are PostgreSQL's; the renamed column's name is the one ClickHouse can answer. No
+    statement PostgreSQL runs refers to such a name: its ORDER BY of it is ambiguous (42702)."""
+    for select in tree.find_all(exp.Select):
+        names = [item.alias_or_name for item in select.expressions]
+        taken = set(names)
+        for place, item in enumerate(select.expressions):
+            name = names[place]
+            if not isinstance(item, exp.Alias) or names.count(name) == 1:
+                continue
+            first = next(
+                at for at, other in enumerate(select.expressions) if other.alias_or_name == name
+            )
+            if first == place and all(
+                isinstance(other, exp.Alias)
+                for other in select.expressions
+                if other.alias_or_name == name
+            ):
+                continue  # the first of aliases alone keeps the name
+            fresh = next(f"{name}_{n}" for n in itertools.count(1) if f"{name}_{n}" not in taken)
+            taken.add(fresh)
+            item.set("alias", exp.to_identifier(fresh, quoted=True))
+    return tree

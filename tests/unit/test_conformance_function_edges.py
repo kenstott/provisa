@@ -188,6 +188,21 @@ def test_every_regexp_overload_is_called_with_an_empty_pattern(fn: Function):
     assert "''::text" in patterns, [c.sql for c in planned]
 
 
+@pytest.mark.parametrize(
+    "overload",
+    [("text", "text", "text"), ("text", "text", "text", "text")],
+    ids=lambda a: ", ".join(a),
+)
+def test_regexp_replace_is_called_with_patterns_that_match_the_empty_text(overload):
+    # REQ-2236: a pattern that is not empty but matches the empty text, and one that is no
+    # literal and the empty text when run, each in regexp_replace's pattern, first.
+    fn = Function("regexp_replace", ", ".join(overload), argtypes=overload, volatility="i")
+    planned = support.edge_calls(fn, "String")
+    assert len(planned) <= edges.EDGE_CALLS_MAX
+    patterns = [c.sql.split(", ")[1] for c in planned[:4]]
+    assert patterns == ["''::text", "'x*'::text", "'a|'::text", "lower('')::text"]
+
+
 def test_the_empty_pattern_is_the_first_edge_call_of_a_regexp():
     fn = Function(
         "regexp_instr",
@@ -409,9 +424,12 @@ def test_an_edge_raise_no_limitation_of_the_row_states_is_an_error_not_within_bo
 
 
 def test_an_edge_raise_the_grid_states_of_the_values_own_reading_is_within_bound():
-    """numeric_in() of more than 38 digits is the ClickHouse numeric input row's stated error: a
-    call reading such a literal is within its bound whatever its own row states."""
-    message = "numeric_in() of a value of more than 38 digits has no exact form on clickhouse"
+    """numeric_in() of more than 38 digits on a side is the ClickHouse numeric input row's stated
+    error: a call reading such a literal is within its bound whatever its own row states."""
+    message = (
+        "numeric_in() of a value of more than 38 digits before or after its point has no exact "
+        "form on clickhouse"
+    )
     assert edges.stated_elsewhere("clickhouse", {"sqlstate": "0A000", "error": message})
     greatest = _edge(ABS, "greatest")
     raised = _raises("0A000", message)

@@ -38,7 +38,8 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import END, MARK
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.floats import CLICKHOUSE_SERVER
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side, last_digits
 from provisa.transpiler.polyfill.notation import Rewrite
 
 _CLICKHOUSE = "clickhouse"
@@ -311,7 +312,11 @@ CARRIED = Feature(
     "Overloads ClickHouse answers in the form DuckDB answers them with, each compared with "
     f"PostgreSQL's answer on its edge values: {_listed()}.",
     read=Side(
-        rules=(Rule(None, {_CLICKHOUSE: Rewrite(_carried_by_the_grid, mentions=_MENTIONS)}),)
+        rules=(Rule(None, {_CLICKHOUSE: Rewrite(_carried_by_the_grid, mentions=_MENTIONS)}),),
+        # dexp and dlog1 are carried as ClickHouse's exp and log, which a server of 24.3 computes
+        # as its own approximations (polyfill.floats): a last-digits difference (REQ-2236,
+        # amended 2026-11-25).
+        limitations={_CLICKHOUSE: (last_digits(CLICKHOUSE_SERVER, "dexp and dlog1 (exp and ln)"),)},
     ),
 )
 

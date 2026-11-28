@@ -44,6 +44,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import function_edges  # noqa: E402
+import function_support  # noqa: E402
+import pgwire_function_probe as function_probe  # noqa: E402
 import polyfill_check  # noqa: E402
 
 from provisa.transpiler import polyfill  # noqa: E402
@@ -68,6 +70,27 @@ Refusal = tuple[str, str]  # (SQLSTATE, message)
 def families_grid() -> polyfill.Grid:
     """The grid as its families write it, no refusal of measured stated."""
     return polyfill.Grid(polyfill._features())
+
+
+def _samples(entry: dict[str, Any]) -> set[str]:
+    """The value calls the run made of a function's overload (function_support.value_calls). The
+    run records a statement only where an engine failed it, so a sample every engine answered is in
+    no outcome; read from the outcomes alone, a row that refuses only a NULL argument (encode's
+    format) would be said to refuse every call (REFUSED) and its form lost. A VARIADIC "any" is one
+    argument of its own, as pg_proc's provariadic says (pgwire_catalog_types)."""
+    if entry["kind"] != "f":
+        return set()
+    overload = entry["overload"]
+    arguments = [polyfill_check._argument_type(a.strip()) for a in overload.split(",") if a.strip()]
+    fn = function_probe.Function(
+        name=entry["function"],
+        overload=overload,
+        kind="f",
+        argtypes=tuple(argtype for argtype, _ in arguments),
+        variadic=bool(arguments) and arguments[-1][1] and arguments[-1][0] != '"any"',
+        volatility=entry["volatility"],
+    )
+    return {call.sql for call in function_support.value_calls(fn, entry["family"])}
 
 
 def _statements(entry: dict[str, Any], probe: str) -> set[str]:
@@ -119,7 +142,9 @@ def evidence(run: dict[str, Any], grid: polyfill.Grid, leave: frozenset[str]) ->
     for entry in run["functions"]:
         node = polyfill_check.call_of(entry["function"], entry["overload"])
         probe = f"SELECT {node.sql('postgres')} AS v"
-        statements = sorted(_statements(entry, probe))
+        recorded = _statements(entry, probe)
+        unrecorded = _samples(entry) - recorded
+        statements = sorted(recorded | unrecorded)
         overload = f"{entry['function']}({entry['overload']})"
         for dialect in dialects:
             try:
@@ -136,6 +161,10 @@ def evidence(run: dict[str, Any], grid: polyfill.Grid, leave: frozenset[str]) ->
             done = found.setdefault(key, {}).setdefault(overload, {})
             for statement in statements:
                 result = _translated(statement, dialect)
+                if statement in unrecorded and result not in (None, FORM) and result[0] != "0A000":
+                    # A sample no engine failed: an error of its data the translator raises is
+                    # PostgreSQL's own answer to it (jsonb_set of a scalar), not a refusal.
+                    continue
                 done[statement] = FORM if result in stated else result
     return found
 

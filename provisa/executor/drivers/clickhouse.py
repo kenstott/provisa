@@ -15,8 +15,10 @@ directly (HTTP via clickhouse-connect) then lands a replica. The same client fam
 federation engine uses. Port defaults to the HTTP interface (8123); ``secure`` (TLS) is an optional
 ``federation_hints`` flag. Reads use ClickHouse's native columnar output (REQ-986): every result is
 read as Arrow (``query_arrow``, ``query_arrow_stream``), never as clickhouse-connect's Python rows
-(REQ-2194). Arrow output needs ClickHouse 26 or later -- earlier servers refuse UUID in it -- so a
-client that reaches an older server is refused as it opens (:class:`ClickHouseServerTooOld`).
+(REQ-2194). A whole result and a streamed one hold the same values, those clickhouse-connect's row
+read gives (``clickhouse_arrow``).
+Arrow output needs ClickHouse 26 or later -- earlier servers refuse UUID in it -- so a client that
+reaches an older server is refused as it opens (:class:`ClickHouseServerTooOld`).
 
 One clickhouse-connect client is one ClickHouse SESSION, and a session runs one query at a time:
 a second query on it is refused ("Attempt to execute concurrent queries within the same
@@ -42,7 +44,16 @@ from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.arrow_result import arrow_table_rows, source_arrow_result
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.result import QueryResult
+from provisa.executor.drivers.clickhouse_arrow import (
+    ARROW_SETTINGS,
+    CHType,
+    needs_types,
+    row_builder,
+    row_values_batch,
+    row_values_schema,
+    row_values_table,
+)
+from provisa.executor.result import ArrowResult, QueryResult
 
 #: The oldest ClickHouse major whose Arrow output holds every column type (REQ-2194): earlier
 #: servers refuse UUID in Arrow output.
@@ -53,90 +64,36 @@ class ClickHouseServerTooOld(RuntimeError):  # REQ-2194
     """A ClickHouse source's server is older than :data:`MINIMUM_SERVER_MAJOR`: its results are
     read as Arrow, which an older server cannot write for every type."""
 
-    def __init__(self, version: str) -> None:
+    def __init__(self, version: str | None) -> None:
         self.version = version
         self.minimum = MINIMUM_SERVER_MAJOR
-        super().__init__(
-            f"ClickHouse server {version} is older than {MINIMUM_SERVER_MAJOR}: a ClickHouse "
-            f"source is read as Arrow, which needs ClickHouse {MINIMUM_SERVER_MAJOR} or later "
-            "(earlier servers refuse UUID in Arrow output)"
+        needs = (
+            f"a ClickHouse source is read as Arrow, which needs ClickHouse {MINIMUM_SERVER_MAJOR} "
+            "or later (earlier servers refuse UUID in Arrow output)"
         )
+        if _major(version) is None:
+            super().__init__(
+                f"ClickHouse server reported no readable version ({version!r}): {needs}"
+            )
+        else:
+            super().__init__(
+                f"ClickHouse server {version} is older than {MINIMUM_SERVER_MAJOR}: {needs}"
+            )
 
 
-def _bare_type(ch_type: str) -> str:
-    """A ClickHouse column type without its Nullable / LowCardinality wrappers."""
-    t = ch_type.strip()
-    for wrapper in ("Nullable(", "LowCardinality("):
-        while t.startswith(wrapper) and t.endswith(")"):
-            t = t[len(wrapper) : -1].strip()
-    return t
-
-
-def _encoded_temporals(
-    client: Any, sql: str, parameters: dict[str, Any] | None, schema: Any
-) -> dict[str, Any]:  # REQ-2194
-    """The result columns ClickHouse's Arrow output writes as integers that are temporals, by
-    name, each with the Arrow temporal it encodes: ``DateTime`` is written as uint32 epoch
-    seconds and ``Date`` as uint16 epoch days (no output setting changes this; ``DateTime64``
-    alone arrives as an Arrow timestamp). Which columns those are is the server's own answer
-    (``DESCRIBE (query)``), asked only when the result holds a uint32 or uint16 column."""
-    import pyarrow as pa
-
-    if not any(pa.types.is_uint32(f.type) or pa.types.is_uint16(f.type) for f in schema):
-        return {}
-    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
-    found: dict[str, Any] = {}
-    for row in described.result_rows:
-        name, ch_type = row[0], _bare_type(row[1])
-        field = schema.field(name) if name in schema.names else None
-        if field is None:
-            continue
-        if (ch_type == "DateTime" or ch_type.startswith("DateTime(")) and pa.types.is_uint32(
-            field.type
-        ):
-            found[name] = pa.timestamp("s")
-        elif ch_type == "Date" and pa.types.is_uint16(field.type):
-            found[name] = pa.date32()
-    return found
-
-
-def _as_temporals(data: Any, temporals: dict[str, Any]) -> Any:  # REQ-2194
-    """``data`` (a record batch or table) with each column of ``temporals`` as the Arrow temporal
-    its integers encode: naive UTC ``timestamp[s]`` from epoch seconds, ``date32`` from epoch
-    days."""
-    import pyarrow as pa
-
-    if not temporals:
-        return data
-    columns = list(data.columns)
-    fields = list(data.schema)
-    for i, field in enumerate(fields):
-        target = temporals.get(field.name)
-        if target is None:
-            continue
-        via = pa.int64() if pa.types.is_timestamp(target) else pa.int32()
-        columns[i] = columns[i].cast(via).cast(target)
-        fields[i] = field.with_type(target)
-    schema = pa.schema(fields, metadata=data.schema.metadata)
-    if isinstance(data, pa.RecordBatch):
-        return pa.RecordBatch.from_arrays(columns, schema=schema)
-    return pa.Table.from_arrays(columns, schema=schema)
-
-
-def _schema_as_temporals(schema: Any, temporals: dict[str, Any]) -> Any:
-    import pyarrow as pa
-
-    return pa.schema(
-        [f.with_type(temporals[f.name]) if f.name in temporals else f for f in schema],
-        metadata=schema.metadata,
-    )
+def _major(version: str | None) -> int | None:
+    """The major release of a ClickHouse ``server_version``, or None when it has none."""
+    major = (version or "").split(".", 1)[0]
+    return int(major) if major.isdigit() else None
 
 
 def require_arrow_server(client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
-    """Refuse ``client`` by name when its server is older than :data:`MINIMUM_SERVER_MAJOR`.
-    clickhouse-connect reads the server's version as the client opens (``server_version``)."""
-    version: str = client.server_version
-    if int(version.split(".", 1)[0]) < MINIMUM_SERVER_MAJOR:
+    """Refuse ``client`` by name when its server is older than :data:`MINIMUM_SERVER_MAJOR`, or
+    reports no readable version. clickhouse-connect reads the server's version as the client
+    opens (``server_version``)."""
+    version: str | None = client.server_version
+    major = _major(version)
+    if major is None or major < MINIMUM_SERVER_MAJOR:
         raise ClickHouseServerTooOld(version)
 
 
@@ -145,6 +102,52 @@ def _is_broken(exc: BaseException) -> bool:
     from clickhouse_connect.driver.exceptions import InterfaceError, OperationalError
 
     return isinstance(exc, (OperationalError, InterfaceError))
+
+
+def described_types(client: Any, sql: str, parameters: dict[str, Any] | None) -> list[CHType]:  # noqa: ANN401 — a clickhouse-connect client
+    """The result columns' ClickHouse types, from ClickHouse's own ``DESCRIBE (query)``, as
+    clickhouse-connect's registry parses them (the ``CHType`` ``clickhouse_arrow`` converts by)."""
+    from clickhouse_connect.datatypes.registry import get_from_name
+
+    described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
+    return [get_from_name(row[1]) for row in described.result_rows]
+
+
+def _read_arrow(
+    client: Any, sql: str, parameters: dict[str, Any] | None, query_id: str
+) -> tuple[Any, list[Any] | None, Any]:  # noqa: ANN401 — a clickhouse-connect client
+    """ClickHouse's Arrow output of ``sql`` (REQ-2194), with the ClickHouse types of its columns
+    (``DESCRIBE``) and the zone the row read gives each DateTime when ``needs_types`` says its
+    schema is ambiguous, else None for both. Every whole read converts it with
+    :func:`_converted`; a streamed read converts each batch the same way (``_ArrowStreamCursor``)."""
+    table = client.query_arrow(
+        sql,
+        parameters=parameters,
+        use_strings=True,
+        settings={"query_id": query_id, **ARROW_SETTINGS},
+    )
+    if not needs_types(table.schema):
+        return table, None, None
+    types = described_types(client, sql, parameters)
+    zone_of = client.create_query_context(query=sql, parameters=parameters).active_tz
+    return table, types, zone_of
+
+
+def _converted(table: Any, types: list[Any] | None, zone_of: Any) -> Any:  # noqa: ANN401 — a pyarrow Table
+    """``table`` holding the row read's values (``clickhouse_arrow``) when ``types`` is given, and
+    a String whose bytes are not UTF-8 as binary (REQ-2194), as the ENGINE path's
+    bytes_where_not_text reads it in run_sync."""
+    import pyarrow as pa
+
+    # Local import: clickhouse_runtime imports result_names from clickhouse.py at module level.
+    from provisa.federation.clickhouse_runtime import bytes_where_not_text
+
+    if types is not None:
+        table = row_values_table(table, types, zone_of)
+    if not table.num_rows:
+        return table
+    whole = table.combine_chunks().to_batches()[0]
+    return pa.Table.from_batches([bytes_where_not_text(whole)])
 
 
 class ClickHouseDriver(DirectDriver):  # REQ-986
@@ -245,9 +248,23 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             )
             ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
 
-        # REQ-2194: the server's Arrow output, handed on as the table it reads as. Arrow names a
-        # result's columns even when it has no row.
-        return source_arrow_result(await self.execute_arrow(exec_sql, ch_params))
+        query_id = uuid.uuid4().hex
+        with self._require_pool().connection(is_broken=_is_broken) as client:
+            context = client.create_query_context(query=exec_sql, parameters=ch_params)
+            with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
+                if context.is_command or context.is_insert:
+                    # No result set: clickhouse-connect answers the statement with its summary.
+                    res = client.query(
+                        exec_sql, parameters=ch_params, settings={"query_id": query_id}
+                    )
+                    names = result_names(client, exec_sql, ch_params, res.column_names)
+                    return QueryResult(rows=[tuple(r) for r in res.result_rows], column_names=names)
+                # The result as Arrow (REQ-2194), its values those the row read gives.
+                table, types, zone_of = _read_arrow(client, exec_sql, ch_params, query_id)
+        converted = _converted(table, types, zone_of)
+        if types is None:
+            return source_arrow_result(converted)
+        return ArrowResult(converted, to_rows=row_builder(types))
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
     @property
@@ -256,8 +273,9 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
 
     async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
         """The result a batch at a time: ClickHouse's Arrow stream (REQ-2194), read batch by batch
-        as a fetch asks, on a pooled client; ``KILL QUERY`` by the statement's id stops one still
-        sending batches."""
+        as a fetch asks, on a pooled client, each batch converted as ``execute`` converts a whole
+        result, so both reads give the same values; ``KILL QUERY`` by the statement's id stops one
+        still sending batches."""
         from provisa.compiler.params import (
             extract_params_comment,
             substitute_positional_placeholders,
@@ -273,62 +291,50 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
             )
             ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
         query_id = uuid.uuid4().hex
+        # The stream's one cursor: its rows are built with the types it resolved as it opened.
+        opened: list[_ArrowStreamCursor] = []
+
+        def open_cursor(client: Any) -> _ArrowStreamCursor:  # noqa: ANN401 — a clickhouse-connect client
+            cursor = _ArrowStreamCursor(client)
+            opened.append(cursor)
+            return cursor
+
         return PooledArrowCursorStream(
             self._require_pool(),
-            open_cursor=_ArrowStreamCursor,
+            open_cursor=open_cursor,
             execute=lambda cur: cur.execute(exec_sql, ch_params, query_id),
             columns=lambda cur: list(cur.schema.names),
             cancel=lambda _client, _cur: self._kill_query(query_id),
-            to_rows=arrow_table_rows,
+            to_rows=lambda batch: opened[0].to_rows(batch),
         )
 
     async def execute_arrow(self, sql: str, params: dict[str, Any] | None = None) -> Any:
-        """Run ``sql`` and return the result as a ``pyarrow.Table`` in ClickHouse's native Arrow
+        """Run ``sql`` and return the result as a ``pyarrow.Table`` from ClickHouse's native Arrow
         format -- no per-row Python objects (REQ-1865: a keyed row-materialize fetch lands
-        millions of rows columnar). ClickHouse ``String`` arrives as Arrow ``string``, not
-        ``binary``; a String whose bytes are not UTF-8 is converted to binary (REQ-2194, matches
-        the ENGINE path's bytes_where_not_text). ``params`` fill the statement's ``%(name)s``
-        placeholders through the driver's own binding, which escapes each value for ClickHouse."""
-        # Local import breaks the clickhouse_runtime → clickhouse.py circular import at module
-        # level (clickhouse_runtime imports result_names from here).
-        import pyarrow as pa
-
-        from provisa.federation.clickhouse_runtime import bytes_where_not_text
-
+        millions of rows columnar), converted as ``execute`` converts a result (REQ-2194): each
+        column holds what the row read gives of its ClickHouse type, a String whose bytes are not
+        UTF-8 as binary. ``params`` fill the statement's ``%(name)s`` placeholders through the
+        driver's own binding, which escapes each value for ClickHouse."""
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
-                table: pa.Table = client.query_arrow(
-                    sql, parameters=params, use_strings=True, settings={"query_id": query_id}
-                )
-                temporals = _encoded_temporals(client, sql, params, table.schema)
-        batches = [bytes_where_not_text(_as_temporals(b, temporals)) for b in table.to_batches()]
-        if batches:
-            return pa.Table.from_batches(batches, schema=batches[0].schema)
-        return _as_temporals(table, temporals)
+                table, types, zone_of = _read_arrow(client, sql, params, query_id)
+        return _converted(table, types, zone_of)
 
     def iter_arrow_batches(self, sql: str) -> Iterator[Any]:
         """Run fully formed ``sql`` and yield its result as Arrow record batches while the
-        server streams them (REQ-1915): one block is held at a time. The pooled client is kept
-        for the life of the iteration and returned when it ends or is closed. A String column
-        whose bytes are not UTF-8 is converted to binary (REQ-2194)."""
-        import pyarrow as pa
-
-        # Local import: clickhouse_runtime imports result_names from this module at module level.
-        from provisa.federation.clickhouse_runtime import bytes_where_not_text
-
+        server streams them (REQ-1915): one block is held at a time, each converted as
+        ``open_stream`` converts it (REQ-2194). The pooled client is kept for the life of the
+        iteration and returned when it ends or is closed."""
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
-            with client.query_arrow_stream(
-                sql, use_strings=True, settings={"query_id": query_id}
-            ) as stream:
-                temporals = _encoded_temporals(client, sql, None, stream.gen.schema)
-                for chunk in stream:
-                    if isinstance(chunk, pa.Table):
-                        for batch in chunk.to_batches():
-                            yield bytes_where_not_text(_as_temporals(batch, temporals))
-                    else:
-                        yield bytes_where_not_text(_as_temporals(chunk, temporals))
+            cursor = _ArrowStreamCursor(client)
+            try:
+                cursor.execute(sql, None, query_id)
+                while (batch := cursor.fetch_batch()) is not None:
+                    yield batch
+            finally:
+                cursor.close()
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
@@ -356,25 +362,40 @@ def result_names(
 class _ArrowStreamCursor:
     """A ClickHouse Arrow stream read for :class:`PooledArrowCursorStream` (REQ-2194):
     ``schema`` is the stream's Arrow schema, and ``fetch_batch`` hands on the server's next record
-    batch, taken from the server only when it is asked for; never clickhouse-connect's rows."""
+    batch, taken from the server only when it is asked for; never clickhouse-connect's rows.
+
+    Each batch holds what ``execute`` gives of a whole result (``clickhouse_arrow``): when the
+    server's Arrow schema is ambiguous, the ClickHouse types are read from ``DESCRIBE`` once, as
+    the stream opens and before its first batch, and every batch is converted with them."""
 
     def __init__(self, client: Any) -> None:  # noqa: ANN401 — a clickhouse-connect client
         self._client = client
         self._context: Any = None
         self._batches: Iterator[Any] | None = None
-        self._temporals: dict[str, Any] = {}
+        self._types: list[Any] | None = None
+        self._zone_of: Any = None
         self.schema: Any = None
         self.description: list[tuple[str]] | None = None
 
     def execute(self, sql: str, parameters: dict[str, Any] | None, query_id: str) -> None:
         self._context = self._client.query_arrow_stream(
-            sql, parameters=parameters, use_strings=True, settings={"query_id": query_id}
+            sql,
+            parameters=parameters,
+            use_strings=True,
+            settings={"query_id": query_id, **ARROW_SETTINGS},
         )
         stream = self._context.__enter__()
         # clickhouse-connect's Arrow stream is pyarrow's stream reader over the response
         # (``gen``), which has read the schema message as it opened.
-        self._temporals = _encoded_temporals(self._client, sql, parameters, stream.gen.schema)
-        self.schema = _schema_as_temporals(stream.gen.schema, self._temporals)
+        schema = stream.gen.schema
+        if needs_types(schema):
+            # The client names no server session (see the module note), so DESCRIBE runs beside
+            # the open stream.
+            self._types = described_types(self._client, sql, parameters)
+            query = self._client.create_query_context(query=sql, parameters=parameters)
+            self._zone_of = query.active_tz
+            schema = row_values_schema(schema, self._types, self._zone_of)
+        self.schema = schema
         self.description = [(name,) for name in self.schema.names]
         self._batches = iter(stream)
 
@@ -390,7 +411,17 @@ class _ArrowStreamCursor:
         # Local import: clickhouse_runtime imports result_names from clickhouse.py at module level.
         from provisa.federation.clickhouse_runtime import bytes_where_not_text
 
-        return bytes_where_not_text(_as_temporals(batch, self._temporals))
+        if self._types is None:
+            return bytes_where_not_text(batch)
+        return bytes_where_not_text(
+            row_values_batch(batch, self._types, self._zone_of, self.schema)
+        )
+
+    def to_rows(self, batch: Any) -> list[tuple]:  # noqa: ANN401 — a pyarrow RecordBatch
+        """A fetched batch's rows, each value as ``execute``'s rows hold it."""
+        if self._types is None:
+            return arrow_table_rows(batch)
+        return row_builder(self._types)(batch)
 
     def close(self) -> None:
         context, self._context = self._context, None

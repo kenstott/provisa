@@ -11,7 +11,8 @@
 """What REQ-2167 (amended 2026-11-02) does not support, refused by name over pgwire whatever its
 arguments: nextval, currval and setval, for Provisa does not model a source's sequences, and
 regexp_replace with a start, an occurrence and flags. Each engine refuses them alike, PostgreSQL's
-included; regexp_replace's other forms are served."""
+included, but for regexp_replace of six arguments on ClickHouse, which has an exact form of it
+(REQ-2167, amended 2026-11-25); regexp_replace's other forms are served."""
 
 # Requirements: REQ-2167
 # ruff: noqa: F811 -- the fixtures are conn and pgwire of the module they are imported from
@@ -55,22 +56,29 @@ def test_a_call_is_refused_by_name(conn: Any, sql: str):
     assert said.startswith(f"{REFUSED[sql]}() has no form "), said
 
 
-@pytest.mark.parametrize("dialect", ["duckdb", "postgres", "trino", "clickhouse"])
+_SEQUENCES = ["nextval('s')", "currval('s')", "setval('s', 1)", "setval('s', 1, true)"]
+_SIX_ARGUMENT_REPLACES = [
+    "regexp_replace(a, 'X', '-', 1, 2, 'g')",
+    "pg_catalog.\"regexp_replace\"(a, 'X', '-', 1, 2, NULL::text)",
+]
+
+
 @pytest.mark.parametrize(
-    "call",
-    [
-        "nextval('s')",
-        "currval('s')",
-        "setval('s', 1)",
-        "setval('s', 1, true)",
-        "regexp_replace(a, 'X', '-', 1, 2, 'g')",
-        "pg_catalog.\"regexp_replace\"(a, 'X', '-', 1, 2, NULL::text)",
-    ],
+    ("dialect", "call"),
+    [(d, c) for d in ("duckdb", "postgres", "trino", "clickhouse") for c in _SEQUENCES]
+    + [(d, c) for d in ("duckdb", "postgres", "trino") for c in _SIX_ARGUMENT_REPLACES],
 )
 def test_every_engine_refuses_it(dialect: str, call: str):
     name = call.split("(")[0].split(".")[-1].strip('"')
     with pytest.raises(FunctionRefused, match=rf"^{name}\(\) has no form on {dialect}$"):
         transpile(f"SELECT {call} AS v FROM t", dialect, generated=False)
+
+
+@pytest.mark.parametrize("call", _SIX_ARGUMENT_REPLACES)
+def test_clickhouse_has_a_form_of_regexp_replace_of_six_arguments(call: str):
+    """REQ-2167 (amended 2026-11-25): ClickHouse answers it (its answers are tested in
+    test_polyfill_clickhouse_regex_longest)."""
+    assert transpile(f"SELECT {call} AS v FROM t", "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(

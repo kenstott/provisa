@@ -23,10 +23,11 @@ taken, so there a check is ``throwIf`` beside the answer, whose message is a con
 message written from a value is refused by name there. A dialect with no entry refuses the call by
 name."""
 
-# Requirements: REQ-2167, REQ-2171
+# Requirements: REQ-2167, REQ-2171, REQ-2236
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from provisa.core.pg_error import END, MARK
@@ -190,7 +191,7 @@ OF_A_STORED_VALUE = frozenset(
 )
 
 
-def _regexp_refused(engine: _Engine) -> str:
+def _regexp_refused(engine: _Engine, *, empty: bool = True) -> str:
     """What this form cannot answer as PostgreSQL does, whose search keeps its place in the text: an
     anchor, a pattern that matches nothing at all, a replacement of more than a group's number.
 
@@ -213,7 +214,7 @@ def _regexp_refused(engine: _Engine) -> str:
             *(has("pattern", text("\\" + anchor)) for anchor in "AbBmMyYZ"),
             has("replacement", text("\\&")),
             has("replacement", text("\\\\")),
-            engine.matches_nothing.format("pattern"),
+            *((engine.matches_nothing.format("pattern"),) if empty else ()),
         )
     )
 
@@ -273,6 +274,165 @@ _CLICKHOUSE_REPLACED = (
     f"substring({_CLICKHOUSE_TAIL}, {_CLICKHOUSE_HEAD} + "
     f"length({_CLICKHOUSE_NTH}) + 1))))"
 )
+#: A pattern that matches the empty text, on ClickHouse (REQ-2236): PostgreSQL searches from start
+#: and, past an empty match, copies the next character and searches again, where extractAll and
+#: splitByRegexp skip an empty match. Its search is written here: at each character from start, the
+#: pattern's match there is the Nth (or n is 0) and replaced, or copied; an empty match copies the
+#: character after it; a character where nothing matches is copied. The pattern is read at the
+#: text's first character as it is, and past it behind one character of the text (?s:.), so its ^
+#: and \\A match only at the text's start, as PostgreSQL's do. The replacement's \\1 to \\9 are
+#: the match's groups (replaceRegexpOne of the text from there).
+_CH_V = "assumeNotNull(value)"
+_CH_P = "assumeNotNull(pattern)"
+_CH_AT = "substringUTF8(" + _CH_V + ", _i - 1)"
+_CH_LENGTH = (
+    f"if(_i = 1, if(match({_CH_V}, concat('^(?:', {_CH_P}, ')')), "
+    f"toInt64(lengthUTF8(extract({_CH_V}, concat('^((?:', {_CH_P}, '))')))), -1), "
+    f"if(match({_CH_AT}, concat('^(?s:.)(?:', {_CH_P}, ')')), "
+    f"toInt64(lengthUTF8(extract({_CH_AT}, concat('^(?s:.)((?:', {_CH_P}, '))')))), -1))"
+)
+_CH_SAID = (
+    f"if(_i = 1, replaceRegexpOne({_CH_V}, concat('^(?:', {_CH_P}, ')(?s:.*)'), "
+    f"{_CLICKHOUSE_RESULT}), replaceRegexpOne({_CH_AT}, "
+    f"concat('^(?s:.)(?:', {_CH_P}, ')(?s:.*)'), {_CLICKHOUSE_RESULT}))"
+)
+_CH_POSITIONS = (
+    f"range(toUInt64(greatest({_CLICKHOUSE_START}, 1)), toUInt64(lengthUTF8({_CH_V})) + 2)"
+)
+_CLICKHOUSE_EMPTY_MATCH = (
+    f"concat(leftUTF8({_CH_V}, {_CLICKHOUSE_START} - 1), tupleElement(arrayFold("
+    "(_acc, _i, _l) -> if(_i < tupleElement(_acc, 2), _acc, if(_l < 0, "
+    f"tuple(concat(tupleElement(_acc, 1), substringUTF8({_CH_V}, _i, 1)), toUInt64(_i + 1), "
+    "tupleElement(_acc, 3)), "
+    f"tuple(concat(tupleElement(_acc, 1), if({_CLICKHOUSE_N} = 0 OR "
+    f"tupleElement(_acc, 3) + 1 = {_CLICKHOUSE_N}, {_CH_SAID}, "
+    f"substringUTF8({_CH_V}, _i, _l)), if(_l = 0, substringUTF8({_CH_V}, _i, 1), '')), "
+    "toUInt64(_i + greatest(_l, 1)), tupleElement(_acc, 3) + 1))), "
+    f"{_CH_POSITIONS}, arrayMap(_i -> {_CH_LENGTH}, {_CH_POSITIONS}), "
+    f"tuple('', toUInt64(greatest({_CLICKHOUSE_START}, 1)), toUInt64(0))), 1))"
+)
+
+#: The empty-match search of _CLICKHOUSE_EMPTY_MATCH on DuckDB and Trino (REQ-2236): RE2's and
+#: Trino's searches go past an empty match that ends where a non-empty match ended
+#: (regexp_replace('abc', 'a|', 'X', 'g') is 'XXbXcX' on PostgreSQL, 'XbXcX' there), so each
+#: character's match is read on its own, as there, and the matches are chosen as PostgreSQL chooses
+#: them. ``_i`` is a character's place; the pattern is read behind one character of the text from
+#: the second on, so its ^ and \A match only at the text's start.
+_WALK_HEAD = "'\\A(?:' || pattern || ')'"
+_WALK_BEHIND = "'\\A(?s:.)(?:' || pattern || ')'"
+_WALK_HEAD_GROUP = "'\\A((?:' || pattern || '))'"
+_WALK_BEHIND_GROUP = "'\\A(?s:.)((?:' || pattern || '))'"
+_WALK_HEAD_REST = "'\\A(?:' || pattern || ')(?s:.*)'"
+_WALK_BEHIND_REST = "'\\A(?s:.)(?:' || pattern || ')(?s:.*)'"
+
+
+@dataclass(frozen=True)
+class _Walk:
+    """An engine's spelling of the empty-match search: ``{}`` for each operand."""
+
+    matches: str  # text, pattern
+    group: str  # text, pattern: its first group
+    replaced: str  # text, pattern: the text with its first match replaced by the replacement
+    tail: str  # the text from a place
+    char: str  # the character at a place
+    span: str  # place, length: the text there
+    #: the fold of each place from start to the text's end (``{places}``, ``{place}``, ``{length}``
+    #: of the item, ``{step}`` of the state ``_a``, ``{start}``): the text it builds
+    fold: str
+    #: the state of the text built ``{0}``, the next place read ``{1}`` and the matches ``{2}``
+    state: str
+
+
+_DUCKDB_WALK = _Walk(
+    "regexp_matches({}, {})",
+    "regexp_extract({}, {}, 1)",
+    "regexp_replace({}, {}, replacement)",
+    "substring(value, {})",
+    "substring(value, {}, 1)",
+    "substring(value, {}, {})",
+    "list_reduce(list_transform(range({start}, length(value) + 2), LAMBDA _i : "
+    "struct_pack(o := '', nx := _i, k := {length})), LAMBDA _a, _x : {step}, "
+    "struct_pack(o := '', nx := CAST({start} AS BIGINT), k := CAST(0 AS BIGINT))).o",
+    "struct_pack(o := {0}, nx := {1}, k := {2})",
+)
+#: Trino's sequence holds at most 10000 places: a longer text is refused by name (_WALK_BOUND).
+_TRINO_WALK = _Walk(
+    "regexp_like({}, {})",
+    "regexp_extract({}, {}, 1)",
+    f"regexp_replace({{}}, {{}}, {_TRINO_REPLACEMENT})",
+    "substr(value, {})",
+    "substr(value, {}, 1)",
+    "substr(value, {}, {})",
+    "reduce(transform(sequence({start}, length(value) + 1), _i -> "
+    "CAST(ROW(_i, {length}) AS ROW(nx BIGINT, k BIGINT))), "
+    "CAST(ROW('', {start}, 0) AS ROW(o VARCHAR, nx BIGINT, k BIGINT)), (_a, _x) -> {step}, "
+    "_a -> _a.o)",
+    "CAST(ROW({0}, {1}, {2}) AS ROW(o VARCHAR, nx BIGINT, k BIGINT))",
+)
+#: The longest text the walk reads on Trino, whose sequence of places (start to the text's end and
+#: one past it) holds at most 10000.
+_WALK_BOUND = 9998
+
+
+def _walk_length(walk: _Walk) -> str:
+    """The length of the match at place ``_i``, or -1 where none starts there."""
+    behind = walk.tail.format("_i - 1")
+    return (
+        f"CASE WHEN _i = 1 THEN CASE WHEN {walk.matches.format('value', _WALK_HEAD)} "
+        f"THEN length({walk.group.format('value', _WALK_HEAD_GROUP)}) ELSE -1 END "
+        f"WHEN {walk.matches.format(behind, _WALK_BEHIND)} "
+        f"THEN length({walk.group.format(behind, _WALK_BEHIND_GROUP)}) ELSE -1 END"
+    )
+
+
+def _empty_match_walk(walk: _Walk) -> str:
+    """regexp_replace(value, pattern, replacement, start, n) where the pattern matches the empty
+    text, as PostgreSQL searches: the text before start, then from each place the match there is
+    the Nth (or n is 0) and replaced, or copied; an empty match copies the character after it; a
+    character where nothing matches is copied; a non-empty match is followed by the search at its
+    end, where an empty match is one."""
+    behind = walk.tail.format("_x.nx - 1")
+    said = (
+        f"CASE WHEN _x.nx = 1 THEN {walk.replaced.format('value', _WALK_HEAD_REST)} "
+        f"ELSE {walk.replaced.format(behind, _WALK_BEHIND_REST)} END"
+    )
+    char = walk.char.format("_x.nx")
+    copied = walk.state.format(f"_a.o || {char}", "_x.nx + 1", "_a.k")
+    matched = walk.state.format(
+        f"_a.o || CASE WHEN n = 0 OR _a.k + 1 = n THEN {said} "
+        f"ELSE {walk.span.format('_x.nx', '_x.k')} END "
+        f"|| CASE WHEN _x.k = 0 THEN {char} ELSE '' END",
+        "_x.nx + greatest(_x.k, 1)",
+        "_a.k + 1",
+    )
+    step = f"CASE WHEN _x.nx < _a.nx THEN _a WHEN _x.k < 0 THEN {copied} ELSE {matched} END"
+    return walk.fold.format(start="start", length=_walk_length(walk), step=step)
+
+
+_WALKS = {id(_DUCKDB_ENGINE): _DUCKDB_WALK, id(_TRINO_ENGINE): _TRINO_WALK}
+#: The replacement the walk reads otherwise than PostgreSQL: RE2's \0 is the text from the
+#: character behind the match to the end, where PostgreSQL copies \0 as written.
+_WALK_UNREAD = {id(_DUCKDB_ENGINE): "'\\0'"}
+#: The walk's operands, each a hole of a polyfill grid row's pattern ($v the text, $p the pattern,
+#: $r the replacement), start 1 and every match.
+_WALK_HOLES = {"value": "$v", "pattern": "$p", "replacement": "$r", "start": "1", "n": "0"}
+_WALK_OPERAND = re.compile(r"\b(?:value|pattern|replacement|start|n)\b")
+
+
+def duckdb_every_match() -> str:
+    """regexp_replace(text, pattern, replacement, 'g') on DuckDB, of the holes $v, $p and $r: where
+    the pattern matches the empty text and the text holds a match that is not empty, PostgreSQL's
+    search (_empty_match_walk), which a replacement holding \\0 is refused by name in; RE2's every
+    match otherwise, which is PostgreSQL's there (each match empty, or none)."""
+    walk = _WALK_OPERAND.sub(lambda m: _WALK_HOLES[m.group()], _empty_match_walk(_DUCKDB_WALK))
+    refused = _raised(_DUCKDB_ENGINE, "0A000", f"regexp_replace {REFUSED}", "VARCHAR")
+    return (
+        "CASE WHEN regexp_matches('', $p) AND regexp_replace($v, $p, '', 'g') <> $v THEN "
+        f"CASE WHEN contains($r, '\\0') THEN {refused} ELSE {walk} END "
+        "ELSE regexp_replace($v, $p, $r, 'g') END"
+    )
+
+
 _REPLACED = {
     id(_DUCKDB_ENGINE): ("left(value, start - 1)", _DUCKDB_REPLACED),
     id(_TRINO_ENGINE): ("substr(value, 1, start - 1)", _TRINO_REPLACED),
@@ -285,32 +445,53 @@ _REPLACED = {
 
 def _regexp_replace_nth(engine: _Engine) -> str:
     """regexp_replace(value, pattern, replacement, start, n): strict; n 0 is every match, else the
-    Nth, found by the pieces between matches. PostgreSQL checks start, then n."""
+    Nth, found by the pieces between matches. PostgreSQL checks start, then n. On ClickHouse a
+    pattern that matches the empty text is searched as PostgreSQL searches it
+    (_CLICKHOUSE_EMPTY_MATCH)."""
     before, replaced = _REPLACED[id(engine)]
     nulls = " OR ".join(f"{p} IS NULL" for p in _REGEXP_PARAMS)
     if engine is _CLICKHOUSE_ENGINE:
-        answer = f"concat({before}, {replaced})"
+        answer = (
+            f"if(match('', assumeNotNull(pattern)), {_CLICKHOUSE_EMPTY_MATCH}, "
+            f"concat({before}, {replaced}))"
+        )
         return (
             f"if({nulls}, NULL, if("
             f"throwIf(coalesce(NOT ({nulls}) AND "
-            f"(start < 1 OR n < 0 OR {_regexp_refused(engine)}), 0), "
+            f"(start < 1 OR n < 0 OR {_regexp_refused(engine, empty=False)}), 0), "
             f"{_marked('0A000', f'regexp_replace {REFUSED}')}) = 0, "
             f"{answer}, NULL))"
         )
     raised = engine.fail.format
     prefix = _quoted(f"{MARK} 22023: invalid value for parameter ")
     message = "{} || " + _quoted('"{}": ') + " || CAST({} AS VARCHAR) || " + _quoted(f" {END}")
+    refused = _raised(engine, "0A000", f"regexp_replace {REFUSED}", "VARCHAR")
+    empty = engine.matches_nothing.format("pattern")
+    # A pattern that matches the empty text is searched as PostgreSQL searches it (_WALKS); what
+    # the walk cannot read is refused by name there.
+    unread = []
+    if id(engine) in _WALK_UNREAD:
+        unread.append(engine.contains.format("replacement", _WALK_UNREAD[id(engine)]))
+    if engine is _TRINO_ENGINE:
+        unread.append(f"length(value) > {_WALK_BOUND}")
+    walk_refused = f"WHEN {empty} AND ({' OR '.join(unread)}) THEN {refused} " if unread else ""
     return (
         f"CASE WHEN {nulls} THEN CAST(NULL AS VARCHAR) "
         f"WHEN start < 1 THEN CAST({raised(message.format(prefix, 'start', 'start'))} AS VARCHAR) "
         f"WHEN n < 0 THEN CAST({raised(message.format(prefix, 'n', 'n'))} AS VARCHAR) "
-        f"WHEN {_regexp_refused(engine)} THEN "
-        f"{_raised(engine, '0A000', f'regexp_replace {REFUSED}', 'VARCHAR')} "
+        f"WHEN {_regexp_refused(engine, empty=False)} THEN {refused} "
+        f"{walk_refused}"
+        f"WHEN {empty} THEN {before} || {_empty_match_walk(_WALKS[id(engine)])} "
         f"ELSE {before} || {replaced} END"
     )
 
 
 _REGEXP_PARAMS = ("value", "pattern", "replacement", "start", "n")
+#: regexp_replace's Nth match on ClickHouse, its parameters REGEXP_PARAMS, which the polyfill grid
+#: writes with a literal pattern read as PostgreSQL reads it (provisa.transpiler.polyfill.regex,
+#: REQ-2236): ClickHouse's RE2 reads the pattern it is given at run time.
+REGEXP_PARAMS = _REGEXP_PARAMS
+CLICKHOUSE_REGEXP_REPLACE_NTH = _regexp_replace_nth(_CLICKHOUSE_ENGINE)
 
 #: repeat on Trino, whose own builds an array: strict, and nothing for a count below one. rpad takes
 #: the length in characters and refuses an empty padding.

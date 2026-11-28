@@ -30,7 +30,7 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import from_engine
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import RowRefused
 from provisa.transpiler.polyfill import GRID
@@ -96,17 +96,6 @@ RAISED = [  # (statement, PostgreSQL's SQLSTATE, or the row's refusal's)
     ('SELECT pg_catalog."int2"(32767.5::double precision) AS v', "22003"),
     ("SELECT pg_catalog.\"int8\"('Infinity'::real) AS v", "22003"),
     ('SELECT pg_catalog."int8"(9223372036854775807::double precision) AS v', "22003"),
-    # A date Date32 does not hold: the date row's refusal, not toDate32's parse error.
-    (
-        "SELECT pg_catalog.\"datetime_pl\"('4713-01-01 BC'::date, '12:00'::time without time "
-        "zone) AS v",
-        "0A000",
-    ),
-    (
-        "SELECT pg_catalog.\"timestamp\"('5874897-12-31'::date, '12:00'::time without time "
-        "zone) AS v",
-        "0A000",
-    ),
 ]
 
 
@@ -179,6 +168,19 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
         return
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == state, str(raised.value)[:300]
+
+
+def test_a_date_past_a_timestamp_s_range_raises_22008_as_the_statement_is_read():
+    """A date held outside Date32 (polyfill.held_instants, REQ-2236): PostgreSQL's 22008 of a
+    timestamp past its range, raised by the literal reader. Its answers BC are held_instants'
+    (test_polyfill_clickhouse_held_instants)."""
+    sql = (
+        "SELECT pg_catalog.\"timestamp\"('5874897-12-31'::date, '12:00'::time without time "
+        "zone) AS v"
+    )
+    with pytest.raises(PostgresError) as past:
+        transpile(sql, "clickhouse", generated=False)
+    assert (past.value.sqlstate, str(past.value)) == ("22008", "date out of range for timestamp")
 
 
 def test_a_snapshot_is_split_as_not_null():
