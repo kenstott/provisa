@@ -24,6 +24,7 @@ import provisa.executor.function_dispatch as fd
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.otel_compat import MemoryUdfTraceSink
 from provisa.executor.result import QueryResult
+from tests.served_names import served_names
 
 
 @pytest.fixture
@@ -59,7 +60,31 @@ def _state(connected=True, pools=None, egress=None):
         udf_egress_allowlist=(
             ["a.example", "b.example", "svc", "svc:50051"] if egress is None else egress
         ),
+        # REQ-1159 (amended 2026-11-28): a relation argument names a table as SQL serves it.
+        names_table=served_names("shop.items", "shop.orders"),
     )
+
+
+@pytest.fixture
+def governed(monkeypatch):
+    """The one governed pipeline, recorded: a table given as a relation argument is read through
+    it as the caller (REQ-1159), answering the rows the role reads."""
+    import provisa.pgwire._pipeline as pipeline
+
+    ran: list = []
+
+    async def _govern(sql, role_id, **_kw):
+        ran.append((sql, role_id))
+        return "plan"
+
+    async def _execute(plan, _state):
+        return QueryResult(
+            rows=[(1, "ada")], column_names=["id", "name"], column_types=["integer", "text"]
+        )
+
+    monkeypatch.setattr(pipeline, "_govern_and_route", _govern)
+    monkeypatch.setattr(pipeline, "_execute_plan", _execute)
+    return ran
 
 
 def _fn(**over):
@@ -273,7 +298,7 @@ async def test_rowwise_external_refused_when_all_args_scalar():
 
 
 @pytest.mark.asyncio
-async def test_setwise_external_allowed_with_relation_arg(monkeypatch):
+async def test_setwise_external_allowed_with_relation_arg(monkeypatch, governed):
     async def fake_http(method, url, payload, timeout):
         return [{"ok": 1}]
 
@@ -286,7 +311,7 @@ async def test_setwise_external_allowed_with_relation_arg(monkeypatch):
             {"name": "n", "type": "Int", "arg_kind": "column_value"},
         ],
     )
-    rows = await dispatch_function(fn, {"rs": "s3.public.items", "n": 1}, _state(), "ops")
+    rows = await dispatch_function(fn, {"rs": "shop.items", "n": 1}, _state(), "ops")
     assert rows == [{"ok": 1}]
 
 
@@ -334,7 +359,7 @@ async def test_python_bad_callable_spec_fails_loud(host_code_allowed):
 
 
 @pytest.mark.asyncio
-async def test_relation_arg_kinds(monkeypatch):
+async def test_relation_arg_kinds(monkeypatch, governed):
     seen = {}
 
     async def fake_http(method, url, payload, timeout):
@@ -352,18 +377,20 @@ async def test_relation_arg_kinds(monkeypatch):
             {"name": "n", "type": "Int", "arg_kind": "column_value"},
         ],
     )
-    args = {"tbl": "s2.public.orders", "rs": "s3.public.items", "n": 9}
+    args = {"tbl": "shop.orders", "rs": "shop.items", "n": 9}
     await dispatch_function(fn, args, st, "ops")
     payload = seen["payload"]["args"]
     # table_ref = lazy: only the reference is passed, no materialization SELECT
-    assert payload["tbl"] == {"kind": "table_ref", "ref": "s2.public.orders"}
+    assert payload["tbl"] == {"kind": "table_ref", "ref": "shop.orders"}
     # result_set = eager: relation materialized to an Arrow-compatible batch
     assert payload["rs"]["kind"] == "result_set"
     assert payload["rs"]["rows"] == [{"id": 1, "name": "ada"}]
     # column_value = scalar row-wise
     assert payload["n"] == 9
-    # exactly one SELECT was issued — for the result_set arg only (table_ref stayed lazy)
-    assert st.source_pools.calls == [("s3", 'SELECT * FROM "public"."items"', [])]
+    # exactly one governed read, as the caller — for the result_set arg only (table_ref stayed
+    # lazy); nothing read from a source past governance
+    assert governed == [("SELECT * FROM shop.items", "ops")]
+    assert st.source_pools.calls == []
 
 
 @pytest.mark.asyncio
@@ -404,7 +431,7 @@ def _echo_http(rows):
 
 
 @pytest.mark.asyncio
-async def test_result_set_input_contract_passes(monkeypatch):
+async def test_result_set_input_contract_passes(monkeypatch, governed):
     # Fake relation yields {"id": 1, "name": "ada"}; declared IR contract matches → no violation.
     monkeypatch.setattr(fd, "_http_call", _echo_http([{"ok": 1}]))
     fn = _fn(
@@ -420,12 +447,12 @@ async def test_result_set_input_contract_passes(monkeypatch):
             }
         ],
     )
-    rows = await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+    rows = await dispatch_function(fn, {"rs": "shop.items"}, _state(), "ops")
     assert rows == [{"ok": 1}]
 
 
 @pytest.mark.asyncio
-async def test_result_set_input_contract_violation_fails_loud(monkeypatch):
+async def test_result_set_input_contract_violation_fails_loud(monkeypatch, governed):
     # Relation column `id` is an int, but the contract declares it `text` → fail-loud 422.
     monkeypatch.setattr(fd, "_http_call", _echo_http([{"ok": 1}]))
     fn = _fn(
@@ -442,7 +469,7 @@ async def test_result_set_input_contract_violation_fails_loud(monkeypatch):
         ],
     )
     with pytest.raises(HTTPException) as ei:
-        await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+        await dispatch_function(fn, {"rs": "shop.items"}, _state(), "ops")
     assert ei.value.status_code == 422
     assert "input 'rs'" in ei.value.detail and "expected text" in ei.value.detail
 
@@ -477,7 +504,7 @@ async def test_output_contract_violation_fails_loud(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_no_declared_contract_skips_validation(monkeypatch):
+async def test_no_declared_contract_skips_validation(monkeypatch, governed):
     # No columns / output_columns → no contract → rows pass through untouched (off-type included).
     monkeypatch.setattr(fd, "_http_call", _echo_http([{"anything": "goes", "n": 1}]))
     fn = _fn(
@@ -486,5 +513,5 @@ async def test_no_declared_contract_skips_validation(monkeypatch):
         binding={"url": "https://svc/fn"},
         arguments=[{"name": "rs", "type": "String", "arg_kind": "result_set"}],
     )
-    rows = await dispatch_function(fn, {"rs": "s3.public.items"}, _state(), "ops")
+    rows = await dispatch_function(fn, {"rs": "shop.items"}, _state(), "ops")
     assert rows == [{"anything": "goes", "n": 1}]

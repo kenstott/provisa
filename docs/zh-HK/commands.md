@@ -30,10 +30,12 @@
 | `arg_kind` | 行為 |
 | --- | --- |
 | `column_value` | 純量；直接放進請求負載傳遞 |
-| `table_ref` | 延遲式；Provisa 原樣傳遞關聯引用，由服務自行取數 |
-| `result_set` | 積極式；Provisa 具體化被引用的關聯並送出其資料行 |
+| `table_ref` | 延遲式；Provisa 傳遞資料表的名稱，由服務自行取數 |
+| `result_set` | 積極式；Provisa 讀取該關聯並送出其資料行 |
 
 `http` 與 `grpc` 命令**必須**至少宣告一個 `table_ref` 或 `result_set` 引數。只收到純量引數的外部命令會被逐行呼叫一次，那就破壞了批次處理。派送器會在呼叫時拒絕這種設定（422）。
+
+以資料表給出的關聯引數，用它的邏輯名稱來指明，即 SQL 語句讀取它時所用的 `schema.table`（例如 `pet_store.orders`）。`result_set` 資料表會經由受治理的管線，以呼叫者的角色讀取，因此該角色的行篩選、遮罩及欄位可見性都會生效，而且只讀取引數所宣告的欄位。實體的 `source.schema.table` 參照，或 SQL 不以其提供任何資料表的名稱，都會以 HTTP 400 拒絕，並指明應有的形式。`result_set` 亦可以查詢（以相同方式執行）或 JSON 資料行陣列給出。
 
 會傳回集合的命令（經 `output_columns` 與 `return_schema` 宣告）是一個表值函式。可用於 `FROM` 子句或 `JOIN`。
 
@@ -46,7 +48,7 @@
 - **輸入（僅限 result_set）：** 具體化之後，Provisa 會依所宣告的欄位驗證資料行。多出的欄位、缺少的欄位與類型不符，一律引發 HTTP 422。
 
 - **輸出：** 命令傳回的資料行在抵達呼叫方之前，會先依 `output_columns` 驗證。
-- **窄投影：** 宣告了輸入合約之後，具體化查詢只會投影**那些欄位**（`SELECT "id", "region" FROM ...`），而不是 `SELECT *`。
+- **窄投影：** 宣告了輸入合約之後，具體化查詢只會投影**那些欄位**（`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`），而不是 `SELECT *`。
 
 ### IR 類型詞彙 {: #the-ir-type-vocabulary }
 
@@ -131,8 +133,8 @@ gRPC 變體（`enrich_grpc_set`）沿用同一套寫法，只是指定 `impl_kin
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 
