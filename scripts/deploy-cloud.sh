@@ -735,8 +735,8 @@ push_mail_env() {
     changed=1
   fi
 
-  # Read the one key rather than sourcing .env, for the reason verify_engine gives: .env also
-  # carries names this script uses, and sourcing it would redirect the deploy at another node.
+  # Read the one key rather than sourcing .env: .env also carries names this script uses
+  # (PROJECT, ZONE), and sourcing it would redirect the deploy at another node.
   want_key="${PROVISA_EMAIL_API_KEY:-$(sed -n 's/^PROVISA_EMAIL_API_KEY=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
   if [ -z "$want_key" ]; then
     echo "PROVISA_EMAIL_API_KEY is not set (repo .env), so this node would accept invitations" >&2

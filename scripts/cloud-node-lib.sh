@@ -292,7 +292,7 @@ ENV_FILE="/root/.provisa/provisa.env"
 #
 # The provider key is the same shape of problem and gets the same treatment. It is not something an
 # operator types into Admin -> Email either: this deployment sends through one Resend account, whose
-# key lives in the repo .env beside the access token verify_engine already reads from there.
+# key lives in the repo .env.
 # A node whose key is empty creates invitations it cannot send, which is the failure this closes.
 # The key's VALUE is never printed — only whether it changed.
 set_node_env() {
@@ -458,13 +458,6 @@ verify_api() {
   return 1
 }
 
-# The end-to-end signal for this topology: /health only proves the app started, and the app starts
-# whether or not it can reach a shard. A query is what wakes the shard, re-establishes the shared
-# terminal on the coordinator that answers (REQ-1448), and therefore proves the whole path — control
-# plane, GKE provisioner, Trino shard — is live. It runs against the public site as an org_admin of
-# the bootstrap org, by that administrator's personal access token (REQ-1263: a PAT is accepted
-# beside the IdP on every surface) from the repo .env, which is where it lives (REQ-1264); a query
-# that has to cold-start a shard takes north of a minute, so the timeout is generous by design.
 # REQ-1562: the env keys preflight_commerce asserts are only half of what signup needs -- the OTHER
 # half is the plugin that reads them. provisa.core.commerce imports provisa_commercial inside a try
 # and every hook no-ops when it fails, which is right for a self-hosted install and wrong for this
@@ -504,36 +497,25 @@ verify_org_base() {
   echo "   VITE_ORG_BASE_DOMAIN=$have"
 }
 
+# The end-to-end signal for this topology: /health only proves the app started, and the app starts
+# whether or not it can reach a shard. A query is what wakes the shard and proves the path from the
+# control plane through the GKE provisioner to the Trino shard is live. verify_engine needs no
+# account: a release deploy resets the control plane to zero accounts, so no user exists to ask
+# the site as. It runs scripts/cloud_engine_probe.py inside the API container instead, which
+# resolves, wakes and dials the engine through the app's own code and proves by the coordinator's
+# id that the pinned engine answered (see the probe's docstring). One check serves every arm.
 verify_engine() {
   echo "== verifying the engine path (cold start may take ~90s)"
-  # Read the one key rather than sourcing .env: .env also carries names this script uses
-  # (PROJECT, ZONE), and sourcing it would silently redirect the deploy at another node. The value
-  # goes to curl through a header file (-H @file), never the command line, so it stays out of the
-  # process table.
-  local pat
-  pat="${PROVISA_CLOUD_ORG_ADMIN_PAT:-$(sed -n 's/^PROVISA_CLOUD_ORG_ADMIN_PAT=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
-  if [ -z "$pat" ]; then
-    echo "PROVISA_CLOUD_ORG_ADMIN_PAT is not set (repo .env), so the engine path cannot be" >&2
-    echo "exercised. Issue a personal access token as an org_admin of the bootstrap org" >&2
-    echo "(scope org_admin), set it and re-run." >&2
+  # The probe runs in the API container as python's stdin, sent base64 so its text needs no
+  # quoting through the two shells. It prints the engine, shard, coordinator and query id that
+  # answered.
+  local probe answer
+  probe="$(base64 <"$REPO/scripts/cloud_engine_probe.py" | tr -d '\n')"
+  answer="$(ssh_node "echo $probe | base64 -d | sudo docker exec -i $API_CONTAINER python - $ENGINE_PIN" | tr -d '\r')" || {
+    echo "the engine probe in $API_CONTAINER failed${answer:+: $answer}" >&2
     exit 1
-  fi
-  local headers
-  headers="$(mktemp)"
-  chmod 600 "$headers"
-  printf 'Authorization: Bearer %s\n' "$pat" >"$headers"
-  # The control-plane host names no org, so the probe names the bootstrap org, the one the token
-  # belongs to.
-  local body boot
-  boot="$(ssh_node "sudo docker exec $API_CONTAINER sh -c 'echo \${ORG_ID:-default}'" | tr -d '\r')"
-  body="$(curl -s --max-time 240 -H @"$headers" -H "x-org-provisa: $boot" \
-    -H 'Content-Type: application/json' -d '{"sql":"SELECT 1 AS ok"}' "$SITE/data/sql")" || {
-      rm -f "$headers"; echo "the engine query never returned" >&2; exit 1; }
-  rm -f "$headers"
-  case "$body" in
-    *'"ok":1'*) echo "$SITE/data/sql -> $body" ;;
-    *) echo "$SITE/data/sql -> $body" >&2; exit 1 ;;
-  esac
+  }
+  echo "   $answer"
 }
 
 # The sandbox tier's own VM (terraform/gcp-saas/sandbox.tf, var.sandbox_vm), when the deployment
