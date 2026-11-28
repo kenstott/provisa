@@ -752,6 +752,8 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
     } else {
         links(&mut out, a, has_next);
     }
+    // JSON:API 1.1 (JSON:API Object): the version of the specification the document follows.
+    out.extend_from_slice(b",\"jsonapi\":{\"version\":\"1.1\"}");
     out.push(b'}');
     Ok((out, truncated))
 }

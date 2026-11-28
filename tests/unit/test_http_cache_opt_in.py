@@ -188,10 +188,12 @@ class _Recorded:
 
 
 _PATHS = {
-    "rest": ("/data/rest/sales/orders", {"X-Provisa-Role": "admin"}),
+    "rest": ("/data/rest/sales/orders", {"X-Provisa-Role": "admin"}, {"limit": "2"}),
+    # JSON:API 1.1: its page size is page[size]; an unknown all-lowercase parameter is a 400
     "jsonapi": (
         "/data/jsonapi/sales/orders",
         {"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
+        {"page[size]": "2"},
     ),
 }
 
@@ -208,8 +210,8 @@ _PATHS = {
 )
 async def test_rest_and_jsonapi_carry_the_headers_opt_in(surface, monkeypatch, kind, sent, hint):
     recorded = _Recorded(monkeypatch, surface)
-    path, headers = _PATHS[kind]
-    resp = await surface.client.get(path, params={"limit": "2"}, headers={**headers, **sent})
+    path, headers, params = _PATHS[kind]
+    resp = await surface.client.get(path, params=params, headers={**headers, **sent})
     assert resp.status_code == 200, resp.text
     assert [(k["cache_hint"], k["serve_cached"]) for k in recorded.kwargs] == [(hint, True)]
     assert resp.headers["X-Provisa-Cache"] == "MISS"
@@ -219,7 +221,7 @@ async def test_rest_and_jsonapi_carry_the_headers_opt_in(surface, monkeypatch, k
 @pytest.mark.parametrize("kind", list(_PATHS))
 async def test_rest_and_jsonapi_report_a_hit_and_its_age(surface, monkeypatch, kind):
     _Recorded(monkeypatch, surface, hit=_stored(11))
-    path, headers = _PATHS[kind]
+    path, headers, _params = _PATHS[kind]
     resp = await surface.client.get(path, headers={**headers, "Cache-Control": "max-age=60"})
     assert resp.status_code == 200, resp.text
     assert resp.headers["X-Provisa-Cache"] == "HIT"
@@ -230,7 +232,7 @@ async def test_rest_and_jsonapi_report_a_hit_and_its_age(surface, monkeypatch, k
 @pytest.mark.parametrize("kind", list(_PATHS))
 async def test_rest_and_jsonapi_refuse_forms_that_disagree(surface, monkeypatch, kind):
     recorded = _Recorded(monkeypatch, surface)
-    path, headers = _PATHS[kind]
+    path, headers, _params = _PATHS[kind]
     sent = {"x-provisa-cache-ttl": "10", "Cache-Control": "max-age=20"}
     resp = await surface.client.get(path, headers={**headers, **sent})
     assert resp.status_code == 400
