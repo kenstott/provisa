@@ -40,6 +40,7 @@ describe("useMcpChat current_route", () => {
           presentChoice: vi.fn(),
           runAdminMutation: vi.fn(),
           chooseFile: vi.fn(),
+          changed: vi.fn(),
         },
         "/admin/ai-models",
       ),
@@ -68,6 +69,7 @@ describe("useMcpChat current_route", () => {
         presentChoice: vi.fn(),
         runAdminMutation: vi.fn(),
         chooseFile: vi.fn(),
+        changed: vi.fn(),
       }),
     );
 
@@ -108,6 +110,7 @@ describe("useMcpChat streaming text accumulation", () => {
         presentChoice: vi.fn(),
         runAdminMutation: vi.fn(),
         chooseFile: vi.fn(),
+        changed: vi.fn(),
       }),
     );
 

@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "../../test-utils/render";
+import { fireEvent, render, screen, waitFor } from "../../test-utils/render";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 // REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
 // their own tests (productCore.test.ts).
@@ -132,7 +133,7 @@ const products = [
     name: "Workforce Ops",
     status: "draft",
     owners: [],
-    namedOwners: [],
+    namedOwners: [{ principal: "ops-lead@example.com" }],
     purpose: "Shelter staffing",
     limitations: "",
     usage: "",
@@ -278,5 +279,26 @@ describe("the Data Products list's sync status", () => {
   it("reads the status once with the list", async () => {
     render(<DataProductsPage />);
     await waitFor(() => expect(syncRead.fetchProductSyncStatus).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("the Data Products list's filter", () => {
+  it("finds each product by every text its row shows", async () => {
+    render(<DataProductsPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("data-products-sync-pet_health")).toHaveTextContent("1 failed"),
+    );
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("data-products-table"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<DataProductsPage />);
+    await screen.findByTestId("data-products-row-pet_health");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-product" } });
+    expect(await screen.findByTestId("data-products-empty")).toHaveTextContent(
+      "No data products match the filters",
+    );
   });
 });

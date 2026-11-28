@@ -13,7 +13,7 @@
 // words the document no longer holds flagged; and who reads it. Only the library-editing right
 // sees the actions and the readers form.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -51,7 +51,8 @@ import { PanelActions } from "../../components/list/SplitPane";
 import { TagControl } from "../../components/TagControl";
 import { objectHref, objectName } from "../../components/tagObjectLink";
 import { detailHref } from "../../components/list/useDetailParam";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { sectionMark } from "../../lib/entityHref";
 import { Tip } from "../../components/Tip";
 import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadges";
 import { ACCEPT, useReaderOptions, when } from "./libraryParts";
@@ -75,6 +76,22 @@ function SectionsTab({
   detail: LibraryDocumentDetail | null;
 }) {
   const { t } = useTranslation();
+  // REQ-2208: a link to a section (entityHref's ``section``) names it as ``at``: its first
+  // passage is marked and brought into view.
+  const [params] = useSearchParams();
+  const at = params.get("at");
+  const marked = useRef<HTMLDivElement | null>(null);
+  const atIndex =
+    at === null || detail === null
+      ? -1
+      : detail.passage_list.findIndex(
+          (p, i) =>
+            opensSection(detail.passage_list, i) &&
+            sectionMark(p.section || null, p.section ? null : p.page) === at,
+        );
+  useEffect(() => {
+    if (atIndex >= 0) marked.current?.scrollIntoView({ block: "center" });
+  }, [atIndex]);
   if (doc.index_status !== "ready") {
     return (
       <Text size="sm" c="dimmed" data-testid="reflib-not-indexed">
@@ -92,7 +109,20 @@ function SectionsTab({
   return (
     <Stack gap="xs" data-testid="reflib-passages">
       {detail.passage_list.map((p, i) => (
-        <div key={p.ordinal} className="reflib-passage">
+        <div
+          key={p.ordinal}
+          className="reflib-passage"
+          ref={i === atIndex ? marked : undefined}
+          style={
+            i === atIndex
+              ? {
+                  borderLeft: "3px solid var(--mantine-primary-color-filled)",
+                  paddingLeft: "var(--mantine-spacing-xs)",
+                }
+              : undefined
+          }
+          data-testid={i === atIndex ? "reflib-section-at" : undefined}
+        >
           <Group gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed">
               {[p.section, p.page !== null ? t("referenceLibrary.page", { page: p.page }) : null]
@@ -345,11 +375,16 @@ function ReadersTab({
 export function LibraryDetail({
   doc,
   canEdit,
+  tab,
+  onTab,
   onChanged,
   onRemoved,
 }: {
   doc: LibraryDocument;
   canEdit: boolean;
+  /** The tab shown, as the address names it (useDetailParam): a link opens a section's tab. */
+  tab: string;
+  onTab: (tab: string) => void;
   onChanged: (d: LibraryDocument) => void;
   onRemoved: (id: number) => void;
 }) {
@@ -500,7 +535,7 @@ export function LibraryDetail({
           {error}
         </Alert>
       )}
-      <Tabs defaultValue="overview" keepMounted={false}>
+      <Tabs value={tab} onChange={(next) => next !== null && onTab(next)} keepMounted={false}>
         <Tabs.List aria-label={t("referenceLibrary.detailPanel")}>
           <Tabs.Tab value="overview" data-testid="reflib-tab-overview">
             {t("referenceLibrary.tabOverview")}

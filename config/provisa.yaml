@@ -1276,6 +1276,7 @@ tables:
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - pet_analyst
     - data_steward
@@ -1326,6 +1327,7 @@ tables:
   - description: Employee the shift belongs to
     name: employee_id
     data_type: integer
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - pet_analyst
     - data_steward
@@ -1450,9 +1452,10 @@ functions:
         active:
           type: boolean
 - name: enrich_grpc_set
-  description: "Demo gRPC command that ENRICHES an input relation \u2014 materializes\
-    \ the referenced result_set, sends its rows to the service, returns each row plus\
-    \ a deterministic embedding + geo marker (REQ-885)"
+  description: "Demo gRPC command that enriches an input relation \u2014 materializes\
+    \ the referenced result_set (id, region), sends its rows to the service, and returns\
+    \ only its declared output columns: id, a deterministic embedding and a geo marker\
+    \ (REQ-885)"
   domain_id: pet-store
   kind: query
   impl_kind: grpc

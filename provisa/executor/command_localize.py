@@ -163,8 +163,12 @@ def _output_spec(command: dict, rows: list[dict]) -> tuple[list[str], dict[str, 
         )
     declared = command.get("output_columns")
     if declared:
-        cols = [c["name"] for c in declared]
-        types = {c["name"]: c.get("type") for c in declared}
+        # REQ-1159 (amended 2026-11-25): the governed rows carry each column under the name
+        # consumers query it by.
+        from provisa.core.models import queried_name
+
+        cols = [queried_name(c) for c in declared]
+        types = {queried_name(c): c.get("type") for c in declared}
         return cols, types
     if rows:
         return list(rows[0].keys()), {}

@@ -168,7 +168,7 @@ describe("DataSciencePage", () => {
     expect(await screen.findByTestId("data-science-error")).toHaveTextContent("NameError");
   });
 
-  it("splits editor (left) and output (right), the rule moved from the keyboard within bounds", async () => {
+  it("stacks the editor above the output, the divider moved from the keyboard within bounds", async () => {
     serve(
       new Response(JSON.stringify(MANIFEST), { headers: { "content-type": "application/json" } }),
     );
@@ -176,13 +176,31 @@ describe("DataSciencePage", () => {
     page(make);
     await waitFor(() => expect(sent).toHaveLength(1));
     reply({ type: "ready" });
-    const rule = await screen.findByTestId("data-science-split");
-    expect(rule).toHaveAttribute("aria-orientation", "vertical");
-    expect(rule).toHaveAttribute("aria-valuenow", "45");
-    fireEvent.keyDown(rule, { key: "ArrowRight" });
-    expect(rule).toHaveAttribute("aria-valuenow", "50");
-    for (let i = 0; i < 20; i++) fireEvent.keyDown(rule, { key: "ArrowLeft" });
-    expect(rule).toHaveAttribute("aria-valuenow", "15");
+    // REQ-2277: the splitter every Explore surface uses, between the editor and its results.
+    const rule = await screen.findByTestId("data-science-stack-handle");
+    expect(rule).toHaveAttribute("aria-orientation", "horizontal");
+    const editor = rule.previousElementSibling as HTMLElement;
+    const output = rule.nextElementSibling as HTMLElement;
+    expect(editor).toContainElement(screen.getByTestId("data-science-editor-controls"));
+    expect(output).toContainElement(screen.getByTestId("data-science-output-pane"));
+    expect(editor.style.height).toBe("320px");
+    // jsdom lays nothing out: the heights the drag reads are given here.
+    Object.defineProperty(rule.parentElement!, "clientHeight", { configurable: true, value: 800 });
+    const shown = { value: 320 };
+    Object.defineProperty(editor, "offsetHeight", { configurable: true, get: () => shown.value });
+    fireEvent.keyDown(rule, { key: "ArrowUp" });
+    expect(editor.style.height).toBe("288px");
+    // Down to the editor's least, up to all but the results' least (800 - 120).
+    for (let i = 0; i < 20; i++) {
+      shown.value = parseInt(editor.style.height, 10);
+      fireEvent.keyDown(rule, { key: "ArrowUp" });
+    }
+    expect(editor.style.height).toBe("140px");
+    for (let i = 0; i < 30; i++) {
+      shown.value = parseInt(editor.style.height, 10);
+      fireEvent.keyDown(rule, { key: "ArrowDown" });
+    }
+    expect(editor.style.height).toBe("680px");
   });
 
   it("runs code it is handed once Python is ready, and reports the run under its id", async () => {

@@ -1895,29 +1895,24 @@ def _graphql_remote_registration(
 
 
 def _graphql_remote_request(gql_sources: dict[str, Any], source: Any, table: Any) -> dict:
-    """The remote call for ``table``: url, auth, field name and column selections."""
-    from provisa.compiler.naming import apply_gql_name, apply_sql_name
-    from provisa.graphql_remote.executor import NO_POLICY
+    """The remote call for ``table``: url, auth, field name and column selections. The columns
+    are the registration's as the process holds them (the endpoint's schema, when the source was
+    read from its endpoint) with every column the model registers for ``table``, each read
+    through its ``gql_selection`` where it has one (``executor.column_selection``)."""
+    from provisa.core.parameters import is_parameter
+    from provisa.graphql_remote.executor import NO_POLICY, column_selection, with_registered_columns
 
     reg, tbl = _graphql_remote_registration(gql_sources, source, table)
-
-    # The store lands under the semantic sql name; the remote keys the field by its GraphQL
-    # name. Both derive from the naming authority. When they differ, emit a GraphQL alias
-    # ``<sql_name>: <gqlField>`` so the outbound field matches the remote AND the response comes
-    # back keyed by the sql name the store expects; when they coincide, the bare field.
-    # gql_selection (nested object path) still wins.
-    def _selection(c: dict) -> str:
-        if c.get("gql_selection"):
-            return c["gql_selection"]
-        sql_name = apply_sql_name(c["name"])
-        gql_field = apply_gql_name(c["name"])
-        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
+    columns = with_registered_columns(
+        list(tbl.get("columns", [])),
+        [(c.name, c.data_type, c.gql_selection) for c in table.columns if not is_parameter(c)],
+    )
 
     return {
         "url": reg["url"],
         "auth": reg.get("auth"),
         "field_name": tbl.get("field_name") or tbl["name"],
-        "columns": [_selection(c) for c in tbl.get("columns", [])],
+        "columns": [column_selection(c) for c in columns],
         "rows_path": tbl.get("rows_path"),
         "error_policy": reg.get("error_policy") or NO_POLICY,
         # REQ-2061: the table's fixed arguments, sent on every read of it.

@@ -17,17 +17,23 @@ export function QueryPreviewRows({
   rows,
   columns,
   sourceType,
+  title,
 }: {
   rows: Record<string, unknown>[];
   columns: { name: string }[];
   sourceType: string;
+  /** Heading above the rows; null shows none (a sample carries no row count). Default: the
+   * preview heading with its row count. */
+  title?: string | null;
 }) {
   const { t } = useTranslation();
   return (
     <Stack gap="xs">
-      <Text fw={600} fz="sm">
-        {t("registerTableForm.neo4jPreviewRows", { count: rows.length })}
-      </Text>
+      {title !== null && (
+        <Text fw={600} fz="sm">
+          {title ?? t("registerTableForm.neo4jPreviewRows", { count: rows.length })}
+        </Text>
+      )}
       <Table.ScrollContainer minWidth={400}>
         <Table striped withTableBorder verticalSpacing="xs" fz="xs">
           <Table.Thead>

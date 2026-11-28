@@ -40,6 +40,9 @@ import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../components/list/leftOut";
+import { useUrlFilter } from "../components/list/useUrlFilter";
+import { FilterInput } from "../components/admin/FilterInput";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -271,7 +274,38 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
   // REQ-2241: `?metric=<name>` is the open metric's panel.
   // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail("metrics", loading ? null : metrics.map((m) => m.name));
+  // REQ-2277: the list's filter, in the URL. REQ-2277 rule 9: a metric is open only while the
+  // list, under it, shows its row.
+  const [search, setSearch] = useUrlFilter();
+  const searchNarrowed = useMemo(
+    () =>
+      searchNarrowing<Metric>(
+        t,
+        search,
+        () => setSearch(""),
+        // Every text a metric's row shows, and the glossary term it names.
+        (m) => [
+          m.name,
+          m.fromFact ? t("metricsPage.fromFact") : "",
+          m.expression,
+          m.datatype,
+          m.description,
+          m.aiContext,
+          m.term,
+        ],
+      ),
+    [t, search, setSearch],
+  );
+  const detail = useRememberedDetail(
+    "metrics",
+    detailListOf(
+      t,
+      loading ? null : metrics,
+      (m) => m.name,
+      (m) => m.name,
+      [searchNarrowed],
+    ),
+  );
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
@@ -437,9 +471,10 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
     ],
     [t],
   );
-  const sortGroup = useListSortGroup(metrics, metricColumns, "metrics");
+  const shownMetrics = useMemo(() => shownBy(metrics, [searchNarrowed]), [metrics, searchNarrowed]);
+  const sortGroup = useListSortGroup(shownMetrics, metricColumns, "metrics");
   // REQ-2240: metrics selected and deleted together.
-  const shownMetricNames = useMemo(() => metrics.map((m) => m.name), [metrics]);
+  const shownMetricNames = useMemo(() => shownMetrics.map((m) => m.name), [shownMetrics]);
   const selection = useListSelection(shownMetricNames);
   const deleteMetrics = useDeleteMetrics();
 
@@ -476,15 +511,19 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     // The list and its panel share the height the heading leaves; each scrolls by itself.
-    <div className="page-sticky-head" style={{ padding: "1rem 1.25rem" }}>
-      <Group justify="space-between" mb="md">
-        <PageTitle icon={Gauge} order={3}>
-          {t("metricsPage.title")}
-        </PageTitle>
-        <Group gap="xs">
+    <div className="page page-sticky-head">
+      <div className="page-header">
+        <PageTitle icon={Gauge}>{t("metricsPage.title")}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("metricsPage.filterPlaceholder")}
+          testId="metrics-filter"
+        />
+        <div className="page-actions">
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
           {!readOnly && !creating && editingName === null && (
-            <Button size="xs" onClick={openCreate} data-testid="metrics-new-button">
+            <Button onClick={openCreate} data-testid="metrics-new-button">
               {t("metricsPage.newMetric")}
             </Button>
           )}
@@ -494,8 +533,8 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
             ariaLabel={t("metricsPage.purposeAria")}
             testId="metrics-purpose-help"
           />
-        </Group>
-      </Group>
+        </div>
+      </div>
 
       {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}
       {/* An import under review can be long: it scrolls in its own box, the list keeps its place. */}
@@ -520,6 +559,7 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
         <PageLoading message={t("metricsPage.loading")} />
       ) : (
         <SplitPane
+          outOfList={detail.outOfList}
           testId="metrics-split"
           storageKey="provisa.metrics.detailWidth"
           title={panelTitle}
@@ -556,9 +596,10 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
                   ]}
                 />
                 <Table.Tbody>
-                  {metrics.length === 0 && (
+                  {shownMetrics.length === 0 && (
                     <ListEmpty colSpan={5} testId="metrics-empty">
-                      {t("metricsPage.empty")}
+                      {/* A list a filter emptied says so, never that nothing is registered. */}
+                      {metrics.length === 0 ? t("metricsPage.empty") : t("metricsPage.noMatch")}
                     </ListEmpty>
                   )}
                   <ListItems

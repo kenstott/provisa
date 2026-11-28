@@ -10,6 +10,7 @@
 
 import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
+import { CommandQueryLinks } from "../components/commands/CommandQueryLinks";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -23,7 +24,6 @@ import {
   Select,
   Stack,
   Table,
-  Text,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -38,7 +38,6 @@ import {
   saveWebhook,
   deleteFunction,
   deleteWebhook,
-  testAction,
 } from "../api/actions";
 import type { TrackedFunction, TrackedWebhook } from "../api/actions";
 import {
@@ -55,8 +54,14 @@ import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { commandId, readCommandId, useRememberedDetail } from "../components/list/useDetailParam";
-import { PanelWorking } from "./sources/PanelWorking";
+import {
+  detailListOf,
+  domainNarrowing,
+  searchNarrowing,
+  shownBy,
+} from "../components/list/leftOut";
 import { TagControl } from "../components/TagControl";
+import { entityName } from "../components/entityName";
 import type { ActionType, FormState } from "./commands/types";
 import {
   EMPTY_FORM,
@@ -71,12 +76,22 @@ import {
   CommandBindingsRead,
   CommandSectionTabs,
 } from "./commands/CommandBindings";
+import { CommandColumnsFields, CommandColumnsRead } from "./commands/CommandColumns";
 import type { CommandSection } from "./commands/bindingLanguages";
 import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
-import { matchesQuery } from "../lib/searchItems";
+
+/** A function's or a webhook's row, as the list's narrowings read it. */
+interface CommandRow {
+  /** Its `commands` id (commandId). */
+  id: string;
+  name: string;
+  domainId: string | null | undefined;
+  /** Every text its row shows. */
+  texts: (string | null | undefined)[];
+}
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -84,9 +99,9 @@ export function CommandsPage() {
   const { tables } = useTables();
   const { domains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634: command <-> data product picker
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, ensureDomainChecked } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, actingRoles } = useAuth();
   // REQ-1327: authoring a command asks table_registration; a role holding only command_execution
   // is shown the read-only list of the commands assigned to it.
   const mayAuthor = useCapability("table_registration");
@@ -95,7 +110,6 @@ export function CommandsPage() {
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [testRoleId, setTestRoleId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -104,21 +118,74 @@ export function CommandsPage() {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [editingName, setEditingName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
   // REQ-2241: `?command=` is the open command's panel -- a lineage edge links to the command it
   // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
   // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
   // REQ-2260: and the one left open is open again on coming back.
+  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
+  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
+  // REQ-2277 rule 9: a command is open only while the list -- the domains in view, the search --
+  // shows its row.
+  // Every text a command's row shows, which the filter searches; the rows below draw the same.
+  const functionRowTexts = (fn: TrackedFunction) => [
+    fn.name,
+    fn.sourceId,
+    fn.domainId,
+    `${fn.schemaName}.${fn.functionName}`,
+    fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : ""),
+    String(fn.arguments.length),
+    fn.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
+  const webhookRowTexts = (wh: TrackedWebhook) => [
+    wh.name,
+    wh.approved === false ? t("commandsPage.statusPending") : t("commandsPage.statusApproved"),
+    wh.domainId,
+    wh.url,
+    wh.method,
+    `${wh.timeoutMs}ms`,
+    wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length }),
+    String(wh.arguments.length),
+    wh.visibleTo.join(", ") || t("commandsPage.all"),
+  ];
+  const commandRows: CommandRow[] = [
+    ...functions.map((f) => ({
+      id: commandId("function", f.name),
+      name: f.name,
+      domainId: f.domainId,
+      texts: functionRowTexts(f),
+    })),
+    ...webhooks.map((w) => ({
+      id: commandId("webhook", w.name),
+      name: w.name,
+      domainId: w.domainId,
+      texts: webhookRowTexts(w),
+    })),
+  ];
+  const commandNarrowings = [
+    domainNarrowing<CommandRow>(
+      t,
+      checkedDomains.size > 0 ? checkedDomains : null,
+      ensureDomainChecked,
+      (c) => (c.domainId ? [c.domainId] : []),
+    ),
+    searchNarrowing<CommandRow>(
+      t,
+      cmdSearch,
+      () => setCmdSearch(""),
+      (c) => c.texts,
+    ),
+  ];
+  const shownCommands = new Set(shownBy(commandRows, commandNarrowings).map((c) => c.id));
   const detail = useRememberedDetail(
     "commands",
-    loading
-      ? null
-      : [
-          ...functions.map((f) => commandId("function", f.name)),
-          ...webhooks.map((w) => commandId("webhook", w.name)),
-        ],
+    detailListOf(
+      t,
+      loading ? null : commandRows,
+      (c) => c.id,
+      (c) => c.name,
+      commandNarrowings,
+    ),
   );
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
@@ -361,20 +428,6 @@ export function CommandsPage() {
     }
   };
 
-  const handleTest = async (actionType: ActionType, name: string) => {
-    setTesting(name);
-    setTestResult(null);
-    setError("");
-    try {
-      const result = await testAction(actionType, name, testRoleId);
-      setTestResult({ name, data: result });
-    } catch (e) {
-      setError(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setTesting(null);
-    }
-  };
-
   const handleCancel = () => {
     setShowForm(false);
     setForm({ ...EMPTY_FORM });
@@ -392,18 +445,13 @@ export function CommandsPage() {
     roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
-  // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
-  // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.
-  const inCheckedDomain = (domainId: string | null | undefined) =>
-    !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
-
-  const filteredFunctions = functions.filter(
-    (fn) => inCheckedDomain(fn.domainId) && matchesQuery([fn.name], cmdSearch),
+  const filteredFunctions = functions.filter((fn) =>
+    shownCommands.has(commandId("function", fn.name)),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
 
-  const filteredWebhooks = webhooks.filter(
-    (wh) => inCheckedDomain(wh.domainId) && matchesQuery([wh.name], cmdSearch),
+  const filteredWebhooks = webhooks.filter((wh) =>
+    shownCommands.has(commandId("webhook", wh.name)),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
 
@@ -484,267 +532,202 @@ export function CommandsPage() {
   const fnSortGroup = useListSortGroup(filteredFunctions, fnColumns, "commands-fn");
   const whSortGroup = useListSortGroup(filteredWebhooks, whColumns, "commands-wh");
 
-  // What the right-hand panel shows: the result of a test run (with a way back to the command),
-  // the short step that creates a command, or the selected command -- being edited, or read.
+  // What the right-hand panel shows: the short step that creates a command, or the selected
+  // command -- being edited, or read. A command is run through its Query it line (REQ-1159,
+  // amended 2026-11-27).
   const selectedFn =
     opened?.kind === "function" ? (functions.find((f) => f.name === opened.name) ?? null) : null;
   const selectedWh =
     opened?.kind === "webhook" ? (webhooks.find((w) => w.name === opened.name) ?? null) : null;
-  // Whom a test run is made as: chosen where the run is started, in the command's own panel.
-  const testAs = (
-    <Group gap="sm" align="center" mt="sm">
-      <Text size="sm" c="dimmed">
-        {t("commandsPage.testAsRole")}
-      </Text>
-      <FormLayout>
-        <FormField size="medium">
-          <Select
-            aria-label={t("commandsPage.testAsRole")}
-            size="xs"
-            data={roles.map((r) => ({ value: r.id, label: r.id }))}
-            value={testRoleId || null}
-            onChange={(v) => setTestRoleId(v ?? "")}
-            allowDeselect={false}
-          />
-        </FormField>
-      </FormLayout>
-    </Group>
-  );
-  const panelBody: React.ReactNode = testResult ? (
-    <PanelWorking
-      back={t("commandsPage.backToCommand")}
-      onBack={() => setTestResult(null)}
-      testId="commands-test-back"
-    >
-      <Title order={5} data-testid="commands-test-result">
-        {t("commandsPage.testResultHeading", { name: testResult.name })}
-      </Title>
-      <>
-        {!!(
-          testResult.data &&
-          typeof testResult.data === "object" &&
-          "enforcement" in testResult.data
-        ) && (
-          <Alert color="blue" mb="sm" title={t("commandsPage.governanceApplied")}>
-            <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
-              {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
-            </pre>
-          </Alert>
-        )}
-        <pre style={{ fontSize: "0.85rem", overflow: "auto", maxHeight: "60vh" }}>
-          {JSON.stringify(
-            testResult.data && typeof testResult.data === "object" && "rows" in testResult.data
-              ? (testResult.data as Record<string, unknown>).rows
-              : testResult.data,
-            null,
-            2,
-          )}
-        </pre>
-      </>
-    </PanelWorking>
-  ) : showForm && !editingName ? (
-    <Card component="form" id="commands-form" withBorder onSubmit={handleSave}>
-      <Stack gap="sm">
-        <FormLayout>
-          <FormIdentifiers>
+  const panelBody: React.ReactNode =
+    showForm && !editingName ? (
+      <Card component="form" id="commands-form" withBorder onSubmit={handleSave}>
+        <Stack gap="sm">
+          <FormLayout>
+            <FormIdentifiers>
+              <FormField size="medium">
+                <TextInput
+                  label={t("commandsPage.nameLabel")}
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={t("commandsPage.namePlaceholder")}
+                />
+              </FormField>
+            </FormIdentifiers>
             <FormField size="medium">
-              <TextInput
-                label={t("commandsPage.nameLabel")}
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder={t("commandsPage.namePlaceholder")}
+              <Select
+                label={t("commandsPage.typeLabel")}
+                data={[
+                  { value: "function", label: t("commandsPage.typeFunction") },
+                  { value: "webhook", label: t("commandsPage.typeWebhook") },
+                ]}
+                value={form.actionType}
+                onChange={(v) =>
+                  setForm({ ...EMPTY_FORM, actionType: (v ?? "function") as ActionType })
+                }
+                allowDeselect={false}
               />
             </FormField>
-          </FormIdentifiers>
-          <FormField size="medium">
-            <Select
-              label={t("commandsPage.typeLabel")}
-              data={[
-                { value: "function", label: t("commandsPage.typeFunction") },
-                { value: "webhook", label: t("commandsPage.typeWebhook") },
-              ]}
-              value={form.actionType}
-              onChange={(v) =>
-                setForm({ ...EMPTY_FORM, actionType: (v ?? "function") as ActionType })
-              }
-              allowDeselect={false}
-            />
-          </FormField>
-        </FormLayout>
-        {/* Only what a command needs in order to exist; the rest is set in the edit form
+          </FormLayout>
+          {/* Only what a command needs in order to exist; the rest is set in the edit form
             the new command opens in. */}
-        <CommandFormFields {...formFieldsProps} essential />
-        <FormFooter
-          panel
-          submit
-          form="commands-form"
-          saving={saving}
-          onCancel={handleCancel}
-          saveProps={{ "data-testid": "commands-save" }}
-        />
-      </Stack>
-    </Card>
-  ) : selectedFn ? (
-    ((fn: TrackedFunction) =>
-      editingName === fn.name ? (
-        <Stack component="form" id="commands-form" gap="sm" onSubmit={handleSave}>
-          <CommandSectionTabs value={fnSection} onChange={setFnSection} />
-          {fnSection === "bindings" ? (
-            <CommandBindingsFields
-              name={form.name}
-              bindings={form.languageBindings}
-              onChange={(languageBindings) => setForm({ ...form, languageBindings })}
-            />
-          ) : (
-            <CommandFormFields {...formFieldsProps} />
-          )}
-          <FormFooter panel submit form="commands-form" saving={saving} onCancel={handleCancel} />
+          <CommandFormFields {...formFieldsProps} essential />
+          <FormFooter
+            panel
+            submit
+            form="commands-form"
+            saving={saving}
+            onCancel={handleCancel}
+            saveProps={{ "data-testid": "commands-save" }}
+          />
         </Stack>
-      ) : (
-        <>
-          <Stack gap="sm">
+      </Card>
+    ) : selectedFn ? (
+      ((fn: TrackedFunction) =>
+        editingName === fn.name ? (
+          <Stack component="form" id="commands-form" gap="sm" onSubmit={handleSave}>
             <CommandSectionTabs value={fnSection} onChange={setFnSection} />
             {fnSection === "bindings" ? (
-              <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
-            ) : (
-              <FunctionRead
-                fn={fn}
-                productNames={(fn.productIds ?? []).map(
-                  (id) => dataProducts.find((dp) => dp.id === id)?.name ?? id,
-                )}
+              <CommandBindingsFields
+                name={form.name}
+                bindings={form.languageBindings}
+                onChange={(languageBindings) => setForm({ ...form, languageBindings })}
               />
+            ) : fnSection === "columns" ? (
+              <CommandColumnsFields
+                columns={form.outputColumns}
+                onChange={(outputColumns) => setForm({ ...form, outputColumns })}
+                roleOptions={formFieldsProps.roleOptions}
+              />
+            ) : (
+              <CommandFormFields {...formFieldsProps} />
             )}
-            <PanelActions>
-              <Group gap="sm" wrap="nowrap">
-                {mayAuthor && (
-                  <ActionIcon
-                    aria-label={t("commandsPage.editAria", { name: fn.name })}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit("function", fn.name);
-                    }}
-                  >
-                    <Pencil size={14} />
-                  </ActionIcon>
-                )}
-                {mayAuthor && (
-                  <PanelDuplicate
-                    name={fn.name}
-                    onDuplicate={() => handleDuplicate("function", fn.name)}
-                    testId="command-duplicate-fn"
-                  />
-                )}
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleTest("function", fn.name);
-                  }}
-                  disabled={testing === fn.name}
-                  loading={testing === fn.name}
-                >
-                  {testing === fn.name
-                    ? t("commandsPage.testingButton")
-                    : t("commandsPage.testButton")}
-                </Button>
-                {/* REQ-2198: resolves once the list is read again without it. */}
-                {mayAuthor && (
-                  <PanelDelete
-                    itemKey={`fn:${fn.name}`}
-                    title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
-                    consequence={t("commandsPage.deleteFunctionConsequence")}
-                    ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
-                    testId={`command-delete-fn-${fn.name}`}
-                    onDelete={async () => {
-                      await deleteFunction(fn.name);
-                      await load();
-                      detail.close({ only: commandId("function", fn.name) });
-                    }}
-                  />
-                )}
-              </Group>
-            </PanelActions>
+            <FormFooter panel submit form="commands-form" saving={saving} onCancel={handleCancel} />
           </Stack>
-          {testAs}
-        </>
-      ))(selectedFn)
-  ) : selectedWh ? (
-    ((wh: TrackedWebhook) =>
-      editingName === wh.name ? (
-        <Stack component="form" id="commands-form" gap="sm" onSubmit={handleSave}>
-          <CommandFormFields {...formFieldsProps} />
-          <FormFooter panel submit form="commands-form" saving={saving} onCancel={handleCancel} />
-        </Stack>
-      ) : (
-        <>
-          <Stack gap="sm">
-            {wh.approved === false && (
-              <Alert color="yellow" data-testid={`webhook-pending-${wh.name}`}>
-                {t("commandsPage.webhookPendingHint")}
-              </Alert>
-            )}
-            <WebhookRead wh={wh} />
-            <PanelActions>
-              <Group gap="sm" wrap="nowrap">
-                {mayAuthor && (
-                  <ActionIcon
-                    aria-label={t("commandsPage.editAria", { name: wh.name })}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEdit("webhook", wh.name);
-                    }}
-                  >
-                    <Pencil size={14} />
-                  </ActionIcon>
-                )}
-                {mayAuthor && (
-                  <PanelDuplicate
-                    name={wh.name}
-                    onDuplicate={() => handleDuplicate("webhook", wh.name)}
-                    testId="command-duplicate-wh"
+        ) : (
+          <>
+            <Stack gap="sm">
+              <CommandSectionTabs value={fnSection} onChange={setFnSection} />
+              {fnSection === "bindings" ? (
+                <CommandBindingsRead name={fn.name} bindings={fn.languageBindings ?? {}} />
+              ) : fnSection === "columns" ? (
+                <CommandColumnsRead name={fn.name} columns={fn.outputColumns ?? []} />
+              ) : (
+                <>
+                  <CommandQueryLinks call={fn} actingRole={actingRoles} tables={tables} />
+                  <FunctionRead
+                    fn={fn}
+                    productNames={(fn.productIds ?? []).map(
+                      (id) => dataProducts.find((dp) => dp.id === id)?.name ?? id,
+                    )}
                   />
-                )}
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleTest("webhook", wh.name);
-                  }}
-                  disabled={testing === wh.name}
-                  loading={testing === wh.name}
-                >
-                  {testing === wh.name
-                    ? t("commandsPage.testingButton")
-                    : t("commandsPage.testButton")}
-                </Button>
-                {/* REQ-2198: resolves once the list is read again without it. */}
-                {mayAuthor && (
-                  <PanelDelete
-                    itemKey={`wh:${wh.name}`}
-                    title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
-                    consequence={t("commandsPage.deleteWebhookConsequence")}
-                    ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
-                    testId={`command-delete-wh-${wh.name}`}
-                    onDelete={async () => {
-                      await deleteWebhook(wh.name);
-                      await load();
-                      detail.close({ only: commandId("webhook", wh.name) });
-                    }}
-                  />
-                )}
-              </Group>
-            </PanelActions>
+                </>
+              )}
+              <PanelActions>
+                <Group gap="sm" wrap="nowrap">
+                  {mayAuthor && (
+                    <ActionIcon
+                      aria-label={t("commandsPage.editAria", { name: fn.name })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit("function", fn.name);
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </ActionIcon>
+                  )}
+                  {mayAuthor && (
+                    <PanelDuplicate
+                      name={fn.name}
+                      onDuplicate={() => handleDuplicate("function", fn.name)}
+                      testId="command-duplicate-fn"
+                    />
+                  )}
+                  {/* REQ-2198: resolves once the list is read again without it. */}
+                  {mayAuthor && (
+                    <PanelDelete
+                      itemKey={`fn:${fn.name}`}
+                      title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
+                      consequence={t("commandsPage.deleteFunctionConsequence")}
+                      ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
+                      testId={`command-delete-fn-${fn.name}`}
+                      onDelete={async () => {
+                        await deleteFunction(fn.name);
+                        await load();
+                        detail.close({ only: commandId("function", fn.name) });
+                      }}
+                    />
+                  )}
+                </Group>
+              </PanelActions>
+            </Stack>
+          </>
+        ))(selectedFn)
+    ) : selectedWh ? (
+      ((wh: TrackedWebhook) =>
+        editingName === wh.name ? (
+          <Stack component="form" id="commands-form" gap="sm" onSubmit={handleSave}>
+            <CommandFormFields {...formFieldsProps} />
+            <FormFooter panel submit form="commands-form" saving={saving} onCancel={handleCancel} />
           </Stack>
-          {testAs}
-        </>
-      ))(selectedWh)
-  ) : null;
+        ) : (
+          <>
+            <Stack gap="sm">
+              {wh.approved === false && (
+                <Alert color="yellow" data-testid={`webhook-pending-${wh.name}`}>
+                  {t("commandsPage.webhookPendingHint")}
+                </Alert>
+              )}
+              <CommandQueryLinks call={wh} actingRole={actingRoles} tables={tables} />
+              <WebhookRead wh={wh} />
+              <PanelActions>
+                <Group gap="sm" wrap="nowrap">
+                  {mayAuthor && (
+                    <ActionIcon
+                      aria-label={t("commandsPage.editAria", { name: wh.name })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit("webhook", wh.name);
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </ActionIcon>
+                  )}
+                  {mayAuthor && (
+                    <PanelDuplicate
+                      name={wh.name}
+                      onDuplicate={() => handleDuplicate("webhook", wh.name)}
+                      testId="command-duplicate-wh"
+                    />
+                  )}
+                  {/* REQ-2198: resolves once the list is read again without it. */}
+                  {mayAuthor && (
+                    <PanelDelete
+                      itemKey={`wh:${wh.name}`}
+                      title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
+                      consequence={t("commandsPage.deleteWebhookConsequence")}
+                      ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
+                      testId={`command-delete-wh-${wh.name}`}
+                      onDelete={async () => {
+                        await deleteWebhook(wh.name);
+                        await load();
+                        detail.close({ only: commandId("webhook", wh.name) });
+                      }}
+                    />
+                  )}
+                </Group>
+              </PanelActions>
+            </Stack>
+          </>
+        ))(selectedWh)
+    ) : null;
   const panelIsReadOnly = !showForm && editingName === null;
   const panelTitle =
     showForm && !editingName
       ? t("commandsPage.panelNewCommand")
-      : (selectedFn?.name ?? selectedWh?.name ?? testResult?.name ?? "");
+      : (selectedFn?.name ?? selectedWh?.name ?? "");
   const closePanel = () => {
-    setTestResult(null);
     if (showForm || editingName) handleCancel();
     detail.close();
   };
@@ -789,6 +772,7 @@ export function CommandsPage() {
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="commands-split"
         storageKey="provisa.commands.detailWidth"
         title={panelTitle}
@@ -810,22 +794,29 @@ export function CommandsPage() {
             <Title order={3} mb="sm">
               {t("commandsPage.dbFunctionsHeading")}
             </Title>
-            <ListTable minWidth={720}>
+            <ListTable minWidth={720} testId="commands-functions-list">
               <ListHead
                 sortGroup={fnSortGroup}
                 columns={[
                   { col: "name" },
                   { col: "source" },
                   { col: "domain" },
-                  { col: "function" },
-                  { col: "returns" },
-                  { col: "args" },
-                  { col: "visibleTo" },
+                  // The columns of detail give way, first to last, when the detail panel leaves
+                  // the list too little room.
+                  { col: "function", hide: 4 },
+                  { col: "returns", hide: 2 },
+                  { col: "args", hide: 1 },
+                  { col: "visibleTo", hide: 3 },
                 ]}
               />
               <Table.Tbody>
                 {filteredFunctions.length === 0 && (
-                  <ListEmpty colSpan={7}>{t("commandsPage.noFunctions")}</ListEmpty>
+                  <ListEmpty colSpan={7} testId="commands-functions-empty">
+                    {/* A list a filter emptied says so, never that nothing is registered. */}
+                    {functions.length === 0
+                      ? t("commandsPage.noFunctions")
+                      : t("commandsPage.noFunctionsMatch")}
+                  </ListEmpty>
                 )}
                 <ListItems
                   state={fnSortGroup}
@@ -841,7 +832,6 @@ export function CommandsPage() {
                           testId={`commands-fn-row-${fn.name}`}
                           selected={isExpanded}
                           onClick={() => {
-                            setTestResult(null);
                             openCommand("function", isExpanded ? null : fn.name);
                             if (isEditing) setEditingName(null);
                           }}
@@ -852,8 +842,10 @@ export function CommandsPage() {
                               <TagControl objectType="command" commandName={fn.name} />
                             </Group>
                           </Table.Td>
-                          <Table.Td>{fn.sourceId}</Table.Td>
-                          <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>{entityName("source", fn.sourceId)}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", fn.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>
                             {fn.schemaName}.{fn.functionName}
                           </Table.Td>
@@ -881,24 +873,28 @@ export function CommandsPage() {
             <Title order={3} mt="md">
               {t("commandsPage.webhooksHeading")}
             </Title>
-            <ListTable minWidth={720}>
+            <ListTable minWidth={720} testId="commands-webhooks-list">
               <ListHead
                 sortGroup={whSortGroup}
                 columns={[
                   { col: "name" },
                   { col: "status" },
                   { col: "domain" },
-                  { col: "url" },
-                  { col: "method" },
-                  { col: "timeout" },
-                  { col: "returns" },
-                  { col: "args" },
-                  { col: "visibleTo" },
+                  { col: "url", hide: 6 },
+                  { col: "method", hide: 3 },
+                  { col: "timeout", hide: 4 },
+                  { col: "returns", hide: 2 },
+                  { col: "args", hide: 1 },
+                  { col: "visibleTo", hide: 5 },
                 ]}
               />
               <Table.Tbody>
                 {filteredWebhooks.length === 0 && (
-                  <ListEmpty colSpan={9}>{t("commandsPage.noWebhooks")}</ListEmpty>
+                  <ListEmpty colSpan={9} testId="commands-webhooks-empty">
+                    {webhooks.length === 0
+                      ? t("commandsPage.noWebhooks")
+                      : t("commandsPage.noWebhooksMatch")}
+                  </ListEmpty>
                 )}
                 <ListItems
                   state={whSortGroup}
@@ -914,7 +910,6 @@ export function CommandsPage() {
                           testId={`commands-wh-row-${wh.name}`}
                           selected={isExpanded}
                           onClick={() => {
-                            setTestResult(null);
                             openCommand("webhook", isExpanded ? null : wh.name);
                             if (isEditing) setEditingName(null);
                           }}
@@ -937,7 +932,9 @@ export function CommandsPage() {
                                 : t("commandsPage.statusApproved")}
                             </Badge>
                           </Table.Td>
-                          <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
+                          <Table.Td>
+                            {entityName("domain", wh.domainId) ?? t("commandsPage.dash")}
+                          </Table.Td>
                           <Table.Td>{wh.url}</Table.Td>
                           <Table.Td>{wh.method}</Table.Td>
                           <Table.Td>{wh.timeoutMs}ms</Table.Td>

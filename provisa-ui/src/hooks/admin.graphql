@@ -144,6 +144,12 @@ query SourcesQuery {
     rowFetchByKeys
     isSystem
     withdrawn
+    setupOutcomes {
+      tables
+      relationships
+      query
+      decidedAt
+    }
     cdc {
       bootstrapServers
       topicPrefix
@@ -316,6 +322,8 @@ fragment ListedTableFields on RegisteredTableType {
   schemaName
   tableName
   alias
+  sqlSchema
+  sqlName
   description
   withdrawn
   sourceWithdrawn
@@ -372,6 +380,8 @@ query TablesQuery($includeWithdrawn: Boolean! = false) {
     schemaName
     tableName
     alias
+    sqlSchema
+    sqlName
     description
     registeredAt
     cacheTtl
@@ -986,6 +996,18 @@ query GenerateUnregisteredColumnDescription(
     columns: $columns
     columnName: $columnName
   )
+}
+
+# REQ-2361, REQ-194: names suggested before an object is saved come from the naming authority.
+query SuggestReverseRelAlias($graphqlAlias: String, $cypherAlias: String) {
+  suggestReverseRelAlias(graphqlAlias: $graphqlAlias, cypherAlias: $cypherAlias) {
+    graphqlAlias
+    cypherAlias
+  }
+}
+
+query SuggestColumnAliases($columns: [String!]!) {
+  suggestColumnAliases(columns: $columns)
 }
 
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
@@ -1610,6 +1632,24 @@ mutation PutBackTable($tableId: Int!, $region: String) {
 
 mutation WithdrawSource($sourceId: String!) {
   withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-2262: what became of each step of a source's setup, replacing what was held; all null is
+# Run setup again.
+mutation SetSourceSetupOutcomes(
+  $sourceId: String!
+  $tables: SetupTablesOutcome
+  $relationships: SetupRelationshipsOutcome
+  $query: SetupQueryOutcome
+) {
+  setSourceSetupOutcomes(
+    sourceId: $sourceId
+    tables: $tables
+    relationships: $relationships
+    query: $query
+  ) {
     ...MutationResult
   }
 }

@@ -35,6 +35,11 @@
     "graphCaption": "Knopen: {{nodes}} · Relaties: {{relationships}}",
     "downloadPng": "PNG downloaden",
     "openOnGraphPage": "Openen op de Graaf-pagina",
-    "choiceClosed": "(gesloten zonder te kiezen)"
+    "choiceClosed": "(gesloten zonder te kiezen)",
+    "attach": "Voeg een bestand toe dat Polly leest: een CSV, een API-specificatie, een codearchief of een document, tot {{limit}} MB",
+    "attachTooLarge": "{{name}} is groter dan {{limit}} MB, het maximum voor een bestand dat aan Polly wordt toegevoegd.",
+    "attachTooMany": "Een gesprek kan {{max}} bijgevoegde bestanden bevatten. Verwijder er een om een ander toe te voegen.",
+    "removeAttachment": "{{name}} verwijderen",
+    "download": "Downloaden"
   }
 }

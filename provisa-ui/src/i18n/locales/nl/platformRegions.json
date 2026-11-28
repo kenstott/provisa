@@ -9,6 +9,7 @@
     "detailPanel": "Details van platformregio",
     "colRegion": "Regio",
     "none": "Het platform declareert geen regio's.",
+    "noMatch": "Geen regio's komen overeen met het filter.",
     "edit": "Bewerken",
     "remove": "Verwijderen",
     "taken": "Er bestaat al een regio met de naam {{id}}.",
@@ -38,6 +39,8 @@
     "org": "Organisatie",
     "pickOrg": "Kies een organisatie",
     "orgGranted": "{{id}} (toegekend: {{regions}})",
-    "orgNone": "{{id}} (geen regio's)"
+    "orgNone": "{{id}} (geen regio's)",
+    "filterPlaceholder": "Regio's filteren",
+    "closeForm": "Formulier sluiten"
   }
 }

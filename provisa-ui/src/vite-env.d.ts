@@ -92,6 +92,7 @@ declare module "*.graphql" {
   export const WithdrawTable: DocumentNode;
   export const PutBackTable: DocumentNode;
   export const WithdrawSource: DocumentNode;
+  export const SetSourceSetupOutcomes: DocumentNode;
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
@@ -154,6 +155,8 @@ declare module "*.graphql" {
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
   export const SuggestTableAlias: DocumentNode;
+  export const SuggestReverseRelAlias: DocumentNode;
+  export const SuggestColumnAliases: DocumentNode;
   // REQ-1443: the contract builder panel's three server calls.
   export const DqCheckCatalog: DocumentNode;
   export const DqCheckDefinition: DocumentNode;
@@ -258,6 +261,7 @@ declare module "*.gql" {
   export const WithdrawTable: DocumentNode;
   export const PutBackTable: DocumentNode;
   export const WithdrawSource: DocumentNode;
+  export const SetSourceSetupOutcomes: DocumentNode;
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
@@ -314,6 +318,8 @@ declare module "*.gql" {
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
   export const SuggestTableAlias: DocumentNode;
+  export const SuggestReverseRelAlias: DocumentNode;
+  export const SuggestColumnAliases: DocumentNode;
   // REQ-1443: the contract builder panel's three server calls.
   export const DqCheckCatalog: DocumentNode;
   export const DqCheckDefinition: DocumentNode;

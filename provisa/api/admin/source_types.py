@@ -38,7 +38,7 @@ their keys, required and secret flags, choices and defaults from this descriptor
 generated file); a UI test fails when a builder writes a key the descriptor does not list.
 """
 
-# Requirements: REQ-2114, REQ-1923, REQ-1984, REQ-2225
+# Requirements: REQ-2114, REQ-1923, REQ-1984, REQ-2225, REQ-2280
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -49,6 +49,11 @@ from provisa.codesource.languages import LANGUAGES
 from provisa.core.models import BUILTIN_CONNECTORS, SourceType
 from provisa.core.paging import PaginationType
 from provisa.cosmosdb.fetch import AUTH_ENTRA, AUTH_KEY
+from provisa.file_source.drive_operand import (
+    GDRIVE_AUTH_KINDS,
+    GDRIVE_SERVICE_ACCOUNT,
+    GDRIVE_SUBJECT,
+)
 from provisa.kafka.security import PROTOCOL_PLAINTEXT, SASL_MECHANISMS, SECURITY_PROTOCOLS
 from provisa.profiler.source import DRIFT_SEASONS
 from provisa.quickbooks.settings import ENVIRONMENTS as QUICKBOOKS_ENVIRONMENTS
@@ -127,6 +132,10 @@ class SourceTypeDescriptor:
     note: str = ""
     mapping_json: tuple[str, ...] = field(default=())
     federation_hints: tuple[str, ...] = field(default=())
+    #: REQ-2234: whether its tables are registered through the setup flow (Connect source,
+    #: Register tables, Your data, Discover relationships). False for a source whose tables
+    #: Provisa itself produces: its detail shows only its own tabs.
+    setup_flow: bool = True
 
 
 # ---------------------------------------------------------------------------------------------
@@ -308,6 +317,9 @@ FILE_SOURCES: frozenset[str] = frozenset({"sqlite", "csv", "parquet"})
 NO_CONNECTION_TYPES: frozenset[str] = frozenset(
     {"ingest", "dbt", "data_profiler", "node", "python", "go", "rust", "spark"}
 )
+#: REQ-2234: the types whose tables Provisa itself produces, so none is registered through the
+#: setup flow.
+NO_SETUP_FLOW_TYPES: frozenset[str] = frozenset({"data_profiler", "great_expectations", "soda"})
 DATA_LAKE: frozenset[str] = frozenset({"delta_lake", "iceberg", "hive", "hive_s3"})
 #: A file source whose path may name an object store, read with that store's credentials.
 CLOUD_FILE_TYPES: frozenset[str] = frozenset({"csv", "parquet", "sqlite", "duckdb"})
@@ -446,8 +458,9 @@ def _lake_storage(required_region: bool) -> tuple[Field, ...]:
 
 _CODE_NOTE = (
     "mappingJson.code is one of {kind: <package kind>, package, version}, {kind: 'git', "
-    "repository, commit, subdirectory}, {kind: 'directory', path} or {kind: 'upload', upload} "
-    "(an archive uploaded with admin_request); runtime is the language's; secrets lists the "
+    "repository, commit, subdirectory}, {kind: 'directory', path}, {kind: 'upload', upload} "
+    "(an archive uploaded with admin_request) or {kind: 'entered', source, dependencies} (the "
+    "code's text, kept in the model, and its dependency lines); runtime is the language's; secrets lists the "
     "organization secrets the code reads, by name; settings holds its non-secret settings."
 )
 
@@ -492,10 +505,7 @@ _SPARK_NOTE = (
 #: What a built-in source type's host requires, as its connector file states it
 #: (connectors/spark/connector.yaml ``requires``): name, required, note.
 BUILTIN_HOST_REQUIRES: dict[str, tuple[tuple[str, bool, str], ...]] = {
-    "spark": (
-        ("script", True, "the annotated PySpark script, as text"),
-        ("cluster", False, "the Spark cluster; left out, the organization's default"),
-    ),
+    "spark": (("cluster", False, "the Spark cluster; left out, the organization's default"),),
 }
 
 
@@ -656,10 +666,38 @@ _OWN: dict[str, tuple[Field, ...]] = {
         _in(
             "path",
             required=True,
-            note="a directory or glob, or an ftp/sftp/s3/https/sharepoint:// address",
+            note="a directory or glob, or an ftp/sftp/s3/https/sharepoint/onedrive/gdrive:// "
+            "address",
         ),
-        _in("username", when="path=ftp|sftp|http|https|sharepoint"),
-        _in("password", secret=True, when="path=ftp|sftp|http|https|sharepoint"),
+        # REQ-2280: onedrive:// signs in as the SharePoint source does (tenant, client id and
+        # secret); gdrive:// as the Google Sheets source does (a service account key, or an
+        # OAuth client and the refresh token a person's approval issued).
+        _in("database", when="path=onedrive", required=True, note="the tenant id"),
+        _in(
+            "username",
+            when="path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+            note="the client id for onedrive:// and for gdrive:// with gdrive_auth=oauth",
+        ),
+        _in(
+            "password",
+            secret=True,
+            when="path=ftp|sftp|http|https|sharepoint|onedrive|gdrive",
+            note="the client secret; for gdrive:// with gdrive_auth=service_account, the key",
+        ),
+        _map(
+            "gdrive_auth",
+            when="path=gdrive",
+            required=True,
+            choices=GDRIVE_AUTH_KINDS,
+            default=GDRIVE_SERVICE_ACCOUNT,
+        ),
+        _map("refresh_token", when="gdrive_auth=oauth", required=True, secret=True),
+        _map(
+            GDRIVE_SUBJECT,
+            when="gdrive_auth=service_account",
+            note="the Workspace user the service account acts as (domain-wide delegation); "
+            "none reads as the service account itself",
+        ),
         _map("excel_hints", note="how a workbook's sheets are read as tables"),
     ),
     "logs": (
@@ -1106,6 +1144,7 @@ def _descriptor(
         federation_hints=tuple(
             dict.fromkeys(f.name for f in fields if f.at == "federationHintsJson")
         ),
+        setup_flow=offer.name not in NO_SETUP_FLOW_TYPES,
     )
 
 

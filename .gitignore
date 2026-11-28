@@ -193,6 +193,9 @@ None
 
 # The ssh key .github/actions/nixos-vm generates for one run's guest.
 /packaging/nixos/ci_authorized_key.pub
+/packaging/nixos/host/ci_authorized_key.pub
+/packaging/nixos/host/Provisa.AppImage
+/packaging/nixos/this-commit/Provisa.AppImage
 
 # REQ-2049: what a demo's bundle build writes into a demo directory it is pointed at (its seed and
 # its databases' dumps); the build itself works in a copy (scripts/demo_bundle.py).

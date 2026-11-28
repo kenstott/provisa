@@ -37,6 +37,8 @@ function stage(w: number, h: number, legendBottom: number, model: BB) {
   }
   let zoom = 1;
   let pan = { x: 0, y: 0 };
+  // The reader's least zoom; a fit lowers it (fitBelowLegend), and the instance holds its limit.
+  let minZoom = 0.25;
   const rendered = (): BB => {
     const r = {
       x1: model.x1 * zoom + pan.x,
@@ -56,9 +58,14 @@ function stage(w: number, h: number, legendBottom: number, model: BB) {
         y: (h - model.h * zoom) / 2 - model.y1 * zoom,
       };
     },
+    minZoom: (z?: number) => {
+      if (z === undefined) return minZoom;
+      minZoom = z;
+      return undefined;
+    },
     zoom: (z?: number) => {
       if (z === undefined) return zoom;
-      zoom = z;
+      zoom = Math.max(z, minZoom);
       return undefined;
     },
     pan: (p?: { x: number; y: number }) => {

@@ -34,6 +34,7 @@ import {
   trackEdgeLabelRoom,
 } from "./graph-stylesheet";
 import { graphTokens } from "../provisa-graph/tokens";
+import { followResize, keepView, type Size } from "../provisa-graph/viewport";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -43,7 +44,8 @@ import type {
   CyInstance,
 } from "./cytoscape-types";
 import cytoscape from "cytoscape";
-import "./canvas/cytoscape-extensions";
+// Registers the graph library's extensions, once, as the graph component does.
+import "../provisa-graph/core";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
 import {
@@ -55,7 +57,7 @@ import {
   type HeldDrawing,
 } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
-import { CanvasControls } from "./canvas/CanvasControls";
+import { ResultGraphControls } from "./canvas/ResultGraphControls";
 import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
 import { useGraphLayout } from "./canvas/use-graph-layout";
 
@@ -95,6 +97,8 @@ export function GraphCanvas({
   onClearHighlight,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The canvas's box with its controls: what the command bar's full screen puts full screen.
+  const stageRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
   // these refs (not closures) so they always see current prop values without
@@ -586,6 +590,9 @@ export function GraphCanvas({
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
+    // A wheel zoom, a pinch or a drag of the canvas makes the view the reader's own, which a
+    // resize keeps (REQ-2277).
+    cy.on("scrollzoom pinchzoom dragpan", () => keepView(cy));
     // Track manually dragged nodes as anchored, then auto-nudge
     // "free" fires on every click too — only nudge if position actually changed
     const grabPositions = new Map<string, { x: number; y: number }>();
@@ -671,7 +678,25 @@ export function GraphCanvas({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => cyRef.current?.resize());
+    // The canvas narrows beside the inspector and widens when it closes: the graph follows,
+    // keeping its view's mode (REQ-2277): fitted whole it is fitted whole again, zoomed or moved by
+    // the reader it keeps its zoom and centre.
+    const sizeOf = (): Size | null =>
+      el.clientWidth === 0 ? null : { width: el.clientWidth, height: el.clientHeight };
+    let size = sizeOf();
+    const observer = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.resize();
+      // A canvas hidden (a collapsed frame) has no size to follow from, or to follow later.
+      const now = sizeOf();
+      if (now === null) return;
+      const was = size;
+      size = now;
+      // A layout running fits the graph when it ends.
+      if (was === null || !laidOutRef.current) return;
+      followResize(cy, was);
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -888,6 +913,7 @@ export function GraphCanvas({
 
   return (
     <div
+      ref={stageRef}
       className="gf-canvas-wrap"
       // The canvas is the graph tokens' canvas, the colour the label boxes are drawn in, so a
       // label box never shows as a patch on the canvas (and matches provisa-graph's canvas).
@@ -914,8 +940,9 @@ export function GraphCanvas({
         hullDragRef={hullDragRef}
         toggleCollapse={toggleCollapse}
       />
-      <CanvasControls
+      <ResultGraphControls
         cyRef={cyRef}
+        stageRef={stageRef}
         layoutMode={layoutMode}
         toggleLayout={toggleLayout}
         nudgeHeldRef={nudgeHeldRef}

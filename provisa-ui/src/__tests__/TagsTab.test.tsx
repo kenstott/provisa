@@ -13,8 +13,11 @@ import { render, screen, fireEvent, waitFor, within } from "../test-utils/render
 import i18n from "../i18n";
 import { TagsTab } from "../components/admin/TagsTab";
 import type { Tag, TagAssignment } from "../types/admin";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
+// The tag id is required (REQ-1968): its label carries the required marker after its text.
+const idInput = () => screen.getByLabelText(new RegExp(`^${t("tagsTab.idLabel")}`));
 
 const upsertSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
 const updateSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, message: "ok" }));
@@ -29,6 +32,10 @@ let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files (see ScheduledTasks.test.tsx).
+// A citation links to its section for a viewer who may open the Library (EntityLink).
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["glossary_read"] }),
+}));
 vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTags: () => ({ tags: mockTags, loading: false, refetch: vi.fn() }),
@@ -61,6 +68,29 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   fetchLibraryDocument: vi.fn(async () => ({
     id: 3,
     passage_list: [{ ordinal: 0, section: "Scope", page: 1, text: "a" }],
+  })),
+}));
+
+// REQ-1159: a command output column's row links its command, as the viewer's rights allow.
+vi.mock("../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/AuthContext")>()),
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
+
+// REQ-1159: the commands whose output columns the command-column scope tags.
+vi.mock("../api/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/actions")>()),
+  fetchActions: vi.fn(async () => ({
+    functions: [
+      {
+        name: "lookup",
+        outputColumns: [
+          { name: "ssn", type: "varchar" },
+          { name: "region", type: "varchar" },
+        ],
+      },
+    ],
+    webhooks: [],
   })),
 }));
 
@@ -177,6 +207,20 @@ function pickDomain(id: string) {
   fireEvent.click(option);
 }
 
+// REQ-2277: a row opens the tag's panel; its Edit is in the panel's head.
+function openEdit(id: string) {
+  fireEvent.click(screen.getByTestId(`tags-row-${id}`));
+  fireEvent.click(screen.getByTestId(`tags-edit-${id}`));
+}
+
+// The panel's Delete asks in its confirmation dialog first.
+function deleteFromPanel(id: string) {
+  fireEvent.click(screen.getByTestId(`tags-row-${id}`));
+  fireEvent.click(screen.getByTestId(`tags-delete-${id}`));
+}
+const confirmDelete = async (id: string) =>
+  fireEvent.click(await screen.findByTestId(`tags-delete-${id}-confirm-dialog-confirm`));
+
 describe("TagsTab", () => {
   beforeEach(() => {
     upsertSpy.mockClear();
@@ -193,17 +237,15 @@ describe("TagsTab", () => {
   });
 
   it("opens on a linked tag: its scope, found and marked", () => {
-    render(<TagsTab />, { initialEntries: ["/admin/tags?tag=audit"] });
+    render(<TagsTab title="Tags" />, { initialEntries: ["/admin/tags?tag=audit"] });
     const row = screen.getByTestId("tags-row-audit");
     expect(row.className).toContain("row-selected");
     expect(screen.getAllByTestId(/^tags-row-/)).toHaveLength(1);
   });
 
   it("finds tags matching every word of the search, or either side of or", () => {
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii or finance" } });
     expect(screen.getAllByTestId(/^tags-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
       "tags-row-pii",
@@ -211,16 +253,34 @@ describe("TagsTab", () => {
     ]);
   });
 
+  it("finds each tag by every text its row shows", async () => {
+    mockTags = [
+      USER_TAG,
+      { ...SYSTEM_TAG, required: true, requiresCitation: true, needsReview: true },
+      DERIVED_TAG,
+    ];
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("tags-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-tag" } });
+    expect(screen.getByTestId("tags-empty")).toHaveTextContent("No tags match the filter");
+  });
+
   it("filters the registry by the selected scope and counts assignments", () => {
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     // Default scope is "source": only the user tag applies.
     expect(screen.getByTestId("tags-row-finance")).toBeTruthy();
     expect(screen.queryByTestId("tags-row-pii")).toBeNull();
     expect(within(screen.getByTestId("tags-row-finance")).getByText("1")).toBeTruthy();
 
     // Switch to "table": both tags apply, system tag sorts first.
-    const bar = screen.getByTestId("tags-scope-bar");
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_table")));
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     const rows = screen.getAllByTestId(/^tags-row-/);
     // Derived tags are code-defined like system ones, so they sort with them, ahead of user tags.
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
@@ -231,44 +291,53 @@ describe("TagsTab", () => {
     expect(within(screen.getByTestId("tags-row-pii")).getByText("2")).toBeTruthy();
 
     // "relationship": neither applies.
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_relationship")));
+    fireEvent.click(screen.getByTestId("tags-scope-relationship"));
     expect(screen.queryAllByTestId(/^tags-row-/)).toHaveLength(0);
     expect(screen.getByText(t("tagsTab.empty"))).toBeTruthy();
 
     // "command" segment exists; only the command-scoped tag applies.
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_command")));
+    fireEvent.click(screen.getByTestId("tags-scope-command"));
     const cmdRows = screen.getAllByTestId(/^tags-row-/);
     expect(cmdRows.map((r) => r.getAttribute("data-testid"))).toEqual(["tags-row-audit"]);
   });
 
+  it("tags each command output column under the command-column scope (REQ-1159)", async () => {
+    render(<TagsTab title="Tags" />);
+    expect(screen.queryByTestId("command-column-tags")).toBeNull();
+    fireEvent.click(screen.getByTestId("tags-scope-command_column"));
+    expect(await screen.findByTestId("tag-control-command_column-lookup-ssn")).toBeTruthy();
+    expect(screen.getByTestId("tag-control-command_column-lookup-region")).toBeTruthy();
+  });
+
   it("shows a lock instead of edit/delete actions for a system tag", () => {
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
-    const systemRow = screen.getByTestId("tags-row-pii");
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    const panel = screen.getByTestId("tags-detail-pii");
     expect(screen.queryByTestId("tags-delete-pii")).toBeNull();
-    expect(within(systemRow).getByLabelText(t("tagsTab.systemTag"))).toBeTruthy();
-    // The user tag keeps its delete action.
+    expect(screen.queryByTestId("tags-edit-pii")).toBeNull();
+    expect(screen.getByLabelText(t("tagsTab.systemTag"))).toBeTruthy();
+    expect(panel).toBeInTheDocument();
+    // The user tag's panel keeps its delete action.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-delete-finance")).toBeTruthy();
   });
 
   it("marks a derived tag rather than counting assignments it can never have", () => {
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
-    );
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     const row = screen.getByTestId("tags-row-data_quality");
     expect(within(row).getByText(t("tagsTab.derivedTag"))).toBeTruthy();
     // A "0" here would read as an unused tag, when the tag may hold on every table in the estate.
     expect(within(row).queryByText("0")).toBeNull();
-    expect(within(row).getByLabelText(t("tagsTab.derivedTagHelp"))).toBeTruthy();
+    fireEvent.click(row);
+    expect(screen.getByLabelText(t("tagsTab.derivedTagHelp"))).toBeTruthy();
   });
 
   it("creates a tag through upsertTag with id, description and appliesTo", async () => {
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     fireEvent.change(screen.getByLabelText(t("tagsTab.descriptionLabel")), {
@@ -293,13 +362,20 @@ describe("TagsTab", () => {
     );
   });
 
+  // REQ-1968: Save is never disabled by a missing id; pressing it marks the id and saves nothing.
+  it("marks a missing id when Save is pressed, and saves nothing", async () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-create-button"));
+    const save = screen.getByTestId("tags-save");
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(idInput()).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("saves an edited tag through updateTag, never a create", async () => {
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-row-finance")).getByLabelText(
-        t("tagsTab.editTag", { id: "finance" }),
-      ),
-    );
+    render(<TagsTab title="Tags" />);
+    openEdit("finance");
     fireEvent.click(screen.getByTestId("tags-save"));
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(updateSpy.mock.calls[0][0]).toBe("finance");
@@ -307,21 +383,18 @@ describe("TagsTab", () => {
   });
 
   describe("required", () => {
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     it("shows the Required switch off for a new tag", () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
       expect((screen.getByTestId("tags-required") as HTMLInputElement).checked).toBe(false);
     });
 
     it("sends required: true when the switch is on and the tag is saved", async () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "owner" },
       });
       fireEvent.click(screen.getByTestId("tags-required"));
@@ -332,14 +405,14 @@ describe("TagsTab", () => {
 
     it("shows the switch on when editing a required tag", () => {
       mockTags = [{ ...USER_TAG, required: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       expect((screen.getByTestId("tags-required") as HTMLInputElement).checked).toBe(true);
     });
 
     it("shows the Required badge only on required tags", () => {
       mockTags = [USER_TAG, { ...USER_TAG, id: "steward", required: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       expect(
         within(screen.getByTestId("tags-row-steward")).getByTestId("tags-required-badge"),
       ).toBeTruthy();
@@ -350,15 +423,12 @@ describe("TagsTab", () => {
   });
 
   describe("allowed domains", () => {
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     it("saves the domains picked with the tag", async () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
-      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      fireEvent.change(idInput(), {
         target: { value: "gdpr" },
       });
       pickDomain("sales");
@@ -369,7 +439,7 @@ describe("TagsTab", () => {
     });
 
     it("says that none selected means all domains", () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
       expect(
         within(screen.getByTestId("tags-allowed-domains")).getByText(
@@ -380,7 +450,7 @@ describe("TagsTab", () => {
 
     it("reads back a tag's domains when it is edited, and saves them as they are", async () => {
       mockTags = [{ ...USER_TAG, allowedDomains: ["finance"] }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       const field = screen.getByTestId("tags-allowed-domains");
       expect(within(field).getByText("finance")).toBeInTheDocument();
@@ -406,7 +476,7 @@ describe("TagsTab", () => {
           ],
         },
       } as never);
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       fireEvent.click(screen.getByTestId("tags-save"));
       const listed = await screen.findByTestId("tags-outside-assignments");
@@ -423,7 +493,7 @@ describe("TagsTab", () => {
     });
 
     it("lists nothing after a save that leaves every assignment inside", async () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
@@ -444,10 +514,7 @@ describe("TagsTab", () => {
       state: "drifted" as const,
       needsReview: true,
     };
-    const edit = (id: string) =>
-      fireEvent.click(
-        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
-      );
+    const edit = openEdit;
 
     beforeEach(() => {
       citeSpy.mockClear();
@@ -455,7 +522,7 @@ describe("TagsTab", () => {
     });
 
     it("saves the Assignments require a citation switch", async () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       const toggle = screen.getByTestId("tags-requires-citation") as HTMLInputElement;
       expect(toggle.checked).toBe(false);
@@ -467,7 +534,7 @@ describe("TagsTab", () => {
 
     it("shows the saved switch of a tag that requires one", () => {
       mockTags = [{ ...USER_TAG, requiresCitation: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       expect((screen.getByTestId("tags-requires-citation") as HTMLInputElement).checked).toBe(true);
     });
@@ -486,7 +553,7 @@ describe("TagsTab", () => {
     const place = { documentId: 3, sectionHeading: "Scope", sectionPage: null };
 
     it("shows the why-it-exists field on a new tag and one Save sends it with the tag", async () => {
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       fireEvent.click(screen.getByTestId("tags-create-button"));
       expect(screen.getByTestId("tags-defined-by")).toBeInTheDocument();
       fireEvent.change(screen.getByPlaceholderText(t("tagsTab.idPlaceholder")), {
@@ -511,7 +578,7 @@ describe("TagsTab", () => {
 
     it("fills the edit form with the tag's citations and sends a removal with Save", async () => {
       mockTags = [{ ...USER_TAG, citations: [cited], needsReview: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       expect(screen.getByTestId("tags-needs-review-finance")).toBeInTheDocument();
       edit("finance");
       const list = screen.getByTestId("tags-defined-by");
@@ -529,7 +596,7 @@ describe("TagsTab", () => {
 
     it("sends an edit's unchanged citations back as the whole set", async () => {
       mockTags = [{ ...USER_TAG, citations: [cited], needsReview: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
@@ -538,7 +605,7 @@ describe("TagsTab", () => {
 
     it("confirms a changed citation in the form and keeps it in the saved set", async () => {
       mockTags = [{ ...USER_TAG, citations: [cited], needsReview: true }];
-      render(<TagsTab />);
+      render(<TagsTab title="Tags" />);
       edit("finance");
       const list = screen.getByTestId("tags-defined-by");
       expect(within(list).getByTestId("citation-state-drifted")).toBeInTheDocument();
@@ -552,9 +619,9 @@ describe("TagsTab", () => {
   });
 
   it("passes the selected reason and expiry policies to upsertTag", async () => {
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "gdpr" },
     });
     await pickPolicy("tags-reason-policy", t("tagsTab.policy_required"));
@@ -576,52 +643,51 @@ describe("TagsTab", () => {
     );
   });
 
-  it("shows a policy badge in the row only when the policy is required", () => {
-    render(<TagsTab />);
+  // REQ-2208 (amended 2026-11-26): the template's requirements are the panel's, not the row's.
+  it("shows the reason and expiry policies in the panel's template section, not in the row", () => {
+    render(<TagsTab title="Tags" />);
     // Default scope "source": finance is reason required, expiry hidden.
     const financeRow = screen.getByTestId("tags-row-finance");
-    expect(
-      within(financeRow).getByText(
-        t("tagsTab.reasonPolicyBadge", { policy: t("tagsTab.policy_required") }),
-      ),
-    ).toBeTruthy();
-    expect(within(financeRow).queryByText(/Expiry:/)).toBeNull();
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
+    expect(within(financeRow).queryByText(/Reason:/)).toBeNull();
+    expect(within(financeRow).queryByText(t("tagsTab.policy_required"))).toBeNull();
+    fireEvent.click(financeRow);
+    const template = screen.getByTestId("tags-template-read-finance");
+    // Each label reads beside its value: reason required, expiry hidden.
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.reasonPolicyLabel")}${t("tagsTab.policy_required")}`,
     );
-    // data_quality is hidden/hidden: no policy badges.
-    const dqRow = screen.getByTestId("tags-row-data_quality");
-    expect(within(dqRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(dqRow).queryByText(/Expiry:/)).toBeNull();
-    // pii is optional/optional: no policy badges.
-    const piiRow = screen.getByTestId("tags-row-pii");
-    expect(within(piiRow).queryByText(/Reason:/)).toBeNull();
-    expect(within(piiRow).queryByText(/Expiry:/)).toBeNull();
+    expect(template).toHaveTextContent(
+      `${t("tagsTab.expiresPolicyLabel")}${t("tagsTab.policy_hidden")}`,
+    );
+    expect(screen.getByTestId("tags-template-finance-toggle")).toHaveTextContent(
+      t("tagsTab.templateSection"),
+    );
   });
 
   it("edit pre-fills the tag's policies", () => {
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-row-finance")).getByLabelText(
-        t("tagsTab.editTag", { id: "finance" }),
-      ),
-    );
+    render(<TagsTab title="Tags" />);
+    openEdit("finance");
     expect(screen.getByTestId("tags-reason-policy")).toHaveValue(t("tagsTab.policy_required"));
     expect(screen.getByTestId("tags-expires-policy")).toHaveValue(t("tagsTab.policy_hidden"));
   });
 
   // REQ-1467: the value list is the closed set an assignment must name a member of.
   it("edits the value list of a system tag, whose own definition stays locked", async () => {
-    render(<TagsTab />);
-    const bar = screen.getByTestId("tags-scope-bar");
-    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_column")));
-    const row = screen.getByTestId("tags-row-entity");
-    expect(within(row).queryByLabelText(t("tagsTab.editTag", { id: "entity" }))).toBeNull();
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
+    fireEvent.click(screen.getByTestId("tags-row-entity"));
+    expect(screen.queryByTestId("tags-edit-entity")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("tags-values-entity"));
-    const editor = await screen.findByTestId("tags-values-row-entity");
+    const editor = await screen.findByTestId("tags-values-entity");
     expect(within(editor).getByText("customer")).toBeTruthy();
     expect(within(editor).getByText("vendor")).toBeTruthy();
+
+    // REQ-1968: Add is never disabled by an empty value; pressing it marks the value instead.
+    const add = screen.getByTestId("tags-add-value-entity");
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    expect(upsertValueSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("tags-new-value-entity")).toHaveAttribute("aria-invalid", "true");
 
     fireEvent.change(screen.getByTestId("tags-new-value-entity"), {
       target: { value: "employee" },
@@ -639,7 +705,9 @@ describe("TagsTab", () => {
   });
 
   it("offers no value editor for a tag that takes no parameter", () => {
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    expect(screen.getByTestId("tags-detail-finance")).toBeInTheDocument();
     expect(screen.queryByTestId("tags-values-finance")).toBeNull();
   });
 
@@ -648,17 +716,15 @@ describe("TagsTab", () => {
       { tagId: "entity:customer", objectType: "column", tableId: 1, columnName: "name" },
       { tagId: "entity:vendor", objectType: "column", tableId: 2, columnName: "supplier" },
     ];
-    render(<TagsTab />);
-    fireEvent.click(
-      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_column")),
-    );
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
     expect(within(screen.getByTestId("tags-row-entity")).getByText("2")).toBeTruthy();
   });
 
   it("carries the chosen paramPolicy into upsertTag", async () => {
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
-    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+    fireEvent.change(idInput(), {
       target: { value: "lifecycle" },
     });
     await pickPolicy("tags-param-policy", t("tagsTab.paramPolicy_required"));
@@ -679,19 +745,30 @@ describe("TagsTab", () => {
     );
   });
 
-  it("deletes a tag after window.confirm", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<TagsTab />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+  it("duplicates a tag into the create form under a new id", async () => {
+    render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    fireEvent.click(screen.getByTestId("tags-duplicate-finance"));
+    expect(idInput()).toHaveValue("finance-copy");
+    expect(idInput()).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("tags-save"));
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
+    expect(upsertSpy.mock.calls[0][0]).toBe("finance-copy");
+    expect(upsertSpy.mock.calls[0][2]).toEqual(["source", "table"]);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("deletes a tag from its panel once the delete is confirmed", async () => {
+    render(<TagsTab title="Tags" />);
+    deleteFromPanel("finance");
+    expect(deleteSpy).not.toHaveBeenCalled();
+    await confirmDelete("finance");
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("finance"));
-    expect(confirmSpy).toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it("names the row filter that keeps a tag from being deleted", async () => {
     // REQ-1384: a tag that carries a row filter is refused deletion, and the refusal lists it.
     mockTags = [USER_TAG];
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     deleteSpy.mockResolvedValueOnce({
       success: false,
       message: "Tag 'finance' is still referred to by: row_filter analyst on tag finance",
@@ -709,38 +786,43 @@ describe("TagsTab", () => {
         ],
       },
     } as never);
-    render(<TagsTab />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+    render(<TagsTab title="Tags" />);
+    deleteFromPanel("finance");
+    await confirmDelete("finance");
     const listed = await screen.findByTestId("dependents-row_filter");
     expect(listed).toHaveTextContent("analyst on tag finance");
   });
 
   it("does not delete when the confirm is dismissed", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    render(<TagsTab />);
-    fireEvent.click(screen.getByTestId("tags-delete-finance"));
+    render(<TagsTab title="Tags" />);
+    deleteFromPanel("finance");
+    await screen.findByTestId("tags-delete-finance-confirm-dialog-confirm");
+    fireEvent.click(screen.getByRole("button", { name: t("common.cancel"), hidden: true }));
     expect(deleteSpy).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it("keeps the scope and the search it was left on, after a reload", () => {
-    const first = render(<TagsTab />);
-    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_table") }));
+    const first = render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-table"));
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii" } });
     first.unmount();
-    render(<TagsTab />);
-    expect(screen.getByRole("radio", { name: t("tagsTab.scope_table") })).toBeChecked();
+    render(<TagsTab title="Tags" />);
+    expect(screen.getByTestId("tags-scope-table")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("filter-input")).toHaveValue("pii");
   });
 
   it("does not save a linked tag's scope over the reader's", () => {
-    const first = render(<TagsTab />);
-    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_column") }));
+    const first = render(<TagsTab title="Tags" />);
+    fireEvent.click(screen.getByTestId("tags-scope-column"));
     first.unmount();
-    const linked = render(<TagsTab />, { initialEntries: ["/admin/tags?tag=finance"] });
+    const linked = render(<TagsTab title="Tags" />, {
+      initialEntries: ["/admin/tags?tag=finance"],
+    });
     expect(screen.getByTestId("tags-row-finance")).toBeInTheDocument();
+    // Closing the panel forgets the tag (REQ-2260), so the next visit opens on no tag.
+    fireEvent.click(screen.getByRole("button", { name: t("tablesPage.closeDetail") }));
     linked.unmount();
-    render(<TagsTab />);
-    expect(screen.getByRole("radio", { name: t("tagsTab.scope_column") })).toBeChecked();
+    render(<TagsTab title="Tags" />);
+    expect(screen.getByTestId("tags-scope-column")).toHaveAttribute("aria-selected", "true");
   });
 });

@@ -205,6 +205,58 @@ def test_duckdb_attaches_the_sidecar_and_reads_a_table(sidecar):
     ).fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]
 
 
+def test_duckdb_hands_the_function_a_text_condition_it_pins_to_byte_order(sidecar):
+    """DuckDB's attach sends a text literal as ``'acme' COLLATE "C"``: the function is still given
+    the condition, and the read answers its rows rather than none."""
+    import duckdb
+
+    db = duckdb.connect()
+    db.execute("LOAD postgres")
+    db.execute(f"ATTACH '{_dsn(sidecar.ports.pgwire_port)}' AS shop (TYPE postgres, READ_ONLY)")
+    assert db.execute(
+        "SELECT id, asked FROM shop.public.orders WHERE _nf_n = 4 AND \"customerName\" = 'acme' "
+        "ORDER BY id"
+    ).fetchall() == [
+        (1, "n=4;filters=customerName eq acme"),
+        (3, "n=4;filters=customerName eq acme"),
+    ]
+
+
+def test_clickhouse_mounts_the_sidecars_public_schema_and_reads_a_table(sidecar):
+    # REQ-2267: ClickHouse's PostgreSQL database engine sends no options, so it names no schema
+    # and mounts public, where the sidecar serves its source's functions.
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    runtime = ClickHouseFederationRuntime.embedded()
+    try:
+        runtime._backend.command(
+            "CREATE DATABASE shop ENGINE = PostgreSQL("
+            f"'127.0.0.1:{sidecar.ports.pgwire_port}', 'code', 'provisa', '', 'public')"
+        )
+        result = runtime.run_sync(
+            'SELECT id, "customerName" FROM shop.orders WHERE _nf_n = 3 ORDER BY id'
+        )
+        assert [tuple(r) for r in result.rows] == [(0, "zeta"), (1, "acme"), (2, "zeta")]
+        # Its conditions reach the function: the parameter as its input, a column as a filter.
+        result = runtime.run_sync(
+            "SELECT id, asked FROM shop.orders WHERE _nf_n = 5 AND \"customerName\" = 'acme' "
+            "ORDER BY id"
+        )
+        assert [tuple(r) for r in result.rows] == [
+            (1, "n=5;filters=customerName eq acme"),
+            (3, "n=5;filters=customerName eq acme"),
+        ]
+        # The code's failure, met while its rows come, is the statement's error; the sidecar
+        # serves the next.
+        with pytest.raises(Exception, match="the warehouse is closed"):
+            list(runtime.run_sync("SELECT id FROM shop.broken").rows)
+        assert [tuple(r) for r in runtime.run_sync("SELECT count(*) FROM shop.orders").rows] == [
+            (3,)
+        ]
+    finally:
+        runtime.close()
+
+
 def test_the_lifecycle_starts_checks_health_and_stops_with_the_port_freed(code):
     port = _free_port()
     running = _sidecar(code, port)
@@ -304,3 +356,120 @@ def test_a_built_source_has_no_sidecar(registry, code):
     with pytest.raises(ValueError, match="is built"):
         pgwire_sidecar.ensure_sidecar(built)  # type: ignore[arg-type]
     assert pgwire_sidecar._sidecars == {}
+
+
+# -- the engines (REQ-2267 part 3: each engine reads a dev-mode source through its sidecar) -------
+
+
+@pytest.fixture
+def engines(monkeypatch, registry):
+    """A DuckDB engine's attach connector, the source named to it by the schema build, and the
+    sidecar's stops each engine is told of."""
+    from provisa.federation import codehost_connectors
+
+    monkeypatch.delenv("PROVISA_PGWIRE_ENGINE_HOST", raising=False)
+    monkeypatch.setattr(codehost_connectors, "_DEV", {})
+    monkeypatch.setattr(pgwire_sidecar, "_listeners", {})
+    monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
+    told: list[tuple[str, str]] = []
+    pgwire_sidecar.on_stop("test", lambda org, source: told.append((org, source)))
+    return told
+
+
+def _attached_duckdb(code, *, content_hash: str = "h1"):
+    """A DuckDB database with the source attached as the engine attaches it: the connector's
+    ATTACH, of the sidecar the attach starts."""
+    import duckdb
+
+    from provisa.federation.codehost_connectors import DevSource, DuckDBCodeHostConnector
+
+    connector = DuckDBCodeHostConnector("python")
+    connector.remember_dev(
+        "acme", {"shop-src": DevSource(_prepared(code, content_hash=content_hash), "shop")}
+    )
+    source = SimpleNamespace(id="shop-src", mapping={"mode": "dev"}, schema_name="shop")
+    details = connector.details(source)
+    db = duckdb.connect()
+    db.execute("LOAD postgres")
+    db.execute(details["attach"])
+    return db, details["raw_alias"]
+
+
+def test_duckdb_reads_a_dev_sources_table_through_the_sidecar_its_attach_starts(engines, code):
+    assert pgwire_sidecar._sidecars == {}
+    db, alias = _attached_duckdb(code)
+    try:
+        assert db.execute(
+            f'SELECT id, "customerName" FROM "{alias}".shop.orders WHERE _nf_n = 3 ORDER BY id'
+        ).fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]
+        # The engine's filter reaches the function as its read context, the call made on the
+        # source's own worker in the pool.
+        asked = db.execute(
+            f'SELECT DISTINCT asked FROM "{alias}".shop.orders WHERE _nf_n = 4 AND id >= 2'
+        ).fetchall()
+        assert asked[0][0].startswith("n=4;")
+    finally:
+        db.close()
+    assert ("acme", "shop-src") in pgwire_sidecar._sidecars
+
+
+def test_a_forgotten_sources_sidecar_stop_drops_each_engines_catalog_of_it(engines, code):
+    from provisa.codesource.source import forget
+
+    db, _alias = _attached_duckdb(code)
+    db.close()
+    forget("shop-src")
+    assert engines == [("acme", "shop-src")]
+
+
+def test_a_content_hash_restart_drops_the_engines_catalog_and_keeps_the_port(engines, code):
+    db, alias = _attached_duckdb(code)
+    first = pgwire_sidecar._sidecars[("acme", "shop-src")]
+    port = first.ports.pgwire_port
+    # The same code: nothing stopped, nothing told.
+    assert not pgwire_sidecar.retire_changed(_prepared(code))  # type: ignore[arg-type]
+    assert engines == []
+    # Its code changed: the schema build stops the old code's sidecar, and the engines are told.
+    assert pgwire_sidecar.retire_changed(_prepared(code, content_hash="h2"))  # type: ignore[arg-type]
+    assert engines == [("acme", "shop-src")]
+    assert not first.alive()
+    db.execute(f'DETACH "{alias}"')  # what the engine's drop of its catalog does
+    db.close()
+    db, alias = _attached_duckdb(code, content_hash="h2")
+    try:
+        again = pgwire_sidecar._sidecars[("acme", "shop-src")]
+        assert again.content_hash == "h2" and again.ports.pgwire_port == port
+        assert db.execute(
+            f'SELECT count(*) FROM "{alias}".shop.orders WHERE _nf_n = 2'
+        ).fetchall() == [(2,)]
+    finally:
+        db.close()
+
+
+def test_a_sidecar_that_ended_is_started_again_keeping_the_engines_catalogs(engines, code):
+    db, alias = _attached_duckdb(code)
+    db.close()
+    held = pgwire_sidecar._sidecars[("acme", "shop-src")]
+    held.stop()  # it ended on its own
+    db, alias = _attached_duckdb(code)
+    try:
+        assert db.execute(
+            f'SELECT count(*) FROM "{alias}".shop.orders WHERE _nf_n = 1'
+        ).fetchall() == [(1,)]
+    finally:
+        db.close()
+    assert engines == []  # the same code on the same port: no engine's catalog goes
+
+
+def test_every_call_gives_the_sidecar_the_operators_bounds_as_they_are_then(
+    engines, code, monkeypatch
+):
+    pgwire_sidecar.ensure_sidecar(_prepared(code))  # type: ignore[arg-type]
+    port = pgwire_sidecar._sidecars[("acme", "shop-src")].ports.pgwire_port
+    held = code.root / "spill" / "duckdb.json"
+    assert json.loads(held.read_text()) == BOUNDS  # the bounds it started with
+    changed = {"memory_mb": 384, "threads": 1, "spill_cap_mb": 512}
+    monkeypatch.setattr(pgwire_sidecar, "_bounds", lambda: changed)
+    with psycopg.connect(_dsn(port), autocommit=True) as conn:
+        assert _rows(conn, "SELECT count(*) FROM orders WHERE _nf_n = 2") == [(2,)]
+    assert json.loads(held.read_text()) == changed

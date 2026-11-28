@@ -149,6 +149,7 @@ KINDS: dict[str, Kind] = {
     "role": Kind("roles", "id"),
     "role_assignment": Kind("user_role_assignments", "id"),
     "row_filter": Kind("rls_rules", "id"),
+    "column_rule": Kind("column_rules", "id"),  # REQ-2278
     "metric": Kind("metrics", "name"),
     "materialized_view": Kind("materialized_views", "id"),
     "command": Kind("tracked_functions", "name"),
@@ -300,6 +301,7 @@ REFERENCES: tuple[Reference, ...] = (
     # may be left naming a deleted role.
     _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),
     _part("rls_rules", "role_id", "role"),
+    _part("column_rules", "role_id", "role"),  # REQ-2278: a role's column rules go with it
     _dep("table_columns", "visible_to", "role", "column", "id", match=Match.MEMBER),
     # REQ-2074: a table's write grant to the role.
     _dep("table_write_grants", "role_id", "role", "table", "table_id"),
@@ -339,6 +341,11 @@ REFERENCES: tuple[Reference, ...] = (
     _part("data_product_commands", "command_name", "command"),
     _part("rls_rules", "action_name", "webhook"),
     _part("tag_assignments", "command_name", "webhook"),
+    # REQ-1159 (amended 2026-11-25): its output columns' terms and classifications.
+    _part("glossary_term_refs", "command_name", "command"),
+    _part("glossary_term_refs", "command_name", "webhook"),
+    _part("profiler_classifications", "command_name", "command"),
+    _part("profiler_classifications", "command_name", "webhook"),
     # --- to a data product ---------------------------------------------------------------------
     # REQ-1634: a product's member tables and commands block it; a membership row is a part of its
     # member, and goes with it.
@@ -395,6 +402,8 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-1384: a row filter on the tag blocks it. Removing the filter with the tag would widen
     # what the filter's role reads; the operator removes the filter first, and says so.
     _dep("rls_rules", "tag_id", "tag", "row_filter", "id"),
+    # REQ-2278: so does a column rule on the tag: removing it would unhide or unmask its columns.
+    _dep("column_rules", "tag_id", "tag", "column_rule", "id"),
     # --- to a remote source registration, and runtime rows -------------------------------------
     _part("api_endpoints", "source_id", "api_source"),
     _part("kafka_topics", "source_id", "kafka_source"),
@@ -582,6 +591,13 @@ async def _name_of(conn: "Connection", ref: ObjectRef) -> str:
         else:
             on = domain_id or action_name or ""
         return f"{role_id} on {on}"
+    if ref.kind == "column_rule":  # REQ-2278
+        found = await row("column_rules", "id", "role_id", "action", "tag_id", "classification")
+        if found is None:
+            return str(ref.id)
+        role_id, action, tag_id, classification = found
+        on = f"tag {tag_id}" if tag_id is not None else f"classification {classification}"
+        return f"{action} {on} for {role_id}"
     if ref.kind in ("glossary_term", "data_product"):
         table = "glossary_terms" if ref.kind == "glossary_term" else "data_products"
         found = await row(table, "id", "name")
@@ -646,6 +662,19 @@ async def _is_retired(conn: "Connection", ref: ObjectRef) -> bool:
     kind = KINDS.get(ref.kind)
     if kind is None:
         return False
+    if ref.kind == "materialized_view" and str(ref.id).startswith("view-"):
+        # A view's storage row (``view-<table name>``, _attributes) is a part of its table and
+        # keeps no retirement of its own: it is retired with that table.
+        tables = metadata.tables["registered_tables"]
+        retired = (
+            await conn.execute_core(
+                select(tables.c.retired).where(
+                    tables.c.table_name == str(ref.id).removeprefix("view-"),
+                    tables.c.view_sql.is_not(None),
+                )
+            )
+        ).scalar_one_or_none()
+        return bool(retired)
     table = metadata.tables[kind.table]
     if "retired" not in table.c:
         return False

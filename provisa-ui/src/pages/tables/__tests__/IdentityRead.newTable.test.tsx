@@ -15,6 +15,12 @@
 // shows its links without a reload -- and loses them once it is deleted.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 import { DeleteTable, RegisterTable } from "../../../hooks/admin.graphql";
 import { useDeleteTable, useRegisterTable } from "../../../hooks/useTableQueries";
@@ -34,6 +40,7 @@ const TICKETS = {
   draft: false,
   region: null,
   apiEndpoint: null,
+  columns: [],
 } as unknown as RegisteredTable;
 
 const PG = { id: "pg", type: "postgresql" } as Source;
@@ -66,7 +73,15 @@ function introspection() {
 function graphSchema() {
   return {
     node_labels: registered
-      ? [{ label: "Tickets", table_id: 7, pk_columns: ["id"], properties: ["id"] }]
+      ? [
+          {
+            label: "Tickets",
+            table_id: 7,
+            pk_columns: ["id"],
+            properties: ["id"],
+            native_filter_columns: [],
+          },
+        ]
       : [],
     relationship_types: [],
     root_fields: registered

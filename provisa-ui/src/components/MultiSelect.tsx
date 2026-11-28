@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { Button, Group, Loader, MultiSelect as MantineMultiSelect } from "@mantine/core";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { Tip } from "./Tip";
 
@@ -64,6 +64,9 @@ export function MultiSelect({
   description,
   required,
   withAsterisk,
+  error,
+  onBlur,
+  ref,
   "aria-labelledby": labelledBy,
   "aria-description": ariaDescription,
 }: {
@@ -87,6 +90,10 @@ export function MultiSelect({
   description?: ReactNode;
   required?: boolean;
   withAsterisk?: boolean;
+  /** REQ-1968: a required pick left empty is marked here (useRequiredFields' `field`). */
+  error?: ReactNode;
+  onBlur?: () => void;
+  ref?: Ref<HTMLInputElement>;
   "aria-labelledby"?: string;
   "aria-description"?: string;
 }) {
@@ -150,6 +157,9 @@ export function MultiSelect({
       description={description}
       required={required}
       withAsterisk={withAsterisk}
+      error={error}
+      onBlur={onBlur}
+      ref={ref}
       // Callers historically render this with no visible label; supply an
       // accessible name so the combobox is never anonymous to screen readers.
       aria-labelledby={labelledBy}

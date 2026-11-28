@@ -22,6 +22,7 @@
     "colProvider": "Anmeldung",
     "colOrgAdmin": "Org-Admin",
     "noMembers": "Noch keine Mitglieder.",
+    "noMembersMatch": "Keine Mitglieder entsprechen dem Filter.",
     "yes": "Ja",
     "no": "Nein",
     "promote": "Zum Org-Admin machen",
@@ -93,6 +94,9 @@
     },
     "localUsersHeading": "Lokale Benutzer",
     "attributesTab": "Attribute",
-    "accessTab": "Zugriff"
+    "accessTab": "Zugriff",
+    "filterPlaceholder": "Mitglieder filtern",
+    "inviteButton": "Einladen",
+    "closeInvite": "Einladungsformular schließen"
   }
 }

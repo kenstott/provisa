@@ -32,12 +32,12 @@ from provisa.api.metadata_export.odps import (
     UNVERSIONED,
     OfferExport,
     contract_id,
-    logical_type,
     odps_document,
     offer_contract,
     product_documents,
 )
 from provisa.api.metadata_export.publishing import serving_endpoints
+from provisa.dq.contract_types import logical_type
 from provisa.core import offer_contracts
 from provisa.core.models import (
     Column,
@@ -107,8 +107,13 @@ def _offers(snapshot, product, *, skip=(), masked=None, unread=(), freshness=Non
             offer_contracts.terms(
                 offer,
                 [
+                    # REQ-2158 (amended 2026-11-25): as derivation names it, by its SQL alias
+                    # where one is set.
                     offer_contracts.SeenColumn(
-                        c.name, c.data_type, read=c.name not in unread, mask=masked.get(c.name)
+                        c.consumer_name,
+                        c.data_type,
+                        read=c.consumer_name not in unread,
+                        mask=masked.get(c.consumer_name),
                     )
                     for c in table.columns
                 ],
@@ -582,6 +587,31 @@ def test_a_member_names_its_foreign_keys():
     contract = _contract(snapshot, product, _orders(snapshot))
     assert contract["schema"][0]["relationships"] == [
         {"type": "foreignKey", "from": "orders.customer_id", "to": "customers.id"}
+    ]
+
+
+def test_a_column_is_named_by_its_sql_alias_where_one_is_set():
+    # REQ-2158 (amended 2026-11-25): consumers see each column by the name they query it by --
+    # its SQL alias where one is set, otherwise its column name -- never its physical name.
+    config = governed_config()
+    orders, customers = config.tables[0], config.tables[1]
+    next(c for c in orders.columns if c.name == "customer_id").alias = "buyer"
+    next(c for c in orders.columns if c.name == "amount").alias = "total_cents"
+    next(c for c in customers.columns if c.name == "id").alias = "customer_ref"
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    (offer,) = _offers(snapshot, product, masked={"total_cents": "truncate"})
+    contract = offer_contract(snapshot, product, _orders(snapshot), offer)
+
+    assert _errors(ODCS, contract) == []
+    props = {p["name"]: p for p in contract["schema"][0]["properties"]}
+    assert set(props) == {"id", "total_cents", "buyer", "ssn", "margin"}
+    assert props["total_cents"]["classification"] == "restricted"
+    assert contract["schema"][0]["relationships"] == [
+        {"type": "foreignKey", "from": "orders.buyer", "to": "customers.customer_ref"}
     ]
 
 

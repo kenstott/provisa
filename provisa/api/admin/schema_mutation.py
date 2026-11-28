@@ -58,6 +58,9 @@ from provisa.api.admin._retired_objects import restore as restore_retired
 from provisa.api.admin._retired_objects import retired_name_result
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
+    SetupQueryOutcome,
+    SetupRelationshipsOutcome,
+    SetupTablesOutcome,
     CalendarInput,
     ColumnAliasType,
     CompileQueryInput,
@@ -766,6 +769,9 @@ async def _set_data_product_members(
                 params={"data_product": product_id, **refused.params},
             )
     await _rebuild_schemas()  # membership is read by the runtime build (exports, meta, lineage)
+    from provisa.dq.scan import reschedule_org_checkers
+
+    await reschedule_org_checkers()  # REQ-2158: a member's type check follows its membership
     return MutationResult(
         success=True,
         message=f"Data product {product_id!r} members set",
@@ -1708,6 +1714,8 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "column": model.table_id is not None and model.column_name,
         "relationship": model.relationship_id,
         "command": model.command_name,
+        # REQ-1159: an output column of a command, named by the command and the column.
+        "command_column": model.command_name is not None and model.column_name,
         "term": model.term_id,  # REQ-2145
         "product": model.product_id,  # REQ-1634
         "document": model.document_id,  # REQ-2208
@@ -1792,6 +1800,7 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     term_id: int | None = None,
     product_id: str | None = None,
     rule_domains: set[str] | None = None,
+    command: Any = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
@@ -1830,6 +1839,14 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
         # REQ-2208: the library's curator; tag_target_domains placed it in the document's domains.
         # A sensitive tag hides nothing on a document: no value of it is served by a column.
         require_capability(info, "glossary_rw")
+        return
+    if tag_row["sensitive"] and object_type == "command_column":  # REQ-1159
+        # A sensitive tag on a command's output column hides its values as on a table column's:
+        # sensitive_data in the command's domain.
+        from provisa.api.admin.domain_guard import tag_target_domains
+
+        assert command is not None  # _assignment_target_problem: it names its command
+        require_right_in_domains(info, SENSITIVE_DATA, await tag_target_domains(conn, command))
         return
     if not (tag_row["sensitive"] and object_type == "column"):
         require_capability(info, "table_registration")
@@ -1893,6 +1910,7 @@ async def _require_assignment_editor(
         model.term_id,
         model.product_id,
         await _rule_domains_of(conn, model),
+        model,
     )
     return None
 
@@ -4615,6 +4633,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.term_id,
                 model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
+                model,
             )
             for citation in citations or []:  # REQ-2208: a document the caller reads
                 refused = await _unread_document(
@@ -4629,8 +4648,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return refused
             covers = await _covers(cast("Connection", conn), model)  # REQ-2145
         await _refresh_config_tags()
-        if model.object_type == "table":
-            await _rebuild_if_tag_filtered(model.tag_id)
+        await _rebuild_if_tag_governs(model.tag_id, model.object_type)
         return MutationResult(
             success=True,
             message=f"Tag {input.tag_id!r} assigned",
@@ -4690,6 +4708,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.term_id,
                     input.product_id,
                     await _rule_domains_of(cast("Connection", conn), model),
+                    model,
                 )
             if model.object_type == "column":  # REQ-2145
                 from provisa.core.term_tags import inherited_from
@@ -4726,8 +4745,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"tag": input.tag_id, "objectKey": model.object_key()},
             )
         await _refresh_config_tags()
-        if model.object_type == "table":
-            await _rebuild_if_tag_filtered(model.tag_id)
+        await _rebuild_if_tag_governs(model.tag_id, model.object_type)
         return MutationResult(
             success=True,
             message=f"Tag {input.tag_id!r} unassigned",
@@ -6555,6 +6573,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.source_not_found",
                     params={"source": source_id},
                 )
+        from provisa.dq.scan import reschedule_org_checkers
+
+        await reschedule_org_checkers()  # REQ-2158: a member's type check runs on its new interval
         return MutationResult(
             success=True,
             message=f"Cache settings updated for source {source_id!r}",
@@ -6879,6 +6900,41 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if region is strawberry.UNSET:
             return _put_back_needs_region(f"source {source_id}")
         return await _set_source_withdrawn(info, source_id, False, region)
+
+    @strawberry.mutation
+    async def set_source_setup_outcomes(
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        tables: SetupTablesOutcome | None = None,
+        relationships: SetupRelationshipsOutcome | None = None,
+        query: SetupQueryOutcome | None = None,
+    ) -> MutationResult:  # REQ-2262
+        """Record what became of each step of a source's setup, replacing what was held: one
+        record per source, shared by every user and environment. A step left null is open; all
+        null is Run setup again. Needs source_registration."""
+        from provisa.core.models import BUILT_IN_SOURCE_IDS, SourceSetupOutcomes
+        from provisa.core.repositories import source as source_repo
+
+        require_capability(info, "source_registration")
+        if source_id in BUILT_IN_SOURCE_IDS:
+            return _source_not_found(source_id)
+        outcomes = SourceSetupOutcomes(
+            tables=tables.value if tables else None,
+            relationships=relationships.value if relationships else None,
+            query=query.value if query else None,
+        )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            stored = await source_repo.set_setup_outcomes(conn, source_id, outcomes)
+        if stored is None:
+            return _source_not_found(source_id)
+        return MutationResult(
+            success=True,
+            message=f"source {source_id!r} setup recorded",
+            code="schema.source_setup_recorded",
+            params={"source": source_id},
+        )
 
     @strawberry.mutation
     async def set_source_region(
@@ -7959,15 +8015,28 @@ async def _upsert_tag_rls_rule(
     )
 
 
-async def _rebuild_if_tag_filtered(tag_id: str) -> None:  # REQ-1384
+#: The objects a tag on which reaches a column a column rule governs (REQ-2278): the column, a
+#: command's output column, and a term, whose pii its columns carry (REQ-2145).
+_COLUMN_RULE_OBJECTS = ("column", "command_column", "term")
+
+
+async def _rebuild_if_tag_governs(tag_id: str, object_type: str) -> None:  # REQ-1384, REQ-2278
     """A tag that carries a row filter decides which rows its tables' readers see, so putting
-    it on a table or taking it off rebuilds the role contexts; any other tag is annotation."""
+    it on a table or taking it off rebuilds the role contexts. A tag a column rule is keyed on
+    decides whether its columns are hidden or masked, so putting it on a column (or a term) or
+    taking it off does too, and the column comes under the rule, or is released, at once. Any
+    other tag is annotation."""
     from provisa.core.models import base_tag_id
+
+    from provisa.core.repositories import column_rule as column_rule_repo
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
         filtered = await rls_repo.tags_with_filters(cast("Connection", conn))
-    if base_tag_id(tag_id) in filtered:
+        ruled, _kinds = await column_rule_repo.keyed(cast("Connection", conn))
+    if object_type == "table" and base_tag_id(tag_id) in filtered:
+        await _rebuild_schemas()
+    elif object_type in _COLUMN_RULE_OBJECTS and {tag_id, base_tag_id(tag_id)} & ruled:
         await _rebuild_schemas()
 
 

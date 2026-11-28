@@ -9,6 +9,7 @@
     "detailPanel": "Detalles de la región de la plataforma",
     "colRegion": "Región",
     "none": "La plataforma no declara regiones.",
+    "noMatch": "Ninguna región coincide con el filtro.",
     "edit": "Editar",
     "remove": "Quitar",
     "taken": "Ya existe una región llamada {{id}}.",
@@ -38,6 +39,8 @@
     "org": "Organización",
     "pickOrg": "Elija una organización",
     "orgGranted": "{{id}} (concedidas: {{regions}})",
-    "orgNone": "{{id}} (sin regiones)"
+    "orgNone": "{{id}} (sin regiones)",
+    "filterPlaceholder": "Filtrar regiones",
+    "closeForm": "Cerrar el formulario"
   }
 }

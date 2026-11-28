@@ -9,6 +9,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { hasNoStatement } from "../lib/noStatement";
+import { NoQueryMessage } from "../components/NoQueryMessage";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useScreenInputs } from "../mcp/screenState";
@@ -18,6 +20,8 @@ import { Badge, Button, Checkbox, Group, MultiSelect, Select, Tabs, Text } from 
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
+import { ExploreMain, ExploreShell, ExploreSide } from "../components/explore/ExploreShell";
+import { ResultPanel } from "../components/explore/ResultPanel";
 import { requestFailed, serverMessage, type ServerMessageShape } from "../i18n/serverMessage";
 import { Tip } from "../components/Tip";
 import { CancelButton } from "../components/form/CancelButton";
@@ -172,6 +176,9 @@ function buildMessageTemplate(
 
 interface GrpcHandoff {
   method: string;
+  /** REQ-1159 (amended 2026-11-27): the method is a command's call (a command's Query it line),
+   *  named by the command, its body ``{ name, args }``. */
+  command: boolean;
   byColumns: string[] | null;
   funcs: string[] | null;
   projection: NodeProjection | null;
@@ -210,6 +217,7 @@ function parseGrpcHandoff(
       : null;
   return {
     method: signature,
+    command: false,
     byColumns: (body?.by as string[]) ?? listArg(signature, /\(by=\[([^\]]*)\]/),
     funcs: (body?.funcs as string[]) ?? listArg(signature, /funcs=\[([^\]]*)\]/),
     projection,
@@ -272,9 +280,25 @@ export function GrpcPage() {
   const [handoff, setHandoff] = useState<GrpcHandoff | null>(null);
   useNavPayload<{
     grpcMethod?: string;
+    grpcCommand?: string;
     grpcBody?: Record<string, unknown>;
     autoRun?: boolean;
   }>((payload) => {
+    if (payload.grpcCommand) {
+      const command = payload.grpcCommand;
+      const body = payload.grpcBody ?? null;
+      setHandoff((prev) => ({
+        method: command,
+        command: true,
+        byColumns: null,
+        funcs: null,
+        projection: null,
+        body,
+        autoRun: payload.autoRun === true,
+        seq: (prev?.seq ?? 0) + 1,
+      }));
+      return;
+    }
     if (!payload.grpcMethod) return;
     const signature = payload.grpcMethod;
     const body = payload.grpcBody ?? null;
@@ -297,6 +321,8 @@ export function GrpcPage() {
   const [response, setResponse] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  // The last run had no request in the body editor: the response pane says so.
+  const [noQuery, setNoQuery] = useState(false);
   // REQ-1361 picker: group-by columns + restricted agg funcs for Query{Type}Aggregate/GroupBy.
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
@@ -400,12 +426,17 @@ export function GrpcPage() {
         const p = parseProto(text);
         // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
         // before matching against the bare typeName the proto actually exposes.
-        const preferred = handoff ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "") : "";
+        const preferred =
+          handoff && !handoff.command
+            ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "")
+            : "";
         const navM = preferred
           ? p.methods.find((m) => m.typeName === preferred && m.operation === "query")
           : null;
-        const initial =
-          navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
+        // A command's call is selected once the commands are read (below), not here.
+        const initial = handoff?.command
+          ? null
+          : (navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null);
         if (initial) {
           setOpType(initial.operation);
           selectMethod(
@@ -454,6 +485,21 @@ export function GrpcPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async command fetch; setState occurs inside the async callback
     if (roleId) void fetchCommands(roleId);
   }, [roleId, fetchCommands]);
+
+  // REQ-1159 (amended 2026-11-27): a command's call handed over is selected once the role's
+  // commands are read, with the body it was handed.
+  useEffect(() => {
+    if (!handoff?.command || selectedSeq === handoff.seq) return;
+    const method = commandMethods.find((m) => m.name === handoff.method);
+    if (!method) return;
+    // eslint-disable-next-line react-hooks/immutability -- one-shot guard, as the proto fetch's: the handed command is selected, so the first-method auto-select stands aside
+    navSelectDoneRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- selects the handed command once its list is read; guarded by the hand-off's sequence number
+    setOpType("command");
+    selectMethod(method, parsed, null, null, null, handoff.body);
+    setSelectedSeq(handoff.seq);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- commandMethods is derived from commands, the real dependency
+  }, [handoff, commands, parsed, selectMethod, selectedSeq]);
 
   // REQ-1361: the group-by picker must offer only columns the server's {Type}DistinctOnColumn
   // enum actually accepts — the {Type}Filter message's fields (a different, broader set) yield
@@ -535,6 +581,14 @@ export function GrpcPage() {
 
   const handleRun = useCallback(async () => {
     if (!selectedMethod || !roleId) return;
+    // No request in the body editor (blank): said in the response pane, nothing sent.
+    if (hasNoStatement(messageText, "json")) {
+      setNoQuery(true);
+      setError("");
+      setResponse("");
+      return;
+    }
+    setNoQuery(false);
     if (selectedMethod.operation === "mutation") {
       setError("Mutation RPCs are not yet supported via the HTTP proxy.");
       return;
@@ -625,215 +679,229 @@ export function GrpcPage() {
   };
 
   return (
-    <div className="grpc-page page">
-      {/* Top bar: method selector + send */}
-      <Group className="grpc-topbar" justify="space-between" wrap="nowrap">
-        <Group className="grpc-topbar-left" wrap="nowrap" gap="sm" style={{ flex: 1, minWidth: 0 }}>
-          <Badge
-            variant="outline"
-            color="gray"
-            radius="sm"
-            style={{
-              fontFamily: "monospace",
-              fontWeight: 400,
-              textTransform: "none",
-              flexShrink: 0,
-            }}
+    <ExploreShell
+      testId="grpc-page"
+      className="grpc-page"
+      toolbar={
+        <Group className="grpc-topbar" justify="space-between" wrap="nowrap">
+          <Group
+            className="grpc-topbar-left"
+            wrap="nowrap"
+            gap="sm"
+            style={{ flex: 1, minWidth: 0 }}
           >
-            {t("grpcPage.serverBadge")}
-          </Badge>
-          <Select
-            aria-label={t("grpcPage.operationType")}
-            data-testid="grpc-op-select"
-            size="xs"
-            w={130}
-            allowDeselect={false}
-            value={opType}
-            onChange={(v) => v && setOpType(v as OperationType)}
-            disabled={allMethods.length === 0}
-            data={[
-              { value: "query", label: t("grpcPage.query") },
-              { value: "mutation", label: t("grpcPage.mutation") },
-              { value: "command", label: t("grpcPage.command") },
-            ]}
-          />
-          <Select
-            aria-label={t("grpcPage.method")}
-            data-testid="grpc-method-select"
-            size="xs"
-            style={{ flex: 1, minWidth: 0, maxWidth: 320, fontFamily: "monospace" }}
-            value={selectedMethod?.name ?? null}
-            onChange={(v) => v && handleMethodChange(v)}
-            disabled={visibleMethods.length === 0}
-            placeholder={visibleMethods.length === 0 ? t("grpcPage.noMethods") : undefined}
-            data={visibleMethods.map((m) => ({ value: m.name, label: m.name }))}
-          />
-        </Group>
-        <Group className="grpc-topbar-right" wrap="nowrap" gap="sm">
-          {protoError && (
-            <Tip text={protoError}>
-              <Text
-                size="xs"
-                c="red"
-                data-testid="grpc-proto-error"
-                style={{ maxWidth: 300 }}
-                truncate="end"
-              >
-                {protoError}
-              </Text>
-            </Tip>
-          )}
-          {!protoError && funcsRequired && (
-            <Text size="xs" c="red" data-testid="grpc-funcs-required-hint">
-              {t("grpcPage.selectAtLeastOneFunc")}
-            </Text>
-          )}
-          {running ? (
-            <CancelButton onClick={handleRun} disabled testId="grpc-send-btn" />
-          ) : (
-            <Button
-              size="xs"
-              data-testid="grpc-send-btn"
-              onClick={handleRun}
-              disabled={!selectedMethod || !roleId || !!protoError || funcsRequired}
+            <Badge
+              variant="outline"
+              color="gray"
+              radius="sm"
+              style={{
+                fontFamily: "monospace",
+                fontWeight: 400,
+                textTransform: "none",
+                flexShrink: 0,
+              }}
             >
-              {t("grpcPage.send")}
-            </Button>
-          )}
-        </Group>
-      </Group>
-
-      {/* Main panels */}
-      <div className="grpc-body">
-        {/* Left: Body / Proto tabs */}
-        <div className="grpc-panel grpc-panel-left">
-          <Tabs
-            className="grpc-tabs"
-            value={leftTab}
-            onChange={(v) => v && setLeftTab(v as LeftTab)}
-          >
-            <Tabs.List>
-              <Tabs.Tab value="body" data-testid="grpc-tab-body">
-                {t("grpcPage.body")}
-              </Tabs.Tab>
-              <Tabs.Tab value="proto" data-testid="grpc-tab-proto">
-                {t("grpcPage.proto")}
-              </Tabs.Tab>
-            </Tabs.List>
-          </Tabs>
-          {leftTab === "body" && isAggOrGroupBy && selectedMethod && (
-            <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
-              {selectedMethod.typeName.endsWith("GroupBy") && (
-                <MultiSelect
-                  aria-label={t("grpcPage.groupByColumns")}
-                  data-testid="grpc-groupby-picker"
+              {t("grpcPage.serverBadge")}
+            </Badge>
+            <Select
+              aria-label={t("grpcPage.operationType")}
+              data-testid="grpc-op-select"
+              size="xs"
+              w={130}
+              allowDeselect={false}
+              value={opType}
+              onChange={(v) => v && setOpType(v as OperationType)}
+              disabled={allMethods.length === 0}
+              data={[
+                { value: "query", label: t("grpcPage.query") },
+                { value: "mutation", label: t("grpcPage.mutation") },
+                { value: "command", label: t("grpcPage.command") },
+              ]}
+            />
+            <Select
+              aria-label={t("grpcPage.method")}
+              data-testid="grpc-method-select"
+              size="xs"
+              style={{ flex: 1, minWidth: 0, maxWidth: 320, fontFamily: "monospace" }}
+              value={selectedMethod?.name ?? null}
+              onChange={(v) => v && handleMethodChange(v)}
+              disabled={visibleMethods.length === 0}
+              placeholder={visibleMethods.length === 0 ? t("grpcPage.noMethods") : undefined}
+              data={visibleMethods.map((m) => ({ value: m.name, label: m.name }))}
+            />
+          </Group>
+          <Group className="grpc-topbar-right" wrap="nowrap" gap="sm">
+            {protoError && (
+              <Tip text={protoError}>
+                <Text
                   size="xs"
-                  placeholder={t("grpcPage.groupByColumns")}
-                  data={groupByColumnOptions}
-                  value={groupByCols}
-                  onChange={setGroupByCols}
-                  searchable
-                  clearable
-                />
-              )}
-              {selectedMethod.typeName.endsWith("GroupBy") && (
-                <>
-                  <Checkbox
-                    mt="sm"
-                    size="xs"
-                    data-testid="grpc-include-nodes-checkbox"
-                    label={t("grpcPage.includeNodes")}
-                    checked={includeNodes}
-                    onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
-                  />
-                  {includeNodes && (
-                    <MultiSelect
-                      mt="xs"
-                      aria-label={t("grpcPage.includeFields")}
-                      data-testid="grpc-include-picker"
-                      size="xs"
-                      placeholder={t("grpcPage.includeFields")}
-                      data={includeOptions}
-                      value={includeFields}
-                      onChange={setIncludeFields}
-                      searchable
-                      clearable
-                    />
-                  )}
-                </>
-              )}
-              <Checkbox.Group
-                data-testid="grpc-funcs-picker"
-                value={selectedFuncs}
-                onChange={setSelectedFuncs}
-                label={t("grpcPage.aggregateFunctions")}
-                mt="sm"
-                mb="sm"
-              >
-                <Group gap="xs" mt={8} mb={4}>
-                  {AGG_FUNCS.map((fn) => (
-                    <Checkbox
-                      key={fn}
-                      value={fn}
-                      label={fn}
-                      size="xs"
-                      data-testid={`grpc-func-${fn}`}
-                    />
-                  ))}
-                </Group>
-              </Checkbox.Group>
-              <MultiSelect
-                mt="xs"
-                aria-label={t("grpcPage.aggregateColumns")}
-                data-testid="grpc-columns-picker"
+                  c="red"
+                  data-testid="grpc-proto-error"
+                  style={{ maxWidth: 300 }}
+                  truncate="end"
+                >
+                  {protoError}
+                </Text>
+              </Tip>
+            )}
+            {!protoError && funcsRequired && (
+              <Text size="xs" c="red" data-testid="grpc-funcs-required-hint">
+                {t("grpcPage.selectAtLeastOneFunc")}
+              </Text>
+            )}
+            {running ? (
+              <CancelButton onClick={handleRun} disabled testId="grpc-send-btn" />
+            ) : (
+              <Button
                 size="xs"
-                label={t("grpcPage.aggregateColumns")}
-                placeholder={t("grpcPage.aggregateColumns")}
-                data={aggColumnOptions}
-                value={selectedAggColumns}
-                onChange={setSelectedAggColumns}
+                data-testid="grpc-send-btn"
+                onClick={handleRun}
+                disabled={!selectedMethod || !roleId || !!protoError || funcsRequired}
+              >
+                {t("grpcPage.send")}
+              </Button>
+            )}
+          </Group>
+        </Group>
+      }
+    >
+      {/* Left: Body / Proto tabs */}
+      <ExploreSide
+        storageKey="provisa.grpc.sideWidth"
+        initial={560}
+        min={280}
+        max={1200}
+        testId="grpc-side"
+        className="grpc-panel grpc-panel-left"
+      >
+        <Tabs className="grpc-tabs" value={leftTab} onChange={(v) => v && setLeftTab(v as LeftTab)}>
+          <Tabs.List>
+            <Tabs.Tab value="body" data-testid="grpc-tab-body">
+              {t("grpcPage.body")}
+            </Tabs.Tab>
+            <Tabs.Tab value="proto" data-testid="grpc-tab-proto">
+              {t("grpcPage.proto")}
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
+        {leftTab === "body" && isAggOrGroupBy && selectedMethod && (
+          <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
+            {selectedMethod.typeName.endsWith("GroupBy") && (
+              <MultiSelect
+                aria-label={t("grpcPage.groupByColumns")}
+                data-testid="grpc-groupby-picker"
+                size="xs"
+                placeholder={t("grpcPage.groupByColumns")}
+                data={groupByColumnOptions}
+                value={groupByCols}
+                onChange={setGroupByCols}
                 searchable
                 clearable
               />
-            </div>
-          )}
-          {leftTab === "body" ? (
-            <GrpcCodeView
-              language="json"
-              value={messageText}
-              onChange={setMessageText}
-              editablePlaceholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
-              data-testid="grpc-body-editor"
+            )}
+            {selectedMethod.typeName.endsWith("GroupBy") && (
+              <>
+                <Checkbox
+                  mt="sm"
+                  size="xs"
+                  data-testid="grpc-include-nodes-checkbox"
+                  label={t("grpcPage.includeNodes")}
+                  checked={includeNodes}
+                  onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
+                />
+                {includeNodes && (
+                  <MultiSelect
+                    mt="xs"
+                    aria-label={t("grpcPage.includeFields")}
+                    data-testid="grpc-include-picker"
+                    size="xs"
+                    placeholder={t("grpcPage.includeFields")}
+                    data={includeOptions}
+                    value={includeFields}
+                    onChange={setIncludeFields}
+                    searchable
+                    clearable
+                  />
+                )}
+              </>
+            )}
+            <Checkbox.Group
+              data-testid="grpc-funcs-picker"
+              value={selectedFuncs}
+              onChange={setSelectedFuncs}
+              label={t("grpcPage.aggregateFunctions")}
+              mt="sm"
+              mb="sm"
+            >
+              <Group gap="xs" mt={8} mb={4}>
+                {AGG_FUNCS.map((fn) => (
+                  <Checkbox
+                    key={fn}
+                    value={fn}
+                    label={fn}
+                    size="xs"
+                    data-testid={`grpc-func-${fn}`}
+                  />
+                ))}
+              </Group>
+            </Checkbox.Group>
+            <MultiSelect
+              mt="xs"
+              aria-label={t("grpcPage.aggregateColumns")}
+              data-testid="grpc-columns-picker"
+              size="xs"
+              label={t("grpcPage.aggregateColumns")}
+              placeholder={t("grpcPage.aggregateColumns")}
+              data={aggColumnOptions}
+              value={selectedAggColumns}
+              onChange={setSelectedAggColumns}
+              searchable
+              clearable
             />
-          ) : (
-            <GrpcCodeView
-              language="proto"
-              value={protoText}
-              placeholder={protoError ? "" : t("grpcPage.loading")}
-            />
-          )}
-        </div>
+          </div>
+        )}
+        {leftTab === "body" ? (
+          <GrpcCodeView
+            language="json"
+            value={messageText}
+            onChange={(v) => {
+              setNoQuery(false);
+              setMessageText(v);
+            }}
+            editablePlaceholder={selectedMethod ? "" : t("grpcPage.selectMethodPlaceholder")}
+            data-testid="grpc-body-editor"
+          />
+        ) : (
+          <GrpcCodeView
+            language="proto"
+            value={protoText}
+            placeholder={protoError ? "" : t("grpcPage.loading")}
+          />
+        )}
+      </ExploreSide>
 
-        {/* Right: Response */}
-        {/* REQ-2010: marked once a response is in, which a demo tour step waits for. */}
-        <div className="grpc-panel grpc-panel-right" data-answered={response ? "" : undefined}>
-          <Tabs className="grpc-tabs" value="response">
-            <Tabs.List>
-              <Tabs.Tab value="response">{t("grpcPage.response")}</Tabs.Tab>
-            </Tabs.List>
-          </Tabs>
-          {error && (
-            <Text className="grpc-error-bar" c="red" size="xs" data-testid="grpc-error-bar">
-              {error}
-            </Text>
-          )}
+      {/* Right: Response */}
+      {/* REQ-2010: marked once a response is in, which a demo tour step waits for. */}
+      <ExploreMain className="grpc-panel-right" answered={response !== ""}>
+        <ResultPanel
+          testId="grpc-response"
+          title={t("grpcPage.response")}
+          notice={
+            error && (
+              <Text className="grpc-error-bar" c="red" size="xs" data-testid="grpc-error-bar">
+                {error}
+              </Text>
+            )
+          }
+        >
+          {noQuery && <NoQueryMessage testId="grpc-no-query" />}
           <GrpcCodeView
             language="json"
             value={response}
             placeholder={running ? t("grpcPage.waiting") : t("grpcPage.sendPrompt")}
           />
-        </div>
-      </div>
-    </div>
+        </ResultPanel>
+      </ExploreMain>
+    </ExploreShell>
   );
 }

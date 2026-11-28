@@ -6,7 +6,6 @@
     "restoreDetail": "还原面板",
     "closeDetail": "关闭详情面板",
     "backToList": "返回列表",
-    "backToCommand": "返回命令",
     "panelNewCommand": "新建命令",
     "title": "命令",
     "loading": "正在加载命令...",
@@ -39,6 +38,8 @@
     "colTimeout": "超时",
     "noFunctions": "未注册任何函数",
     "noWebhooks": "未注册任何 Webhook",
+    "noFunctionsMatch": "没有符合筛选条件的函数",
+    "noWebhooksMatch": "没有符合筛选条件的 Webhook",
     "customSchema": "数据集",
     "dash": "—",
     "all": "全部",
@@ -54,8 +55,6 @@
     "editAria": "编辑 {{name}}",
     "deleteFunctionAria": "删除函数 {{name}}",
     "deleteWebhookAria": "删除 Webhook {{name}}",
-    "testButton": "测试",
-    "testingButton": "正在测试...",
     "cancelAria": "取消编辑",
     "saveAria": "保存更改",
     "deleteFunctionTitle": "删除函数“{{name}}”？",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "删除 Webhook“{{name}}”？",
     "deleteWebhookConsequence": "这将从架构中移除该 Webhook。",
     "inlineReturns": "内联（{{count}} 个字段）",
-    "testAsRole": "以角色测试：",
-    "testResultHeading": "测试结果：{{name}}",
     "close": "关闭",
-    "governanceApplied": "已应用治理",
     "savedMessage": "已保存 {{type}}“{{name}}”",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "argKind": {
+      "column_value": "值",
+      "table_ref": "表引用",
+      "result_set": "结果集"
+    }
   }
 }

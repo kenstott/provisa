@@ -95,6 +95,7 @@ const REVENUE: GlossaryTermSummary = {
 };
 const CHURN: GlossaryTermSummary = { ...REVENUE, id: 2, name: "Churn", ref_count: 0 };
 const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
+  command_refs: [],
   ...term,
   refs: [],
   edges_out: [],

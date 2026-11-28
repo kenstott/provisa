@@ -21,6 +21,7 @@
     "analyze": "Analizza",
     "analyzing": "Analisi in corso…",
     "analyzeTitle": "Mostra il piano del motore per questa istruzione, evidenziando le ottimizzazioni di Provisa",
+    "analyzeWhich": "Quale istruzione analizzare?",
     "saveViewTitle": "Salva l'SQL corrente come definizione della vista \"{{tableName}}\"",
     "saving": "Salvataggio in corso…",
     "updateView": "Aggiorna \"{{tableName}}\"",

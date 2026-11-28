@@ -3,6 +3,7 @@
     "help": "Los registros a los que se puede enviar la imagen construida de una fuente de código, para ejecutarla en un host remoto. Cada campo puede contener un valor o una referencia a un secreto como ${secret:registry_token}. Sin registro, la imagen construida se descarga en su lugar.",
     "add": "Añadir registro de contenedores",
     "none": "No hay registros de contenedores. Las imágenes construidas se pueden descargar igualmente.",
+    "noMatch": "Ningún registro de contenedores coincide con el filtro.",
     "address": "Registro y espacio de nombres",
     "addressHelp": "El registro, con su puerto si lo tiene, y el espacio de nombres del repositorio bajo el que se envían las imágenes, por ejemplo ghcr.io/example o registry.example.com:5000/data.",
     "username": "Nombre de usuario",
@@ -14,6 +15,10 @@
     "defaultHelp": "Una compilación envía aquí salvo que indique otro registro. Una organización tiene un registro predeterminado.",
     "saved": "Guardado",
     "removed": "Eliminado",
-    "remove": "Eliminar"
+    "remove": "Eliminar",
+    "filterPlaceholder": "Filtrar registros",
+    "closeForm": "Cerrar el formulario",
+    "edit": "Editar {{name}}",
+    "removeConfirm": "¿Eliminar {{name}}? Las compilaciones que publican en él ya no podrán publicar su imagen."
   }
 }

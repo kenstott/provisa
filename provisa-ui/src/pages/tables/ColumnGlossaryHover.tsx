@@ -17,7 +17,11 @@
 import { useState, type ReactNode } from "react";
 import { Badge, Group, Popover, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { fetchGlossaryTermByRef, type GlossaryTermDetail } from "../../api/glossary";
+import {
+  fetchGlossaryTermByQueryName,
+  fetchGlossaryTermByRef,
+  type GlossaryTermDetail,
+} from "../../api/glossary";
 import { columnGlossaryCache, columnGlossaryKey } from "./columnGlossaryCache";
 
 /** One attribute of a column, as the hover lists it. */
@@ -30,6 +34,9 @@ interface ColumnGlossaryHoverProps {
   /** Absent for a column of a table that is not registered yet: there is no glossary to read. */
   tableId?: number;
   columnName: string;
+  /** ``columnName`` is the name the column's consumers query it by -- its SQL alias where one is
+   *  set -- not its physical name: a data product's consumer view (REQ-2158, amended 2026-11-25). */
+  queried?: boolean;
   /**
    * The column's full definition, shown read-only above its glossary term: every attribute the
    * editor holds, whichever tab it is edited on. Lines with no value are left out.
@@ -41,6 +48,7 @@ interface ColumnGlossaryHoverProps {
 export function ColumnGlossaryHover({
   tableId,
   columnName,
+  queried = false,
   definition,
   children,
 }: ColumnGlossaryHoverProps) {
@@ -51,14 +59,15 @@ export function ColumnGlossaryHover({
   const handleEnter = () => {
     setHovered(true);
     if (tableId === undefined) return;
-    const key = columnGlossaryKey(tableId, columnName);
+    const key = columnGlossaryKey(tableId, columnName, queried);
     if (columnGlossaryCache.has(key)) {
       setTerm(columnGlossaryCache.get(key) ?? null);
       return;
     }
     // No .catch: 404 arrives as null by the fetchGlossaryTermByRef contract;
     // any other failure is a real error and must surface, not be swallowed.
-    void fetchGlossaryTermByRef(tableId, columnName).then((detail) => {
+    const lookup = queried ? fetchGlossaryTermByQueryName : fetchGlossaryTermByRef;
+    void lookup(tableId, columnName).then((detail) => {
       columnGlossaryCache.set(key, detail);
       setTerm(detail);
     });

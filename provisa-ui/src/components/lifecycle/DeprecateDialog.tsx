@@ -12,7 +12,8 @@
 // retirement, today or later. It stays in service until then, when the scheduler retires it.
 
 import { useState } from "react";
-import { Alert, Button, Modal, Textarea } from "@mantine/core";
+import { Alert, Button, Textarea } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { DateInput } from "@mantine/dates";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
@@ -66,7 +67,7 @@ export function DeprecateDialog({
   };
 
   return (
-    <Modal opened onClose={onClose} title={text.title}>
+    <ModalLayout opened onClose={onClose} title={text.title}>
       <FormLayout>
         <FormField size="full">
           <Textarea
@@ -111,6 +112,6 @@ export function DeprecateDialog({
           }
         />
       </FormLayout>
-    </Modal>
+    </ModalLayout>
   );
 }

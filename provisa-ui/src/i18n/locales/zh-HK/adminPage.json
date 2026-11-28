@@ -193,8 +193,8 @@
     "colDescription": "描述",
     "colGqlAlias": "GQL 別名",
     "colSteward": "數據管家",
-    "colActions": "操作",
     "noDomains": "未定義任何網域",
+    "noDomainsMatch": "沒有符合篩選條件的網域",
     "deleteDomain": "刪除網域 {{id}}",
     "resolveSteward": "顯示誰是網域 {{id}} 的數據管家",
     "pageIndicator": "第 {{page}} / {{total}} 頁",
@@ -225,6 +225,9 @@
     "apolloSubgraphNameHint": "超圖識別此子圖所用的名稱。",
     "apolloSubgraphRole": "服務角色",
     "apolloSubgraphRoleHint": "超級圖無法傳遞呼叫者的身分，因此路由器以此角色登入，此角色的行規則、遮罩和可見性會約束它擷取的每個實體。",
-    "stewardsHint": "對該網域負責的人員；每人都需要擁有 domain_steward 的角色。"
+    "stewardsHint": "對該網域負責的人員；每人都需要擁有 domain_steward 的角色。",
+    "domainsFilterPlaceholder": "篩選網域",
+    "closeForm": "關閉表單",
+    "domainPanel": "網域"
   }
 }

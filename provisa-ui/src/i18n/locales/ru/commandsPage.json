@@ -6,7 +6,6 @@
     "restoreDetail": "Восстановить панель",
     "closeDetail": "Закрыть панель сведений",
     "backToList": "Назад к списку",
-    "backToCommand": "Назад к команде",
     "panelNewCommand": "Новая команда",
     "title": "Команды",
     "loading": "Загрузка команд...",
@@ -39,6 +38,8 @@
     "colTimeout": "Тайм-аут",
     "noFunctions": "Функции не зарегистрированы",
     "noWebhooks": "Веб-хуки не зарегистрированы",
+    "noFunctionsMatch": "Нет функций, соответствующих фильтру",
+    "noWebhooksMatch": "Нет веб-хуков, соответствующих фильтру",
     "customSchema": "набор данных",
     "dash": "—",
     "all": "все",
@@ -54,8 +55,6 @@
     "editAria": "Редактировать {{name}}",
     "deleteFunctionAria": "Удалить функцию {{name}}",
     "deleteWebhookAria": "Удалить веб-хук {{name}}",
-    "testButton": "Проверить",
-    "testingButton": "Проверка...",
     "cancelAria": "Отменить редактирование",
     "saveAria": "Сохранить изменения",
     "deleteFunctionTitle": "Удалить функцию \"{{name}}\"?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "Удалить веб-хук \"{{name}}\"?",
     "deleteWebhookConsequence": "Веб-хук будет удалён из схемы.",
     "inlineReturns": "встроенные ({{count}} полей)",
-    "testAsRole": "Проверить с ролью:",
-    "testResultHeading": "Результат проверки: {{name}}",
     "close": "Закрыть",
-    "governanceApplied": "Управление применено",
     "savedMessage": "Сохранено: {{type}} \"{{name}}\"",
     "yes": "Да",
-    "no": "Нет"
+    "no": "Нет",
+    "argKind": {
+      "column_value": "значение",
+      "table_ref": "ссылка на таблицу",
+      "result_set": "набор результатов"
+    }
   }
 }

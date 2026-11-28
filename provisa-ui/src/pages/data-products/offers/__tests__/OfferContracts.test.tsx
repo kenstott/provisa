@@ -386,6 +386,33 @@ describe("an offer's contracts (REQ-2180)", () => {
     expect(screen.queryByTestId("offer-1-contract-1-columns-empty")).toBeNull();
   });
 
+  it("name each column once, by the name its consumers query it by", async () => {
+    // REQ-2158 (amended 2026-11-25): the preview names a column by its SQL alias where one is
+    // set; the Naming tab shows that one Name, never a physical name or a SQL Alias column.
+    const aliased = offer(1);
+    aliased.contracts[0].preview = [
+      { name: "pet_ref", type: "integer", description: "The pet", masked: null },
+    ];
+    await mounted(aliased);
+    openContracts();
+    fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
+    const headers = () =>
+      Array.from(screen.getByTestId("offer-1-contract-1-columns").querySelectorAll("th")).map(
+        (h) => h.textContent,
+      );
+    await waitFor(() => expect(headers()).toEqual(["Name", "Description"]));
+    expect(screen.getByTestId("offer-1-contract-1-columns-col-pet_ref")).toHaveTextContent(
+      "pet_refThe pet",
+    );
+    const contract = screen.getByTestId("offer-1-contract-1");
+    for (const tab of ["type", "access"]) {
+      fireEvent.click(within(contract).getByTestId(`column-tab-${tab}`));
+      await waitFor(() => expect(headers()[0]).toBe("Name"));
+      expect(headers()).not.toContain("Column");
+      expect(headers()).not.toContain("SQL Alias");
+    }
+  });
+
   it("have no row for a command or a checker", async () => {
     await panel(1);
     openContracts();
@@ -441,6 +468,24 @@ describe("an offer's contracts (REQ-2180)", () => {
     expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "default", "pg.public.visits");
     expect(screen.getByTestId("data-contract-1")).toBeInTheDocument();
     expect(screen.queryByTestId("data-contract-2")).toBeNull();
+  });
+
+  it("expand and collapse every card of a document from icons beside its heading", async () => {
+    await panel(3);
+    openContracts();
+    await openDocument(1);
+    const cards = ["details", "fields", "sla", "quality", "versions"];
+    const open = () =>
+      cards.map((c) =>
+        screen.getByTestId(`data-contract-1-${c}-toggle`).getAttribute("aria-expanded"),
+      );
+    expect(open()).toEqual(cards.map(() => "true"));
+    fireEvent.click(screen.getByTestId("offer-1-contract-1-document-collapse-all"));
+    expect(open()).toEqual(cards.map(() => "false"));
+    // The document itself stays open: the icons act on its cards.
+    expect(screen.getByTestId("data-contract-1")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("offer-1-contract-1-document-expand-all"));
+    expect(open()).toEqual(cards.map(() => "true"));
   });
 
   it("warn where the newest version breaks a reader, naming it", async () => {

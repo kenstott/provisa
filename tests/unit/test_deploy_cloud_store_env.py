@@ -14,7 +14,9 @@ list, which the patch overlay, terraform's sandbox VM and first-launch all read.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -22,6 +24,9 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+#: The real sed, by its resolved path: a fake that execs /usr/bin/sed on a host whose /usr/bin is
+#: served from the caller's PATH (NixOS's envfs) would exec the fake itself, forever.
+_SED = os.path.realpath(shutil.which("sed", path="/usr/bin:/bin"))
 
 
 def _function(name: str) -> str:
@@ -45,8 +50,8 @@ def _run(
     )
     # The node's sed is GNU's, whose -i takes no suffix; BSD's (macOS) needs an empty one.
     (bin_dir / "sed").write_text(
-        '#!/bin/bash\nif [ "$(uname)" = Darwin ] && [ "$1" = -i ]; then shift; exec /usr/bin/sed -i "" "$@"; fi\n'
-        'exec /usr/bin/sed "$@"\n'
+        f'#!/bin/bash\nif [ "$(uname)" = Darwin ] && [ "$1" = -i ]; then shift; exec {_SED} -i "" "$@"; fi\n'
+        f'exec {_SED} "$@"\n'
     )
     for tool in ("sudo", "docker", "sed"):
         (bin_dir / tool).chmod(0o755)

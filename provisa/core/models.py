@@ -137,8 +137,8 @@ class SourceType(str, Enum):
     python = "python"
     go = "go"
     rust = "rust"
-    # REQ-2225: one annotated PySpark script, run on a Spark cluster by the Spark host
-    # (connectors/spark); a built-in code source type, made by joining that host.
+    # REQ-2225: a connection to a Spark cluster, with no script (amended 2026-11-25); a built-in
+    # code source type, made by joining the Spark host (connectors/spark).
     spark = "spark"
     # Graph / Semantic
     neo4j = "neo4j"
@@ -292,6 +292,24 @@ class SourceCdcConfig(BaseModel):  # REQ-824
     consumer_group_id: str | None = None
 
 
+class SourceSetupOutcomes(BaseModel):  # REQ-2262
+    """What became of each step of a source's setup, shared by every user and environment: its
+    tables registered or skipped; its relationships found, none found, or skipped; the query
+    explorer opened on it, the step marked done, or skipped. None = not decided yet. ``decided_at``
+    (ISO 8601) is when every step was last decided -- tables registered after it, related to
+    nothing, are what the collapsed line hints at -- and None while any step is open."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tables: Literal["registered", "skipped"] | None = None
+    relationships: Literal["found", "none_found", "skipped"] | None = None
+    query: Literal["opened", "done", "skipped"] | None = None
+    decided_at: str | None = None
+
+    def all_decided(self) -> bool:
+        return None not in (self.tables, self.relationships, self.query)
+
+
 class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
     model_config = ConfigDict(populate_by_name=True)
 
@@ -343,6 +361,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # none of its tables serves any role. Carried as the store holds it, so a promotion lands a
     # move in progress with it.
     withdrawn: bool = False
+    # REQ-2262: what became of each step of the source's setup, as the store holds it; set only by
+    # setSourceSetupOutcomes (and carried by a configuration), so a form save keeps it.
+    setup_outcomes: SourceSetupOutcomes = Field(default_factory=SourceSetupOutcomes)
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -971,6 +992,9 @@ TAG_OBJECT_TYPES = (
     "column",
     "relationship",
     "command",
+    # REQ-1159 (amended 2026-11-25): an output column of a command's dataset, named by the command
+    # and the column, carries a table column's tags.
+    "command_column",
     "product",
     "term",
     "rls_rule",  # REQ-2208
@@ -1117,8 +1141,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
         # REQ-2208: and on reference library documents and their sections, so the policy sections
-        # about personal data carry the same tag as the columns.
-        applies_to=["column", "term", "document", "section"],
+        # about personal data carry the same tag as the columns. REQ-1159 (amended 2026-11-25): and
+        # on a command's output column, which carries a table column's governance.
+        applies_to=["column", "command_column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1127,7 +1152,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="deprecated",
         description="Scheduled for removal — consumers should migrate off",
-        applies_to=["source", "table", "column", "relationship", "command"],
+        applies_to=["source", "table", "column", "relationship", "command", "command_column"],
         is_system=True,
         reason_policy="required",  # a deprecation must say why
         expires_policy="optional",  # planned removal date, when known
@@ -1303,6 +1328,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "command_column":  # REQ-1159
+            return f"command_column:{self.command_name}:{self.column_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
         if self.object_type == "product":  # REQ-1634
@@ -1431,6 +1458,27 @@ class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
                 "other reader"
             )
         return value
+
+
+class ColumnRuleModel(BaseModel):  # REQ-2278
+    """A column rule keyed on a tag or a classification kind, never both: for ``role_id`` and the
+    roles descending from it, every column carrying the key -- a table's or a command's output
+    column -- is hidden (``hide``) or read through ``mask`` (``mask``; no mask: completely
+    masked)."""
+
+    tag_id: str | None = None
+    classification: str | None = None
+    role_id: str
+    action: Literal["hide", "mask"]
+    mask: Mask | None = None
+
+    @model_validator(mode="after")
+    def _one_key_and_mask_of_mask(self) -> "ColumnRuleModel":
+        if (self.tag_id is None) == (self.classification is None):
+            raise ValueError("a column rule is keyed on a tag or a classification, exactly one")
+        if self.action == "hide" and self.mask is not None:
+            raise ValueError("a hide rule takes no mask")
+        return self
 
 
 class ObjectField(BaseModel):
@@ -2735,6 +2783,17 @@ class DatasetColumn(BaseModel):  # REQ-1159
     # None = no grant list declared = visible (the contract is the action's public shape).
     visible_to: list[str] | None = None
     masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
+    # REQ-1159 (amended 2026-11-25): an output column carries a table column's naming too, the SQL
+    # alias consumers query it by and its description.
+    alias: str | None = None
+    description: str | None = None
+
+
+def queried_name(column: dict) -> str:
+    """The name consumers see and query a command's result column by (REQ-1159, amended
+    2026-11-25): its SQL alias, as a table column's alias is the name it is read by, else the name
+    its service returns it under. Every surface that names a command's result columns asks this."""
+    return column.get("alias") or column["name"]
 
 
 class FunctionArgument(BaseModel):
@@ -3994,9 +4053,6 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
     # From the project's standard file (connector.yaml). A secret takes none of these: its value is
     # the organization's, and the block is committed with the model.
     multiline: bool = False  # REQ-2225: entered as multi-line text
-    # REQ-2225: this value is the annotated script the host serves: its tags are the source's tables
-    # and commands, read from it at join rather than from the image.
-    script: bool = False
     default_value: str | None = None
     fixed_value: str | None = None
     # REQ-2225: an organisation setting that stands in for this value when a source leaves it
@@ -4015,14 +4071,9 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
                 "is not a secret and has no default or fixed value of its own"
             )
         if self.secret and (
-            self.multiline
-            or self.script
-            or self.default_value is not None
-            or self.fixed_value is not None
+            self.multiline or self.default_value is not None or self.fixed_value is not None
         ):
             raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
-        if self.script and not self.multiline:
-            raise ValueError(f"{self.name} is a script: it is entered as multi-line text")
         return self
 
 
@@ -4305,6 +4356,9 @@ class ProvisaConfig(BaseModel):
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    # REQ-2278: the column rules keyed on a tag or a classification, as the row rules on a tag are
+    # declared beside them.
+    column_rules: list[ColumnRuleModel] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
     functions: list[Function] = Field(default_factory=list)

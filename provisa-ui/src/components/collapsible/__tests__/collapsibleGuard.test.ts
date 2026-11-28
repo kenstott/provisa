@@ -33,7 +33,6 @@ const NOT_PANELS: Readonly<Record<string, string>> = {
   "components/admin/LocalUsersTab.tsx": "a list row's detail",
   "pages/data-products/ClampedDetail.tsx":
     "a list entry's text, cut at three lines and shown whole in place",
-  "components/admin/OrgsTab.tsx": "a list row's members",
   "pages/tables/ColumnsTable.tsx": "a column row's mask list, opened beneath the row",
   "pages/tables/TableColumnsSection.tsx": "a column row's mask list, opened beneath the row",
   "pages/JsonApiPage.tsx": "a request builder's field and include pickers",
@@ -80,5 +79,19 @@ describe("every collapsible panel is the one collapsible", () => {
       return !found || !(/aria-expanded/.test(found.text) || MANTINE_COLLAPSIBLE.test(found.text));
     });
     expect(stale).toEqual([]);
+  });
+
+  it("a group of three or more is given its expand-all and collapse-all icons by the shared group", () => {
+    const shared = FILES.find((f) => f.file === `${SHARED}Collapsible.tsx`)?.text ?? "";
+    expect(shared).toMatch(/found\.length >= EXPAND_ALL_FROM/);
+    expect(shared).toMatch(/EXPAND_ALL_FROM = 3/);
+    expect(shared).toMatch(/"expand" : "collapse"\}-all/);
+  });
+
+  it("no component draws expand-all or collapse-all icons of its own", () => {
+    const drawing = FILES.filter(
+      ({ file, text }) => !file.startsWith(SHARED) && /\}-(expand|collapse)-all/.test(text),
+    ).map(({ file }) => file);
+    expect(drawing).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@ here — this module only shapes catalog metadata and paginates results.
 from __future__ import annotations
 
 import json
+import os
 import types
 from pathlib import Path
 from typing import Any
@@ -563,6 +564,32 @@ async def _refuse_term_outside_selection(conn: Any, term_id: int) -> None:
     refuse_object(f"Term {term_id}", (await glossary_repo.term_domains(conn)).get(term_id, set()))
 
 
+async def _term_as_written(conn: Any, term_id: int) -> dict:
+    """What a glossary write left the term holding, read back by its id: what Polly reports, never
+    what it meant to write. Two domains may each hold a term of one name (REQ-1591), so the other
+    terms of its name come with their ids and domains, for Polly to say which one it changed."""
+    from provisa.core.repositories import glossary as glossary_repo
+
+    term = await glossary_repo.get_term(conn, term_id)
+    if term is None:
+        raise ValueError(f"ontology term {term_id} not found")
+    named = await glossary_repo.terms_named(conn, term["name"])
+    return {
+        "id": term_id,
+        "name": term["name"],
+        "domains": term["domains"],
+        "status": term["status"],
+        "definition": term["definition"],
+        "edges_out": term["edges_out"],
+        "edges_in": term["edges_in"],
+        "same_name": [
+            {"id": other, "domains": sorted(domains)}
+            for other, domains in sorted(named.items())
+            if other != term_id
+        ],
+    }
+
+
 async def _refuse_table_outside_selection(conn: Any, table_id: int) -> None:
     """REQ-2253: under a selection in the domain filter, a table outside it is not changed."""
     from provisa.security.selected_domains import current, refuse_object
@@ -676,9 +703,10 @@ async def create_glossary_term(
             )
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
+        term = await _term_as_written(conn, term_id)
     await _notify(org_id, "ontology term created")
     await embed_terms(org_id)
-    return {"id": term_id}
+    return {"id": term_id, "term": term}
 
 
 async def update_glossary_term(
@@ -719,12 +747,13 @@ async def update_glossary_term(
                 found = await glossary_repo.set_export_excluded(conn, term_id, export_excluded)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
-    if not found:
-        raise ValueError(f"ontology term {term_id} not found")
+        if not found:
+            raise ValueError(f"ontology term {term_id} not found")
+        term = await _term_as_written(conn, term_id)
     await _notify(org_id, "ontology term updated")
     if name is not None or definition is not None:
         await embed_terms(org_id)
-    return {"ok": True}
+    return {"ok": True, "term": term}
 
 
 async def change_glossary_term_status(
@@ -756,11 +785,18 @@ async def change_glossary_term_status(
                 raise
             raise ValueError(exc.detail) from exc
         status = (await glossary_repo.term_statuses(conn))[term_id]
+        term = await _term_as_written(conn, term_id)
     from provisa.api.admin.glossary_router import _DONE
 
     await _notify(org_id, f"ontology term {_DONE[action]}")
     await embed_terms(org_id)
-    return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
+    return {
+        "ok": True,
+        "term_id": term_id,
+        "status": status,
+        "tag_changes": changes,
+        "term": term,
+    }
 
 
 async def list_glossary_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
@@ -845,8 +881,9 @@ async def add_glossary_term_edge(
             await glossary_repo.add_edge(conn, term_id, to_term_id, rel_type)
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
+        term = await _term_as_written(conn, term_id)
     await _notify(org_id, "ontology edge added")
-    return {"ok": True}
+    return {"ok": True, "term": term}
 
 
 async def remove_glossary_term_edge(
@@ -871,10 +908,11 @@ async def remove_glossary_term_edge(
         await _refuse_term_outside_selection(conn, term_id)
         await _refuse_term_outside_selection(conn, to_term_id)
         removed = await glossary_repo.remove_edge(conn, term_id, to_term_id, rel_type)
-    if not removed:
-        raise ValueError("edge not found")
+        if not removed:
+            raise ValueError("edge not found")
+        term = await _term_as_written(conn, term_id)
     await _notify(org_id, "ontology edge removed")
-    return {"ok": True}
+    return {"ok": True, "term": term}
 
 
 async def ground_glossary_term_to_table(
@@ -938,6 +976,7 @@ async def tag_glossary_term(
     and later, carries it. Says how many columns it covers."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.column_rules_router import keyed_by
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, tag_term
     from provisa.api.admin.schema_mutation import _refresh_config_tags
     from provisa.api.errors import ApiError
@@ -954,7 +993,13 @@ async def tag_glossary_term(
             if exc.status_code == 403:
                 raise
             raise ValueError(exc.detail) from exc
+        # REQ-2278: the term's columns come under a column rule keyed on the tag at once.
+        ruled = await keyed_by(conn, tags=(tag_id,))
     await _refresh_config_tags()
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     await _notify(org_id, "ontology term tagged")
     return {"ok": True, "term_id": term_id, "tag_id": tag_id, "covers": covers}
 
@@ -965,6 +1010,7 @@ async def untag_glossary_term(
     """Take a tag off an ontology term: its columns no longer carry it through the term."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.column_rules_router import keyed_by
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, untag_term
     from provisa.api.admin.schema_mutation import _refresh_config_tags
 
@@ -975,9 +1021,15 @@ async def untag_glossary_term(
     async with pool.acquire() as conn:
         await _refuse_term_outside_selection(conn, term_id)
         removed = await untag_term(conn, request, term_id, tag_id)
+        # REQ-2278: the term's columns are released from a column rule keyed on the tag at once.
+        ruled = await keyed_by(conn, tags=(tag_id,))
     if not removed:
         raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
     await _refresh_config_tags()
+    if ruled:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
     await _notify(org_id, "ontology term untagged")
     return {"ok": True}
 
@@ -1040,6 +1092,9 @@ async def set_data_product_members(  # REQ-1634
             await _refuse_table_outside_selection(conn, table_id)
         await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
     await _rebuild_schemas()
+    from provisa.dq.scan import reschedule_org_checkers
+
+    await reschedule_org_checkers()  # REQ-2158: a member's type check follows its membership
     return {"ok": True}
 
 
@@ -1611,6 +1666,12 @@ def render_graph(
             "(npm ci && npm run build in provisa-ui/graph-render)"
         )
     timeout = settings_registry.value("mcp.render_timeout_s")
+    # On NixOS, nixpkgs' node is native and loads no FHS library path, so the prebuilt canvas
+    # addon cannot find libuuid.so.1; nix-ld names the library set it gives FHS binaries in
+    # NIX_LD_LIBRARY_PATH, and the renderer gets it as its LD_LIBRARY_PATH (maintainer
+    # 2026-11-26). Elsewhere the variable is unset and node inherits this environment unchanged.
+    nix_ld_path = os.environ.get("NIX_LD_LIBRARY_PATH")
+    env = None if nix_ld_path is None else {**os.environ, "LD_LIBRARY_PATH": nix_ld_path}
     request = {
         "elements": {"nodes": nodes, "edges": edges},
         "layout": layout,
@@ -1625,6 +1686,7 @@ def render_graph(
             capture_output=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(

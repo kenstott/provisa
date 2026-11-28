@@ -12,7 +12,13 @@
 // implementation's own fields for that implementation, and who sees each response column and how
 // it is masked.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { render, screen, within } from "../../../test-utils/render";
 import type { TrackedFunction, TrackedWebhook } from "../../../api/actions";
 import { FunctionRead, WebhookRead } from "../CommandRead";
@@ -96,16 +102,10 @@ describe("a function's read view", () => {
       ["Writes table", "public.orders"],
       ["Requires approval", "Yes"],
       ["Description", "Refunds an order"],
-      ["Arguments", "order_id: Int"],
+      ["Arguments", "order_id: Int (value)"],
     ]);
-    expect(fields("function-read-columns-card")).toEqual([
-      ["Visible to (roles, comma-separated; blank = everyone)", "finance"],
-      ["Mask", "1. auditor: Unmasked · 2. Everyone: regex \\d{12} → ****"],
-    ]);
-    expect(fields("function-read-columns-status")).toEqual([
-      ["Visible to (roles, comma-separated; blank = everyone)", "all"],
-      ["Mask", "None"],
-    ]);
+    // A dataset's columns are on the Columns tab, not under the command's own fields.
+    expect(screen.queryByTestId("function-read-columns-card")).toBeNull();
   });
 
   it("shows a source procedure's source, schema and function, and no binding", () => {

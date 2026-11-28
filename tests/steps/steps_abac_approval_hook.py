@@ -20,7 +20,7 @@ REQ-204 verifies approval-hook scoping: when no table referenced by a query has
 skips the approval call entirely, keeping overhead at zero for unscoped tables.
 
 REQ-555 verifies that the gRPC approval hook maintains a single persistent
-grpc.aio channel per Provisa instance — the channel (and its stub) are created
+gRPC channel per Provisa instance — the channel (and its stub) are created
 lazily once and reused across all subsequent approval calls.
 
 REQ-556 verifies that the approval hook client implements a circuit breaker
@@ -111,7 +111,7 @@ def test_req_204_default_behaviour():
 
 @scenario("../features/REQ-555.feature", "REQ-555 default behaviour")
 def test_req_555_default_behaviour():
-    """REQ-555: single persistent grpc.aio channel reused across all calls."""
+    """REQ-555: single persistent gRPC channel reused across all calls."""
 
 
 @scenario("../features/REQ-556.feature", "REQ-556 default behaviour")
@@ -329,18 +329,15 @@ def _install_fake_grpc(channel_calls: dict, stub: object):
     Returns the mapping suitable for ``patch.dict(sys.modules, ...)`` along with
     the channel object that should be reused and the stub constructor mock.
     """
-    fake_channel = MagicMock(name="grpc_aio_channel")
+    fake_channel = MagicMock(name="grpc_channel")
 
     def insecure_channel(url):  # noqa: ANN001
         channel_calls["n"] += 1
         channel_calls["last_url"] = url
         return fake_channel
 
-    fake_grpc_aio = MagicMock(name="grpc.aio")
-    fake_grpc_aio.insecure_channel = insecure_channel
-
     fake_grpc = MagicMock(name="grpc")
-    fake_grpc.aio = fake_grpc_aio
+    fake_grpc.insecure_channel = insecure_channel
 
     stub_ctor = MagicMock(name="ApprovalServiceStub", return_value=stub)
     fake_pb2_grpc = MagicMock(name="approval_pb2_grpc")
@@ -351,7 +348,6 @@ def _install_fake_grpc(channel_calls: dict, stub: object):
 
     modules = {
         "grpc": fake_grpc,
-        "grpc.aio": fake_grpc_aio,
         "provisa.auth.approval_pb2_grpc": fake_pb2_grpc,
         "provisa.auth.approval_pb2": fake_pb2,
     }
@@ -400,10 +396,10 @@ def when_multiple_grpc_calls(shared_data):
 
     channel_calls = {"n": 0}
 
-    # Fake stub whose Evaluate is awaitable and returns a proto-like response.
+    # Fake stub whose Evaluate returns a proto-like response, as the synchronous channel's does.
     fake_stub = MagicMock(name="stub")
 
-    async def evaluate(proto_req, timeout=None):  # noqa: ANN001
+    def evaluate(proto_req, timeout=None):  # noqa: ANN001
         resp = MagicMock()
         resp.approved = True
         resp.reason = "ok"
@@ -415,18 +411,18 @@ def when_multiple_grpc_calls(shared_data):
     modules, fake_channel, stub_ctor = _install_fake_grpc(channel_calls, fake_stub)
 
     # Ensure the real grpc and proto modules are loaded so patch.object can reach them.
-    # _ensure_channel does `import grpc.aio` and `from provisa.auth import approval_pb2_grpc`
+    # _ensure_channel does `import grpc` and `from provisa.auth import approval_pb2_grpc`
     # which retrieve the already-cached module object — patch.dict(sys.modules) alone does
     # not intercept that when the modules are already in the package namespace.
     # Using patch.object on the real module attributes ensures consistent interception
     # whether the modules were pre-loaded by prior tests or freshly imported here.
-    real_grpc_aio = importlib.import_module("grpc.aio")
+    real_grpc = importlib.import_module("grpc")
     real_pb2_grpc = importlib.import_module("provisa.auth.approval_pb2_grpc")
 
     responses = []
     n_calls = 5
     with (
-        patch.object(real_grpc_aio, "insecure_channel", new=modules["grpc.aio"].insecure_channel),
+        patch.object(real_grpc, "insecure_channel", new=modules["grpc"].insecure_channel),
         patch.object(real_pb2_grpc, "ApprovalServiceStub", new=stub_ctor),
     ):
         for _ in range(n_calls):

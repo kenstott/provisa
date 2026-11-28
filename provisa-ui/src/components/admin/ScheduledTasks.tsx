@@ -30,7 +30,12 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { Pencil, Plus, Power, PowerOff } from "lucide-react";
+import { Pencil, Power, PowerOff, Timer, X } from "lucide-react";
+import { PageTitle } from "../PageTitle";
+import { FilterInput } from "./FilterInput";
+import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
+import { useUrlFilter } from "../list/useUrlFilter";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
@@ -130,7 +135,9 @@ function inputOf(form: TriggerForm): CreateScheduledTaskInput {
   return { ...base, command: form.command ?? undefined, role: form.role ?? undefined };
 }
 
-export function ScheduledTasks() {
+/** REQ-2277: the object management anatomy -- the header (title, filter, Add), the list, and a row
+ * opening the trigger's panel (?trigger=<id>), read, edited, duplicated or deleted there. */
+export function ScheduledTasks({ title }: { title: string }) {
   const { t } = useTranslation();
   const { scheduledTasks: tasks, loading, refetch: refetchTasks } = useScheduledTasks();
   const { toggleScheduledTask } = useToggleScheduledTask();
@@ -158,22 +165,7 @@ export function ScheduledTasks() {
       );
   }, [t]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // What the panel shows: the selected trigger, read or being edited, or a new one being made.
-  const [mode, setMode] = useState<"read" | "edit" | "create">("read");
-  const [form, setForm] = useState<TriggerForm>(EMPTY);
-  const [formMsg, setFormMsg] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState("");
-  const [page, setPage] = useState(1);
-
-  const selected = tasks.find((task) => task.id === selectedId) ?? null;
-  const tableNames = useMemo(
-    () => tables.map((tb) => `${tb.sourceId}.${tb.schemaName}.${tb.tableName}`).sort(),
-    [tables],
-  );
-
+  const [search, setSearch] = useUrlFilter();
   const kindLabel = (kind: Kind) =>
     kind === "webhook"
       ? t("scheduledTasks.kindWebhook")
@@ -193,17 +185,64 @@ export function ScheduledTasks() {
   const targetOf = (task: ScheduledTask) =>
     task.kind === "sql" ? task.sql : task.kind === "command" ? task.command : task.webhookUrl;
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
+  const outcomeLabel = (outcome: string) =>
+    outcome === "succeeded"
+      ? t("scheduledTasks.outcomeSucceeded")
+      : outcome === "refused"
+        ? t("scheduledTasks.outcomeRefused")
+        : t("scheduledTasks.outcomeFailed");
+  // REQ-2277 rule 9: a trigger is open only while the search shows its row.
+  const searchNarrowed = searchNarrowing<ScheduledTask>(
+    t,
+    search,
+    () => setSearch(""),
+    // Every text a task's row shows, and its id.
+    (task) => [
+      task.name,
+      task.id,
+      firesLabel(task),
+      kindLabel(task.kind),
+      targetOf(task) || t("scheduledTasks.noTarget"),
+      task.role ?? t("scheduledTasks.noTarget"),
+      task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled"),
+      when(task.lastRunAt) ?? t("scheduledTasks.never"),
+      task.lastOutcome === null ? "" : outcomeLabel(task.lastOutcome),
+      when(task.nextRunAt) ?? t("scheduledTasks.noNextRun"),
+    ],
+  );
+  const detail = useRememberedDetail(
+    "triggers",
+    detailListOf(
+      t,
+      loading ? null : tasks,
+      (task) => task.id,
+      (task) => task.name,
+      [searchNarrowed],
+    ),
+  );
+  const selectedId = detail.id;
+  // What the panel shows: the selected trigger, read or being edited, or a new one being made.
+  const [mode, setMode] = useState<"read" | "edit" | "create">("read");
+  const [form, setForm] = useState<TriggerForm>(EMPTY);
+  const [formMsg, setFormMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState("");
+  const [page, setPage] = useState(1);
+
+  const selected = tasks.find((task) => task.id === selectedId) ?? null;
+  const tableNames = useMemo(
+    () => tables.map((tb) => `${tb.sourceId}.${tb.schemaName}.${tb.tableName}`).sort(),
+    [tables],
+  );
+
   const outcomeBadge = (outcome: string | null) =>
     outcome === null ? null : (
       <Badge
         variant="light"
         color={outcome === "succeeded" ? "green" : outcome === "refused" ? "yellow" : "red"}
       >
-        {outcome === "succeeded"
-          ? t("scheduledTasks.outcomeSucceeded")
-          : outcome === "refused"
-            ? t("scheduledTasks.outcomeRefused")
-            : t("scheduledTasks.outcomeFailed")}
+        {outcomeLabel(outcome)}
       </Badge>
     );
 
@@ -241,12 +280,13 @@ export function ScheduledTasks() {
     { key: "lastRun", label: t("scheduledTasks.colLastRun"), sortValue: (k) => k.lastRunAt ?? "" },
     { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
   ];
-  const sortGroup = useListSortGroup(tasks, columns, "scheduled-tasks");
+  const shownTasks = shownBy(tasks, [searchNarrowed]);
+  const sortGroup = useListSortGroup(shownTasks, columns, "scheduled-tasks");
   // REQ-2240: scheduled tasks selected and deleted together, each named by its name.
-  const shownTaskIds = useMemo(() => tasks.map((task) => task.id), [tasks]);
+  const shownTaskIds = useMemo(() => shownTasks.map((task) => task.id), [shownTasks]);
   const selection = useListSelection(shownTaskIds);
   const deleteScheduledTasks = useDeleteScheduledTasks();
-  const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(shownTasks.length / PAGE_SIZE));
 
   // A trigger's toggle or delete: the server's refusal, or the error it raised, is said above the list.
   const listAction = async (
@@ -268,7 +308,7 @@ export function ScheduledTasks() {
   };
 
   const openCreate = () => {
-    setSelectedId(null);
+    detail.close();
     setForm(EMPTY);
     setFormMsg("");
     setMode("create");
@@ -278,7 +318,7 @@ export function ScheduledTasks() {
   // the create). The list holds no webhook arguments and no credential, so none is copied (the
   // edit form starts them empty as well).
   const openDuplicate = (task: ScheduledTask) => {
-    setSelectedId(null);
+    detail.close();
     setForm({ ...formOf(task, webhooks), id: `${task.id}-copy`, name: `${task.name}-copy` });
     setFormMsg("");
     setMode("create");
@@ -293,7 +333,7 @@ export function ScheduledTasks() {
     setMode("read");
   };
   const closePanel = () => {
-    setSelectedId(null);
+    detail.close();
     cancel();
   };
 
@@ -327,7 +367,7 @@ export function ScheduledTasks() {
         setFormMsg(result.message);
         return;
       }
-      setSelectedId(input.id);
+      detail.open(input.id);
       setMode("read");
     } catch (err) {
       setFormMsg(err instanceof Error ? err.message : String(err));
@@ -644,131 +684,148 @@ export function ScheduledTasks() {
   if (loading) return <Text>{t("scheduledTasks.loading")}</Text>;
 
   return (
-    <Stack gap="md">
-      {actionsError && (
-        <Alert color="red" data-testid="scheduled-tasks-actions-error">
-          {actionsError}
-        </Alert>
-      )}
-      {actionMsg && (
-        <Alert color="red" data-testid="scheduled-tasks-action-error">
-          {actionMsg}
-        </Alert>
-      )}
-      {mode !== "create" && mode !== "edit" && (
-        <Group>
+    <>
+      <div className="page-header">
+        <PageTitle icon={Timer}>{title}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder={t("scheduledTasks.filterPlaceholder")}
+          testId="scheduled-tasks-filter"
+        />
+        <div className="page-actions">
           <Button
             data-testid="scheduled-tasks-toggle-form"
-            onClick={openCreate}
-            leftSection={<Plus size={14} />}
+            variant={mode === "create" ? "outline" : "filled"}
+            aria-label={mode === "create" ? t("scheduledTasks.closeForm") : undefined}
+            onClick={() => (mode === "create" ? closePanel() : openCreate())}
           >
-            {t("scheduledTasks.addButton")}
+            {mode === "create" ? <X size={14} /> : t("scheduledTasks.addButton")}
           </Button>
-        </Group>
-      )}
-      <SplitPane
-        testId="scheduled-tasks-split"
-        storageKey="provisa.triggers.detailWidth"
-        title={mode === "create" ? t("scheduledTasks.panelNew") : (selected?.name ?? "")}
-        onClose={closePanel}
-        // Escape closes a trigger that is only being looked at; it never drops what is being typed.
-        closeOnEscape={mode === "read"}
-        labels={{
-          panel: t("scheduledTasks.detailPanel"),
-          resize: t("scheduledTasks.resizeDetail"),
-          expand: t("scheduledTasks.expandDetail"),
-          restore: t("scheduledTasks.restoreDetail"),
-          close: t("scheduledTasks.closeDetail"),
-          backToList: t("scheduledTasks.backToList"),
-        }}
-        list={
-          <>
-            <ListBulkBar
-              selection={selection}
-              nameOf={(id) => {
-                const found = tasks.find((task) => task.id === id);
-                if (!found) throw new Error(`task ${id} is not listed`);
-                return found.name;
-              }}
-              onDelete={deleteScheduledTasks}
-              testId="scheduled-tasks-bulk"
-            />
-            <ListTable minWidth={720} selection={selection}>
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  { col: "name" },
-                  { col: "fires" },
-                  { col: "runs" },
-                  { col: "role" },
-                  { col: "enabled" },
-                  { col: "lastRun" },
-                  { col: "nextRun" },
-                ]}
+        </div>
+      </div>
+      <Stack gap="md">
+        {actionsError && (
+          <Alert color="red" data-testid="scheduled-tasks-actions-error">
+            {actionsError}
+          </Alert>
+        )}
+        {actionMsg && (
+          <Alert color="red" data-testid="scheduled-tasks-action-error">
+            {actionMsg}
+          </Alert>
+        )}
+        <SplitPane
+          outOfList={detail.outOfList}
+          testId="scheduled-tasks-split"
+          storageKey="provisa.triggers.detailWidth"
+          title={mode === "create" ? t("scheduledTasks.panelNew") : (selected?.name ?? "")}
+          onClose={closePanel}
+          // Escape closes a trigger that is only being looked at; it never drops what is being typed.
+          closeOnEscape={mode === "read"}
+          labels={{
+            panel: t("scheduledTasks.detailPanel"),
+            resize: t("scheduledTasks.resizeDetail"),
+            expand: t("scheduledTasks.expandDetail"),
+            restore: t("scheduledTasks.restoreDetail"),
+            close: t("scheduledTasks.closeDetail"),
+            backToList: t("scheduledTasks.backToList"),
+          }}
+          list={
+            <>
+              <ListBulkBar
+                selection={selection}
+                nameOf={(id) => {
+                  const found = tasks.find((task) => task.id === id);
+                  if (!found) throw new Error(`task ${id} is not listed`);
+                  return found.name;
+                }}
+                onDelete={deleteScheduledTasks}
+                testId="scheduled-tasks-bulk"
               />
-              <Table.Tbody>
-                {tasks.length === 0 && (
-                  <ListEmpty colSpan={7}>{t("scheduledTasks.empty")}</ListEmpty>
-                )}
-                <ListItems
-                  state={sortGroup}
-                  items={pageItems(sortGroup, page - 1, PAGE_SIZE)}
-                  colSpan={7}
-                  rowKey={(task) => task.id}
-                  render={(task) => (
-                    <ListRow
-                      key={task.id}
-                      testId={`scheduled-task-row-${task.id}`}
-                      selected={task.id === selectedId}
-                      onClick={() => {
-                        if (mode !== "read") return; // a form being filled keeps the panel
-                        setSelectedId(task.id === selectedId ? null : task.id);
-                      }}
-                    >
-                      <Table.Td>{task.name}</Table.Td>
-                      <Table.Td>
-                        <Text ff={task.firesOn === "schedule" ? "monospace" : undefined} fz="sm">
-                          {firesLabel(task)}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={2}>
-                          <Badge variant="light">{kindLabel(task.kind)}</Badge>
-                          <Text ff="monospace" fz="xs" c="dimmed" lineClamp={2}>
-                            {targetOf(task) || t("scheduledTasks.noTarget")}
-                          </Text>
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>{task.role ?? t("scheduledTasks.noTarget")}</Table.Td>
-                      <Table.Td>
-                        <Badge color={task.enabled ? "green" : "gray"} variant="light">
-                          {task.enabled
-                            ? t("scheduledTasks.enabled")
-                            : t("scheduledTasks.disabled")}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={2}>
-                          <Text fz="sm">{when(task.lastRunAt) ?? t("scheduledTasks.never")}</Text>
-                          {outcomeBadge(task.lastOutcome)}
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>{when(task.nextRunAt) ?? t("scheduledTasks.noNextRun")}</Table.Td>
-                    </ListRow>
-                  )}
+              <ListTable minWidth={720} selection={selection} testId="scheduled-tasks-list">
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    { col: "name" },
+                    { col: "fires" },
+                    { col: "runs" },
+                    { col: "role" },
+                    { col: "enabled" },
+                    { col: "lastRun" },
+                    { col: "nextRun" },
+                  ]}
                 />
-              </Table.Tbody>
-            </ListTable>
-            {totalPages > 1 && sortGroup.groupBy.length === 0 && (
-              <Group justify="flex-end" mt="sm">
-                <Pagination total={totalPages} value={page} onChange={setPage} size="sm" />
-              </Group>
-            )}
-          </>
-        }
-      >
-        {panel}
-      </SplitPane>
-    </Stack>
+                <Table.Tbody>
+                  {shownTasks.length === 0 && (
+                    <ListEmpty colSpan={7} testId="scheduled-tasks-empty">
+                      {tasks.length === 0 ? t("scheduledTasks.empty") : t("scheduledTasks.noMatch")}
+                    </ListEmpty>
+                  )}
+                  <ListItems
+                    state={sortGroup}
+                    items={pageItems(sortGroup, page - 1, PAGE_SIZE)}
+                    colSpan={7}
+                    rowKey={(task) => task.id}
+                    render={(task) => (
+                      <ListRow
+                        key={task.id}
+                        testId={`scheduled-task-row-${task.id}`}
+                        selected={task.id === selectedId}
+                        onClick={() => {
+                          if (mode !== "read") return; // a form being filled keeps the panel
+                          if (task.id === selectedId) detail.close();
+                          else detail.open(task.id);
+                        }}
+                      >
+                        <Table.Td>{task.name}</Table.Td>
+                        <Table.Td>
+                          <Text ff={task.firesOn === "schedule" ? "monospace" : undefined} fz="sm">
+                            {firesLabel(task)}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={2}>
+                            <Badge variant="light">{kindLabel(task.kind)}</Badge>
+                            <Text ff="monospace" fz="xs" c="dimmed" lineClamp={2}>
+                              {targetOf(task) || t("scheduledTasks.noTarget")}
+                            </Text>
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>{task.role ?? t("scheduledTasks.noTarget")}</Table.Td>
+                        <Table.Td>
+                          <Badge color={task.enabled ? "green" : "gray"} variant="light">
+                            {task.enabled
+                              ? t("scheduledTasks.enabled")
+                              : t("scheduledTasks.disabled")}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={2}>
+                            <Text fz="sm">{when(task.lastRunAt) ?? t("scheduledTasks.never")}</Text>
+                            {outcomeBadge(task.lastOutcome)}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>{when(task.nextRunAt) ?? t("scheduledTasks.noNextRun")}</Table.Td>
+                      </ListRow>
+                    )}
+                  />
+                </Table.Tbody>
+              </ListTable>
+              {totalPages > 1 && sortGroup.groupBy.length === 0 && (
+                <Group justify="flex-end" mt="sm">
+                  <Pagination total={totalPages} value={page} onChange={setPage} size="sm" />
+                </Group>
+              )}
+            </>
+          }
+        >
+          {panel}
+        </SplitPane>
+      </Stack>
+    </>
   );
 }

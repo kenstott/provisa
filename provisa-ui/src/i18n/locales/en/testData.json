@@ -1,6 +1,9 @@
 {
   "testData": {
     "fake": "Fake",
+    "template": "JSON template",
+    "templateHint": "The object each row shows: each field a fake such as email() or uniform(min=1, max=9)::integer, a nested object, a fixed-length array, or a literal in double quotes for a field that does not vary",
+    "templatePlaceholder": "{\"email\": email(), \"phone\": phone_number()}",
     "syntheticRule": "Synthetic rule",
     "stable": "Stable",
     "stableHint": "The same fake on every engine and in every region",

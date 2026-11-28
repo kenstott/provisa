@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "环境",
+    "noEnvironments": "暂无环境。",
+    "noMatch": "没有符合筛选条件的环境。",
     "tabRequests": "合并请求",
     "tabRepository": "仓库",
     "tabIntegration": "集成",
@@ -152,8 +154,14 @@
     "rebuild": "重建",
     "rebuilt": "已将 {{env}} 的模型重新提交到存储库。",
     "rebuildFailed": "{{env}} 仍处于偏离状态，因为提交未能完成。",
+    "protect": "保护",
+    "unprotect": "取消保护",
     "stageTitle": "阶段",
     "stageHelp": "声明此环境的用途：生产、预生产、测试或开发。组织的原始环境初始为生产，新环境初始为开发；任意数量的环境可以共享同一阶段。",
-    "stageHelp2": "阶段用于在切换器、报表以及目录和血缘导出中标识环境。它永远不会改变任何人在此处可以执行的操作：这只取决于在该环境中分配的角色。"
+    "stageHelp2": "阶段用于在切换器、报表以及目录和血缘导出中标识环境。它永远不会改变任何人在此处可以执行的操作：这只取决于在该环境中分配的角色。",
+    "filterPlaceholder": "筛选环境",
+    "closeForm": "关闭表单",
+    "newEnvironment": "新环境",
+    "panelLabel": "环境"
   }
 }

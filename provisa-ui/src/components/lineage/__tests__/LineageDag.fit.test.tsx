@@ -9,50 +9,97 @@
 // permission from the copyright holder.
 
 // A DAG mounted inside a closed section (the product page's lineage Collapse keeps it mounted at
-// zero height) laid out against a canvas of no size. The first time the container has an area the
-// graph is fitted to it; later resizes only resize, so a chosen zoom survives a window drag.
+// zero height) laid out against a canvas of no size. Each time the container has an area again the
+// graph is fitted to it; a container with none fits nothing. REQ-2239: the DAG is drawn by the one
+// graph component, which follows its canvas's size (REQ-2277): the opening view is opened again.
+//
+// The real cytoscape, headless (jsdom has no 2D context), with elkjs's answer held until the test
+// gives it, and the component's fit watched.
 
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../../../test-utils/render";
 
-// Enough of cytoscape's surface for the DAG to mount: the box layout is a no-op here.
-const { cy, cytoscape } = vi.hoisted(() => {
-  // An empty collection: nothing is connected, so the DAG takes the no-layout path.
-  const collection: Record<string, unknown> = {};
-  Object.assign(collection, {
-    on: vi.fn(),
-    union: () => collection,
-    filter: () => collection,
-    descendants: () => collection,
-    forEach: vi.fn(),
-    nonempty: () => false,
-    reduce: () => 0,
-    boundingBox: () => ({ x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 }),
-    shift: vi.fn(),
-  });
-  const cy = {
-    on: vi.fn(),
-    resize: vi.fn(),
-    fit: vi.fn(),
-    destroy: vi.fn(),
-    png: vi.fn(),
-    batch: (fn: () => void) => fn(),
-    nodes: () => collection,
-    edges: () => collection,
-    getElementById: () => ({ position: vi.fn() }),
-    layout: () => ({ run: vi.fn(), on: vi.fn(), one: vi.fn(), stop: vi.fn() }),
+const elk = vi.hoisted(() => ({
+  /** The graphs ELK was asked to lay out, each with its answer. */
+  asked: [] as {
+    graph: unknown;
+    resolve: (g: unknown) => void;
+    reject: (e: unknown) => void;
+  }[],
+  /** The cores made, in order. */
+  cores: [] as unknown[],
+}));
+
+vi.mock("elkjs/lib/elk.bundled.js", () => ({
+  default: class {
+    layout(graph: unknown) {
+      return new Promise((resolve, reject) => elk.asked.push({ graph, resolve, reject }));
+    }
+  },
+}));
+
+vi.mock("cytoscape", async (importOriginal) => {
+  type Real = ((...a: unknown[]) => unknown) & { use: (e: unknown) => void };
+  const real = (await importOriginal<{ default: Real }>()).default;
+  const make = (...args: unknown[]) => {
+    // cytoscape("layout", name): an extension's registration.
+    if (typeof args[0] === "string") return real(...args);
+    const o = args[0] as Record<string, unknown>;
+    const cy = real({ ...o, container: undefined, headless: true, styleEnabled: true });
+    elk.cores.push(cy);
+    return cy;
   };
-  return { cy, cytoscape: Object.assign(() => cy, { use: vi.fn() }) };
+  return { default: Object.assign(make, { use: real.use.bind(real) }) };
 });
-vi.mock("cytoscape", () => ({ default: cytoscape }));
+
+// A resize the graph follows fits it again unless the reader holds the view (followResize: the
+// whole diagram is fitted whole again, the opening view opened again); one it does not follow (a
+// canvas of no area) fits nothing.
+const fits = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../provisa-graph/viewport", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../provisa-graph/viewport")>();
+  return {
+    ...real,
+    followResize: (...a: Parameters<typeof real.followResize>) => {
+      const mode = real.followResize(...a);
+      if (mode !== "kept") fits.count += 1;
+      return mode;
+    },
+  };
+});
 
 import { LineageDag } from "../LineageDag";
+
+interface ElkGraph {
+  id: string;
+  x?: number;
+  y?: number;
+  children?: ElkGraph[];
+}
+
+/** ELK has been asked: the layout has started. */
+const started = () =>
+  act(async () => {
+    await vi.waitFor(() => expect(elk.asked).toHaveLength(1));
+  });
+
+/** ELK's answer: every node at a place of its own, 200 apart. */
+const placed = (graph: ElkGraph): ElkGraph => ({
+  ...graph,
+  x: graph.x ?? 0,
+  y: graph.y ?? 0,
+  children: graph.children?.map((c, i) => ({ ...placed(c), x: i * 200, y: i * 200 })),
+});
+const answer = () => act(async () => elk.asked[0].resolve(placed(elk.asked[0].graph as ElkGraph)));
 
 let observe: (() => void) | null = null;
 let size = { w: 0, h: 0 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  elk.asked = [];
+  elk.cores = [];
+  fits.count = 0;
   observe = null;
   size = { w: 0, h: 0 };
   // The container's box is whatever the test says it is; jsdom lays nothing out.
@@ -75,45 +122,48 @@ beforeEach(() => {
     },
   );
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const GRAPH = {
-  nodes: [{ id: "t.a", column: "a", relation: "t", kind: "source", materialized: false }],
-  edges: [],
+  nodes: [
+    { id: "raw.a.x", column: "x", relation: "raw.a", kind: "source", materialized: false },
+    { id: "t.b.x", column: "x", relation: "t.b", kind: "source", materialized: false },
+  ],
+  edges: [{ source: "raw.a.x", target: "t.b.x", kind: "copy" }],
   outputs: [],
   cycles: [],
 } as never;
 
-describe("LineageDag fit on first visibility", () => {
-  it("fits again each time a hidden container comes back, as a tab does", () => {
+describe("LineageDag fit on visibility", () => {
+  it("fits once the hidden container gains an area", async () => {
     render(<LineageDag graph={GRAPH} />);
+    await started();
+    await answer();
+    expect(observe).not.toBeNull();
+    // The layout fits on its own when it lands; what is under test is the visibility fit.
+    const afterLayout = fits.count;
+    act(() => observe!()); // observed while still collapsed: no area, nothing to fit
+    expect(fits.count).toBe(afterLayout);
     size = { w: 800, h: 320 };
-    observe!();
-    const opened = cy.fit.mock.calls.length;
-    size = { w: 0, h: 0 };
-    observe!(); // the tab is left: no area, nothing to fit
-    expect(cy.fit).toHaveBeenCalledTimes(opened);
-    size = { w: 800, h: 320 };
-    observe!(); // and opened again
-    expect(cy.fit).toHaveBeenCalledTimes(opened + 1);
+    act(() => observe!()); // the section opens
+    expect(fits.count).toBe(afterLayout + 1);
   });
 
-  it("fits once the hidden container gains an area, and only resizes afterwards", () => {
+  it("fits again each time a hidden container comes back, as a tab does", async () => {
     render(<LineageDag graph={GRAPH} />);
-    expect(observe).not.toBeNull();
-
-    // The layout fits once on its own when it lands; what is under test is the visibility fit.
-    const afterLayout = cy.fit.mock.calls.length;
-    observe!(); // observed while still collapsed: no area, nothing to fit
-    expect(cy.fit).toHaveBeenCalledTimes(afterLayout);
-
+    await started();
+    await answer();
     size = { w: 800, h: 320 };
-    observe!(); // the section opens
-    expect(cy.fit).toHaveBeenCalledTimes(afterLayout + 1);
-
-    size = { w: 1200, h: 320 };
-    observe!(); // a window drag: resize only
-    expect(cy.resize).toHaveBeenCalledTimes(3);
-    expect(cy.fit).toHaveBeenCalledTimes(afterLayout + 1);
+    act(() => observe!());
+    const opened = fits.count;
+    size = { w: 0, h: 0 };
+    act(() => observe!()); // the tab is left: no area, nothing to fit
+    expect(fits.count).toBe(opened);
+    size = { w: 800, h: 320 };
+    act(() => observe!()); // and opened again
+    expect(fits.count).toBe(opened + 1);
   });
 });

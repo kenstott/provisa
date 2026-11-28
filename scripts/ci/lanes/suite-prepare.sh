@@ -17,8 +17,16 @@ uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
 
 # REQ-1992: tests/integration/test_org_folder_crypt.py mounts an org's encrypted folder with
 # gocryptfs over FUSE, as a node does.
-sudo apt-get update -qq
+"$(dirname "$0")/../apt-update.sh"
 sudo apt-get install -y -qq gocryptfs fuse3
+
+# REQ-294: a running Provisa never fetches a connector bundle. The suite's tests attach a files
+# source, whose server is the pgwire-file bundle (test_files_*, test_duckdb_attach_calcite_pgwire.py,
+# the insider demo's control room), and a Splunk source, the pgwire-splunk bundle
+# (test_splunk_duckdb_attach.py). A test lands in whichever shard the planner gives it, so every lane
+# stages both from the pinned GitHub release (pgwire_bundles.py RELEASE_TAG), as the salesforce and
+# servicenow jobs stage theirs. Unstaged, the source is refused with BundleNotStaged.
+uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only file --only splunk --github-release
 
 # REQ-2016: the vector lane's tests embed with a local sentence-transformers model, the vector
 # extra. Every lane's `uv sync --extra dev` already has it (dev carries provisa[vector], torch from

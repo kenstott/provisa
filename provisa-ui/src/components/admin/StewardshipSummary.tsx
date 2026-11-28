@@ -12,8 +12,13 @@
 // can see, the terms one approval from reaching data, and the approved terms that reach no
 // data -- and the defined, grounded drafts a steward approves together. REQ-2259: it is Context
 // Health's one action, and each term links to the Ontology page through the entity link helper.
+// An enterprise holds thousands of terms, so each of the three is a standard list: sortable, under
+// its own filter (in the URL), at a fixed height that scrolls.
 
-import { useCallback, useEffect, useState } from "react";
+/** The height each of the three lists keeps, its rows scrolling inside it. */
+const LIST_HEIGHT = 280;
+
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -22,12 +27,13 @@ import {
   Checkbox,
   Group,
   Loader,
-  Modal,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import { notifications } from "@mantine/notifications";
 import { CheckCheck } from "lucide-react";
 import {
@@ -39,39 +45,89 @@ import {
 } from "../../api/glossary";
 import { EntityLink } from "../EntityLink";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { ListRow } from "../list/ListTable";
+import { SortGroupTable } from "../list/SortGroupTable";
+import type { ListColumn } from "../list/useListSortGroup";
+import { useUrlFilter } from "../list/useUrlFilter";
+import { matchesQuery } from "../../lib/searchItems";
+import { FilterInput } from "./FilterInput";
 import { TermStatusBadge } from "./TermRoleBadge";
 
 /** A term, linked to the Ontology page for a viewer who holds its right (REQ-2259). */
-function TermLink({ term }: { term: TermRef }) {
+function TermLink({ term, testId }: { term: TermRef; testId: string }) {
   return (
     <Text span size="sm">
-      <EntityLink kind="term" id={term.term_id} testId={`stewardship-term-${term.term_id}`}>
+      <EntityLink kind="term" id={term.term_id} testId={testId}>
         {term.name}
       </EntityLink>
     </Text>
   );
 }
 
-function Section({
+/** One of the summary's three lists: its title and count, its filter, and its terms. */
+function TermList<T extends TermRef>({
   title,
-  count,
   testId,
-  children,
+  filterParam,
+  rows,
+  columns,
+  texts,
 }: {
   title: string;
-  count: number;
   testId: string;
-  children: React.ReactNode;
+  /** The URL parameter the list's filter is kept in. */
+  filterParam: string;
+  rows: T[];
+  /** The columns after the term's name. */
+  columns: { column: ListColumn<T>; cell: (row: T) => ReactNode }[];
+  /** What the filter matches in a row besides the term's name. */
+  texts: (row: T) => string[];
 }) {
+  const { t } = useTranslation();
+  const [search, setSearch] = useUrlFilter(filterParam);
+  const shown = rows.filter((row) => matchesQuery([row.name, ...texts(row)], search));
+  const all: ListColumn<T>[] = [
+    { key: "term", label: t("glossaryTab.stewardshipColTerm"), sortValue: (r) => r.name },
+    ...columns.map((c) => c.column),
+  ];
   return (
-    <Stack gap={6} align="flex-start" data-testid={testId}>
+    <Stack gap={6} data-testid={testId} style={{ minWidth: 0 }}>
       <Group gap={6} wrap="nowrap">
         <Title order={6}>{title}</Title>
         <Badge size="sm" variant="light" color="gray" data-testid={`${testId}-count`}>
-          {count}
+          {rows.length}
         </Badge>
       </Group>
-      {children}
+      <FilterInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("glossaryTab.stewardshipFilter")}
+        testId={`${testId}-filter`}
+        remember={false}
+      />
+      <div style={{ height: LIST_HEIGHT, overflowY: "auto" }} data-testid={`${testId}-scroll`}>
+        <SortGroupTable
+          testPrefix={testId}
+          rows={shown}
+          columns={all}
+          headers={all.map((c) => ({ col: c.key }))}
+          colSpan={all.length}
+          rowKey={(r) => r.term_id}
+          initialSortCol="term"
+          empty={t("glossaryTab.noneListed")}
+          emptyTestId={`${testId}-empty`}
+          render={(row) => (
+            <ListRow key={row.term_id} testId={`${testId}-row-${row.term_id}`}>
+              <Table.Td>
+                <TermLink term={row} testId={`${testId}-term-${row.term_id}`} />
+              </Table.Td>
+              {columns.map((c) => (
+                <Table.Td key={c.column.key}>{c.cell(row)}</Table.Td>
+              ))}
+            </ListRow>
+          )}
+        />
+      </div>
     </Stack>
   );
 }
@@ -142,11 +198,6 @@ export function StewardshipSummary({
       </Group>
     );
   }
-  const none = (
-    <Text size="xs" c="dimmed">
-      {t("glossaryTab.noneListed")}
-    </Text>
-  );
   return (
     <Stack gap="md" pb="md" data-testid="glossary-stewardship">
       <Group justify="space-between" wrap="wrap">
@@ -168,52 +219,62 @@ export function StewardshipSummary({
         </Alert>
       )}
       <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
-        <Section
+        <TermList
           title={t("glossaryTab.agentVisibleTitle")}
-          count={summary.agent_visible.length}
           testId="stewardship-agent-visible"
-        >
-          {summary.agent_visible.length === 0
-            ? none
-            : summary.agent_visible.map((term) => (
-                <Group key={term.term_id} gap={6} wrap="nowrap">
-                  <TermLink term={term} />
-                  {term.status === "draft" && <TermStatusBadge status="draft" />}
-                </Group>
-              ))}
-        </Section>
-        <Section
+          filterParam="agentVisibleSearch"
+          rows={summary.agent_visible}
+          texts={(term) => [t(`glossaryTab.status_${term.status}`)]}
+          columns={[
+            {
+              column: {
+                key: "status",
+                label: t("glossaryTab.stewardshipColStatus"),
+                sortValue: (term) => t(`glossaryTab.status_${term.status}`),
+                groupValue: (term) => t(`glossaryTab.status_${term.status}`),
+              },
+              cell: (term) => <TermStatusBadge status={term.status} />,
+            },
+          ]}
+        />
+        <TermList
           title={t("glossaryTab.waitingTitle")}
-          count={summary.waiting_on_one_approval.length}
           testId="stewardship-waiting"
-        >
-          {summary.waiting_on_one_approval.length === 0
-            ? none
-            : summary.waiting_on_one_approval.map((term) => (
-                <Text key={term.term_id} size="sm">
-                  <TermLink term={term} />{" "}
-                  <Text span size="xs" c="dimmed">
-                    {t("glossaryTab.waitingApprove", {
-                      terms: term.approve.map((a) => a.name).join(", "),
-                    })}
-                  </Text>
-                </Text>
-              ))}
-        </Section>
-        <Section
+          filterParam="waitingSearch"
+          rows={summary.waiting_on_one_approval}
+          texts={(term) => term.approve.map((a) => a.name)}
+          columns={[
+            {
+              column: {
+                key: "approve",
+                label: t("glossaryTab.stewardshipColApprove"),
+                sortValue: (term) => term.approve.map((a) => a.name).join(", "),
+              },
+              cell: (term) => (
+                <Group gap={6} wrap="wrap">
+                  {term.approve.map((a) => (
+                    <TermLink
+                      key={a.term_id}
+                      term={a}
+                      testId={`stewardship-waiting-approve-${term.term_id}-${a.term_id}`}
+                    />
+                  ))}
+                </Group>
+              ),
+            },
+          ]}
+        />
+        <TermList
           title={t("glossaryTab.approvedNotGroundedTitle")}
-          count={summary.approved_not_grounded.length}
           testId="stewardship-approved-not-grounded"
-        >
-          {summary.approved_not_grounded.length === 0
-            ? none
-            : summary.approved_not_grounded.map((term) => (
-                <TermLink key={term.term_id} term={term} />
-              ))}
-        </Section>
+          filterParam="noDataSearch"
+          rows={summary.approved_not_grounded}
+          texts={() => []}
+          columns={[]}
+        />
       </SimpleGrid>
       {approvable !== null && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setApprovable(null)}
           title={t("glossaryTab.bulkApproveTitle")}
@@ -264,7 +325,7 @@ export function StewardshipSummary({
               }
             />
           </Stack>
-        </Modal>
+        </ModalLayout>
       )}
     </Stack>
   );

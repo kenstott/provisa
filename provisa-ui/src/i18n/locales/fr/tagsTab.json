@@ -9,6 +9,12 @@
     "scope_column": "Colonne",
     "scope_relationship": "Relation",
     "scope_command": "Commande",
+    "scope_command_column": "Colonne de commande",
+    "commandColumnsTitle": "Colonnes de sortie des commandes",
+    "commandColumnsNone": "Aucune commande ne déclare de colonnes de sortie.",
+    "colCommand": "Commande",
+    "colOutputColumn": "Colonne de sortie",
+    "colTags": "Tags",
     "scope_product": "Produit de données",
     "scope_term": "Terme du glossaire",
     "scope_rls_rule": "Règle de ligne",
@@ -40,8 +46,6 @@
     "policy_required": "Obligatoire",
     "requiredLabel": "Obligatoire",
     "requiredDesc": "Tout objet des types indiqués dans « S'applique à » doit porter ce tag. Un objet sans ce tag apparaît comme manquant dans le rapport des tags.",
-    "reasonPolicyBadge": "Motif : {{policy}}",
-    "expiresPolicyBadge": "Expiration : {{policy}}",
     "createButton": "Créer le tag",
     "saveButton": "Enregistrer le tag",
     "colId": "ID",
@@ -65,6 +69,8 @@
     "purposeAria": "À propos des tags",
     "outsideTitle": "Affectations hors des domaines autorisés",
     "outsideBody": "L'enregistrement a conservé ces affectations. Retirez le tag d'un objet auquel il ne correspond plus.",
-    "outsideItem": "{{kind}} {{name}}, dans {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, dans {{domains}}",
+    "templateSection": "Modèle",
+    "noMatch": "Aucun tag ne correspond au filtre"
   }
 }

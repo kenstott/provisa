@@ -35,6 +35,10 @@ export interface DescriptorField {
 
 interface TypeDescriptor {
   name: string;
+  /** The SourceType a source of it is stored as. */
+  backend_type: string;
+  /** REQ-2234: whether its tables are registered through the setup flow. */
+  setup_flow: boolean;
   fields: DescriptorField[];
   mapping_json: string[];
   federation_hints: string[];
@@ -80,7 +84,7 @@ export const hintKeys = (type: string): string[] => typeDescriptor(type).federat
 export const mappingKey = (type: string, name: string): string =>
   descriptorField(type, "mappingJson", name).name;
 
-/** A mapping key of `type` the descriptor lists by its parts (`settings.script` lists `settings`),
+/** A mapping key of `type` the descriptor lists by its parts (`settings.cluster` lists `settings`),
  * refused by name when it lists neither the key nor a part of it. */
 export function mappingParentKey(type: string, name: string): string {
   const fields = descriptorFields(type, "mappingJson");
@@ -154,3 +158,14 @@ export function whenChoices(type: string, at: FieldAt, key: string): string[] {
 /** The fields given at `at` that belong to no choice. */
 export const fieldsWithoutChoice = (type: string, at: FieldAt): DescriptorField[] =>
   descriptorFields(type, at).filter((f) => !f.when);
+
+/** REQ-2234 (amended 2026-11-27): the stored source types that declare their tables are not
+ * registered through the setup flow, by picker name and by the type a source of it is stored as. */
+const NO_SETUP_FLOW = new Set(
+  [...TYPES.values()].filter((t) => !t.setup_flow).flatMap((t) => [t.name, t.backend_type]),
+);
+
+/** Whether a stored source's tables are registered through the setup flow. The flow is the rule;
+ * a type opts out by declaring it (Data Profiler, Great Expectations, Soda: tables Provisa itself
+ * produces), and its detail then shows no setup stepper, only its own tabs. */
+export const hasSetupFlow = (type: string): boolean => !NO_SETUP_FLOW.has(type);

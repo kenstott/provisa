@@ -13,7 +13,8 @@
 // until it has its address, user name and credential.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const auth = vi.hoisted(() => ({
   capabilities: ["org_settings"] as string[],
@@ -57,6 +58,9 @@ beforeEach(() => {
   remove.mockReset().mockResolvedValue(undefined);
 });
 
+// A panel opened in one test is remembered (REQ-2260); each test starts from none.
+beforeEach(() => localStorage.clear());
+
 describe("Admin › Container registries", () => {
   it("is an organisation setting in the admin navigation", () => {
     const item = NAV_GROUPS.flatMap((g) => g.items).find(
@@ -65,40 +69,67 @@ describe("Admin › Container registries", () => {
     expect(item?.capability).toBe("org_settings");
   });
 
-  it("shows each entry's fields as they were entered", async () => {
-    render(<ContainerRegistriesTab />);
-    const address = (await screen.findByTestId(
-      "container-registry-r1-address",
-    )) as HTMLInputElement;
-    expect(address.value).toBe("ghcr.io/acme");
-    expect((screen.getByTestId("container-registry-r1-username") as HTMLInputElement).value).toBe(
-      "acme-bot",
-    );
-    expect((screen.getByTestId("container-registry-r1-credential") as HTMLInputElement).value).toBe(
-      "${secret:ghcr_acme}",
-    );
-    expect((screen.getByTestId("container-registry-r1-default") as HTMLInputElement).checked).toBe(
-      true,
+  it("finds each entry by every text its row shows", async () => {
+    list.mockResolvedValue([
+      GHCR,
+      {
+        ...GHCR,
+        id: "r2",
+        address: "registry.internal:5000/data",
+        username: "pusher",
+        default: false,
+      },
+    ]);
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    await screen.findByTestId("container-registry-r2");
+    await expectFilterFindsEveryCell(screen.getByTestId("container-registries-filter"), () =>
+      screen.getByTestId("container-registries-list"),
     );
   });
 
-  it("adds an entry, saved only once it has its address, user name and credential", async () => {
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    await screen.findByTestId("container-registry-r1");
+    fireEvent.change(screen.getByTestId("container-registries-filter"), {
+      target: { value: "no-such-registry" },
+    });
+    expect(screen.getByTestId("container-registries-empty")).toHaveTextContent(
+      "No container registries match the filter.",
+    );
+  });
+
+  it("lists each entry, a row opening its fields as they were entered", async () => {
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    fireEvent.click(await screen.findByTestId("container-registry-r1"));
+    const read = await screen.findByTestId("container-registry-read-r1");
+    expect(read).toHaveTextContent("ghcr.io/acme");
+    expect(read).toHaveTextContent("acme-bot");
+    fireEvent.click(screen.getByTestId("container-registry-edit-r1"));
+    expect(screen.getByTestId("container-registry-address")).toHaveValue("ghcr.io/acme");
+    expect(screen.getByTestId("container-registry-username")).toHaveValue("acme-bot");
+    expect(screen.getByTestId("container-registry-credential")).toHaveValue("${secret:ghcr_acme}");
+    expect(screen.getByTestId("container-registry-default")).toBeChecked();
+  });
+
+  it("adds an entry, checking its address, user name and credential on save", async () => {
     list.mockResolvedValue([]);
-    render(<ContainerRegistriesTab />);
-    expect(await screen.findByTestId("container-registries-none")).toBeInTheDocument();
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    expect(await screen.findByText(/No container registries/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("container-registries-add"));
-    const card = await screen.findByTestId(/^container-registry-new-\d+$/);
-    const id = card.getAttribute("data-testid") as string;
-    const save = screen.getByTestId(`${id}-save`);
-    expect(save).toBeDisabled();
-    fireEvent.change(screen.getByTestId(`${id}-address`), { target: { value: "quay.io/acme" } });
-    fireEvent.change(screen.getByTestId(`${id}-username`), { target: { value: "bot" } });
-    expect(save).toBeDisabled();
-    fireEvent.change(screen.getByTestId(`${id}-credential`), {
+    fireEvent.change(await screen.findByTestId("container-registry-address"), {
+      target: { value: "quay.io/acme" },
+    });
+    fireEvent.change(screen.getByTestId("container-registry-username"), {
+      target: { value: "bot" },
+    });
+    // REQ-2277: Save is offered and names the missing credential when pressed.
+    fireEvent.click(screen.getByTestId("container-registry-save"));
+    expect(await screen.findByText("Required")).toBeInTheDocument();
+    expect(add).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId("container-registry-credential"), {
       target: { value: "${secret:quay}" },
     });
-    expect(save).not.toBeDisabled();
-    fireEvent.click(save);
+    fireEvent.click(screen.getByTestId("container-registry-save"));
     await waitFor(() =>
       expect(add).toHaveBeenCalledWith("acme", {
         address: "quay.io/acme",
@@ -111,11 +142,13 @@ describe("Admin › Container registries", () => {
   });
 
   it("replaces and removes a kept entry", async () => {
-    render(<ContainerRegistriesTab />);
-    fireEvent.change(await screen.findByTestId("container-registry-r1-username"), {
+    render(<ContainerRegistriesTab title="Container Registries" />);
+    fireEvent.click(await screen.findByTestId("container-registry-r1"));
+    fireEvent.click(await screen.findByTestId("container-registry-edit-r1"));
+    fireEvent.change(screen.getByTestId("container-registry-username"), {
       target: { value: "other" },
     });
-    fireEvent.click(screen.getByTestId("container-registry-r1-save"));
+    fireEvent.click(screen.getByTestId("container-registry-save"));
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
         "acme",
@@ -123,7 +156,10 @@ describe("Admin › Container registries", () => {
         expect.objectContaining({ username: "other" }),
       ),
     );
-    fireEvent.click(screen.getByTestId("container-registry-r1-remove"));
+    fireEvent.click(await screen.findByTestId("container-registry-remove-r1"));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
     await waitFor(() => expect(remove).toHaveBeenCalledWith("acme", "r1"));
   });
 });

@@ -16,6 +16,7 @@ import {
   Box,
   Button,
   Group,
+  Menu,
   NumberInput,
   Select,
   Switch,
@@ -43,7 +44,7 @@ import {
 } from "../../components/provisa-graph/CanvasControls";
 import "../../components/editor-hover-controls.css";
 import { EditorTabStrip } from "../../components/EditorTabStrip";
-import { statementHasOwnLimit } from "./sqlHelpers";
+import { statementHasOwnLimit, statementLabel } from "./sqlHelpers";
 
 interface SqlEditorPanelProps {
   // Tab strip
@@ -74,6 +75,10 @@ interface SqlEditorPanelProps {
   /** Stop the statement running: Stop stands where Run is while it runs. */
   handleStop: () => void;
   handleAnalyze: () => void;
+  /** REQ-1519: the statements to choose among when the editor holds several; null otherwise. */
+  analyzeChoices: string[] | null;
+  chooseAnalyze: (statement: string) => void;
+  dismissAnalyzeChoices: () => void;
   analyzing: boolean;
   sampleMode: "first" | "last" | "random";
   setSampleMode: React.Dispatch<React.SetStateAction<"first" | "last" | "random">>;
@@ -121,6 +126,9 @@ export function SqlEditorPanel({
   handleRun,
   handleStop,
   handleAnalyze,
+  analyzeChoices,
+  chooseAnalyze,
+  dismissAnalyzeChoices,
   analyzing,
   sampleMode,
   setSampleMode,
@@ -282,9 +290,11 @@ export function SqlEditorPanel({
       </Group>
 
       {/* Editor */}
+      {/* REQ-2277: the editor takes the height the stack gives it, less its strips. */}
       <div
         style={{
-          flex: "0 0 220px",
+          flex: "1 1 0",
+          minHeight: 0,
           overflow: "hidden",
           borderBottom: "1px solid var(--border)",
           position: "relative",
@@ -324,7 +334,7 @@ export function SqlEditorPanel({
         )}
         <CodeMirror
           value={sqlText}
-          height="220px"
+          height="100%"
           theme={cmTheme}
           extensions={sqlExtensions}
           onChange={(v) => {
@@ -333,7 +343,8 @@ export function SqlEditorPanel({
           onCreateEditor={(view) => {
             editorViewRef.current = view;
           }}
-          style={{ fontSize: "0.8rem" }}
+          className="sql-editor-input"
+          style={{ height: "100%" }}
         />
         <CanvasControls testId="sql-editor">
           <CanvasButton
@@ -378,7 +389,6 @@ export function SqlEditorPanel({
             size="xs"
             leftSection={<Play size={11} />}
             onClick={handleRun}
-            disabled={!sqlText.trim()}
             data-testid="sql-run"
             style={{ flexShrink: 0 }}
           >
@@ -387,19 +397,43 @@ export function SqlEditorPanel({
         )}
         {/* REQ-1519: describe the statement instead of running it — the engine's plan for the
             routed SQL, with the Provisa rewrites that produced it called out. */}
-        <Tip text={t("sqlEditorPanel.analyzeTitle")}>
-          <Button
-            size="xs"
-            variant="default"
-            leftSection={<GitBranch size={11} />}
-            onClick={handleAnalyze}
-            disabled={analyzing || running || !sqlText.trim()}
-            data-testid="sql-analyze"
-            style={{ flexShrink: 0 }}
-          >
-            {analyzing ? t("sqlEditorPanel.analyzing") : t("sqlEditorPanel.analyze")}
-          </Button>
-        </Tip>
+        <Menu
+          opened={analyzeChoices !== null}
+          onChange={(o) => !o && dismissAnalyzeChoices()}
+          position="bottom-start"
+          withinPortal
+          transitionProps={{ duration: 0 }}
+        >
+          <Menu.Target>
+            <div style={{ flexShrink: 0 }}>
+              <Tip text={t("sqlEditorPanel.analyzeTitle")}>
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<GitBranch size={11} />}
+                  onClick={handleAnalyze}
+                  disabled={analyzing || running || !sqlText.trim()}
+                  data-testid="sql-analyze"
+                  style={{ flexShrink: 0 }}
+                >
+                  {analyzing ? t("sqlEditorPanel.analyzing") : t("sqlEditorPanel.analyze")}
+                </Button>
+              </Tip>
+            </div>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>{t("sqlEditorPanel.analyzeWhich")}</Menu.Label>
+            {(analyzeChoices ?? []).map((statement, i) => (
+              <Menu.Item
+                key={i}
+                onClick={() => chooseAnalyze(statement)}
+                data-testid={`sql-analyze-choice-${i}`}
+              >
+                {statementLabel(statement)}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
         {/* A statement with its own LIMIT runs as written: the sample controls do not apply. */}
         {!statementHasOwnLimit(sqlText) && (
           <>

@@ -141,6 +141,7 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
                     "native_type": None,
                     "native_platform": None,
                     "subtype": None,  # REQ-2171
+                    "gql_selection": None,  # REQ-308
                 }
             ],
         },
@@ -178,6 +179,7 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
                     "native_type": None,
                     "native_platform": None,
                     "subtype": None,  # REQ-2171
+                    "gql_selection": None,  # REQ-308
                 }
             ],
         },

@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} 不在列表中",
+    "why": "链接指向它，但{{reasons}}。",
+    "bySearch": "搜索“{{search}}”将其排除",
+    "byFilter": "{{filter}} 筛选器将其排除",
+    "byDomain": "其域（{{domains}}）不在视图中",
+    "clearSearch": "清除搜索",
+    "clearFilter": "清除 {{filter}} 筛选器",
+    "addDomain": "将 {{domains}} 添加到视图",
+    "showAll": "在列表中显示",
+    "dismiss": "关闭",
+    "byTab": "{{tab}} 选项卡未列出它",
+    "openTab": "显示 {{tab}} 选项卡"
+  }
+}

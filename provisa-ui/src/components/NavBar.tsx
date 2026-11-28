@@ -11,7 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
-import { ActionIcon, Badge, Button, Checkbox, Menu, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Checkbox, Menu, Stack, Text } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
 import { BrandMark } from "./BrandMark";
@@ -27,6 +28,7 @@ import { WhatsNewModal } from "./WhatsNewModal";
 import { RELEASE_NOTES } from "../lib/releaseNotes";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
+import { RoutePageHelp } from "./RoutePageHelp";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { deleteSandboxAccount } from "../api/admin";
@@ -387,6 +389,9 @@ export function NavBar() {
               </span>
             ))}
           <div className="subnav-extra" ref={setSubnavExtraNode} />
+          {/* REQ-2277 rule 8: a work surface with no PageTitle carries its (?) at the end of the
+              subnav, the header row above it. */}
+          <RoutePageHelp placement="subnav" />
         </nav>
       )}
       {profileOpen && <UserProfileModal onClose={() => setProfileOpen(false)} />}
@@ -397,7 +402,7 @@ export function NavBar() {
           onClose={() => setWhatsNewOpen(false)}
         />
       )}
-      <Modal
+      <ModalLayout
         opened={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         title={t("navBar.sandboxExitTitle")}
@@ -423,7 +428,7 @@ export function NavBar() {
             </Button>
           </FormFooter>
         </Stack>
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

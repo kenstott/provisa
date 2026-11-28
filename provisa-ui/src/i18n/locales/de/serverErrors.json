@@ -1002,6 +1002,13 @@
       "reason_required": "Ein Vorschlag nennt seinen Grund.",
       "no_recipient": "Domäne {{domain}} hat keinen Datenproduktverantwortlichen und keinen Data Steward, der einen Vorschlag empfängt.",
       "not_a_recipient": "Die Vorschläge der Domäne {{domain}} lesen ihre Data Stewards und Datenproduktverantwortlichen."
+    },
+    "column_rules": {
+      "database_unavailable": "Die Steuerungsebene ist nicht erreichbar",
+      "right_not_everywhere": "Eine Spaltenregel gilt in jeder Domäne; sie erfordert {{right}} in jeder Domäne",
+      "invalid": "Die Spaltenregel ist ungültig: {{reason}}",
+      "not_found": "Keine Spaltenregel {{rule}}",
+      "tag_not_found": "Tag {{tag}} nicht gefunden"
     }
   }
 }

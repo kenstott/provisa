@@ -56,6 +56,10 @@ APPLICATION_NAME = "provisa-graph-session-listen"
 _BEAT_S = 1.0
 _RECONNECT_S = 1.0
 
+#: How long a stop waits for the listening thread to close its connection: one beat, the check
+#: after it, and a connection still being made.
+_STOP_S = 5.0
+
 Key = tuple[str, str]  # (org schema, principal)
 
 
@@ -288,7 +292,19 @@ class Sessions:
         self._lost()
 
     def stop(self) -> None:
+        """Stop listening and wait for the thread to close its connection (REQ-1316: a server's
+        shutdown, which disposes the engine, leaves no connection it opened). A thread still in
+        its wait for a notification ends within one beat; one that has not ended in
+        ``_STOP_S`` is named."""
         self._stopping.set()
+        self._thread.join(timeout=_STOP_S)
+        if self._thread.is_alive():
+            log.warning(
+                "graph-session listener %s did not end within %.0fs; its connection stays open "
+                "until it does",
+                self._thread.name,
+                _STOP_S,
+            )
 
 
 _registry_lock = threading.Lock()
@@ -306,6 +322,15 @@ def of(db: Any) -> Sessions:
             sessions = _registry[engine] = Sessions(engine)
             event.listen(engine, "engine_disposed", _disposed)
         return sessions
+
+
+def listen(db: Any) -> None:
+    """Start this worker hearing of the graph sessions in ``db``'s control-plane database as the
+    worker binds it, so no request starts the listening thread (REQ-1882: every stage of a
+    request runs on its own thread, and a request starts none). Graph sessions live only in a
+    PostgreSQL control plane (REQ-2176): any other holds none to hear of."""
+    if db.dialect == "postgresql":
+        of(db)
 
 
 def _disposed(engine: Engine) -> None:

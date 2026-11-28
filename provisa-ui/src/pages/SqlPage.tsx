@@ -9,13 +9,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { hasNoStatement } from "../lib/noStatement";
 import { useRegionChoice, useRegionChoices } from "../hooks/useRegionQueries";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { format as formatSql } from "sql-formatter";
 import { EditorView } from "@codemirror/view";
 import { Button, Drawer, Group, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -23,7 +23,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { explainSql, runSqlEach, splitSql } from "../api/admin";
 import type { ExplainResponse } from "../api/admin";
-import type { ResultRedirect } from "../types/resultRedirect";
 import {
   useRoles,
   useDomains,
@@ -43,8 +42,10 @@ import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import { autoAliasConflicts, parseSemanticMetricQuery, wrapSampledSql } from "./sql/sqlHelpers";
+import { prettifySql } from "./sql/prettifySql";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
+import { ExploreMain, ExploreShell, ExploreStack } from "../components/explore/ExploreShell";
 import { JoinCanvas } from "./sql/JoinCanvas";
 import { SqlEditorPanel } from "./sql/SqlEditorPanel";
 import { ResultsPanel } from "./sql/ResultsPanel";
@@ -54,6 +55,11 @@ import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
 import { withTimeTravel } from "./sql/timeTravelArgs";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+
+// A tab's result fields that are absent until it runs, held as one constant each so the grid sees
+// the same value from render to render.
+const NO_COLUMN_TYPES: Record<string, string | null> = {};
+const NO_STATEMENTS: StatementResult[] = [];
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -181,29 +187,39 @@ export function SqlPage() {
   const [running, setRunning] = useState(false);
   // The run still out, which Stop aborts; and whether the last run was stopped before it answered.
   const runRef = useRef<AbortController | null>(null);
+  // The tab whose last run had no statement in its editor: its results say so.
+  const [noQueryTab, setNoQueryTab] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
-  const [resultColumns, setResultColumns] = useState<string[]>(active0.resultColumns);
-  // REQ-1937: the columns' SQL types from the last run. A tab restored from storage has none, and
-  // its filters are typed from the values.
-  const [resultColumnTypes, setResultColumnTypes] = useState<Record<string, string | null>>({});
-  // REQ-1937: whether the rows held are part of a longer answer, decided when they arrived.
-  const [resultPartial, setResultPartial] = useState<boolean>(active0.resultPartial ?? false);
-  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
-  const [resultError, setResultError] = useState(active0.resultError);
-  // The last run's result landed in the results store (not kept with the tab: a run tells it).
-  const [resultRedirect, setResultRedirect] = useState<ResultRedirect | null>(null);
-  // A batch's results, one per statement; the result* state above is the one shown.
-  const [statements, setStatements] = useState<StatementResult[]>(active0.statements ?? []);
-  const [statementIndex, setStatementIndex] = useState(active0.statementIndex ?? 0);
-  const [execMs, setExecMs] = useState<number | null>(active0.execMs);
+  // Each tab owns its results; what is shown is the active tab's. A run writes into the tab that
+  // started it and the kept results hydrate into each tab's own slot, so a result that arrives
+  // late (a run finishing after a switch, the kept results read after a hand-off) never lands
+  // under another tab's query.
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId)!, [tabs, activeTabId]);
+  const resultColumns = activeTab.resultColumns;
+  const resultRows = activeTab.resultRows;
+  const resultError = activeTab.resultError;
+  const execMs = activeTab.execMs;
+  // A tab that has not run has none of the fields below (SqlTab marks them optional): no redirect,
+  // one answer rather than a batch, rows that are the whole answer. REQ-1937: a tab restored from
+  // storage has no column types, and its filters are typed from the values.
+  const resultRedirect = activeTab.resultRedirect ?? null;
+  const resultColumnTypes = activeTab.resultColumnTypes ?? NO_COLUMN_TYPES;
+  const resultPartial = activeTab.resultPartial ?? false;
+  const statements = activeTab.statements ?? NO_STATEMENTS;
+  const statementIndex = activeTab.statementIndex ?? 0;
+  const updateTab = useCallback((id: string, patch: Partial<SqlTab>) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
   const [statsEnabled, setStatsEnabled] = useState(() => getStored("sql:statsEnabled") === "true");
   const [queryStats, setQueryStats] = useState<unknown>(null);
   // REQ-1519: the plan Analyze last described, and the reason a description was refused.
   const [analyzePlan, setAnalyzePlan] = useState<ExplainResponse | null>(null);
   const [analyzeError, setAnalyzeError] = useState("");
+  // REQ-1519: the statements Analyze is asking the reader to choose from (several in the editor).
+  const [analyzeChoices, setAnalyzeChoices] = useState<string[] | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
@@ -215,11 +231,18 @@ export function SqlPage() {
   const editorViewRef = useRef<EditorView | null>(null);
   // The statement a hand-off asked to run, until the working state holds it and it is run.
   const pendingAutoRunRef = useRef<string | null>(null);
-  const pendingRunAfterFormatRef = useRef(false);
   const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
-  const resultsHydrated = useRef(false);
+  // The tabs that ran since mount: the kept results read at mount are older than their runs.
+  const ranTabs = useRef(new Set<string>());
+  // The active tab and the editor's text, for the kept results that arrive after a change.
+  const activeTabIdRef = useRef(activeTabId);
+  const sqlTextRef = useRef(sqlText);
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+    sqlTextRef.current = sqlText;
+  }, [activeTabId, sqlText]);
   // Each tab's query that produced the results it holds: kept with them, so they are restored
   // only beside it.
   const resultQueries = useRef(new Map<string, string>());
@@ -229,41 +252,35 @@ export function SqlPage() {
     let cancelled = false;
     Promise.all(
       initialTabs.tabs.map((t) =>
-        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => {
-          const r = restored(k, t.sqlText);
-          if (r && k) resultQueries.current.set(t.id, k.query);
-          return { id: t.id, r };
-        }),
+        idbGet<KeptResult<SqlResults>>(tabResultsKey(t.id)).then((k) => ({ id: t.id, k })),
       ),
     ).then((loaded) => {
       if (cancelled) return;
-      const byId = new Map(loaded.map((x) => [x.id, x.r]));
+      const byId = new Map(loaded.map((x) => [x.id, x.k]));
+      // Each tab's kept result fills only that tab's slot, and only beside the query that is its
+      // text now (the active tab's is the editor's) and while the tab has not run since: a run
+      // since mount is newer than anything kept.
+      const editorText = sqlTextRef.current;
+      const editorTab = activeTabIdRef.current;
       setTabs((prev) =>
         prev.map((t) => {
-          const r = byId.get(t.id);
-          return r
-            ? {
-                ...t,
-                resultColumns: r.columns,
-                resultRows: r.rows,
-                resultError: r.error,
-                resultPartial: r.partial ?? false,
-                statements: r.statements,
-                statementIndex: r.statementIndex,
-              }
-            : t;
+          const k = byId.get(t.id);
+          const r = ranTabs.current.has(t.id)
+            ? null
+            : restored(k, t.id === editorTab ? editorText : t.sqlText);
+          if (!r || !k) return t;
+          resultQueries.current.set(t.id, k.query);
+          return {
+            ...t,
+            resultColumns: r.columns,
+            resultRows: r.rows,
+            resultError: r.error,
+            resultPartial: r.partial ?? false,
+            statements: r.statements,
+            statementIndex: r.statementIndex,
+          };
         }),
       );
-      const ar = byId.get(initialTabs.activeId);
-      if (ar) {
-        setResultColumns(ar.columns);
-        setResultRows(ar.rows);
-        setResultPartial(ar.partial ?? false);
-        setResultError(ar.error);
-        setStatements(ar.statements ?? []);
-        setStatementIndex(ar.statementIndex ?? 0);
-      }
-      resultsHydrated.current = true;
     });
     return () => {
       cancelled = true;
@@ -469,51 +486,15 @@ export function SqlPage() {
 
   // ----- Query tab actions -----
   const mergeActive = useCallback(
-    (): SqlTab[] =>
-      tabs.map((t) =>
-        t.id === activeTabId
-          ? {
-              ...t,
-              sqlText,
-              nlText,
-              resultColumns,
-              resultRows,
-              resultPartial,
-              resultError,
-              execMs,
-              statements,
-              statementIndex,
-            }
-          : t,
-      ),
-    [
-      tabs,
-      activeTabId,
-      sqlText,
-      nlText,
-      resultColumns,
-      resultRows,
-      resultPartial,
-      resultError,
-      execMs,
-      statements,
-      statementIndex,
-    ],
+    (): SqlTab[] => tabs.map((t) => (t.id === activeTabId ? { ...t, sqlText, nlText } : t)),
+    [tabs, activeTabId, sqlText, nlText],
   );
 
   const loadTabIntoWorkingState = useCallback(
     (t: SqlTab) => {
       setSqlText(t.sqlText);
       setNlText(t.nlText);
-      setResultColumns(t.resultColumns);
-      setResultRows(t.resultRows);
-      setResultPartial(t.resultPartial ?? false);
-      setResultError(t.resultError);
       setStopped(false);
-      setResultRedirect(null);
-      setStatements(t.statements ?? []);
-      setStatementIndex(t.statementIndex ?? 0);
-      setExecMs(t.execMs);
       setQueryStats(null);
       setNlError("");
       resetGrid();
@@ -565,11 +546,13 @@ export function SqlPage() {
     }
     if (payload.sql == null) return;
     const merged = mergeActive();
-    const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
+    // Handed SQL is machine-written: it arrives formatted, in a fresh tab.
+    const pretty = prettifySql(payload.sql);
+    const tab = emptyTab(newTabId(), nextTabTitle(merged), pretty);
     setTabs([...merged, tab]);
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
-    pendingAutoRunRef.current = payload.autoRun === true ? payload.sql : null;
+    pendingAutoRunRef.current = payload.autoRun === true ? pretty : null;
   });
 
   // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
@@ -581,12 +564,12 @@ export function SqlPage() {
   const handleDetach = useCallback(async () => {
     const { text, isError } = await fetchExpansion();
     if (isError) {
-      setResultError(text);
+      updateTab(activeTabId, { resultError: text });
       return;
     }
     let pretty = text;
     try {
-      pretty = formatSql(text, { language: "postgresql" });
+      pretty = prettifySql(text);
     } catch {
       /* leave the expansion unchanged if the formatter can't parse it */
     }
@@ -598,7 +581,7 @@ export function SqlPage() {
     setTabs([...merged, tab]);
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
-  }, [fetchExpansion, mergeActive, loadTabIntoWorkingState]);
+  }, [fetchExpansion, mergeActive, loadTabIntoWorkingState, updateTab, activeTabId]);
 
   const closeTab = useCallback(
     (id: string) => {
@@ -718,37 +701,64 @@ export function SqlPage() {
 
   // REQ-1519: describe the statement through the ONE pipeline instead of running it. The plan
   // comes back governed, optimized and routed, so the tree is the tree for the SQL that would run.
+  const analyzeStatement = useCallback(
+    async (statement: string) => {
+      setAnalyzeChoices(null);
+      setAnalyzing(true);
+      setAnalyzeError("");
+      try {
+        const plan = await explainSql(statement, role, false);
+        setAnalyzePlan(plan);
+      } catch (e) {
+        setAnalyzePlan(null);
+        setAnalyzeError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setAnalyzing(false);
+      }
+      setResultTab("analyze");
+    },
+    [role],
+  );
+
+  // Statements are split as the run splits them (the server's splitter: comment-only segments are
+  // dropped, leading comments stay with the statement after them). Several: the reader picks one.
   const handleAnalyze = useCallback(async () => {
     if (!sqlText.trim()) return;
-    setAnalyzing(true);
-    setAnalyzeError("");
+    let statements: string[];
     try {
-      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
-      setAnalyzePlan(plan);
+      statements = await splitSql(sqlText);
     } catch (e) {
       setAnalyzePlan(null);
       setAnalyzeError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAnalyzing(false);
+      setResultTab("analyze");
+      return;
     }
-    setResultTab("analyze");
-  }, [sqlText, role]);
+    if (statements.length > 1) {
+      setAnalyzeChoices(statements);
+      return;
+    }
+    if (statements.length === 1) await analyzeStatement(statements[0]);
+  }, [sqlText, analyzeStatement]);
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
+  // Written into the tab whose result it is (a run's own tab, though another may be active by now).
   const showStatement = useCallback(
-    (list: StatementResult[], index: number, query: string) => {
+    (tabId: string, list: StatementResult[], index: number, query: string) => {
       const r = list[index];
-      setStatementIndex(index);
-      setResultColumns(r.columns);
-      setResultColumnTypes(r.columnTypes);
-      setResultRows(r.rows);
-      setResultError(r.error);
-      setResultRedirect(r.redirect);
-      setResultPartial(r.partial);
-      resetGrid();
-      resultQueries.current.set(activeTabId, query);
+      updateTab(tabId, {
+        statements: list,
+        statementIndex: index,
+        resultColumns: r.columns,
+        resultColumnTypes: r.columnTypes,
+        resultRows: r.rows,
+        resultError: r.error,
+        resultRedirect: r.redirect,
+        resultPartial: r.partial,
+      });
+      if (tabId === activeTabIdRef.current) resetGrid();
+      resultQueries.current.set(tabId, query);
       idbSet(
-        tabResultsKey(activeTabId),
+        tabResultsKey(tabId),
         kept<SqlResults>(query, {
           columns: r.columns,
           rows: r.rows,
@@ -759,19 +769,27 @@ export function SqlPage() {
         }),
       );
     },
-    [activeTabId, resetGrid],
+    [updateTab, resetGrid],
   );
 
   const handleRun = useCallback(async () => {
-    if (!sqlText.trim()) return;
+    // No statement in the editor (blank, or comments alone): said in the results, and nothing sent.
+    if (hasNoStatement(sqlText, "sql")) {
+      setNoQueryTab(activeTabId);
+      setResultTab("results");
+      return;
+    }
+    setNoQueryTab(null);
     const aliased = autoAliasConflicts(sqlText);
     if (aliased !== sqlText) setSqlText(aliased);
+    // The run's results go to the tab that started it, whichever is active when they arrive.
+    const tabId = activeTabId;
+    ranTabs.current.add(tabId);
     const controller = new AbortController();
     runRef.current = controller;
     setStopped(false);
     setRunning(true);
-    setResultError("");
-    setResultRedirect(null);
+    updateTab(tabId, { resultError: "", resultRedirect: null });
     const t0 = performance.now();
     let run: Awaited<ReturnType<typeof runSqlEach>>;
     try {
@@ -800,23 +818,25 @@ export function SqlPage() {
     if (runRef.current !== controller) return;
     runRef.current = null;
     const durationMs = Math.round(performance.now() - t0);
-    setExecMs(durationMs);
+    updateTab(tabId, { execMs: durationMs });
     setQueryStats(run.provisa_stats ?? null);
     const results = run.answers.map(toStatementResult);
-    setStatements(results);
-    if (results.length > 0) showStatement(results, 0, aliased);
+    if (results.length > 0) showStatement(tabId, results, 0, aliased);
     else {
       // Refused as a whole, or a batch of no statements (comments alone).
-      setStatementIndex(0);
-      setResultError(run.error ?? "");
-      setResultColumns([]);
-      setResultColumnTypes({});
-      setResultRows([]);
-      setResultPartial(false);
-      resetGrid();
-      resultQueries.current.set(activeTabId, aliased);
+      updateTab(tabId, {
+        statements: [],
+        statementIndex: 0,
+        resultError: run.error ?? "",
+        resultColumns: [],
+        resultColumnTypes: NO_COLUMN_TYPES,
+        resultRows: [],
+        resultPartial: false,
+      });
+      if (tabId === activeTabIdRef.current) resetGrid();
+      resultQueries.current.set(tabId, aliased);
       idbSet(
-        tabResultsKey(activeTabId),
+        tabResultsKey(tabId),
         kept<SqlResults>(aliased, { columns: [], rows: [], error: run.error ?? "" }),
       );
     }
@@ -845,6 +865,7 @@ export function SqlPage() {
     resetGrid,
     boundParams,
     showStatement,
+    updateTab,
   ]);
 
   // Stop the run still out: its request is aborted, and the results say it was stopped.
@@ -863,21 +884,7 @@ export function SqlPage() {
     // the same commit as the hand-off, still holding the text of the tab that was active.
     if (pendingAutoRunRef.current !== null && sqlText === pendingAutoRunRef.current) {
       pendingAutoRunRef.current = null;
-      // REQ-1359: "Open in SQL" must copy the SQL in, prettify it, then execute.
-      const pretty = formatSql(sqlText, { language: "postgresql" });
-      if (pretty !== sqlText) {
-        pendingRunAfterFormatRef.current = true;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time nav-forwarded format, guarded by pendingAutoRunRef
-        setSqlText(pretty);
-      } else {
-        handleRun();
-      }
-    }
-  }, [sqlText, handleRun]);
-
-  useEffect(() => {
-    if (pendingRunAfterFormatRef.current && sqlText.trim()) {
-      pendingRunAfterFormatRef.current = false;
+      // REQ-1359: "Open in SQL" opens the prettified SQL, then executes it.
       handleRun();
     }
   }, [sqlText, handleRun]);
@@ -923,211 +930,207 @@ export function SqlPage() {
   }, []);
 
   return (
-    <div
-      style={{
-        flex: 1,
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "var(--bg)",
-      }}
-    >
-      {/* Header */}
-      <Group
-        justify="space-between"
-        wrap="nowrap"
-        style={{
-          padding: "0.75rem 1rem",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        <Group gap="0.75rem" wrap="nowrap">
-          <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
-            {t("sqlPage.title")}
-          </Text>
-          <SegmentedControl
-            size="xs"
-            value={topTab}
-            onChange={(v) => setTopTab(v as TopTab)}
-            data={[
-              { label: t("sqlPage.tabSql"), value: "sql" },
-              { label: t("sqlPage.tabCanvas"), value: "canvas" },
-            ]}
-            data-testid="sql-page-top-tabs"
-          />
-        </Group>
-        <Group gap="0.75rem" wrap="nowrap" ml="auto">
-          {sqlReferencesMetrics && (
-            <>
-              <Button
-                size="compact-xs"
-                variant="default"
-                onClick={handleShowExpansion}
-                data-testid="sql-show-expansion"
-              >
-                {t("sqlPage.showExpansion")}
-              </Button>
-              <Button
-                size="compact-xs"
-                color="orange"
-                variant="light"
-                onClick={handleDetach}
-                data-testid="sql-detach"
-              >
-                {t("sqlPage.detachToSemantic")}
-              </Button>
-            </>
-          )}
-          {execMs !== null && (
-            <Text size="0.75rem" c="var(--text-muted)">
-              {t("sqlPage.execMs", { ms: execMs })}
+    <ExploreShell
+      testId="sql-page"
+      toolbar={
+        <Group justify="space-between" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="0.75rem" wrap="nowrap">
+            <Text fw={600} size="0.9rem" style={{ letterSpacing: "0.02em" }}>
+              {t("sqlPage.title")}
             </Text>
-          )}
-          <Checkbox
-            size="xs"
-            label={t("sqlPage.queryStats")}
-            checked={statsEnabled}
-            onChange={(e) => {
-              setStatsEnabled(e.currentTarget.checked);
-              setStored("sql:statsEnabled", String(e.currentTarget.checked));
-            }}
-            data-testid="sql-page-stats-checkbox"
-          />
+            <SegmentedControl
+              size="xs"
+              value={topTab}
+              onChange={(v) => setTopTab(v as TopTab)}
+              data={[
+                { label: t("sqlPage.tabSql"), value: "sql" },
+                { label: t("sqlPage.tabCanvas"), value: "canvas" },
+              ]}
+              data-testid="sql-page-top-tabs"
+            />
+          </Group>
+          <Group gap="0.75rem" wrap="nowrap" ml="auto">
+            {sqlReferencesMetrics && (
+              <>
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  onClick={handleShowExpansion}
+                  data-testid="sql-show-expansion"
+                >
+                  {t("sqlPage.showExpansion")}
+                </Button>
+                <Button
+                  size="compact-xs"
+                  color="orange"
+                  variant="light"
+                  onClick={handleDetach}
+                  data-testid="sql-detach"
+                >
+                  {t("sqlPage.detachToSemantic")}
+                </Button>
+              </>
+            )}
+            {execMs !== null && (
+              <Text size="0.75rem" c="var(--text-muted)">
+                {t("sqlPage.execMs", { ms: execMs })}
+              </Text>
+            )}
+            <Checkbox
+              size="xs"
+              label={t("sqlPage.queryStats")}
+              checked={statsEnabled}
+              onChange={(e) => {
+                setStatsEnabled(e.currentTarget.checked);
+                setStored("sql:statsEnabled", String(e.currentTarget.checked));
+              }}
+              data-testid="sql-page-stats-checkbox"
+            />
+          </Group>
         </Group>
-      </Group>
+      }
+    >
+      {/* Schema browser drawer */}
+      <SchemaBrowser
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        domainGroups={domainGroups}
+        domainMap={domainMap}
+        expandedDomains={expandedDomains}
+        expandedTables={expandedTables}
+        domainPages={domainPages}
+        topTab={topTab}
+        insertAtCursor={insertAtCursor}
+        toggleDomain={toggleDomain}
+        toggleTable={toggleTable}
+        setDomainPages={setDomainPages}
+        metrics={domainFilteredMetrics}
+        tables={domainFilteredTables}
+      />
 
-      {/* Body: sidebar + right pane */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Schema browser drawer */}
-        <SchemaBrowser
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          domainGroups={domainGroups}
-          domainMap={domainMap}
-          expandedDomains={expandedDomains}
-          expandedTables={expandedTables}
-          domainPages={domainPages}
-          topTab={topTab}
-          insertAtCursor={insertAtCursor}
-          toggleDomain={toggleDomain}
-          toggleTable={toggleTable}
-          setDomainPages={setDomainPages}
-          metrics={domainFilteredMetrics}
-          tables={domainFilteredTables}
-        />
-
-        {/* Right pane */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div
-            style={{
-              display: topTab === "canvas" ? "flex" : "none",
-              flex: 1,
-              overflow: "hidden",
-              flexDirection: "column",
+      {/* Right pane */}
+      <ExploreMain>
+        <div
+          style={{
+            display: topTab === "canvas" ? "flex" : "none",
+            flex: 1,
+            overflow: "hidden",
+            flexDirection: "column",
+          }}
+        >
+          <JoinCanvas
+            tables={tables}
+            existingRels={existingRels}
+            metrics={metrics}
+            onGenerateSql={(generatedSql) => {
+              setSqlText(generatedSql);
+              setTopTab("sql");
             }}
-          >
-            <JoinCanvas
-              tables={tables}
-              existingRels={existingRels}
-              metrics={metrics}
-              onGenerateSql={(generatedSql) => {
-                setSqlText(generatedSql);
-                setTopTab("sql");
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              display: topTab === "sql" ? "flex" : "none",
-              flex: 1,
-              overflow: "hidden",
-              flexDirection: "column",
-            }}
-          >
-            <SqlEditorPanel
-              tabs={tabs}
-              activeTabId={activeTabId}
-              switchTab={switchTab}
-              addTab={addTab}
-              closeTab={closeTab}
-              renameTab={renameTab}
-              nlText={nlText}
-              setNlText={setNlText}
-              nlLoading={nlLoading}
-              setNlLoading={setNlLoading}
-              nlError={nlError}
-              setNlError={setNlError}
-              setSqlText={setSqlText}
-              role={role}
-              sqlText={sqlText}
-              sqlExtensions={sqlExtensions}
-              editorViewRef={editorViewRef}
-              copied={copied}
-              handleCopy={handleCopy}
-              running={running}
-              handleRun={handleRun}
-              handleStop={handleStop}
-              handleAnalyze={handleAnalyze}
-              analyzing={analyzing}
-              sampleMode={sampleMode}
-              setSampleMode={setSampleMode}
-              sampleSize={sampleSize}
-              setSampleSize={setSampleSize}
-              roles={roleOptions}
-              setRole={setRole}
-              asOf={asOf}
-              setAsOf={(v) => {
-                setAsOf(v);
-                setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
-              }}
-              asRecorded={asRecorded}
-              setAsRecorded={(v) => {
-                setAsRecorded(v);
-                setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
-              }}
-              boundParams={boundParams}
-              viewTable={viewTable}
-              viewSaving={viewSaving}
-              setViewSaving={setViewSaving}
-              updateTable={updateTable}
-              canCreateView={canCreateView}
-              canRequestView={canRequestView}
-              onOpenViewModal={handleOpenViewModal}
-            />
-            <ResultsPanel
-              resultTab={resultTab}
-              setResultTab={setResultTab}
-              running={running}
-              stopped={stopped}
-              resultError={resultError}
-              resultRedirect={resultRedirect}
-              resultRows={resultRows}
-              resultColumns={resultColumns}
-              rowsPartial={resultPartial}
-              answered={execMs !== null}
-              statements={statements}
-              statementIndex={statementIndex}
-              // A batch's statements are held only after a run or a restore, each of which keeps
-              // the tab's query.
-              onStatement={(i) =>
-                showStatement(statements, i, resultQueries.current.get(activeTabId)!)
-              }
-              grid={grid}
-              errors={errors}
-              history={history}
-              queryStats={queryStats}
-              analyzePlan={analyzePlan}
-              analyzeError={analyzeError}
-              sqlText={sqlText}
-              setSqlText={setSqlText}
-              setRole={setRole}
-            />
-          </div>
+          />
         </div>
-      </div>
+
+        <div
+          style={{
+            display: topTab === "sql" ? "flex" : "none",
+            flex: 1,
+            overflow: "hidden",
+            flexDirection: "column",
+          }}
+        >
+          <ExploreStack
+            storageKey="provisa.sql.editorHeight"
+            initial={380}
+            min={200}
+            testId="sql-stack"
+            editor={
+              <SqlEditorPanel
+                tabs={tabs}
+                activeTabId={activeTabId}
+                switchTab={switchTab}
+                addTab={addTab}
+                closeTab={closeTab}
+                renameTab={renameTab}
+                nlText={nlText}
+                setNlText={setNlText}
+                nlLoading={nlLoading}
+                setNlLoading={setNlLoading}
+                nlError={nlError}
+                setNlError={setNlError}
+                setSqlText={setSqlText}
+                role={role}
+                sqlText={sqlText}
+                sqlExtensions={sqlExtensions}
+                editorViewRef={editorViewRef}
+                copied={copied}
+                handleCopy={handleCopy}
+                running={running}
+                handleRun={handleRun}
+                handleStop={handleStop}
+                handleAnalyze={handleAnalyze}
+                analyzeChoices={analyzeChoices}
+                chooseAnalyze={analyzeStatement}
+                dismissAnalyzeChoices={() => setAnalyzeChoices(null)}
+                analyzing={analyzing}
+                sampleMode={sampleMode}
+                setSampleMode={setSampleMode}
+                sampleSize={sampleSize}
+                setSampleSize={setSampleSize}
+                roles={roleOptions}
+                setRole={setRole}
+                asOf={asOf}
+                setAsOf={(v) => {
+                  setAsOf(v);
+                  setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
+                }}
+                asRecorded={asRecorded}
+                setAsRecorded={(v) => {
+                  setAsRecorded(v);
+                  setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
+                }}
+                boundParams={boundParams}
+                viewTable={viewTable}
+                viewSaving={viewSaving}
+                setViewSaving={setViewSaving}
+                updateTable={updateTable}
+                canCreateView={canCreateView}
+                canRequestView={canRequestView}
+                onOpenViewModal={handleOpenViewModal}
+              />
+            }
+            results={
+              <ResultsPanel
+                resultTab={resultTab}
+                setResultTab={setResultTab}
+                running={running}
+                stopped={stopped}
+                resultError={resultError}
+                noQuery={noQueryTab === activeTabId}
+                resultRedirect={resultRedirect}
+                resultRows={resultRows}
+                resultColumns={resultColumns}
+                rowsPartial={resultPartial}
+                answered={execMs !== null}
+                statements={statements}
+                statementIndex={statementIndex}
+                // A batch's statements are held only after a run or a restore, each of which keeps
+                // the tab's query.
+                onStatement={(i) =>
+                  showStatement(activeTabId, statements, i, resultQueries.current.get(activeTabId)!)
+                }
+                grid={grid}
+                errors={errors}
+                history={history}
+                queryStats={queryStats}
+                analyzePlan={analyzePlan}
+                analyzeError={analyzeError}
+                sqlText={sqlText}
+                setSqlText={setSqlText}
+                setRole={setRole}
+              />
+            }
+          />
+        </div>
+      </ExploreMain>
 
       {/* REQ-1322: read-only server expansion of the metric query */}
       <Drawer
@@ -1186,6 +1189,6 @@ export function SqlPage() {
         onNavigateToViews={() => navigate("/views")}
         onCloseConfirmation={handleCloseConfirmation}
       />
-    </div>
+    </ExploreShell>
   );
 }

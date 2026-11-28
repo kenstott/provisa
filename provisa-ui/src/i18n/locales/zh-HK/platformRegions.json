@@ -9,6 +9,7 @@
     "detailPanel": "平台區域詳情",
     "colRegion": "區域",
     "none": "平台未宣告任何區域。",
+    "noMatch": "沒有符合篩選條件的區域。",
     "edit": "編輯",
     "remove": "移除",
     "taken": "已存在名為 {{id}} 的區域。",
@@ -38,6 +39,8 @@
     "org": "組織",
     "pickOrg": "選擇組織",
     "orgGranted": "{{id}}(已授予:{{regions}})",
-    "orgNone": "{{id}}(沒有區域)"
+    "orgNone": "{{id}}(沒有區域)",
+    "filterPlaceholder": "篩選區域",
+    "closeForm": "關閉表單"
   }
 }

@@ -35,7 +35,7 @@ Fetcher = Callable[[str, Path], None]
 
 #: The release's package index on GitHub Pages (scripts/release_wheel_index.py writes it): it serves
 #: provisa-duckdb-ext. Added to pip as an extra index (REQ-294, amended 2026-11-22).
-RELEASE_INDEX = "https://kenstott.github.io/provisa/simple/"
+RELEASE_INDEX = "https://pkgs.provisa.dev/simple/"
 
 #: Where ``provisa run`` looks by default (``cli._DEFAULT_DATA_DIR``).
 RUN_DIRECTORY = Path.home() / ".provisa" / "native" / "duckdb-ext"

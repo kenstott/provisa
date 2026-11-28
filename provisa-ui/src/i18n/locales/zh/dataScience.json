@@ -10,6 +10,7 @@
     "rowsShown": "显示 {{total}} 行中的 {{shown}} 行",
     "figure": "图 {{n}}",
     "resizeLabel": "调整编辑器和输出的大小",
+    "output": "输出",
     "notebookFrame": "Jupyter 笔记本",
     "copyCode": "复制代码",
     "clearCode": "清空编辑器",

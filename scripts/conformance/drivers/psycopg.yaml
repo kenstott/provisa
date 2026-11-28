@@ -2063,9 +2063,7 @@ expected:
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-min-+09:18:59-Asia/Tokyo]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[1-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[1-min-+09:18:59-Asia/Tokyo]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message[-infinity-timestamp too small-German]: psycopg-dataerror-timestamp-too-small-before-yea
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message[-infinity-timestamp too small-Postgres]: psycopg-dataerror-timestamp-too-small-before-yea
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message[-infinity-timestamp too small-SQL]: psycopg-dataerror-timestamp-too-small-before-yea
@@ -2083,15 +2081,10 @@ expected:
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message_binary[1000-01-01 12:00+00 BC-timestamp too small]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message_binary[10000-01-01 12:00+00-timestamp too large]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[German-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[German-min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[ISO-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[ISO-min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[Postgres-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[Postgres-min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[SQL-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[SQL-min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow_binary[max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDatetime::test_load_datetime_overflow_binary[min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_overflow_message[1000-01-01 12:00 BC-timestamp too small-German]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDatetime::test_overflow_message[1000-01-01 12:00 BC-timestamp too small-ISO]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDatetime::test_overflow_message[1000-01-01 12:00 BC-timestamp too small-Postgres]: psycopg-errors-invalidtextrepresentation-convers-4

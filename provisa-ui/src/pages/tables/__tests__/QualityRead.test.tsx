@@ -12,6 +12,12 @@
 // table it observes and its checks), and the table's declared unique keys.
 
 import { describe, it, expect, vi } from "vitest";
+// REQ-2277 rule 6: names link to their panels for a viewer who opens them (EntityLink).
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: ["access_config", "org_settings", "source_registration", "table_registration"],
+  }),
+}));
 import { render, screen, within } from "../../../test-utils/render";
 import type { RegisteredTable, Source } from "../../../types/admin";
 
@@ -97,6 +103,15 @@ describe("QualityRead", () => {
     expect(first).toHaveTextContent("soda-dq");
     expect(first).toHaveTextContent("Fail");
     expect(screen.getByTestId("table-read-checker-22")).toHaveTextContent("—");
+  });
+
+  it("links the profiler to its source on the Sources page", () => {
+    const profiled = { ...TABLE, profilerSourceId: "demo-profiler" } as RegisteredTable;
+    render(<QualityRead table={profiled} source={{ id: "pg", type: "postgresql" } as Source} />);
+    expect(screen.getByRole("link", { name: "demo-profiler" })).toHaveAttribute(
+      "href",
+      "/sources?expanded=demo-profiler",
+    );
   });
 
   it("says no checker scans a table none does", () => {

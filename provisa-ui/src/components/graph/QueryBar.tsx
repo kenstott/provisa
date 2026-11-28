@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { ActionIcon, useComputedColorScheme } from "@mantine/core";
 import { CirclePlus, Play, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -42,6 +42,9 @@ interface QueryBarProps {
   onToggleAutoImpute: () => void;
   /** REQ-2135: Cypher, or SPARQL with its own highlighting and no Cypher aids. */
   language?: GraphLanguage;
+  /** REQ-2277: what stands flush at the top of the editor in the same block (SPARQL's endpoint
+   * and its prefixes strip). */
+  head?: ReactNode;
 }
 
 // Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
@@ -67,6 +70,7 @@ export function QueryBar({
   autoImpute,
   onToggleAutoImpute,
   language = "cypher",
+  head,
 }: QueryBarProps) {
   const sparql = language === "sparql";
   const { t } = useTranslation();
@@ -129,114 +133,117 @@ export function QueryBar({
   }, [query, onQueryChange, sparql]);
 
   return (
-    <div className="graph-query-bar">
-      <div className="graph-query-prompt">$</div>
-      <div className="graph-query-editor-wrap">
-        {!focused && (
-          <Tip text={query}>
-            <div className="gf-header-query-collapsed" onClick={handleCollapsedClickWithFormat}>
-              {query.replace(/\s*\n\s*/g, " ") || DEFAULT_QUERY[language]}
-            </div>
+    <div className="graph-query-block" data-testid="graph-query-block">
+      {head}
+      <div className="graph-query-bar">
+        <div className="graph-query-prompt">$</div>
+        <div className="graph-query-editor-wrap">
+          {!focused && (
+            <Tip text={query}>
+              <div className="gf-header-query-collapsed" onClick={handleCollapsedClickWithFormat}>
+                {query.replace(/\s*\n\s*/g, " ") || DEFAULT_QUERY[language]}
+              </div>
+            </Tip>
+          )}
+          {focused && (
+            <CodeMirror
+              className="graph-query-input"
+              value={query}
+              theme={cmTheme}
+              extensions={[
+                ...(sparql
+                  ? [sparqlLanguage]
+                  : [
+                      ..._cypherLangExts,
+                      cypherLinter({ showErrors: false }),
+                      useAutocompleteExtensions,
+                    ]),
+                EditorView.lineWrapping,
+                Prec.highest(
+                  keymap.of([
+                    {
+                      key: "Mod-Enter",
+                      run: () => {
+                        onRun(query.trim());
+                        return true;
+                      },
+                    },
+                    {
+                      key: "Enter",
+                      run: () => {
+                        onRun(query.trim());
+                        return true;
+                      },
+                    },
+                  ]),
+                ),
+              ]}
+              onCreateEditor={(view) => {
+                viewRef.current = view;
+                if (pendingFocusRef.current) {
+                  pendingFocusRef.current = false;
+                  view.focus();
+                }
+              }}
+              onUpdate={(vu) => {
+                if (vu.focusChanged && !vu.view.hasFocus) setFocused(false);
+              }}
+              onChange={handleChange}
+              basicSetup={{
+                lineNumbers: false,
+                foldGutter: false,
+                highlightActiveLine: false,
+                completionKeymap: false,
+              }}
+              placeholder={DEFAULT_QUERY[language]}
+            />
+          )}
+          <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
+          <Tip text={t("queryBar.clear")} named>
+            <ActionIcon
+              type="button"
+              variant="transparent"
+              className="gf-copy-query-btn gf-clear-query-btn"
+              aria-label={t("queryBar.clear")}
+              data-testid="clear-query-button"
+              onClick={handleClear}
+            >
+              <Trash2 size={13} aria-hidden />
+            </ActionIcon>
+          </Tip>
+        </div>
+        {/* Imputing relationships between drawn nodes is Cypher's. */}
+        {!sparql && (
+          <Tip text={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")} named>
+            <ActionIcon
+              className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+              variant={autoImpute ? "light" : "subtle"}
+              aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
+              aria-pressed={autoImpute}
+              onClick={onToggleAutoImpute}
+              style={{ marginInlineEnd: 4, alignSelf: "stretch", height: "auto", width: 38 }}
+            >
+              <CirclePlus size={16} aria-hidden />
+            </ActionIcon>
           </Tip>
         )}
-        {focused && (
-          <CodeMirror
-            className="graph-query-input"
-            value={query}
-            theme={cmTheme}
-            extensions={[
-              ...(sparql
-                ? [sparqlLanguage]
-                : [
-                    ..._cypherLangExts,
-                    cypherLinter({ showErrors: false }),
-                    useAutocompleteExtensions,
-                  ]),
-              EditorView.lineWrapping,
-              Prec.highest(
-                keymap.of([
-                  {
-                    key: "Mod-Enter",
-                    run: () => {
-                      onRun(query.trim());
-                      return true;
-                    },
-                  },
-                  {
-                    key: "Enter",
-                    run: () => {
-                      onRun(query.trim());
-                      return true;
-                    },
-                  },
-                ]),
-              ),
-            ]}
-            onCreateEditor={(view) => {
-              viewRef.current = view;
-              if (pendingFocusRef.current) {
-                pendingFocusRef.current = false;
-                view.focus();
-              }
-            }}
-            onUpdate={(vu) => {
-              if (vu.focusChanged && !vu.view.hasFocus) setFocused(false);
-            }}
-            onChange={handleChange}
-            basicSetup={{
-              lineNumbers: false,
-              foldGutter: false,
-              highlightActiveLine: false,
-              completionKeymap: false,
-            }}
-            placeholder={DEFAULT_QUERY[language]}
-          />
+        {running && onStop ? (
+          <div className="graph-stop-slot">
+            <StopButton onClick={onStop} tip={t("common.stopQuery")} testId="graph-stop-btn" />
+          </div>
+        ) : (
+          <Tip text={t("queryBar.run")} named>
+            <ActionIcon
+              className="graph-run-btn"
+              aria-label={t("queryBar.run")}
+              onClick={() => onRun(query.trim())}
+              style={{ alignSelf: "stretch", height: "auto" }}
+            >
+              <Play size={16} aria-hidden />
+            </ActionIcon>
+          </Tip>
         )}
-        <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
-        <Tip text={t("queryBar.clear")} named>
-          <ActionIcon
-            type="button"
-            variant="transparent"
-            className="gf-copy-query-btn gf-clear-query-btn"
-            aria-label={t("queryBar.clear")}
-            data-testid="clear-query-button"
-            onClick={handleClear}
-          >
-            <Trash2 size={13} aria-hidden />
-          </ActionIcon>
-        </Tip>
       </div>
-      {/* Imputing relationships between drawn nodes is Cypher's. */}
-      {!sparql && (
-        <Tip text={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")} named>
-          <ActionIcon
-            className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
-            variant={autoImpute ? "light" : "subtle"}
-            aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
-            aria-pressed={autoImpute}
-            onClick={onToggleAutoImpute}
-            style={{ marginInlineEnd: 4, alignSelf: "stretch", height: "auto", width: 38 }}
-          >
-            <CirclePlus size={16} aria-hidden />
-          </ActionIcon>
-        </Tip>
-      )}
-      {running && onStop ? (
-        <div className="graph-stop-slot">
-          <StopButton onClick={onStop} tip={t("common.stopQuery")} testId="graph-stop-btn" />
-        </div>
-      ) : (
-        <Tip text={t("queryBar.run")} named>
-          <ActionIcon
-            className="graph-run-btn"
-            aria-label={t("queryBar.run")}
-            onClick={() => onRun(query.trim())}
-            style={{ alignSelf: "stretch", height: "auto" }}
-          >
-            <Play size={16} aria-hidden />
-          </ActionIcon>
-        </Tip>
-      )}
     </div>
   );
 }

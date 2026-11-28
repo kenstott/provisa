@@ -15,6 +15,8 @@
 // (REQ-1072). This page replaces the Catalogs panel and the Metadata Export screen (REQ-2122).
 // REQ-2259: the list can be narrowed to the entries that publish chosen data products, from the
 // record of every publish; the Data Products list links here with ?product=<id>.
+// REQ-2277: the standard page anatomy -- the header (title, filter, add), the list, and the entry
+// open in the panel named in the URL (?entry=<id>); the schedule is a setting, folded above the list.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,7 +33,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { Plus, TriangleAlert } from "lucide-react";
+import { Plus, RefreshCw, TriangleAlert } from "lucide-react";
 import {
   blankEntry,
   checkEntry,
@@ -54,20 +56,27 @@ import { FormField, FormFooter, FormLayout } from "../../form/FormLayout";
 import { ListRow } from "../../list/ListTable";
 import { SortGroupTable } from "../../list/SortGroupTable";
 import { SplitPane } from "../../list/SplitPane";
+import { useRememberedDetail } from "../../list/useDetailParam";
+import { detailListOf, filterNarrowing, searchNarrowing, shownBy } from "../../list/leftOut";
+import { useUrlFilter } from "../../list/useUrlFilter";
+import { CollapsibleItem, Collapsibles } from "../../collapsible/Collapsible";
+import { PageTitle } from "../../PageTitle";
+import { FilterInput } from "../FilterInput";
 import { EntryPanel } from "./EntryPanel";
 import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
 
-/** What the panel shows: a kept entry by its name, or a new one being made (empty from Add, or
- *  filled from the kept entry it duplicates). */
-type Picked = { kind: "kept"; id: string } | { kind: "new"; from?: SyncEntry } | null;
+/** A new entry being made in the panel: empty from Add, or filled from the kept entry it
+ *  duplicates. A kept entry open in the panel is the URL's ?entry=. */
+type Creating = { from?: SyncEntry } | null;
 
 export function SyncingTab() {
   const { t } = useTranslation();
   const { domains } = useDomains();
   const [s, setS] = useState<SyncingState | null>(null);
   const [error, setError] = useState("");
-  const [picked, setPicked] = useState<Picked>(null);
+  const [creating, setCreating] = useState<Creating>(null);
+  const [search, setSearch] = useUrlFilter();
   const [cron, setCron] = useState("");
   const [cronProblem, setCronProblem] = useState<string | null>(null);
   // REQ-2259: the data products the list is narrowed to, kept in the address so a link opens it.
@@ -83,6 +92,91 @@ export function SyncingTab() {
       },
       { replace: true },
     );
+
+  // Whether an entry publishes one of the products the list is narrowed to.
+  const publishesChosen = (e: SyncEntry) =>
+    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
+  const lastRunLabel = (e: SyncEntry) =>
+    e.last_run === null
+      ? ""
+      : e.last_run.ok
+        ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
+        : t("syncingTab.publishPartial", {
+            count: e.last_run.total_published,
+            failed: e.last_run.errors.length,
+          });
+  // Every text an entry's row shows, the provider by the name `loaded` gives it.
+  const entryRowTexts = (loaded: SyncingState) => {
+    const beta = new Set(loaded.beta_providers);
+    return (e: SyncEntry) => [
+      e.id,
+      t(`syncingTab.direction_${e.direction}`),
+      e.provider,
+      e.provider ? exportProviderName(e.provider, e.provider, t, beta) : "",
+      e.domains.join(", "),
+      lastRunLabel(e),
+    ];
+  };
+  // REQ-2277 rule 9: an entry is open only while the list -- narrowed to the products chosen and
+  // by the search -- shows its row. Until the entries load there is no list to search.
+  const narrowings = [
+    filterNarrowing<SyncEntry>(
+      t,
+      productFilter.length > 0,
+      t("syncingTab.productFilterLabel"),
+      publishesChosen,
+      () => setProductFilter([]),
+    ),
+    s === null
+      ? null
+      : searchNarrowing<SyncEntry>(t, search, () => setSearch(""), entryRowTexts(s)),
+  ];
+  const detail = useRememberedDetail(
+    "sync",
+    detailListOf(
+      t,
+      s === null ? null : s.entries,
+      (e) => e.id,
+      (e) => e.id,
+      narrowings,
+    ),
+  );
+  const openEntry = (id: string) => {
+    setCreating(null);
+    detail.open(id);
+  };
+  const openNew = (from?: SyncEntry) => {
+    detail.close();
+    setCreating({ from });
+  };
+  const closePanel = () => {
+    setCreating(null);
+    detail.close();
+  };
+
+  const header = (
+    <div className="page-header">
+      <PageTitle icon={RefreshCw}>{t("syncingTab.title")}</PageTitle>
+      <FilterInput
+        value={search}
+        onChange={setSearch}
+        placeholder={t("syncingTab.filterPlaceholder")}
+        testId="syncing-filter"
+      />
+      <div className="page-actions">
+        {/* An entry is added to the list once it is read. */}
+        {s !== null && (
+          <Button
+            leftSection={<Plus size={14} />}
+            data-testid="syncing-add"
+            onClick={() => openNew()}
+          >
+            {t("syncingTab.addEntry")}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
   const load = useCallback(async () => {
     const state = await fetchSyncing();
@@ -100,17 +194,23 @@ export function SyncingTab() {
 
   if (error && !s)
     return (
-      <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="syncing-error">
-        {error}
-      </Alert>
+      <>
+        {header}
+        <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="syncing-error">
+          {error}
+        </Alert>
+      </>
     );
 
   if (!s)
     return (
-      <Group gap="xs">
-        <Loader size="sm" />
-        <Text>{t("syncingTab.loading")}</Text>
-      </Group>
+      <>
+        {header}
+        <Group gap="xs">
+          <Loader size="sm" />
+          <Text>{t("syncingTab.loading")}</Text>
+        </Group>
+      </>
     );
 
   const betaProviders = new Set(s.beta_providers);
@@ -126,7 +226,7 @@ export function SyncingTab() {
       at < 0 ? [...others, update] : [...others.slice(0, at), update, ...others.slice(at)];
     await setSyncing({ entries });
     await load();
-    setPicked({ kind: "kept", id: draft.id });
+    openEntry(draft.id);
   };
 
   const saveCron = async () => {
@@ -139,8 +239,7 @@ export function SyncingTab() {
     }
   };
 
-  const selected =
-    picked?.kind === "kept" ? (s.entries.find((e) => e.id === picked.id) ?? null) : null;
+  const selected = creating === null ? (s.entries.find((e) => e.id === detail.id) ?? null) : null;
   const fields = {
     providers: s.providers,
     providerName,
@@ -157,16 +256,16 @@ export function SyncingTab() {
       ...productFilter,
     ]),
   ].sort();
-  const publishesChosen = (e: SyncEntry) =>
-    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
-
   const section = (type: SyncEntryType) => {
-    const rows = s.entries.filter((e) => e.type === type && publishesChosen(e));
+    const ofType = s.entries.filter((e) => e.type === type);
+    const chosen = ofType.filter(publishesChosen);
+    const rows = shownBy(ofType, narrowings);
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
         <SortGroupTable
           testPrefix={`syncing-${type}`}
+          testId={`syncing-list-${type}`}
           minWidth={640}
           rows={rows}
           initialSortCol="name"
@@ -195,10 +294,13 @@ export function SyncingTab() {
             { col: "lastRun" },
           ]}
           colSpan={5}
+          // A list a filter emptied says so, never that there are none.
           empty={
-            productFilter.length === 0
-              ? t(`syncingTab.none_${type}`)
-              : t("syncingTab.noneForProducts")
+            chosen.length === 0 && productFilter.length > 0
+              ? t("syncingTab.noneForProducts")
+              : ofType.length === 0
+                ? t(`syncingTab.none_${type}`)
+                : t("syncingTab.noMatch")
           }
           emptyTestId={`syncing-none-${type}`}
           rowKey={(e) => e.id}
@@ -208,7 +310,7 @@ export function SyncingTab() {
               itemKey={e.id}
               testId={`syncing-row-${e.id}`}
               selected={selected?.id === e.id}
-              onClick={() => setPicked(selected?.id === e.id ? null : { kind: "kept", id: e.id })}
+              onClick={() => (selected?.id === e.id ? closePanel() : openEntry(e.id))}
             >
               <Table.Td>{e.id}</Table.Td>
               <Table.Td>{t(`syncingTab.direction_${e.direction}`)}</Table.Td>
@@ -217,12 +319,7 @@ export function SyncingTab() {
               <Table.Td data-testid={`syncing-row-last-run-${e.id}`}>
                 {e.last_run ? (
                   <Badge size="sm" variant="light" color={e.last_run.ok ? "green" : "red"}>
-                    {e.last_run.ok
-                      ? t("syncingTab.publishComplete", { count: e.last_run.total_published })
-                      : t("syncingTab.publishPartial", {
-                          count: e.last_run.total_published,
-                          failed: e.last_run.errors.length,
-                        })}
+                    {lastRunLabel(e)}
                   </Badge>
                 ) : (
                   "—"
@@ -235,11 +332,12 @@ export function SyncingTab() {
     );
   };
 
-  const panelTitle = picked?.kind === "new" ? t("syncingTab.newEntry") : (selected?.id ?? "");
-  const duplicated = picked?.kind === "new" ? picked.from : undefined;
+  const panelTitle = creating !== null ? t("syncingTab.newEntry") : (selected?.id ?? "");
+  const duplicated = creating?.from;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }} data-tour="syncing" data-testid="syncing">
+      {header}
       <Text c="dimmed" size="sm">
         {t("syncingTab.intro")}
       </Text>
@@ -253,44 +351,40 @@ export function SyncingTab() {
           {t("syncingTab.notEntitled", { tier: s.required_tier })}
         </Alert>
       )}
-      <FormLayout data-testid="syncing-schedule">
-        <FormField help={t("syncingTab.reconcileCronHelp")} size="medium">
-          <TextInput
-            label={t("syncingTab.reconcileCron")}
-            data-testid="syncing-reconcile-cron"
-            value={cron}
-            disabled={!s.entitled}
-            onChange={(e) => setCron(e.currentTarget.value)}
-          />
-        </FormField>
-        <FormFooter
-          problem={cronProblem ?? undefined}
-          onSave={saveCron}
-          saveProps={{
-            "data-testid": "syncing-reconcile-save",
-            disabled: !s.entitled || cron === s.reconcile_cron,
-          }}
-        />
-      </FormLayout>
-      <Group gap="xs" data-toolbar>
-        <Button
-          leftSection={<Plus size={14} />}
-          data-testid="syncing-add"
-          onClick={() => setPicked({ kind: "new" })}
-        >
-          {t("syncingTab.addEntry")}
-        </Button>
-        <SyncProductFilter
-          products={productOptions}
-          value={productFilter}
-          onChange={setProductFilter}
-        />
-      </Group>
+      <Collapsibles id="context.sync.settings" testId="syncing-settings">
+        <CollapsibleItem value="schedule" defaultOpen={false} title={t("syncingTab.reconcileCron")}>
+          <FormLayout data-testid="syncing-schedule">
+            <FormField help={t("syncingTab.reconcileCronHelp")} size="medium">
+              <TextInput
+                label={t("syncingTab.reconcileCron")}
+                data-testid="syncing-reconcile-cron"
+                value={cron}
+                disabled={!s.entitled}
+                onChange={(e) => setCron(e.currentTarget.value)}
+              />
+            </FormField>
+            <FormFooter
+              problem={cronProblem ?? undefined}
+              onSave={saveCron}
+              saveProps={{
+                "data-testid": "syncing-reconcile-save",
+                disabled: !s.entitled || cron === s.reconcile_cron,
+              }}
+            />
+          </FormLayout>
+        </CollapsibleItem>
+      </Collapsibles>
+      <SyncProductFilter
+        products={productOptions}
+        value={productFilter}
+        onChange={setProductFilter}
+      />
       <SplitPane
+        outOfList={detail.outOfList}
         testId="syncing-split"
         storageKey="provisa.syncing.detailWidth"
         title={panelTitle}
-        onClose={() => setPicked(null)}
+        onClose={closePanel}
         labels={{
           panel: t("syncingTab.panel"),
           resize: t("syncingTab.resizePanel"),
@@ -301,7 +395,7 @@ export function SyncingTab() {
         }}
         list={<Stack gap="lg">{SYNC_ENTRY_TYPES.map(section)}</Stack>}
       >
-        {picked?.kind === "new" ? (
+        {creating !== null ? (
           <EntryPanel
             // A duplicate opens a fresh form, never the state of an Add left open.
             key={duplicated ? `new:${duplicated.id}` : "new"}
@@ -315,7 +409,7 @@ export function SyncingTab() {
             entitled={s.entitled}
             fields={fields}
             onSave={(draft, secrets) => saveEntry(draft, secrets)}
-            onCancelNew={() => setPicked(null)}
+            onCancelNew={closePanel}
             onDelete={async () => undefined}
             onTest={() => checkEntry("")}
             onPublish={async () => undefined}
@@ -330,10 +424,10 @@ export function SyncingTab() {
             entitled={s.entitled}
             fields={fields}
             onSave={(draft, secrets) => saveEntry(draft, secrets, selected.id)}
-            onCancelNew={() => setPicked(null)}
+            onCancelNew={closePanel}
             onDelete={async () => {
               await setSyncing({ entries: kept(selected.id) });
-              setPicked(null);
+              closePanel();
               await load();
             }}
             onTest={() => checkEntry(selected.id)}
@@ -350,7 +444,7 @@ export function SyncingTab() {
                 await load();
               }
             }}
-            onDuplicate={() => setPicked({ kind: "new", from: selected })}
+            onDuplicate={() => openNew(selected)}
           />
         ) : null}
       </SplitPane>

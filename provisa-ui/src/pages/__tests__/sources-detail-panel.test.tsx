@@ -18,6 +18,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { MutationResult, Source } from "../../types/admin";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
@@ -57,6 +58,7 @@ const source = (over: Partial<Source>): Source =>
     passwordRef: "pw",
     allowedDomains: [],
     ...over,
+    setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   }) as unknown as Source;
 
 let SOURCES: Source[] = [];
@@ -161,6 +163,36 @@ describe("the Sources list's search", () => {
     await waitFor(() => expect(screen.queryByTestId("sources-row-shop-api")).toBeNull());
     expect(screen.getByTestId("sources-row-sales-pg")).toBeInTheDocument();
     expect(screen.getByTestId("sources-row-events")).toBeInTheDocument();
+  });
+
+  it("finds each source by every text its row shows", async () => {
+    SOURCES = [
+      source({ cacheTtl: 120 }),
+      source({
+        id: "events",
+        type: "kafka",
+        host: "broker",
+        port: 9092,
+        database: "stream",
+        cacheEnabled: false,
+        withdrawn: true,
+        gqlNamingConvention: "snake_case",
+      }),
+    ];
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("sources-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    render(<SourcesPage />);
+    await screen.findByTestId("sources-row-events");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-source" } });
+    expect(await screen.findByTestId("sources-empty")).toHaveTextContent(
+      "No sources match the filter.",
+    );
   });
 });
 
@@ -293,8 +325,8 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     await userEvent.click(screen.getByTestId("sources-submit"));
     await waitFor(() => expect(createSource).toHaveBeenCalled());
     expect(createSource.mock.calls[0][0]).toMatchObject({ id: "crm", type: "postgresql" });
-    // REQ-2234: the panel opens first on registering its tables; skipping that step closes it.
-    await userEvent.click(await screen.findByTestId("register-tables-skip"));
+    // REQ-2234: the panel opens first on the source's setup; Finish later leaves it for the read.
+    await userEvent.click(await screen.findByTestId("source-setup-finish-later"));
     // Its detail, read: the source is saved, so nothing is offered to save.
     const read = await within(panel()!).findByTestId("source-read");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("crm");
@@ -347,8 +379,38 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     );
     // A step in the source's own panel, not a dialog over the page.
     expect(panel()).toContainElement(screen.getByTestId("register-tables-field"));
-    expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
+    // REQ-2234: its choices are the panel's command bar: the form's Register, then Finish later.
+    // It cannot be skipped, and has no Cancel.
+    const head = within(screen.getByTestId("sources-split-actions"));
+    expect(head.getByTestId("register-many-tables-submit")).toBeInTheDocument();
+    expect(head.getByTestId("source-setup-finish-later")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-setup-skip")).toBeNull();
+    expect(screen.queryByTestId("register-table-cancel")).toBeNull();
   });
+});
+
+// REQ-2234 (amended 2026-11-27): a source type declares whether its tables are registered through
+// the setup flow; those whose tables Provisa itself produces show only their own tabs.
+describe("a source's setup strip", () => {
+  it("is on an ordinary source's detail", async () => {
+    render(<SourcesPage />);
+    await userEvent.click(await screen.findByTestId("sources-row-sales-pg"));
+    expect(await within(panel()!).findByTestId("source-setup-step")).toBeInTheDocument();
+  });
+
+  it.each(["data_profiler", "great_expectations", "soda"])(
+    "is not on a %s source's detail, which keeps its own tabs",
+    async (type) => {
+      SOURCES = [source({}), source({ id: "dq", type, host: "", port: 0, database: "" })];
+      render(<SourcesPage />);
+      await userEvent.click(await screen.findByTestId("sources-row-dq"));
+      expect(screen.getByTestId("sources-split-title")).toHaveTextContent("dq");
+      expect(within(panel()!).getByTestId("source-detail-edit")).toBeInTheDocument();
+      expect(within(panel()!).getByTestId("source-section-connection")).toBeInTheDocument();
+      expect(within(panel()!).queryByTestId("source-setup-step")).toBeNull();
+      expect(screen.queryByText("Register tables")).toBeNull();
+    },
+  );
 });
 
 describe("while a form is open in the panel", () => {

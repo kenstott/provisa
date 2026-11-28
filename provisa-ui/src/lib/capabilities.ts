@@ -78,6 +78,7 @@ export const TABLES_SURFACE: CapabilityRequirement = {
  * admin edit asks (import_router.IMPORT_RIGHTS). Applying checks each declared object's right.
  */
 export const IMPORT_RIGHTS: Capability[] = [
+  "column_grant", // REQ-2278: an imported hide column rule
   "create_relationship",
   "data_product_rw",
   "glossary_rw",

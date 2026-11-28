@@ -99,7 +99,7 @@ jobs:
             | tee -a "$GITHUB_OUTPUT"
 
   probe:
-    name: functions on ${{ matrix.engine }}
+    name: functions on ${{ matrix.leg }}
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 160
@@ -107,13 +107,17 @@ jobs:
     # another such leg) that holds it, and is never cancelled by one (integration-suite-lanes.yml,
     # warehouse job, REQ-254); every other leg is a group of its own.
     concurrency:
-      group: ${{ matrix.concurrency || format('conformance-functions-{0}-{1}', github.run_id, matrix.engine) }}
+      group: ${{ matrix.concurrency || format('conformance-functions-{0}-{1}', github.run_id, matrix.leg) }}
       queue: max
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       PROVISA_ENGINE: ${{ matrix.engine }}
+      # The leg's id: the engine, or one shard of its leg (function_legs.yaml shards), which names
+      # the leg's files and its artifact; SHARD is k/n, empty for a leg run whole.
+      LEG: ${{ matrix.leg }}
+      SHARD: ${{ matrix.shard }}
       PROVISA_API_PORT: "8901"
       PROVISA_PGWIRE_PORT: "8906"
       CONFORMANCE_PG_HOST: 127.0.0.1
@@ -172,7 +176,7 @@ jobs:
         if: matrix.pip != '' || matrix.apt != ''
         run: |
           if [ -n "${{ matrix.apt }}" ]; then
-            sudo apt-get -o DPkg::Lock::Timeout=300 update -q
+            scripts/ci/apt-update.sh -o DPkg::Lock::Timeout=300
             sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q ${{ matrix.apt }}
           fi
           if [ -n "${{ matrix.pip }}" ]; then
@@ -219,6 +223,20 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
+
+      # The stack script builds zaychik only when absent: primed here (a cache hit, or one build)
+      # and loaded, so Maven Central is not asked for it on every run.
+      - name: Prime the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+
+      - name: Restore the zaychik image
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
 
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the
@@ -313,14 +331,15 @@ jobs:
             --engine "$PROVISA_ENGINE" \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
             --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=$CONFORMANCE_USER password=$CONFORMANCE_PASSWORD sslmode=disable" \
-            --out-json "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.json" \
-            --out-md "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md"
+            ${SHARD:+--shard "$SHARD"} \
+            --out-json "$RUNNER_TEMP/report/function-support-$LEG.json" \
+            --out-md "$RUNNER_TEMP/report/function-support-$LEG.md"
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
-          cat "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md" >> "$GITHUB_STEP_SUMMARY"
-          cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/server-$PROVISA_ENGINE.log"
+          cat "$RUNNER_TEMP/report/function-support-$LEG.md" >> "$GITHUB_STEP_SUMMARY"
+          cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/server-$LEG.log"
 
       # Why the leg left no result, which the merge puts on the report beside it: the step that
       # failed and the end of the engine's and the instance's logs.
@@ -338,15 +357,15 @@ jobs:
             bash scripts/conformance/engine_service.sh logs "${{ matrix.service }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
             logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
           fi
-          .venv/bin/python scripts/conformance/function_legs.py failure --engine "$PROVISA_ENGINE" \
-            --steps "$STEPS" "${logs[@]}" --out "$RUNNER_TEMP/report/leg-failure-$PROVISA_ENGINE.json" \
+          .venv/bin/python scripts/conformance/function_legs.py failure --engine "$LEG" \
+            --steps "$STEPS" "${logs[@]}" --out "$RUNNER_TEMP/report/leg-failure-$LEG.json" \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: function-support-${{ matrix.engine }}
+          name: function-support-${{ matrix.leg }}
           path: ${{ runner.temp }}/report/
           if-no-files-found: warn
 

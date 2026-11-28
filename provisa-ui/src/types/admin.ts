@@ -30,6 +30,15 @@ export interface SourceCdcConfig {
   consumerGroupId?: string | null; // REQ-931: null/omitted = inherit Provisa-level default
 }
 
+/** REQ-2262: what became of each step of a source's setup; null = not decided yet. `decidedAt`
+ * (ISO 8601) is when every step was last decided, null while any step is open. */
+export interface SourceSetupOutcomes {
+  tables: "registered" | "skipped" | null;
+  relationships: "found" | "none_found" | "skipped" | null;
+  query: "opened" | "done" | "skipped" | null;
+  decidedAt: string | null;
+}
+
 export interface Source {
   id: string;
   type: string;
@@ -41,6 +50,7 @@ export interface Source {
   dialect: string | null;
   isSystem: boolean; // a source Provisa runs for itself: not offered by Register table
   withdrawn: boolean; // REQ-1921: out of production until put back
+  setupOutcomes: SourceSetupOutcomes; // REQ-2262: the setup stepper's record
   cacheEnabled: boolean;
   cacheTtl: number | null;
   replicate: number | null; // REQ-826: null = Default; -1 never, N hot, 0 always
@@ -174,6 +184,7 @@ export type TagObjectType =
   | "column"
   | "relationship"
   | "command"
+  | "command_column" // REQ-1159: a command's output column
   | "product"
   | "term"
   | "rls_rule"
@@ -495,6 +506,10 @@ export interface RegisteredTable {
   schemaName: string;
   tableName: string;
   alias: string | null;
+  // REQ-2361: the SQL schema and name a statement names it by, read from the server's names table
+  // (never computed here); null when the published build names no such table.
+  sqlSchema: string | null;
+  sqlName: string | null;
   description: string | null;
   // REQ-413: when it was registered (ISO 8601); null only for a draft not yet registered.
   registeredAt: string | null;
@@ -600,6 +615,8 @@ export const LISTED_TABLE_FIELDS = [
   "schemaName",
   "tableName",
   "alias",
+  "sqlSchema",
+  "sqlName",
   "description",
   "withdrawn",
   "sourceWithdrawn",

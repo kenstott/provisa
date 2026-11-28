@@ -17,7 +17,8 @@
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal } from "@mantine/core";
+import { Alert } from "@mantine/core";
+import { ModalLayout } from "../modal/ModalLayout";
 import type { DiscoveryScope } from "../../api/admin";
 import { DiscoverRunView, type SuggestionActions } from "./DiscoverRunView";
 import { DiscoverScopeForm, type ScopeTable } from "./DiscoverScopeForm";
@@ -38,6 +39,9 @@ interface DiscoverDialogProps {
   /** REQ-2262: the review after registration. Closing the dialog, or its Done, ends the review
    *  with how many relationships its Applies created. */
   onDone?: (created: number) => void;
+  /** REQ-2277: the run the page's link names could not be read; absent where the dialog has no
+   *  link (the review after registration). */
+  linkError?: string;
 }
 
 export function DiscoverDialog({
@@ -49,6 +53,7 @@ export function DiscoverDialog({
   suggestions,
   start,
   onDone,
+  linkError,
 }: DiscoverDialogProps) {
   const { t } = useTranslation();
   const run = discovery.run;
@@ -77,38 +82,26 @@ export function DiscoverDialog({
     onClose();
     onDone?.(created);
   };
-  // Only the list of an ended run's proposals takes the wide size: setting up, a run going, and
-  // an ended run with no proposal to list keep the standard size.
+  // Only the list of an ended run's proposals takes the window's width: setting up, a run going,
+  // and an ended run with no proposal to list take the large dialog size multi-field dialogs use.
   const results =
     run !== null &&
     run.status !== "running" &&
     proposals.proposals !== null &&
     proposals.proposals.length > 0;
   return (
-    <Modal
+    <ModalLayout
       opened={opened}
       onClose={close}
       title={t("discoverDialog.title")}
       // A run's proposals are listed in one table, whose columns need the room: the window's
       // width less the page gutter the lists keep.
-      size={results ? "100%" : "lg"}
+      size={results ? "100%" : "xl"}
       xOffset={results ? "var(--page-gutter)" : undefined}
       // A run's proposals never scroll as a whole: the dialog is at most the window's height, its
-      // title and the run's result and actions stay in view, and only the proposals table, which
-      // takes the height left, scrolls beneath its pinned header row.
-      styles={
-        results
-          ? {
-              content: { display: "flex", flexDirection: "column" },
-              body: {
-                flex: "1 1 auto",
-                minHeight: 0,
-                display: "flex",
-                flexDirection: "column",
-              },
-            }
-          : undefined
-      }
+      // title, the run's result and its button bar stay in view, and only the proposals table,
+      // which takes the height left, scrolls beneath its pinned header row.
+      fill={results}
       centered
       data-testid="discover-dialog"
     >
@@ -132,22 +125,30 @@ export function DiscoverDialog({
             onDone={onDone ? close : undefined}
           />
         ) : (
-          <DiscoverScopeForm
-            key={initial === null ? (reset ? "reset" : "defaults") : JSON.stringify(initial)}
-            tables={tables}
-            defaultDomains={defaultDomains}
-            initial={initial}
-            fromDefaults={reset}
-            onReset={() => {
-              setInitial(null);
-              setReset(true);
-            }}
-            onCancel={close}
-            onRun={async (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => {
-              await discovery.start(scope, domains);
-            }}
-          />
+          <>
+            {/* REQ-2277: the run the link names could not be read. */}
+            {linkError && (
+              <Alert color="red" mb="md" data-testid="discover-link-error">
+                {linkError}
+              </Alert>
+            )}
+            <DiscoverScopeForm
+              key={initial === null ? (reset ? "reset" : "defaults") : JSON.stringify(initial)}
+              tables={tables}
+              defaultDomains={defaultDomains}
+              initial={initial}
+              fromDefaults={reset}
+              onReset={() => {
+                setInitial(null);
+                setReset(true);
+              }}
+              onCancel={close}
+              onRun={async (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => {
+                await discovery.start(scope, domains);
+              }}
+            />
+          </>
         ))}
-    </Modal>
+    </ModalLayout>
   );
 }

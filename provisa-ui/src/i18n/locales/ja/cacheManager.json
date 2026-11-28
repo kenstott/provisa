@@ -21,6 +21,7 @@
       "clients": "クライアント",
       "opsPerSec": "操作/秒",
       "filterPlaceholder": "テーブルまたはドメインで絞り込み…",
+      "noMatch": "フィルターに一致するテーブルはありません。",
       "purgeAll": "全キャッシュ削除",
       "purging": "削除中...",
       "table": "テーブル",

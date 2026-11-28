@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { FieldGroup, FormEntry, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
 import type { Domain } from "../../../types/admin";
 import { AGGS } from "./columns";
 import { ModelReview } from "./ModelReview";
@@ -32,7 +32,8 @@ import {
   type StarAnswers,
   type StarDimension,
 } from "./plan";
-import { AddButton, ListHead, StepHead, WizardFooter } from "./WizardFrame";
+import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
+import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["process", "grain", "dimensions", "measures", "review"] as const;
 const FACT_TYPES: FactType[] = ["transaction", "periodic", "accumulating"];
@@ -236,7 +237,10 @@ export function StarSchemaWizard({
   const { t } = useTranslation();
   const tables = useModelTables();
   const [a, setA] = useState<StarAnswers>(EMPTY);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useStepParam(
+    STEPS.length,
+    reachableStep(STEPS, (sid) => missing(sid as (typeof STEPS)[number], a)),
+  );
   const [problem, setProblem] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const set = (patch: Partial<StarAnswers>) => setA((prev) => ({ ...prev, ...patch }));
@@ -245,6 +249,10 @@ export function StarSchemaWizard({
   usePanelDirty(!created && (Boolean(a.process || a.source) || step > 0), a.process);
 
   const id = STEPS[step];
+  const steps = STEPS.map((sid) => ({
+    key: sid,
+    label: t(sid === "review" ? "modelingWizard.review.title" : `modelingWizard.star.${sid}.title`),
+  }));
   const next = () => {
     const gap = missing(id, a);
     if (gap) {
@@ -264,7 +272,8 @@ export function StarSchemaWizard({
       <ModelReview
         plan={plan}
         index={step}
-        count={STEPS.length}
+        steps={steps}
+        onStep={setStep}
         onBack={back}
         onCancel={onCancel}
         onDone={onSuccess}
@@ -275,14 +284,14 @@ export function StarSchemaWizard({
 
   const noSource = !a.source;
   return (
-    <FormLayout>
-      <StepHead
-        index={step}
-        count={STEPS.length}
-        title={t(`modelingWizard.star.${id}.title`)}
-        intro={t(`modelingWizard.star.${id}.intro`)}
-        testId={`wizard-step-${id}`}
-      />
+    <WizardStep
+      index={step}
+      steps={steps}
+      onStep={setStep}
+      title={t(`modelingWizard.star.${id}.title`)}
+      intro={t(`modelingWizard.star.${id}.intro`)}
+      testId={`wizard-step-${id}`}
+    >
       {id === "process" && (
         <>
           <TextField
@@ -454,6 +463,6 @@ export function StarSchemaWizard({
         onCancel={onCancel}
         problem={problem}
       />
-    </FormLayout>
+    </WizardStep>
   );
 }

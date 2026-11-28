@@ -81,11 +81,15 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/NlPage.tsx": "the question box of the natural-language page",
   "pages/GrpcPage.tsx": "the request builder of the gRPC explorer",
   "pages/JsonApiPage.tsx": "the request builder of the JSON:API explorer",
+  "pages/jsonapi/CommandCallPanel.tsx":
+    "the argument inputs of a command's call in the JSON:API explorer",
   "pages/jsonapi/IncludeTree.tsx": "the include tree of the JSON:API request builder",
   "pages/jsonapi/ParamsSection.tsx": "the parameter inputs of the JSON:API request builder",
   "pages/McpExplorePage.tsx": "the address bar of the MCP explorer",
   "pages/LineagePage.tsx": "the role filter above the lineage graph",
   "pages/DataProductsPage.tsx": "the To review filter tick above the list of data products",
+  "pages/context/GlossaryPage.tsx": "the domain filter in the Glossary's page header",
+  "pages/library/LibraryPage.tsx": "the Reviews due filter tick above the list of documents",
   "plugins/provisa-tools.tsx": "controls of the GraphiQL tools plugin",
   "pages/tables/ProfileChecksBar.tsx": "the action bar above the profile results",
   "pages/tables/profile3d/terrain/ProfileTerrain.tsx":

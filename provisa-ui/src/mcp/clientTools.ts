@@ -75,6 +75,9 @@ export interface ClientToolContext {
     variables: Record<string, unknown>,
   ) => Promise<ClientToolResult>;
   chooseFile: (prompt: string) => Promise<File | null>;
+  // A change admin_request sent to `path`, whatever its outcome: the screens showing what it may
+  // have changed read again, as after a person's edit (pollyWrites.ts).
+  changed: (path: string) => void;
   // REQ-1810: renders a multiple-choice / checklist / yes-no widget and resolves with the user's
   // answer — the same pause-the-loop-and-wait pattern `confirm` already uses for refresh_mv.
   presentChoice: (req: PresentChoiceRequest) => Promise<ChoiceAnswer>;
@@ -108,41 +111,76 @@ async function adminRequest(
 ): Promise<ClientToolResult> {
   const method = String(input.method ?? "GET").toUpperCase();
   const path = String(input.path ?? "");
-  const summary = String(input.summary ?? "");
   // The app's own routes only: a path from the root, never another origin ("//host/...").
   if (!path.startsWith("/") || path.startsWith("//"))
     return { success: false, message: "admin_request: 'path' must start with /" };
+  if (method === "GET") return send(path, { method });
+  const change = await prepareChange(method, path, input, ctx);
+  if ("cancelled" in change) return { success: false, message: change.cancelled };
+  try {
+    return await send(change.path, change.init);
+  } finally {
+    // Sent, whatever its outcome: what it may have changed is read again, as after a person's edit.
+    ctx.changed(change.path);
+  }
+}
+
+/** A change admin_request sends, once the user confirmed it and chose any file it uploads. */
+async function prepareChange(
+  method: string,
+  path: string,
+  input: Record<string, unknown>,
+  ctx: ClientToolContext,
+): Promise<{ path: string; init: RequestInit } | { cancelled: string }> {
+  const summary = String(input.summary ?? "");
   const body =
     input.body && typeof input.body === "object"
       ? (input.body as Record<string, unknown>)
       : undefined;
-  const upload = input.upload === true;
-  const init: RequestInit = { method };
-  if (method !== "GET") {
-    const ok = await ctx.confirm({
-      title: "Make this change?",
-      message: summary,
-      detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : ""]
-        .filter(Boolean)
-        .join("\n"),
-    });
-    if (!ok) return { success: false, message: "Cancelled by the user." };
-    if (upload) {
-      // The app's upload routes take the file's own bytes as the body, as the UI's uploads send
-      // them; a route that names the file takes it in the path, where {filename} stands for it.
-      const file = await ctx.chooseFile(summary);
-      if (!file) return { success: false, message: "Cancelled by the user: no file was chosen." };
-      // Typed as the file is, as a page's own upload sends it (an image route reads its kind
-      // from Content-Type); a file the browser cannot type goes as plain bytes.
-      init.headers = { "Content-Type": file.type || "application/octet-stream" };
-      init.body = file;
-      return send(path.replaceAll("{filename}", encodeURIComponent(file.name)), init);
-    } else if (body) {
-      init.headers = { "Content-Type": "application/json" };
-      init.body = JSON.stringify(body);
-    }
+  // REQ-1984: code Polly wrote (upload_code), handed as its files, for the user to read before
+  // confirming, and their zip archive (base64), which is the body.
+  const archive = typeof input.archive === "string" ? input.archive : null;
+  const files =
+    input.files && typeof input.files === "object"
+      ? Object.entries(input.files as Record<string, unknown>).map(
+          ([name, text]) => `--- ${name} ---\n${String(text)}`,
+        )
+      : [];
+  const ok = await ctx.confirm({
+    title: "Make this change?",
+    message: summary,
+    detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : "", ...files]
+      .filter(Boolean)
+      .join("\n"),
+  });
+  if (!ok) return { cancelled: "Cancelled by the user." };
+  if (archive !== null) {
+    const bytes = Uint8Array.from(atob(archive), (c) => c.charCodeAt(0));
+    return { path, init: { method, headers: { "Content-Type": "application/zip" }, body: bytes } };
   }
-  return send(path, init);
+  if (input.upload === true) {
+    // The app's upload routes take the file's own bytes as the body, as the UI's uploads send
+    // them; a route that names the file takes it in the path, where {filename} stands for it.
+    const file = await ctx.chooseFile(summary);
+    if (!file) return { cancelled: "Cancelled by the user: no file was chosen." };
+    // Typed as the file is, as a page's own upload sends it (an image route reads its kind
+    // from Content-Type); a file the browser cannot type goes as plain bytes.
+    return {
+      path: path.replaceAll("{filename}", encodeURIComponent(file.name)),
+      init: {
+        method,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      },
+    };
+  }
+  if (body) {
+    return {
+      path,
+      init: { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    };
+  }
+  return { path, init: { method } };
 }
 
 async function send(path: string, init: RequestInit): Promise<ClientToolResult> {

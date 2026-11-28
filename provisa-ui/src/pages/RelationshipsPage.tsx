@@ -9,12 +9,13 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
+import { listableRelationships, relName, relationshipNarrowings } from "./relationshipNarrowings";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Code2, X, Link2 } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Pagination, Table, Text } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
@@ -30,7 +31,12 @@ import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverRunLine } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
-import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
+import { NEW_RUN, useDiscoverParam } from "../components/relationships/useDiscoverParam";
+import { fetchRejectedCount, clearRejectedCandidates } from "../api/admin";
+import {
+  useSuggestReverseRelAlias,
+  type ReverseAliasSuggestion,
+} from "../hooks/useNameSuggestions";
 import {
   useRelationships,
   useAllRelationships,
@@ -46,6 +52,7 @@ import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  relationshipRowTexts,
   SHAPE_CODE,
   tableRef,
   type RelForm,
@@ -55,6 +62,7 @@ import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
+import { detailListOf, shownBy } from "../components/list/leftOut";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -63,16 +71,15 @@ import {
 } from "../components/relationships/RelationshipModals";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { applyConvention, domainToSqlName } from "../naming";
+import { domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
-import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
 import { ColumnFilterMenu } from "./sql/ColumnFilterMenu";
-import { matchesFilter as matchesColumnFilter, type FilterSpec } from "./sql/columnFilter";
+import type { FilterSpec } from "./sql/columnFilter";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -94,19 +101,12 @@ export function RelationshipsPage() {
   const [relTypeFilter, setRelTypeFilter] = useState<FilterSpec | null>(null);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
-  const [discoverAsk, setDiscoverAsk] = useState(false);
+  // REQ-2277: the dialog is open while the URL names it (`?discover=`).
+  const discoverLink = useDiscoverParam();
+  const discoverAsk = discoverLink.discover !== null;
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
-  // REQ-2260: and the one left open is open again on coming back.
-  const detail = useRememberedDetail(
-    "relationships",
-    relsLoading ? null : rels.map((r) => String(r.id)),
-  );
-  const expanded = detail.id;
-  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
-  const { open: openDetail, close: closeDetail } = detail;
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
   // REQ-2145: a save or a delete that re-homes key refs off a tagged term, refused over the tags
   // those columns would lose: what each loses and gains, and what to do again once resolved.
@@ -115,10 +115,8 @@ export function RelationshipsPage() {
     retry: { kind: "add" } | { kind: "save" } | { kind: "delete"; id: string };
   } | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
-  // REQ-194: the deployment's GraphQL convention, which names the GraphQL alias a reverse is
-  // offered. Until it is read the reverse cannot be offered; a failed read is said on the page.
-  const [gqlConvention, setGqlConvention] = useState<string | null>(null);
-  const [settingsError, setSettingsError] = useState("");
+  // REQ-2361, REQ-194: the aliases a reverse is offered are the naming authority's suggestion.
+  const suggestReverseRelAlias = useSuggestReverseRelAlias();
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   // The link names the filter, also on a page already open: a tour step moving on within the page
@@ -134,7 +132,12 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const { domainsEnabled, domains: filterDomains, checkedDomains } = useDomainFilter();
+  const {
+    domainsEnabled,
+    domains: filterDomains,
+    checkedDomains,
+    ensureDomainChecked,
+  } = useDomainFilter();
   const erdCheckedDomains =
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { capabilities, actingRoles } = useAuth();
@@ -169,11 +172,6 @@ export function RelationshipsPage() {
   useEffect(() => {
     load();
   }, [load]);
-  useEffect(() => {
-    fetchSettings()
-      .then((s) => setGqlConvention(s.naming.convention))
-      .catch((e: Error) => setSettingsError(e.message));
-  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // The page's own content is the relationships table, so only its two queries can withhold it.
@@ -188,15 +186,37 @@ export function RelationshipsPage() {
   const tableRefById: Record<number, string> = Object.fromEntries(
     tables.map((t) => [t.id, tableRef(t)]),
   );
-  const tableDomainById = Object.fromEntries(
-    tables.map((t) => [t.id, domainToSqlName(t.domainId)]),
+  const tableDomainById = useMemo(
+    () => Object.fromEntries(tables.map((t) => [t.id, domainToSqlName(t.domainId)])),
+    [tables],
   );
-  const tableSourceById = Object.fromEntries(tables.map((t) => [t.id, t.sourceId]));
-  const remoteTableIds = new Set(
-    tables
-      .filter((t) => t.schemaName === "graphql_remote" || t.schemaName === "grpc_remote")
-      .map((t) => t.id),
+  const listableRels = listableRelationships(rels, tables);
+  // REQ-2277 rule 9: a relationship is open only while the list shows its row; the ERD in the
+  // list's place shows every relationship.
+  const { listNarrowings, relTypeNarrowing } = relationshipNarrowings(t, {
+    checkedDomains: erdCheckedDomains,
+    tables,
+    addDomain: ensureDomainChecked,
+    search: relSearch,
+    clearSearch: () => updateSearch(""),
+    rowTexts: (r) => relationshipRowTexts(r, t, tableDomainById, domainsEnabled),
+    relTypeFilter,
+    clearRelTypeFilter: () => setRelTypeFilter(null),
+  });
+  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "relationships",
+    erd.on
+      ? detailListOf(t, relsLoading ? null : allRels, (r) => String(r.id), relName, [])
+      : detailListOf(t, relsLoading ? null : listableRels, (r) => String(r.id), relName, [
+          ...listNarrowings,
+          relTypeNarrowing,
+        ]),
   );
+  const expanded = detail.id;
+  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
+  const { open: openDetail, close: closeDetail } = detail;
 
   const handleDelete = useCallback(
     async (id: string, resolve?: TagLossResolution) => {
@@ -370,14 +390,33 @@ export function RelationshipsPage() {
   const nothingListed = useCallback(() => {}, []);
   const discovery = useDiscoveryRun(nothingListed);
   const openDiscover = () => {
-    setDiscoverAsk(true);
+    discoverLink.open();
     void discovery.refresh();
   };
   // REQ-413 (amended 2026-11-16): the page's line about the latest run opens it in the dialog.
   const openLatestRun = () => {
     discovery.openLatest();
-    setDiscoverAsk(true);
+    discoverLink.open();
   };
+  // REQ-2277: a link naming a run shows that run once it is read. Until then the URL keeps the
+  // run it names; after, it follows what the open dialog shows: the form or the run.
+  const [linkedRun] = useState(() => discoverLink.runId);
+  const [linking, setLinking] = useState(linkedRun !== null);
+  // The run the link names could not be read: said in the dialog, over the form.
+  const [linkError, setLinkError] = useState("");
+  const showRun = discovery.show;
+  useEffect(() => {
+    if (linkedRun === null) return;
+    showRun(linkedRun)
+      .catch((e: unknown) => setLinkError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLinking(false));
+  }, [linkedRun, showRun]);
+  const shownInDialog = discovery.run === null ? NEW_RUN : String(discovery.run.id);
+  const { discover: linkedValue, replace: replaceLink } = discoverLink;
+  useEffect(() => {
+    if (linking || linkedValue === null || linkedValue === shownInDialog) return;
+    replaceLink(shownInDialog);
+  }, [linking, linkedValue, shownInDialog, replaceLink]);
 
   // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed,
   // and the page's line counts again how many of the run's suggestions wait.
@@ -459,27 +498,10 @@ export function RelationshipsPage() {
   );
 
   const buildReverse = useCallback(
-    (r: Relationship, convention: string): RelForm => {
+    (r: Relationship, suggestion: ReverseAliasSuggestion): RelForm => {
       // One-to-one reads the same both ways.
       const flipCardinality = (c: string) =>
         c === "one-to-one" ? c : c === "many-to-one" ? "one-to-many" : "many-to-one";
-      const suggestCqlAlias = (alias: string | null) => {
-        if (!alias) return "";
-        if (alias.endsWith("_BY")) return alias.slice(0, -3);
-        if (alias.endsWith("_OF")) return alias.slice(0, -3);
-        return `${alias}_BY`;
-      };
-      // REQ-194: the Cypher alias's words, named by the deployment's GraphQL convention.
-      const cqlToGql = (cql: string) => applyConvention(cql.toLowerCase(), convention);
-      const suggestGqlAlias = (gql: string | null, cqlSuggestion: string) => {
-        if (gql) {
-          if (gql.endsWith("By")) return gql.slice(0, -2);
-          if (gql.endsWith("Of")) return gql.slice(0, -2);
-          return `${gql}By`;
-        }
-        return cqlSuggestion ? cqlToGql(cqlSuggestion) : "";
-      };
-      const cqlSuggestion = suggestCqlAlias(r.alias ?? r.computedCypherAlias ?? null);
       return {
         ...EMPTY_FORM,
         id: `${r.targetTableName}-to-${r.sourceTableName}`,
@@ -491,8 +513,8 @@ export function RelationshipsPage() {
         targetDomain: r.sourceDomainId ?? "",
         targetColumn: r.sourceColumn,
         cardinality: flipCardinality(r.cardinality),
-        alias: cqlSuggestion,
-        graphqlAlias: suggestGqlAlias(r.graphqlAlias, cqlSuggestion),
+        alias: suggestion.cypherAlias,
+        graphqlAlias: suggestion.graphqlAlias,
         materialize: r.materialize,
         refreshInterval: String(r.refreshInterval ?? 300),
       };
@@ -538,25 +560,9 @@ export function RelationshipsPage() {
     setReverseForm(null);
   }, [reverseForm, upsertRelationship]);
 
-  const narrowTo = erdCheckedDomains ? new Set([...erdCheckedDomains].map(domainToSqlName)) : null;
-  const matchesFilter = (r: Relationship) => {
-    if (remoteTableIds.has(r.sourceTableId)) return false;
-    const srcDomain = r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : undefined;
-    const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-    if (!relationshipInCheckedDomains(narrowTo, srcDomain, tgtDomain)) return false;
-    // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
-    return matchesQuery([r.sourceTableName, r.targetTableName, r.alias], relSearch);
-  };
-
   // REQ-1940: sort and group are the shared list mechanism.
-  const listedRels = rels.filter(
-    (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && matchesFilter(r),
-  );
-  // REQ-1586 (amended 2026-11-22): the Rel type column carries the list's column filter.
-  const filteredRels =
-    relTypeFilter === null
-      ? listedRels
-      : listedRels.filter((r) => matchesColumnFilter("text", relTypeFilter, SHAPE_CODE[r.shape]));
+  const listedRels = shownBy(listableRels, listNarrowings);
+  const filteredRels = shownBy(listedRels, [relTypeNarrowing]);
   const relTypeValues = (["fk", "jct", "dim"] as const)
     .map((value) => ({
       value,
@@ -614,6 +620,8 @@ export function RelationshipsPage() {
     relationship: allRels.some((r) => String(r.id) === expanded) ? expanded : null,
     domains: erd.focus.domains,
     objects: erd.focus.objects,
+    // REQ-2277: the Discover relationships dialog: `new` (setting up a run) or the run it shows.
+    discover: discoverAsk ? shownInDialog : null,
   });
 
   if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
@@ -698,14 +706,18 @@ export function RelationshipsPage() {
         setForm(duplicateOf(selectedRel));
         setShowForm(true);
       }}
-      onReverse={
-        gqlConvention === null
-          ? undefined
-          : () => {
-              setSaveProblem("");
-              setReverseForm(buildReverse(selectedRel, gqlConvention));
-            }
-      }
+      onReverse={async () => {
+        setSaveProblem("");
+        try {
+          const suggestion = await suggestReverseRelAlias(
+            selectedRel.graphqlAlias,
+            selectedRel.alias ?? selectedRel.computedCypherAlias ?? null,
+          );
+          setReverseForm(buildReverse(selectedRel, suggestion));
+        } catch (err) {
+          setSaveProblem(err instanceof Error ? err.message : String(err));
+        }
+      }}
       onDelete={() => handleDelete(String(selectedRel.id))}
       onChangeResolver={rs.change}
       onRetireResolver={rs.retire}
@@ -815,11 +827,6 @@ export function RelationshipsPage() {
           {discoverError}
         </Alert>
       )}
-      {settingsError && (
-        <Alert color="red" mb="md" data-testid="rels-settings-error">
-          {settingsError}
-        </Alert>
-      )}
       <DiscoverRunLine
         latest={discovery.latest}
         waiting={discovery.waiting}
@@ -827,7 +834,11 @@ export function RelationshipsPage() {
       />
       <DiscoverDialog
         opened={discoverAsk}
-        onClose={() => setDiscoverAsk(false)}
+        onClose={() => {
+          setLinkError("");
+          discoverLink.close();
+        }}
+        linkError={linkError}
         discovery={discovery}
         tables={tables}
         defaultDomains={domainsEnabled ? [...checkedDomains] : []}
@@ -840,6 +851,7 @@ export function RelationshipsPage() {
       )}
 
       <SplitPane
+        outOfList={detail.outOfList}
         testId="relationships-split"
         storageKey="provisa.relationships.detailWidth"
         title={panelTitle}
@@ -912,10 +924,12 @@ export function RelationshipsPage() {
                         />
                       ),
                     },
-                    { label: t("relationshipsPage.gqlCqlAlias") },
-                    { col: "cardinality" },
-                    { col: "materialize" },
-                    { label: t("relationshipsPage.refreshSeconds") },
+                    // The columns of settings give way, first to last, when the detail panel
+                    // leaves the list too little room.
+                    { label: t("relationshipsPage.gqlCqlAlias"), hide: 3 },
+                    { col: "cardinality", hide: 4 },
+                    { col: "materialize", hide: 2 },
+                    { label: t("relationshipsPage.refreshSeconds"), hide: 1 },
                   ]}
                 />
                 <Table.Tbody>
@@ -932,7 +946,10 @@ export function RelationshipsPage() {
                     if (filtered.length === 0) {
                       return (
                         <ListEmpty colSpan={domainsEnabled ? 8 : 7} testId="relationships-empty">
-                          {t("relationshipsPage.empty")}
+                          {/* A list a filter emptied says so, never that nothing is registered. */}
+                          {listableRels.length === 0
+                            ? t("relationshipsPage.empty")
+                            : t("relationshipsPage.noMatch")}
                         </ListEmpty>
                       );
                     }
@@ -1055,7 +1072,7 @@ export function RelationshipsPage() {
 
       {refusal.dialog}
       {tagLoss && (
-        <Modal
+        <ModalLayout
           opened
           onClose={() => setTagLoss(null)}
           title={tagLossTitle(t, tagLoss.columns, null)}
@@ -1068,7 +1085,7 @@ export function RelationshipsPage() {
             onCarry={() => retryTagLoss({ carry_tags: true })}
             onCancel={() => setTagLoss(null)}
           />
-        </Modal>
+        </ModalLayout>
       )}
     </div>
   );

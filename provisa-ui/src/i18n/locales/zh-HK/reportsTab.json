@@ -16,7 +16,6 @@
     "empty": "ops 網域中未註冊任何報表。",
     "filterPlaceholder": "篩選報表…",
     "noMatch": "沒有符合的報表",
-    "resize": "調整報表清單大小",
     "drift": {
       "title": "自上一週期以來的漂移",
       "baseline": "與 {{date}} 的模型比較，這是截至 {{cutoff}} 的最新版本。",
@@ -34,6 +33,12 @@
         "gained": "獲得",
         "new": "新增"
       }
-    }
+    },
+    "kindColumn": "類型",
+    "kindBuiltIn": "內建",
+    "kindCustom": "自訂",
+    "panelLabel": "報表",
+    "closeForm": "關閉表單",
+    "loading": "正在載入報表…"
   }
 }

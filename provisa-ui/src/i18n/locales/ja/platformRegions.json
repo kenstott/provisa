@@ -9,6 +9,7 @@
     "detailPanel": "プラットフォームのリージョンの詳細",
     "colRegion": "リージョン",
     "none": "プラットフォームはリージョンを宣言していません。",
+    "noMatch": "フィルターに一致するリージョンはありません。",
     "edit": "編集",
     "remove": "削除",
     "taken": "{{id}} という名前のリージョンはすでに存在します。",
@@ -38,6 +39,8 @@
     "org": "組織",
     "pickOrg": "組織を選択",
     "orgGranted": "{{id}} (付与済み: {{regions}})",
-    "orgNone": "{{id}} (リージョンなし)"
+    "orgNone": "{{id}} (リージョンなし)",
+    "filterPlaceholder": "リージョンを絞り込む",
+    "closeForm": "フォームを閉じる"
   }
 }

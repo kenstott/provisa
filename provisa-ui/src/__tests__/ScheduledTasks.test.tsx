@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../test-utils/render";
 import i18n from "../i18n";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const t = i18n.getFixedT("en");
 
@@ -83,6 +84,9 @@ const pick = async (label: string, option: string) => {
 /** Open a trigger's detail: its row is selected and the right-hand panel shows it. */
 const openRow = (id: string) => fireEvent.click(screen.getByTestId(`scheduled-task-row-${id}`));
 
+// A panel opened in one test is remembered (REQ-2260); each test starts from none.
+beforeEach(() => localStorage.clear());
+
 describe("ScheduledTasks — SQL trigger", () => {
   beforeEach(() => {
     createSpy.mockClear();
@@ -99,7 +103,7 @@ describe("ScheduledTasks — SQL trigger", () => {
   };
 
   it("shows the SQL statement field only when kind is SQL", async () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
 
     // Webhook kind by default: no SQL field.
@@ -112,7 +116,7 @@ describe("ScheduledTasks — SQL trigger", () => {
   });
 
   it("creates a SQL trigger with the entered statement + cron", async () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
     await selectKind(t("scheduledTasks.kindSql"));
     fireEvent.change(screen.getByLabelText(t("scheduledTasks.idLabel")), {
@@ -150,7 +154,7 @@ describe("ScheduledTasks — SQL trigger", () => {
 
   it("lists an existing SQL trigger and can delete it from its panel", async () => {
     mockTasks = [task()];
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     expect(screen.getByText("INSERT INTO audit.d SELECT 1")).toBeTruthy();
     openRow("nightly");
     // The read view says what it runs and as which role.
@@ -191,7 +195,7 @@ describe("ScheduledTasks — a failed action", () => {
     deleteSpy.mockImplementationOnce(async () => {
       throw new Error("scheduled task nightly is in use");
     });
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     await confirmDelete();
     expect((await screen.findByTestId("scheduled-task-delete-problem")).textContent).toBe(
       t("common.deleteFailed", { reason: "scheduled task nightly is in use" }),
@@ -202,7 +206,7 @@ describe("ScheduledTasks — a failed action", () => {
 
   it("says a refused delete, rather than taking it for done", async () => {
     deleteSpy.mockImplementationOnce(async () => ({ success: false, message: "refused: in use" }));
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     await confirmDelete();
     expect((await screen.findByTestId("scheduled-task-delete-problem")).textContent).toBe(
       t("common.deleteFailed", { reason: "refused: in use" }),
@@ -215,7 +219,7 @@ describe("ScheduledTasks — a failed action", () => {
       throw new Error("id nightly is taken");
     });
     mockTasks = [];
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
     fireEvent.change(screen.getByLabelText(t("scheduledTasks.idLabel")), {
       target: { value: "nightly" },
@@ -252,7 +256,7 @@ describe("Triggers — on a table, edited, and how the last run ended", () => {
   });
 
   it("creates a command trigger fired when a table changes", async () => {
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     fireEvent.click(screen.getByTestId("scheduled-tasks-toggle-form"));
     fireEvent.change(screen.getByLabelText(t("scheduledTasks.idLabel")), {
       target: { value: "recon" },
@@ -282,7 +286,7 @@ describe("Triggers — on a table, edited, and how the last run ended", () => {
 
   it("edits a trigger in its panel, sending its new definition under the same id", async () => {
     mockTasks = [task()];
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     openRow("nightly");
     fireEvent.click(await screen.findByTestId("scheduled-task-edit"));
     // The id names the trigger and is not changed by an edit.
@@ -321,7 +325,7 @@ describe("Triggers — on a table, edited, and how the last run ended", () => {
         lastFiredBy: "event:shop.public.orders",
       }),
     ];
-    render(<ScheduledTasks />);
+    render(<ScheduledTasks title="Admin — Triggers" />);
     expect(
       screen.getByText(
         t("scheduledTasks.firesOnTable", {
@@ -335,5 +339,43 @@ describe("Triggers — on a table, edited, and how the last run ended", () => {
     expect(within(read).getByText(t("scheduledTasks.outcomeFailed"))).toBeTruthy();
     expect(within(read).getByText("the command refused the batch")).toBeTruthy();
     expect(within(read).getByText("event:shop.public.orders")).toBeTruthy();
+  });
+});
+
+describe("Triggers — the list's filter", () => {
+  beforeEach(() => {
+    mockTasks = [
+      task({ lastRunAt: "2026-11-20T02:00:00Z", lastOutcome: "succeeded" }),
+      task({
+        id: "on_orders",
+        name: "Orders changed",
+        firesOn: "table",
+        cronExpression: null,
+        onTable: "shop.public.orders",
+        onEvent: "change",
+        kind: "command",
+        sql: null,
+        command: "reconcile_orders",
+        role: null,
+        enabled: false,
+        lastOutcome: "refused",
+        nextRunAt: "2026-11-27T02:00:00Z",
+      }),
+    ];
+  });
+
+  it("finds each trigger by every text its row shows", async () => {
+    render(<ScheduledTasks title="Admin — Triggers" />);
+    await expectFilterFindsEveryCell(screen.getByTestId("scheduled-tasks-filter"), () =>
+      screen.getByTestId("scheduled-tasks-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", () => {
+    render(<ScheduledTasks title="Admin — Triggers" />);
+    fireEvent.change(screen.getByTestId("scheduled-tasks-filter"), {
+      target: { value: "no-such-trigger" },
+    });
+    expect(screen.getByTestId("scheduled-tasks-empty")).toHaveTextContent("No triggers match");
   });
 });

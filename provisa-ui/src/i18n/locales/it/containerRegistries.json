@@ -3,6 +3,7 @@
     "help": "I registri in cui si può inviare l'immagine costruita di una sorgente di codice, per eseguirla su un host remoto. Ogni campo può contenere un valore o un riferimento a un segreto come ${secret:registry_token}. Senza registro, l'immagine costruita viene invece scaricata.",
     "add": "Aggiungi registro di container",
     "none": "Nessun registro di container. Le immagini costruite si possono comunque scaricare.",
+    "noMatch": "Nessun registro di container corrisponde al filtro.",
     "address": "Registro e namespace",
     "addressHelp": "Il registro, con la sua porta se ne ha una, e il namespace del repository in cui vengono inviate le immagini, per esempio ghcr.io/example o registry.example.com:5000/data.",
     "username": "Nome utente",
@@ -14,6 +15,10 @@
     "defaultHelp": "Una build invia qui a meno che non indichi un altro registro. Un'organizzazione ha un registro predefinito.",
     "saved": "Salvato",
     "removed": "Rimosso",
-    "remove": "Rimuovi"
+    "remove": "Rimuovi",
+    "filterPlaceholder": "Filtra registri",
+    "closeForm": "Chiudi il modulo",
+    "edit": "Modifica {{name}}",
+    "removeConfirm": "Rimuovere {{name}}? Le build che vi pubblicano non potranno più pubblicare la loro immagine."
   }
 }

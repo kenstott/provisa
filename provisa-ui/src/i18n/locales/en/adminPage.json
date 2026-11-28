@@ -193,8 +193,8 @@
     "colDescription": "Description",
     "colGqlAlias": "GQL Alias",
     "colSteward": "Steward",
-    "colActions": "Actions",
     "noDomains": "No domains defined",
+    "noDomainsMatch": "No domains match the filter",
     "deleteDomain": "Delete domain {{id}}",
     "resolveSteward": "Show who stewards domain {{id}}",
     "pageIndicator": "Page {{page}} / {{total}}",
@@ -225,6 +225,9 @@
     "apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
     "apolloSubgraphRole": "Serves as role",
     "apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role, and this role's row rules, masks and visibility govern every entity it fetches.",
-    "stewardsHint": "People who answer for the domain; each must hold a role with domain_steward."
+    "stewardsHint": "People who answer for the domain; each must hold a role with domain_steward.",
+    "domainsFilterPlaceholder": "Filter domains",
+    "closeForm": "Close the form",
+    "domainPanel": "Domain"
   }
 }

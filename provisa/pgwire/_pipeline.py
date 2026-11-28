@@ -1407,15 +1407,8 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     # as do Trino/ClickHouse/warehouse drivers (compiler.params.substitute_positional_placeholders),
     # where a reused $1 would shift every later parameter.
     by_number = state.federation_engine.engine.name in _BINDS_PARAMS_BY_NUMBER
-    # PostgreSQL alone runs a correlated subquery once per outer row: DuckDB decorrelates its own,
-    # and Trino's are lifted at transpile.
     return propagate_literal_join_predicates(
-        sql,
-        "postgres",
-        eligible,
-        column_types,
-        allow_params=by_number,
-        read_once=state.federation_engine.engine.name == "postgres",
+        sql, "postgres", eligible, column_types, allow_params=by_number
     )
 
 
@@ -3466,6 +3459,13 @@ async def route_governed(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _qualified = fold_catalog_into_schema(_qualified)
+        if state.federation_engine.dialect == "clickhouse":
+            # REQ-2267: ClickHouse materialises governed inner subqueries without the outer WHERE's
+            # _nf_* conditions.  Push them in so the sidecar receives them on its PostgreSQL COPY
+            # and calls the function with the right arguments.
+            from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+
+            _qualified = push_nf_into_subqueries(_qualified)
         # REQ-910: a write on this route (a source the engine writes through its connector) loses
         # the target alias the engine's write grammar does not take.
         from provisa.compiler.sql_rewrite import unalias_write_target
@@ -6700,6 +6700,14 @@ async def _route_compiled(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _exec_sql = fold_catalog_into_schema(_exec_sql)
+        if state.federation_engine.dialect == "clickhouse":
+            # REQ-2267: same push the raw-SQL/pgwire path applies in route_governed — the
+            # compiled path (GraphQL, Cypher, REST, gRPC, Flight SQL) also runs through
+            # _engine_form, so without this call every non-pgwire front door returned zero rows
+            # from a ClickHouse code source.  One helper (_push_nf_into_select), both paths.
+            from provisa.compiler.sql_rewrite import push_nf_into_subqueries
+
+            _exec_sql = push_nf_into_subqueries(_exec_sql)
         # REQ-2236: the compiled path's statement is Provisa's own, from a graph IR.
         return _exec_sql, state.federation_engine.transpile_physical(_exec_sql, generated=True)
 
@@ -6883,8 +6891,13 @@ async def _route_compiled(
         )
 
 
+# The leading whitespace and comments are skipped in one atomic group: once skipped they are never
+# re-split. Nested inside the repeat, ``\s+`` and ``--[^\n]*`` could split each comment line many
+# ways, and a statement that is not a write (the verb never follows) tried every split -- an
+# exponential search that held a worker on two commented-out statements (SQL-REGEX-BACKTRACK).
+# Atomic, a word inside a comment is never read as the statement's verb either.
 _OPENING_WRITE_RE = re.compile(
-    r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
+    r"(?>(?:\s+|--[^\n]*|/\*.*?\*/)*)(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -7048,8 +7061,11 @@ def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
             f"cannot describe a call to {name!r}: it declares no output_columns, so its result "
             "columns are unknown until it runs"
         )
-    # An empty list: a VOID command (REQ-2001), whose call answers no columns.
-    return [(c["name"], c["type"]) for c in declared]
+    # An empty list: a VOID command (REQ-2001), whose call answers no columns. REQ-1159: each
+    # column under the name consumers query it by.
+    from provisa.core.models import queried_name
+
+    return [(queried_name(c), c["type"]) for c in declared]
 
 
 async def describe_pgwire_statement(  # REQ-589

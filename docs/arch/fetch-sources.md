@@ -22,7 +22,7 @@ the hosts a dependency reaches by its own default, which no URL in Provisa's cod
 
 | What | From | Pip path | Registry home |
 |---|---|---|---|
-| `provisa` wheel | Pages index `kenstott.github.io/provisa/simple/` linking GitHub release assets | yes | PyPI (needs the size-limit increase or a smaller wheel) |
+| `provisa` wheel | Pages index `pkgs.provisa.dev/simple/` linking GitHub release assets | yes | PyPI (needs the size-limit increase or a smaller wheel) |
 | `provisa-duckdb-ext` (non-core DuckDB extensions, Query.Farm crypto and airport) | Pages index, GitHub release assets | yes | PyPI |
 | `provisa-notebook` (Pyodide), `provisa-client` | Pages index (`scripts/release_wheel_index.py` `PROJECTS`); `docs/cli.md` still says PyPI | yes | PyPI |
 | `duckdb-extension-*` (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) | PyPI, third-party wheels | yes | PyPI already; later Provisa's own per-extension projects |
@@ -58,6 +58,7 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | CPython for a Python code source | none: the interpreter Provisa runs on (the one pip installed it into, or the installer's bundled one) | never fetched | none needed |
 | uv | the `uv` wheel, a declared dependency, from PyPI at install time | never fetched | PyPI already |
 | CPython (python-build-standalone) for a remote host's image | GitHub release | first image built for a Python code source | open question |
+| Linux `provisa` wheel for a code source's build image | the wheelhouse cache, then the GitHub release of the running version (`api.github.com` listing, release asset), then a local source build | first build image with no cached wheel | PyPI |
 | Go toolchain | `go.dev/dl` | first Go code source | open question |
 | Rust toolchain | `static.rust-lang.org` | first Rust code source | open question |
 | pyarrow wheel for the Python host | `files.pythonhosted.org` | first Python code source | PyPI already, but the URL is fixed |

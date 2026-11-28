@@ -30,6 +30,7 @@ from fastapi import APIRouter, Query, Request
 
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import _require_right
+from provisa.api.admin.column_rules_router import rebuild_if, term_ref_ruled
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.discovery.analyzer import read_answer_list
@@ -393,6 +394,8 @@ async def get_term(request: Request, term_id: int) -> dict:
     reader = reader_for_request(request)
     term["refs"] = [r for r in term["refs"] if reader.column(r["table_id"], r["column_name"])]
     term["ref_count"] = len(term["refs"])
+    # REQ-1159: and the command output columns of the commands it reads.
+    term["command_refs"] = [r for r in term["command_refs"] if reader.command(r["command_name"])]
     term["table_count"] = sum(1 for t in grounds if reader.column(t["table_id"], None))
     return _with_class_refusal(term)
 
@@ -537,12 +540,23 @@ def _require_table_registration(request: Request) -> None:
 
 
 @router.get("/ref")
-async def term_for_ref(request: Request, table_id: int, column_name: str) -> dict:
-    """The glossary summary for one physical column — the hover popup's lookup.
+async def term_for_ref(
+    request: Request,
+    table_id: int,
+    column_name: str | None = None,
+    query_name: str | None = None,
+) -> dict:
+    """The glossary summary for one column — the hover popup's lookup.
+
+    The column is named either by its physical ``column_name`` (the Tables surface) or by the
+    ``query_name`` its consumers query it by, its SQL alias where one is set (a data product's
+    consumer view, REQ-2158 amended 2026-11-25). Exactly one is given.
 
     Gated on table_registration rather than org_settings: it serves the Tables surface
     read-only, and a term summary reveals nothing the column list doesn't already.
     """
+    if (column_name is None) == (query_name is None):
+        raise ApiError(400, "glossary.invalid", "give exactly one of column_name and query_name")
     _require_table_registration(request)
     require_active_org_id(request)
     pool = await _pool()
@@ -553,11 +567,20 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
         from provisa.api.admin.domain_guard import table_domain
 
         _require_domain(request, await table_domain(_conn, table_id))
-        term = await glossary_repo.get_term_by_ref(_conn, table_id, column_name)
+        physical = (
+            column_name
+            if query_name is None
+            else await glossary_repo.column_queried_as(_conn, table_id, query_name)
+        )
+        term = (
+            None
+            if physical is None
+            else await glossary_repo.get_term_by_ref(_conn, table_id, physical)
+        )
     from provisa.api.admin.read_rights import reader_for_request
 
     # REQ-2152: a column the caller is not served is answered as one no term is bound to.
-    if term is None or not reader_for_request(request).column(table_id, column_name):
+    if term is None or not reader_for_request(request).column(table_id, physical):
         raise ApiError(404, "glossary.ref_not_found", "no term for that column")
     return term
 
@@ -1145,12 +1168,87 @@ async def move_ref(request: Request) -> dict:
             ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
     if moved is None:
         raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
+    await rebuild_if(ruled)
     await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
     return {"ok": True, **moved, "tag_changes": changes}  # REQ-2145
+
+
+# REQ-1159 (amended 2026-11-25): a command's output column means a term as a table column does.
+
+
+async def _readable_command(request: Request, conn: "Connection", name: str) -> Any:
+    """The command, in a domain the caller acts in and one it reads; else answered as missing."""
+    from provisa.api.admin.command_columns import command_output
+    from provisa.api.admin.read_rights import reader_for_request
+
+    command = await command_output(conn, name)
+    if not reader_for_request(request).command(name):
+        raise ApiError(404, "actions.command_not_found", f"No command {name!r}", command=name)
+    _require_domain(request, command.domain_id)
+    return command
+
+
+@router.get("/commands/{name}/terms")
+async def command_column_terms(request: Request, name: str) -> dict:
+    """The term each of the command's output columns means, by column."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _readable_command(request, _conn, name)
+        return {"terms": await glossary_repo.command_column_terms(_conn, name)}
+
+
+@router.put("/commands/{name}/columns/{column}/term")
+async def ground_command_column(request: Request, name: str, column: str) -> dict:
+    """Make a term the meaning of one of the command's output columns."""
+    from provisa.api.admin.command_columns import require_output_column
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        require_output_column(await _readable_command(request, _conn, name), column)
+        term_id = int(body["term_id"])
+        await _require_term_curatable(_conn, term_id, request)
+        try:
+            await glossary_repo.ground_command_column(_conn, term_id, name, column)
+        except glossary_repo.TermIsClass as exc:
+            from provisa.api.admin.read_rights import reader_for_request, told_glossary_refusal
+
+            said, tables = await told_glossary_refusal(_conn, reader_for_request(request), exc)
+            raise ApiError(
+                409, "glossary.term_is_class", said, term=exc.term, tables=tables
+            ) from exc
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
+    await rebuild_if(ruled)
+    await _notify(org_id, "ontology command column grounded")
+    return {"ok": True}
+
+
+@router.delete("/commands/{name}/columns/{column}/term")
+async def unground_command_column(request: Request, name: str, column: str) -> dict:
+    """Take the term off one of the command's output columns."""
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _readable_command(request, _conn, name)
+        if not await glossary_repo.unground_command_column(_conn, name, column):
+            raise ApiError(404, "glossary.ref_not_found", "no term for that column")
+        ruled = await term_ref_ruled(_conn)  # REQ-2278
+    await rebuild_if(ruled)
+    await _notify(org_id, "ontology command column ungrounded")
+    return {"ok": True}
 
 
 @router.post("/terms/{term_id}/edges")

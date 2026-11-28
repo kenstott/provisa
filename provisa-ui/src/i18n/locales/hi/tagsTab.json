@@ -9,6 +9,12 @@
     "scope_column": "कॉलम",
     "scope_relationship": "रिलेशनशिप",
     "scope_command": "कमांड",
+    "scope_command_column": "कमांड कॉलम",
+    "commandColumnsTitle": "कमांड के आउटपुट कॉलम",
+    "commandColumnsNone": "कोई भी कमांड आउटपुट कॉलम घोषित नहीं करता।",
+    "colCommand": "कमांड",
+    "colOutputColumn": "आउटपुट कॉलम",
+    "colTags": "टैग",
     "scope_product": "डेटा उत्पाद",
     "scope_term": "शब्दावली शब्द",
     "scope_rls_rule": "पंक्ति नियम",
@@ -40,8 +46,6 @@
     "policy_required": "आवश्यक",
     "requiredLabel": "आवश्यक",
     "requiredDesc": "\"लागू होता है\" में दिए गए प्रकारों की हर वस्तु पर यह टैग होना चाहिए। जिस पर यह नहीं है, वह टैग रिपोर्ट में अनुपस्थित दिखता है।",
-    "reasonPolicyBadge": "कारण: {{policy}}",
-    "expiresPolicyBadge": "समाप्ति: {{policy}}",
     "createButton": "टैग बनाएँ",
     "saveButton": "टैग सहेजें",
     "colId": "ID",
@@ -65,6 +69,8 @@
     "purposeAria": "टैग के बारे में",
     "outsideTitle": "अनुमत डोमेन से बाहर के असाइनमेंट",
     "outsideBody": "सहेजने पर ये असाइनमेंट बने रहे। जिस वस्तु पर टैग अब लागू नहीं होता, वहाँ से इसे हटाएँ।",
-    "outsideItem": "{{kind}} {{name}}, {{domains}} में"
+    "outsideItem": "{{kind}} {{name}}, {{domains}} में",
+    "templateSection": "टेम्पलेट",
+    "noMatch": "फ़िल्टर से मेल खाता कोई टैग नहीं"
   }
 }

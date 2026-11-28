@@ -22,6 +22,7 @@ function context(confirmed: boolean, file: File | null = null): ClientToolContex
     presentChoice: vi.fn(),
     runAdminMutation: vi.fn(async () => ({ success: true, message: '{"createSource":{}}' })),
     chooseFile: vi.fn(async () => file),
+    changed: vi.fn(),
   };
 }
 
@@ -70,6 +71,8 @@ describe("admin_request", () => {
     );
     expect(ctx.confirm).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledWith("/admin/discover/candidates", { method: "GET" });
+    // A read changes nothing: no screen reads again.
+    expect(ctx.changed).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, message: '200 OK\n[{"id": 7}]' });
   });
 
@@ -99,6 +102,27 @@ describe("admin_request", () => {
       headers: { "Content-Type": "application/json" },
       body: '{"name":"orders_customer"}',
     });
+    // The change sent, the screens showing what it changed read again (pollyWrites.ts).
+    expect(ctx.changed).toHaveBeenCalledWith("/admin/discover/candidates/7/accept");
+  });
+
+  it("reads the screens again after a change the route refused", async () => {
+    const ctx = context(true);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("no", { status: 409, statusText: "Conflict" }),
+    );
+    const result = await executeClientTool(
+      "admin_request",
+      {
+        method: "PATCH",
+        path: "/admin/glossary/terms/41",
+        body: { definition: "x" },
+        summary: "x",
+      },
+      ctx,
+    );
+    expect(result.success).toBe(false);
+    expect(ctx.changed).toHaveBeenCalledWith("/admin/glossary/terms/41");
   });
 
   it("sends nothing when the user cancels a change", async () => {
@@ -111,6 +135,7 @@ describe("admin_request", () => {
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.message).toBe("Cancelled by the user.");
+    expect(ctx.changed).not.toHaveBeenCalled();
   });
 
   it("asks the user for the file a route uploads and sends its bytes, named in the path", async () => {
@@ -150,6 +175,45 @@ describe("admin_request", () => {
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.message).toBe("Cancelled by the user: no file was chosen.");
+  });
+
+  // REQ-1984: code Polly wrote (upload_code), handed as its files and their zip archive.
+  const handedCode = {
+    method: "POST",
+    path: "/admin/orgs/acme/code-uploads/archive?filename=code.zip",
+    summary: "Upload the orders code source.",
+    files: { "orders_source.py": "def orders(region):\n    return []\n" },
+    archive: btoa("PK\u0003\u0004zip"),
+  };
+
+  it("shows the code it was handed, then sends its archive once confirmed", async () => {
+    const ctx = context(true);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response('{"content_hash": "h"}', { status: 200, statusText: "OK" }));
+    const result = await executeClientTool("admin_request", handedCode, ctx);
+    expect(ctx.confirm).toHaveBeenCalledWith({
+      title: "Make this change?",
+      message: "Upload the orders code source.",
+      detail:
+        "POST /admin/orgs/acme/code-uploads/archive?filename=code.zip\n" +
+        "--- orders_source.py ---\ndef orders(region):\n    return []\n",
+    });
+    expect(ctx.chooseFile).not.toHaveBeenCalled();
+    const [path, init] = fetchSpy.mock.calls[0];
+    expect(path).toBe("/admin/orgs/acme/code-uploads/archive?filename=code.zip");
+    expect(init?.headers).toEqual({ "Content-Type": "application/zip" });
+    expect(Array.from(init?.body as Uint8Array)).toEqual(
+      Array.from("PK\u0003\u0004zip", (c) => c.charCodeAt(0)),
+    );
+    expect(result).toEqual({ success: true, message: '200 OK\n{"content_hash": "h"}' });
+  });
+
+  it("sends no handed code when the user cancels", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await executeClientTool("admin_request", handedCode, context(false));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.message).toBe("Cancelled by the user.");
   });
 
   it.each(["https://elsewhere.example/x", "//elsewhere.example/x", "admin/x"])(

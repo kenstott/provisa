@@ -136,20 +136,40 @@ export function joinOf(
 
 export const GRAPH: GraphSchemaDoc = {
   node_labels: [
-    { label: "Orders", table_id: 1, pk_columns: ["id"], properties: ["id", "customerId"] },
-    { label: "Clients", table_id: 2, pk_columns: ["id"], properties: ["id", "name"] },
-    { label: "Tags", table_id: 4, pk_columns: ["id"], properties: ["id"] },
+    {
+      label: "Orders",
+      table_id: 1,
+      pk_columns: ["id"],
+      properties: ["id", "customerId"],
+      native_filter_columns: [],
+    },
+    {
+      label: "Clients",
+      table_id: 2,
+      pk_columns: ["id"],
+      properties: ["id", "name"],
+      native_filter_columns: [],
+    },
+    {
+      label: "Tags",
+      table_id: 4,
+      pk_columns: ["id"],
+      properties: ["id"],
+      native_filter_columns: [],
+    },
     {
       label: "Shelter:BuildingPermits",
       table_id: 5,
       pk_columns: ["id"],
       properties: ["id", "neighborhood"],
+      native_filter_columns: [],
     },
     {
       label: "Shelter:PermitNeighborhood",
       table_id: 6,
       pk_columns: ["permitNeighborhood"],
       properties: ["permitNeighborhood"],
+      native_filter_columns: [],
     },
   ],
   relationship_types: [
@@ -183,6 +203,7 @@ export const GRAPH: GraphSchemaDoc = {
       ),
     },
   ],
+  commands: [],
 };
 
 export const VOCABULARY: SparqlVocabulary = {

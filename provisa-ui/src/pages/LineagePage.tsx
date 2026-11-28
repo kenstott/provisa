@@ -24,13 +24,13 @@ import {
   Button,
   Group,
   Input,
-  Modal,
   MultiSelect,
   Paper,
   Stack,
   Text,
   useMantineColorScheme,
 } from "@mantine/core";
+import { ModalLayout } from "../components/modal/ModalLayout";
 import { Copy, Check, GitBranch } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -207,7 +207,9 @@ export function LineagePage(): React.ReactElement {
     // The graph panel grows to the bottom of the page rather than ending at a fixed height, so the
     // canvas is as tall as the window allows and the DAG is not read through a letterbox.
     <Stack p="md" gap="md" style={{ flex: 1, minHeight: 0 }}>
-      <PageTitle icon={GitBranch} order={3}>{t("lineagePage.title")}</PageTitle>
+      <div className="page-header">
+        <PageTitle icon={GitBranch}>{t("lineagePage.title")}</PageTitle>
+      </div>
       <Text c="dimmed" size="sm">
         <Trans i18nKey="lineagePage.intro" components={{ b: <b /> }} />
       </Text>
@@ -380,7 +382,6 @@ export function LineagePage(): React.ReactElement {
             <LineageDag
               graph={graph}
               height="100%"
-              legend
               stats
               describeColumn={describeColumn}
               links={links}
@@ -399,20 +400,19 @@ export function LineagePage(): React.ReactElement {
       {/* REQ-1627: the same graph at near-fullscreen. A federation carries far more than the inline
           panel can show, and the collapse state is shared, so opening the modal continues the trace
           rather than restarting it. */}
-      <Modal
+      <ModalLayout
         opened={modalOpen && !!graph}
         onClose={() => setModalOpen(false)}
         size="90%"
         title={t("lineagePage.title")}
         data-testid="lineage-modal"
-        styles={{ body: { padding: 0 } }}
+        flush
       >
         {graph && (
           <div style={{ padding: "var(--mantine-spacing-xs)" }}>
             <LineageDag
               graph={graph}
               height="calc(90vh - 120px)"
-              legend
               stats
               describeColumn={describeColumn}
               links={links}
@@ -425,7 +425,7 @@ export function LineagePage(): React.ReactElement {
             />
           </div>
         )}
-      </Modal>
+      </ModalLayout>
     </Stack>
   );
 }

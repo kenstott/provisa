@@ -21,11 +21,12 @@ import {
   CloseButton,
   Code,
   CopyButton,
+  FileButton,
   FileInput,
   Group,
   Loader,
-  Modal,
   Paper,
+  Pill,
   TextInput,
   Radio,
   ScrollArea,
@@ -34,6 +35,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
+import { ModalLayout } from "./modal/ModalLayout";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import {
   Check,
@@ -43,6 +45,7 @@ import {
   MessageCircle,
   Mic,
   MicOff,
+  Paperclip,
   Play,
   Square,
   X,
@@ -50,7 +53,12 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
-import { useMcpChat } from "../hooks/useMcpChat";
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+  useMcpChat,
+} from "../hooks/useMcpChat";
 import { useSpeechToText } from "../hooks/useSpeechToText";
 import { RefreshMv } from "../hooks/admin.graphql";
 import { usePolly } from "../context/pollyState";
@@ -62,36 +70,15 @@ import type {
   PresentChoiceRequest,
 } from "../mcp/clientTools";
 import { gql } from "@apollo/client";
-import { useResizableWidth } from "../hooks/useResizableWidth";
+import { useResizableSize } from "../hooks/useResizableSize";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
 import { Tip, TipSurface } from "./Tip";
 import { ChatArtifact } from "./ChatArtifact";
+import { adminRequestSent, serverToolRan } from "../mcp/pollyWrites";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
 const DEFAULT_WIDTH = 360;
-
-// REQ-1845: every server tool (REQ-1835) that mutates the glossary — used to decide whether to
-// dispatch "provisa:glossary-changed" so an already-open Glossary admin page (REST-backed, never
-// GraphQL) refreshes itself.
-const GLOSSARY_TOOL_NAMES = new Set([
-  "create_glossary_term",
-  "update_glossary_term",
-  "delete_glossary_term",
-  "add_glossary_term_edge",
-  "remove_glossary_term_edge",
-  // REQ-2130: a term grounded in a table, or let go of it.
-  "ground_glossary_term_to_table",
-  "unground_glossary_term_from_table",
-  // REQ-2144: a term's status, which the Ontology page's Status filter reads.
-  "approve_glossary_term",
-  "deprecate_glossary_term",
-  "retire_glossary_term",
-  "restore_glossary_term",
-  // REQ-2145: a term's tags.
-  "tag_glossary_term",
-  "untag_glossary_term",
-]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
 // showcase distinct real capabilities (catalog search, subscription sources, page awareness, the
@@ -148,13 +135,13 @@ export function ChatPanel() {
 
   // Resizable width (REQ-1795), persisted per browser so it survives closing/reopening the
   // panel and page reloads. Dragged from a handle on the drawer's left edge.
-  // The mechanism is shared with the pages' detail panels (useResizableWidth).
+  // The mechanism is shared with the pages' detail panels (useResizableSize).
   const {
     ref: panelRef,
-    width,
+    size: width,
     startResize,
     onHandleKeyDown,
-  } = useResizableWidth<HTMLDivElement>("provisa.chatPanel.width", {
+  } = useResizableSize<HTMLDivElement>("provisa.chatPanel.width", {
     initial: DEFAULT_WIDTH,
     min: MIN_WIDTH,
     max: MAX_WIDTH,
@@ -320,16 +307,28 @@ export function ChatPanel() {
     pendingFileResolveRef.current = null;
   };
 
-  const onServerToolResult = (name: string) => {
-    if (GLOSSARY_TOOL_NAMES.has(name)) {
-      window.dispatchEvent(new CustomEvent("provisa:glossary-changed"));
-    }
-  };
+  const onServerToolResult = (name: string) => serverToolRan(name);
+  // A change sent through admin_request refreshes what it changed, as runAdminMutation's does.
+  const changed = (path: string) =>
+    adminRequestSent(path, () => void apolloClient.refetchQueries({ include: "active" }));
 
-  const { messages, tools, busy, error, send, cancel, clear, pushMessage } = useMcpChat(
+  const {
+    messages,
+    tools,
+    busy,
+    error,
+    send,
+    cancel,
+    clear,
+    pushMessage,
+    attachments,
+    attach,
+    detach,
+  } = useMcpChat(
     roleId,
-    { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile },
-    location.pathname,
+    { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile, changed },
+    // The route with its query: a page's open object is in it (the Ontology page's ?term=<id>).
+    `${location.pathname}${location.search}`,
     onServerToolResult,
   );
 
@@ -349,6 +348,24 @@ export function ChatPanel() {
     push({ role: "user", text: question });
     push({ role: "assistant", text: answer });
   }, [shownExchange]);
+
+  // REQ-2114: a file the person attaches is read into this browser session and sent with every
+  // turn; one over the stated limit is refused here at once (the server refuses it as well).
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const attachLimitMb = MAX_ATTACHMENT_BYTES / (1024 * 1024);
+  const onAttach = async (file: File | null) => {
+    if (!file) return;
+    if (attachments.length >= MAX_ATTACHMENTS) {
+      setAttachError(t("chatPanel.attachTooMany", { max: MAX_ATTACHMENTS }));
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachError(t("chatPanel.attachTooLarge", { name: file.name, limit: attachLimitMb }));
+      return;
+    }
+    setAttachError(null);
+    await attach(file);
+  };
 
   const onSend = () => {
     // REQ-1806: while the suggestions are showing, typing just the number of one ("1", "2", …)
@@ -429,7 +446,7 @@ export function ChatPanel() {
           </ActionIcon>
         </Tip>
 
-        <Modal
+        <ModalLayout
           opened={unconfiguredReason !== null}
           onClose={() => setUnconfiguredReason(null)}
           title={t("chatPanel.notSetUpTitle")}
@@ -441,20 +458,23 @@ export function ChatPanel() {
               : t("chatPanel.needsVendor")}
           </Text>
           {/* The way on first, at the start; "Not now" follows. */}
-          <Group justify="flex-start">
-            <Button
-              onClick={() => {
-                setUnconfiguredReason(null);
-                navigate("/admin/ai-models");
-              }}
-            >
-              {t("chatPanel.openAiModels")}
-            </Button>
+          <FormFooter
+            action={
+              <Button
+                onClick={() => {
+                  setUnconfiguredReason(null);
+                  navigate("/admin/ai-models");
+                }}
+              >
+                {t("chatPanel.openAiModels")}
+              </Button>
+            }
+          >
             <Button variant="default" onClick={() => setUnconfiguredReason(null)}>
               {t("chatPanel.notNow")}
             </Button>
-          </Group>
-        </Modal>
+          </FormFooter>
+        </ModalLayout>
       </>
     );
   }
@@ -664,23 +684,65 @@ export function ChatPanel() {
           minRows={2}
           maxRows={6}
           rightSectionPointerEvents="auto"
+          rightSectionWidth={speech.supported ? 56 : 32}
           rightSection={
-            speech.supported && (
-              <Tip text={speech.listening ? t("chatPanel.stopListening") : t("chatPanel.speak")}>
-                <ActionIcon
-                  variant={speech.listening ? "filled" : "subtle"}
-                  color={speech.listening ? "red" : undefined}
-                  size="sm"
-                  data-testid="chat-panel-mic"
-                  disabled={busy}
-                  onClick={() => (speech.listening ? speech.stop() : speech.start())}
-                >
-                  {speech.listening ? <MicOff size={14} /> : <Mic size={14} />}
-                </ActionIcon>
-              </Tip>
-            )
+            <Group gap={2} wrap="nowrap">
+              <FileButton onChange={(f) => void onAttach(f)} accept={ATTACHMENT_ACCEPT}>
+                {(props) => (
+                  <Tip text={t("chatPanel.attach", { limit: attachLimitMb })}>
+                    <ActionIcon
+                      {...props}
+                      variant="subtle"
+                      size="sm"
+                      data-testid="chat-panel-attach"
+                      aria-label={t("chatPanel.attach", { limit: attachLimitMb })}
+                      disabled={busy}
+                    >
+                      <Paperclip size={14} />
+                    </ActionIcon>
+                  </Tip>
+                )}
+              </FileButton>
+              {speech.supported && (
+                <Tip text={speech.listening ? t("chatPanel.stopListening") : t("chatPanel.speak")}>
+                  <ActionIcon
+                    variant={speech.listening ? "filled" : "subtle"}
+                    color={speech.listening ? "red" : undefined}
+                    size="sm"
+                    data-testid="chat-panel-mic"
+                    disabled={busy}
+                    onClick={() => (speech.listening ? speech.stop() : speech.start())}
+                  >
+                    {speech.listening ? <MicOff size={14} /> : <Mic size={14} />}
+                  </ActionIcon>
+                </Tip>
+              )}
+            </Group>
           }
         />
+        {attachError && (
+          <Text size="xs" c="red" mt={4} data-testid="chat-panel-attach-error">
+            {attachError}
+          </Text>
+        )}
+        {attachments.length > 0 && (
+          <Group gap={4} mt={4} data-testid="chat-panel-attachments">
+            {attachments.map((a) => (
+              <Pill
+                key={a.id}
+                withRemoveButton
+                disabled={busy}
+                onRemove={() => detach(a.id)}
+                removeButtonProps={{
+                  "aria-label": t("chatPanel.removeAttachment", { name: a.name }),
+                }}
+                data-testid="chat-panel-attachment"
+              >
+                {a.name}
+              </Pill>
+            ))}
+          </Group>
+        )}
         {/* REQ-1815: a media-style stop/go control, not a spinner — while busy this IS a red
             "stop" square (pulsing to show the request is still running) whose click aborts the
             in-flight fetch and refocuses + flashes the prompt box so the user can immediately
@@ -706,7 +768,7 @@ export function ChatPanel() {
           Box (not a sibling rendered after it closes) — position: absolute anchors against the
           nearest POSITIONED ancestor, and rendering it outside the panel meant its ancestor was
           effectively the document, so it covered the whole app regardless of where the panel was
-          docked. A plain overlay Box here, not Mantine's <Modal> (which portals to document.body
+          docked. A plain overlay Box here, not Mantine's <ModalLayout> (which portals to document.body
           and can't be confined to an arbitrary container at all).
           REQ-1843: anchored to the TOP now, not centered — the newest content (the message the
           choice is usually asking about) sits at the BOTTOM, since REQ-1841's auto-scroll follows
@@ -862,7 +924,7 @@ export function ChatPanel() {
         )}
       </Box>
 
-      <Modal
+      <ModalLayout
         opened={confirmState !== null}
         onClose={() => resolveConfirm(false)}
         title={confirmState?.title}
@@ -883,9 +945,13 @@ export function ChatPanel() {
             action={<Button onClick={() => resolveConfirm(true)}>{t("chatPanel.confirm")}</Button>}
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
 
-      <Modal opened={filePrompt !== null} onClose={() => resolveFile(null)} title={filePrompt}>
+      <ModalLayout
+        opened={filePrompt !== null}
+        onClose={() => resolveFile(null)}
+        title={filePrompt}
+      >
         <FormLayout>
           <FormField size="full">
             <FileInput
@@ -908,7 +974,7 @@ export function ChatPanel() {
             }
           />
         </FormLayout>
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

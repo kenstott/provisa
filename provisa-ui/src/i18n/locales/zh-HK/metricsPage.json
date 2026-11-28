@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "指標",
+    "filterPlaceholder": "篩選指標…",
     "newMetric": "+ 指標",
     "loading": "正在載入…",
     "empty": "尚未註冊任何指標。",
+    "noMatch": "沒有符合篩選條件的指標。",
     "colName": "名稱",
     "colExpression": "運算式",
     "colDatatype": "數據類型",

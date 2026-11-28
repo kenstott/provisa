@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "Metriche",
+    "filterPlaceholder": "Filtra metriche…",
     "newMetric": "+ Metrica",
     "loading": "Caricamento...",
     "empty": "Nessuna metrica ancora registrata.",
+    "noMatch": "Nessuna metrica corrisponde al filtro.",
     "colName": "Nome",
     "colExpression": "Espressione",
     "colDatatype": "Tipo di dati",

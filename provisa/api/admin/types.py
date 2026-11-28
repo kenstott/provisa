@@ -94,6 +94,40 @@ class SourceCdcConfigType:  # REQ-824
     )
 
 
+# REQ-2262: what became of each step of a source's setup. Lowercase members: the GraphQL values
+# are the outcomes as the store and a configuration write them.
+@strawberry.enum
+class SetupTablesOutcome(enum.Enum):  # REQ-2262
+    registered = "registered"
+    skipped = "skipped"
+
+
+@strawberry.enum
+class SetupRelationshipsOutcome(enum.Enum):  # REQ-2262
+    found = "found"
+    none_found = "none_found"
+    skipped = "skipped"
+
+
+@strawberry.enum
+class SetupQueryOutcome(enum.Enum):  # REQ-2262
+    opened = "opened"
+    done = "done"
+    skipped = "skipped"
+
+
+@strawberry.type
+class SourceSetupOutcomesType:  # REQ-2262
+    """What became of each step of the source's setup, shared by every user and environment;
+    null = not decided yet. ``decided_at`` (ISO 8601): when every step was last decided, null
+    while any step is open."""
+
+    tables: SetupTablesOutcome | None = None
+    relationships: SetupRelationshipsOutcome | None = None
+    query: SetupQueryOutcome | None = None
+    decided_at: str | None = None
+
+
 @strawberry.type
 class SourceType:  # REQ-012
     id: str
@@ -148,6 +182,10 @@ class SourceType:  # REQ-012
     # REQ-1921: out of production until put back (withdrawSource / putBackSource).
     withdrawn: bool = False
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
+    # REQ-2262: the setup stepper's record (setSourceSetupOutcomes).
+    setup_outcomes: SourceSetupOutcomesType = strawberry.field(
+        default_factory=SourceSetupOutcomesType
+    )
 
 
 @strawberry.type
@@ -462,6 +500,22 @@ class PagingType:  # REQ-318
     rows_field: str | None = None  # REQ-316: where a REST answer's rows are
 
 
+def _sql_address_of(table_id: int) -> tuple[str, str] | None:  # REQ-2361
+    """Table ``table_id``'s SQL schema and name as the published build's names table names them
+    (REQ-194, ONE NAMES TABLE PER MODEL VERSION: the UI reads saved objects' names from it). None
+    when the build names no such table (mid-startup, or the table is not served), as
+    graphql_field_name and dq_dataset say: a name the table lacks does not exist."""
+    from provisa.api.app import state
+
+    names = state.names_table
+    if names is None:
+        return None
+    try:
+        return names.sql_address(table_id)
+    except KeyError:
+        return None
+
+
 def _dq_dataset_of(table_id: int) -> str | None:
     """Table ``table_id`` as a data-quality contract dataset, by its compiled TableMeta; None when
     no role's compiled context exposes it."""
@@ -653,6 +707,20 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         )
 
     @strawberry.field
+    def sql_schema(self) -> str | None:  # REQ-2361
+        """The SQL schema a statement names this table in, from the names table; None when the
+        published build names no such table."""
+        address = _sql_address_of(self.id)
+        return address[0] if address is not None else None
+
+    @strawberry.field
+    def sql_name(self) -> str | None:  # REQ-2361
+        """This table's SQL name in its schema, from the names table; None when the published
+        build names no such table."""
+        address = _sql_address_of(self.id)
+        return address[1] if address is not None else None
+
+    @strawberry.field
     def product_ids(self) -> list[str]:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
         """The data products this table is a member of, any number, in id order; read-only here --
         a product's members are set on the product (setDataProductMembers). A checker table's are
@@ -838,6 +906,15 @@ class CompanionImportSetType:  # REQ-1954
 
     staging: str
     table: str
+
+
+@strawberry.type
+class ReverseAliasSuggestionType:  # REQ-2361, REQ-194
+    """The aliases the naming authority suggests for the reverse of a relationship
+    (naming.suggest_reverse_rel_alias): its GraphQL alias and its Cypher alias."""
+
+    graphql_alias: str
+    cypher_alias: str
 
 
 @strawberry.type
@@ -1033,7 +1110,7 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
     @strawberry.field
     def physical_name(self) -> str | None:  # REQ-471, REQ-1417
-        """The relationship's name on the SQL plane — what ?include= and gRPC's include take.
+        """The relationship's API name — what ?include= and gRPC's include take.
 
         Derived by the naming authority, never by a client transliterating the GraphQL alias's
         casing: the convention is server configuration, so only the server can answer this.

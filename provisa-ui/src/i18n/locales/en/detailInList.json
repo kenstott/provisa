@@ -1,0 +1,16 @@
+{
+  "detailInList": {
+    "title": "{{name}} is not in the list",
+    "why": "The link names it, but {{reasons}}.",
+    "bySearch": "the search “{{search}}” leaves it out",
+    "byFilter": "the {{filter}} filter leaves it out",
+    "byDomain": "its domain ({{domains}}) is not in view",
+    "clearSearch": "Clear the search",
+    "clearFilter": "Clear the {{filter}} filter",
+    "addDomain": "Add {{domains}} to the view",
+    "showAll": "Show it in the list",
+    "dismiss": "Dismiss",
+    "byTab": "the {{tab}} tab does not list it",
+    "openTab": "Show the {{tab}} tab"
+  }
+}

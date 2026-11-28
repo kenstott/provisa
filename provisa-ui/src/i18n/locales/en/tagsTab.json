@@ -9,6 +9,12 @@
     "scope_column": "Column",
     "scope_relationship": "Relationship",
     "scope_command": "Command",
+    "scope_command_column": "Command column",
+    "commandColumnsTitle": "Command output columns",
+    "commandColumnsNone": "No command declares output columns.",
+    "colCommand": "Command",
+    "colOutputColumn": "Output column",
+    "colTags": "Tags",
     "scope_product": "Data product",
     "scope_term": "Glossary term",
     "scope_rls_rule": "Row rule",
@@ -40,8 +46,6 @@
     "policy_required": "Required",
     "requiredLabel": "Required",
     "requiredDesc": "Every object of the kinds in Applies to must carry this tag. One without it shows as missing in the tags report.",
-    "reasonPolicyBadge": "Reason: {{policy}}",
-    "expiresPolicyBadge": "Expiry: {{policy}}",
     "createButton": "Create tag",
     "saveButton": "Save tag",
     "colId": "ID",
@@ -65,6 +69,8 @@
     "purposeAria": "About tags",
     "outsideTitle": "Assignments outside the allowed domains",
     "outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
-    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}",
+    "templateSection": "Template",
+    "noMatch": "No tags match the filter"
   }
 }

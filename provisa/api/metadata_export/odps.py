@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from provisa.api.metadata_export.model import OfferExport
 from provisa.core.cache_ttl import NEVER_EXPIRES
 from provisa.core.models import DEFAULT_OFFER, TERMS_OF_USE
+from provisa.dq.contract_types import logical_type
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -77,27 +78,6 @@ ODCS_API_VERSION = "v3.1.0"
 UNVERSIONED = "unversioned"
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-# A column's declared type as ODCS's logical types name it. A type outside these is published by
-# its physical name alone: guessing a logical type would misstate it.
-_LOGICAL = (
-    (re.compile(r"\[\]$|^array"), "array"),
-    (re.compile(r"^(small|big)?int(eger)?\d*$|^(tiny|medium)int$|^serial|^long$"), "integer"),
-    (re.compile(r"^(numeric|decimal|number|double|float|real)"), "number"),
-    (re.compile(r"^bool"), "boolean"),
-    (re.compile(r"^timestamp|^datetime"), "timestamp"),
-    (re.compile(r"^date$"), "date"),
-    (re.compile(r"^time(\b|$)"), "time"),
-    (re.compile(r"^(json|jsonb|object|struct|map|variant)"), "object"),
-    (re.compile(r"^(text|string|varchar|char|character|uuid|citext|nvarchar|nchar)"), "string"),
-)
-
-
-def logical_type(data_type: str) -> str | None:
-    """The ODCS logical type of a declared column type, or None when it has none to name."""
-    lowered = data_type.strip().lower()
-    return next((logical for pattern, logical in _LOGICAL if pattern.search(lowered)), None)
-
 
 #: REQ-1634 STATUS: Provisa's lifecycle in ODPS 1.0's status vocabulary (draft, active,
 #: deprecated, retired; the schema's examples, not a closed enum).
@@ -720,13 +700,15 @@ def _transforms(snapshot: "MetadataSnapshot", column: "ColumnAsset") -> tuple[li
 
 
 def _relationships(snapshot: "MetadataSnapshot", table: "TableAsset") -> list[dict[str, Any]]:
-    """The member's foreign keys: each direct relationship from it, column to column. A
-    junction-backed one joins through a third table, so it is no key of the member's."""
+    """The member's foreign keys: each direct relationship from it, column to column, each column
+    by the name a consumer queries it by (REQ-2158, amended 2026-11-25). A junction-backed one
+    joins through a third table, so it is no key of the member's."""
+    columns = {(t.ref.parts, c.name): c.consumer_name for t in snapshot.tables for c in t.columns}
     return [
         {
             "type": "foreignKey",
-            "from": f"{table.name}.{edge.source_column}",
-            "to": f"{edge.target.parts[-1]}.{edge.target_column}",
+            "from": f"{table.name}.{columns[(table.ref.parts, edge.source_column)]}",
+            "to": f"{edge.target.parts[-1]}.{columns[(edge.target.parts, edge.target_column)]}",
         }
         for edge in snapshot.relationships
         if edge.source.parts == table.ref.parts
@@ -840,7 +822,8 @@ def _property(
 ) -> dict[str, Any]:
     """One of the member's columns as its contract's schema property (REQ-2158), naming its
     grounded term (REQ-2238)."""
-    prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
+    # REQ-2158 (amended 2026-11-25): a consumer reads each column by the name it queries it by.
+    prop: dict[str, Any] = {"name": column.consumer_name, "physicalType": column.data_type}
     if logical := logical_type(column.data_type):
         prop["logicalType"] = logical
         if options := logical_type_options(column.data_type, column.subtype):

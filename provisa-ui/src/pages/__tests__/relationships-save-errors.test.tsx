@@ -103,6 +103,12 @@ vi.mock("../../api/admin", async (importOriginal) => ({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
   }),
 }));
+vi.mock("../../hooks/useNameSuggestions", () => ({
+  useSuggestReverseRelAlias: () => async () => ({
+    graphqlAlias: "byCustomerBy",
+    cypherAlias: "BY_CUSTOMER_BY",
+  }),
+}));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
 }));
@@ -118,6 +124,7 @@ async function openReverse() {
   const reverse = within(panel()).getByRole("button", { name: "Generate reverse relationship" });
   await waitFor(() => expect(reverse).toBeEnabled());
   fireEvent.click(reverse);
+  await screen.findByTestId("reverse-relationship-form");
 }
 
 beforeEach(() => {

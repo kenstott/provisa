@@ -147,7 +147,7 @@ OpenAPI 數據來源的非 GET 操作（POST、PUT、PATCH、DELETE）。對於�
 每個 `RelationshipType` 暴露：
 
 - **`autoSuggested → Boolean`** —— 該關係是否由外鍵分析建議（`id` 以 `fk__` 開頭）。
-- **`physicalName → String`** —— 該關係在 SQL 和 gRPC 平面上的名稱（`?include=` 參數）。由伺服器端派生；用戶端不得音譯 GraphQL 別名。
+- **`physicalName → String`** —— 該關係的 API 名稱，在介面中顯示為 API 名稱：REST 和 JSON:API 的 `?include=` 以及 gRPC 的 include 所接受的名稱。普通 SQL 不使用關係名稱。由伺服器端派生；用戶端不得音譯 GraphQL 別名。
 
 ---
 

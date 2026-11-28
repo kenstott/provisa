@@ -130,6 +130,9 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired_id TEXT;
 -- REQ-1921: withdrawn -- out of production while set: its tables serve no role, no engine
 -- attaches it, none of its tables keeps a replica; its definition, grants and relationships stay.
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
+-- REQ-2262: what became of each step of the source's setup ({tables, relationships, query,
+-- decided_at}), shared by every user and environment; empty = nothing decided yet.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS setup_outcomes JSONB NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -929,7 +932,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'command_column', 'product', 'term', 'rls_rule', 'role', 'metric')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -987,7 +990,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'command_column', 'product', 'term', 'rls_rule', 'role', 'metric'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1212,14 +1215,38 @@ END $$;
 -- (table_columns.id is NOT stable: the table upsert replaces column rows wholesale).
 -- Each physical field belongs to exactly one term. Table deletion cascades the refs;
 -- the glossary sweep then applies the remove-or-deprecate rule to newly refless terms.
+-- REQ-1159 (amended 2026-11-25): a command's output column is held the same way, named by the
+-- command (command_name, no FK: a command's registry splits across two tables) and the column; a
+-- ref names a table or a command, never both.
 CREATE TABLE IF NOT EXISTS glossary_term_refs (
-    id          SERIAL PRIMARY KEY,
-    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
-    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
-    column_name TEXT NOT NULL,
-    tenant_id   UUID,
-    UNIQUE (table_id, column_name)
+    id           SERIAL PRIMARY KEY,
+    term_id      INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    table_id     INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    command_name TEXT,
+    column_name  TEXT NOT NULL,
+    tenant_id    UUID,
+    UNIQUE (table_id, column_name),
+    UNIQUE (command_name, column_name),
+    CONSTRAINT glossary_term_refs_one_owner CHECK ((table_id IS NULL) <> (command_name IS NULL))
 );
+-- A table that predates command refs: the column, a nullable table_id, the command's key and the
+-- one-owner rule.
+ALTER TABLE glossary_term_refs ADD COLUMN IF NOT EXISTS command_name TEXT;
+ALTER TABLE glossary_term_refs ALTER COLUMN table_id DROP NOT NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'glossary_term_refs'::regclass
+                     AND conname = 'glossary_term_refs_command_name_column_name_key') THEN
+        ALTER TABLE glossary_term_refs ADD CONSTRAINT glossary_term_refs_command_name_column_name_key
+            UNIQUE (command_name, column_name);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'glossary_term_refs'::regclass
+                     AND conname = 'glossary_term_refs_one_owner') THEN
+        ALTER TABLE glossary_term_refs ADD CONSTRAINT glossary_term_refs_one_owner
+            CHECK ((table_id IS NULL) <> (command_name IS NULL));
+    END IF;
+END $$;
 
 -- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
 -- instance of. A table has at most one class term (its class_term_id); a term may ground many.
@@ -1576,6 +1603,8 @@ CREATE TABLE IF NOT EXISTS model_names (
     prime_term_ontology_name TEXT,
     PRIMARY KEY (object_kind, object_id, surface)
 );
+ALTER TABLE model_names ADD COLUMN IF NOT EXISTS prime_term TEXT;
+ALTER TABLE model_names ADD COLUMN IF NOT EXISTS prime_term_ontology_name TEXT;
 
 -- REQ-194: the name clashes the last model build refused, each naming both objects. Emptied by a
 -- build that refuses none.
@@ -1596,6 +1625,18 @@ CREATE TABLE IF NOT EXISTS checker_latest_runs (
     scan_time TIMESTAMPTZ NOT NULL,
     outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
               CHECK (outcome IN ('pass', 'fail'))
+);
+
+-- REQ-2158: each product member's latest declared-logical-type check, every offer contract on it
+-- against its source's columns now. A member with no row has never been checked or holds no
+-- contract. ``failing``: each column that failed, by offer, its declared logicalType and live type
+-- (null: the column is gone).
+CREATE TABLE IF NOT EXISTS contract_type_checks (
+    table_id   INTEGER PRIMARY KEY,
+    checked_at TIMESTAMPTZ NOT NULL,
+    outcome    TEXT NOT NULL CONSTRAINT contract_type_checks_outcome_check
+               CHECK (outcome IN ('pass', 'fail')),
+    failing    JSONB NOT NULL
 );
 
 -- Relationship Discovery Candidates (Phase R)
@@ -2093,16 +2134,94 @@ DO $$ BEGIN
 END $$;
 
 -- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+-- REQ-1159 (amended 2026-11-25): and a steward's classification of a command's output column, named
+-- by the command (command_name) and the column, which no profile run reads (run_id NULL). A decision
+-- names a table or a command, never both.
 CREATE TABLE IF NOT EXISTS profiler_classifications (
-    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    id               SERIAL PRIMARY KEY,
+    table_id         INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    command_name     TEXT,
     physical_column  TEXT NOT NULL,
     kind             TEXT NOT NULL,
     status           TEXT NOT NULL,
     evidence         TEXT NOT NULL,
-    run_id           TEXT NOT NULL,
+    run_id           TEXT,
     decided_by       TEXT,
     decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (table_id, physical_column, kind)
+    UNIQUE (table_id, physical_column, kind),
+    UNIQUE (command_name, physical_column, kind),
+    CONSTRAINT profiler_classifications_one_owner
+        CHECK ((table_id IS NULL) <> (command_name IS NULL)),
+    CONSTRAINT profiler_classifications_run_of_table CHECK ((run_id IS NULL) = (table_id IS NULL))
+);
+-- A table that predates command classifications: it was keyed on (table_id, physical_column, kind)
+-- with table_id and run_id required. Add the surrogate id and command_name, keep the old key as a
+-- unique constraint, move the primary key to id, then relax the two columns and add the owner rules.
+ALTER TABLE profiler_classifications ADD COLUMN IF NOT EXISTS id SERIAL;
+ALTER TABLE profiler_classifications ADD COLUMN IF NOT EXISTS command_name TEXT;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_table_id_physical_column_kind_key') THEN
+        ALTER TABLE profiler_classifications
+            ADD CONSTRAINT profiler_classifications_table_id_physical_column_kind_key
+            UNIQUE (table_id, physical_column, kind);
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint c
+        WHERE c.conrelid = 'profiler_classifications'::regclass AND c.contype = 'p'
+          AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                          WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+                            AND a.attname = 'id')
+    ) THEN
+        ALTER TABLE profiler_classifications DROP CONSTRAINT profiler_classifications_pkey;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass AND contype = 'p') THEN
+        ALTER TABLE profiler_classifications ADD PRIMARY KEY (id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_command_name_physical_column_kind_key') THEN
+        ALTER TABLE profiler_classifications
+            ADD CONSTRAINT profiler_classifications_command_name_physical_column_kind_key
+            UNIQUE (command_name, physical_column, kind);
+    END IF;
+END $$;
+ALTER TABLE profiler_classifications ALTER COLUMN table_id DROP NOT NULL;
+ALTER TABLE profiler_classifications ALTER COLUMN run_id DROP NOT NULL;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_one_owner') THEN
+        ALTER TABLE profiler_classifications ADD CONSTRAINT profiler_classifications_one_owner
+            CHECK ((table_id IS NULL) <> (command_name IS NULL));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'profiler_classifications'::regclass
+                     AND conname = 'profiler_classifications_run_of_table') THEN
+        ALTER TABLE profiler_classifications ADD CONSTRAINT profiler_classifications_run_of_table
+            CHECK ((run_id IS NULL) = (table_id IS NULL));
+    END IF;
+END $$;
+
+-- REQ-2278: a column rule keyed on a tag or a classification kind, never both: for one role (and the
+-- roles descending from it) every column carrying the key -- a table's or a command's output
+-- column -- is hidden, or masked through ``mask`` (NULL on a mask rule: completely masked). It names
+-- no column. tag_id has no FK: a system tag (pii) is code-defined, with no row in tags; a user tag
+-- carrying a rule is refused deletion (repositories.integrity).
+CREATE TABLE IF NOT EXISTS column_rules (
+    id             SERIAL PRIMARY KEY,
+    tag_id         TEXT,
+    classification TEXT,
+    role_id        TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    action         TEXT NOT NULL CHECK (action IN ('hide', 'mask')),
+    mask           JSONB,
+    tenant_id      UUID,
+    UNIQUE (tag_id, role_id),
+    UNIQUE (classification, role_id),
+    CONSTRAINT column_rules_one_key CHECK ((tag_id IS NULL) <> (classification IS NULL)),
+    CONSTRAINT column_rules_hide_no_mask CHECK (action = 'mask' OR mask IS NULL)
 );
 
 -- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
@@ -2960,7 +3079,8 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 -- REQ-2208: citations of reference library documents and their sections. One shape for whatever
 -- cites the library: a tag's definition (citer_kind 'tag', object_key ''), and each assignment of
 -- a tag (citer_kind 'tag_assignment', object_key the assignment's, in tag_assignments or
--- reference_document_tags); a security item cites the same way under a kind of its own. tag_id is
+-- reference_document_tags); a data quality check ('dq_check') and a glossary term ('term', object_key
+-- the term's id) cite with no tag; a security item cites the same way under a kind of its own. tag_id is
 -- the BASE id. The cited section is named as a section tag names it, by heading or by page, and
 -- the whole document when neither is given; cite_key is that name ('document:<id>',
 -- 'section:<id>:heading:<h>', 'section:<id>:page:<n>'). text_sha256 is of the section's text when
@@ -2971,7 +3091,7 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 CREATE TABLE IF NOT EXISTS reference_citations (
     id              SERIAL PRIMARY KEY,
     citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
-                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check')),
+                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check', 'term')),
     tag_id          TEXT,
     object_key      TEXT NOT NULL DEFAULT '',
     document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,

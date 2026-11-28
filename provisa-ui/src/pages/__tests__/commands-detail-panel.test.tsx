@@ -9,15 +9,16 @@
 // permission from the copyright holder.
 
 // The Commands page shows a command's detail in a panel at the right of its two lists, one at
-// a time. A command's actions are in the panel's head. A test run is started from the panel,
-// as the role chosen there, and its result is shown in the panel with a way back. "+ Command"
-// asks only what a command needs in order to exist; saved, it is selected and opens in edit.
+// a time. A command's actions are in the panel's head. A command is run through its Query it line,
+// as a table is (REQ-1159, amended 2026-11-27): there is no Test button. "+ Command" asks only what
+// a command needs in order to exist; saved, it is selected and opens in edit.
 
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
-import { useLocation } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import type { TrackedFunction, TrackedWebhook } from "../../api/actions";
+import { expectFilterFindsEveryCell } from "../../test-utils/listFilter";
 
 const fn = (name: string): TrackedFunction =>
   ({
@@ -54,14 +55,12 @@ const NO_SOURCES = vi.hoisted(() => ({ sources: [], loading: false, refetch: () 
 const NO_DOMAINS = vi.hoisted(() => ({ domains: [], loading: false, refetch: () => undefined }));
 let ACTIONS: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] };
 const saveWebhook = vi.fn();
-const testAction = vi.fn();
 
 vi.mock("../../api/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/actions")>()),
   fetchActions: vi.fn(async () => ACTIONS),
   saveFunction: vi.fn().mockResolvedValue(undefined),
   saveWebhook: (...args: unknown[]) => saveWebhook(...args),
-  testAction: (...args: unknown[]) => testAction(...args),
 }));
 
 vi.mock("../../api/admin", async (importOriginal) => ({
@@ -77,6 +76,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
     activeOrgId: "acme",
+    actingRoles: "admin",
   }),
 }));
 
@@ -85,7 +85,61 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   // The same lists every render: the page reacts to a change of them.
   useSources: () => NO_SOURCES,
   useDomains: () => NO_DOMAINS,
+  useTables: () => SALES_TABLES,
 }));
+
+// What the role is served: refund_order's GraphQL field and its name on each surface.
+const SALES_TABLES = vi.hoisted(() => ({
+  tables: [
+    {
+      id: 1,
+      sourceId: "sales-pg",
+      schemaName: "public",
+      domainId: "sales",
+      tableName: "orders",
+      alias: null,
+      columns: [],
+    },
+  ],
+  loading: false,
+  refetch: () => undefined,
+}));
+const GRAPH_SCHEMA = {
+  node_labels: [],
+  relationship_types: [],
+  root_fields: [{ domain_id: "sales", table_name: "orders", graphql_field: "sales__orders" }],
+  commands: [
+    {
+      command: "refund_order",
+      domain_id: "sales",
+      graphql_root: "Mutation",
+      graphql_field: "sales__refundOrder",
+      names: { sql: "refund_order", cypher: "refund_order", rest: "refund_order" },
+    },
+  ],
+};
+vi.mock("../../api/metaGraph", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../api/metaGraph")>();
+  const schema = new real.RoleSchema({
+    __schema: {
+      queryType: { name: "Query" },
+      types: [
+        { name: "Query", fields: [{ name: "sales__orders", type: { kind: "LIST", name: null } }] },
+        {
+          name: "Mutation",
+          fields: [{ name: "sales__refundOrder", type: { kind: "SCALAR", name: "Int" } }],
+        },
+      ],
+    },
+  });
+  return {
+    ...real,
+    metaReader: vi.fn(async () => ({
+      schema,
+      roots: new Map([["sales.orders", "sales__orders"]]),
+    })),
+  };
+});
 
 import { CommandsPage } from "../CommandsPage";
 
@@ -94,8 +148,16 @@ const panel = () => screen.queryByTestId("commands-split-panel");
 beforeEach(() => {
   ACTIONS = { functions: [fn("refund_order"), fn("close_period")], webhooks: [wh("notify_ops")] };
   saveWebhook.mockReset().mockResolvedValue(undefined);
-  testAction.mockReset().mockResolvedValue({ rows: [{ refunded: true }] });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      String(url).startsWith("/data/graph-schema")
+        ? new Response(JSON.stringify(GRAPH_SCHEMA), { status: 200 })
+        : new Response(JSON.stringify({ classes: [], edges: [], prefixes: {} }), { status: 200 }),
+    ),
+  );
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("the Commands lists' search", () => {
   it("lists the commands matching every word of the search, or either side of or, in both lists", async () => {
@@ -105,6 +167,56 @@ describe("the Commands lists' search", () => {
     expect(screen.getByTestId("commands-fn-row-refund_order")).toBeInTheDocument();
     expect(screen.getByTestId("commands-wh-row-notify_ops")).toBeInTheDocument();
     expect(screen.queryByTestId("commands-fn-row-close_period")).toBeNull();
+  });
+
+  it("finds each command by every text its row shows, in both lists", async () => {
+    ACTIONS = {
+      functions: [
+        fn("refund_order"),
+        {
+          ...fn("close_period"),
+          sourceId: "ledger-db",
+          schemaName: "books",
+          returns: null,
+          returnSchema: { fields: [] },
+          arguments: [],
+          visibleTo: [],
+          domainId: "finance",
+        } as unknown as TrackedFunction,
+      ],
+      webhooks: [
+        wh("notify_ops"),
+        {
+          ...wh("page_oncall"),
+          url: "https://pager.example.com/alert",
+          method: "PUT",
+          timeoutMs: 750,
+          returns: "Ack",
+          arguments: [{ name: "msg", type: "String" }],
+          visibleTo: ["ops", "sre"],
+          domainId: "support",
+          approved: false,
+        } as unknown as TrackedWebhook,
+      ],
+    };
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-wh-row-page_oncall");
+    const box = screen.getByTestId("filter-input");
+    await expectFilterFindsEveryCell(box, () => screen.getByTestId("commands-functions-list"));
+    await expectFilterFindsEveryCell(box, () => screen.getByTestId("commands-webhooks-list"));
+  });
+
+  it("says nothing matches when the search empties a list", async () => {
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-fn-row-refund_order");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund" } });
+    expect(screen.getByTestId("commands-webhooks-empty")).toHaveTextContent(
+      "No webhooks match the filter",
+    );
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-command" } });
+    expect(screen.getByTestId("commands-functions-empty")).toHaveTextContent(
+      "No functions match the filter",
+    );
   });
 });
 
@@ -138,31 +250,80 @@ describe("a command's detail is a panel at the right of the lists", () => {
     expect(panel()).toBeNull();
   });
 
-  it("puts the command's actions in the panel's head", async () => {
+  it("puts the command's actions in the panel's head, and no Test", async () => {
     render(<CommandsPage />);
     await userEvent.click(await screen.findByTestId("commands-fn-row-refund_order"));
     const head = within(screen.getByTestId("commands-split-panel"));
     expect(head.getByRole("button", { name: "Edit refund_order" })).toBeInTheDocument();
-    expect(head.getByRole("button", { name: "Test" })).toBeInTheDocument();
     expect(head.getByRole("button", { name: "Delete function refund_order" })).toBeInTheDocument();
+    // REQ-1159 (amended 2026-11-27): a command is run through its Query it line.
+    expect(head.queryByRole("button", { name: "Test" })).toBeNull();
+    expect(head.queryByText(/Test as role/)).toBeNull();
   });
 
-  it("runs a test from the panel and shows its result there, with a way back", async () => {
+  it("shows each argument's kind", async () => {
+    ACTIONS = {
+      functions: [
+        {
+          ...fn("refund_order"),
+          arguments: [
+            { name: "order_id", type: "Int" },
+            { name: "input", type: "String", argKind: "result_set" },
+          ],
+        } as unknown as TrackedFunction,
+      ],
+      webhooks: [],
+    };
     render(<CommandsPage />);
     await userEvent.click(await screen.findByTestId("commands-fn-row-refund_order"));
-    // Whom the run is made as is chosen in the command's own panel.
-    expect(within(panel()!).getByText("Test as role:")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Test" }));
-    await waitFor(() => expect(testAction).toHaveBeenCalledWith("function", "refund_order", ""));
-    const result = await screen.findByTestId("commands-test-result");
-    expect(within(panel()!).getByText(/"refunded": true/)).toBeInTheDocument();
-    expect(result).toHaveTextContent("refund_order");
-    expect(document.querySelector(".mantine-Modal-root")).toBeNull(); // not a dialog over the page
-    await userEvent.click(screen.getByTestId("commands-test-back"));
-    expect(screen.queryByTestId("commands-test-result")).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit refund_order" })).toBeInTheDocument();
+    expect(
+      within(panel()!).getByText("order_id: Int (value), input: String (result set)"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("a command's Query it line", () => {
+  function Opened() {
+    const location = useLocation();
+    return (
+      <pre data-testid="opened">
+        {JSON.stringify({ to: location.pathname, state: location.state })}
+      </pre>
+    );
+  }
+  const routed = () =>
+    render(
+      <Routes>
+        <Route path="/commands" element={<CommandsPage />} />
+        <Route path="*" element={<Opened />} />
+      </Routes>,
+      { initialEntries: ["/commands?command=refund_order"] },
+    );
+
+  it("names each surface the role is served the command on", async () => {
+    routed();
+    const line = await screen.findByTestId("command-query-links");
+    expect(line).toHaveTextContent("Query it");
+    for (const surface of ["cypher", "sql", "graphql", "rest", "grpc", "jsonapi"]) {
+      expect(within(line).getByTestId(`command-query-${surface}`)).toBeInTheDocument();
+    }
+    expect(within(line).queryByTestId("command-query-sparql")).toBeNull();
   });
 
+  it("asks for the arguments, then opens that Explore tab with the call, a write not run", async () => {
+    routed();
+    await userEvent.click(await screen.findByTestId("command-query-sql"));
+    await userEvent.type(await screen.findByTestId("command-arg-order_id"), "7");
+    await userEvent.click(screen.getByTestId("command-args-open"));
+    const opened = JSON.parse((await screen.findByTestId("opened")).textContent ?? "null");
+    expect(opened).toEqual({
+      to: "/sql",
+      state: { sql: "select * from refund_order(7)", autoRun: false },
+    });
+  });
+});
+
+describe("a command's panel, edited", () => {
   it("does not close on Escape while a command is being edited", async () => {
     render(<CommandsPage />);
     await userEvent.click(await screen.findByTestId("commands-fn-row-refund_order"));

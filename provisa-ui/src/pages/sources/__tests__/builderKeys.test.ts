@@ -64,7 +64,7 @@ import { seedSource } from "../sourceSeed";
 import type { Source } from "../../../types/admin";
 
 /** Whether the descriptor lists `key`: by name, as a part of a dotted name (`settings` of
- * `settings.script`), or under a placeholder (`capabilities.duckdb` of `capabilities.<engine>`). */
+ * `settings.cluster`), or under a placeholder (`capabilities.duckdb` of `capabilities.<engine>`). */
 function listed(keys: string[], key: string): boolean {
   return keys.some(
     (name) =>
@@ -308,14 +308,13 @@ describe("each builder writes only the descriptor's keys", () => {
       digest: "",
       code_hash: "",
       arch: "amd64",
-      requires: [{ name: "token", secret: true }, { name: "script" }, { name: "cluster" }],
+      requires: [{ name: "token", secret: true }, { name: "cluster" }],
       description: "",
       icon: "",
       settings: [],
     };
     const fields = {
       [requiredField("token")]: "token",
-      [requiredField("script")]: "print(1)",
       [requiredField("cluster")]: "c1",
       connector_host: "h",
       connector_port: "7000",
@@ -415,7 +414,14 @@ describe("each builder writes only the descriptor's keys", () => {
 
   it("a file crawler's workbook hints", () => {
     const fields = withExcelHints({}, { counts: { header_rows: 2 }, entries: [] });
-    mapping("files", filesMappingJson(null, fields));
+    mapping("files", filesMappingJson(null, fields, "file://"));
+  });
+
+  it("a gdrive:// file crawler's sign-in, each way it signs in (REQ-2280)", () => {
+    for (const auth of ["service_account", "oauth"]) {
+      const fields = { gdrive_auth: auth, refresh_token: "${secret:GDRIVE_REFRESH}" };
+      mapping("files", filesMappingJson(null, fields, "gdrive://"), `gdrive ${auth}`);
+    }
   });
 });
 
@@ -430,6 +436,7 @@ const saved = (type: string, settings: Partial<Source>): Source => ({
   dialect: null,
   isSystem: false,
   withdrawn: false,
+  setupOutcomes: { tables: null, relationships: null, query: null, decidedAt: null },
   cacheEnabled: true,
   cacheTtl: null,
   replicate: null,

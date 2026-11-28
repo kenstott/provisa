@@ -22,6 +22,7 @@
     "colProvider": "כניסה",
     "colOrgAdmin": "מנהל ארגון",
     "noMembers": "אין חברים עדיין.",
+    "noMembersMatch": "אין חברים התואמים לסינון.",
     "yes": "כן",
     "no": "לא",
     "promote": "הפיכה למנהל ארגון",
@@ -93,6 +94,9 @@
     },
     "localUsersHeading": "משתמשים מקומיים",
     "attributesTab": "מאפיינים",
-    "accessTab": "גישה"
+    "accessTab": "גישה",
+    "filterPlaceholder": "סינון חברים",
+    "inviteButton": "הזמנה",
+    "closeInvite": "סגירת טופס ההזמנה"
   }
 }

@@ -193,8 +193,8 @@
     "colDescription": "描述",
     "colGqlAlias": "GQL 别名",
     "colSteward": "数据管家",
-    "colActions": "操作",
     "noDomains": "未定义任何域",
+    "noDomainsMatch": "没有符合筛选条件的域",
     "deleteDomain": "删除域 {{id}}",
     "resolveSteward": "显示谁负责管理域 {{id}}",
     "pageIndicator": "第 {{page}} / {{total}} 页",
@@ -225,6 +225,9 @@
     "apolloSubgraphNameHint": "超图识别此子图所用的名称。",
     "apolloSubgraphRole": "服务角色",
     "apolloSubgraphRoleHint": "超级图无法传递调用方的身份，因此路由器以此角色登录，此角色的行规则、脱敏和可见性将约束它获取的每个实体。",
-    "stewardsHint": "对该域负责的人员；每人都需要拥有 domain_steward 的角色。"
+    "stewardsHint": "对该域负责的人员；每人都需要拥有 domain_steward 的角色。",
+    "domainsFilterPlaceholder": "筛选域",
+    "closeForm": "关闭表单",
+    "domainPanel": "域"
   }
 }

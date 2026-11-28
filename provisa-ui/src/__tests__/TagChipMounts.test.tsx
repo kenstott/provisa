@@ -146,6 +146,7 @@ describe("a glossary term's tags", () => {
     ref_count: 0,
     table_count: 0,
     refs: [],
+    command_refs: [],
     experts: [],
     export_excluded: false,
   } as unknown as GlossaryTermDetail;

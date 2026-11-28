@@ -22,6 +22,7 @@ import { entityHref } from "../lib/entityHref";
 import { serverMessage } from "../i18n/serverMessage";
 import type { MutationResult, TagAssignment } from "../types/admin";
 import { CancelButton } from "./form/CancelButton";
+import { useRequiredFields } from "./form/useRequiredFields";
 
 export function ColumnPiiForm({
   tableId,
@@ -48,6 +49,8 @@ export function ColumnPiiForm({
   const [term, setTerm] = useState<GlossaryTermDetail | null | undefined>(undefined);
   const [justThis, setJustThis] = useState(false);
   const [reason, setReason] = useState("");
+  // REQ-1968: marking this column alone needs a reason, checked when Apply is pressed.
+  const required = useRequiredFields({ reason });
   const [refusal, setRefusal] = useState<MutationResult | null>(null);
 
   useEffect(() => {
@@ -156,13 +159,12 @@ export function ColumnPiiForm({
   if (!onTerm) return <>{ownForm}</>;
 
   // On this column alone: why it, and not the columns with the same meaning, says the reason.
-  // On this column alone: why it, and not the columns with the same meaning, says the reason.
   return (
     <Stack gap="0.25rem" data-testid="pii-column">
       <TextInput
         size="xs"
         label={t("tagControl.reasonLabel")}
-        required
+        {...required.field("reason")}
         placeholder={t("tagControl.reasonRequired")}
         value={reason}
         onChange={(e) => setReason(e.currentTarget.value)}
@@ -171,8 +173,10 @@ export function ColumnPiiForm({
       <Group gap="0.25rem">
         <Button
           size="compact-xs"
-          disabled={reason.trim() === ""}
-          onClick={() => void act(() => assign({ ...column, reason: reason.trim() }))}
+          onClick={() => {
+            if (!required.validate()) return;
+            void act(() => assign({ ...column, reason: reason.trim() }));
+          }}
           data-testid="pii-apply"
         >
           {t("tagControl.apply")}

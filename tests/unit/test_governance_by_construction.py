@@ -144,6 +144,14 @@ def _run(dsn: str, governed: str, ssn: list[str]) -> tuple[Any, ...]:
             conn.rollback()
 
 
+def _unordered(answer: tuple[Any, ...]) -> tuple[Any, ...]:
+    """``answer`` with its rows as a multiset: row order without ORDER BY is unspecified, not a leak."""
+    if answer[0] != "ok":
+        return answer
+    rows = sorted(answer[1], key=repr)
+    return (answer[0], rows, *answer[2:])
+
+
 def _assert_kept_out(dsn: str, sql: str, gov: GovernanceContext, *, check: bool) -> None:
     governed = _governed(sql, gov, check=check)
     if governed is None:
@@ -154,7 +162,9 @@ def _assert_kept_out(dsn: str, sql: str, gov: GovernanceContext, *, check: bool)
     assert not _LEAKS.search(repr(answer)), f"{sql}\n  ran as {governed}\n  answered {answer}"
     if first[0] == "ok":
         assert first[3][2] == (3, "zed", "z@x"), f"{sql} wrote a row its role does not read"
-    assert first == second, f"{sql}\n  ran as {governed}\n  answers depend on ssn: {first} {second}"
+    assert _unordered(first) == _unordered(second), (
+        f"{sql}\n  ran as {governed}\n  answers depend on ssn: {first} {second}"
+    )
 
 
 # -- RV597 -----------------------------------------------------------------------------------------

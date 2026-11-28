@@ -422,10 +422,12 @@ _CREATE_ONLY = {
         "cost_usd created_at"
     ),
     "code_source_vectors": "source_id item_id vector text item_metadata",
+    "column_rules": "id tag_id classification role_id action mask tenant_id",
     "config_stamp": "kind stamp",
     "connectors": (
         'name git ref "commit" path build_command language image digest code_hash arch requires'
     ),
+    "contract_type_checks": "table_id checked_at outcome failing",
     "creation_requests": (
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"
@@ -628,6 +630,9 @@ _CREATE_ONLY = {
         "description created_at updated_at"
     ),
     "trigger_runs": "trigger_id ran_at outcome error fired_by",
+    "object_owners": "object_kind object_id principal_kind principal named holds",
+    "product_suggestion_tables": "suggestion_id table_id",
+    "product_suggestions": "id domain_id suggested_by reason recipients created_at",
     "user_attributes": "id user_id name value updated_at",
     "user_directory": "user_id display_name email updated_at",
     "user_idp_attributes": "user_id name value seen_at",

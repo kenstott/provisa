@@ -1,6 +1,6 @@
 {
   "modelingWizard": {
-    "stepOf": "Étape {{index}} sur {{count}}",
+    "stepsLabel": "Étapes de l'assistant",
     "next": "Suivant",
     "toReview": "Vérifier",
     "back": "Retour",

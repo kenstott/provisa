@@ -6,7 +6,6 @@
     "restoreDetail": "पैनल पहले जैसा करें",
     "closeDetail": "विवरण पैनल बंद करें",
     "backToList": "सूची पर वापस",
-    "backToCommand": "कमांड पर वापस",
     "panelNewCommand": "नया कमांड",
     "title": "कमांड",
     "loading": "कमांड लोड हो रहे हैं...",
@@ -39,6 +38,8 @@
     "colTimeout": "टाइमआउट",
     "noFunctions": "कोई फ़ंक्शन पंजीकृत नहीं",
     "noWebhooks": "कोई वेबहुक पंजीकृत नहीं",
+    "noFunctionsMatch": "फ़िल्टर से मेल खाता कोई फ़ंक्शन नहीं",
+    "noWebhooksMatch": "फ़िल्टर से मेल खाता कोई वेबहुक नहीं",
     "customSchema": "डेटासेट",
     "dash": "—",
     "all": "सभी",
@@ -54,8 +55,6 @@
     "editAria": "{{name}} संपादित करें",
     "deleteFunctionAria": "फ़ंक्शन {{name}} हटाएँ",
     "deleteWebhookAria": "वेबहुक {{name}} हटाएँ",
-    "testButton": "परीक्षण करें",
-    "testingButton": "परीक्षण हो रहा है...",
     "cancelAria": "संपादन रद्द करें",
     "saveAria": "परिवर्तन सहेजें",
     "deleteFunctionTitle": "फ़ंक्शन \"{{name}}\" हटाएँ?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "वेबहुक \"{{name}}\" हटाएँ?",
     "deleteWebhookConsequence": "इससे वेबहुक स्कीमा से हट जाएगा।",
     "inlineReturns": "इनलाइन ({{count}} फ़ील्ड)",
-    "testAsRole": "इस भूमिका से परीक्षण करें:",
-    "testResultHeading": "परीक्षण परिणाम: {{name}}",
     "close": "बंद करें",
-    "governanceApplied": "गवर्नेंस लागू",
     "savedMessage": "{{type}} \"{{name}}\" सहेजा गया",
     "yes": "हाँ",
-    "no": "नहीं"
+    "no": "नहीं",
+    "argKind": {
+      "column_value": "मान",
+      "table_ref": "टेबल संदर्भ",
+      "result_set": "परिणाम सेट"
+    }
   }
 }

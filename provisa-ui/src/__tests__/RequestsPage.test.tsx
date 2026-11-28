@@ -14,8 +14,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { MantineProvider } from "@mantine/core";
 import i18n from "../i18n";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 // REQ-2216: the page offers the org's delivery setting to a holder of org_settings.
 const auth = vi.hoisted(() => ({ capabilities: [] as string[] }));
@@ -136,7 +138,9 @@ function serve(approve: () => Response) {
 function page() {
   return render(
     <MantineProvider>
-      <RequestsPage />
+      <MemoryRouter>
+        <RequestsPage />
+      </MemoryRouter>
     </MantineProvider>,
   );
 }
@@ -144,6 +148,13 @@ function page() {
 async function row(id: number) {
   const cell = await screen.findByTestId(`requests-waiting-${id}`);
   return cell.closest("tr") as HTMLElement;
+}
+
+/** REQ-2277: a request's decision is in its panel; the row opens it. */
+async function panel(id: number) {
+  fireEvent.click(await screen.findByTestId(`request-row-${id}`));
+  const shown = await screen.findByTestId(`request-detail-${id}`);
+  return shown.closest('[data-testid="requests-split-panel"]') as HTMLElement;
 }
 
 describe("RequestsPage — a request is decided by the domains it touches", () => {
@@ -165,6 +176,25 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     expect(screen.queryByTestId("requests-waiting-4")).toBeNull();
   });
 
+  it("finds each request by every text its row shows", async () => {
+    serve(() => json({}));
+    page();
+    await row(1);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("requests-list"),
+    );
+  });
+
+  it("says nothing matches when the search empties the list", async () => {
+    serve(() => json({}));
+    page();
+    await row(1);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "no-such-request" } });
+    expect(screen.getByTestId("requests-empty")).toHaveTextContent(
+      "No pending requests matching filter.",
+    );
+  });
+
   it("shows which domains each request still waits on", async () => {
     serve(() => json(DECIDABLE));
     page();
@@ -176,11 +206,11 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
   it("offers the decision only on a request the user may decide", async () => {
     serve(() => json(DECIDABLE));
     page();
-    const decidable = await row(1);
-    expect(within(decidable).getByTestId("requests-approve-1")).toBeInTheDocument();
+    const decidable = await panel(1);
+    expect(await within(decidable).findByTestId("requests-approve-1")).toBeInTheDocument();
     expect(within(decidable).getByTestId("requests-reject-1")).toBeInTheDocument();
     // The user's own request is listed, with nothing to press.
-    const mine = await row(2);
+    const mine = await panel(2);
     expect(within(mine).queryByTestId("requests-approve-2")).toBeNull();
     expect(within(mine).queryByTestId("requests-reject-2")).toBeNull();
   });
@@ -188,6 +218,7 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
   it("says why, where the user cannot decide", async () => {
     serve(() => json(DECIDABLE));
     page();
+    await panel(2);
     expect(await screen.findByTestId("requests-cannot-2")).toHaveTextContent(
       "You cannot decide a request you made",
     );
@@ -201,48 +232,50 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     expect(oneSided).toHaveTextContent("2 / 2");
     expect(within(oneSided).getByTestId("requests-waiting-3")).toHaveTextContent("finance");
     expect(oneSided).not.toHaveTextContent("3/2");
-    expect(within(await row(1)).getByTestId("requests-approve-1")).toHaveTextContent(/^Approve$/);
+    expect(await within(await panel(1)).findByTestId("requests-approve-1")).toHaveTextContent(
+      /^Approve$/,
+    );
   });
 
   it("disables approve for a user whose approval adds nothing, with the reason", async () => {
     serve(() => json(DECIDABLE));
     page();
-    const approve = within(await row(3)).getByTestId("requests-approve-3");
+    const approve = await within(await panel(3)).findByTestId("requests-approve-3");
     expect(approve).toBeDisabled();
     // Said to a screen reader as the button's description, and shown as the hint on hover.
     expect(approve).toHaveAccessibleDescription("You have already approved this request");
     expect(approve).not.toHaveAttribute("title");
     // Rejecting is still theirs to do.
-    expect(within(await row(3)).getByTestId("requests-reject-3")).toBeEnabled();
-    expect(within(await row(1)).getByTestId("requests-approve-1")).toBeEnabled();
+    expect(screen.getByTestId("requests-reject-3")).toBeEnabled();
+    expect(await within(await panel(1)).findByTestId("requests-approve-1")).toBeEnabled();
   });
 
   it("does not offer execute while a domain is still waited on", async () => {
     serve(() => json(DECIDABLE));
     page();
-    await row(1);
+    await within(await panel(1)).findByTestId("requests-approve-1");
     expect(screen.queryByTestId("requests-execute-1")).toBeNull();
   });
 
   it("offers execute only to retry a request that has had its approvals", async () => {
     serve(() => json(DECIDABLE));
     page();
-    const fresh = await row(4);
-    expect(within(fresh).getByTestId("requests-approve-4")).toBeEnabled();
+    const fresh = await panel(4);
+    expect(await within(fresh).findByTestId("requests-approve-4")).toBeEnabled();
     expect(within(fresh).queryByTestId("requests-execute-4")).toBeNull();
-    const retry = await row(5);
-    expect(within(retry).getByTestId("requests-execute-5")).toBeEnabled();
+    const retry = await panel(5);
+    expect(await within(retry).findByTestId("requests-execute-5")).toBeEnabled();
     expect(within(retry).getByTestId("requests-approve-5")).toBeDisabled();
   });
 
   it("lets the author take back their own request, where that is allowed", async () => {
     serve(() => json(DECIDABLE));
     page();
-    const mine = await row(6);
-    expect(within(mine).getByTestId("requests-withdraw-6")).toBeEnabled();
+    const mine = await panel(6);
+    expect(await within(mine).findByTestId("requests-withdraw-6")).toBeEnabled();
     expect(within(mine).queryByTestId("requests-approve-6")).toBeNull();
     // A relationship request is not its author's to reject.
-    expect(within(await row(2)).queryByTestId("requests-withdraw-2")).toBeNull();
+    expect(within(await panel(2)).queryByTestId("requests-withdraw-2")).toBeNull();
   });
 
   it.each([
@@ -261,6 +294,7 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
       ),
     );
     page();
+    await panel(1);
     fireEvent.click(await screen.findByTestId("requests-approve-1"));
     const alert = await screen.findByTestId("requests-error");
     expect(alert).toHaveTextContent(expected);

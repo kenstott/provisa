@@ -6,7 +6,6 @@
     "restoreDetail": "パネルを元に戻す",
     "closeDetail": "詳細パネルを閉じる",
     "backToList": "一覧に戻る",
-    "backToCommand": "コマンドに戻る",
     "panelNewCommand": "新しいコマンド",
     "title": "コマンド",
     "loading": "コマンドを読み込み中...",
@@ -39,6 +38,8 @@
     "colTimeout": "タイムアウト",
     "noFunctions": "登録された関数はありません",
     "noWebhooks": "登録されたWebhookはありません",
+    "noFunctionsMatch": "フィルターに一致する関数はありません",
+    "noWebhooksMatch": "フィルターに一致するWebhookはありません",
     "customSchema": "データセット",
     "dash": "—",
     "all": "すべて",
@@ -54,8 +55,6 @@
     "editAria": "{{name}} を編集",
     "deleteFunctionAria": "関数 {{name}} を削除",
     "deleteWebhookAria": "Webhook {{name}} を削除",
-    "testButton": "テスト",
-    "testingButton": "テスト中...",
     "cancelAria": "編集をキャンセル",
     "saveAria": "変更を保存",
     "deleteFunctionTitle": "関数「{{name}}」を削除しますか？",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "Webhook「{{name}}」を削除しますか？",
     "deleteWebhookConsequence": "このWebhookはスキーマから削除されます。",
     "inlineReturns": "インライン（{{count}} フィールド）",
-    "testAsRole": "テスト実行ロール:",
-    "testResultHeading": "テスト結果: {{name}}",
     "close": "閉じる",
-    "governanceApplied": "ガバナンス適用済み",
     "savedMessage": "{{type}}「{{name}}」を保存しました",
     "yes": "はい",
-    "no": "いいえ"
+    "no": "いいえ",
+    "argKind": {
+      "column_value": "値",
+      "table_ref": "テーブル参照",
+      "result_set": "結果セット"
+    }
   }
 }

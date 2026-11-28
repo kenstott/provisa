@@ -113,6 +113,39 @@ for _name, _cls in _REG_OID_TYPES.items():
     ischema_names[_name] = _cls
 
 
+# PostgreSQL's system types (xid, aclitem, int2vector, ...) are absent from ``ischema_names`` as
+# well, so reflecting a pg_catalog table (``get_multi_columns``) emits ``SAWarning: Did not
+# recognize type``. Each is registered under its pg name, opaque like the reg* aliases, so the
+# recorded type name is the pg one (the names ``provisa.core.ir_types`` carries).
+_SYSTEM_TYPE_NAMES = (
+    "xid",
+    "aclitem",
+    "int2vector",
+    "oidvector",
+    "anyarray",
+    "pg_lsn",
+    "pg_node_tree",
+    "pg_ndistinct",
+    "pg_dependencies",
+    "pg_mcv_list",
+    "pg_statistic",
+)
+
+
+class _SystemType(TypeEngine[Any]):
+    """Base for PostgreSQL system types. Reflection passes ``collation`` to a collatable one
+    (``pg_node_tree``), which the type carries no use for."""
+
+    cache_ok = True
+
+    def __init__(self, *_args: Any, **_kw: Any) -> None:
+        super().__init__()
+
+
+for _name in _SYSTEM_TYPE_NAMES:
+    ischema_names[_name] = type(_name.upper(), (_SystemType,), {"__visit_name__": _name.upper()})
+
+
 class PgvectorUnavailable(RuntimeError):
     """The control plane's PostgreSQL cannot carry pgvector."""
 

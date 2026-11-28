@@ -1,0 +1,21 @@
+{
+  "commandQuery": {
+    "title": "{{name}} in {{surface}}",
+    "linkLabel": "Call {{name}} in {{surface}}",
+    "open": "Open",
+    "givenAs": "How {{name}} is given",
+    "sourceTable": "Table",
+    "sourceQuery": "Query",
+    "sourceRows": "Rows",
+    "tableHint": "A table you can read; its first {{cap}} rows are passed.",
+    "queryHint": "Its first {{cap}} rows are passed.",
+    "rowsHint": "CSV whose first line names the columns, or a JSON array of objects; at most {{cap}} rows.",
+    "missing": "Not given: {{names}}",
+    "notNumber": "{{name}} is not a number",
+    "notBoolean": "{{name}} is not true or false",
+    "notJson": "{{name}} is not JSON",
+    "notRows": "{{name}}: paste CSV whose first line names the columns, or a JSON array of objects",
+    "overCap": "{{name}}: at most {{cap}} rows",
+    "notReadable": "{{name}}: the table picked is not one you can read"
+  }
+}

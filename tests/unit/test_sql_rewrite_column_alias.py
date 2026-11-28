@@ -148,6 +148,52 @@ def test_an_insert_target_keeps_its_column_list(dialect):
     assert "(id, user_id)" in reread.sql(dialect).replace('"', "")
 
 
+def test_domain_alias_does_not_displace_a_physical_table_of_the_same_schema_and_name():
+    """When two tables share a domain and sql-name (one physical, one aliased), the domain-based
+    lookup must not overwrite the physical entry regardless of iteration order (REQ-641).
+
+    watch_list__screening (source control_room, schema control_room, domain bank, alias screening)
+    and bank_screening (source bank, schema bank, table screening, domain bank) both resolve the
+    key ("bank", "screening").  The physical entry for bank_screening must win so that a view SQL
+    that writes ``"bank"."screening"`` keeps pointing at the bank table.
+    """
+    # bank.screening: physical schema == domain schema — no collision by itself
+    bank_screening = TableMeta(
+        table_id=10,
+        field_name="screening",
+        type_name="Screening",
+        source_id="bank",
+        catalog_name="bank",
+        schema_name="bank",
+        table_name="screening",
+        domain_id="bank",
+    )
+    # watch_list__screening: physical schema is control_room, domain bank, alias screening
+    watch_screening = TableMeta(
+        table_id=11,
+        field_name="watch_list__screening",
+        type_name="WatchListScreening",
+        source_id="control_room",
+        catalog_name="control_room",
+        schema_name="control_room",
+        table_name="watch_list__screening",
+        domain_id="bank",
+        display_name="screening",
+    )
+    for order in [
+        {"bank_screening": bank_screening, "watch_screening": watch_screening},
+        {"watch_screening": watch_screening, "bank_screening": bank_screening},
+    ]:
+        ctx = CompilationContext()
+        ctx.tables = order
+        # "bank"."screening" must resolve to bank.screening, not control_room.watch_list__screening
+        rewritten = normalize_table_refs('SELECT s.id FROM "bank"."screening" AS s', ctx)
+        assert '"control_room"' not in rewritten, (
+            f'iteration order {list(order)} rewrote "bank"."screening" to control_room: {rewritten}'
+        )
+        assert '"bank"' in rewritten
+
+
 def test_a_name_differing_from_its_physical_column_only_in_case_is_lowered():
     """A source that keeps case (Snowflake upper-cases what it creates unquoted): the registered
     column ID is published as id, and the quoted published name was sent to the source, which

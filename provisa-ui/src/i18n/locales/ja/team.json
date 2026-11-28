@@ -22,6 +22,7 @@
     "colProvider": "サインイン",
     "colOrgAdmin": "組織管理者",
     "noMembers": "メンバーはまだいません。",
+    "noMembersMatch": "フィルターに一致するメンバーはいません。",
     "yes": "はい",
     "no": "いいえ",
     "promote": "組織管理者にする",
@@ -93,6 +94,9 @@
     },
     "localUsersHeading": "ローカルユーザー",
     "attributesTab": "属性",
-    "accessTab": "アクセス"
+    "accessTab": "アクセス",
+    "filterPlaceholder": "メンバーを絞り込む",
+    "inviteButton": "招待",
+    "closeInvite": "招待フォームを閉じる"
   }
 }

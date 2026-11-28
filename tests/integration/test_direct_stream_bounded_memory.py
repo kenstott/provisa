@@ -27,9 +27,12 @@ import tracemalloc
 
 import pytest
 
+from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
+
 pytestmark = [pytest.mark.integration]
 
 _ROWS = 200_000
+assert _ROWS >= 4 * FETCH_CHUNK_ROWS
 _BATCH = 5_000
 _TABLE = "provisa_stream_probe"
 _LABEL = "x" * 80
@@ -62,14 +65,21 @@ async def _materialized(driver, sql: str) -> int:
 
 async def _assert_bounded(driver, table: str) -> None:
     whole = f"SELECT id, label FROM {table}"
-    small = f"SELECT id, label FROM {table} WHERE id <= {_ROWS // 10}"
+    # The smaller read is one whole chunk: a driver that reads FETCH_CHUNK_ROWS rows from the
+    # server at a time (Oracle's Arrow batches, REQ-2194) holds a chunk whatever it is asked for,
+    # so a read of fewer rows than a chunk measures less than one batch.
+    small = f"SELECT id, label FROM {table} WHERE id <= {FETCH_CHUNK_ROWS}"
+    # One read before any is measured: what the process does once, on its first read (pyarrow's
+    # first pa.table imports pandas, 32 MB), is not the read's working memory. A shard that had
+    # not imported pandas before this test measured it in the first read (run 45940557737).
+    await _streamed(driver, small)
     rows, streamed_peak = await _peak_of(lambda: _streamed(driver, whole))
     assert rows == _ROWS
     rows_small, streamed_small = await _peak_of(lambda: _streamed(driver, small))
-    assert rows_small == _ROWS // 10
+    assert rows_small == FETCH_CHUNK_ROWS
     rows_all, materialized_peak = await _peak_of(lambda: _materialized(driver, whole))
     assert rows_all == _ROWS
-    # Ten times the rows, about the same working memory: one batch.
+    # Four times the rows, about the same working memory: one batch.
     assert streamed_peak < streamed_small * 2, (streamed_small, streamed_peak)
     # The materialized read holds the result; the stream holds a batch.
     assert streamed_peak * 5 < materialized_peak, (streamed_peak, materialized_peak)

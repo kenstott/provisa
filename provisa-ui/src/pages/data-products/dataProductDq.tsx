@@ -17,7 +17,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Group, List, Table, Text, UnstyledButton } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { relationName, tableSqlRef } from "../../naming";
@@ -148,7 +149,7 @@ export function ClaimsCallout({
           )}
         </Group>
       </UnstyledButton>
-      <Modal
+      <ModalLayout
         opened={open}
         onClose={() => setOpen(false)}
         title={t(`dataProductCore.${kind}Title`)}
@@ -156,7 +157,7 @@ export function ClaimsCallout({
         data-testid={`${testId}-modal`}
       >
         <ClaimRows checks={checks} testId={`${testId}-list`} />
-      </Modal>
+      </ModalLayout>
     </>
   );
 }

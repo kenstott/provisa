@@ -6,13 +6,9 @@
 
 // REQ-2071: Explore's Data Science area. The Python tab runs code in a Web Worker on the Pyodide the
 // provisa-notebook package serves at /pyodide, reading Provisa as the page's user (bridge.ts).
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { hasNoStatement } from "../lib/noStatement";
+import { NoQueryMessage } from "../components/NoQueryMessage";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -47,6 +43,8 @@ import {
   type Scripts,
 } from "../dataScience/pythonTabs";
 import "./DataSciencePage.css";
+import { ExploreShell, ExploreStack } from "../components/explore/ExploreShell";
+import { ResultPanel } from "../components/explore/ResultPanel";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
 import {
@@ -210,7 +208,9 @@ export function DataScienceHost({ makeWorker = defaultWorker }: { makeWorker?: M
         overflow: "hidden",
       }}
     >
-      {body}
+      <ExploreShell testId={`${testId}-shell`} className="ds-shell">
+        {body}
+      </ExploreShell>
       <Group className="ds-controls ds-panel-controls" data-testid={`${testId}-controls`}>
         <Tip text={t(isMax(panel) ? "dataScience.restore" : "dataScience.maximize")} named>
           <ActionIcon
@@ -545,22 +545,6 @@ function PythonTab({
     [titleFor],
   );
   const worker = useRef<ReturnType<MakeWorker> | null>(null);
-  const splitRef = useRef<HTMLDivElement | null>(null);
-  const [editorShare, setEditorShare] = useState(0.45);
-  // Dragging the rule between editor and output moves it with the pointer.
-  const startDrag = useCallback((down: ReactPointerEvent<HTMLDivElement>) => {
-    const area = splitRef.current?.getBoundingClientRect();
-    if (!area) return;
-    down.preventDefault();
-    const move = (e: PointerEvent) =>
-      setEditorShare(clampShare((e.clientX - area.left) / area.width));
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }, []);
   const nextRun = useRef(0);
   // REQ-2071: code Polly hands over (navigate with state.code) lands in the editor; with autoRun it
   // runs once Python is ready, and is reported back under its run id when it finishes, or at once
@@ -634,10 +618,19 @@ function PythonTab({
     };
   }, [makeWorker]);
 
+  // The last run had no code in the editor: the output pane says so.
+  const [noQuery, setNoQuery] = useState(false);
+
   const run = useCallback(
     async (source: string = code, runId: string | null = null, tab: string = activeScript.id) => {
       const w = worker.current;
       if (w === null || status !== "ready") return;
+      // No code in the editor (blank, or comments alone): said in the output pane, nothing run.
+      if (hasNoStatement(source, "python")) {
+        setNoQuery(true);
+        return;
+      }
+      setNoQuery(false);
       setStatus("running");
       // The identity is read at the moment of the run: a rotated token or a newly picked role,
       // org or environment is what the code reads as.
@@ -657,6 +650,8 @@ function PythonTab({
     if (request === null || !request.autoRun || request.seq === ranRequest.current) return;
     if (status === "ready") {
       ranRequest.current = request.seq;
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         a handed run is the run: its state (running, or no code to run) is set when it starts */
       void run(request.code, request.runId, requestTab ?? activeScript.id);
     } else if (status === "missing" || status === "failed") {
       ranRequest.current = request.seq;
@@ -707,131 +702,117 @@ function PythonTab({
           setScripts((prev) => ({ ...prev, tabs: moved(prev.tabs, id, index) }))
         }
       />
-      <Box ref={splitRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
-        {/* The editor and its Run bar on the left, the output on the right. */}
-        <Box
-          style={{
-            width: `${editorShare * 100}%`,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <Group
-            gap="sm"
-            px="md"
-            py={6}
-            style={{ flexShrink: 0, borderBottom: "1px solid var(--mantine-color-default-border)" }}
-          >
-            <Button
-              size="xs"
-              onClick={() => void run()}
-              disabled={status !== "ready"}
-              loading={status === "running"}
-              data-testid="data-science-run"
-            >
-              {t("dataScience.run")}
-            </Button>
-            <Text size="xs" c="dimmed" data-testid="data-science-status">
-              {status === "loading"
-                ? t("dataScience.loading")
-                : status === "failed"
-                  ? t("dataScience.failed")
-                  : t("dataScience.runHint")}
-            </Text>
-          </Group>
-          <Box
-            className="ds-pane"
-            style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
-            onKeyDownCapture={(e) => {
-              // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                e.stopPropagation();
-                void run();
-              }
-            }}
-          >
-            <CodeMirror
-              // One editor per script: its own document and undo history, shown as switched to.
-              key={activeScript.id}
-              value={code}
-              onChange={setCode}
-              theme={theme}
-              height="100%"
-              style={{ height: "100%" }}
-              aria-label={t("dataScience.editorLabel")}
-              data-testid="data-science-editor"
-            />
-            <Group className="ds-controls" data-testid="data-science-editor-controls">
-              <CopySymbolButton
-                text={code}
-                className="ds-control"
-                title={t("dataScience.copyCode")}
-              />
-              <Tip text={t("dataScience.clearCode")} named>
-                <ActionIcon
-                  type="button"
-                  variant="transparent"
-                  className="ds-control"
-                  aria-label={t("dataScience.clearCode")}
-                  data-testid="data-science-clear"
-                  onClick={() => setCode("")}
-                >
-                  <Trash2 size={12} aria-hidden />
-                </ActionIcon>
-              </Tip>
-            </Group>
-          </Box>
-        </Box>
-        <Box
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t("dataScience.resizeLabel")}
-          aria-valuenow={Math.round(editorShare * 100)}
-          aria-valuemin={Math.round(SHARE_MIN * 100)}
-          aria-valuemax={Math.round(SHARE_MAX * 100)}
-          tabIndex={0}
-          data-testid="data-science-split"
-          onPointerDown={startDrag}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft") setEditorShare((v) => clampShare(v - 0.05));
-            if (e.key === "ArrowRight") setEditorShare((v) => clampShare(v + 0.05));
-          }}
-          style={{
-            flex: "0 0 5px",
-            cursor: "col-resize",
-            background: "var(--mantine-color-default-border)",
-            touchAction: "none",
-          }}
-        />
-        <Box className="ds-pane" style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
-          <ScrollArea
-            style={{ flex: 1, minHeight: 0 }}
-            p="md"
-            data-testid="data-science-output-pane"
-          >
-            {failure !== null && (
-              <Alert color="red" data-testid="data-science-failure">
-                <Code block>{failure}</Code>
-              </Alert>
-            )}
-            {output !== null && <RunOutput output={output} />}
-          </ScrollArea>
-          {output !== null && (
+      {/* REQ-2277: the editor and its Run bar above, the output below, the divider between them
+          dragged to share the height. */}
+      <ExploreStack
+        storageKey="provisa.python.editorHeight"
+        initial={320}
+        min={140}
+        testId="data-science-stack"
+        editor={
+          <>
             <Group
-              className="ds-controls ds-output-controls"
-              data-testid="data-science-output-controls"
+              gap="sm"
+              px="md"
+              py={6}
+              style={{
+                flexShrink: 0,
+                borderBottom: "1px solid var(--mantine-color-default-border)",
+              }}
             >
-              <CopySymbolButton
-                text={outputText(output)}
-                className="ds-control"
-                title={t("dataScience.copyOutput")}
-              />
+              <Button
+                size="xs"
+                onClick={() => void run()}
+                disabled={status !== "ready"}
+                loading={status === "running"}
+                data-testid="data-science-run"
+              >
+                {t("dataScience.run")}
+              </Button>
+              <Text size="xs" c="dimmed" data-testid="data-science-status">
+                {status === "loading"
+                  ? t("dataScience.loading")
+                  : status === "failed"
+                    ? t("dataScience.failed")
+                    : t("dataScience.runHint")}
+              </Text>
             </Group>
-          )}
-        </Box>
-      </Box>
+            <Box
+              className="ds-pane"
+              style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
+              onKeyDownCapture={(e) => {
+                // Ctrl+Enter (Cmd+Enter) runs, before the editor takes the Enter as a new line.
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void run();
+                }
+              }}
+            >
+              <CodeMirror
+                // One editor per script: its own document and undo history, shown as switched to.
+                key={activeScript.id}
+                value={code}
+                onChange={(v) => {
+                  setNoQuery(false);
+                  setCode(v);
+                }}
+                theme={theme}
+                height="100%"
+                style={{ height: "100%" }}
+                aria-label={t("dataScience.editorLabel")}
+                data-testid="data-science-editor"
+              />
+              <Group className="ds-controls" data-testid="data-science-editor-controls">
+                <CopySymbolButton
+                  text={code}
+                  className="ds-control"
+                  title={t("dataScience.copyCode")}
+                />
+                <Tip text={t("dataScience.clearCode")} named>
+                  <ActionIcon
+                    type="button"
+                    variant="transparent"
+                    className="ds-control"
+                    aria-label={t("dataScience.clearCode")}
+                    data-testid="data-science-clear"
+                    onClick={() => setCode("")}
+                  >
+                    <Trash2 size={12} aria-hidden />
+                  </ActionIcon>
+                </Tip>
+              </Group>
+            </Box>
+          </>
+        }
+        results={
+          <ResultPanel
+            testId="data-science-output-pane"
+            title={t("dataScience.output")}
+            actions={
+              output !== null && (
+                <Group gap={4} data-testid="data-science-output-controls">
+                  <CopySymbolButton
+                    text={outputText(output)}
+                    className="ds-control"
+                    title={t("dataScience.copyOutput")}
+                  />
+                </Group>
+              )
+            }
+          >
+            <Box p="md">
+              {failure !== null && (
+                <Alert color="red" data-testid="data-science-failure">
+                  <Code block>{failure}</Code>
+                </Alert>
+              )}
+              {noQuery && <NoQueryMessage testId="data-science-no-query" />}
+              {output !== null && <RunOutput output={output} />}
+            </Box>
+          </ResultPanel>
+        }
+      />
     </Box>
   );
 }
@@ -851,11 +832,6 @@ function outputText(output: Output): string {
   if (output.error !== null) parts.push(output.error);
   return parts.filter((part) => part !== "").join("\n\n");
 }
-
-/** How much of the area the editor takes; the output has the rest. */
-const SHARE_MIN = 0.15;
-const SHARE_MAX = 0.85;
-const clampShare = (share: number) => Math.min(SHARE_MAX, Math.max(SHARE_MIN, share));
 
 function RunOutput({ output }: { output: Output }) {
   const { t } = useTranslation();

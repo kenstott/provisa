@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import type { BranchSync, Environment } from "../api/environments";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 import { notifications } from "@mantine/notifications";
 
 // The notification host is not mounted in these renders, so what a notification SAYS is read off
@@ -149,6 +150,7 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.clearAllMocks();
   auth.activeOrgId = "acme";
   auth.capabilities = ["environment_management"];
@@ -172,22 +174,84 @@ beforeEach(() => {
   });
 });
 
+/** REQ-2277: open an environment's panel from its row; its actions are in the panel's head. */
+async function openEnv(name: string) {
+  fireEvent.click(await screen.findByTestId(`env-row-${name}`));
+  await screen.findByTestId(`env-read-${name}`);
+}
+
+describe("EnvironmentsTab filter", () => {
+  it("finds each environment by every text its row shows", async () => {
+    mockList.mockResolvedValue([
+      env("prod", { protected: true, expires_at: "2027-01-01" }),
+      env("dev", { drifted: true, created_by: "ada", expired_kept_by: { view: 1 } }),
+    ]);
+    mockSync.mockResolvedValue({
+      remote_configured: true,
+      branches: { prod: syncOf(), dev: syncOf({ ahead: 2 }) },
+    });
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-sync-dev");
+    await expectFilterFindsEveryCell(screen.getByTestId("environments-filter"), () =>
+      screen.getByTestId("environments-list"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await screen.findByTestId("env-row-dev");
+    fireEvent.change(screen.getByTestId("environments-filter"), {
+      target: { value: "no-such-environment" },
+    });
+    expect(screen.getByTestId("environments-empty")).toHaveTextContent(
+      "No environments match the filter.",
+    );
+  });
+});
+
 describe("EnvironmentsTab", () => {
-  it("changes an environment's stage from its row", async () => {
+  it("opens an environment's panel from its row, by its deep link", async () => {
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    fireEvent.click(await screen.findByTestId("env-row-dev"));
+    expect(await screen.findByTestId("env-read-dev")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("env-row-dev"));
+    expect(screen.queryByTestId("env-read-dev")).toBeNull();
+  });
+
+  it("keeps the row to selecting, and puts the environment's actions in its panel's head", async () => {
+    // REQ-2277: rows only select, as on every other object management page.
+    mockList.mockResolvedValue([env("prod"), env("dev", { drifted: true })]);
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    const row = await screen.findByTestId("env-row-dev");
+    expect(within(row).queryAllByRole("button")).toEqual([]);
+    expect(within(row).queryAllByRole("switch")).toEqual([]);
+    expect(within(row).queryAllByRole("textbox")).toEqual([]);
+    await openEnv("dev");
+    const head = screen.getByTestId("environments-split-actions");
+    for (const action of ["stage", "protected", "rebuild", "merge", "push", "pull", "delete"]) {
+      expect(within(head).getByTestId(`env-panel-${action}-dev`)).toBeInTheDocument();
+    }
+  });
+
+  it("protects an environment from its panel", async () => {
+    vi.mocked(patchEnvironment).mockResolvedValue(env("dev", { protected: true }));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-protected-dev"));
+    await waitFor(() =>
+      expect(patchEnvironment).toHaveBeenCalledWith("acme", "dev", { protected: true }),
+    );
+  });
+
+  it("changes an environment's stage from its panel", async () => {
     // REQ-2261: an environment-management act, sent as the stage alone.
     vi.mocked(patchEnvironment).mockResolvedValue(env("dev", { stage: "preprod" }));
-    render(<EnvironmentsTab />);
-    const field = await screen.findByTestId("env-stage-select-dev");
-    expect(field).toHaveValue("Development");
-    fireEvent.click(field);
-    // Every row's picker keeps its options mounted; the one this field controls is its listbox.
-    const listbox = await waitFor(() => {
-      const id = field.getAttribute("aria-controls");
-      const box = id === null ? null : document.getElementById(id);
-      expect(box).not.toBeNull();
-      return box as HTMLElement;
-    });
-    fireEvent.click(within(listbox).getByRole("option", { name: "Preprod", hidden: true }));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    const stage = await screen.findByTestId("env-panel-stage-dev");
+    expect(stage).toHaveTextContent("Development");
+    fireEvent.click(stage);
+    fireEvent.click(await screen.findByTestId("env-panel-stage-dev-preprod"));
     await waitFor(() =>
       expect(patchEnvironment).toHaveBeenCalledWith("acme", "dev", { stage: "preprod" }),
     );
@@ -197,37 +261,46 @@ describe("EnvironmentsTab", () => {
     // REQ-2155: environment_owned_management manages the environments the holder created.
     auth.capabilities = ["environment_owned_management"];
     mockList.mockResolvedValue([env("prod"), env("mine", { created_by: "me" }), env("dev")]);
-    render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-stage-select-mine")).not.toBeDisabled();
-    expect(screen.getByTestId("env-stage-select-dev")).toBeDisabled();
-    expect(screen.getByTestId("env-stage-select-prod")).toBeDisabled();
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("mine");
+    expect(await screen.findByTestId("env-panel-stage-mine")).not.toBeDisabled();
+    await openEnv("dev");
+    expect(await screen.findByTestId("env-panel-stage-dev")).toBeDisabled();
+    await openEnv("prod");
+    expect(await screen.findByTestId("env-panel-stage-prod")).toBeDisabled();
   });
 
   it("offers the org's environment controls on environment_management, as its API asks", async () => {
     // REQ-1573, REQ-1327: _guard asks environment_management; org_settings opens none of these.
-    render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-delete-dev")).toBeInTheDocument();
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    expect(await screen.findByTestId("env-panel-delete-dev")).toBeInTheDocument();
   });
 
   it("offers none of them on org_settings alone", async () => {
     auth.capabilities = ["org_settings"];
-    render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-merge-dev")).toBeInTheDocument();
-    expect(screen.queryByTestId("env-delete-dev")).toBeNull();
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    expect(await screen.findByTestId("env-panel-merge-dev")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-panel-delete-dev")).toBeNull();
   });
 
   it("withholds delete from prod, which the server refuses", async () => {
-    render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-delete-dev")).toBeInTheDocument();
-    expect(screen.queryByTestId("env-delete-prod")).toBeNull();
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    expect(await screen.findByTestId("env-panel-delete-dev")).toBeInTheDocument();
+    await openEnv("prod");
+    await screen.findByTestId("env-panel-merge-prod");
+    expect(screen.queryByTestId("env-panel-delete-prod")).toBeNull();
   });
 
   it("deletes an environment and leaves its branch unless the branch is named too", async () => {
     // REQ-1524/REQ-1550: the ref is the record of what the environment held, so it survives by
     // default — and the remote copy is not offered until the local branch is going with it.
     mockDelete.mockResolvedValue();
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-delete-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-delete-dev"));
     expect(await screen.findByTestId("env-delete-branch")).not.toBeChecked();
     expect(screen.queryByTestId("env-delete-remote-branch")).toBeNull();
     fireEvent.click(screen.getByTestId("env-delete-run"));
@@ -259,8 +332,9 @@ describe("EnvironmentsTab", () => {
         },
       ]),
     );
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-delete-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-delete-dev"));
     fireEvent.click(await screen.findByTestId("env-delete-run"));
 
     expect(await screen.findByText("Cannot delete dev yet")).toBeInTheDocument();
@@ -280,7 +354,7 @@ describe("EnvironmentsTab", () => {
       }),
       env("dev", { expires_at: "2099-01-01T00:00:00Z" }),
     ]);
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
 
     expect(await screen.findByTestId("env-expired-kept-portal")).toHaveTextContent("expired, kept");
     expect(screen.queryByTestId("env-expired-kept-dev")).toBeNull();
@@ -289,8 +363,9 @@ describe("EnvironmentsTab", () => {
 
   it("deletes the remote branch only alongside the local one", async () => {
     mockDelete.mockResolvedValue();
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-delete-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-delete-dev"));
     fireEvent.click(await screen.findByTestId("env-delete-branch"));
     fireEvent.click(await screen.findByTestId("env-delete-remote-branch"));
     fireEvent.click(screen.getByTestId("env-delete-run"));
@@ -312,7 +387,7 @@ describe("EnvironmentsTab", () => {
         dev: syncOf({ remote: null, ahead: null, behind: null, unsynced: true }),
       },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-sync-prod")).toHaveTextContent("In sync");
     expect(screen.getByTestId("env-sync-dev")).toHaveTextContent("Not on the remote");
   });
@@ -325,7 +400,7 @@ describe("EnvironmentsTab", () => {
         dev: syncOf({ ahead: 2, behind: 0, unsynced: true }),
       },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-sync-dev")).toHaveTextContent("2 to push");
     expect(screen.getByTestId("env-sync-prod")).toHaveTextContent("3 to pull");
   });
@@ -334,7 +409,7 @@ describe("EnvironmentsTab", () => {
     // REQ-1552: "in sync" and "mirrored nowhere" look identical from the counts alone, so the
     // absence of a remote is stated rather than left to be inferred from empty badges.
     mockSync.mockResolvedValue({ remote_configured: false, branches: {} });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-no-remote")).toHaveTextContent("no git remote");
     expect(screen.queryByTestId("env-sync-dev")).toBeNull();
   });
@@ -343,7 +418,7 @@ describe("EnvironmentsTab", () => {
     // REQ-1552: the prose is read once and the page is a working surface; what stays visible when
     // it is folded is the one line that is not prose -- that nothing is mirrored anywhere.
     mockSync.mockResolvedValue({ remote_configured: false, branches: {} });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-no-remote")).toBeInTheDocument();
     expect(screen.getByTestId("env-no-remote-detail")).not.toBeVisible();
     fireEvent.click(screen.getByText("About environments"));
@@ -358,7 +433,7 @@ describe("EnvironmentsTab", () => {
         dev: syncOf({ ahead: null, behind: null, diverged: true, unsynced: true }),
       },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-sync-dev")).toHaveTextContent("Diverged");
   });
 
@@ -366,16 +441,18 @@ describe("EnvironmentsTab", () => {
     // REQ-1546: the mirror after a commit does not fail the edit it could not send, so this is
     // the repair a person reaches for once the badge says the remote is behind.
     mockPush.mockResolvedValue({ pushed: "abc1234", sync: syncOf() });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-push-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-push-dev"));
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("acme", "dev"));
   });
 
   it("says a pull found nothing rather than reporting a change", async () => {
     // REQ-1547: a pull that took nothing is not a deploy, and the message does not claim one.
     mockPull.mockResolvedValue({ applied: false, sync: syncOf() });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-pull-dev"));
     await waitFor(() => expect(mockPull).toHaveBeenCalledWith("acme", "dev"));
   });
 
@@ -383,10 +460,13 @@ describe("EnvironmentsTab", () => {
     // REQ-1524: an operator shown the drifted badge has the act that clears it beside it.
     mockList.mockResolvedValue([env("prod"), env("dev", { drifted: true })]);
     mockRebuild.mockResolvedValue({ sha: "abc1234", drifted: false });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-rebuild-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-rebuild-dev"));
     await waitFor(() => expect(mockRebuild).toHaveBeenCalledWith("acme", "dev"));
-    expect(screen.queryByTestId("env-rebuild-prod")).toBeNull();
+    await openEnv("prod");
+    await screen.findByTestId("env-panel-merge-prod");
+    expect(screen.queryByTestId("env-panel-rebuild-prod")).toBeNull();
   });
 
   it("says a pull into a protected environment is proposed", async () => {
@@ -397,8 +477,9 @@ describe("EnvironmentsTab", () => {
       request: { id: 7, source_sha: "abc1234", target_env: "dev" } as never,
       sync: syncOf(),
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-pull-dev"));
     await waitFor(() =>
       expect(notifications.show).toHaveBeenCalledWith(
         expect.objectContaining({ message: "Proposed a deploy into dev for approval." }),
@@ -421,8 +502,9 @@ describe("EnvironmentsTab", () => {
       },
       sync: syncOf(),
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-pull-dev"));
     await waitFor(() => expect(notifications.show).toHaveBeenCalled());
     const said = vi.mocked(notifications.show).mock.calls.at(-1)![0];
     render(<>{said!.message}</>);
@@ -440,8 +522,9 @@ describe("EnvironmentsTab", () => {
         [{ path: "sales/domain.yaml", source: "changed", target: "removed" }],
       ),
     );
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-pull-dev"));
     await waitFor(() => expect(notifications.show).toHaveBeenCalled());
     const said = vi.mocked(notifications.show).mock.calls.at(-1)![0];
     render(<>{said!.message}</>);
@@ -455,7 +538,9 @@ describe("EnvironmentsTab", () => {
       environment: env("feature"),
       copy: { added: 3, changed: 0, removed: 0 },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    // REQ-2277: the header's New environment opens the form in the panel.
+    fireEvent.click(await screen.findByTestId("env-create-open"));
     fireEvent.change(await screen.findByTestId("env-new-name"), {
       target: { value: "feature" },
     });
@@ -475,7 +560,7 @@ describe("EnvironmentsTab", () => {
     // REQ-1538: the fact worth marking is the inheritance, and the badge names WHICH environment
     // supplies the connections — "dev" alone would not say where a query in it actually lands.
     mockList.mockResolvedValue([env("prod"), env("dev", { parent: "prod", data_mode: "inherit" })]);
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     expect(await screen.findByTestId("env-inherits-dev")).toHaveTextContent("Inherited from prod");
     expect(screen.queryByTestId("env-inherits-prod")).toBeNull();
   });
@@ -486,10 +571,11 @@ describe("EnvironmentsTab", () => {
       applied: false,
       requires_approval: false,
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     // REQ-1549: the button belongs to the environment being merged, and it goes back to the one it
     // was branched from — so dev's merge is previewed against prod with nothing else chosen.
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
     await waitFor(() => expect(mockPreview).toHaveBeenCalledWith("acme", "prod", "dev", false, []));
     expect(mockMerge).not.toHaveBeenCalled();
@@ -511,8 +597,9 @@ describe("EnvironmentsTab", () => {
       applied: false,
       requires_approval: false,
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
     const named = await screen.findByTestId("env-merge-conflicts");
     expect(named).toHaveTextContent("sales/domain.yaml");
@@ -527,8 +614,9 @@ describe("EnvironmentsTab", () => {
       applied: false,
       requires_approval: false,
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
     await screen.findByTestId("env-merge-preview");
     expect(screen.queryByTestId("env-merge-conflicts")).toBeNull();
@@ -543,8 +631,9 @@ describe("EnvironmentsTab", () => {
       applied: false,
       requires_approval: false,
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
     expect(await screen.findByTestId("env-merge-not-compared")).toHaveTextContent(
       "share no common ancestor",
@@ -556,8 +645,9 @@ describe("EnvironmentsTab", () => {
     // The merge is not refused — it becomes a request somebody else decides, so the button says so
     // before it is pressed (REQ-1504).
     mockMerge.mockResolvedValue({ applied: false, requires_approval: true });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     expect(await screen.findByTestId("env-merge-run")).toHaveTextContent("Propose");
     fireEvent.change(screen.getByTestId("env-merge-message"), {
       target: { value: "adds the tag domain" },
@@ -607,8 +697,9 @@ describe("EnvironmentsTab", () => {
       requires_approval: false,
     });
     mockMerge.mockResolvedValue({ applied: true, requires_approval: false });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
     fireEvent.click(await screen.findByTestId("env-merge-select-metrics/revenue.yaml"));
     fireEvent.click(screen.getByTestId("env-merge-preview-run"));
@@ -635,22 +726,42 @@ describe("EnvironmentsTab", () => {
 
   it("will not merge until the comment is written", async () => {
     // REQ-1550: the merge lands as one squashed commit, so a blank comment would leave the range
-    // of work with no account of itself. The server refuses it; the button does not offer it.
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
-    expect(await screen.findByTestId("env-merge-run")).toBeDisabled();
+    // of work with no account of itself. The server refuses it; pressing Merge without one marks
+    // the comment and sends nothing (REQ-1968: the button is never disabled by the empty field).
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
+    const run = await screen.findByTestId("env-merge-run");
+    expect(run).toBeEnabled();
     fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "   " } });
-    expect(screen.getByTestId("env-merge-run")).toBeDisabled();
+    fireEvent.click(run);
+    expect(screen.getByTestId("env-merge-message")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByTestId("env-merge-review"));
+    expect(mockMerge).not.toHaveBeenCalled();
+    expect(mockReview).not.toHaveBeenCalled();
     fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "ship it" } });
-    expect(screen.getByTestId("env-merge-run")).toBeEnabled();
+    expect(screen.getByTestId("env-merge-message")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("marks a missing name when Create is pressed, and creates nothing", async () => {
+    // REQ-1968: Create is never disabled by the empty name; pressing it marks the name.
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    fireEvent.click(await screen.findByTestId("env-create-open"));
+    const create = await screen.findByTestId("env-create");
+    expect(create).toBeEnabled();
+    fireEvent.click(create);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId("env-new-name")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByTestId("env-new-name")).toHaveFocus();
   });
 
   it("offers deleting the remote branch only underneath deleting the environment", async () => {
     // REQ-1550: the remote copy is what survives a lost volume, so deleting it while the
     // environment stands is never on screen — the option hangs off the one above it.
     mockMerge.mockResolvedValue({ applied: true, requires_approval: false });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     expect(await screen.findByTestId("env-merge-retire")).toBeInTheDocument();
     expect(screen.queryByTestId("env-merge-retire-remote")).toBeNull();
     fireEvent.click(screen.getByTestId("env-merge-retire"));
@@ -670,8 +781,9 @@ describe("EnvironmentsTab", () => {
   });
 
   it("unchecks the remote branch when the environment is left standing", async () => {
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-retire"));
     fireEvent.click(await screen.findByTestId("env-merge-retire-remote"));
     fireEvent.click(screen.getByTestId("env-merge-retire"));
@@ -694,8 +806,9 @@ describe("EnvironmentsTab", () => {
         unsynced: false,
       },
     });
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-dev"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-dev"));
     fireEvent.change(await screen.findByTestId("env-merge-message"), {
       target: { value: "adds the tag domain" },
     });
@@ -712,18 +825,25 @@ describe("EnvironmentsTab", () => {
   it("has nowhere to send an environment that was not branched from another", async () => {
     // REQ-1549: prod is where branches come from, so nothing is chosen for it and the merge waits
     // on a target rather than defaulting to one.
-    render(<EnvironmentsTab />);
-    fireEvent.click(await screen.findByTestId("env-merge-prod"));
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("prod");
+    fireEvent.click(await screen.findByTestId("env-panel-merge-prod"));
     expect(await screen.findByTestId("env-merge-no-target")).toBeInTheDocument();
-    expect(screen.getByTestId("env-merge-run")).toBeDisabled();
-    expect(screen.getByTestId("env-merge-preview-run")).toBeDisabled();
+    // REQ-1968: pressing Preview or Merge marks the missing target and sends nothing.
+    fireEvent.click(screen.getByTestId("env-merge-preview-run"));
+    expect(mockPreview).not.toHaveBeenCalled();
+    expect(screen.getByTestId("env-merge-into")).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(screen.getByTestId("env-merge-message"), { target: { value: "ship it" } });
+    fireEvent.click(screen.getByTestId("env-merge-run"));
+    expect(mockMerge).not.toHaveBeenCalled();
   });
 
   it("explains the two choices that decide how an environment behaves", async () => {
     // The data mode and Protected each change what the platform will do later, and neither says
     // so from its label alone (REQ-1504, REQ-1942).
     mockList.mockResolvedValue([env("prod", { protected: true }), env("dev")]);
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    fireEvent.click(await screen.findByTestId("env-create-open"));
     expect(
       await screen.findByRole("img", { name: /Where the new environment's data comes from/ }),
     ).toBeInTheDocument();
@@ -736,7 +856,9 @@ describe("EnvironmentsTab", () => {
       environment: env("qa"),
       copy: { added: 3, changed: 0, removed: 0 },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    // REQ-2277: the header's New environment opens the form in the panel.
+    fireEvent.click(await screen.findByTestId("env-create-open"));
     fireEvent.change(await screen.findByTestId("env-new-name"), { target: { value: "qa" } });
     fireEvent.click(screen.getByRole("textbox", { name: /^Data/ }));
     for (const label of ["Inherit", "Unbound", "Test (fake)", "Test (synthetic)"]) {
@@ -760,13 +882,15 @@ describe("EnvironmentsTab", () => {
 
   it("does not offer an administrator's controls to a member", async () => {
     auth.capabilities = [];
-    render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-merge-dev")).toBeInTheDocument();
-    expect(screen.queryByTestId("env-delete-dev")).toBeNull();
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    await openEnv("dev");
+    expect(await screen.findByTestId("env-panel-merge-dev")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-panel-delete-dev")).toBeNull();
     // REQ-1529: the choice stays visible, set to Inherit and disabled — inheriting is the only kind
     // of environment a non-administering member may create, and hiding it would send a request the
     // server answers 403 with nothing on screen to explain it.
-    const mode = screen.getByTestId("env-new-data-mode") as HTMLInputElement;
+    fireEvent.click(screen.getByTestId("env-create-open"));
+    const mode = (await screen.findByTestId("env-new-data-mode")) as HTMLInputElement;
     expect(mode.value).toBe("Inherit");
     expect(mode.disabled).toBe(true);
   });
@@ -777,7 +901,9 @@ describe("EnvironmentsTab", () => {
       environment: env("feature"),
       copy: { added: 3, changed: 0, removed: 0 },
     });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
+    // REQ-2277: the header's New environment opens the form in the panel.
+    fireEvent.click(await screen.findByTestId("env-create-open"));
     fireEvent.change(await screen.findByTestId("env-new-name"), { target: { value: "feature" } });
     fireEvent.click(screen.getByTestId("env-create"));
     await waitFor(() =>
@@ -794,7 +920,7 @@ describe("EnvironmentsTab -- Synthetic data with no environment to hold a datase
   it("takes the reader to the create form, on the Environments tab", async () => {
     mockList.mockResolvedValue([env("prod", { protected: true })]);
     mockSync.mockResolvedValue({ remote_configured: true, branches: { prod: syncOf() } });
-    render(<EnvironmentsTab />);
+    render(<EnvironmentsTab title="Admin — Environments" />);
     fireEvent.click(await screen.findByRole("tab", { name: "Synthetic data" }));
     fireEvent.click(await screen.findByTestId("synthetic-create-env"));
     expect(screen.getByRole("tab", { name: "Environments" })).toHaveAttribute(

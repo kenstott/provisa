@@ -12,6 +12,7 @@
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
 import type { Locator } from "@playwright/test";
+import { withBody } from "./response-body";
 import { BACKEND_URL, expect, type Page } from "./coverage";
 import { retireSourceTables, type AdminGql } from "./retire-source-tables";
 
@@ -127,9 +128,9 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
   // source's panel opens; a step that navigates before then waits behind those rebuilds (run
   // 40227062159: the next page's tables query outlasted its 15 s).
-  // REQ-2234: the panel opens first on the "Register tables" step; skipping the step shows the
-  // source, saved, in its read view (REQ-1974).
-  await page.getByTestId("register-tables-skip").click({ timeout: 60000 });
+  // REQ-2234 / REQ-2262: the panel opens first on the source's setup, at its "Register tables"
+  // step; Finish later shows the source, saved, in its read view (REQ-1974).
+  await page.getByTestId("source-setup-finish-later").click({ timeout: 60000 });
   const edit = page.getByTestId("source-detail-edit");
   await expect(edit).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
@@ -795,12 +796,13 @@ export async function runSqlOnPage(
   // query, and a single run left the page on that message with no grid to wait for.
   const deadline = Date.now() + SOURCE_SERVING_BUDGET_MS;
   for (;;) {
-    const runResp = page.waitForResponse(
-      (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
+    const runResp = withBody(
+      page.waitForResponse(
+        (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
+      ),
     );
     await page.getByTestId("sql-run").click();
-    const resp = await runResp;
-    const text = await resp.text();
+    const { response: resp, text } = await runResp;
     expect(resp.ok(), text).toBeTruthy();
     const starting = sourceStarting(text);
     if (starting === undefined) break;

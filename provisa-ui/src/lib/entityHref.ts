@@ -34,14 +34,34 @@ export type EntityKind =
   | "metric"
   | "classification"
   // REQ-2259: a reference library document, on the Context group's Documents page.
-  | "document";
+  | "document"
+  // REQ-2277 rule 6: a role, on Security's Roles page; an environment, on Admin's Environments.
+  | "role"
+  | "environment"
+  // REQ-2208: a section of a library document, on its panel's Sections tab.
+  | "section";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
+/** The mark naming a section of a library document on its panel: its heading, or its page when it
+ * has none; null for the whole document. */
+export function sectionMark(heading: string | null, page: number | null): string | null {
+  if (heading !== null) return `h:${heading}`;
+  if (page !== null) return `p:${page}`;
+  return null;
+}
+
 /** The link to ``kind`` ``id``: its panel's link, from detailHref (REQ-2240). A column is named by
  * its table and its name (``table`` and ``id``); a profile and a checker by the table they belong
- * to. A command's ``id`` is its ``commands`` id (commandId). */
-export function entityHref(kind: EntityKind, id: string | number, table?: number): string {
+ * to. A command's ``id`` is its ``commands`` id (commandId). A section is named by its document
+ * (``id``) and its mark (``section``, sectionMark): its document's Sections tab, at the section;
+ * with no mark, the tab's top. */
+export function entityHref(
+  kind: EntityKind,
+  id: string | number,
+  table?: number,
+  section?: string | null,
+): string {
   switch (kind) {
     case "term":
       return detailHref("ontology", id);
@@ -71,11 +91,18 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
     case "metric":
       return detailHref("metrics", id);
     case "classification":
-      // REQ-2259: the Context group's Classification page; it has no panel per kind, so the link
-      // names the page.
-      return "/context/classification";
+      // REQ-2259, REQ-2277: the kind's panel on the Context group's Classification page.
+      return detailHref("classification", id);
     case "document":
       return detailHref("library", id);
+    case "role":
+      return detailHref("roles", id);
+    case "environment":
+      return detailHref("environments", id);
+    case "section":
+      return section
+        ? detailHref("library", id, "sections", { at: section })
+        : detailHref("library", id, "sections");
   }
 }
 
@@ -100,8 +127,9 @@ export function entityLink(
   kind: EntityKind,
   id: string | number,
   table?: number,
+  section?: string | null,
 ): string | undefined {
-  const href = entityHref(kind, id, table);
+  const href = entityHref(kind, id, table, section);
   return meetsRequirement(capabilities, pageRequirement(href)) ? href : undefined;
 }
 

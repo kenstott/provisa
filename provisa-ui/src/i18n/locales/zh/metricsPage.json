@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "指标",
+    "filterPlaceholder": "筛选指标…",
     "newMetric": "+ 指标",
     "loading": "正在加载...",
     "empty": "尚未注册任何指标。",
+    "noMatch": "没有符合筛选条件的指标。",
     "colName": "名称",
     "colExpression": "表达式",
     "colDatatype": "数据类型",

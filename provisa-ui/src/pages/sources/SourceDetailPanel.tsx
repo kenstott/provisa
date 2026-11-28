@@ -15,7 +15,9 @@ import { PanelWithdraw } from "../../components/list/PanelWithdraw";
 import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Text } from "@mantine/core";
+import { ModalLayout } from "../../components/modal/ModalLayout";
+import { PanelBody } from "../../components/list/PanelBody";
 import { Pencil, ArrowRight, RefreshCw, Play } from "lucide-react";
 import type { Source } from "../../types/admin";
 import { useRefreshKaggleSource } from "../../hooks/useAdminQueries";
@@ -99,7 +101,7 @@ export function SourceDetailPanel({
   };
 
   return (
-    <Stack gap="sm">
+    <PanelBody>
       {/* REQ-1921: out of production; none of its tables serves any role until it is put back. */}
       {s.withdrawn && (
         <Text size="xs" c="dimmed" data-testid="source-detail-withdrawn-note">
@@ -190,7 +192,7 @@ export function SourceDetailPanel({
         </Group>
       </PanelActions>
       {kaggleOrigin && (
-        <Modal
+        <ModalLayout
           opened={refreshModalOpen}
           onClose={() => setRefreshModalOpen(false)}
           title={t("sourceDetailPanel.refreshKaggleTitle")}
@@ -225,7 +227,7 @@ export function SourceDetailPanel({
               }
             />
           </FormLayout>
-        </Modal>
+        </ModalLayout>
       )}
       {profileError && (
         <Alert color="red" data-testid="source-detail-profiler-error">
@@ -253,6 +255,6 @@ export function SourceDetailPanel({
               ))}
         </Alert>
       )}
-    </Stack>
+    </PanelBody>
   );
 }

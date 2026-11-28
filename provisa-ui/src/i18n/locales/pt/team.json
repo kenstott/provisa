@@ -22,6 +22,7 @@
     "colProvider": "Login",
     "colOrgAdmin": "Administrador da organização",
     "noMembers": "Nenhum membro ainda.",
+    "noMembersMatch": "Nenhum membro corresponde ao filtro.",
     "yes": "Sim",
     "no": "Não",
     "promote": "Tornar administrador da organização",
@@ -93,6 +94,9 @@
     },
     "localUsersHeading": "Usuários locais",
     "attributesTab": "Atributos",
-    "accessTab": "Acesso"
+    "accessTab": "Acesso",
+    "filterPlaceholder": "Filtrar membros",
+    "inviteButton": "Convidar",
+    "closeInvite": "Fechar o formulário de convite"
   }
 }

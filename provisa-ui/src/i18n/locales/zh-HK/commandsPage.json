@@ -6,7 +6,6 @@
     "restoreDetail": "還原面板",
     "closeDetail": "關閉詳情面板",
     "backToList": "返回清單",
-    "backToCommand": "返回指令",
     "panelNewCommand": "新增指令",
     "title": "命令",
     "loading": "正在載入命令…",
@@ -39,6 +38,8 @@
     "colTimeout": "逾時",
     "noFunctions": "尚未註冊任何函數",
     "noWebhooks": "尚未註冊任何 Webhook",
+    "noFunctionsMatch": "沒有符合篩選條件的函數",
+    "noWebhooksMatch": "沒有符合篩選條件的 Webhook",
     "customSchema": "數據集",
     "dash": "—",
     "all": "全部",
@@ -54,8 +55,6 @@
     "editAria": "編輯 {{name}}",
     "deleteFunctionAria": "刪除函數 {{name}}",
     "deleteWebhookAria": "刪除 Webhook {{name}}",
-    "testButton": "測試",
-    "testingButton": "正在測試…",
     "cancelAria": "取消編輯",
     "saveAria": "儲存變更",
     "deleteFunctionTitle": "刪除函數「{{name}}」？",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "刪除 Webhook「{{name}}」？",
     "deleteWebhookConsequence": "這會將該 Webhook 從結構描述中移除。",
     "inlineReturns": "內嵌（{{count}} 個欄位）",
-    "testAsRole": "以此角色測試：",
-    "testResultHeading": "測試結果：{{name}}",
     "close": "關閉",
-    "governanceApplied": "已套用治理",
     "savedMessage": "已儲存 {{type}}「{{name}}」",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "argKind": {
+      "column_value": "值",
+      "table_ref": "表參照",
+      "result_set": "結果集"
+    }
   }
 }

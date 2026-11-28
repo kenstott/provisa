@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionIcon, Popover, Stack, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
+import { ActionIcon, Anchor, Popover, Stack, Text } from "@mantine/core";
 import { CircleHelp } from "lucide-react";
 
 /**
@@ -30,11 +31,14 @@ export function PageHelp({
   paragraphs,
   ariaLabel,
   testId,
+  docs,
 }: {
   title: string;
   paragraphs: string[];
   ariaLabel: string;
   testId: string;
+  /** The page's documentation: the in-app Docs route and the link's text. */
+  docs: { href: string; label: string };
 }) {
   const [opened, setOpened] = useState(false);
   const pinned = useRef(false);
@@ -106,6 +110,9 @@ export function PageHelp({
               {p}
             </Text>
           ))}
+          <Anchor component={Link} to={docs.href} size="xs" data-testid={`${testId}-docs`}>
+            {docs.label}
+          </Anchor>
         </Stack>
       </Popover.Dropdown>
     </Popover>

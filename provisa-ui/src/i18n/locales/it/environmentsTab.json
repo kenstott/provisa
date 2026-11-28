@@ -2,6 +2,8 @@
   "environmentsTab": {
     "title": "DataOps",
     "tabEnvironments": "Ambienti",
+    "noEnvironments": "Ancora nessun ambiente.",
+    "noMatch": "Nessun ambiente corrisponde al filtro.",
     "tabRequests": "Richieste di merge",
     "tabRepository": "Repository",
     "tabIntegration": "Integrazione",
@@ -152,8 +154,14 @@
     "rebuild": "Ricostruisci",
     "rebuilt": "Il modello di {{env}} è stato nuovamente sottoposto a commit nel repository.",
     "rebuildFailed": "{{env}} è ancora disallineato, perché il commit non è andato a buon fine.",
+    "protect": "Proteggi",
+    "unprotect": "Rimuovi protezione",
     "stageTitle": "Fase",
     "stageHelp": "Dichiara a cosa serve questo ambiente: produzione, preproduzione, test o sviluppo. L'ambiente originale dell'organizzazione parte come produzione e uno nuovo come sviluppo; qualsiasi numero di ambienti può condividere una fase.",
-    "stageHelp2": "La fase identifica l'ambiente nel selettore, nei report e nelle esportazioni di catalogo e di lineage. Non cambia mai ciò che qualcuno può fare qui: questo dipende solo dai ruoli assegnati nell'ambiente."
+    "stageHelp2": "La fase identifica l'ambiente nel selettore, nei report e nelle esportazioni di catalogo e di lineage. Non cambia mai ciò che qualcuno può fare qui: questo dipende solo dai ruoli assegnati nell'ambiente.",
+    "filterPlaceholder": "Filtra ambienti",
+    "closeForm": "Chiudi il modulo",
+    "newEnvironment": "Nuovo ambiente",
+    "panelLabel": "Ambiente"
   }
 }

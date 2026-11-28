@@ -50,6 +50,7 @@ from provisa.compiler.sql_types import (
     JoinMeta,  # noqa: F401 — re-exported; many modules import JoinMeta from sql_gen
     StatementSources,
     TableMeta,  # noqa: F401 — re-exported; many modules import TableMeta from sql_gen
+    registered_type,
 )
 from provisa.compiler.sql_rewrite import (
     _q,
@@ -67,7 +68,6 @@ from provisa.compiler.sql_where import (
     _VIRTUAL_COLS,
     _compile_order_by,
     _compile_where,
-    _explicit_limit,
     _extract_value,
     _has_joins,
     _below_takes_lateral_args,
@@ -76,7 +76,7 @@ from provisa.compiler.sql_where import (
 )
 from provisa.compiler.sql_selection import (
     _build_gql_selection,
-    _build_rel_json_expr,
+    rel_read,
     _collect_nested_columns,
     _lateral_join,
 )
@@ -225,37 +225,23 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
-                _agg_limit = _explicit_limit(sel, variables) or join_meta.default_limit
-                _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
-                _from_clause = f"{_target_ref} {_q(join_alias)}"
-                _where_expr = f"{tgt_expr} = {src_expr}"
-                if hop is not None:
-                    _from_clause = hop.from_clause(_from_clause)
-                    _where_expr = hop.to_source
                 _rel_key = sel.alias.value if sel.alias else sel_name
-                _pv = (
-                    join_meta.child_src_val
-                    if join_meta.child_src_val is not None
-                    else (src_expr if join_meta.source_column_type != "integer" else None)
-                )
                 _json_text: set[str] = set()
-                json_expr, alias_counter = _build_rel_json_expr(
-                    sel.selection_set.selections,
+                json_expr, read_join, alias_counter = rel_read(
+                    sel,
+                    join_meta,
                     ctx,
-                    join_meta.target.type_name,
-                    join_meta.target,
                     join_alias,
-                    _from_clause,
-                    _where_expr,
-                    join_meta.cardinality,
-                    _agg_limit,
+                    src_expr,
+                    tgt_expr,
+                    hop,
                     use_catalog,
                     alias_counter,
                     sources,
                     variables,
-                    parent_src_val=_pv,
                     json_text=_json_text,
                 )
+                join_clauses.append(read_join)
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(
                     ColumnRef(
@@ -386,6 +372,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     nested_in=None,
                     json=(table.table_id, phys_name.lower()) in ctx.json_columns,
                     integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+                    data_type=registered_type(ctx, table.table_id, phys_name),
                 )
             )
 
@@ -627,6 +614,7 @@ def _compile_connection_field(  # REQ-218
                 None,
                 json=(table.table_id, phys_name.lower()) in ctx.json_columns,
                 integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+                data_type=registered_type(ctx, table.table_id, phys_name),
             )
         )
 
@@ -643,7 +631,12 @@ def _compile_connection_field(  # REQ-218
     for sc in sort_columns:
         if sc not in [c.field_name for c in columns]:
             select_parts.append(_q(sc))
-            columns.append(ColumnRef(None, sc, sc, None))
+            phys_sc = ctx.exposed_to_physical.get((table.table_id, sc), sc)
+            columns.append(
+                ColumnRef(
+                    None, sc, sc, None, data_type=registered_type(ctx, table.table_id, phys_sc)
+                )
+            )
 
     sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
 

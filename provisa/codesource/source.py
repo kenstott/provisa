@@ -20,6 +20,9 @@ configuration in its ``mapping`` (the source model's type-specific slot):
                    "filename": <the name of the file it was uploaded from, when known>}
                   {"kind": "directory", "path": <a directory on this server>} (REQ-2121): read
                    where it is, under the operator's allowed directories, single-tenant only
+                  {"kind": "entered", "source": <the code's text>, "dependencies": [<lines>]}
+                   (REQ-1993, amended 2026-11-25): written in the source form, kept in the model,
+                   and run as an uploaded archive of it is (provisa/codesource/entered.py)
                   {"kind": "builtin"} (REQ-2267): an openapi or graphql_remote source's code,
                    Provisa's own, written by its save into a server-owned directory
                    (provisa/codesource/builtin.py)
@@ -38,7 +41,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,23 +48,26 @@ from typing import TYPE_CHECKING, Any
 from provisa.codesource import remote_sources, services
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.bundle import content_hash as hash_of
+from provisa.codesource.entered import ENTERED
 from provisa.codesource.install import DIRECTORY_SKIPPED, DirectoryCode, GitCode, Lockfile
 from provisa.codesource.languages import BUILTIN_KIND, BUILTIN_TYPES, CODE_SOURCE_TYPES, LANGUAGES
 from provisa.codesource.manifest import Manifest
 from provisa.codesource.worker import HostCommand, Worker, pool
 
 if TYPE_CHECKING:
+    from provisa.codesource.lifecycle import Setup
     from provisa.core.database import Database
     from provisa.core.package_registries import Resolved
 
 __all__ = ["CODE_SOURCE_TYPES", "CodeConfig", "Context", "Prepared", "prepare"]
 
 #: The references every language's code may be, beside its own package kind, and their fields.
-_SHARED_KINDS = ("git", "upload", "directory")
+_SHARED_KINDS = ("git", "upload", "directory", ENTERED)
 _CODE_FIELDS = {
     "git": ("repository", "commit"),
     "upload": ("upload",),
     "directory": ("path",),
+    ENTERED: ("source",),
 }
 _PACKAGE_FIELDS = ("package", "version")
 #: REQ-2121: a code directory is read where it is, never pinned to a content hash.
@@ -138,6 +143,10 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         )
     if code["kind"] == DIRECTORY:
         code["path"] = str(checked_directory(code["path"]))
+    if code["kind"] == ENTERED:
+        from provisa.codesource.entered import dependencies_of
+
+        dependencies_of(code)  # a list that is not one is refused when the source is read
     lockfile = mapping.get("lockfile") or None
     return CodeConfig(
         language=source_type,
@@ -237,7 +246,7 @@ class Prepared:
     #: REQ-2131: how many workers it runs in this process (``CodeConfig.workers``).
     workers: int = 1
     #: REQ-2221: what gives its remote host its setup values; None when its code has no @on-start.
-    setup: Callable[[], dict[str, Any]] | None = None
+    setup: Setup | None = None
 
     def worker(self, slot: int = 0) -> Worker:
         """Its worker number ``slot`` of :attr:`workers` (REQ-2131); one call that needs one
@@ -294,6 +303,11 @@ async def _code_reference(config: CodeConfig, ctx: Context) -> Any:  # the langu
         return GitCode(code["repository"], code["commit"], code.get("subdirectory", ""))
     if code["kind"] == DIRECTORY:
         return DirectoryCode(code["path"])
+    if code["kind"] == ENTERED:
+        from provisa.codesource.entered import code_of
+
+        # REQ-1993 (amended 2026-11-25): the entered code goes on as an upload of it does.
+        return code_of(language, code)
     return await uploads.read(ctx.admin_db, ctx.org_id, code["upload"])
 
 

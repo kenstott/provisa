@@ -126,8 +126,9 @@ if [ "$pull_splunk" = "pull-splunk" ]; then
   _pull_with_retry docker pull splunk/splunk:latest
 fi
 
-# zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
-docker compose -f docker-compose.core.yml build zaychik
+# zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest). A lane loads the primed
+# image (.github/actions/zaychik-image) first; the build runs only when it is absent.
+docker image inspect zaychik:latest > /dev/null 2>&1 || docker compose -f docker-compose.core.yml build zaychik
 
 # trino-worker stays at replicas: 0 — the coordinator alone answers this lane's queries and
 # a second JVM would compete for RAM with Trino's 7g limit, the Vite dev server's 4 GB heap
@@ -148,6 +149,17 @@ for pair in HIVE_WAREHOUSE:.e2e-hive-warehouse FILE_LAKE:.e2e-file-lake SHAREPOI
   echo "$var=$value" >> "$GITHUB_ENV"
 done
 mkdir -p "$PROVISA_E2E_HIVE_WAREHOUSE_HOST" "$PROVISA_E2E_FILE_LAKE_HOST"
+
+# REQ-294: a running Provisa never fetches a connector bundle. The Trino lane's
+# sharepoint-connector.spec.ts and splunk-connector.spec.ts register sources served by the
+# pgwire-sharepoint and pgwire-splunk bundles, staged here from the pinned GitHub release. Unstaged,
+# registerTable is refused with BundleNotStaged (release 513 run 45676276094).
+if [ "$cert" = sharepoint-cert ]; then
+  uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only sharepoint --github-release
+fi
+if [ "$pull_splunk" = pull-splunk ]; then
+  uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only splunk --github-release
+fi
 
 docker compose -f docker-compose.core.yml -f docker-compose.e2e-mounts.yml up -d --wait \
   postgres trino minio zaychik

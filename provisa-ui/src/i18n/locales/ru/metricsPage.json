@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "Метрики",
+    "filterPlaceholder": "Фильтр метрик…",
     "newMetric": "+ Метрика",
     "loading": "Загрузка...",
     "empty": "Метрики ещё не зарегистрированы.",
+    "noMatch": "Нет метрик, соответствующих фильтру.",
     "colName": "Имя",
     "colExpression": "Выражение",
     "colDatatype": "Тип данных",

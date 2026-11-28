@@ -16,12 +16,15 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { ActionIcon, Checkbox, Code, Group, Stack, Table, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -35,6 +38,7 @@ import {
   LIST_WRAP_MIN_CHARS,
 } from "./listCellLimits";
 import { Tip } from "../Tip";
+import { EntityLink } from "../EntityLink";
 import { useLeaveGuard } from "./panelLeave";
 import { DeletingKeysContext } from "./panelActions";
 import { ListSelectionContext, type ListSelection } from "./listSelection";
@@ -47,6 +51,66 @@ const ColumnCaps = createContext<{
   caps: ReadonlyArray<number | undefined>;
   tell: (caps: ReadonlyArray<number | undefined>) => void;
 } | null>(null);
+
+/**
+ * The columns that give way when the list is too narrow for them, by position: told by the head,
+ * read by the head and the rows, which draw the hidden ones' cells hidden.
+ */
+const ColumnsHidden = createContext<{
+  hidden: ReadonlySet<number>;
+  tell: (order: ReadonlyArray<number | undefined>) => void;
+} | null>(null);
+
+/**
+ * The positions of the columns that give way, in the order they do: lowest `hide` first, and for
+ * the same `hide`, the rightmost first.
+ */
+function hideOrder(order: ReadonlyArray<number | undefined>): number[] {
+  return order
+    .map((rank, at) => ({ rank, at }))
+    .filter((c): c is { rank: number; at: number } => c.rank !== undefined)
+    .sort((a, b) => a.rank - b.rank || b.at - a.at)
+    .map((c) => c.at);
+}
+
+/**
+ * How many of the columns that give way are hidden: as few as keep the list inside its room. Each
+ * time the list changes width while it is wider than its room, one more is hidden, until it fits or
+ * none is left; when the room changes width, all are shown again and the count is found anew.
+ */
+function useHiddenColumns(
+  order: ReadonlyArray<number | undefined>,
+  room: RefObject<HTMLDivElement | null>,
+  list: RefObject<HTMLTableElement | null>,
+): ReadonlySet<number> {
+  const positions = useMemo(() => hideOrder(order), [order]);
+  const [count, setCount] = useState(0);
+  // The count the list was last drawn with: two reports before the next drawing hide one column,
+  // not two, since both measured the same drawing.
+  const drawn = useRef(0);
+  // Set as the drawing is committed, before the browser reports the new sizes.
+  useLayoutEffect(() => {
+    drawn.current = count;
+  }, [count]);
+  useEffect(() => {
+    const box = room.current;
+    const table = list.current;
+    if (!box || !table || positions.length === 0) return;
+    let width = box.clientWidth;
+    const watch = new ResizeObserver(() => {
+      if (box.clientWidth !== width) {
+        width = box.clientWidth;
+        setCount(0);
+      } else if (table.offsetWidth > box.clientWidth + 1) {
+        setCount(Math.min(drawn.current + 1, positions.length));
+      }
+    });
+    watch.observe(box);
+    watch.observe(table);
+    return () => watch.disconnect();
+  }, [room, list, positions]);
+  return useMemo(() => new Set(positions.slice(0, count)), [positions, count]);
+}
 
 /**
  * REQ-1940: the one list style, taken from the Register Tables page. Every admin page that lists
@@ -78,6 +142,11 @@ const listMinWidth = (floor: number | undefined) =>
 export function ListTable({ children, testId, minWidth, style, selection }: ListTableProps) {
   const [caps, tell] = useState<ReadonlyArray<number | undefined>>([]);
   const columnCaps = useMemo(() => ({ caps, tell }), [caps]);
+  const room = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLTableElement>(null);
+  const [order, tellOrder] = useState<ReadonlyArray<number | undefined>>([]);
+  const hidden = useHiddenColumns(order, room, list);
+  const columnsHidden = useMemo(() => ({ hidden, tell: tellOrder }), [hidden]);
   // The rows a bulk delete is deleting are marked as a panel's delete marks its row.
   const panelDeleting = useContext(DeletingKeysContext);
   const bulkDeleting = selection?.deleting;
@@ -89,8 +158,9 @@ export function ListTable({ children, testId, minWidth, style, selection }: List
     [panelDeleting, bulkDeleting],
   );
   return (
-    <div className="table-scroll">
+    <div className="table-scroll" ref={room}>
       <Table
+        ref={list}
         className="data-table"
         data-list-table=""
         data-testid={testId}
@@ -106,9 +176,13 @@ export function ListTable({ children, testId, minWidth, style, selection }: List
         }
       >
         <ColumnCaps.Provider value={columnCaps}>
-          <ListSelectionContext.Provider value={selection ?? null}>
-            <DeletingKeysContext.Provider value={deleting}>{children}</DeletingKeysContext.Provider>
-          </ListSelectionContext.Provider>
+          <ColumnsHidden.Provider value={columnsHidden}>
+            <ListSelectionContext.Provider value={selection ?? null}>
+              <DeletingKeysContext.Provider value={deleting}>
+                {children}
+              </DeletingKeysContext.Provider>
+            </ListSelectionContext.Provider>
+          </ColumnsHidden.Provider>
         </ColumnCaps.Provider>
       </Table>
     </div>
@@ -124,6 +198,8 @@ export interface ListSortCol {
   cap?: number;
   /** The column's filter control (ColumnFilterMenu), drawn after its sort and group controls. */
   filter?: ReactNode;
+  /** The column gives way when the list is too narrow (`ListLabelCol.hide`). */
+  hide?: number;
 }
 
 /** A static header cell that needs a width. */
@@ -132,6 +208,12 @@ export interface ListLabelCol {
   width?: string;
   /** The most width, in pixels, this column asks for, where the list's own cap does not suit it. */
   cap?: number;
+  /**
+   * The column is of lower priority: when the list is too narrow for every column (a detail panel
+   * beside it), it is hidden before the list scrolls sideways or its short values wrap. The column
+   * with the lowest number goes first.
+   */
+  hide?: number;
 }
 
 function isLabelCol(c: ReactNode | ListSortCol | ListLabelCol): c is ListLabelCol {
@@ -242,16 +324,28 @@ export function ListHead<T = never>({
     told?.tell(stated.split(",").map((cap) => (cap === "" ? undefined : Number(cap))));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- told once for each set of caps
   }, [stated]);
+  const columnsHidden = useContext(ColumnsHidden);
+  const ranks = columns.map((c) => (isSortCol(c) || isLabelCol(c) ? (c.hide ?? "") : "")).join(",");
+  useEffect(() => {
+    columnsHidden?.tell(ranks.split(",").map((rank) => (rank === "" ? undefined : Number(rank))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- told once for each set of ranks
+  }, [ranks]);
+  const gone = columnsHidden?.hidden;
   const selection = useContext(ListSelectionContext);
   return (
     <Table.Thead>
       <Table.Tr>
         {selection && <SelectAllCell selection={selection} />}
         {columns.map((c, i) => {
+          const hiddenClass = gone?.has(i) ? HIDDEN_COLUMN : undefined;
           if (isSortCol(c)) {
             if (!sortGroup) throw new Error("ListHead: a { col } header needs sortGroup");
             return (
-              <Table.Th key={i} style={{ whiteSpace: "nowrap", width: c.width }}>
+              <Table.Th
+                key={i}
+                className={hiddenClass}
+                style={{ whiteSpace: "nowrap", width: c.width }}
+              >
                 {c.filter ? (
                   <Group gap={4} wrap="nowrap" component="span">
                     <ListSortCell state={sortGroup} col={c.col} />
@@ -265,7 +359,7 @@ export function ListHead<T = never>({
           }
           if (isLabelCol(c)) {
             return (
-              <Table.Th key={i} style={{ width: c.width }}>
+              <Table.Th key={i} className={hiddenClass} style={{ width: c.width }}>
                 {c.label}
               </Table.Th>
             );
@@ -453,6 +547,7 @@ export function ListRow({ children, testId, onClick, selected, itemKey, ...aria 
   // Beside a detail panel whose form has unsaved changes, choosing a row asks first.
   const guard = useLeaveGuard();
   const caps = useContext(ColumnCaps)?.caps ?? [];
+  const hidden = useContext(ColumnsHidden)?.hidden ?? NONE_HIDDEN;
   const selection = useContext(ListSelectionContext);
   return (
     <Table.Tr
@@ -467,7 +562,7 @@ export function ListRow({ children, testId, onClick, selected, itemKey, ...aria 
       title={deleting ? t("common.deleting") : aria.title}
     >
       {selection && <SelectRowCell selection={selection} rowKey={key} />}
-      {capCells(children, caps, { at: 0 })}
+      {capCells(children, caps, { at: 0 }, hidden)}
     </Table.Tr>
   );
 }
@@ -520,8 +615,24 @@ function SelectRowCell({ selection, rowKey }: { selection: ListSelection; rowKey
   );
 }
 
-/** Elements that only give text a look: text inside one of them is still a cell of text. */
-const TEXT_LOOKS: ReadonlySet<unknown> = new Set([Text, Code, "span", "code", "em", "strong", "b"]);
+/** The class of a header or cell whose column gave way (App.css). */
+const HIDDEN_COLUMN = "list-col-hidden";
+const NONE_HIDDEN: ReadonlySet<number> = new Set();
+
+/**
+ * Elements that only give text a look: text inside one of them is still a cell of text. An object's
+ * name drawn as its link (EntityLink, REQ-2277 rule 6) is held like any other name.
+ */
+const TEXT_LOOKS: ReadonlySet<unknown> = new Set([
+  Text,
+  Code,
+  EntityLink,
+  "span",
+  "code",
+  "em",
+  "strong",
+  "b",
+]);
 
 /**
  * The text of a cell that holds nothing but text -- bare, or inside one element that only gives
@@ -549,6 +660,7 @@ function capCells(
   children: ReactNode,
   caps: ReadonlyArray<number | undefined>,
   column: { at: number },
+  hidden: ReadonlySet<number>,
 ): ReactNode {
   return Children.map(children, (child) => {
     if (!isValidElement(child)) return child;
@@ -558,10 +670,17 @@ function capCells(
       style?: CSSProperties;
       colSpan?: number;
     }>;
-    if (cell.type === Fragment) return <>{capCells(cell.props.children, caps, column)}</>;
+    if (cell.type === Fragment) return <>{capCells(cell.props.children, caps, column, hidden)}</>;
     const cap = caps[column.at];
+    const gone = hidden.has(column.at);
     column.at += cell.props.colSpan ?? 1;
     if (cell.type !== Table.Td) return child;
+    // A column that gave way draws none of its cells.
+    if (gone) {
+      return cloneElement(cell, {
+        className: [cell.props.className, HIDDEN_COLUMN].filter(Boolean).join(" "),
+      });
+    }
     const text = cellText(cell.props.children);
     if (text === undefined) {
       // Whatever else the page drew is not cut: a control or a pill keeps its unbreakable width.

@@ -27,6 +27,7 @@ import {
 } from "react";
 import { UNSAFE_NavigationContext, useLocation, useSearchParams } from "react-router-dom";
 import { getStored, removeStored, setStored, storedKeys, viewer } from "../../lib/browserStorage";
+import { useDomainFilter } from "../../context/DomainFilterContext";
 
 interface DetailView {
   /** The page's route. */
@@ -47,8 +48,9 @@ interface DetailView {
 const TABLE_VIEW = {
   param: "table",
   tab: { param: "section", first: "identity" },
-  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab.
-  alsoClears: ["column", "open", "tab"],
+  // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab;
+  // REQ-2277: `profile` and `profileView` are the table's profile runs dialog and its result.
+  alsoClears: ["column", "open", "tab", "profile", "profileView"],
   alsoNames: ["open"],
 } as const;
 
@@ -58,10 +60,21 @@ export const DETAIL_VIEWS = {
   views: { route: "/views", ...TABLE_VIEW },
   relationships: { route: "/relationships", param: "relationship" },
   ontology: { route: "/context/ontology", param: "term" },
-  library: { route: "/context/documents", param: "document" },
+  // REQ-2208: ``at`` marks a section on the Sections tab (entityHref's ``section``).
+  library: {
+    route: "/context/documents",
+    param: "document",
+    tab: { param: "tab", first: "overview" },
+    alsoClears: ["at"],
+  },
   metrics: { route: "/metrics", param: "metric" },
-  // REQ-2158: a linked contract is the linked product's.
-  products: { route: "/data-products", param: "product", alsoClears: ["contract"] },
+  // REQ-2158: a linked contract is the linked product's; REQ-2277: so is a dataset's profile runs
+  // dialog (`table` names the dataset).
+  products: {
+    route: "/data-products",
+    param: "product",
+    alsoClears: ["contract", "table", "profile", "profileView"],
+  },
   // A role and a derived role share the page's list and its one panel: opening one closes the other.
   roles: {
     route: "/security/roles",
@@ -72,9 +85,27 @@ export const DETAIL_VIEWS = {
   derived: { route: "/security/roles", param: "derived", replaces: ["role", "section"] },
   rls: { route: "/security/rls", param: "rule" },
   commands: { route: "/commands", param: "command", tab: { param: "section", first: "command" } },
-  // REQ-2240: a domain's row and a tag's are marked on their lists, where they are changed.
+  // REQ-2240: a domain's row is marked on its list, where it is changed.
   domains: { route: "/admin/domains", param: "domain" },
+  // REQ-2277: a tag's panel, on Admin's Tags (where it is changed) and the Context group's.
   tags: { route: "/admin/tags", param: "tag" },
+  classification: { route: "/context/classification", param: "kind" },
+  sync: { route: "/context/sync", param: "entry" },
+  // REQ-2277: the admin pages that manage objects, each a list beside its object's panel.
+  secrets: { route: "/admin/secrets", param: "secret" },
+  mySecrets: { route: "/admin/my-secrets", param: "secret" },
+  packageRegistries: { route: "/admin/package-registries", param: "registry" },
+  containerRegistries: { route: "/admin/container-registries", param: "registry" },
+  // A report is named by its table name, as links into a report always have named it.
+  reports: { route: "/admin/reports", param: "report" },
+  // An org and an invite link share the page's one panel, each on its own tab.
+  orgs: { route: "/admin/orgs", param: "org", replaces: ["invite"] },
+  orgInvites: { route: "/admin/orgs", param: "invite", replaces: ["org"] },
+  triggers: { route: "/admin/scheduled-tasks", param: "trigger" },
+  requests: { route: "/admin/requests", param: "request" },
+  team: { route: "/team", param: "member" },
+  platformRegions: { route: "/admin/platform", param: "region" },
+  environments: { route: "/admin/environments", param: "environment" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;
@@ -164,6 +195,16 @@ export interface DetailParam {
    * `replace` none. With `only`, closes it only while it shows that object (one just deleted).
    */
   close: (how?: { only?: string; replace?: boolean }) => void;
+  /**
+   * Sets (or, with null, removes) another parameter of the page -- its tab (REQ-2277) -- through the
+   * same write as the panel's, so it composes with an open or a close in the same handler.
+   */
+  setParam: (name: string, value: string | null, how?: { replace?: boolean }) => void;
+  /**
+   * Names the object a parameter naming it another way (`alsoNames`) points to by `id` instead,
+   * replacing the entry: the same object, so its tab and marks stay (REQ-2277 rule 4).
+   */
+  resolve: (id: string) => void;
 }
 
 // The router applies a new location as a transition, after the page's own state changes made in
@@ -281,7 +322,23 @@ export function useDetailParam(page: DetailPage): DetailParam {
       }, how?.replace),
     [write, view],
   );
-  return { id, tab, open, setTab, close };
+  const setParam = useCallback(
+    (name: string, value: string | null, how?: { replace?: boolean }) =>
+      write((p) => {
+        if (value === null) p.delete(name);
+        else p.set(name, value);
+      }, how?.replace),
+    [write],
+  );
+  const resolve = useCallback(
+    (next: string) =>
+      write((p) => {
+        for (const other of view.alsoNames ?? []) p.delete(other);
+        p.set(view.param, next);
+      }, true),
+    [write, view],
+  );
+  return { id, tab, open, setTab, close, setParam, resolve };
 }
 
 /**
@@ -333,27 +390,82 @@ function scrollToOpenRow(): boolean {
   return true;
 }
 
+/**
+ * REQ-2277 rule 9: why the list leaves out an item the page holds, as `DetailList.leftOut` says it.
+ * `bringIn` is the one action that brings it into view: its domain added to the view, the search or
+ * a filter cleared.
+ */
+export interface LeftOut {
+  /** The item's name, as its row would show it. */
+  name: string;
+  /** Each narrowing that leaves it out, as a phrase ("the search “ab” leaves it out"). */
+  reasons: readonly string[];
+  /** The label of `bringIn`. */
+  action: string;
+  bringIn: () => void;
+}
+
+/** The item the address names that the list leaves out: said once above the list, with its action. */
+export interface OutOfList extends LeftOut {
+  /** Drops the item from the address (and from what the page remembers). */
+  dismiss: () => void;
+}
+
+/** What a list page shows, against which its detail is shown (REQ-2277 rule 9). */
+export interface DetailList {
+  /**
+   * The keys, as the address names them, of the rows the list shows now: after the domains in view,
+   * the search and every filter. `null` while it loads (or while the page shows something else in
+   * the detail's place, so nothing is reopened meanwhile).
+   */
+  shown: readonly string[] | null;
+  /**
+   * Why the list leaves out `key`: an item the page holds that a narrowing hides. `null` for one it
+   * does not hold (deleted, not readable by this viewer, not yet read).
+   */
+  leftOut: (key: string) => LeftOut | null;
+}
+
 export interface RememberedDetailParam extends DetailParam {
   /**
    * Closes the panel; with `keep`, the item is only set aside (a page showing something else in its
    * place, to open it again) and stays remembered.
    */
   close: (how?: { only?: string; replace?: boolean; keep?: true }) => void;
+  /** The item the address names while the list leaves it out; its detail is not shown. */
+  outOfList: OutOfList | null;
 }
 
 /**
- * `useDetailParam` for a list page, remembering the item open (REQ-2260). `listed` is the keys, as
- * the address names them, of every item the page's loaded list holds; `null` while it loads (or
- * while the page shows something else in the detail's place, so nothing is reopened meanwhile).
+ * `useDetailParam` for a list page, remembering the item open (REQ-2260), and showing it only while
+ * it is a row of the list the page shows (REQ-2277 rule 9). `id` is the open item only while
+ * `list.shown` holds it: an address (a link, a remembered item) naming one the list leaves out opens
+ * no detail, and `outOfList` says which and why, for the page to say once above the list. A filter,
+ * the search or the domains in view removing the open item from the list closes its detail and
+ * takes it out of the address.
  */
-export function useRememberedDetail(
-  page: DetailPage,
-  listed: readonly string[] | null,
-): RememberedDetailParam {
+export function useRememberedDetail(page: DetailPage, list: DetailList): RememberedDetailParam {
   const detail = useDetailParam(page);
   const { search } = useLocation();
   const named = detail.id !== null || namedIn(page, search) !== null;
   const key = memoryKey(page);
+  // While the reader's domains are still being restored, the list is not yet the one in view.
+  const { domainsPending } = useDomainFilter();
+  const shown = domainsPending ? null : list.shown;
+  const leftOut = useRef(list.leftOut);
+  useLayoutEffect(() => {
+    leftOut.current = list.leftOut;
+  });
+
+  // The address's item, once the list has shown it as a row: from then, the list leaving it out is
+  // a filter removing it, not a link to an item out of view.
+  const [seen, setSeen] = useState<string | null>(null);
+  const urlId = detail.id;
+  const inList = urlId !== null && shown !== null && shown.includes(urlId);
+  if (inList && seen !== urlId) setSeen(urlId);
+  // While the list is read again, the item it last showed stays open.
+  const visible = urlId !== null && (inList || (shown === null && seen === urlId));
+  const removed = urlId !== null && urlId === seen && shown !== null && !inList;
 
   // The page arriving (mounted, or turned into another page or viewer's) with no item named looks
   // up the item it last had open, to reopen once the list is loaded.
@@ -362,13 +474,13 @@ export function useRememberedDetail(
   const arrived = useRef<string | null>(null);
   const was = useRef<{ key: string; id: string | null } | null>(null);
   const keeping = useRef(false);
-  const { id, open, close: closeDetail } = detail;
+  const { open, close: closeDetail } = detail;
   const close = useCallback(
     (how?: { only?: string; replace?: boolean; keep?: true }) => {
-      keeping.current = how?.keep === true && id !== null;
+      keeping.current = how?.keep === true && urlId !== null;
       closeDetail({ only: how?.only, replace: how?.replace });
     },
-    [closeDetail, id],
+    [closeDetail, urlId],
   );
 
   useLayoutEffect(() => {
@@ -384,15 +496,23 @@ export function useRememberedDetail(
   // not closing it, and nothing is forgotten while the remembered item waits for the list.
   useEffect(() => {
     const before = was.current;
-    was.current = { key, id };
+    was.current = { key, id: urlId };
     const kept = keeping.current;
     keeping.current = false;
-    if (id !== null) {
-      setStored(key, id);
+    if (urlId !== null) {
+      setStored(key, urlId);
       return;
     }
     if (before !== null && before.key === key && before.id !== null && !kept) removeStored(key);
-  }, [key, id]);
+  }, [key, urlId]);
+
+  // The open item filtered out of the list: its detail closes, replacing the entry.
+  useEffect(() => {
+    if (!removed || urlId === null) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the item has left the list
+    setSeen(null);
+    closeDetail({ only: urlId, replace: true });
+  }, [removed, urlId, closeDetail]);
 
   useEffect(() => {
     if (restoring === null) return;
@@ -401,23 +521,32 @@ export function useRememberedDetail(
       setRestoring(null); // eslint-disable-line react-hooks/set-state-in-effect -- see above
       return;
     }
-    if (listed === null) return;
+    if (shown === null) return;
     setRestoring(null);
-    if (listed.includes(restoring.id)) {
+    // An item the list leaves out is named in the address all the same: the page says why it is
+    // not shown. One the page no longer holds is forgotten.
+    if (shown.includes(restoring.id) || leftOut.current(restoring.id) !== null) {
       open(restoring.id, { replace: true });
       setScrolling(true);
     } else {
       removeStored(key);
     }
-  }, [restoring, key, named, listed, open]);
+  }, [restoring, key, named, shown, open]);
 
   // The row is drawn after the detail opens: looked for as the detail and the list change until it
   // is there; the detail closed in the meantime ends the search.
+  const id = visible ? urlId : null;
   useEffect(() => {
     if (!scrolling) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- stops once the row is in view
-    if (id === null || scrollToOpenRow()) setScrolling(false);
-  }, [scrolling, id, listed]);
+    if (urlId === null || scrollToOpenRow()) setScrolling(false);
+  }, [scrolling, urlId, id, shown]);
 
-  return { ...detail, close };
+  const out =
+    urlId !== null && shown !== null && !inList && seen !== urlId ? list.leftOut(urlId) : null;
+  const outOfList =
+    out === null || urlId === null
+      ? null
+      : { ...out, dismiss: () => close({ only: urlId, replace: true }) };
+  return { ...detail, id, close, outOfList };
 }

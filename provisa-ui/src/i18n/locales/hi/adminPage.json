@@ -193,8 +193,8 @@
     "colDescription": "विवरण",
     "colGqlAlias": "GQL उपनाम",
     "colSteward": "स्टीवर्ड",
-    "colActions": "क्रियाएँ",
     "noDomains": "कोई डोमेन परिभाषित नहीं",
+    "noDomainsMatch": "फ़िल्टर से मेल खाता कोई डोमेन नहीं",
     "deleteDomain": "डोमेन {{id}} हटाएँ",
     "resolveSteward": "दिखाएँ कि डोमेन {{id}} का स्टीवर्ड कौन है",
     "pageIndicator": "पृष्ठ {{page}} / {{total}}",
@@ -225,6 +225,9 @@
     "apolloSubgraphNameHint": "वह नाम जिससे सुपरग्राफ़ इस सबग्राफ़ को पहचानता है।",
     "apolloSubgraphRole": "इस भूमिका के रूप में कार्य करता है",
     "apolloSubgraphRoleHint": "सुपरग्राफ़ अपने कॉलर की पहचान आगे नहीं भेज सकता, इसलिए राउटर इस भूमिका से साइन इन करता है, और इस भूमिका के पंक्ति नियम, मास्क और दृश्यता उसके द्वारा लाई गई हर एंटिटी पर लागू होते हैं।",
-    "stewardsHint": "डोमेन के लिए उत्तरदायी लोग; प्रत्येक के पास domain_steward वाली भूमिका होनी चाहिए।"
+    "stewardsHint": "डोमेन के लिए उत्तरदायी लोग; प्रत्येक के पास domain_steward वाली भूमिका होनी चाहिए।",
+    "domainsFilterPlaceholder": "डोमेन फ़िल्टर करें",
+    "closeForm": "फ़ॉर्म बंद करें",
+    "domainPanel": "डोमेन"
   }
 }

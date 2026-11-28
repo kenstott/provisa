@@ -6,7 +6,6 @@
     "restoreDetail": "שחזור החלונית",
     "closeDetail": "סגירת חלונית הפרטים",
     "backToList": "חזרה לרשימה",
-    "backToCommand": "חזרה לפקודה",
     "panelNewCommand": "פקודה חדשה",
     "title": "פקודות",
     "loading": "טוען פקודות...",
@@ -39,6 +38,8 @@
     "colTimeout": "Timeout",
     "noFunctions": "לא רשומות פונקציות",
     "noWebhooks": "לא רשומים Webhooks",
+    "noFunctionsMatch": "אין פונקציות התואמות לסינון",
+    "noWebhooksMatch": "אין Webhooks התואמים לסינון",
     "customSchema": "ערכת נתונים",
     "dash": "—",
     "all": "הכול",
@@ -54,8 +55,6 @@
     "editAria": "עריכת {{name}}",
     "deleteFunctionAria": "מחיקת הפונקציה {{name}}",
     "deleteWebhookAria": "מחיקת ה-Webhook {{name}}",
-    "testButton": "בדיקה",
-    "testingButton": "בודק...",
     "cancelAria": "ביטול העריכה",
     "saveAria": "שמירת השינויים",
     "deleteFunctionTitle": "למחוק את הפונקציה \"{{name}}\"?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "למחוק את ה-Webhook \"{{name}}\"?",
     "deleteWebhookConsequence": "פעולה זו תסיר את ה-Webhook מהסכמה.",
     "inlineReturns": "מוטבע ({{count}} שדות)",
-    "testAsRole": "בדיקה בתפקיד:",
-    "testResultHeading": "תוצאת בדיקה: {{name}}",
     "close": "סגירה",
-    "governanceApplied": "ממשל הוחל",
     "savedMessage": "נשמר {{type}} \"{{name}}\"",
     "yes": "כן",
-    "no": "לא"
+    "no": "לא",
+    "argKind": {
+      "column_value": "ערך",
+      "table_ref": "הפניה לטבלה",
+      "result_set": "קבוצת תוצאות"
+    }
   }
 }

@@ -3,6 +3,7 @@
     "help": "De registers waarnaar de gebouwde image van een codebron kan worden gepusht, om die op een externe host te draaien. Elk veld kan een waarde of een secretverwijzing zoals ${secret:registry_token} bevatten. Zonder register wordt een gebouwde image in plaats daarvan gedownload.",
     "add": "Containerregister toevoegen",
     "none": "Geen containerregisters. Gebouwde images kunnen nog steeds worden gedownload.",
+    "noMatch": "Geen containerregisters komen overeen met het filter.",
     "address": "Register en namespace",
     "addressHelp": "Het register, met zijn poort als het er een heeft, en de repository-namespace waaronder images worden gepusht, bijvoorbeeld ghcr.io/example of registry.example.com:5000/data.",
     "username": "Gebruikersnaam",
@@ -14,6 +15,10 @@
     "defaultHelp": "Een build pusht hierheen, tenzij die een ander register noemt. Een organisatie heeft één standaardregister.",
     "saved": "Opgeslagen",
     "removed": "Verwijderd",
-    "remove": "Verwijderen"
+    "remove": "Verwijderen",
+    "filterPlaceholder": "Registers filteren",
+    "closeForm": "Formulier sluiten",
+    "edit": "{{name}} bewerken",
+    "removeConfirm": "{{name}} verwijderen? Builds die ernaar pushen kunnen hun image niet meer pushen."
   }
 }

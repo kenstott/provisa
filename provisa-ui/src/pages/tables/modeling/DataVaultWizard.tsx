@@ -20,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { FieldGroup, FormEntry, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry } from "../../../components/form/FormLayout";
 import type { Domain } from "../../../types/admin";
 import { ModelReview } from "./ModelReview";
 import { ChoiceField, ChoicesField, DomainField, TextField } from "./pickers";
@@ -35,7 +35,8 @@ import {
   type VaultRule,
   type VaultSatellite,
 } from "./plan";
-import { AddButton, ListHead, StepHead, WizardFooter } from "./WizardFrame";
+import { reachableStep, useStepParam } from "../../../hooks/useStepParam";
+import { AddButton, ListHead, WizardStep, WizardFooter } from "./WizardFrame";
 
 const STEPS = ["hubs", "links", "satellites", "rules", "review"] as const;
 const GROUPINGS: Grouping[] = ["source", "rateOfChange", "sensitivity"];
@@ -508,7 +509,10 @@ export function DataVaultWizard({
   const { t } = useTranslation();
   const tables = useModelTables();
   const [a, setA] = useState<VaultAnswers>(EMPTY);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useStepParam(
+    STEPS.length,
+    reachableStep(STEPS, (sid) => missing(sid as (typeof STEPS)[number], a)),
+  );
   const [problem, setProblem] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const set = (patch: Partial<VaultAnswers>) => setA((prev) => ({ ...prev, ...patch }));
@@ -538,6 +542,12 @@ export function DataVaultWizard({
   ];
 
   const id = STEPS[step];
+  const steps = STEPS.map((sid) => ({
+    key: sid,
+    label: t(
+      sid === "review" ? "modelingWizard.review.title" : `modelingWizard.vault.${sid}.title`,
+    ),
+  }));
   const next = () => {
     const gap = missing(id, a);
     if (gap) {
@@ -557,7 +567,8 @@ export function DataVaultWizard({
       <ModelReview
         plan={plan}
         index={step}
-        count={STEPS.length}
+        steps={steps}
+        onStep={setStep}
         onBack={back}
         onCancel={onCancel}
         onDone={onSuccess}
@@ -567,14 +578,14 @@ export function DataVaultWizard({
   }
 
   return (
-    <FormLayout>
-      <StepHead
-        index={step}
-        count={STEPS.length}
-        title={t(`modelingWizard.vault.${id}.title`)}
-        intro={t(`modelingWizard.vault.${id}.intro`)}
-        testId={`wizard-step-${id}`}
-      />
+    <WizardStep
+      index={step}
+      steps={steps}
+      onStep={setStep}
+      title={t(`modelingWizard.vault.${id}.title`)}
+      intro={t(`modelingWizard.vault.${id}.intro`)}
+      testId={`wizard-step-${id}`}
+    >
       {id === "hubs" && (
         <>
           <DomainField
@@ -731,6 +742,6 @@ export function DataVaultWizard({
         onCancel={onCancel}
         problem={problem}
       />
-    </FormLayout>
+    </WizardStep>
   );
 }

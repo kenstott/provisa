@@ -43,6 +43,7 @@
     "suggestHelpTitle": "Relaciones sugeridas",
     "suggestHelpBody": "Recorre las tablas registradas de todos los dominios buscando joins probables y los lista como candidatos. No se declara nada hasta que aceptas uno, y un candidato rechazado queda fuera de la lista hasta que limpias los rechazos.",
     "empty": "Aún no hay relaciones registradas.",
+    "noMatch": "Ninguna relación coincide con el filtro.",
     "detailPanel": "Detalles de la relación",
     "panelNewRelationship": "Nueva relación",
     "backToRelationship": "Volver a {{id}}"

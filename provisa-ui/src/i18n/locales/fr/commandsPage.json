@@ -6,7 +6,6 @@
     "restoreDetail": "Restaurer le panneau",
     "closeDetail": "Fermer le panneau de détails",
     "backToList": "Retour à la liste",
-    "backToCommand": "Retour à la commande",
     "panelNewCommand": "Nouvelle commande",
     "title": "Commandes",
     "loading": "Chargement des commandes…",
@@ -39,6 +38,8 @@
     "colTimeout": "Délai d'expiration",
     "noFunctions": "Aucune fonction enregistrée",
     "noWebhooks": "Aucun webhook enregistré",
+    "noFunctionsMatch": "Aucune fonction ne correspond au filtre",
+    "noWebhooksMatch": "Aucun webhook ne correspond au filtre",
     "customSchema": "jeu de données",
     "dash": "—",
     "all": "tous",
@@ -54,8 +55,6 @@
     "editAria": "Modifier {{name}}",
     "deleteFunctionAria": "Supprimer la fonction {{name}}",
     "deleteWebhookAria": "Supprimer le webhook {{name}}",
-    "testButton": "Tester",
-    "testingButton": "Test en cours…",
     "cancelAria": "Annuler la modification",
     "saveAria": "Enregistrer les modifications",
     "deleteFunctionTitle": "Supprimer la fonction « {{name}} » ?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "Supprimer le webhook « {{name}} » ?",
     "deleteWebhookConsequence": "Le webhook sera retiré du schéma.",
     "inlineReturns": "inline ({{count}} champs)",
-    "testAsRole": "Tester avec le rôle :",
-    "testResultHeading": "Résultat du test : {{name}}",
     "close": "Fermer",
-    "governanceApplied": "Gouvernance appliquée",
     "savedMessage": "{{type}} « {{name}} » enregistré",
     "yes": "Oui",
-    "no": "Non"
+    "no": "Non",
+    "argKind": {
+      "column_value": "valeur",
+      "table_ref": "référence de table",
+      "result_set": "jeu de résultats"
+    }
   }
 }

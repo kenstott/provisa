@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 
 const auth = vi.hoisted(() => ({
   loading: false,
@@ -113,6 +114,7 @@ const PLATFORM: PlatformRegions = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   auth.capabilities = ["org_settings"];
   auth.activeOrgId = "acme";
   choices.value = { regions: ["eu"], connected: "eu" };
@@ -296,14 +298,34 @@ describe("the Platform page", () => {
 
   it("holds the deployment's Redis and materialize-store panels", async () => {
     // REQ-1327: one page, one layer. The Cache page is the org's; these are the platform's.
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-section-stores"));
     expect(await screen.findByTestId("platform-redis-panel")).toBeInTheDocument();
     expect(screen.getByTestId("platform-materialize-panel")).toBeInTheDocument();
   });
 
+  it("finds each region by every text its row shows", async () => {
+    fetchPlatform.mockResolvedValue({ ...PLATFORM, regions: [EU_REGION, US_REGION] });
+    render(<PlatformRegionsTab title="Admin — Platform" />);
+    await screen.findByTestId("platform-region-row-us");
+    await expectFilterFindsEveryCell(screen.getByTestId("platform-regions-filter"), () =>
+      screen.getByTestId("platform-regions-table"),
+    );
+  });
+
+  it("says nothing matches when the filter empties the list", async () => {
+    render(<PlatformRegionsTab title="Admin — Platform" />);
+    await screen.findByTestId("platform-region-row-eu");
+    fireEvent.change(screen.getByTestId("platform-regions-filter"), {
+      target: { value: "no-such-region" },
+    });
+    expect(screen.getByTestId("platform-regions-empty")).toHaveTextContent(
+      "No regions match the filter.",
+    );
+  });
+
   it("lists the regions with their purposes explained and says changes apply on restart", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     const row = await screen.findByTestId("platform-region-row-eu");
     expect(row).toHaveTextContent("Customer data that stays in the EU");
     expect(row).toHaveTextContent("Residency");
@@ -322,7 +344,7 @@ describe("the Platform page", () => {
   // REQ-1412: the engine lane's route is the commercial plugin's, and a lane applies at once.
   it("offers each org's engine only with the plugin, without the restart note", async () => {
     auth.billing = false;
-    const { unmount } = render(<PlatformRegionsTab />);
+    const { unmount } = render(<PlatformRegionsTab title="Admin — Platform" />);
     await screen.findByTestId("platform-region-row-eu");
     expect(screen.queryByTestId("platform-section-engines")).not.toBeInTheDocument();
     unmount();
@@ -330,7 +352,7 @@ describe("the Platform page", () => {
     auth.billing = true;
     try {
       fetchGrants.mockResolvedValue([{ id: "acme", regions: [] }]);
-      render(<PlatformRegionsTab />);
+      render(<PlatformRegionsTab title="Admin — Platform" />);
       fireEvent.click(await screen.findByTestId("platform-section-engines"));
       expect(await screen.findByTestId("platform-engine-org-pick")).toBeInTheDocument();
       expect(screen.queryByTestId("platform-regions-restart")).not.toBeInTheDocument();
@@ -340,7 +362,7 @@ describe("the Platform page", () => {
   });
 
   it("adds a region with its description, purposes and data addresses", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-regions-add"));
     fireEvent.change(screen.getByTestId("platform-region-id"), { target: { value: "us" } });
     fireEvent.change(screen.getByTestId("platform-region-description"), {
@@ -377,7 +399,7 @@ describe("the Platform page", () => {
         "globex",
       ]),
     );
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
     fireEvent.click(await screen.findByTestId("platform-region-delete"));
     fireEvent.click(await screen.findByTestId("platform-region-delete-dialog-confirm"));
@@ -394,7 +416,7 @@ describe("the Platform page", () => {
     savePlatform.mockRejectedValue(
       new RegionsRefused("platform region 'us' purposes: too short", "regions.1.purposes"),
     );
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-regions-add"));
     fireEvent.change(screen.getByTestId("platform-region-id"), { target: { value: "us" } });
     fireEvent.change(screen.getByTestId("platform-region-description"), {
@@ -410,7 +432,7 @@ describe("the Platform page", () => {
   });
 
   it("edits an org's grant in the Organizations section", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-section-orgs"));
     await screen.findByTestId("platform-org-pick");
     await choose("platform-org-pick", "acme (granted eu)");
@@ -429,7 +451,7 @@ describe("the Platform page", () => {
   });
 
   it("edits the default grant every new org receives", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     fireEvent.click(await screen.findByTestId("platform-section-default"));
     fireEvent.click(await screen.findByTestId("org-regions-add-store"));
     fireEvent.change(screen.getByTestId("org-store-id"), { target: { value: "eu-duck" } });
@@ -470,7 +492,7 @@ describe("the Platform page in a demo sandbox", () => {
   });
 
   it("shows the regions read-only with a note saying why", async () => {
-    render(<PlatformRegionsTab />);
+    render(<PlatformRegionsTab title="Admin — Platform" />);
     expect(await screen.findByTestId("platform-regions-sandbox-note")).toHaveTextContent(
       "shown in the demo to explain regions",
     );

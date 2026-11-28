@@ -397,100 +397,66 @@ def test_a_propagated_bind_parameter_returns_the_same_rows(_db) -> None:
     assert run(out) == run(_PARAM_CORR)
 
 
-# --- P10: a key-bounded nested read on an engine with no decorrelation is read once ---
+# --- #362: a relationship field is a grouped read joined by key; the outer bound reaches it ---
 
-_LIST = (
-    'SELECT "t0"."order_id", COALESCE((SELECT json_agg(json_object(KEY \'status\' VALUE '
-    '"t2"."status")) FROM "perf_bench"."order_docs" "t2" WHERE "t2"."order_id" = "t0"."order_id"), '
-    'CAST(\'[]\' AS JSON)) AS "d" FROM "perf_bench"."orders" "t0" '
-    'WHERE "t0"."order_id" >= 1 AND "t0"."order_id" <= 1000'
+_LIST_READ = (
+    'SELECT "t0"."order_id", COALESCE("t2_read"."_value", CAST(\'[]\' AS JSON)) AS "d" '
+    'FROM "perf_bench"."orders" "t0" LEFT JOIN (SELECT "t2"."order_id" AS "_key0", '
+    'json_agg(json_object(KEY \'status\' VALUE "t2"."status")) AS "_value" '
+    'FROM "perf_bench"."order_docs" "t2" GROUP BY "t2"."order_id") "t2_read" '
+    'ON "t2_read"."_key0" = "t0"."order_id" '
+    'WHERE "t0"."order_id" >= {lo} AND "t0"."order_id" <= {hi}'
+)
+_HEAD_READ = (
+    'SELECT "t0"."order_id", "t2_read"."_value" AS "d" FROM "perf_bench"."orders" "t0" '
+    'LEFT JOIN (SELECT "_key0", "_value" FROM (SELECT "t2"."order_id" AS "_key0", '
+    'json_object(KEY \'status\' VALUE "t2"."status") AS "_value", '
+    'ROW_NUMBER() OVER (PARTITION BY "t2"."order_id") AS "_row" '
+    'FROM "perf_bench"."order_docs" "t2") "_rows" WHERE "_row" = 1) "t2_read" '
+    'ON "t2_read"."_key0" = "t0"."order_id" '
+    'WHERE "t0"."order_id" IN (3, 5, 6)'
 )
 
 
-def _once(sql: str) -> str:
-    return propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES, read_once=True)
-
-
-def test_a_key_bounded_list_is_one_grouped_read_joined_by_key() -> None:
-    assert _once(_LIST) == _norm(
-        'SELECT "t0"."order_id", COALESCE("_read_0"."_value", CAST(\'[]\' AS JSON)) AS "d" '
-        'FROM "perf_bench"."orders" "t0" LEFT JOIN (SELECT "t2"."order_id" AS "_key", '
-        'json_agg(json_object(KEY \'status\' VALUE "t2"."status")) AS "_value" '
-        'FROM "perf_bench"."order_docs" "t2" '
-        'WHERE "t2"."order_id" >= 1 AND "t2"."order_id" <= 1000 GROUP BY "t2"."order_id") '
-        'AS "_read_0" ON "_read_0"."_key" = "t0"."order_id" '
-        'WHERE "t0"."order_id" >= 1 AND "t0"."order_id" <= 1000'
-    )
-
-
-def test_a_key_bounded_to_one_takes_the_head_of_each_key() -> None:
-    out = _once(_CORR)
-    tree = sqlglot.parse_one(out, read="postgres")
-    assert 'SELECT DISTINCT ON ("t2"."order_id") "t2"."order_id" AS "_key"' in out
-    assert tree.find(sqlglot.exp.Limit) is None
-    assert tree.expressions[1].sql(dialect="postgres") == '"_read_0"."_value" AS "d"'
-
-
-def test_a_read_is_left_correlated_unless_asked() -> None:
-    assert "LEFT JOIN" not in propagate_literal_join_predicates(
-        _LIST, "postgres", _ELIGIBLE, _TYPES
-    )
-
-
-def test_a_governed_condition_moves_with_the_read() -> None:
-    sql = _LIST.replace(
-        'WHERE "t2"."order_id" = "t0"."order_id"',
-        'WHERE "t2"."status" = \'open\' AND "t2"."order_id" = "t0"."order_id"',
-    )
-    derived = next(
-        s
-        for s in sqlglot.parse_one(_once(sql), read="postgres").find_all(sqlglot.exp.Subquery)
-        if s.alias == "_read_0"
-    )
-    assert '"t2"."status" = \'open\'' in derived.sql(dialect="postgres")
-
-
-def test_an_open_range_stays_correlated() -> None:
-    sql = _LIST.replace(' AND "t0"."order_id" <= 1000', "")
-    assert "LEFT JOIN" not in _once(sql)
-
-
-def test_a_read_with_another_outer_reference_stays_correlated() -> None:
-    sql = _LIST.replace(
-        'WHERE "t2"."order_id" = "t0"."order_id"',
-        'WHERE "t2"."order_id" = "t0"."order_id" AND "t2"."status" = "t0"."state"',
-    )
-    out = _once(sql)
-    assert "LEFT JOIN" not in out
-    # Refused, it keeps every condition it came with.
-    assert '"t2"."order_id" = "t0"."order_id"' in out
-
-
-def test_a_per_parent_limit_stays_correlated() -> None:
-    sql = (
-        'SELECT "t0"."order_id", COALESCE((SELECT json_agg(_t) FROM (SELECT json_object(KEY '
-        '\'status\' VALUE "t2"."status") AS _t FROM "perf_bench"."order_docs" "t2" '
-        'WHERE "t2"."order_id" = "t0"."order_id" LIMIT 5) _sub), CAST(\'[]\' AS JSON)) AS "d" '
-        'FROM "perf_bench"."orders" "t0" WHERE "t0"."order_id" = 1'
-    )
-    assert "LEFT JOIN" not in _once(sql)
-
-
-def test_a_count_keeps_its_zero() -> None:
-    sql = (
-        'SELECT "t0"."order_id", (SELECT count(*) FROM "perf_bench"."order_docs" "t2" '
-        'WHERE "t2"."order_id" = "t0"."order_id") AS "d" FROM "perf_bench"."orders" "t0" '
-        'WHERE "t0"."order_id" = 1'
-    )
-    assert "LEFT JOIN" not in _once(sql)
-
-
-def test_a_bind_parameter_bound_reads_once_where_the_engine_binds_by_number() -> None:
-    sql = _LIST.replace(">= 1", ">= $1").replace("<= 1000", "<= $2")
+def test_a_list_read_takes_the_outer_bound_on_its_rows() -> None:
     out = propagate_literal_join_predicates(
-        sql, "postgres", _ELIGIBLE, _TYPES, allow_params=True, read_once=True
+        _LIST_READ.format(lo=1, hi=1000), "postgres", _ELIGIBLE, _TYPES
     )
-    assert '"t2"."order_id" >= $1' in out and "LEFT JOIN (" in out
+    # On the read's own rows, before they are grouped: the far table is read for those keys.
+    assert (
+        'FROM "perf_bench"."order_docs" AS "t2" WHERE "t2"."order_id" >= 1 '
+        'AND "t2"."order_id" <= 1000 GROUP BY' in out
+    ), out
+
+
+def test_a_to_one_read_takes_the_outer_bound_before_its_rows_are_numbered() -> None:
+    out = propagate_literal_join_predicates(_HEAD_READ, "postgres", _ELIGIBLE, _TYPES)
+    assert 'FROM "perf_bench"."order_docs" AS "t2" WHERE "t2"."order_id" IN (3, 5, 6)' in out, out
+
+
+def test_a_read_of_an_ineligible_table_is_left_as_it_is() -> None:
+    sql = _LIST_READ.format(lo=1, hi=1000)
+    assert propagate_literal_join_predicates(sql, "postgres", set(), _TYPES) == sql
+
+
+def test_a_bind_parameter_reaches_a_read_only_where_the_engine_binds_by_number() -> None:
+    sql = _LIST_READ.format(lo="$1", hi="$2")
+    assert propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES) == sql
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES, allow_params=True)
+    assert '"t2"."order_id" >= $1' in out and '"t2"."order_id" <= $2' in out
+
+
+def _json_rows(con, sql: str) -> list:
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    return sorted(con.execute(transpile_to_duckdb(sql, generated=True)).fetchall(), key=repr)
+
+
+@pytest.mark.parametrize("sql", [_LIST_READ.format(lo=3, hi=40), _HEAD_READ])
+def test_a_bounded_read_answers_as_the_unbounded_one(_db, sql: str) -> None:
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES)
+    assert out != sql
+    assert _json_rows(_db, out) == _json_rows(_db, sql)
 
 
 # --- REQ-039: stage 2 reads every registered table through the role's governed relation ---

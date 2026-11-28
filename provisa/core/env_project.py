@@ -67,7 +67,21 @@ KIND_DIRS: dict[str, str] = {
     "org_regions": "regions",  # REQ-1921
     "data_products": "data-products",  # REQ-1526
     "erd_layouts": "erd-layouts",  # REQ-2189
+    "column_rules": "column-rules",  # REQ-2278
 }
+
+#: REQ-2278: what a column rule is keyed on, as the second segment of its path names it.
+COLUMN_RULE_KEYS: dict[str, str] = {"tag": "tag_id", "classification": "classification"}
+
+
+def column_rule_path(row: dict[str, Any]) -> str:  # REQ-2278
+    """A column rule's file: ``column-rules/<tag|classification>/<key>/<role>.yaml``. A role holds
+    one rule per tag or classification, so the key and the role name it in every environment; it
+    has a file of its own because the code-defined tags (pii) and the classification kinds have
+    none it could be written in."""
+    kind = "tag" if row["tag_id"] is not None else "classification"
+    return kind_path(KIND_DIRS["column_rules"], kind, row[COLUMN_RULE_KEYS[kind]], row["role_id"])
+
 
 #: The two command registries share one directory, because REQ-1385 gives them one address space:
 #: ``provisa://<org>/commands/<name>``. A name used by both is a collision in that address space
@@ -156,7 +170,7 @@ def _fragment(
     wonder what the empty string addressed.
     """
     kind = assignment["object_type"]
-    if kind == "column":
+    if kind in ("column", "command_column"):  # REQ-1159: a command's output column is its field
         return f"#field:{assignment['column_name']}"
     if kind == "relationship":
         return f"#rel:{rel_names[assignment['relationship_id']]}"
@@ -590,7 +604,22 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                     [a for a in tagged if a["owner_command_name"] == row["name"]],
                     table="tag_assignments",
                 ),
+                # REQ-1159 (amended 2026-11-25): the term each output column means, as a table's
+                # columns' terms are written in its file: by the term's path.
+                glossary=Child(
+                    "column_name",
+                    "command_name",
+                    [
+                        {"column_name": r["column_name"], "term": term_paths[r["term_id"]]}
+                        for r in term_refs
+                        if r["command_name"] == row["name"]
+                    ],
+                    table="glossary_term_refs",
+                ),
             )
+
+    for row in await _rows(conn, org.column_rules, schema):  # REQ-2278
+        tree[column_rule_path(row)] = entity("column_rules", row)
 
     rules = await _rows(conn, org.naming_rules, schema)
     if rules:

@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "מדדים",
+    "filterPlaceholder": "סינון מדדים…",
     "newMetric": "+ מדד",
     "loading": "טוען...",
     "empty": "עדיין לא נרשמו מדדים.",
+    "noMatch": "אין מדדים התואמים לסינון.",
     "colName": "שם",
     "colExpression": "ביטוי",
     "colDatatype": "סוג נתונים",

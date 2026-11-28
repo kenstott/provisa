@@ -26,6 +26,7 @@ import type {
 } from "../../api/actions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { CodeEditorField } from "../../components/CodeEditorField";
+import { entityName } from "../../components/entityName";
 import { IMPL_KINDS, isNativeSql } from "./types";
 
 function ReadHeading({ children }: { children: string }) {
@@ -39,11 +40,16 @@ function ReadHeading({ children }: { children: string }) {
 const roles = (list: readonly string[] | null | undefined) =>
   list && list.length > 0 ? list.join(", ") : null;
 
-const args = (list: readonly ActionArg[]) =>
+/** REQ-1159 (amended 2026-11-27): each argument with its kind: a value, or a relation (a table
+ *  reference its service reads, or a result set it is given). An argument that names no kind is
+ *  a value: column_value is the kind's declared default (REQ-885, models.FunctionArgument). */
+const args = (list: readonly ActionArg[], t: (key: string) => string) =>
   list.length > 0
     ? list
         .map(
-          (a) => `${a.name}: ${a.type}` + ("default" in a ? ` = ${JSON.stringify(a.default)}` : ""),
+          (a) =>
+            `${a.name}: ${a.type} (${t(`commandsPage.argKind.${a.argKind ?? "column_value"}`)})` +
+            ("default" in a ? ` = ${JSON.stringify(a.default)}` : ""),
         )
         .join(", ")
     : null;
@@ -118,11 +124,11 @@ function useCommonFields(c: TrackedFunction | TrackedWebhook, type: "function" |
         label: t("commandFormFields.kind"),
         value: c.kind === "query" ? t("commandFormFields.query") : t("commandFormFields.mutation"),
       },
-      { label: t("commandFormFields.domain"), value: c.domainId },
+      { label: t("commandFormFields.domain"), value: entityName("domain", c.domainId) },
     ],
     tail: [
       { label: t("commandFormFields.description"), value: c.description },
-      { label: t("commandFormFields.arguments"), value: args(c.arguments) },
+      { label: t("commandFormFields.arguments"), value: args(c.arguments, t) },
     ],
   };
 }
@@ -171,12 +177,12 @@ export function FunctionRead({
         ]
       : isNativeSql(impl, binding)
         ? [
-            { label: t("commandFormFields.source"), value: fn.sourceId },
+            { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
             sqlField(t("commandFormFields.nativeSql"), "function-read-native-sql"),
           ]
         : bySource
           ? [
-              { label: t("commandFormFields.source"), value: fn.sourceId },
+              { label: t("commandFormFields.source"), value: entityName("source", fn.sourceId) },
               { label: t("commandFormFields.schema"), value: fn.schemaName },
               { label: t("commandFormFields.functionName"), value: fn.functionName },
             ]
@@ -245,10 +251,11 @@ export function FunctionRead({
           ...common.tail,
         ]}
       />
-      {!toTable && (
+      {/* A dataset's columns are on the Columns tab; a statement's come from its statement. */}
+      {!toTable && isStatement && (
         <ResponseColumns
           title={t("commandFormFields.outputColumnsTitle")}
-          columns={isStatement ? (fn.contract?.outputs ?? []) : (fn.outputColumns ?? [])}
+          columns={fn.contract?.outputs ?? []}
           testId="function-read-columns"
         />
       )}

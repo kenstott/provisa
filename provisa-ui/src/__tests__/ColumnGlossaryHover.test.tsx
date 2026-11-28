@@ -22,13 +22,18 @@ const t = i18n.getFixedT("en");
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   fetchGlossaryTermByRef: vi.fn(),
+  fetchGlossaryTermByQueryName: vi.fn(),
 }));
 
-import { fetchGlossaryTermByRef } from "../api/glossary";
+import { fetchGlossaryTermByQueryName, fetchGlossaryTermByRef } from "../api/glossary";
+import { ColumnsTable } from "../pages/tables/ColumnsTable";
+import { blankColumn } from "../pages/tables/types";
 
 const mockFetchByRef = vi.mocked(fetchGlossaryTermByRef);
+const mockFetchByQueryName = vi.mocked(fetchGlossaryTermByQueryName);
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
+  command_refs: [],
   id: 1,
   name: "Revenue",
   definition: "Money in.",
@@ -154,5 +159,51 @@ describe("ColumnGlossaryHover (REQ-1387)", () => {
     fireEvent.mouseEnter(target);
     expect(mockFetchByRef).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(t("glossaryTab.hoverNoDefinition"))).not.toBeInTheDocument();
+  });
+
+  // REQ-2158 (amended 2026-11-25): a consumer view names a column by its SQL alias; the glossary
+  // is keyed on the physical column, so the hover asks by the query name and the server resolves it.
+  it("a consumer view's hover finds an aliased column's term by its query name", async () => {
+    mockFetchByQueryName.mockResolvedValue(REVENUE_DETAIL);
+    const consumerColumn = blankColumn("revenue", "integer", []);
+    render(
+      <ColumnsTable
+        readOnly
+        columns={[consumerColumn]}
+        roles={[]}
+        irTypes={[]}
+        sourceType=""
+        tableId={20}
+        testId="consumer"
+      />,
+    );
+
+    fireEvent.mouseEnter(screen.getByText("revenue"));
+
+    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    expect(mockFetchByQueryName).toHaveBeenCalledWith(20, "revenue");
+    expect(mockFetchByRef).not.toHaveBeenCalled();
+  });
+
+  it("a query name is cached apart from the same physical name", async () => {
+    mockFetchByRef.mockResolvedValue(null);
+    mockFetchByQueryName.mockResolvedValue(REVENUE_DETAIL);
+    render(
+      <>
+        <ColumnGlossaryHover tableId={21} columnName="customer">
+          <code>physical</code>
+        </ColumnGlossaryHover>
+        <ColumnGlossaryHover tableId={21} columnName="customer" queried>
+          <code>queried</code>
+        </ColumnGlossaryHover>
+      </>,
+    );
+
+    fireEvent.mouseEnter(screen.getByText("physical"));
+    await waitFor(() => expect(mockFetchByRef).toHaveBeenCalledWith(21, "customer"));
+    fireEvent.mouseEnter(screen.getByText("queried"));
+
+    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    expect(mockFetchByQueryName).toHaveBeenCalledWith(21, "customer");
   });
 });

@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
+import { expectFilterFindsEveryCell } from "../../../test-utils/listFilter";
 
 vi.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({
@@ -63,7 +64,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("ReportsTab filter", () => {
   it("filters by name, case-insensitive, keeping the alphabetical order", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     expect(shown()).toHaveLength(3);
     type("REPORT");
     expect(shown()).toEqual(["report-item-alpha_view", "report-item-mid"]);
@@ -72,23 +73,34 @@ describe("ReportsTab filter", () => {
   });
 
   it("filters by description, case-insensitive", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("revenue by region");
     expect(shown()).toEqual(["report-item-mid"]);
     type("TENANT");
     expect(shown()).toEqual(["report-item-zeta_usage"]);
   });
 
+  it("finds each report by every text its row shows", async () => {
+    render(<ReportsTab title="Admin — Reports" />);
+    await expectFilterFindsEveryCell(screen.getByTestId("filter-input"), () =>
+      screen.getByTestId("reports-list"),
+    );
+  });
+
   it("restores the full list when the filter is cleared", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("tenant");
     expect(shown()).toHaveLength(1);
     fireEvent.click(screen.getByTestId("filter-input-clear"));
-    expect(shown()).toEqual(["report-item-alpha_view", "report-item-mid", "report-item-zeta_usage"]);
+    expect(shown()).toEqual([
+      "report-item-alpha_view",
+      "report-item-mid",
+      "report-item-zeta_usage",
+    ]);
   });
 
   it("shows a No reports match line when nothing matches, and no list rows", () => {
-    render(<ReportsTab />);
+    render(<ReportsTab title="Admin — Reports" />);
     type("nothing like this");
     expect(shown()).toEqual([]);
     expect(screen.getByTestId("reports-no-match")).toHaveTextContent("No reports match");

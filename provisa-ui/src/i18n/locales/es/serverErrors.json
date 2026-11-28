@@ -1002,6 +1002,13 @@
       "reason_required": "Una sugerencia indica su motivo.",
       "no_recipient": "El dominio {{domain}} no tiene propietario de producto de datos ni steward de datos que reciba una sugerencia.",
       "not_a_recipient": "Las sugerencias del dominio {{domain}} las leen sus data stewards y propietarios de productos de datos."
+    },
+    "column_rules": {
+      "database_unavailable": "No se puede acceder al plano de control",
+      "right_not_everywhere": "Una regla de columna alcanza todos los dominios; necesita {{right}} en todos los dominios",
+      "invalid": "La regla de columna no es válida: {{reason}}",
+      "not_found": "No existe la regla de columna {{rule}}",
+      "tag_not_found": "No se encontró la etiqueta {{tag}}"
     }
   }
 }

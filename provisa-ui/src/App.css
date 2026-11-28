@@ -519,6 +519,21 @@ main {
 /* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
 :root {
   --page-gutter: 1.5rem;
+  /* REQ-2277: the query editors' type -- SQL, Cypher, SPARQL and GraphiQL's editors alike. */
+  --editor-font-mono: "SF Mono", "Fira Code", ui-monospace, monospace;
+  --editor-font-size: 0.8rem;
+  /* The Explore toolbars' icon size (CanvasControls' CONTROL_ICON). */
+  --explore-icon-size: 15px;
+  /* REQ-2277 rule 7: the one vertical rhythm of a detail panel body (components/list/PanelBody.tsx).
+   * head: the panel head to the body's first part; strip: a step strip or section tabs to what
+   * follows; title: a section's title to its description; section: a section's head to its first
+   * field; group: one field group (or part) to the next; sections: one section to the next. */
+  --panel-gap-head: 0.75rem;
+  --panel-gap-strip: 1.25rem;
+  --panel-gap-title: 0.25rem;
+  --panel-gap-section: 1rem;
+  --panel-gap-group: 0.75rem;
+  --panel-gap-sections: 1.5rem;
 }
 .page {
   padding: var(--page-gutter);
@@ -639,6 +654,15 @@ main {
   -webkit-line-clamp: var(--list-row-lines);
   line-clamp: var(--list-row-lines);
   overflow-wrap: anywhere;
+}
+/* A lower-priority column the list had no room for (ListTable's useHiddenColumns): neither its
+ * header nor its cells are drawn. */
+.data-table .list-col-hidden {
+  display: none;
+}
+/* A parenthesised group in wrapped text is kept whole: the text wraps around it, never inside it. */
+.list-cell__group {
+  white-space: nowrap;
 }
 /* Words longer than a wrapped column's minimum keep that minimum; a short phrase wraps down to its
  * longest word. */
@@ -869,6 +893,20 @@ main {
   border-color: transparent;
   opacity: 0.45;
 }
+/* A head toggle that is on (PanelToggle): tinted, as a pressed toggle is; off, the head's bare
+ * icon. A toggle shown but changed elsewhere (aria-disabled) is not pressed by the pointer. */
+.split-pane__head .mantine-ActionIcon-root[aria-pressed="true"] {
+  background: var(--mantine-color-default-hover);
+}
+.split-pane__head .mantine-ActionIcon-root[aria-disabled="true"] {
+  cursor: default;
+}
+/* An action that closes what the head belongs to without deciding it (source setup's Finish later,
+ * REQ-2234): last, at the head's far end. */
+.split-pane__actions .panel-head-end {
+  order: 1;
+  margin-inline-start: auto;
+}
 .split-pane__actions:empty {
   min-height: 1px;
 }
@@ -917,7 +955,7 @@ main {
   border: 0;
   margin: 0;
   overflow: auto;
-  padding: 0.75rem 1rem;
+  padding: var(--panel-gap-head) 1rem;
   display: flex;
   flex-direction: column;
 }
@@ -2764,7 +2802,7 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.75rem 1rem;
+  gap: var(--panel-gap-group) 1rem;
 }
 .form-field {
   flex: 0 1 var(--form-field-width);
@@ -3178,4 +3216,95 @@ main {
 }
 .multi-select-option-held {
   opacity: 0.35;
+}
+
+/* REQ-2277 rule 7: a panel body's parts, one under the other at the rhythm's spacing. Each part is
+ * set apart from the one before it; what a part is decides the space after it. Last in the sheet,
+ * so a part's own margin elsewhere (a form card's, a form read's) gives way to the rhythm here. */
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.panel-body > * {
+  margin-block: 0;
+}
+.panel-body > * + * {
+  margin-top: var(--panel-gap-group);
+}
+.panel-body > * + .panel-section {
+  margin-top: var(--panel-gap-sections);
+}
+.panel-body > .panel-section__head + * {
+  margin-top: var(--panel-gap-section);
+}
+.panel-body > .panel-strip + * {
+  margin-top: var(--panel-gap-strip);
+}
+.panel-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--panel-gap-title);
+}
+.panel-section__title {
+  font-weight: 600;
+  font-size: var(--mantine-font-size-md);
+  line-height: 1.35;
+}
+.panel-section__description {
+  font-size: var(--mantine-font-size-sm);
+  color: var(--mantine-color-dimmed);
+}
+/* A strip with nothing to show (a source whose setup is complete shows no steps) takes no room. */
+.panel-body > .panel-strip:empty {
+  display: none;
+}
+.panel-body > .panel-strip:empty + * {
+  margin-top: 0;
+}
+
+/* REQ-2277 rule 10: the one dialog layout (components/modal/ModalLayout.tsx). The dialog is at most
+ * the window's height; its title stays at the top, its content scrolls, and its buttons sit in a
+ * fixed bar at its bottom, outside the scrolling content. */
+.modal-layout__content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-layout__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.modal-layout__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--mb-padding, var(--mantine-spacing-md));
+  padding-top: 0;
+}
+.modal-layout__body:only-child .modal-layout__scroll {
+  padding-top: var(--mb-padding, var(--mantine-spacing-md));
+}
+.modal-layout__scroll--fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-layout__scroll.modal-layout__scroll--flush {
+  padding: 0;
+}
+.modal-layout__bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem var(--mb-padding, var(--mantine-spacing-md));
+  border-top: 1px solid var(--border);
+  background: var(--mantine-color-body);
+}
+.modal-layout__bar:empty {
+  display: none;
 }

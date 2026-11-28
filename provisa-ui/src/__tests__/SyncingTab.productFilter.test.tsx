@@ -16,7 +16,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, within } from "../test-utils/render";
+import { fireEvent, render, screen, within } from "../test-utils/render";
+import { expectFilterFindsEveryCell } from "../test-utils/listFilter";
 import { SyncingTab } from "../components/admin/syncing/SyncingTab";
 import type { ProductSyncStatus, SyncEntry, SyncingState } from "../api/syncing";
 
@@ -81,6 +82,35 @@ describe("Context Sync's data product filter", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mockFetch.mockResolvedValue(state(ENTRIES));
+  });
+
+  it("finds each entry by every text its row shows", async () => {
+    mockFetch.mockResolvedValue(
+      state([
+        { ...catalog("marquez", ["orders"]), domains: ["sales"] },
+        {
+          ...catalog("purview", []),
+          direction: "import",
+          provider: null,
+          last_run: { ok: false, total_published: 3, errors: ["x"] },
+        } as unknown as SyncEntry,
+      ]),
+    );
+    render(<SyncingTab />);
+    await screen.findByTestId("syncing-row-purview");
+    await expectFilterFindsEveryCell(screen.getByTestId("syncing-filter"), () =>
+      screen.getByTestId("syncing-list-data_catalog"),
+    );
+  });
+
+  it("says nothing matches when the search empties a list", async () => {
+    render(<SyncingTab />);
+    await screen.findByTestId("syncing-row-marquez");
+    fireEvent.change(screen.getByTestId("syncing-filter"), { target: { value: "no-such-entry" } });
+    expect(screen.getByTestId("syncing-none-data_catalog")).toHaveTextContent(
+      "No entries match the filter.",
+    );
+    expect(screen.getByTestId("syncing-none-ontology")).toHaveTextContent("No ontologies yet.");
   });
 
   it("lists every entry until a product is chosen", async () => {

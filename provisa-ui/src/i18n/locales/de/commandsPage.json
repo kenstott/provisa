@@ -6,7 +6,6 @@
     "restoreDetail": "Bereich wiederherstellen",
     "closeDetail": "Detailbereich schließen",
     "backToList": "Zurück zur Liste",
-    "backToCommand": "Zurück zum Befehl",
     "panelNewCommand": "Neuer Befehl",
     "title": "Befehle",
     "loading": "Befehle werden geladen...",
@@ -39,6 +38,8 @@
     "colTimeout": "Timeout",
     "noFunctions": "Keine Funktionen registriert",
     "noWebhooks": "Keine Webhooks registriert",
+    "noFunctionsMatch": "Keine Funktionen entsprechen dem Filter",
+    "noWebhooksMatch": "Keine Webhooks entsprechen dem Filter",
     "customSchema": "Dataset",
     "dash": "—",
     "all": "alle",
@@ -54,8 +55,6 @@
     "editAria": "{{name}} bearbeiten",
     "deleteFunctionAria": "Funktion {{name}} löschen",
     "deleteWebhookAria": "Webhook {{name}} löschen",
-    "testButton": "Testen",
-    "testingButton": "Wird getestet...",
     "cancelAria": "Bearbeitung abbrechen",
     "saveAria": "Änderungen speichern",
     "deleteFunctionTitle": "Funktion \"{{name}}\" löschen?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "Webhook \"{{name}}\" löschen?",
     "deleteWebhookConsequence": "Der Webhook wird aus dem Schema entfernt.",
     "inlineReturns": "inline ({{count}} Felder)",
-    "testAsRole": "Als Rolle testen:",
-    "testResultHeading": "Testergebnis: {{name}}",
     "close": "Schließen",
-    "governanceApplied": "Governance angewendet",
     "savedMessage": "{{type}} \"{{name}}\" gespeichert",
     "yes": "Ja",
-    "no": "Nein"
+    "no": "Nein",
+    "argKind": {
+      "column_value": "Wert",
+      "table_ref": "Tabellenreferenz",
+      "result_set": "Ergebnismenge"
+    }
   }
 }

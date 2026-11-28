@@ -16,6 +16,7 @@ import { Alert, Code, Group, Stack, Table, Text } from "@mantine/core";
 import { Sheet } from "lucide-react";
 import { CopyButton } from "../components/CopyButton";
 import { PageTitle } from "../components/PageTitle";
+import { ExploreMain, ExploreShell } from "../components/explore/ExploreShell";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../components/list/ListTable";
@@ -172,121 +173,122 @@ export function ODataPage() {
   const sortGroup = useListSortGroup(sets, columns, "odata-sets", "name");
 
   return (
-    <div className="page-sticky-head odata-page">
-      <Group justify="space-between" mb="sm">
-        <PageTitle icon={Sheet} order={3}>
-          {t("odataPage.title")}
-        </PageTitle>
-      </Group>
-      <Text size="sm" mb="sm">
-        {t("odataPage.description")}
-      </Text>
-      <Group gap="xl" align="flex-start" mb="md" className="odata-addresses">
-        <Address
-          testId="odata-service-root"
-          label={t("odataPage.serviceRoot")}
-          help={t("odataPage.serviceRootHelp")}
-          url={root}
-        />
-        <Address
-          testId="odata-metadata"
-          label={t("odataPage.metadata")}
-          help={t("odataPage.metadataHelp")}
-          url={`${root}/$metadata`}
-        />
-      </Group>
+    <ExploreShell
+      testId="odata-page"
+      className="odata-page"
+      toolbar={<PageTitle icon={Sheet}>{t("odataPage.title")}</PageTitle>}
+    >
+      <ExploreMain>
+        <Text size="sm" my="sm">
+          {t("odataPage.description")}
+        </Text>
+        <Group gap="xl" align="flex-start" mb="md" className="odata-addresses">
+          <Address
+            testId="odata-service-root"
+            label={t("odataPage.serviceRoot")}
+            help={t("odataPage.serviceRootHelp")}
+            url={root}
+          />
+          <Address
+            testId="odata-metadata"
+            label={t("odataPage.metadata")}
+            help={t("odataPage.metadataHelp")}
+            url={`${root}/$metadata`}
+          />
+        </Group>
 
-      {handoffError && (
-        <Alert color="red" mb="sm" data-testid="odata-handoff-error">
-          {handoffError}
-        </Alert>
-      )}
-      {model.state === "failed" && (
-        <Alert color="red" mb="sm" data-testid="odata-metadata-error">
-          {model.error}
-        </Alert>
-      )}
-      {model.state === "loading" ? (
-        <PageLoading message={t("odataPage.loadingMetadata")} />
-      ) : (
-        <SplitPane
-          testId="odata-split"
-          storageKey="provisa.odata.detailWidth"
-          title={entity?.name ?? ""}
-          onClose={() => setSelected(null)}
-          closeOnEscape={!edited}
-          labels={{
-            panel: t("odataPage.detailPanel"),
-            resize: t("tablesPage.resizeDetail"),
-            expand: t("tablesPage.expandDetail"),
-            restore: t("tablesPage.restoreDetail"),
-            close: t("tablesPage.closeDetail"),
-            backToList: t("tablesPage.backToList"),
-          }}
-          list={
-            <ListTable testId="odata-sets">
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  { col: "name" },
-                  { col: "key" },
-                  { col: "properties" },
-                  { col: "navigations" },
-                ]}
-              />
-              <Table.Tbody>
-                {sets.length === 0 && model.state === "read" && (
-                  <ListEmpty colSpan={4} testId="odata-sets-empty">
-                    {t("odataPage.noEntitySets")}
-                  </ListEmpty>
-                )}
-                <ListItems
-                  state={sortGroup}
-                  colSpan={4}
-                  rowKey={(s) => s.name}
-                  render={(s) => (
-                    <ListRow
-                      key={s.name}
-                      testId={`odata-set-row-${s.name}`}
-                      selected={selected === s.name}
-                      onClick={() => setSelected(selected === s.name ? null : s.name)}
-                    >
-                      <Table.Td>
-                        <Text size="sm" fw={600} ff="monospace">
-                          {s.name}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs" ff="monospace">
-                          {s.key.join(", ")}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{s.properties.length}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="xs">{s.navigations.length}</Text>
-                      </Table.Td>
-                    </ListRow>
-                  )}
+        {handoffError && (
+          <Alert color="red" mb="sm" data-testid="odata-handoff-error">
+            {handoffError}
+          </Alert>
+        )}
+        {model.state === "failed" && (
+          <Alert color="red" mb="sm" data-testid="odata-metadata-error">
+            {model.error}
+          </Alert>
+        )}
+        {model.state === "loading" ? (
+          <PageLoading message={t("odataPage.loadingMetadata")} />
+        ) : (
+          <SplitPane
+            testId="odata-split"
+            storageKey="provisa.odata.detailWidth"
+            title={entity?.name ?? ""}
+            onClose={() => setSelected(null)}
+            closeOnEscape={!edited}
+            labels={{
+              panel: t("odataPage.detailPanel"),
+              resize: t("tablesPage.resizeDetail"),
+              expand: t("tablesPage.expandDetail"),
+              restore: t("tablesPage.restoreDetail"),
+              close: t("tablesPage.closeDetail"),
+              backToList: t("tablesPage.backToList"),
+            }}
+            list={
+              <ListTable testId="odata-sets">
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    { col: "name" },
+                    { col: "key" },
+                    { col: "properties" },
+                    { col: "navigations" },
+                  ]}
                 />
-              </Table.Tbody>
-            </ListTable>
-          }
-        >
-          {entity && (
-            // A set's own builder and rows: another set starts from an empty query.
-            <EntitySetPanel
-              key={`${role}/${entity.name}/${start?.seq ?? 0}`}
-              entity={entity}
-              role={role}
-              root={root}
-              start={start ?? undefined}
-              onEdited={() => setEdited(true)}
-            />
-          )}
-        </SplitPane>
-      )}
-    </div>
+                <Table.Tbody>
+                  {sets.length === 0 && model.state === "read" && (
+                    <ListEmpty colSpan={4} testId="odata-sets-empty">
+                      {t("odataPage.noEntitySets")}
+                    </ListEmpty>
+                  )}
+                  <ListItems
+                    state={sortGroup}
+                    colSpan={4}
+                    rowKey={(s) => s.name}
+                    render={(s) => (
+                      <ListRow
+                        key={s.name}
+                        testId={`odata-set-row-${s.name}`}
+                        selected={selected === s.name}
+                        onClick={() => setSelected(selected === s.name ? null : s.name)}
+                      >
+                        <Table.Td>
+                          <Text size="sm" fw={600} ff="monospace">
+                            {s.name}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" ff="monospace">
+                            {s.key.join(", ")}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{s.properties.length}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs">{s.navigations.length}</Text>
+                        </Table.Td>
+                      </ListRow>
+                    )}
+                  />
+                </Table.Tbody>
+              </ListTable>
+            }
+          >
+            {entity && (
+              // A set's own builder and rows: another set starts from an empty query.
+              <EntitySetPanel
+                key={`${role}/${entity.name}/${start?.seq ?? 0}`}
+                entity={entity}
+                role={role}
+                root={root}
+                start={start ?? undefined}
+                onEdited={() => setEdited(true)}
+              />
+            )}
+          </SplitPane>
+        )}
+      </ExploreMain>
+    </ExploreShell>
   );
 }

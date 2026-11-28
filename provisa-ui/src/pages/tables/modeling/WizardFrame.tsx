@@ -13,40 +13,54 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input, Text } from "@mantine/core";
-import { FormField, FormFooter } from "../../../components/form/FormLayout";
+import { Button, Input } from "@mantine/core";
+import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
+import { PanelBody, PanelSection, PanelStrip } from "../../../components/list/PanelBody";
 import { useScreenInputs } from "../../../mcp/screenState";
+import { StepStrip, type Step } from "../../../components/StepStrip";
 import { FieldLabel } from "../FieldLabel";
 
-/** Which step this is, its title and what it asks, at the head of the step. */
-export function StepHead({
+/**
+ * One step of a wizard in its panel: the step strip, then the step's title and what it asks, then
+ * its fields, at the panel body's one rhythm (REQ-2277 rule 7, PanelBody).
+ */
+export function WizardStep({
   index,
-  count,
+  steps,
+  onStep,
   title,
   intro,
   testId,
+  children,
 }: {
   index: number;
-  count: number;
+  steps: readonly Step[];
+  /** A completed step in the strip was pressed. */
+  onStep: (index: number) => void;
   title: string;
   intro: string;
   testId: string;
+  /** The step's fields and its WizardFooter: laid out by the shared form layout. */
+  children: ReactNode;
 }) {
   const { t } = useTranslation();
   // REQ-2115: Polly's read_screen reads the step on screen; a wizard opens only on Tables.
-  useScreenInputs("/tables", { wizardStep: { number: index + 1, count, title } });
+  useScreenInputs("/tables", { wizardStep: { number: index + 1, count: steps.length, title } });
   return (
-    <FormField size="full">
-      <div data-testid={testId}>
-        <Text size="xs" c="dimmed" data-testid="wizard-step-count">
-          {t("modelingWizard.stepOf", { index: index + 1, count })}
-        </Text>
-        <Text fw={600}>{title}</Text>
-        <Text size="sm" c="dimmed">
-          {intro}
-        </Text>
-      </div>
-    </FormField>
+    <PanelBody data-testid={testId}>
+      <PanelStrip>
+        <StepStrip
+          steps={steps}
+          active={index}
+          onStepClick={onStep}
+          label={t("modelingWizard.stepsLabel")}
+          testId="wizard-steps"
+        />
+      </PanelStrip>
+      <PanelSection title={title} description={intro}>
+        <FormLayout>{children}</FormLayout>
+      </PanelSection>
+    </PanelBody>
   );
 }
 

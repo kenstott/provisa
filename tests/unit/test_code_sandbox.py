@@ -101,7 +101,10 @@ def test_the_launcher_starts_from_anywhere_with_no_provisa_package_on_the_path(t
     then runs the host or says the sandbox is unavailable where the kernel has no Landlock."""
     import subprocess
 
-    argv = lx.launcher_argv(sys.executable, read=[], proxy_port=1, argv=["/bin/true"])
+    # On a Nix host /bin/true resolves into the store, which a worker reads only as the parent
+    # grants it (sandbox._linux_readable); elsewhere the grant is empty and /usr serves it.
+    read = lx.nix_store_grant("/bin/true", [], {})
+    argv = lx.launcher_argv(sys.executable, read=read, proxy_port=1, argv=["/bin/true"])
     bare = [argv[0], "-I", "-S"]
     started = subprocess.run(
         [*bare, *argv[2:]], cwd=tmp_path, capture_output=True, text=True, env={}
@@ -143,13 +146,169 @@ def test_the_launcher_confines_then_runs_the_host():
     ]
 
 
+def test_a_confined_worker_is_not_given_the_whole_nix_store(monkeypatch):
+    """Maintainer 2026-11-26: the whole store holds every other program's files, and on NixOS
+    /etc/hosts and the rest of /etc resolve into it; a worker gets only its runtime's closure
+    (:func:`lx.nix_store_grant`). With /nix/store granted, the python, go, rust and node workers
+    read /etc/hosts (run 45720472876)."""
+    granted: list = []
+    monkeypatch.setattr(lx, "apply_landlock", lambda read, ports: granted.extend(read) or 4)
+    monkeypatch.setattr(lx, "apply_socket_filter", lambda: None)
+    lx.confine(["/cache/code/python"], 40123)
+    assert "/cache/code/python" in granted
+    assert not any(p == "/nix/store" or p.startswith("/nix/") for p in granted)
+
+
+def _elf64(interpreter: str) -> bytes:
+    """A little-endian ELF64 executable header with one PT_INTERP program header."""
+    interp = interpreter.encode() + b"\0"
+    header = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
+    header += struct.pack("<HHIQQQIHHHHHH", 2, 62, 1, 0, 64, 0, 0, 64, 56, 1, 64, 0, 0)
+    phdr = struct.pack("<IIQQQQQQ", 3, 4, 64 + 56, 0, 0, len(interp), len(interp), 1)
+    return header + phdr + interp
+
+
+def _elf32(interpreter: str) -> bytes:
+    interp = interpreter.encode() + b"\0"
+    header = b"\x7fELF" + bytes([1, 1, 1]) + bytes(9)
+    header += struct.pack("<HHIIIIIHHHHHH", 2, 3, 1, 0, 52, 0, 0, 52, 32, 1, 40, 0, 0)
+    phdr = struct.pack("<IIIIIIII", 3, 52 + 32, 0, 0, len(interp), len(interp), 4, 1)
+    return header + phdr + interp
+
+
+def test_the_loader_is_read_from_the_executables_program_headers(tmp_path):
+    wide = tmp_path / "wide"
+    wide.write_bytes(_elf64("/lib64/ld-linux-x86-64.so.2"))
+    narrow = tmp_path / "narrow"
+    narrow.write_bytes(_elf32("/lib/ld-linux.so.2"))
+    script = tmp_path / "script"
+    script.write_text("#!/bin/sh\n")
+    assert lx.elf_interpreter(str(wide)) == "/lib64/ld-linux-x86-64.so.2"
+    assert lx.elf_interpreter(str(narrow)) == "/lib/ld-linux.so.2"
+    assert lx.elf_interpreter(str(script)) is None
+
+
+def _fake_store(tmp_path: Path, monkeypatch) -> tuple[Path, list]:
+    store = (tmp_path / "nix" / "store").resolve()
+    store.mkdir(parents=True)
+    monkeypatch.setattr(lx, "NIX_STORE", str(store))
+    monkeypatch.setattr(lx, "SYSTEM_READ", ())
+    lx._closure.cache_clear()
+    asked: list = []
+
+    class _Done:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, paths):
+            self.stdout = "".join(f"{p}\n{p}-dep\n" for p in paths)
+
+    def _run(argv, **kwargs):
+        asked.append(argv)
+        return _Done(argv[3:])
+
+    monkeypatch.setattr(lx.shutil, "which", lambda name: "/run/current-system/sw/bin/nix-store")
+    monkeypatch.setattr(lx.subprocess, "run", _run)
+    return store, asked
+
+
+def test_a_nix_worker_reads_the_closure_of_its_runtime_loader_host_and_nix_ld_libraries(
+    tmp_path, monkeypatch
+):
+    """Only the store paths the worker runs on: the runtime's (outside the store, its loader's:
+    nix-ld), the host program's, and the libraries nix-ld loads it with, each with its closure
+    (nix-store -qR). Not the store path /etc/hosts resolves to."""
+    store, asked = _fake_store(tmp_path, monkeypatch)
+    nix_ld = store / "aaa-nix-ld" / "libexec" / "nix-ld"
+    nix_ld.parent.mkdir(parents=True)
+    nix_ld.write_text("")
+    lib64 = tmp_path / "lib64"
+    lib64.mkdir()
+    (lib64 / "ld-linux-x86-64.so.2").symlink_to(nix_ld)
+    runtime = tmp_path / "uv" / "bin" / "python3.12"  # downloaded, outside the store
+    runtime.parent.mkdir(parents=True)
+    runtime.write_bytes(_elf64(str(lib64 / "ld-linux-x86-64.so.2")))
+    host = store / "bbb-provisa" / "lib" / "host"
+    host.mkdir(parents=True)
+    zlib = store / "ccc-zlib" / "lib" / "libz.so.1"
+    zlib.parent.mkdir(parents=True)
+    zlib.write_text("")
+    libs = tmp_path / "nix-ld-lib"
+    libs.mkdir()
+    (libs / "libz.so.1").symlink_to(zlib)
+    hosts = store / "ddd-etc-hosts"
+    hosts.write_text("127.0.0.1 localhost\n")
+
+    grant = lx.nix_store_grant(
+        str(runtime),
+        [str(host), str(runtime.parent)],
+        {"PATH": "/usr/bin", "NIX_LD_LIBRARY_PATH": str(libs)},
+    )
+    seeds = [str(store / n) for n in ("aaa-nix-ld", "bbb-provisa", "ccc-zlib")]
+    assert asked == [["/run/current-system/sw/bin/nix-store", "--query", "--requisites", *seeds]]
+    assert grant == [p for s in seeds for p in (s, f"{s}-dep")]
+    assert str(hosts) not in grant and str(store) not in grant
+
+
+def test_with_no_nix_ld_library_path_the_grant_names_nix_lds_own_library_directory(
+    tmp_path, monkeypatch
+):
+    """A worker's environment carries no NIX_LD_LIBRARY_PATH: nix-ld then loads from its own
+    directory, and the grant names the libraries there."""
+    store, asked = _fake_store(tmp_path, monkeypatch)
+    glibc = store / "eee-glibc" / "lib" / "ld-linux-x86-64.so.2"
+    glibc.parent.mkdir(parents=True)
+    glibc.write_text("")
+    libs = tmp_path / "sw" / "share" / "nix-ld" / "lib"
+    libs.mkdir(parents=True)
+    (libs / "ld.so").symlink_to(glibc)
+    monkeypatch.setattr(lx, "NIX_LD_DEFAULT_LIBRARY_PATH", str(libs))
+    runtime = tmp_path / "go-host"
+    runtime.write_bytes(b"static")
+    grant = lx.nix_store_grant(str(runtime), [str(tmp_path)], {"PATH": "/usr/bin"})
+    assert grant == [str(store / "eee-glibc"), f"{store / 'eee-glibc'}-dep"]
+
+
+def test_a_host_with_no_nix_store_grants_nothing_of_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(lx, "NIX_STORE", str(tmp_path / "no-store"))
+    runtime = tmp_path / "node"
+    runtime.write_bytes(_elf64("/lib64/ld-linux-x86-64.so.2"))
+    assert lx.nix_store_grant(str(runtime), [str(tmp_path)], {}) == []
+
+
+def test_a_nix_host_without_nix_store_on_path_refuses_the_worker_by_name(tmp_path, monkeypatch):
+    store, _ = _fake_store(tmp_path, monkeypatch)
+    monkeypatch.setattr(lx.shutil, "which", lambda name: None)
+    pkg = store / "fff-node" / "bin" / "node"
+    pkg.parent.mkdir(parents=True)
+    pkg.write_bytes(b"static")
+    with pytest.raises(SandboxUnavailable, match="no nix-store on PATH"):
+        lx.nix_store_grant(str(pkg), [], {})
+
+
+def test_the_launcher_runs_the_worker_without_ld_library_path(monkeypatch):
+    """Maintainer 2026-11-26: the worker's environment is the same on every host. nix-ld, which
+    loads the launcher's Python on NixOS, leaves LD_LIBRARY_PATH set (empty when it was unset):
+    the preflight probe saw it on the NixOS host only (run 45720472876)."""
+    ran: list = []
+    monkeypatch.setattr(lx, "confine", lambda read, proxy_port, connect_ports=(): 4)
+    monkeypatch.setattr(lx.os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
+    monkeypatch.setenv("LD_LIBRARY_PATH", "")
+    monkeypatch.setenv("PROVISA_CODE_HASH", "abc")
+    lx.main(["--proxy-port", "1", "--", "/bin/true", "x"])
+    [(path, argv, env)] = ran
+    assert (path, argv) == ("/bin/true", ["/bin/true", "x"])
+    assert "LD_LIBRARY_PATH" not in env
+    assert env["PROVISA_CODE_HASH"] == "abc"
+
+
 def test_the_launcher_refuses_to_run_what_it_could_not_confine(monkeypatch, capsys):
     def _no_landlock(read, proxy_port, connect_ports=()):
         raise SandboxUnavailable("the kernel has no Landlock")
 
     ran: list = []
     monkeypatch.setattr(lx, "confine", _no_landlock)
-    monkeypatch.setattr(lx.os, "execv", lambda *a: ran.append(a))
+    monkeypatch.setattr(lx.os, "execve", lambda *a: ran.append(a))
     assert lx.main(["--proxy-port", "1", "--", "/bin/true"]) == 3
     assert ran == []
     assert "code-source sandbox unavailable: the kernel has no Landlock" in capsys.readouterr().err
@@ -179,6 +338,12 @@ def test_on_linux_the_host_inherits_its_socket_and_starts_through_the_launcher(
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(sandbox.platform, "system", lambda: "Linux")
+    asked: list = []
+    monkeypatch.setattr(
+        sandbox,
+        "nix_store_grant",
+        lambda executable, read, env: asked.append((executable, read)) or ["/nix/store/a-rt"],
+    )
     command = sandbox.sandboxed(
         _host,
         executable=Path("/rt/bin/node"),
@@ -193,6 +358,10 @@ def test_on_linux_the_host_inherits_its_socket_and_starts_through_the_launcher(
     assert argv[:3] == [sys.executable, "-I", lx.__file__]
     assert argv[argv.index("--") + 1 :] == _host("fd:5")
     assert command.env["HTTPS_PROXY"].startswith("http://127.0.0.1:")
+    # The runtime's Nix store closure is read beside what it is given (an empty list off Nix).
+    assert asked == [("/rt/bin/node", [str(tmp_path), "/rt/bin"])]
+    reads = [argv[i + 1] for i, a in enumerate(argv[: argv.index("--")]) if a == "--read"]
+    assert reads == [str(tmp_path), "/rt/bin", "/nix/store/a-rt"]
 
 
 def test_on_macos_the_host_starts_under_sandbox_exec(monkeypatch, tmp_path):

@@ -22,6 +22,7 @@
     "colProvider": "Aanmelding",
     "colOrgAdmin": "Organisatiebeheerder",
     "noMembers": "Nog geen leden.",
+    "noMembersMatch": "Geen leden komen overeen met het filter.",
     "yes": "Ja",
     "no": "Nee",
     "promote": "Organisatiebeheerder maken",
@@ -93,6 +94,9 @@
     },
     "localUsersHeading": "Lokale gebruikers",
     "attributesTab": "Kenmerken",
-    "accessTab": "Toegang"
+    "accessTab": "Toegang",
+    "filterPlaceholder": "Leden filteren",
+    "inviteButton": "Uitnodigen",
+    "closeInvite": "Uitnodigingsformulier sluiten"
   }
 }

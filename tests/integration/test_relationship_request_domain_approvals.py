@@ -301,7 +301,7 @@ async def _listed(plane, user: str) -> dict[int, dict]:
 async def _stored(plane, rel_id: str):
     async with plane.db.acquire() as conn:
         result = await conn.execute_core(
-            select(relationships.c.owner, relationships.c.needs_review).where(
+            select(relationships.c.id, relationships.c.needs_review).where(
                 relationships.c.id == rel_id
             )
         )
@@ -355,8 +355,9 @@ async def test_a_yes_from_each_side_executes_and_creates_the_relationship(plane)
     assert second.status_code == 200, second.text
     assert second.json()["status"] == "executed"
     stored = await _stored(plane, "orders_invoices")
-    # Owned by the approver whose yes completed it; both domains have seen it, so no review flag.
-    assert stored is not None and stored.owner == "fay" and stored.needs_review is False
+    # Both domains have seen it, so no review flag. Its owners are relationship_owner rows its
+    # Owner field writes (REQ-2219), not a column, and this request's field names none.
+    assert stored is not None and stored.needs_review is False
     again = await _post(plane, "sue", f"{rid}/approve")
     assert again.status_code == 409
 

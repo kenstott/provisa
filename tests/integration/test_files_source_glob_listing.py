@@ -22,6 +22,7 @@ import pytest
 from provisa.core.models import Source, SourceType
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_duckdb import _DuckDBPgwireConnector
+from provisa.federation.served_tables import serve_glob_tables
 
 pytestmark = [pytest.mark.integration]
 
@@ -108,6 +109,10 @@ def test_a_table_of_a_file_outside_the_glob_is_not_readable(outside):
 def test_a_table_file_glob_under_a_globbed_source_reads_its_files():
     """A table's own file_glob still makes one table of many files under a globbed source."""
     source = Source(id="glob-table", type=SourceType.files, path=str(DROP / "complaints*.csv"))
-    source.file_glob_tables = [{"name": "complaints", "file_glob": "complaints_2026_*.csv"}]
-
-    assert _attached(source, lambda con, details: _count(con, details, "complaints")) == 600
+    # A schema build records the source's registered glob tables; every start of its server
+    # reads them there (served_tables.serve_glob_tables, REQ-788).
+    serve_glob_tables(source.id, [{"name": "complaints", "file_glob": "complaints_2026_*.csv"}])
+    try:
+        assert _attached(source, lambda con, details: _count(con, details, "complaints")) == 600
+    finally:
+        serve_glob_tables(source.id, [])

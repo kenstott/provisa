@@ -193,8 +193,8 @@
     "colDescription": "Descrição",
     "colGqlAlias": "Alias GQL",
     "colSteward": "Steward",
-    "colActions": "Ações",
     "noDomains": "Nenhum domínio definido",
+    "noDomainsMatch": "Nenhum domínio corresponde ao filtro",
     "deleteDomain": "Excluir domínio {{id}}",
     "resolveSteward": "Mostrar quem é steward do domínio {{id}}",
     "pageIndicator": "Página {{page}} / {{total}}",
@@ -225,6 +225,9 @@
     "apolloSubgraphNameHint": "O nome pelo qual o supergrafo conhece este subgrafo.",
     "apolloSubgraphRole": "Atua como função",
     "apolloSubgraphRoleHint": "Um supergraph não consegue repassar a identidade de quem o chama, então o roteador entra com esta função, e as regras de linha, máscaras e visibilidade desta função regem cada entidade que ele busca.",
-    "stewardsHint": "Pessoas que respondem pelo domínio; cada uma precisa de uma função com domain_steward."
+    "stewardsHint": "Pessoas que respondem pelo domínio; cada uma precisa de uma função com domain_steward.",
+    "domainsFilterPlaceholder": "Filtrar domínios",
+    "closeForm": "Fechar o formulário",
+    "domainPanel": "Domínio"
   }
 }

@@ -48,6 +48,7 @@ def test_the_previous_rules_stay_in_force_until_the_new_set_is_published(monkeyp
     state = SimpleNamespace(
         masking_rules=previous,
         meta_roles={},  # no combined role is in use: its masks would be published with these
+        ruled_columns={},  # REQ-2278: no column rule keyed on a tag or a classification
         # prod: no data mode, so nothing is faked (REQ-1942)
         _active_runtime=lambda: SimpleNamespace(data_mode=None, env="prod", data_refusal=None),
     )

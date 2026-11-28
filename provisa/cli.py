@@ -80,6 +80,22 @@ def _apply_demo_config() -> Path:
     return cfg
 
 
+def _install_config_path() -> Path:
+    """The install's own config: ``provisa.yaml`` in PROVISA_HOME, the same location and rule as
+    scripts/provisa (``~/.provisa_home`` names the home, else ``~/.provisa``)."""
+    pointer = Path.home() / ".provisa_home"
+    home = Path(pointer.read_text().strip()) if pointer.is_file() else Path.home() / ".provisa"
+    return home / "provisa.yaml"
+
+
+def _apply_install_config() -> Path:
+    """Name the non-demo install's config (REQ-528: the app has no default config path). The file
+    is absent on the first start, where the setup wizard writes it (REQ-164). An operator-set
+    PROVISA_CONFIG wins."""
+    os.environ.setdefault("PROVISA_CONFIG", str(_install_config_path()))
+    return Path(os.environ["PROVISA_CONFIG"])
+
+
 def _config_names_engine() -> bool:
     """Whether the config file this process loads names a federation engine (REQ-2269).
 
@@ -99,6 +115,10 @@ def _config_names_engine() -> bool:
     return bool((yaml.safe_load(path.read_text()) or {}).get("federation_engine"))
 
 
+# The profile's engine and the materialize store that engine reads: applied together or not at all.
+_PROFILE_ENGINE_KEYS = frozenset({"PROVISA_ENGINE", "PROVISA_MATERIALIZE_URL"})
+
+
 def _apply_embedded_env(data_dir: Path) -> list[str]:
     """Resolve and apply the embedded ("native") launch environment (REQ-1126, REQ-1129).
 
@@ -109,14 +129,30 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     layered on before launch is preserved.
 
     The profile's engine is a default (REQ-2269): it is applied only when neither the environment
-    nor the config file names an engine, so a config's ``federation_engine`` wins over it.
+    nor the config file names an engine, so a config's ``federation_engine`` wins over it. The
+    profile's materialize store belongs to the profile's engine and is applied only with it: under
+    a config-named engine the store is that engine's own declared default (Trino's is the
+    control-plane PostgreSQL), unless the environment names one.
+
+    The control plane (REQ-2269, amended 2026-11-26): with PLATFORM_DATABASE_URL and
+    TENANT_DATABASE_URL both set (a host install's own PostgreSQL), it is that server and no
+    embedded one starts; one without the other is refused.
     """
     from provisa.core.desktop_profile import load_profile
 
-    profile = load_profile("native", data_dir=data_dir)
+    url_keys = ("PLATFORM_DATABASE_URL", "TENANT_DATABASE_URL")
+    named = [key for key in url_keys if os.environ.get(key)]
+    if len(named) == 1:
+        (missing,) = set(url_keys) - set(named)
+        raise SystemExit(
+            f"{named[0]} is set but {missing} is not: set both to run on that PostgreSQL, "
+            "or neither for the embedded control plane"
+        )
+    control_plane = "postgresql" if named else None
+    profile = load_profile("native", data_dir=data_dir, control_plane=control_plane)
     config_engine = _config_names_engine()
     for key, value in profile.env.items():
-        if key == "PROVISA_ENGINE" and config_engine:
+        if key in _PROFILE_ENGINE_KEYS and config_engine:
             continue
         os.environ.setdefault(key, value)
     notes = list(profile.notes)
@@ -247,12 +283,18 @@ async def _announce_ready(
 KEEP_ALIVE_SECONDS = 620
 
 
+_WILDCARD_BINDS = frozenset({"0.0.0.0", "::", ""})  # nosec B104 - compared, never bound
+
+
 def _name_local_address(host: str, api_port: int) -> None:
     """REQ-2135: a local start names the address its API listens on; the boot stores it as
     server.public_url when that is unset (provisa/core/local_install.py)."""
     from provisa.core.local_install import LOCAL_ADDRESS_ENV
 
-    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{host}:{api_port}")
+    # A wildcard bind (every address) is no address a client names; on this host the server it
+    # starts is reached as localhost (release 513's installed host stored http://0.0.0.0:8000).
+    address = "localhost" if host in _WILDCARD_BINDS else host
+    os.environ.setdefault(LOCAL_ADDRESS_ENV, f"http://{address}:{api_port}")
 
 
 async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:
@@ -638,6 +680,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         except FileNotFoundError as exc:
             print(str(exc), file=sys.stderr)
             return 1
+    else:
+        _apply_install_config()
     # The launch environment starts the embedded plane and publishes its URLs, so drift is read
     # after it and not before: the check needs the socket the resolver has just chosen (REQ-1535).
     notes = _apply_embedded_env(data_dir)

@@ -6,7 +6,6 @@
     "restoreDetail": "Restaurar el panel",
     "closeDetail": "Cerrar el panel de detalles",
     "backToList": "Volver a la lista",
-    "backToCommand": "Volver al comando",
     "panelNewCommand": "Nuevo comando",
     "title": "Comandos",
     "loading": "Cargando comandos...",
@@ -39,6 +38,8 @@
     "colTimeout": "Tiempo de espera",
     "noFunctions": "No hay funciones registradas",
     "noWebhooks": "No hay webhooks registrados",
+    "noFunctionsMatch": "Ninguna función coincide con el filtro",
+    "noWebhooksMatch": "Ningún webhook coincide con el filtro",
     "customSchema": "conjunto de datos",
     "dash": "—",
     "all": "todos",
@@ -54,8 +55,6 @@
     "editAria": "Editar {{name}}",
     "deleteFunctionAria": "Eliminar función {{name}}",
     "deleteWebhookAria": "Eliminar webhook {{name}}",
-    "testButton": "Probar",
-    "testingButton": "Probando...",
     "cancelAria": "Cancelar edición",
     "saveAria": "Guardar cambios",
     "deleteFunctionTitle": "¿Eliminar la función \"{{name}}\"?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "¿Eliminar el webhook \"{{name}}\"?",
     "deleteWebhookConsequence": "Esto quitará el webhook del esquema.",
     "inlineReturns": "en línea ({{count}} campos)",
-    "testAsRole": "Probar como rol:",
-    "testResultHeading": "Resultado de la prueba: {{name}}",
     "close": "Cerrar",
-    "governanceApplied": "Gobierno aplicado",
     "savedMessage": "Se guardó {{type}} \"{{name}}\"",
     "yes": "Sí",
-    "no": "No"
+    "no": "No",
+    "argKind": {
+      "column_value": "valor",
+      "table_ref": "referencia de tabla",
+      "result_set": "conjunto de resultados"
+    }
   }
 }

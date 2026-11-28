@@ -16,17 +16,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Button,
-  Card,
   Checkbox,
   Group,
   PasswordInput,
   Stack,
+  Table,
   Text,
   Textarea,
   TextInput,
 } from "@mantine/core";
+import { Container, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   addContainerRegistry,
@@ -36,12 +38,22 @@ import {
   type ContainerRegistry,
 } from "../../api/containerRegistries";
 import { useAuth } from "../../context/AuthContext";
-import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { PageTitle } from "../PageTitle";
+import { Tip } from "../Tip";
+import { FormChecks, FormField, FormFooter, FormLayout, FormRead } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
+import { ListRow } from "../list/ListTable";
+import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
+import { SortGroupTable } from "../list/SortGroupTable";
+import { PanelActions, SplitPane } from "../list/SplitPane";
+import { useRememberedDetail } from "../list/useDetailParam";
+import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
+import { useUrlFilter } from "../list/useUrlFilter";
+import { FilterInput } from "./FilterInput";
 
-/** An entry as the form holds it: a kept one (its id) or a new one (no id yet). */
+/** An entry as the form holds it. */
 interface Draft {
-  key: string;
-  id: string | null;
   address: string;
   username: string;
   credential: string;
@@ -50,8 +62,6 @@ interface Draft {
 }
 
 const draftOf = (r: ContainerRegistry): Draft => ({
-  key: r.id,
-  id: r.id,
   address: r.address,
   username: r.username,
   credential: r.credential,
@@ -59,40 +69,64 @@ const draftOf = (r: ContainerRegistry): Draft => ({
   caBundle: r.ca_bundle ?? "",
 });
 
-let fresh = 0;
-const blank = (): Draft => ({
-  key: `new-${++fresh}`,
-  id: null,
-  address: "",
-  username: "",
-  credential: "",
-  isDefault: false,
-  caBundle: "",
-});
+const BLANK: Draft = { address: "", username: "", credential: "", isDefault: false, caBundle: "" };
 
-/** The fields an entry cannot be kept without. */
-const missing = (d: Draft): string[] =>
-  [
-    d.address.trim() ? null : "address",
-    d.username.trim() ? null : "username",
-    d.credential.trim() ? null : "credential",
-  ].filter((f): f is string => f !== null);
+/** The form open in the panel: a new entry (blank or a copy), or the open entry's edit. */
+type Mode = "create" | "edit" | null;
 
-export function ContainerRegistriesTab() {
+/** REQ-2277: the object management anatomy -- the header (title, filter, Add), the list, and a row
+ * opening the registry's panel (?registry=<id>), read, with Edit, Duplicate and Delete in its head. */
+export function ContainerRegistriesTab({ title }: { title: string }) {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
-  const [drafts, setDrafts] = useState<Draft[] | null>(null);
-  const [busy, setBusy] = useState("");
-  const [said, setSaid] = useState<{ key: string; text: string; bad: boolean } | null>(null);
+  const [kept, setKept] = useState<ContainerRegistry[] | null>(null);
   const [error, setError] = useState("");
+  const [search, setSearch] = useUrlFilter();
+  // REQ-2277 rule 9: a registry is open only while the search shows its row.
+  const narrowings = [
+    searchNarrowing<ContainerRegistry>(
+      t,
+      search,
+      () => setSearch(""),
+      // Every text a registry's row shows.
+      (r) => [r.address, r.username, r.default ? t("detailFields.yes") : ""],
+    ),
+  ];
+  const detail = useRememberedDetail(
+    "containerRegistries",
+    detailListOf(
+      t,
+      kept,
+      (r) => r.id,
+      (r) => r.address,
+      narrowings,
+    ),
+  );
+  const [mode, setMode] = useState<Mode>(null);
+  const [draft, setDraft] = useState<Draft>(BLANK);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const required = useRequiredFields({
+    address: draft.address,
+    username: draft.username,
+    credential: draft.credential,
+  });
 
   const load = useCallback(() => {
-    if (!activeOrgId) return;
-    fetchContainerRegistries(activeOrgId)
-      .then((kept) => setDrafts(kept.map(draftOf)))
-      .catch((e: unknown) => setError(String(e)));
+    if (!activeOrgId) return Promise.resolve([] as ContainerRegistry[]);
+    return fetchContainerRegistries(activeOrgId)
+      .then((rows) => {
+        setKept(rows);
+        return rows;
+      })
+      .catch((e: unknown) => {
+        setError(String(e));
+        return [] as ContainerRegistry[];
+      });
   }, [activeOrgId]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   if (error) {
     return (
@@ -101,156 +135,272 @@ export function ContainerRegistriesTab() {
       </Alert>
     );
   }
-  if (!drafts || !activeOrgId) return null;
+  if (!kept || !activeOrgId) return null;
 
-  const change = (key: string, patch: Partial<Draft>) =>
-    setDrafts((ds) => (ds ?? []).map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  const open = kept.find((r) => r.id === detail.id) ?? null;
+  const shown = shownBy(kept, narrowings);
 
-  const run = async (key: string, act: () => Promise<unknown>, done: string) => {
-    setBusy(key);
-    setSaid(null);
+  const change = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const openForm = (next: Mode, from: Draft) => {
+    setDraft(from);
+    setProblem(null);
+    setMode(next);
+  };
+  const closeForm = () => {
+    setMode(null);
+    setProblem(null);
+  };
+
+  const save = async () => {
+    if (!required.validate()) return;
+    const body = {
+      address: draft.address.trim(),
+      username: draft.username.trim(),
+      credential: draft.credential,
+      default: draft.isDefault,
+      ca_bundle: draft.caBundle.trim() || null,
+    };
+    setSaving(true);
+    setProblem(null);
     try {
-      await act();
-      setSaid({ key, text: done, bad: false });
-      load();
+      const saved =
+        mode === "edit" && open !== null
+          ? await replaceContainerRegistry(activeOrgId, open.id, body)
+          : await addContainerRegistry(activeOrgId, body);
+      await load();
+      setMode(null);
+      detail.open(saved.id);
     } catch (e) {
-      setSaid({ key, text: String(e), bad: true });
+      setProblem(String(e));
     } finally {
-      setBusy("");
+      setSaving(false);
     }
   };
 
-  const save = (d: Draft) => {
-    const body = {
-      address: d.address.trim(),
-      username: d.username.trim(),
-      credential: d.credential,
-      default: d.isDefault,
-      ca_bundle: d.caBundle.trim() || null,
-    };
-    return run(
-      d.key,
-      () =>
-        d.id === null
-          ? addContainerRegistry(activeOrgId, body)
-          : replaceContainerRegistry(activeOrgId, d.id, body),
-      t("containerRegistries.saved"),
-    );
+  const remove = async (r: ContainerRegistry) => {
+    await deleteContainerRegistry(activeOrgId, r.id);
+    await load();
+    detail.close({ only: r.id });
   };
 
-  const remove = (d: Draft) =>
-    d.id === null
-      ? setDrafts((ds) => (ds ?? []).filter((x) => x.key !== d.key))
-      : run(
-          d.key,
-          () => deleteContainerRegistry(activeOrgId, d.id as string),
-          t("containerRegistries.removed"),
-        );
+  const fields = (d: Draft, editable: boolean) => (
+    <>
+      <FormField size="long" help={t("containerRegistries.addressHelp")}>
+        <TextInput
+          label={t("containerRegistries.address")}
+          placeholder="ghcr.io/example"
+          value={d.address}
+          onChange={(e) => change({ address: e.currentTarget.value })}
+          autoComplete="off"
+          data-testid="container-registry-address"
+          {...(editable ? required.field("address") : {})}
+        />
+      </FormField>
+      <FormField size="medium">
+        <TextInput
+          label={t("containerRegistries.username")}
+          value={d.username}
+          onChange={(e) => change({ username: e.currentTarget.value })}
+          autoComplete="off"
+          data-testid="container-registry-username"
+          {...(editable ? required.field("username") : {})}
+        />
+      </FormField>
+      <FormField size="long" help={t("containerRegistries.credentialHelp")}>
+        <PasswordInput
+          label={t("containerRegistries.credential")}
+          value={d.credential}
+          onChange={(e) => change({ credential: e.currentTarget.value })}
+          autoComplete="new-password"
+          data-testid="container-registry-credential"
+          {...(editable ? required.field("credential") : {})}
+        />
+      </FormField>
+      <FormField size="long" help={t("containerRegistries.caBundleHelp")}>
+        <Textarea
+          label={t("containerRegistries.caBundle")}
+          placeholder={"-----BEGIN CERTIFICATE-----"}
+          value={d.caBundle}
+          onChange={(e) => change({ caBundle: e.currentTarget.value })}
+          autosize
+          minRows={2}
+          maxRows={8}
+          styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+          data-testid="container-registry-ca-bundle"
+        />
+      </FormField>
+      <FormChecks>
+        <FormField size="short" help={t("containerRegistries.defaultHelp")}>
+          <Checkbox
+            label={t("containerRegistries.default")}
+            checked={d.isDefault}
+            onChange={(e) => change({ isDefault: e.currentTarget.checked })}
+            data-testid="container-registry-default"
+          />
+        </FormField>
+      </FormChecks>
+    </>
+  );
 
-  const entry = (d: Draft) => {
-    const id = `container-registry-${d.key}`;
-    return (
-      <Card key={d.key} withBorder data-testid={id}>
-        <FormLayout>
-          <FormField size="long" help={t("containerRegistries.addressHelp")}>
-            <TextInput
-              label={t("containerRegistries.address")}
-              placeholder="ghcr.io/example"
-              required
-              value={d.address}
-              onChange={(e) => change(d.key, { address: e.currentTarget.value })}
-              autoComplete="off"
-              data-testid={`${id}-address`}
+  const formView = (
+    <FormLayout data-testid="container-registry-form">
+      {fields(draft, true)}
+      <FormFooter
+        panel
+        onSave={save}
+        onCancel={closeForm}
+        saving={saving}
+        problem={problem ?? undefined}
+        saveProps={{ "data-testid": "container-registry-save" }}
+      />
+    </FormLayout>
+  );
+
+  const readView = (r: ContainerRegistry) => (
+    <Stack gap="sm" data-testid={`container-registry-detail-${r.id}`}>
+      <PanelActions>
+        <fieldset className="panel-action-set">
+          <Group gap="xs">
+            <Tip text={t("containerRegistries.edit", { name: r.address })} named>
+              <ActionIcon
+                aria-label={t("containerRegistries.edit", { name: r.address })}
+                data-testid={`container-registry-edit-${r.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openForm("edit", draftOf(r));
+                }}
+              >
+                <Pencil size={14} />
+              </ActionIcon>
+            </Tip>
+            <PanelDuplicate
+              name={r.address}
+              onDuplicate={() => openForm("create", { ...draftOf(r), isDefault: false })}
+              testId={`container-registry-duplicate-${r.id}`}
             />
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("containerRegistries.username")}
-              required
-              value={d.username}
-              onChange={(e) => change(d.key, { username: e.currentTarget.value })}
-              autoComplete="off"
-              data-testid={`${id}-username`}
+            <PanelDelete
+              itemKey={r.id}
+              title={t("containerRegistries.remove")}
+              consequence={t("containerRegistries.removeConfirm", { name: r.address })}
+              ariaLabel={t("containerRegistries.remove")}
+              testId={`container-registry-remove-${r.id}`}
+              onDelete={() => remove(r)}
             />
-          </FormField>
-          <FormField size="long" help={t("containerRegistries.credentialHelp")}>
-            <PasswordInput
-              label={t("containerRegistries.credential")}
-              required
-              value={d.credential}
-              onChange={(e) => change(d.key, { credential: e.currentTarget.value })}
-              autoComplete="new-password"
-              data-testid={`${id}-credential`}
-            />
-          </FormField>
-          <FormField size="long" help={t("containerRegistries.caBundleHelp")}>
-            <Textarea
-              label={t("containerRegistries.caBundle")}
-              placeholder={"-----BEGIN CERTIFICATE-----"}
-              value={d.caBundle}
-              onChange={(e) => change(d.key, { caBundle: e.currentTarget.value })}
-              autosize
-              minRows={2}
-              maxRows={8}
-              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
-              data-testid={`${id}-ca-bundle`}
-            />
-          </FormField>
-          <FormChecks>
-            <FormField size="short" help={t("containerRegistries.defaultHelp")}>
-              <Checkbox
-                label={t("containerRegistries.default")}
-                checked={d.isDefault}
-                onChange={(e) => change(d.key, { isDefault: e.currentTarget.checked })}
-                data-testid={`${id}-default`}
-              />
-            </FormField>
-          </FormChecks>
-          <FormFooter
-            onSave={() => save(d)}
-            saving={busy === d.key}
-            saveProps={{ "data-testid": `${id}-save`, disabled: missing(d).length > 0 }}
-          >
-            <Button
-              variant="default"
-              color="red"
-              onClick={() => remove(d)}
-              disabled={busy === d.key}
-              data-testid={`${id}-remove`}
-            >
-              {t("containerRegistries.remove")}
-            </Button>
-            {said?.key === d.key && (
-              <Text size="sm" c={said.bad ? "red" : "green"} data-testid={`${id}-said`}>
-                {said.text}
-              </Text>
-            )}
-          </FormFooter>
-        </FormLayout>
-      </Card>
-    );
-  };
+          </Group>
+        </fieldset>
+      </PanelActions>
+      <FormRead testId={`container-registry-read-${r.id}`}>{fields(draftOf(r), false)}</FormRead>
+    </Stack>
+  );
+
+  const panelTitle =
+    mode === "create" ? t("containerRegistries.add") : open !== null ? open.address : "";
+  const panelBody =
+    mode === "create"
+      ? formView
+      : open !== null
+        ? mode === "edit"
+          ? formView
+          : readView(open)
+        : null;
+  const yes = t("detailFields.yes");
 
   return (
-    <Stack gap="md" data-testid="container-registries">
-      <Group justify="space-between" align="flex-start">
-        <Text size="sm" style={{ flex: 1 }}>
+    <>
+      <div className="page-header">
+        <PageTitle icon={Container}>{title}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("containerRegistries.filterPlaceholder")}
+          testId="container-registries-filter"
+        />
+        <div className="page-actions">
+          <Button
+            variant={mode === "create" ? "outline" : "filled"}
+            onClick={() => (mode === "create" ? closeForm() : openForm("create", BLANK))}
+            aria-label={mode === "create" ? t("containerRegistries.closeForm") : undefined}
+            data-testid="container-registries-add"
+          >
+            {mode === "create" ? <X size={14} /> : t("containerRegistries.add")}
+          </Button>
+        </div>
+      </div>
+      <Stack gap="md" data-testid="container-registries">
+        <Text size="sm" c="dimmed">
           {t("containerRegistries.help")}
         </Text>
-        <Button
-          onClick={() => setDrafts((ds) => [...(ds ?? []), blank()])}
-          data-testid="container-registries-add"
+        <SplitPane
+          outOfList={detail.outOfList}
+          testId="container-registries-split"
+          storageKey="provisa.containerRegistries.detailWidth"
+          title={panelTitle}
+          onClose={() => {
+            closeForm();
+            detail.close();
+          }}
+          closeOnEscape={mode === null}
+          labels={{
+            panel: t("containerRegistries.address"),
+            resize: t("tablesPage.resizeDetail"),
+            expand: t("tablesPage.expandDetail"),
+            restore: t("tablesPage.restoreDetail"),
+            close: t("tablesPage.closeDetail"),
+            backToList: t("tablesPage.backToList"),
+          }}
+          list={
+            <SortGroupTable
+              testPrefix="container-registries"
+              testId="container-registries-list"
+              emptyTestId="container-registries-empty"
+              rows={shown}
+              columns={[
+                {
+                  key: "address",
+                  label: t("containerRegistries.address"),
+                  sortValue: (r) => r.address,
+                },
+                {
+                  key: "username",
+                  label: t("containerRegistries.username"),
+                  sortValue: (r) => r.username,
+                },
+                {
+                  key: "default",
+                  label: t("containerRegistries.default"),
+                  sortValue: (r) => (r.default ? 0 : 1),
+                  groupValue: (r) => (r.default ? yes : t("detailFields.no")),
+                },
+              ]}
+              headers={[{ col: "address" }, { col: "username" }, { col: "default" }]}
+              colSpan={3}
+              rowKey={(r) => r.id}
+              // A list a filter emptied says so, never that none is kept.
+              empty={
+                kept.length === 0 ? t("containerRegistries.none") : t("containerRegistries.noMatch")
+              }
+              render={(r) => (
+                <ListRow
+                  key={r.id}
+                  testId={`container-registry-${r.id}`}
+                  selected={mode !== "create" && r.id === detail.id}
+                  onClick={() => {
+                    closeForm();
+                    if (detail.id === r.id) detail.close();
+                    else detail.open(r.id);
+                  }}
+                >
+                  <Table.Td>{r.address}</Table.Td>
+                  <Table.Td>{r.username}</Table.Td>
+                  <Table.Td>{r.default ? yes : ""}</Table.Td>
+                </ListRow>
+              )}
+            />
+          }
         >
-          {t("containerRegistries.add")}
-        </Button>
-      </Group>
-      {drafts.length === 0 ? (
-        <Text size="sm" c="dimmed" data-testid="container-registries-none">
-          {t("containerRegistries.none")}
-        </Text>
-      ) : (
-        drafts.map(entry)
-      )}
-    </Stack>
+          {panelBody}
+        </SplitPane>
+      </Stack>
+    </>
   );
 }

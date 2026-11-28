@@ -6,7 +6,6 @@
     "restoreDetail": "Paneel herstellen",
     "closeDetail": "Detailpaneel sluiten",
     "backToList": "Terug naar de lijst",
-    "backToCommand": "Terug naar de opdracht",
     "panelNewCommand": "Nieuwe opdracht",
     "title": "Opdrachten",
     "loading": "Opdrachten laden...",
@@ -39,6 +38,8 @@
     "colTimeout": "Time-out",
     "noFunctions": "Geen functies geregistreerd",
     "noWebhooks": "Geen webhooks geregistreerd",
+    "noFunctionsMatch": "Geen functies komen overeen met het filter",
+    "noWebhooksMatch": "Geen webhooks komen overeen met het filter",
     "customSchema": "dataset",
     "dash": "—",
     "all": "alle",
@@ -54,8 +55,6 @@
     "editAria": "{{name}} bewerken",
     "deleteFunctionAria": "Functie {{name}} verwijderen",
     "deleteWebhookAria": "Webhook {{name}} verwijderen",
-    "testButton": "Testen",
-    "testingButton": "Testen...",
     "cancelAria": "Bewerken annuleren",
     "saveAria": "Wijzigingen opslaan",
     "deleteFunctionTitle": "Functie \"{{name}}\" verwijderen?",
@@ -63,12 +62,14 @@
     "deleteWebhookTitle": "Webhook \"{{name}}\" verwijderen?",
     "deleteWebhookConsequence": "Hiermee wordt de webhook uit het schema verwijderd.",
     "inlineReturns": "inline ({{count}} velden)",
-    "testAsRole": "Testen als rol:",
-    "testResultHeading": "Testresultaat: {{name}}",
     "close": "Sluiten",
-    "governanceApplied": "Governance toegepast",
     "savedMessage": "{{type}} \"{{name}}\" opgeslagen",
     "yes": "Ja",
-    "no": "Nee"
+    "no": "Nee",
+    "argKind": {
+      "column_value": "waarde",
+      "table_ref": "tabelverwijzing",
+      "result_set": "resultaatset"
+    }
   }
 }

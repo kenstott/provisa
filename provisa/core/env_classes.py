@@ -69,6 +69,9 @@ CARRIED: frozenset[str] = frozenset(
         "tags",
         "tag_param_values",
         "tag_assignments",
+        # REQ-2278: a column rule on a tag or a classification travels with the tags and the
+        # roles it names, as a row filter on a tag does.
+        "column_rules",
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
@@ -276,6 +279,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "model_name_clashes",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
+        # REQ-2158: its own members' latest declared-logical-type checks.
+        "contract_type_checks",
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
         "profiler_sensitive_scans",
         "profiler_sensitive_hints",

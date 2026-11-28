@@ -1,9 +1,11 @@
 {
   "metricsPage": {
     "title": "मेट्रिक्स",
+    "filterPlaceholder": "मेट्रिक्स फ़िल्टर करें…",
     "newMetric": "+ मेट्रिक",
     "loading": "लोड हो रहा है...",
     "empty": "अभी तक कोई मेट्रिक पंजीकृत नहीं है।",
+    "noMatch": "फ़िल्टर से मेल खाता कोई मेट्रिक नहीं।",
     "colName": "नाम",
     "colExpression": "एक्सप्रेशन",
     "colDatatype": "डेटाटाइप",

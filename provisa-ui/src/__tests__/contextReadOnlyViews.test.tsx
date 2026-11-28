@@ -14,7 +14,7 @@
 // drawn only when the viewer holds that page's right.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "../test-utils/render";
+import { fireEvent, render, screen, within } from "../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { Metric, Tag } from "../types/admin";
 
@@ -132,52 +132,74 @@ beforeEach(() => {
 
 describe("Context Tags (read-only TagsTab)", () => {
   it("withholds every control that writes", async () => {
-    render(<TagsTab readOnly />);
-    await screen.findByTestId("tags-where-finance");
+    render(<TagsTab readOnly title="Tags" />);
+    await screen.findByTestId("tags-where-summary-finance");
     expect(screen.queryByTestId("tags-create-button")).toBeNull();
     expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
     expect(screen.queryByLabelText("Edit tag finance")).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
+    // Its panel reads the tag, with no Edit or Delete.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
+    expect(screen.getByTestId("tags-detail-finance")).toBeInTheDocument();
+    expect(screen.queryByTestId("tags-edit-finance")).toBeNull();
+    expect(screen.queryByTestId("tags-delete-finance")).toBeNull();
   });
 
   it("names the places the viewer reads and only counts the rest", async () => {
-    render(<TagsTab readOnly />);
-    const pii = await screen.findByTestId("tags-where-pii");
-    expect(pii).toHaveTextContent("crm.public.customers.email");
+    render(<TagsTab readOnly title="Tags" />);
+    // REQ-2208: the list holds counts; the panel names the places.
+    expect(await screen.findByTestId("tags-where-summary-pii")).toHaveTextContent(
+      "1 object in 1 source · 3 more you cannot read",
+    );
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    const pii = screen.getByTestId("tags-where-pii");
+    expect(within(pii).getByTestId("tags-where-pii-columns-source-crm")).toHaveTextContent(
+      "public.customers.email",
+    );
     expect(within(pii).getByTestId("tags-where-pii-hidden")).toHaveTextContent(
       "3 more you cannot read",
     );
   });
 
-  it("shows the row filters and the classification that depend on a tag", async () => {
-    render(<TagsTab readOnly />);
-    expect(await screen.findByTestId("tags-dependents-finance")).toHaveTextContent("2 row filters");
-    expect(screen.getByTestId("tags-dependents-pii")).toHaveTextContent(
-      "Assigned by classification: US social security number",
+  it("shows the row rules and the classification that depend on a tag", async () => {
+    render(<TagsTab readOnly title="Tags" />);
+    expect(await screen.findByTestId("tags-dependents-summary-finance")).toHaveTextContent(
+      "2 row rules",
+    );
+    expect(screen.getByTestId("tags-dependents-summary-pii")).toHaveTextContent("1 classification");
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    fireEvent.click(screen.getByTestId("tags-dependents-pii-classification-toggle"));
+    expect(screen.getByTestId("tags-classification-pii-us_ssn")).toHaveTextContent(
+      "US social security number",
     );
   });
 
   it("draws links only when the viewer holds the target page's right", async () => {
-    render(<TagsTab readOnly />);
-    await screen.findByTestId("tags-where-finance");
+    render(<TagsTab readOnly title="Tags" />);
+    await screen.findByTestId("tags-where-summary-finance");
+    // The tag's name in its panel links to its editor.
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).not.toHaveAttribute("href");
-    expect(screen.getByTestId("tags-where-finance-place")).not.toHaveAttribute("href");
+    expect(screen.getByTestId("tags-where-finance-tables-place")).not.toHaveAttribute("href");
     // The classification page is glossary_read's: the viewer may follow that link.
+    fireEvent.click(screen.getByTestId("tags-row-pii"));
+    fireEvent.click(screen.getByTestId("tags-dependents-pii-classification-toggle"));
     expect(screen.getByTestId("tags-classification-pii-us_ssn")).toHaveAttribute(
       "href",
-      "/context/classification",
+      "/context/classification?kind=us_ssn",
     );
   });
 
   it("links the tag and its tables to their editors for a viewer who edits them", async () => {
     auth.capabilities = ["glossary_read", "table_registration"];
-    render(<TagsTab readOnly />);
-    await screen.findByTestId("tags-where-finance");
+    render(<TagsTab readOnly title="Tags" />);
+    await screen.findByTestId("tags-where-summary-finance");
+    fireEvent.click(screen.getByTestId("tags-row-finance"));
     expect(screen.getByTestId("tags-link-finance")).toHaveAttribute(
       "href",
       "/admin/tags?tag=finance",
     );
-    expect(screen.getByTestId("tags-where-finance-place")).toHaveAttribute(
+    expect(screen.getByTestId("tags-where-finance-tables-place")).toHaveAttribute(
       "href",
       "/tables?table=1",
     );
@@ -185,7 +207,7 @@ describe("Context Tags (read-only TagsTab)", () => {
 
   it("the Admin page still edits", () => {
     auth.capabilities = ["table_registration"];
-    render(<TagsTab />);
+    render(<TagsTab title="Tags" />);
     expect(screen.getByTestId("tags-create-button")).toBeInTheDocument();
     expect(contextApi.fetchContextTags).not.toHaveBeenCalled();
   });
@@ -193,7 +215,7 @@ describe("Context Tags (read-only TagsTab)", () => {
 
 describe("Context Classification (read-only ClassificationKindsTab)", () => {
   it("lists the kinds and where each was detected, without the switch", async () => {
-    render(<ClassificationKindsTab readOnly />);
+    render(<ClassificationKindsTab readOnly title="Classification" />);
     const row = await screen.findByTestId("classification-kind-us_ssn");
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByTestId("classification-kind-enabled-us_ssn")).toBeNull();
@@ -207,7 +229,7 @@ describe("Context Classification (read-only ClassificationKindsTab)", () => {
   });
 
   it("links a detection to its column only with the table page's right", async () => {
-    render(<ClassificationKindsTab readOnly />);
+    render(<ClassificationKindsTab readOnly title="Classification" />);
     const place = await screen.findByTestId("classification-kind-detected-us_ssn-place");
     expect(place).not.toHaveAttribute("href");
   });

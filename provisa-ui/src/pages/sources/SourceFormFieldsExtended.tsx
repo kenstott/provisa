@@ -25,7 +25,13 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable } from "../../liveCapability";
 import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
-import { API_AUTH_TYPES, BRAND_CARRIER, FILE_TRANSPORTS } from "./constants";
+import { CloudDriveFields } from "./CloudDriveFields";
+import {
+  API_AUTH_TYPES,
+  BRAND_CARRIER,
+  FILE_TRANSPORTS,
+  FILES_PATH_PLACEHOLDER,
+} from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
@@ -47,9 +53,7 @@ import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
 import { sourceFormLanded } from "./loadManagement";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
-import { connectorScript, fixedFormKeys } from "./connector";
-import { ScriptValidationPanel } from "./ScriptValidationPanel";
-import { useAuth } from "../../context/AuthContext";
+import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -174,9 +178,6 @@ export function SourceFormFieldsExtended({
   // A kind whose tables land cannot be created without its Cache TTL (sourceKind).
   const landsWithTtl = useCacheTtlRequired(form.type);
   const { t } = useTranslation();
-  const { activeOrgId } = useAuth();
-  // REQ-2225: a saved Spark source's script, which its form validates.
-  const heldScript = heldBy ? connectorScript(heldBy, authFields) : null;
   const namingConventions = useNamingConventions();
   const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
@@ -690,13 +691,6 @@ export function SourceFormFieldsExtended({
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}
-      {heldBy && editingSourceId && activeOrgId && heldScript !== null && (
-        <ScriptValidationPanel // REQ-2225
-          orgId={activeOrgId}
-          sourceId={editingSourceId}
-          script={heldScript}
-        />
-      )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
       {form.type === JDBC_SOURCE && ( // REQ-2191
@@ -772,7 +766,7 @@ export function SourceFormFieldsExtended({
                   label={t("sourceFormFieldsExtended.pathGlob")}
                   value={form.path}
                   onChange={(e) => setForm({ ...form, path: e.target.value })}
-                  placeholder={filesTransport === "file://" ? "/data/files/**" : "bucket/prefix/**"}
+                  placeholder={FILES_PATH_PLACEHOLDER[filesTransport] ?? "bucket/prefix/**"}
                   data-testid="files-path-input"
                 />
               </FormField>
@@ -891,6 +885,7 @@ export function SourceFormFieldsExtended({
                   )}
                 </>
               )}
+              <CloudDriveFields needsAuth={transportMeta.needsAuth} {...typed} />
               <ExcelHintsFields fields={authFields} setFields={setAuthFields} />
             </>
           );

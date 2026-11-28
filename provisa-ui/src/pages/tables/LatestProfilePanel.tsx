@@ -19,6 +19,7 @@ import type { RegisteredTable } from "../../types/admin";
 import { ProfileClassificationsModal } from "./ProfileClassificationsModal";
 import { ProfileConstraintsModal } from "./ProfileConstraintsModal";
 import { ProfileRunsModal } from "./ProfileRunsModal";
+import { useProfileRunsParam } from "./useProfileRunsParam";
 import { ProfileTerrain } from "./profile3d/terrain/ProfileTerrain";
 
 const RUN_KEY = new Set(["run_id", "run_time"]);
@@ -82,7 +83,11 @@ export function SanitizedProfilePanel({
 }) {
   const { t } = useTranslation();
   const [view, setView] = useState<"table" | "terrain">("table");
-  const [open, setOpen] = useState<"runs" | "constraints" | "classifications" | null>(null);
+  const [open, setOpen] = useState<"constraints" | "classifications" | null>(null);
+  // REQ-2277: the runs dialog is the URL's: `?profile=` with `?table=` naming this panel's table,
+  // the page showing several tables' profiles.
+  const runs = useProfileRunsParam(true);
+  const runsOpen = mode === "owner" && runs.profile !== null && runs.tableId === profile.tableId;
   const rows = profile.results?.columns ?? [];
   const result: ProfileRows = {
     columns: rows.length > 0 ? ["run_time", ...Object.keys(rows[0])] : [],
@@ -106,7 +111,12 @@ export function SanitizedProfilePanel({
         )}
         {mode === "owner" && (
           <Group gap="xs" data-testid={`${testId}-owner`}>
-            <Button size="xs" variant="light" onClick={() => setOpen("runs")}>
+            <Button
+              size="xs"
+              variant="light"
+              data-testid={`${testId}-view-runs`}
+              onClick={() => runs.open(profile.tableId)}
+            >
               {t("profilerPanel.viewRuns")}
             </Button>
             <Button size="xs" variant="light" onClick={() => setOpen("constraints")}>
@@ -131,8 +141,8 @@ export function SanitizedProfilePanel({
       ) : (
         <ProfileColumnsTable result={result} />
       )}
-      {open === "runs" && (
-        <ProfileRunsModal tableId={profile.tableId} tableName={profile.tableName} onClose={close} />
+      {runsOpen && (
+        <ProfileRunsModal tableId={profile.tableId} tableName={profile.tableName} namesTable />
       )}
       {open === "constraints" && (
         <ProfileConstraintsModal
