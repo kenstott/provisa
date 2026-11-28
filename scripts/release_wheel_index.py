@@ -68,19 +68,33 @@ def _sha256(asset: dict) -> str:
 
 
 def project_wheels(releases: Iterable[dict], project: str) -> list[tuple[str, str, str]]:
-    """(file name, download URL, sha256) of every wheel of ``project`` on a published release."""
+    """(file name, download URL, sha256) of every wheel of ``project`` on a published release.
+
+    A wheel whose version did not change between releases is attached to each of them under one
+    file name. When every copy has the same sha256 it is one file, listed once at the newest
+    release's asset (by ``published_at``). The same name with different bytes is refused, naming
+    both releases: pip would take either file for that one name.
+    """
     want = normalize(project)
+    published = [release for release in releases if not release["draft"]]
+    published.sort(key=lambda release: release["published_at"], reverse=True)
     wheels: dict[str, tuple[str, str, str]] = {}
-    for release in releases:
-        if release["draft"]:
-            continue
+    owner: dict[str, str] = {}
+    for release in published:
         for asset in release["assets"]:
             name = asset["name"]
             if wheel_project(name) != want:
                 continue
+            sha = _sha256(asset)
             if name in wheels:
-                raise ValueError(f"wheel {name} is attached to more than one release")
-            wheels[name] = (name, asset["browser_download_url"], _sha256(asset))
+                if wheels[name][2] != sha:
+                    raise ValueError(
+                        f"wheel {name} is attached to releases {owner[name]} and "
+                        f"{release['tag_name']} with different sha256 digests"
+                    )
+                continue
+            wheels[name] = (name, asset["browser_download_url"], sha)
+            owner[name] = release["tag_name"]
     return [wheels[name] for name in sorted(wheels)]
 
 
