@@ -126,8 +126,6 @@ jobs:
       CONFORMANCE_PG_USER: postgres
       CONFORMANCE_PG_PASSWORD: conformance-pg-password
       # Ephemeral, on a throwaway instance: not secrets (conformance-pgwire.yml).
-      PROVISA_SUPERUSER_USERNAME: conformance-su
-      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
       CONFORMANCE_USER: conformance
       CONFORMANCE_PASSWORD: conformance-password
       CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000

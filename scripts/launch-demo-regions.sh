@@ -59,6 +59,10 @@ else
 fi
 PIDS_FILE="$INSTANCE_DIR/pids"
 CONFIG_OUT="$INSTANCE_DIR/provisa-regions-demo.yaml"
+# The model without its auth section: what the eu node first boots on, so first-run setup seats the
+# instance's org_admin (scripts/seed_org_admin.py, REQ-1264). Used only until the instance is seeded.
+CONFIG_BOOT="$INSTANCE_DIR/provisa-regions-demo.boot.yaml"
+SEEDED_MARKER="$INSTANCE_DIR/.seeded"
 CSV_DIR="$INSTANCE_DIR/csv"
 PG_DIR="$INSTANCE_DIR/shared-pg"
 
@@ -163,37 +167,51 @@ _ensure_ui_built
 # PLATFORM/TENANT_DATABASE_URL and REDIS_URL are exported so the embedded profile (setdefault) keeps
 # them: both nodes use the ONE shared pg + fakeredis instead of each starting its own.
 launch_node() {
-  local region="$1" api="$2" ui="$3" datadir="$4"
+  local region="$1" api="$2" ui="$3" datadir="$4" config="$5"
   # `provisa run` has no --config flag; it reads PROVISA_CONFIG. REPLACE=true so our regions config
   # is the whole model, not merged onto a bundled default.
   PROVISA_REGION="$region" \
   PLATFORM_DATABASE_URL="$PG_URL" TENANT_DATABASE_URL="$PG_URL" \
   REDIS_URL="$REDIS_URL" \
-  PROVISA_CONFIG="$CONFIG_OUT" PROVISA_CONFIG_REPLACE="true" \
-  PROVISA_SUPERUSER_USERNAME="admin" PROVISA_SUPERUSER_PASSWORD="$ADMIN_PW" \
+  PROVISA_CONFIG="$config" PROVISA_CONFIG_REPLACE="true" \
     $PROVISA run --region "$region" --api-port "$api" --ui-port "$ui" \
       --data-dir "$datadir" --no-browser \
       >"$INSTANCE_DIR/$region.log" 2>&1 &
   echo $! >>"$PIDS_FILE"
 }
-launch_node eu "$EU_API" "$EU_UI" "$INSTANCE_DIR/eu"
-launch_node us "$US_API" "$US_UI" "$INSTANCE_DIR/us"
+_wait_api() {
+  for _i in $(seq 1 30); do
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$1/auth/provider-type" 2>/dev/null)" == "200" ]] && return 0
+    sleep 5
+  done
+  return 1
+}
 
-# --- first-launch seed: the break-glass superuser (PROVISA_SUPERUSER_*, control-plane only) opens
-# invites; /auth/register redeems them as the data-plane basic users operator (org_admin) and
+if [[ -f "$SEEDED_MARKER" ]]; then
+  launch_node eu "$EU_API" "$EU_UI" "$INSTANCE_DIR/eu" "$CONFIG_OUT"
+  launch_node us "$US_API" "$US_UI" "$INSTANCE_DIR/us" "$CONFIG_OUT"
+else
+  # --- first launch: the instance's org_admin `admin`, seated by first-run setup on the eu node
+  # booted without an auth section, which then puts the full model as admin (REQ-1264: no config
+  # account). The us node, on the same model store, starts on the full model once that is done. ---
+  "$PY" "$REPO/scripts/seed_org_admin.py" boot-config --model "$CONFIG_OUT" --out "$CONFIG_BOOT"
+  launch_node eu "$EU_API" "$EU_UI" "$INSTANCE_DIR/eu" "$CONFIG_BOOT"
+  _wait_api "$EU_API" || { echo "eu node never answered on $EU_API (see $INSTANCE_DIR/eu.log)" >&2; exit 1; }
+  SEED_ADMIN_PASSWORD="$ADMIN_PW" "$PY" "$REPO/scripts/seed_org_admin.py" seed \
+    --api "http://127.0.0.1:$EU_API" --model "$CONFIG_OUT" --user admin
+  launch_node us "$US_API" "$US_UI" "$INSTANCE_DIR/us" "$CONFIG_OUT"
+fi
+
+# --- first-launch seed: the instance's org_admin `admin` (seated above) opens invites;
+# /auth/register redeems them as the data-plane basic users operator (org_admin) and
 # resident (eu_resident). A second org_admin, `grantor`, then assigns residency_steward to the
 # operator through /admin/users -- a grant by ANOTHER principal, because a user cannot assign a role
 # to itself (REQ-1308). The operator ends up org_admin + residency_steward (REQ-1921: org_admin
 # alone cannot move data across a border). grantor is a seeding artifact, not a demo login. All
-# admin data work runs as operator; the superuser holds no data capabilities. Runs once; --reset
-# clears the marker so it re-seeds. ---
+# admin data work runs as operator. Runs once; --reset clears the marker so it re-seeds. ---
 _seed_users() {
-  local marker="$INSTANCE_DIR/.seeded"
+  local marker="$SEEDED_MARKER"
   [[ -f "$marker" ]] && return 0
-  for _i in $(seq 1 30); do
-    [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$EU_API/auth/provider-type" 2>/dev/null)" == "200" ]] && break
-    sleep 5
-  done
   if EU_API="$EU_API" ADMIN_PW="$ADMIN_PW" OPERATOR_PW="$OPERATOR_PW" RESIDENT_PW="$RESIDENT_PW" "$PY" - <<'PY'
 import os, json, secrets, urllib.request
 api = f"http://127.0.0.1:{os.environ['EU_API']}"
@@ -202,18 +220,18 @@ def post(path, body, auth=None):
     if auth: h["Authorization"] = auth
     req = urllib.request.Request(api + path, data=json.dumps(body).encode(), headers=h)
     return json.load(urllib.request.urlopen(req, timeout=20))
-# The superuser session token only opens the invites; each user is created by redeeming one.
-su = post("/auth/superuser-login", {"username": "admin", "password": os.environ['ADMIN_PW']})["access_token"]
+# admin's session token only opens the invites; each user is created by redeeming one.
+admin = post("/auth/login", {"username": "admin", "password": os.environ['ADMIN_PW']})["access_token"]
 ids = {}
 for username, role, pw_env in (("operator", "org_admin", "OPERATOR_PW"), ("resident", "eu_resident", "RESIDENT_PW")):
-    inv = post("/admin/invites/", {"org_id": "default", "role_id": role}, auth="Bearer " + su)
+    inv = post("/admin/invites/", {"org_id": "default", "role_id": role}, auth="Bearer " + admin)
     reg = post("/auth/register", {"username": username, "password": os.environ[pw_env], "invite_token": inv["token"]})
     ids[username] = reg["user_id"]
     print(f"seeded {username} -> {role}")
 # A second org_admin assigns residency_steward to the operator -- a grant by another principal
 # (REQ-1308 forbids assigning a role to yourself). grantor's password is ephemeral (seeding only).
 grantor_pw = secrets.token_hex(16)
-ginv = post("/admin/invites/", {"org_id": "default", "role_id": "org_admin"}, auth="Bearer " + su)
+ginv = post("/admin/invites/", {"org_id": "default", "role_id": "org_admin"}, auth="Bearer " + admin)
 post("/auth/register", {"username": "grantor", "password": grantor_pw, "invite_token": ginv["token"]})
 gtok = post("/auth/login", {"username": "grantor", "password": grantor_pw})["access_token"]
 post(f"/admin/users/{ids['operator']}/assignments", {"role_id": "residency_steward", "domain_id": "*"}, auth="Bearer " + gtok)
@@ -234,7 +252,7 @@ else
   echo "  us:  http://127.0.0.1:$US_UI   (API http://127.0.0.1:$US_API)"
   echo "  shared model store: embedded Postgres at $PGHOST:$PGPORT ; cache: fakeredis :$REDIS_PORT"
   echo "Logins (basic auth):  operator / $OPERATOR_PW  (org_admin)   resident / $RESIDENT_PW  (eu_resident)"
-  echo "Break-glass superuser (control plane): admin / $ADMIN_PW  (/auth/superuser-login)"
+  echo "Seeded org_admin (seeding only): admin / $ADMIN_PW"
   echo "Stop with: scripts/launch-demo-regions.sh --stop"
   wait
 fi

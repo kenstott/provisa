@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
@@ -319,8 +320,6 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "CONFORMANCE_PG_USER": "postgres",
         "CONFORMANCE_PG_PASSWORD": "conformance-pg-password",
         "CONFORMANCE_JWT_SECRET": "conformance-jwt-signing-key-not-a-secret-0000",
-        "PROVISA_SUPERUSER_USERNAME": "conformance-su",
-        "PROVISA_SUPERUSER_PASSWORD": "conformance-su-password",
     }.items():
         monkeypatch.setenv(key, value)
     # An unsized numeric's scale is read from the job's PostgreSQL by registration's own sampling
@@ -338,6 +337,8 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     # Password auth with SCRAM: pgspec's auth tests meet a real exchange, not trust mode.
     assert cfg.auth.provider == "basic"
     assert cfg.auth.scram is True
+    # REQ-1264: the instance's org_admin is seated by first-run setup, never a config account.
+    assert "superuser" not in yaml.safe_load(path.read_text())["auth"]
     assert cfg.naming.domain_prefix is False
     table, probed = cfg.tables
     # REQ-2167: lastval's probe inserts into a table whose id the source generates.

@@ -77,8 +77,8 @@ test.beforeAll(async () => {
   test.setTimeout(480_000); // covers the one-time UI build in launch() on a fresh worktree
   env = await launch();
   // operator is the data-plane admin (org_admin); resident is the restricted steward (eu_resident).
-  // The break-glass superuser is control-plane only and holds no data capabilities, so all admin
-  // data work runs as operator (REQ-1921 / platform-tenant separation).
+  // The launcher's seeded org_admin (admin) only opens the invites, so all admin data work runs as
+  // operator (REQ-1921 / platform-tenant separation).
   operatorTok = await login(env.euApi, "operator", env.operatorPw);
   residentTok = await login(env.euApi, "resident", env.residentPw);
 });

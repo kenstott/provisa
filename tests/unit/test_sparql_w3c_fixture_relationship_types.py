@@ -51,8 +51,6 @@ JOB_ENV = {
     "CONFORMANCE_PG_HOST": "127.0.0.1",
     "CONFORMANCE_PG_PASSWORD": "conformance",
     "CONFORMANCE_PG_USER": "postgres",
-    "PROVISA_SUPERUSER_PASSWORD": "conformance-su-password",
-    "PROVISA_SUPERUSER_USERNAME": "conformance-su",
 }
 
 
