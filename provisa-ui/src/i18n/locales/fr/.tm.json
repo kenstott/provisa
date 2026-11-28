@@ -4548,6 +4548,7 @@
   "fr/navBar.json::navBar.dev": "DEV",
   "fr/navBar.json::navBar.docs": "Docs",
   "fr/navBar.json::navBar.domainsLabel": "Domains",
+  "fr/navBar.json::navBar.domainsSystem": "System",
   "fr/navBar.json::navBar.domainsToggle": "Domains ({{checked}}/{{total}})",
   "fr/navBar.json::navBar.groupAdmin": "Admin",
   "fr/navBar.json::navBar.groupContext": "Context",

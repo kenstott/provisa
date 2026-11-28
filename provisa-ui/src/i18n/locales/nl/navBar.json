@@ -62,6 +62,7 @@
     "comingSoon": "{{label}} — binnenkort beschikbaar",
     "domainsToggle": "Domeinen ({{checked}}/{{total}})",
     "domainsLabel": "Domeinen",
+    "domainsSystem": "Systeem",
     "tourResume": "Rondleiding hervatten",
     "tourMenu": "Verdiepen openen",
     "tourStart": "Rondleiding starten",

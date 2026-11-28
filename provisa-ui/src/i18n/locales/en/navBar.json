@@ -62,6 +62,7 @@
     "comingSoon": "{{label}} — coming soon",
     "domainsToggle": "Domains ({{checked}}/{{total}})",
     "domainsLabel": "Domains",
+    "domainsSystem": "System",
     "tourResume": "Resume guided tour",
     "tourMenu": "Open Deep Dives",
     "tourStart": "Take a guided tour",

@@ -4548,6 +4548,7 @@
   "zh-HK/navBar.json::navBar.dev": "DEV",
   "zh-HK/navBar.json::navBar.docs": "Docs",
   "zh-HK/navBar.json::navBar.domainsLabel": "Domains",
+  "zh-HK/navBar.json::navBar.domainsSystem": "System",
   "zh-HK/navBar.json::navBar.domainsToggle": "Domains ({{checked}}/{{total}})",
   "zh-HK/navBar.json::navBar.groupAdmin": "Admin",
   "zh-HK/navBar.json::navBar.groupContext": "Context",

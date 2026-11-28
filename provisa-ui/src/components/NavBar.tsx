@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
-import { ActionIcon, Badge, Button, Checkbox, Menu, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Menu, Stack, Text } from "@mantine/core";
 import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
@@ -27,6 +27,7 @@ import { UserProfileModal } from "./UserProfileModal";
 import { WhatsNewModal } from "./WhatsNewModal";
 import { RELEASE_NOTES } from "../lib/releaseNotes";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { NavBarDomainList } from "./NavBarDomainList";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { RoutePageHelp } from "./RoutePageHelp";
 import { useAuth } from "../context/AuthContext";
@@ -244,18 +245,11 @@ export function NavBar() {
                   </button>
                 </Menu.Target>
                 <Menu.Dropdown>
-                  <Menu.Label>{t("navBar.domainsLabel")}</Menu.Label>
-                  <Stack gap={4} px="sm" pb="xs">
-                    {domains.map((d) => (
-                      <Checkbox
-                        key={d}
-                        label={d}
-                        data-testid={`navbar-domain-item-${d}`}
-                        checked={checkedDomains.has(d)}
-                        onChange={() => toggleDomain(d)}
-                      />
-                    ))}
-                  </Stack>
+                  <NavBarDomainList
+                    domains={domains}
+                    checkedDomains={checkedDomains}
+                    onToggle={toggleDomain}
+                  />
                 </Menu.Dropdown>
               </Menu>
             </div>
