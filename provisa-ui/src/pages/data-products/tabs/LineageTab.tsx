@@ -15,6 +15,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { ProductLineage } from "../../../api/lineage";
+import { edgeWords } from "../../../components/lineage/lineage-layout";
 import { ProvisaGraph } from "../../../components/provisa-graph/ProvisaGraph";
 import { upstreamLineage } from "../upstreamLineage";
 import { productLineageSpec } from "./productLineageSpec";
@@ -36,9 +37,13 @@ export function LineageTab({
   const view = useMemo(
     () =>
       graph
-        ? productLineageSpec(upstreamLineage(graph), relationLabel ?? ((r: string) => r))
+        ? productLineageSpec(
+            upstreamLineage(graph),
+            relationLabel ?? ((r: string) => r),
+            edgeWords(t),
+          )
         : null,
-    [graph, relationLabel],
+    [graph, relationLabel, t],
   );
   // REQ-1667, REQ-2174: each lane named in words.
   const lanes = useMemo(

@@ -5,6 +5,7 @@
     "reportedEdge": "gemeld door OpenLineage",
     "columns_one": "{{count}} kolom",
     "columns_other": "{{count}} kolommen",
+    "via": "via {{views}}",
     "unused": "+{{count}} ongebruikt",
     "materialized": "gematerialiseerd",
     "feedbackCycle": "in een terugkoppelingslus",

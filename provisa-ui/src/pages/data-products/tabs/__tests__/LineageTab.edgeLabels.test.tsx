@@ -34,6 +34,10 @@ vi.mock("cytoscape", async (importOriginal) => {
 
 import { LineageTab } from "../LineageTab";
 import { productLineageSpec } from "../productLineageSpec";
+import { edgeWords } from "../../../../components/lineage/lineage-layout";
+import i18n from "../../../../i18n";
+
+const EN = edgeWords(i18n.getFixedT("en"));
 
 interface Core {
   edges(): {
@@ -111,7 +115,7 @@ afterEach(() => {
 
 describe("a product's lineage edges (lanes preset)", () => {
   it("name each distinct transform of the hop, then the views read through", () => {
-    const { spec } = productLineageSpec(LINEAGE, (r) => r);
+    const { spec } = productLineageSpec(LINEAGE, (r) => r, EN);
     const label = (id: string) => spec.edges.find((e) => e.id === id)?.label;
     expect(label("raw.orders->sales.revenue")).toBe("SUM, COUNT");
     expect(label("raw.days->sales.revenue")).toBe("CAST, UPPER via staging.d");
@@ -121,6 +125,7 @@ describe("a product's lineage edges (lanes preset)", () => {
     const { spec } = productLineageSpec(
       { ...LINEAGE, edges: [copy("raw.orders.region", "sales.revenue.region")] },
       (r) => r,
+      EN,
     );
     expect(spec.edges).toHaveLength(1);
     expect(spec.edges[0].label).toBeUndefined();

@@ -5,6 +5,7 @@
     "reportedEdge": "由 OpenLineage 上报",
     "columns_one": "{{count}} 列",
     "columns_other": "{{count}} 列",
+    "via": "经由 {{views}}",
     "unused": "+{{count}} 未使用",
     "materialized": "已物化",
     "feedbackCycle": "处于反馈循环中",

@@ -5,6 +5,7 @@
     "reportedEdge": "דווח על ידי OpenLineage",
     "columns_one": "עמודה {{count}}",
     "columns_other": "{{count}} עמודות",
+    "via": "דרך {{views}}",
     "unused": "+{{count}} לא בשימוש",
     "materialized": "ממומש",
     "feedbackCycle": "במעגל משוב",

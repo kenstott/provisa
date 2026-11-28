@@ -12,7 +12,8 @@
 // a dataset that is not registered is named as outside the model, and a reported edge says so.
 
 import { describe, expect, it } from "vitest";
-import { buildLineageModel, edgeText } from "../lineage-layout";
+import { buildLineageModel, edgeText, edgeWords } from "../lineage-layout";
+import i18n from "../../../i18n";
 import type { LineageGraphData } from "../../../api/lineage";
 
 const JOB = "openlineage-job:airflow/load_mart";
@@ -71,6 +72,7 @@ const GRAPH: LineageGraphData = {
 };
 
 const WORDS = { job: "OpenLineage job", outside: "outside the model", reported: "reported" };
+const EDGE_WORDS = { ...edgeWords(i18n.getFixedT("en")), reported: WORDS.reported };
 const model = () => buildLineageModel(GRAPH, undefined, { reportedWords: WORDS });
 
 describe("what OpenLineage reported", () => {
@@ -96,8 +98,8 @@ describe("what OpenLineage reported", () => {
 
   it("says on the edge that it was reported", () => {
     const edge = model().edges.find((e) => e.reported)!;
-    expect(edgeText(edge, WORDS.reported)).toBe("reported");
-    expect(edgeText({ ...edge, label: "x", reported: false }, WORDS.reported)).toBe("x");
+    expect(edgeText(edge, EDGE_WORDS)).toBe("reported");
+    expect(edgeText({ ...edge, label: "x", reported: false }, EDGE_WORDS)).toBe("x");
   });
 
   it("keeps a reported mark when several columns roll up into one drawn edge", () => {
@@ -137,6 +139,6 @@ describe("what OpenLineage reported", () => {
     const edge = rolled.edges[0];
     expect(edge.count).toBe(2);
     expect(edge.reported).toBe(true);
-    expect(edgeText(edge, WORDS.reported)).toBe("reported");
+    expect(edgeText(edge, EDGE_WORDS)).toBe("reported");
   });
 });

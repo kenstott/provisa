@@ -3851,6 +3851,7 @@
   "hi/lineageDag.json::lineageDag.reportedEdge": "reported by OpenLineage",
   "hi/lineageDag.json::lineageDag.stats": "{{columns}} columns · {{edges}} edges",
   "hi/lineageDag.json::lineageDag.unused": "+{{count}} unused",
+  "hi/lineageDag.json::lineageDag.via": "via {{views}}",
   "hi/lineagePage.json::lineagePage.allRoles": "All roles",
   "hi/lineagePage.json::lineagePage.complete": "Complete Lineage",
   "hi/lineagePage.json::lineagePage.copied": "Copied",

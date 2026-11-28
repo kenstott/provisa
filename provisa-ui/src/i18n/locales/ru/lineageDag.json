@@ -5,6 +5,7 @@
     "reportedEdge": "сообщено OpenLineage",
     "columns_one": "Столбцов: {{count}}",
     "columns_other": "Столбцов: {{count}}",
+    "via": "через {{views}}",
     "unused": "+{{count}} не используется",
     "materialized": "материализован",
     "feedbackCycle": "в цикле обратной связи",
