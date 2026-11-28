@@ -48,7 +48,9 @@ from dataclasses import dataclass
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import SqlglotError
 
+from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import current_zone
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
@@ -221,6 +223,88 @@ def input_side(text: str, zoned: bool) -> int | None:
         wall -= offset if sign == "+" else -offset
     del utc  # Z, UTC and GMT are an offset of none
     return -1 if wall < FIRST else 1 if wall > LAST else 0
+
+
+#: Whether a statement may hold a literal :func:`refuse_past_range` reads: a year of five digits or
+#: more, or an infinity.
+_PAST_MENTIONED = re.compile(r"'\s*\d{5,}-\d|infinity'", re.IGNORECASE)
+#: A date's text in ISO form after Christ, as date_in reads it.
+_AD_DATE = re.compile(r"\s*(\d{4,})-(\d{1,2})-(\d{1,2})\s*", re.ASCII)
+#: The last date PostgreSQL holds, and the first one its timestamp does not (END_TIMESTAMP).
+_LAST_DATE = (5874897, 12, 31)
+_FIRST_PAST_TIMESTAMP = (294277, 1, 1)
+#: The calls that read a date as a timestamp (date2timestamp, date2timestamptz): of a date from
+#: 294277-01-01 each raises 22008, date out of range for timestamp.
+_DATE_AS_TIMESTAMP = frozenset(
+    {"timestamp", "timestamptz", "datetime_pl", "timedate_pl", "date_pl_interval",
+     "date_mi_interval", "interval_pl_date", "date_part"}
+)  # fmt: skip
+
+
+def _date_text(node: exp.Expr) -> str | None:
+    """The text of a string literal cast to a date (not one answering NULL on failure)."""
+    node = node.unnest()
+    if not isinstance(node, exp.Cast) or isinstance(node, exp.TryCast):
+        return None
+    if not node.to.is_type(exp.DataType.Type.DATE):
+        return None
+    literal = node.this
+    return literal.this if isinstance(literal, exp.Literal) and literal.is_string else None
+
+
+def _ad_date(text: str) -> tuple[int, int, int] | None:
+    read = _AD_DATE.fullmatch(text)
+    return None if read is None else (int(read[1]), int(read[2]), int(read[3]))
+
+
+def _refuse_call(call: exp.Anonymous) -> None:
+    """PostgreSQL's error of a call of literals it raises for: a date read as a timestamp past
+    timestamp's range, the difference of an infinite date. A NULL argument answers NULL (each is
+    STRICT), so nothing is read."""
+    args = [a.unnest() for a in call.expressions]
+    if any(isinstance(a, exp.Null) or (isinstance(a, exp.Cast) and isinstance(a.this, exp.Null))
+           for a in args):  # fmt: skip
+        return
+    name = call.name.lower()
+    dates = [_date_text(a) for a in args]
+    if name in _DATE_AS_TIMESTAMP:
+        for text in dates:
+            day = None if text is None else _ad_date(text)
+            if day is not None and day >= _FIRST_PAST_TIMESTAMP:
+                raise PostgresError("22008", "date out of range for timestamp")
+    if name == "date_mi" and len(args) == 2 and None not in dates:  # noqa: PLR2004
+        if any(text.strip().lower() in _INFINITIES for text in dates if text is not None):
+            raise PostgresError("22008", "cannot subtract infinite dates")
+
+
+def refuse_past_range(pg_sql: str) -> None:
+    """PostgreSQL's error for a literal of ``pg_sql`` past its type's range, raised on ClickHouse
+    before any form reads it, as PostgreSQL reads a literal when it parses the statement (REQ-2236,
+    as on DuckDB: polyfill.duckdb_literals): a date past 5874897-12-31, a timestamp or a
+    timestamptz from 294277-01-01 (22008). Then, of a call of literals, the error PostgreSQL's
+    function raises of them: a date from 294277-01-01 read as a timestamp, the difference of an
+    infinite date (22008). A form would otherwise read the literal and refuse it by ClickHouse's
+    bound, or hold it."""
+    # Imported here: duckdb_literals reads trino_literals, which reads this family's module.
+    from provisa.transpiler.polyfill.duckdb_literals import far_stamp, stamp_cast
+
+    if _PAST_MENTIONED.search(pg_sql) is None:
+        return
+    try:
+        tree = sqlglot.parse_one(pg_sql, read="postgres")
+    except SqlglotError:
+        return  # a text sqlglot cannot read: the transpile that follows reports it
+    for node in tree.find_all(exp.Cast):
+        text = _date_text(node)
+        day = None if text is None else _ad_date(text)
+        if day is not None and day > _LAST_DATE:
+            raise PostgresError("22008", f'date out of range: "{text}"')
+        cast = stamp_cast(node)
+        far = None if cast is None else far_stamp(*cast)
+        if cast is not None and far is not None and far[0]:
+            raise PostgresError("22008", f'timestamp out of range: "{cast[0]}"')
+    for call in tree.find_all(exp.Anonymous):
+        _refuse_call(call)
 
 
 def _read(text: str, day_only: bool) -> datetime.datetime | None:
@@ -951,6 +1035,18 @@ def _rounded(instant: datetime.datetime, scale: int) -> datetime.datetime:
     return _PG_EPOCH + step * _MICRO
 
 
+def _integer_literal(written: exp.Expr) -> int | None:
+    """The integer a literal writes, as a number or as a text int4's input reads; None for any
+    other value."""
+    if isinstance(written, exp.Neg):
+        negated = _integer_literal(written.this.unnest())
+        return None if negated is None else -negated
+    if not isinstance(written, exp.Literal):
+        return None
+    text = written.this.strip() if written.is_string else written.this
+    return int(text) if re.fullmatch(r"[+-]?\d+", text, re.ASCII) else None
+
+
 def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away
     from 2000-01-01 as PostgreSQL rounds. Each instant is a literal (or a NULL), rounded here
@@ -975,9 +1071,17 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return replacement(_NULL_INSTANT, dialect, pattern)
     written = digits.unnest()
     written = written.this.unnest() if isinstance(written, exp.Cast) else written
-    if not (isinstance(written, exp.Literal) and written.is_int and 0 <= int(written.this) <= 6):
-        return None  # a negative precision is PostgreSQL's error; past 6 its warning
-    scale = 10 ** (6 - int(written.this))
+    precision = _integer_literal(written)
+    if precision is None:
+        return None
+    if precision == -1:
+        precision = 6  # no typmod: the value as it is (AdjustTimestampForTypmod)
+    if not 0 <= precision <= 6:  # noqa: PLR2004 -- MAX_TIMESTAMP_PRECISION
+        if all(instant is None for instant in instants):
+            return replacement(_NULL_INSTANT, dialect, pattern)
+        message = f"timestamp({precision}) precision must be between 0 and 6"
+        raise Refused(Refusal("22023", message), ruling=True)
+    scale = 10 ** (6 - precision)
     for instant in instants:
         if instant is not None and not (_inside(instant) and _inside(_rounded(instant, scale))):
             return raised("timestamptz", dialect, pattern, INSTANT)

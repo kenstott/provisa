@@ -571,20 +571,31 @@ def test_a_field_that_overflows_raises_22008(runtime, sql):
 
 
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "answer"),
     [
-        _call("timestamp_pl_interval", "'2299-12-31 00:00:00'::timestamp", _i("1 day")),
-        _call("timestamp_mi_interval", "'1900-01-01 00:00:00'::timestamp", _i("00:00:00.000001")),
-        _call("date_pl_interval", "'2024-06-15'::date", _i("300 years")),
-        _call("interval_pl_date", _i("-200 years"), "'2024-06-15'::date"),
-        # a step outside the bound: PostgreSQL answers 2299-12-16, its month step 2300-01-15
-        _call("timestamp_pl_interval", "'2299-12-15 00:00:00'::timestamp", _i("1 mon -30 days")),
+        (_call("timestamp_pl_interval", "'2299-12-31 00:00:00'::timestamp", _i("1 day")),
+         datetime.datetime(2300, 1, 1)),
+        (_call("timestamp_mi_interval", "'1900-01-01 00:00:00'::timestamp", _i("00:00:00.000001")),
+         datetime.datetime(1899, 12, 31, 23, 59, 59, 999999)),
+        (_call("date_pl_interval", "'2024-06-15'::date", _i("300 years")),
+         datetime.datetime(2324, 6, 15)),
+        (_call("interval_pl_date", _i("-200 years"), "'2024-06-15'::date"),
+         datetime.datetime(1824, 6, 15)),
+        # a step outside 1900..2299: PostgreSQL answers 2299-12-16, its month step 2300-01-15
+        (_call("timestamp_pl_interval", "'2299-12-15 00:00:00'::timestamp", _i("1 mon -30 days")),
+         datetime.datetime(2299, 12, 16)),
     ],
-)
-def test_a_timestamp_outside_the_bound_raises_0a000(runtime, sql):
+)  # fmt: skip
+def test_a_timestamp_outside_1900_to_2299_is_held(runtime, sql, answer):
+    """Held as DateTime64(6, 'UTC') of its microseconds (REQ-2236, maintainer 2026-11-25: hold
+    rather than refuse); PostgreSQL's range alone raises (22008)."""
+    assert _answer(runtime, sql).replace(tzinfo=None) == answer
+
+
+def test_a_timestamp_past_postgresql_s_range_raises_22008(runtime):
+    sql = _call("timestamp_pl_interval", "'2024-06-15 12:30:45'::timestamp", _i("178956970 years"))
     error = _raised(runtime, sql)
-    assert error.sqlstate == "0A000"
-    assert "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999" in str(error)
+    assert (error.sqlstate, str(error)) == ("22008", "timestamp out of range")
 
 
 def test_a_tie_of_intervals_written_apart_raises_0a000(runtime):

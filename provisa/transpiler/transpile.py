@@ -2101,6 +2101,11 @@ def transpile(
         SQL string in target dialect.
     """
     given = pg_sql  # the statement as given, whose columns pgwire describes (REQ-2236)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
+        from provisa.transpiler.polyfill.instants import refuse_past_range
+
+        refuse_past_range(pg_sql)
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
     pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
@@ -2175,6 +2180,13 @@ def transpile(
 
     if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
         function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a call of literals, one a date or a timestamp ClickHouse's calendar does not
+        # read, answered from PostgreSQL's integers before any step reads its instant
+        # (a range's subdiff among them).
+        from provisa.transpiler.polyfill import held_instants
+
+        lowered = held_instants.folded(pg_sql, lowered)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges

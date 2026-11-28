@@ -1000,16 +1000,37 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 
 
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "want"),
     [
-        "SELECT numeric_mod('123456789012345678901234567890.123456789012345678901234567890'::numeric,"
-        " 2.5::numeric)",
-        "SELECT numeric_mod(2.5::numeric,"
-        " '123456789012345678901234567890.123456789012345678901234567890'::numeric)",
+        (
+            "SELECT numeric_mod("
+            "'123456789012345678901234567890.123456789012345678901234567890'::numeric,"
+            " 2.5::numeric)",
+            "0.123456789012345678901234567890",
+        ),
+        (
+            "SELECT numeric_mod(2.5::numeric,"
+            " '123456789012345678901234567890.123456789012345678901234567890'::numeric)",
+            "2.500000000000000000000000000000",
+        ),
     ],
 )
-def test_a_numeric_past_38_digits_is_refused_by_name(runtime, sql):
-    """The grid's stated limitation: a Decimal holds 38 digits, PostgreSQL's numeric more."""
+def test_a_numeric_of_up_to_38_digits_each_side_is_held_exactly(runtime, sql, want):
+    """A literal of no precision said is a Decimal256 at its own scale (REQ-2236): 30 digits on
+    each side of the point are held, and numeric_mod answers PostgreSQL's remainder."""
+    assert _answers(runtime, sql) == [want]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT numeric_mod('1234567890123456789012345678901234567890'::numeric, 2.5::numeric)",
+        "SELECT numeric_mod(2.5::numeric, '0.123456789012345678901234567890123456789'::numeric)",
+    ],
+)
+def test_a_numeric_past_38_digits_each_side_is_refused_by_name(runtime, sql):
+    """The grid's stated limitation: a Decimal256 at 38 places holds 38 digits on either side of
+    its point, PostgreSQL's numeric more."""
     with pytest.raises(RowRefused) as raised:
         _answers(runtime, sql)
     assert raised.value.sqlstate == "0A000"

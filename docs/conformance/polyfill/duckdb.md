@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 406, of which 322 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 408, of which 324 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-270 of the grid's 634 features are native on DuckDB and left out.
+270 of the grid's 636 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -432,6 +432,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>mod of integers on trino</strong><br>The remainder of two integers; of a zero divisor, division by zero.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>gcd</strong><br>The greatest common divisor of two integers; out of range past the type.</td><td><pre><code>gcd($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lcm</strong><br>The least common multiple of two integers; out of range past the type.</td><td><pre><code>lcm($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: integer &#x27;-2147483648&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>

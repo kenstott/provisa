@@ -30,6 +30,7 @@ statement writes as literals are answered here, on every dialect, by provisa.cor
 from __future__ import annotations
 
 import datetime
+import math
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -76,7 +77,9 @@ _BOUND_TYPES: dict[str, dict[str, str]] = {
     "snowflake": {"timestamp": "TIMESTAMP_NTZ(6)", "timestamptz": "TIMESTAMP_TZ(6)"},
     "bigquery": {"numeric": "BIGNUMERIC", "timestamp": "DATETIME", "timestamptz": "TIMESTAMP"},
     "clickhouse": {
-        "numeric": "Decimal(38, 10)",
+        # A numeric literal of up to 76 digits is a Decimal256 (polyfill.clickhouse.numeric_read):
+        # bounds compare at 38 places, as numeric_mod's remainder is computed (REQ-2236).
+        "numeric": "Decimal(76, 38)",
         "timestamp": "DateTime64(6)",
         "timestamptz": "DateTime64(6, 'UTC')",
         "date": "Date32",
@@ -132,6 +135,8 @@ _OFFSET_MINUTES_ADDED = {
 #: infinity its sentinel (DATEVAL_NOEND/NOBEGIN, DT_NOEND/NOBEGIN). ``{v}``: the value.
 #: A date's ISO text of a year past 9999, which the bound reader (datetime) does not read.
 _FAR_DATE = re.compile(r"\s*\d{5,}-\d{2}-\d{2}\s*", re.ASCII)
+#: A date's or a timestamp's text of a year past 9999.
+_FAR_YEAR = re.compile(r"\s*\d{5,}-", re.ASCII)
 _DUCKDB_STORED = {
     "date": (
         "(CASE WHEN {v} = CAST('infinity' AS DATE) THEN 2147483647 "
@@ -608,6 +613,21 @@ _ROW_ISO_TEXT = {
     "timestamp": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}( BC)?)$",
     "timestamptz": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}( BC)?)$",
 }
+#: The scale of a ClickHouse Decimal type's name, as regexpExtract reads it.
+_DECIMAL_SCALE = r"Decimal\(\d+, (\d+)\)"
+
+
+def _clickhouse_numeric_text(value: exp.Expr) -> exp.Expr:
+    """A numeric's text on ClickHouse at the scale of its Decimal type, as numeric_out writes it:
+    ClickHouse's own text drops trailing zeros (toDecimalString writes a scale of 0 with its point,
+    trimmed). Built as nodes, so a form read later of ``value`` (a literal's) is read in it."""
+    scale = _call(
+        "toUInt8OrZero",
+        _call("regexpExtract", _call("toTypeName", value), _string(_DECIMAL_SCALE), _int(1)),
+    )
+    return _call("trimRight", _call("toDecimalString", value, scale), _string("."))
+
+
 #: An instant on DateTime64's first or last day whose offset may take it past: a negative offset
 #: on the last, a positive one on the first.
 _ROW_EDGES = (r"^2299-12-31 .*-[0-9:]+$", r"^1900-01-01 .*[+][0-9:]*[1-9][0-9:]*$")
@@ -633,6 +653,9 @@ class _Writer:
         self.dialect = dialect
         #: Whether the engine holds a date or timestamp BC, so a bound BC is read (REQ-2236).
         self.bc = dialect == "duckdb"
+        #: Whether a literal bound BC is read (REQ-2236): DuckDB holds it; ClickHouse's literal
+        #: range is written from its text, a bound it holds none of refused by name.
+        self.reads_bc = dialect in ("duckdb", "clickhouse")
         #: A fold's item already read (ClickHouse): its text's form, and the range read of it.
         self._preparsed: dict[str, _R] = {}
         self.serial = 0
@@ -689,8 +712,33 @@ class _Writer:
                 # (one past it raised PostgreSQL's 22008 when the statement was read).
                 return self.bound_from_text(_string(written.strip()), rtype.element)
         if written is not None:
-            return self._literal_bound(pg_range.read_element(rtype, written, self.bc), rtype)
+            self.refuse_far(rtype, node)
+            return self._literal_bound(pg_range.read_element(rtype, written, self.reads_bc), rtype)
         return self.typed(node, rtype.element)
+
+    def refuse_far(self, rtype: RangeType, *args: exp.Expr) -> None:
+        """On ClickHouse, PostgreSQL's 0A000 for a constant bound of a year past 9999, which the
+        bound reader holds no value of (REQ-2236: a bound, stated and enforced, not 22007). Of a
+        constructor's two bounds (``args`` its lower and upper), PostgreSQL's 22000 first where the
+        lower is past the upper, as range_serialize raises it."""
+        if self.dialect != "clickhouse" or rtype.element not in range_rows.HELD_ON_CLICKHOUSE:
+            return
+        far = [
+            arg
+            for arg in args
+            if not _null_value(arg)
+            and _constant(arg)
+            and _FAR_YEAR.match(_constant_text(arg)) is not None
+        ]
+        if not far:
+            return
+        if len(args) == 2 and all(_constant(a) and not _null_value(a) for a in args):  # noqa: PLR2004
+            low, high = (_held_order(_constant_text(a), rtype.element) for a in args)
+            if low is not None and high is not None and low > high:
+                raise PostgresError(
+                    "22000", "range lower bound must be less than or equal to range upper bound"
+                )
+        raise PostgresError("0A000", range_rows.outside_held(rtype.name))
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
         if self.dialect == "clickhouse" and not _held_by_clickhouse(value, rtype.element):
@@ -777,6 +825,10 @@ class _Writer:
     def element_text(self, value: exp.Expr, rtype: RangeType) -> exp.Expr:
         if rtype.element in ("timestamp", "timestamptz"):
             written = self.clock_text(value, rtype.element == "timestamptz")
+        elif self.dialect == "clickhouse" and rtype.element == "numeric":
+            # ClickHouse's text of a Decimal drops its trailing zeros, which numeric_out writes
+            # to the value's scale: written at the scale of its type (REQ-2236).
+            written = _clickhouse_numeric_text(value)
         else:
             written = _text_cast(value)
         if not self.bc or rtype.element not in ("date", "timestamp", "timestamptz"):
@@ -954,14 +1006,17 @@ class _Writer:
         if _null_value(flags):
             raise PostgresError("22000", "range constructor flags argument must not be null")
         known = _string_literal(flags)
+        if known is None and _constant(flags) and not _null_value(flags):
+            known = _constant_text(flags)  # '[)'::text: its text
         if known is not None and known not in ("[)", "(]", "[]", "()"):
             raise PostgresError("42601", "invalid range bound flags")
         if known is not None and all(_constant(a) for a in (low_arg, high_arg)):
+            self.refuse_far(rtype, low_arg, high_arg)
             return self.literal(
                 pg_range.make_range(
                     rtype,
-                    _constant_element(low_arg, rtype, self.bc),
-                    _constant_element(high_arg, rtype, self.bc),
+                    _constant_element(low_arg, rtype, self.reads_bc),
+                    _constant_element(high_arg, rtype, self.reads_bc),
                     known[0] == "[",
                     known[1] == "]",
                 )
@@ -1543,9 +1598,25 @@ def _numeric_or_element_text(
     writer: _Writer, argument: exp.Expr, typed: exp.Expr, rtype: RangeType
 ) -> exp.Expr:
     """A continuous bound's text: a numeric as its argument prints, which keeps its scale."""
+    if rtype.element == "numeric" and writer.dialect == "clickhouse":
+        return _clickhouse_numeric_text(argument)
     if rtype.element == "numeric":
         return _text_cast(argument)
     return writer.element_text(typed, rtype)
+
+
+def _held_order(text: str, element: str) -> float | None:
+    """A date's or a timestamp's place in its type's order, read as PostgreSQL holds it
+    (polyfill.held_instants): its count, or an infinity; None for a text not read there."""
+    from provisa.transpiler.polyfill import held_instants
+
+    if element == "date":
+        value = held_instants.date_value(text)
+    else:
+        value = held_instants.stamp_value(text, element == "timestamptz")
+    if isinstance(value, held_instants.Infinite):
+        return math.inf * value.sign
+    return None if value is None else float(value)
 
 
 def _constant(node: exp.Expr) -> bool:
