@@ -23,7 +23,7 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
@@ -81,6 +81,9 @@ def outcome(sql: str, dialect: str, run: Callable[[str], Any]) -> str:
     try:
         got = run(transpile(sql, dialect, generated=False))
     except Exception as error:  # noqa: BLE001 -- each engine's client raises its own
+        # The translator raising PostgreSQL's own error (a grid row's, RowRefused) is its answer.
+        if raises and isinstance(error, RowRefused) and error.sqlstate == (want or "").split()[1]:
+            return "ok"
         if isinstance(error, FunctionRefused) or REFUSED in str(error):
             return "refused"
         if raises and f"{(want or '').split()[1]}:" in str(error):

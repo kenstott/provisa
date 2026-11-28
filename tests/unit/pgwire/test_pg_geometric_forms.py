@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """The geometric forms on DuckDB against what PostgreSQL 17.11 answered (REQ-2171, AN ANSWER THAT
-DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_engines.py,
+DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_*.py,
 one test to a function; DuckDB binds a form in about 125ms, so this file replays a quarter of them,
 each overload still reached."""
 
@@ -160,29 +160,67 @@ def test_postgresql_refuses_as_postgresql_refuses(sql: str, raised: str):
 
 
 @pytest.mark.parametrize(
-    "name, sql",
+    "sql, want",
     [
-        ("circle_add_pt", "circle_add_pt('<(0,0),inf>'::circle, '(1,1)'::point)"),
-        ("circle_same", "circle_same('<(nan,0),1>'::circle, '<(0,0),1>'::circle)"),
-        ("path_add_pt", "path_add_pt('[(0,nan)]'::path, '(1,1)'::point)"),
-        ("lseg_eq", "lseg_eq('[(inf,0),(1,1)]'::lseg, '[(0,0),(1,1)]'::lseg)"),
-        ("poly_npoints", "npoints('((-inf,0),(1,1))'::polygon)"),
-        ("poly_contain", "poly_contain('((inf,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)"),
-        ("poly_contained", "poly_contained('((0,0),(1,1))'::polygon, '((nan,0),(1,1))'::polygon)"),
+        # What PostgreSQL 17 answers: float8in reads nan, inf and their spellings in any case.
+        ("SELECT circle_add_pt('<(0,0),inf>'::circle, '(1,1)'::point)", "<(1,1),Infinity>"),
+        ("SELECT circle_same('<(nan,0),1>'::circle, '<(0,0),1>'::circle)", False),
+        ("SELECT circle_same('<(NaN,0),1>'::circle, '<(nan,0),1>'::circle)", True),
+        ("SELECT path_add_pt('[(0,nan)]'::path, '(1,1)'::point)", "[(1,NaN)]"),
+        ("SELECT lseg_eq('[(inf,0),(1,1)]'::lseg, '[(0,0),(1,1)]'::lseg)", False),
+        ("SELECT lseg_eq('[(0,0),(NaN,1)]'::lseg, '[(0,0),(NaN,1)]'::lseg)", True),
+        ("SELECT npoints('((-inf,0),(1,1))'::polygon)", 2),
+        ("SELECT poly_contain('((inf,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)", False),
+        ("SELECT poly_contained('((0,0),(1,1))'::polygon, '((nan,0),(1,1))'::polygon)", False),
+        ("SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "(Infinity,2)"),
+        ("SELECT point('NaN'::double precision, '-Infinity'::double precision)", "(NaN,-Infinity)"),
+        ("SELECT box_center('(NaN,1),(0,0)'::box)", "(NaN,0.5)"),
+        ("SELECT bound_box('(NaN,1),(0,0)'::box, '(3,4),(0,0)'::box)", "(NaN,4),(0,0)"),
+        ("SELECT point_eq('(NaN,1)'::point, '(NaN,1)'::point)", True),
+        ("SELECT point_vert('(NaN,1)'::point, '(NaN,1)'::point)", False),
+        ("SELECT box_contain_pt('(NaN,1),(0,0)'::box, '(NaN,1)'::point)", False),
+        ("SELECT close_pl('(NaN,1)'::point, '{1,-1,0}'::line)", None),
+        ("SELECT dist_ps('(1,2)'::point, '[(-Infinity,0),(1,1)]'::lseg)", 2.0),
+        ("SELECT point_distance('(Infinity,-inf)'::point, '(1,2)'::point)", float("inf")),
+        ("SELECT spg_poly_quad_compress('((0,0),(NaN,1),(1,1))'::polygon)", "(NaN,1),(0,0)"),
+        ("SELECT dist_pl('(nan,0)'::point, '{1,-1,0}'::line)", float("nan")),
+        ("SELECT line_eq('{inf,1,0}'::line, '{1,-1,0}'::line)", False),
+        ("SELECT close_ls('{1,-1,0}'::line, '[(inf,0),(1,1)]'::lseg)", "(0,0)"),
+        ("SELECT poly_same('((nan,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)", False),
+        ("SELECT path_inter('[(0,0),(inf,1)]'::path, '[(0,0),(1,1)]'::path)", True),
     ],
 )
-def test_a_shape_not_finite_is_refused_by_name(name: str, sql: str):
-    with pytest.raises(duckdb.Error, match=f"{name} does not read this value"):
-        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb", generated=False))
+def test_a_shape_not_finite_answers_as_postgresql_does(sql: str, want: Any):
+    got = duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
+    assert got == want or (isinstance(want, float) and same(got, str(want)))
 
 
-def test_a_shape_with_an_infinity_is_refused_by_name():
-    with pytest.raises(duckdb.Error, match="point_add does not read this value"):
+def test_a_line_of_one_point_of_nan_is_refused_as_postgresql_refuses():
+    with pytest.raises(duckdb.Error, match="22023: invalid line specification"):
         duckdb.connect().execute(
-            transpile(
-                "SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "duckdb", generated=False
-            )
+            transpile("SELECT line('(NaN,1)'::point, '(NaN,1)'::point)", "duckdb", generated=False)
         )
+
+
+@pytest.mark.parametrize(
+    "sql, raised",
+    [
+        ("SELECT polygon('-2147483648'::integer, '<(0,0),1>'::circle)", "22023: must request"),
+        ("SELECT polygon(2147483647::integer, '<(0,0),1>'::circle)", "54000: too many points"),
+    ],
+)
+def test_polygon_of_a_count_past_its_bounds_raises_as_postgresql_does(sql: str, raised: str):
+    with pytest.raises(duckdb.Error, match=raised):
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
+
+
+def test_a_polygon_holding_an_infinity_contains_as_postgresql_17_answers():
+    """An edge with an infinite end holds every point (lseg_contain_point compares Infinity with
+    itself): lseg_inside_poly's recursion meets it, and PostgreSQL 17 answers t."""
+    sql = (
+        "SELECT poly_contain('((0,0),(Infinity,1),(1,1))'::polygon, '((0,0),(1,0),(1,1))'::polygon)"
+    )
+    assert duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] is True
 
 
 @pytest.mark.parametrize(
@@ -313,6 +351,14 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
     )
 
 
+def test_the_translators_raise_of_postgresqls_error_is_postgresqls_answer():
+    """The translator raises PostgreSQL's 2202E of thresholds of two dimensions before DuckDB runs
+    anything (polyfill.array_dimensions): the replay reads it as the recorded error, no refusal."""
+    sql = "SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]) AS v"
+    connection = duckdb.connect()
+    assert outcome(sql, "duckdb", lambda s: connection.execute(s).fetchone()[0]) == "ok"
+
+
 @pytest.mark.parametrize(
     "name, sql",
     [
@@ -325,11 +371,6 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
         ),
         ("width_bucket", "width_bucket(0.9999999999999999999::numeric, 0::numeric, 3::numeric, 3)"),
         ("width_bucket", "width_bucket('B'::text, ARRAY['a', 'c'])"),
-        ("dist_pl", "dist_pl('(nan,0)'::point, '{1,-1,0}'::line)"),
-        ("line_eq", "line_eq('{inf,1,0}'::line, '{1,-1,0}'::line)"),
-        ("close_ls", "close_ls('{1,-1,0}'::line, '[(inf,0),(1,1)]'::lseg)"),
-        ("poly_same", "poly_same('((nan,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)"),
-        ("path_inter", "path_inter('[(0,0),(inf,1)]'::path, '[(0,0),(1,1)]'::path)"),
     ],
 )
 def test_what_no_engine_answers_is_refused_by_name(name: str, sql: str):

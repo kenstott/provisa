@@ -13,13 +13,20 @@ does the same floating-point steps in the same order and writes float8out's text
 
 A shape is its text on the engine (provisa.transpiler.pg_held_types). A form reads that text into
 a list of doubles, computes, and writes the answer's text, so one definition serves each
-:class:`Engine`. A box is read as high x, high y, low x, low y, whatever order its text gave. A
-shape holding NaN or an infinity, and an answer that is not finite, is refused by name: PostgreSQL's
-float8 checks and its NaN rules are not reproduced. An engine with no entry refuses by name.
+:class:`Engine`. A box is read as high x, high y, low x, low y, whatever order its text gave.
+
+A coordinate is read as float8in reads it, NaN and the infinities in any spelling, and written as
+float8out writes it. Each comparison is the one geo_ops.c makes: its FP macros and plain
+comparisons are C's, false of a NaN (:func:`_cmp`); float8_lt, float8_eq and the bounding boxes'
+float8_min and float8_max sort a NaN above every number (:func:`_float8_lt`); pg_hypot answers
+Infinity before NaN. An answer that is not finite of arguments all finite is an overflow, which
+float8's arithmetic raises and a form does not check: it is refused by name. An engine with no entry
+refuses by name.
 
 Containment of one polygon in another does not recurse as lseg_inside_poly does: each edge of the
 inner polygon is split where the outer polygon's boundary meets it, and the midpoint of each piece
-must pass point_inside.
+must pass point_inside. Where the boxes pass and a coordinate is infinite it is refused by name: an
+edge with an infinite end holds every point, which the recursion meets and the splits do not.
 
 Each geo_ops.c helper a form calls more than once is written once, inside a map over its calls, so a
 form's size is the sum of its helpers and not their product: line_interpt_line is :func:`_meet`,
@@ -56,6 +63,8 @@ from provisa.transpiler.pg_forms_types import REFUSED
 _FUZZ = "1e-06"  # geo_decls.h's EPSILON
 _NUMBER = r"[-+]?(?:[0-9]+[.]?[0-9]*|[.][0-9]+)(?:[eE][-+]?[0-9]+)?"
 _NOT_FINITE = "[a-df-zA-DF-Z]"  # inf, nan: a shape's text has no other letter but e
+#: A coordinate as float8in reads it: a number, NaN, or an infinity, in any case.
+_COORDINATE = r"[-+]?(?:[iI][nN][fF](?:[iI][nN][iI][tT][yY])?|[nN][aA][nN]|[0-9]+[.]?[0-9]*(?:[eE][-+]?[0-9]+)?|[.][0-9]+(?:[eE][-+]?[0-9]+)?)"
 
 
 @dataclass(frozen=True)
@@ -90,10 +99,14 @@ class Engine:
     sort: str
     raises: str  # condition, sqlstate and message's text, answer
     fold: str  # list, the running value's name, its first value, body
+    folds: str  # fold's, the running value any type: its first value's
     bigint: str
     wide: str  # a text or a number, as the engine's widest integer
     quotient: str  # two of those, the second positive: the first's whole number of the second
     type_name: str  # a value's type, in lower case
+    nan: str
+    is_nan: str
+    coordinate: str  # a coordinate's text, as float8in reads it
     array: str = "[{}]"
     types: tuple[str, str, str, str] = ("VARCHAR", "BOOLEAN", "DOUBLE", "INTEGER")
     inline: bool = False  # a name used once is written in place: Trino plans a lambda in time
@@ -124,6 +137,7 @@ def _routine(
     called = _ROUTINE + name
     if called not in ROUTINES:
         text = body(e, *(p for p, _ in params))
+        assert _ALL_FINITE not in text, f"{name} checks its answer: a routine reads no argument"
         calls = frozenset(re.findall(rf"\b{_ROUTINE}\w+", text)) - {called}
         spec = ", ".join(f"{p} {t}" for p, t in params)
         ROUTINES[called] = (f"FUNCTION {called}({spec}) RETURNS {returns} RETURN {text}", calls)
@@ -169,7 +183,7 @@ DUCKDB = Engine(
     filter="list_filter({0}, LAMBDA {1} : {2})",
     upto="range(CAST({} AS BIGINT))",
     size="len({})",
-    extract="regexp_extract_all({}, '" + _NUMBER + "')",
+    extract="regexp_extract_all({}, '" + _COORDINATE + "')",
     double="CAST({} AS DOUBLE)",
     text="CAST({} AS VARCHAR)",
     matches="regexp_matches({}, '{}')",
@@ -191,10 +205,14 @@ DUCKDB = Engine(
     sort="list_sort({})",
     raises=f"CASE WHEN {{0}} THEN error('{MARK} {{1}}') ELSE {{2}} END",
     fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), LAMBDA {1}, _item : {3})",
+    folds="list_reduce({0}, LAMBDA {1}, _item : {3}, {2})",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS HUGEINT)",
     quotient="({} // {})",
     type_name="lower(typeof({}))",
+    nan="CAST('NaN' AS DOUBLE)",
+    is_nan="isnan({})",
+    coordinate="CAST({} AS DOUBLE)",
 )
 TRINO = Engine(
     name="trino",
@@ -203,7 +221,7 @@ TRINO = Engine(
     filter="filter({0}, {1} -> {2})",
     upto="sequence(0, {} - 1)",
     size="cardinality({})",
-    extract="regexp_extract_all({}, '" + _NUMBER + "')",
+    extract="regexp_extract_all({}, '" + _COORDINATE + "')",
     double="CAST({} AS DOUBLE)",
     text="CAST({} AS VARCHAR)",
     matches="regexp_like({}, '{}')",
@@ -225,10 +243,18 @@ TRINO = Engine(
     sort="array_sort({})",
     raises=f"CASE WHEN {{0}} THEN fail('{MARK} {{1}}') ELSE {{2}} END",
     fold="reduce({0}, CAST({2} AS BIGINT), ({1}, _item) -> {3}, _s -> _s)",
+    folds="reduce({0}, {2}, ({1}, _item) -> {3}, _s -> _s)",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS DECIMAL(38, 0))",
     quotient="(({0} - {0} % {1}) / {1})",
     type_name="lower(typeof({}))",
+    nan="nan()",
+    is_nan="is_nan({})",
+    # Java's parser reads NaN and Infinity in that case only; float8in reads inf and nan too.
+    coordinate=(
+        "CAST(CASE WHEN lower({0}) LIKE '%nan' THEN 'NaN' WHEN lower({0}) LIKE '-inf%' "
+        "THEN '-Infinity' WHEN lower({0}) LIKE '%inf%' THEN 'Infinity' ELSE {0} END AS DOUBLE)"
+    ),
     array="ARRAY[{}]",
     inline=True,
     routines=True,
@@ -240,7 +266,7 @@ CLICKHOUSE = Engine(
     filter="arrayFilter({1} -> {2}, {0})",
     upto="arrayMap(_n -> toInt64(_n), range(toUInt64({})))",
     size="toInt64(length({}))",
-    extract="extractAll({}, '" + _NUMBER + "')",
+    extract="extractAll({}, '" + _COORDINATE + "')",
     double="toFloat64({})",
     text="ifNull(toString({}), '')",
     matches="match({}, '{}')",
@@ -264,10 +290,14 @@ CLICKHOUSE = Engine(
     # the answer once: an `if` of two copies doubles a form at each check, and the analyzer's time.
     raises="tupleElement((throwIf(ifNull({0}, 0), '" + MARK + " {1}'), {2}), 2)",
     fold="arrayFold(({1}, _item) -> toInt64({3}), {0}, toInt64({2}))",
+    folds="arrayFold(({1}, _item) -> {3}, {0}, {2})",
     bigint="toInt64({})",
     wide="toInt256OrZero(toString({}))",
     quotient="intDiv({}, {})",
     type_name="lower(toTypeName({}))",
+    nan="nan",
+    is_nan="isNaN({})",
+    coordinate="toFloat64({})",
     types=("Nullable(String)", "Nullable(Bool)", "Nullable(Float64)", "Nullable(Int32)"),
 )
 ENGINES = (DUCKDB, TRINO, CLICKHOUSE)
@@ -305,41 +335,79 @@ def _float_text(e: Engine, value: str) -> str:
     )
     # The first character, so -0 keeps its sign; an exponent's sign is not it.
     sign = "CASE WHEN substr(_t, 1, 1) = '-' THEN '-' ELSE '' END"
-    return _let(e, "_t", f"lower({e.text.format(value)})", f"{sign} || {unsigned}")
+    # float8out's NaN and infinities; an engine writes nan (DuckDB -nan), inf or infinity.
+    written = (
+        "CASE WHEN _t IN ('nan', '-nan') THEN 'NaN' WHEN _t IN ('inf', 'infinity') THEN 'Infinity' "
+        f"WHEN _t IN ('-inf', '-infinity') THEN '-Infinity' ELSE {sign} || {unsigned} END"
+    )
+    return _let(e, "_t", f"lower({e.text.format(value)})", written)
 
 
 def _list(e: Engine, *items: str) -> str:
     return e.array.format(", ".join(items))
 
 
-def _fp_eq(a: str, b: str) -> str:
-    return f"({a} = {b} OR abs({a} - {b}) <= {_FUZZ})"
+def _cmp(e: Engine, a: str, op: str, b: str) -> str:
+    """C's comparison of two doubles, false of a NaN: DuckDB's NaN equals itself and sorts above
+    every number, so its comparison is told the NaN the other engines' comparisons already see."""
+    if e is not DUCKDB:
+        return f"({a} {op} {b})"
+    return f"({a} {op} {b} AND NOT {e.is_nan.format(b if op in ('<', '<=') else a)})"
 
 
-def _fp_lt(a: str, b: str) -> str:
-    return f"({a} + {_FUZZ} < {b})"
+def _float8_lt(e: Engine, a: str, b: str) -> str:
+    """float8_lt: a NaN sorts above every number, as DuckDB's < has it."""
+    if e is DUCKDB:
+        return f"({a} < {b})"
+    return f"(NOT {e.is_nan.format(a)} AND ({e.is_nan.format(b)} OR {a} < {b}))"
 
 
-def _fp_le(a: str, b: str) -> str:
-    return f"({a} <= {b} + {_FUZZ})"
+def _float8_gt(e: Engine, a: str, b: str) -> str:
+    """float8_gt: a NaN sorts above every number, as DuckDB's > has it."""
+    if e is DUCKDB:
+        return f"({a} > {b})"
+    return f"(NOT {e.is_nan.format(b)} AND ({e.is_nan.format(a)} OR {a} > {b}))"
 
 
-def _fp_gt(a: str, b: str) -> str:
-    return f"({a} > {b} + {_FUZZ})"
+def _fp_eq(e: Engine, a: str, b: str) -> str:
+    return f"({_cmp(e, a, '=', b)} OR abs({a} - {b}) <= {_FUZZ})"
 
 
-def _fp_ge(a: str, b: str) -> str:
-    return f"({a} + {_FUZZ} >= {b})"
+def _fp_lt(e: Engine, a: str, b: str) -> str:
+    return _cmp(e, f"{a} + {_FUZZ}", "<", b)
+
+
+def _fp_le(e: Engine, a: str, b: str) -> str:
+    return _cmp(e, a, "<=", f"{b} + {_FUZZ}")
+
+
+def _fp_gt(e: Engine, a: str, b: str) -> str:
+    return _cmp(e, a, ">", f"{b} + {_FUZZ}")
+
+
+def _fp_ge(e: Engine, a: str, b: str) -> str:
+    return _cmp(e, f"{a} + {_FUZZ}", ">=", b)
 
 
 _FUZZY = {"eq": _fp_eq, "lt": _fp_lt, "le": _fp_le, "gt": _fp_gt, "ge": _fp_ge}
 
 
+@_hoisted("hypot", ("DOUBLE", "DOUBLE"), "DOUBLE")
 def _hypot(e: Engine, dx: str, dy: str) -> str:
-    """pg_hypot, over finite values."""
+    """pg_hypot: infinite if either is, else NaN if either is. On ClickHouse the two are bound
+    once; DuckDB's binding of a lambda grows with how deep it is nested, so there they are
+    written in place, as a routine's parameters are on Trino."""
+    if e is CLICKHOUSE:
+        return _let(e, "_hv", _list(e, dx, dy), _hypot_of(e, "_hv[1]", "_hv[2]"))
+    return _hypot_of(e, dx, dy)
+
+
+def _hypot_of(e: Engine, dx: str, dy: str) -> str:
     larger, smaller = f"greatest(abs({dx}), abs({dy}))", f"least(abs({dx}), abs({dy}))"
+    nan = f"{e.is_nan.format(dx)} OR {e.is_nan.format(dy)}"
     return (
-        f"CASE WHEN {smaller} = 0 THEN {larger} ELSE {larger} * "
+        f"CASE WHEN abs({dx}) = {e.infinity} OR abs({dy}) = {e.infinity} THEN {e.infinity} "
+        f"WHEN {nan} THEN {e.nan} WHEN {smaller} = 0 THEN {larger} ELSE {larger} * "
         f"sqrt(1.0 + ({smaller} / {larger}) * ({smaller} / {larger})) END"
     )
 
@@ -354,13 +422,51 @@ def _xy(name: str, at: int = 1) -> tuple[str, str]:
 
 @_hoisted("bounds", (_ARRAY,), _ARRAY)
 def _bounds(e: Engine, name: str) -> str:
-    """The box of a list of points: high x, high y, low x, low y."""
+    """The box of a list of points, make_bound_box's: high x, high y, low x, low y."""
     pairs = e.upto.format(_half(e, e.size.format(name)))
     xs = e.map.format(pairs, "_i", f"{name}[2 * _i + 1]")
     ys = e.map.format(pairs, "_i", f"{name}[2 * _i + 2]")
     return _list(
-        e, e.max_of.format(xs), e.max_of.format(ys), e.min_of.format(xs), e.min_of.format(ys)
+        e,
+        _float8_max_of(e, xs),
+        _float8_max_of(e, ys),
+        _float8_min_of(e, xs),
+        _float8_min_of(e, ys),
     )
+
+
+def _float8_max_of(e: Engine, values: str) -> str:
+    """A fold of float8_max: NaN if any is, as DuckDB's list_max has it."""
+    if e is DUCKDB:
+        return e.max_of.format(values)
+    nans = e.filter.format("_fm", "_x", e.is_nan.format("_x"))
+    return _let(
+        e,
+        "_fm",
+        values,
+        f"CASE WHEN {e.size.format(nans)} > 0 THEN {e.nan} ELSE {e.max_of.format('_fm')} END",
+    )
+
+
+def _float8_min_of(e: Engine, values: str) -> str:
+    """A fold of float8_min: a NaN is passed over unless every one is, as DuckDB's list_min has it."""
+    if e is DUCKDB:
+        return e.min_of.format(values)
+    numbers = e.filter.format(values, "_x", f"NOT {e.is_nan.format('_x')}")
+    return _let(
+        e,
+        "_fn",
+        numbers,
+        f"CASE WHEN {e.size.format('_fn')} = 0 THEN {e.nan} ELSE {e.min_of.format('_fn')} END",
+    )
+
+
+def _float8_max(e: Engine, a: str, b: str) -> str:
+    return f"CASE WHEN {_float8_gt(e, a, b)} THEN {a} ELSE {b} END"
+
+
+def _float8_min(e: Engine, a: str, b: str) -> str:
+    return f"CASE WHEN {_float8_lt(e, a, b)} THEN {a} ELSE {b} END"
 
 
 def _half(e: Engine, count: str) -> str:
@@ -371,24 +477,28 @@ def _half(e: Engine, count: str) -> str:
 
 def _read(e: Engine, param: str, kind: str) -> str:
     numbers = e.extract.format(e.text.format(param))
-    doubles = e.map.format(numbers, "_n", e.double.format("_n"))
+    doubles = e.map.format(numbers, "_n", e.coordinate.format("_n"))
     if kind == "line":
         return _line_read(e, doubles)
     if kind != "box":
         return doubles
-    high = ("greatest(_q[1], _q[3])", "greatest(_q[2], _q[4])")
-    low = ("least(_q[1], _q[3])", "least(_q[2], _q[4])")
-    return _let(e, "_q", doubles, _list(e, *high, *low))
+    # box_in: the corners swap where the first's is float8_lt the second's.
+    return _let(e, "_q", doubles, _box_of(e, ("_q[1]", "_q[2]"), ("_q[3]", "_q[4]"), swap=True))
 
 
 def _is_open(e: Engine, param: str) -> str:
     return f"substr(ltrim({e.text.format(param)}), 1, 1) = '['"
 
 
+#: Where a form's arguments are all finite: :func:`_form` writes it in place of this name.
+_ALL_FINITE = "_all_finite_"
+
+
 def _checked(e: Engine, values: str, answer: str, function: str) -> str:
-    """``answer`` of ``_r``, the doubles ``values``; refused by name if one is not finite."""
+    """``answer`` of ``_r``, the doubles ``values``. One not finite of arguments all finite is an
+    overflow, which float8's arithmetic raises and a form does not check: it is refused by name."""
     finite = e.filter.format("_r", "_x", f"NOT {e.finite.format('_x')}")
-    bad = f"{e.size.format(finite)} > 0"
+    bad = f"{_ALL_FINITE} AND {e.size.format(finite)} > 0"
     return _let(e, "_r", values, e.raises.format(bad, f"0A000: {function} {REFUSED}", answer))
 
 
@@ -412,15 +522,19 @@ def _division(e: Engine, divisor: str, answer: str) -> str:
     return e.raises.format(f"{divisor} = 0", "22012: division by zero", answer)
 
 
-def _box_of(e: Engine, a: tuple[str, str], b: tuple[str, str]) -> str:
+def _box_of(e: Engine, a: tuple[str, str], b: tuple[str, str], swap: bool = False) -> str:
     """box_construct: the corners of two points, ``a`` a coordinate's high only where it is
-    greater (on a tie, as of 0 and -0, ``b``'s is)."""
+    float8_gt (on a tie, as of 0 and -0, ``b``'s is). ``swap``: box_in's, ``a`` a coordinate's high
+    unless it is float8_lt."""
+
+    def above(x: str, y: str) -> str:
+        return f"NOT {_float8_lt(e, x, y)}" if swap else _float8_gt(e, x, y)
 
     def high(x: str, y: str) -> str:
-        return f"CASE WHEN {x} > {y} THEN {x} ELSE {y} END"
+        return f"CASE WHEN {above(x, y)} THEN {x} ELSE {y} END"
 
     def low(x: str, y: str) -> str:
-        return f"CASE WHEN {x} > {y} THEN {y} ELSE {x} END"
+        return f"CASE WHEN {above(x, y)} THEN {y} ELSE {x} END"
 
     return _list(e, high(a[0], b[0]), high(a[1], b[1]), low(a[0], b[0]), low(a[1], b[1]))
 
@@ -489,41 +603,28 @@ def _line_text(e: Engine, values: str, f: str) -> str:
 
 
 def _line_through(e: Engine, f: str) -> str:
-    """line_construct_pp of the points ``_a`` and ``_b``."""
+    """line_construct_pp of the points ``_a`` and ``_b``: line_construct at point_sl."""
     p, q = _xy("_a"), _xy("_b")
-    same = f"{_fp_eq(p[0], q[0])} AND {_fp_eq(p[1], q[1])}"
-    c = f"{p[1]} - _m * {p[0]}"
-    sloped = _let(
-        e,
-        "_m",
-        f"({p[1]} - {q[1]}) / ({p[0]} - {q[0]})",
-        f"CASE WHEN _m = 0 THEN {_list(e, '0.0', '-1.0', p[1])} "
-        f"ELSE {_list(e, '_m', '-1.0', f'CASE WHEN {c} = 0 THEN 0.0 ELSE {c} END')} END",
-    )
-    line = (
-        f"CASE WHEN {_fp_eq(p[0], q[0])} THEN {_list(e, '-1.0', '0.0', p[0])} "
-        f"WHEN {_fp_eq(p[1], q[1])} THEN {_list(e, '0.0', '-1.0', p[1])} ELSE {sloped} END"
-    )
     return e.raises.format(
-        same,
+        _same_point(e, p, q),
         "22023: invalid line specification: must be two distinct points",
-        _line_text(e, line, f),
+        _line_text(e, _line_of(e, p[0], p[1], _point_sl(e, p, q)), f),
     )
 
 
 def _slope(e: Engine, a: tuple[str, str], b: tuple[str, str], f: str) -> str:
     """point_sl: a vertical line's slope is infinite, and so is that of a point and itself."""
     finite = (
-        f"CASE WHEN {_fp_eq(a[1], b[1])} THEN 0.0 ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
+        f"CASE WHEN {_fp_eq(e, a[1], b[1])} THEN 0.0 ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
     )
-    return f"CASE WHEN {_fp_eq(a[0], b[0])} THEN {e.infinity} ELSE {_double(e, finite, f)} END"
+    return f"CASE WHEN {_fp_eq(e, a[0], b[0])} THEN {e.infinity} ELSE {_double(e, finite, f)} END"
 
 
-def _box_contains(outer: str, inner: str) -> str:
+def _box_contains(e: Engine, outer: str, inner: str) -> str:
     """box_contain_box, each a list of high x, high y, low x, low y."""
     return (
-        f"{_fp_ge(f'{outer}[1]', f'{inner}[1]')} AND {_fp_le(f'{outer}[3]', f'{inner}[3]')} "
-        f"AND {_fp_ge(f'{outer}[2]', f'{inner}[2]')} AND {_fp_le(f'{outer}[4]', f'{inner}[4]')}"
+        f"{_fp_ge(e, f'{outer}[1]', f'{inner}[1]')} AND {_fp_le(e, f'{outer}[3]', f'{inner}[3]')} "
+        f"AND {_fp_ge(e, f'{outer}[2]', f'{inner}[2]')} AND {_fp_le(e, f'{outer}[4]', f'{inner}[4]')}"
     )
 
 
@@ -537,11 +638,11 @@ def _crossing(e: Engine, c: str) -> str:
     zero = lambda a: f"abs({a}) <= {_FUZZ}"  # noqa: E731
     on_x_axis = (
         f"CASE WHEN {zero(x)} THEN {_ON_POLYGON} "
-        f"WHEN {_fp_gt(x, '0.0')} THEN "
+        f"WHEN {_fp_gt(e, x, '0.0')} THEN "
         f"CASE WHEN {zero(prev_y)} THEN "
-        f"CASE WHEN {_fp_gt(prev_x, '0.0')} THEN 0 ELSE {_ON_POLYGON} END "
-        f"WHEN {_fp_lt(prev_y, '0.0')} THEN 1 ELSE -1 END "
-        f"WHEN {zero(prev_y)} THEN CASE WHEN {_fp_lt(prev_x, '0.0')} THEN 0 ELSE {_ON_POLYGON} END "
+        f"CASE WHEN {_fp_gt(e, prev_x, '0.0')} THEN 0 ELSE {_ON_POLYGON} END "
+        f"WHEN {_fp_lt(e, prev_y, '0.0')} THEN 1 ELSE -1 END "
+        f"WHEN {zero(prev_y)} THEN CASE WHEN {_fp_lt(e, prev_x, '0.0')} THEN 0 ELSE {_ON_POLYGON} END "
         "ELSE 0 END"
     )
     z = f"({x} - {prev_x}) * {y} - ({y} - {prev_y}) * {x}"
@@ -550,17 +651,17 @@ def _crossing(e: Engine, c: str) -> str:
         "_z",
         z,
         f"CASE WHEN {zero('_z')} THEN {_ON_POLYGON} "
-        f"WHEN (_g < 0 AND {_fp_lt('_z', '0.0')}) OR (_g > 0 AND {_fp_gt('_z', '0.0')}) THEN 0 "
+        f"WHEN (_g < 0 AND {_fp_lt(e, '_z', '0.0')}) OR (_g > 0 AND {_fp_gt(e, '_z', '0.0')}) THEN 0 "
         "ELSE 2 * _g END",
     )
     off_x_axis = _let(
         e,
         "_g",
-        f"CASE WHEN {_fp_gt(y, '0.0')} THEN 1 ELSE -1 END",
-        f"CASE WHEN {zero(prev_y)} THEN CASE WHEN {_fp_lt(prev_x, '0.0')} THEN 0 ELSE _g END "
-        f"WHEN (_g < 0 AND {_fp_lt(prev_y, '0.0')}) OR (_g > 0 AND {_fp_gt(prev_y, '0.0')}) THEN 0 "
-        f"WHEN {_fp_ge(x, '0.0')} AND {_fp_gt(prev_x, '0.0')} THEN 2 * _g "
-        f"WHEN {_fp_lt(x, '0.0')} AND {_fp_le(prev_x, '0.0')} THEN 0 "
+        f"CASE WHEN {_fp_gt(e, y, '0.0')} THEN 1 ELSE -1 END",
+        f"CASE WHEN {zero(prev_y)} THEN CASE WHEN {_fp_lt(e, prev_x, '0.0')} THEN 0 ELSE _g END "
+        f"WHEN (_g < 0 AND {_fp_lt(e, prev_y, '0.0')}) OR (_g > 0 AND {_fp_gt(e, prev_y, '0.0')}) THEN 0 "
+        f"WHEN {_fp_ge(e, x, '0.0')} AND {_fp_gt(e, prev_x, '0.0')} THEN 2 * _g "
+        f"WHEN {_fp_lt(e, x, '0.0')} AND {_fp_le(e, prev_x, '0.0')} THEN 0 "
         f"ELSE {by_z} END",
     )
     return f"CASE WHEN {zero(y)} THEN {on_x_axis} ELSE {off_x_axis} END"
@@ -595,82 +696,164 @@ def _inside(e: Engine, poly: str, x: str, y: str) -> str:
     return _let(e, "_k", crossings, f"({e.size.format(on_it)} > 0 OR {e.sum_of.format('_k')} <> 0)")
 
 
-def _splits(e: Engine, poly: str) -> str:
-    """Where along the edge ``_d`` (_p[1], _p[2] to _q[1], _q[2]) the boundary of ``poly`` meets it,
-    as fractions of the edge: 0, 1, each crossing, and each vertex on it, in order."""
-    u, v = ("_s[1]", "_s[2]"), ("_s[3]", "_s[4]")
-    sx, sy = f"({v[0]} - {u[0]})", f"({v[1]} - {u[1]})"
-    ox, oy = f"({u[0]} - _p[1])", f"({u[1]} - _p[2])"
-    denominator = f"(_d[1] * {sy} - _d[2] * {sx})"
-    along = f"({ox} * {sy} - {oy} * {sx}) / {denominator}"
-    across = f"({ox} * _d[2] - {oy} * _d[1]) / {denominator}"
-    crossing = (
-        f"CASE WHEN _d[3] = 0 OR {denominator} = 0 THEN -1.0 "
-        f"WHEN {along} >= 0 AND {along} <= 1 AND {across} >= 0 AND {across} <= 1 THEN {along} "
-        "ELSE -1.0 END"
+# lseg_inside_poly's recursion as a work list: a frame is a call, [a.x, a.y, b.x, b.y, start]; a
+# call's own check fails as the frame [0, 0, 0, 0, -1], which is kept to the end.
+_FAILED = "-1e0"
+
+
+def _touched(a_s0: str, a_s1: str) -> str:
+    """touched_lseg_inside_poly of the segment ``_f`` from one end, a, and the edge ``_s``, of
+    the flags ``_g`` (``a_s0``, ``a_s1``: whether a is either end of the edge): which end of the edge
+    the call it makes runs to (1: s.p[0], 2: s.p[1]), 0 where it makes none."""
+    return (
+        f"CASE WHEN {a_s0} = 1 THEN CASE WHEN _g[4] = 1 THEN 2 ELSE 0 END "
+        f"WHEN {a_s1} = 1 THEN CASE WHEN _g[3] = 1 THEN 1 ELSE 0 END "
+        "WHEN _g[3] = 1 THEN 1 WHEN _g[4] = 1 THEN 2 ELSE 0 END"
     )
-    point = (u[0], u[1])
-    start, end = ("_p[1]", "_p[2]"), ("_q[1]", "_q[2]")
-    on_edge = _fp_eq(f"({_dist(e, point, start)} + {_dist(e, point, end)})", _dist(e, start, end))
-    at_vertex = (
-        f"CASE WHEN _d[3] = 0 THEN -1.0 "
-        f"WHEN {on_edge} THEN ({ox} * _d[1] + {oy} * _d[2]) / _d[3] ELSE -1.0 END"
-    )
+
+
+def _edge_end(which: str, axis: int) -> str:
+    """The end of the edge ``_s`` a touched call runs to (1: s.p[0], 2: s.p[1])."""
+    return f"CASE WHEN {which} = 1 THEN _s[{axis}] ELSE _s[{axis + 2}] END"
+
+
+def _scanned(e: Engine, poly: str, f: str) -> str:
+    """lseg_inside_poly's loop of the frame ``f`` over the edges of ``poly`` from its start: for
+    each edge i, [i, t inside the edge, the first call's flag and segment, the second's]."""
+    n = _half(e, e.size.format(poly))
     edge = _list(
         e,
-        _vertex(poly, _before(e, poly, "_v"))[0],
-        _vertex(poly, _before(e, poly, "_v"))[1],
-        _vertex(poly, "_v")[0],
-        _vertex(poly, "_v")[1],
+        *_vertex(poly, _before(e, poly, "_i")),
+        *_vertex(poly, "_i"),
     )
-    met = e.map.format(
-        e.upto.format(_half(e, e.size.format(poly))),
-        "_v",
-        _let(e, "_s", edge, _list(e, crossing, at_vertex)),
+    yes = lambda c: f"CASE WHEN {c} THEN {_ONE} ELSE {_NIL} END"  # noqa: E731
+    a, b, s0, s1 = _xy(f), _xy(f, 3), _xy("_s"), _xy("_s", 3)
+    # lseg_contain_point of each of the four, of the six distances _d: a to each end of the edge,
+    # b to each, the edge's, the segment's. A sum of two doubles is the same in either order.
+    distances = _list(
+        e, _dist(e, a, s0), _dist(e, a, s1), _dist(e, b, s0), _dist(e, b, s1),
+        _dist(e, s0, s1), _dist(e, a, b),
+    )  # fmt: skip
+    on = lambda one, other, whole: _fp_eq(e, f"(_d[{one}] + _d[{other}])", f"_d[{whole}]")  # noqa: E731
+    # _g: a on the edge, b on it, its ends on the segment, a each end, b each end; the X-cross.
+    met = e.concat.format(
+        _list(
+            e,
+            yes(on(1, 2, 5)),
+            yes(on(3, 4, 5)),
+            yes(on(1, 3, 6)),
+            yes(on(2, 4, 6)),
+            yes(_same_point(e, a, s0)),
+            yes(_same_point(e, a, s1)),
+            yes(_same_point(e, b, s0)),
+            yes(_same_point(e, b, s1)),
+        ),
+        _cut(e, f, "_s"),
     )
-    within = e.filter.format(e.flatten.format(met), "_o", "_o > 0 AND _o < 1")
-    ends = _list(e, e.double.format("0"), e.double.format("1"))
-    return e.sort.format(e.concat.format(ends, within))
+    a_on, b_on, crossed = "_g[1] = 1", "_g[2] = 1", "_g[9] = 1"
+    from_a, from_b = f"({_touched('_g[5]', '_g[6]')})", f"({_touched('_g[7]', '_g[8]')})"
+    which = f"CASE WHEN {a_on} THEN {from_a} ELSE {from_b} END"
+    first = f"CASE WHEN {a_on} OR {b_on} THEN {which} > 0 ELSE {crossed} END"
+    first_to = (
+        f"CASE WHEN {a_on} OR {b_on} THEN {_edge_end(which, 1)} ELSE _g[10] END",
+        f"CASE WHEN {a_on} OR {b_on} THEN {_edge_end(which, 2)} ELSE _g[11] END",
+    )
+    first_from = (
+        f"CASE WHEN {a_on} THEN {f}[3] ELSE {f}[1] END",
+        f"CASE WHEN {a_on} THEN {f}[4] ELSE {f}[2] END",
+    )
+    second = f"NOT {a_on} AND NOT {b_on} AND {crossed}"
+    item = _list(
+        e,
+        e.double.format("_i"),
+        yes(f"{a_on} AND {b_on}"),
+        yes(first),
+        *first_from,
+        *first_to,
+        yes(second),
+        f"{f}[3]",
+        f"{f}[4]",
+        "_g[10]",
+        "_g[11]",
+    )
+    starts = e.filter.format(e.upto.format(n), "_i", f"_i >= {f}[5]")
+    scan = _let(e, "_d", distances, _let(e, "_g", met, item))
+    return e.map.format(starts, "_i", _let(e, "_s", edge, scan))
 
 
-@_hoisted("edge_inside", (_ARRAY, _ARRAY, "BIGINT"), "BOOLEAN")
-def _edge_inside(e: Engine, outer: str, inner: str, at: str) -> str:
-    """The edge of ``inner`` ending at vertex ``at``: each piece's midpoint is inside ``outer``."""
-    pieces = e.upto.format(f"{e.size.format('_u')} - 1")
-    mid = _let(
-        e,
-        "_f",
-        "(_u[_w + 1] + _u[_w + 2]) / 2.0",
-        _inside(e, outer, "(_p[1] + _d[1] * _f)", "(_p[2] + _d[2] * _f)"),
+@_hoisted("seg_inside", (_ARRAY, _ARRAY), _NUMBERS)
+def _seg_inside(e: Engine, poly: str, f: str) -> str:
+    """The calls lseg_inside_poly of the frame ``f`` makes, as frames; the frame failed where its own
+    check fails. A call returns true at the first edge holding its whole segment, so it makes only
+    the calls of the edges before; where it made no X-cross, the segment's middle is inside."""
+    n = e.double.format(_half(e, e.size.format(poly)))
+    stop = e.min_of.format(
+        e.concat.format(
+            _list(e, n), e.map.format(e.filter.format("_k", "_y", "_y[2] = 1"), "_y", "_y[1]")
+        )
     )
-    outside = e.filter.format(pieces, "_w", f"NOT {mid}")
-    test = _let(e, "_u", _splits(e, outer), f"{e.size.format(outside)} = 0")
-    delta = _list(
-        e,
-        "_q[1] - _p[1]",
-        "_q[2] - _p[2]",
-        "(_q[1] - _p[1]) * (_q[1] - _p[1]) + (_q[2] - _p[2]) * (_q[2] - _p[2])",
+    before = e.filter.format("_k", "_y", "_y[1] < _z")
+    crossed = f"{e.size.format(e.filter.format(before, '_y', '_y[8] = 1'))} > 0"
+    calls = e.concat.format(
+        e.map.format(
+            e.filter.format(before, "_y", "_y[3] = 1"),
+            "_y",
+            _list(e, "_y[4]", "_y[5]", "_y[6]", "_y[7]", "_y[1] + 1"),
+        ),
+        e.map.format(
+            e.filter.format(before, "_y", "_y[8] = 1"),
+            "_y",
+            _list(e, "_y[9]", "_y[10]", "_y[11]", "_y[12]", "_y[1] + 1"),
+        ),
     )
-    return _let(
-        e,
-        "_p",
-        _list(e, *_vertex(inner, _before(e, inner, at))),
-        _let(e, "_q", _list(e, *_vertex(inner, at)), _let(e, "_d", delta, test)),
+    mid = (f"({f}[1] + {f}[3])", f"({f}[2] + {f}[4])")
+    checked = f"_z >= {n} AND NOT ({crossed})"
+    # float8_pl of the ends' coordinates: an overflow of two finite ones raises, as it does there.
+    overflow = " OR ".join(
+        f"(NOT {e.finite.format(s)} AND {e.finite.format(f'{f}[{i}]')} "
+        f"AND {e.finite.format(f'{f}[{i + 2}]')})"
+        for s, i in zip(mid, (1, 2))
+    )
+    inside = e.raises.format(
+        f"{checked} AND ({overflow})",
+        "22003: value out of range: overflow",
+        _inside(e, poly, f"{mid[0]} / 2.0", f"{mid[1]} / 2.0"),
+    )
+    failed = _list(e, _list(e, _NIL, _NIL, _NIL, _NIL, _FAILED))
+    answer = f"CASE WHEN NOT ({checked}) OR {inside} THEN {calls} ELSE {failed} END"
+    return (
+        f"CASE WHEN {f}[5] < 0 THEN {_list(e, f)} ELSE "
+        + _let(e, "_k", _scanned(e, poly, f), _let(e, "_z", stop, answer))
+        + " END"
     )
 
 
 @_hoisted("contains", (_ARRAY, _ARRAY), "BOOLEAN")
 def _contains(e: Engine, outer: str, inner: str) -> str:
-    """poly_contain_poly: the bounding boxes, then each edge of ``inner``."""
+    """poly_contain_poly: the bounding boxes, then lseg_inside_poly of each edge of ``inner``, its
+    recursion a list of the calls to make, each round the calls the last made. A call starts past
+    the edge of the call that made it, so after one round to an edge of ``outer`` and one more,
+    only the failed are left."""
     edges = e.upto.format(_half(e, e.size.format(inner)))
-    out = e.filter.format(edges, "_t", f"NOT {_edge_inside(e, outer, inner, '_t')}")
+    first = e.map.format(
+        edges,
+        "_t",
+        _list(e, *_vertex(inner, _before(e, inner, "_t")), *_vertex(inner, "_t"), _NIL),
+    )
+    rounds = e.upto.format(f"{_half(e, e.size.format(outer))} + 1")
+    calls = e.map.format("_w", "_f", _seg_inside(e, outer, "_f"))
+    # One level: ClickHouse's arrayFlatten flattens to the doubles.
+    step = (
+        f"arrayReduce('groupArrayArray', {calls})" if e is CLICKHOUSE else e.flatten.format(calls)
+    )
+    left = e.folds.format(rounds, "_w", first, step)
     boxes = _let(
         e,
         "_h",
         _bounds(e, outer),
-        _let(e, "_l", _bounds(e, inner), _box_contains("_h", "_l")),
+        _let(e, "_l", _bounds(e, inner), _box_contains(e, "_h", "_l")),
     )
-    return f"({boxes} AND {e.size.format(out)} = 0)"
+    return f"({boxes} AND {e.size.format(left)} = 0)"
 
 
 _ONE, _NIL, _MINUS = "1e0", "0e0", "-1e0"
@@ -707,25 +890,30 @@ def _line_of(e: Engine, x: str, y: str, slope: str) -> str:
         e,
         "_lm",
         slope,
-        f"CASE WHEN _lm = {e.infinity} THEN {_list(e, _MINUS, _NIL, x)} "
+        f"CASE WHEN abs(_lm) = {e.infinity} THEN {_list(e, _MINUS, _NIL, x)} "
         f"WHEN _lm = 0 THEN {_list(e, _NIL, _MINUS, y)} ELSE {_list(e, '_lm', _MINUS, fit)} END",
     )
 
 
 def _seg_slope(e: Engine, s: str) -> str:
     """point_sl of a segment's ends."""
+    return _point_sl(e, _xy(s), _xy(s, 3))
+
+
+def _point_sl(e: Engine, a: tuple[str, str], b: tuple[str, str]) -> str:
+    """point_sl: infinite of a vertical line, and of a point and itself."""
     return (
-        f"CASE WHEN {_fp_eq(f'{s}[1]', f'{s}[3]')} THEN {e.infinity} "
-        f"WHEN {_fp_eq(f'{s}[2]', f'{s}[4]')} THEN {_NIL} "
-        f"ELSE ({s}[2] - {s}[4]) / ({s}[1] - {s}[3]) END"
+        f"CASE WHEN {_fp_eq(e, a[0], b[0])} THEN {e.infinity} "
+        f"WHEN {_fp_eq(e, a[1], b[1])} THEN {_NIL} "
+        f"ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
     )
 
 
 def _seg_invslope(e: Engine, s: str) -> str:
     """point_invsl of a segment's ends."""
     return (
-        f"CASE WHEN {_fp_eq(f'{s}[1]', f'{s}[3]')} THEN {_NIL} "
-        f"WHEN {_fp_eq(f'{s}[2]', f'{s}[4]')} THEN {e.infinity} "
+        f"CASE WHEN {_fp_eq(e, f'{s}[1]', f'{s}[3]')} THEN {_NIL} "
+        f"WHEN {_fp_eq(e, f'{s}[2]', f'{s}[4]')} THEN {e.infinity} "
         f"ELSE ({s}[1] - {s}[3]) / ({s}[4] - {s}[2]) END"
     )
 
@@ -750,7 +938,7 @@ def _line_read(e: Engine, doubles: str) -> str:
     """line_in: ``{A,B,C}``, or the two points of an lseg's text."""
     points = _list(e, "_q[1]", "_q[2]", "_q[3]", "_q[4]")
     through = _let(e, "_qs", points, _line_of(e, "_qs[1]", "_qs[2]", _seg_slope(e, "_qs")))
-    same = f"{_fp_eq('_q[1]', '_q[3]')} AND {_fp_eq('_q[2]', '_q[4]')}"
+    same = f"{_fp_eq(e, '_q[1]', '_q[3]')} AND {_fp_eq(e, '_q[2]', '_q[4]')}"
     as_is = e.raises.format(
         f"{e.size.format('_q')} = 3 AND {_fp_zero('_q[1]')} AND {_fp_zero('_q[2]')}",
         "22P02: invalid line specification: A and B cannot both be zero",
@@ -776,7 +964,7 @@ def _meet(e: Engine, one: str, other: str) -> str:
         y = f"(-({a} * _mx + {c})) / {b}"
         point = _list(e, _ONE, _sign_free("_mx"), f"CASE WHEN {y} = 0 THEN {_NIL} ELSE {y} END")
         return (
-            f"CASE WHEN {_fp_eq(d, f'({a} * ({f} / {b}))')} THEN {_not_found(e)} ELSE "
+            f"CASE WHEN {_fp_eq(e, d, f'({a} * ({f} / {b}))')} THEN {_not_found(e)} ELSE "
             + _let(e, "_mx", f"({b} * {g} - {f} * {c}) / ({a} * {f} - {d} * {b})", point)
             + " END"
         )
@@ -792,11 +980,23 @@ def _on_seg(e: Engine, s: str, x: str, y: str) -> str:
     """lseg_contain_point."""
     ends = ((f"{s}[1]", f"{s}[2]"), (f"{s}[3]", f"{s}[4]"))
     at = (x, y)
-    return _fp_eq(f"({_dist(e, at, ends[0])} + {_dist(e, at, ends[1])})", _dist(e, *ends))
+    return _fp_eq(e, f"({_dist(e, at, ends[0])} + {_dist(e, at, ends[1])})", _dist(e, *ends))
 
 
-def _same_point(a: tuple[str, str], b: tuple[str, str]) -> str:
-    return f"({_fp_eq(a[0], b[0])} AND {_fp_eq(a[1], b[1])})"
+def _float8_eq(e: Engine, a: str, b: str) -> str:
+    """float8_eq: a NaN equals a NaN and nothing else, as DuckDB's = has it."""
+    if e is DUCKDB:
+        return f"({a} = {b})"
+    return f"(({e.is_nan.format(a)} AND {e.is_nan.format(b)}) OR {a} = {b})"
+
+
+def _same_point(e: Engine, a: tuple[str, str], b: tuple[str, str]) -> str:
+    """point_eq_point: of a NaN coordinate, float8_eq of each; else FPeq of each."""
+    nan = " OR ".join(e.is_nan.format(v) for v in (*a, *b))
+    return (
+        f"(CASE WHEN {nan} THEN {_float8_eq(e, a[0], b[0])} AND {_float8_eq(e, a[1], b[1])} "
+        f"ELSE {_fp_eq(e, a[0], b[0])} AND {_fp_eq(e, a[1], b[1])} END)"
+    )
 
 
 @_hoisted("cut_line", (_ARRAY, _ARRAY), _ARRAY)
@@ -805,8 +1005,8 @@ def _cut_line(e: Engine, s: str, line: str) -> str:
     found = ("_cm[2]", "_cm[3]")
     answer = (
         f"CASE WHEN _cm[1] = 0 OR NOT {_on_seg(e, s, *found)} THEN {_not_found(e)} "
-        f"WHEN {_same_point(_xy(s), found)} THEN {_list(e, _ONE, *_xy(s))} "
-        f"WHEN {_same_point(_xy(s, 3), found)} THEN {_list(e, _ONE, *_xy(s, 3))} "
+        f"WHEN {_same_point(e, _xy(s), found)} THEN {_list(e, _ONE, *_xy(s))} "
+        f"WHEN {_same_point(e, _xy(s, 3), found)} THEN {_list(e, _ONE, *_xy(s, 3))} "
         "ELSE _cm END"
     )
     return _let(
@@ -837,7 +1037,7 @@ def _cut(e: Engine, s: str, t: str) -> str:
 @_hoisted("foot", (_ARRAY, "DOUBLE", "DOUBLE"), _ARRAY)
 def _foot(e: Engine, line: str, x: str, y: str) -> str:
     """line_closept_point: ``[distance, x, y]``. Two lines drawn perpendicular meet unless a
-    coordinate was not finite, which no form reads: the infinite distance is then refused."""
+    coordinate is NaN or infinite: the distance is then NaN, at the point itself."""
     measured = _dist(e, ("_fm[2]", "_fm[3]"), (x, y))
     return _let(
         e,
@@ -847,7 +1047,7 @@ def _foot(e: Engine, line: str, x: str, y: str) -> str:
             e,
             "_fm",
             _meet(e, "_ft", line),
-            f"CASE WHEN _fm[1] = 0 THEN {_list(e, e.infinity, x, y)} "
+            f"CASE WHEN _fm[1] = 0 THEN {_list(e, e.nan, x, y)} "
             f"ELSE {_list(e, measured, '_fm[2]', '_fm[3]')} END",
         ),
     )
@@ -859,7 +1059,7 @@ def _near_line(e: Engine, s: str, line: str) -> str:
     ends = _list(e, _list(e, *_xy(s)), _list(e, *_xy(s, 3)))
     each = e.map.format(ends, "_np", _at(e, _foot(e, line, "_np[1]", "_np[2]"), 1))
     nearer = (
-        f"CASE WHEN _nd[1] < _nd[2] THEN {_list(e, '_nd[1]', *_xy(s))} "
+        f"CASE WHEN {_cmp(e, '_nd[1]', '<', '_nd[2]')} THEN {_list(e, '_nd[1]', *_xy(s))} "
         f"ELSE {_list(e, '_nd[2]', *_xy(s, 3))} END"
     )
     return _let(
@@ -886,8 +1086,9 @@ def _near_point(e: Engine, s: str, x: str, y: str) -> str:
 @_hoisted("least", (_NUMBERS,), _ARRAY)
 def _least(e: Engine, candidates: str) -> str:
     """The first of ``[distance, x, y]``s with the smallest distance, as float8_lt keeps it."""
-    smallest = e.min_of.format(e.map.format(candidates, "_it", "_it[1]"))
-    return _let(e, "_lc0", smallest, e.filter.format(candidates, "_it", "_it[1] = _lc0") + "[1]")
+    smallest = _float8_min_of(e, e.map.format(candidates, "_it", "_it[1]"))
+    first = e.filter.format(candidates, "_it", _float8_eq(e, "_it[1]", "_lc0")) + "[1]"
+    return _let(e, "_lc0", smallest, first)
 
 
 @_hoisted("near_seg", (_ARRAY, _ARRAY), _ARRAY)
@@ -915,9 +1116,12 @@ def _near_seg(e: Engine, on: str, to: str) -> str:
     )
 
 
-def _in_box(box: str, x: str, y: str) -> str:
+def _in_box(e: Engine, box: str, x: str, y: str) -> str:
     """box_contain_point: no fuzz."""
-    return f"({box}[1] >= {x} AND {box}[3] <= {x} AND {box}[2] >= {y} AND {box}[4] <= {y})"
+    return (
+        f"({_cmp(e, f'{box}[1]', '>=', x)} AND {_cmp(e, f'{box}[3]', '<=', x)} "
+        f"AND {_cmp(e, f'{box}[2]', '>=', y)} AND {_cmp(e, f'{box}[4]', '<=', y)})"
+    )
 
 
 def _sides(e: Engine, box: str) -> str:
@@ -938,16 +1142,16 @@ def _near_box_point(e: Engine, box: str, x: str, y: str) -> str:
     """box_closept_point: ``[distance, x, y]``."""
     each = e.map.format(_sides(e, box), "_bs", _near_point(e, "_bs", x, y))
     return (
-        f"CASE WHEN {_in_box(box, x, y)} THEN {_list(e, _NIL, x, y)} "
+        f"CASE WHEN {_in_box(e, box, x, y)} THEN {_list(e, _NIL, x, y)} "
         f"ELSE {_let(e, '_bq', each, _least(e, '_bq'))} END"
     )
 
 
-def _boxes_meet(a: str, b: str) -> str:
+def _boxes_meet(e: Engine, a: str, b: str) -> str:
     """box_ov, each a list of high x, high y, low x, low y."""
     return (
-        f"({_fp_le(f'{a}[3]', f'{b}[1]')} AND {_fp_le(f'{b}[3]', f'{a}[1]')} "
-        f"AND {_fp_le(f'{a}[4]', f'{b}[2]')} AND {_fp_le(f'{b}[4]', f'{a}[2]')})"
+        f"({_fp_le(e, f'{a}[3]', f'{b}[1]')} AND {_fp_le(e, f'{b}[3]', f'{a}[1]')} "
+        f"AND {_fp_le(e, f'{a}[4]', f'{b}[2]')} AND {_fp_le(e, f'{b}[4]', f'{a}[2]')})"
     )
 
 
@@ -955,12 +1159,12 @@ def _boxes_meet(a: str, b: str) -> str:
 def _box_cut(e: Engine, box: str, s: str) -> str:
     """box_interpt_lseg, whether: the segment's box, its ends, then the sides."""
     crossed = e.map.format(_sides(e, box), "_bs", _at(e, _cut(e, "_bs", s), 1))
-    ends = f"{_in_box(box, *_xy(s))} OR {_in_box(box, *_xy(s, 3))}"
+    ends = f"{_in_box(e, box, *_xy(s))} OR {_in_box(e, box, *_xy(s, 3))}"
     return _let(
         e,
         "_lb",
         _bounds(e, s),
-        f"({_boxes_meet('_lb', box)} AND ({ends} OR {_any(e, crossed)}))",
+        f"({_boxes_meet(e, '_lb', box)} AND ({ends} OR {_any(e, crossed)}))",
     )
 
 
@@ -1049,7 +1253,7 @@ def _least_pair(e: Engine, one: str, other: str, f: str) -> str:
 @_hoisted("nearest_pair", (_NUMBERS, _NUMBERS), "DOUBLE")
 def _nearest_pair(e: Engine, one: str, other: str) -> str:
     """The least lseg_closept_lseg distance of each segment of ``one`` to each of ``other``."""
-    return e.min_of.format(_pairs(e, one, other, lambda s, t: _at(e, _near_seg(e, s, t), 1)))
+    return _float8_min_of(e, _pairs(e, one, other, lambda s, t: _at(e, _near_seg(e, s, t), 1)))
 
 
 @_hoisted("from_polygon", (_ARRAY, "DOUBLE", "DOUBLE"), "DOUBLE")
@@ -1064,7 +1268,7 @@ def _from_polygon(e: Engine, poly: str, x: str, y: str) -> str:
     )
     segments = e.map.format(e.upto.format(n), "_i", seg)
     each = e.map.format(segments, "_ws", _at(e, _near_point(e, "_ws", x, y), 1))
-    return f"CASE WHEN {_inside(e, poly, x, y)} THEN {_NIL} ELSE {e.min_of.format(each)} END"
+    return f"CASE WHEN {_inside(e, poly, x, y)} THEN {_NIL} ELSE {_float8_min_of(e, each)} END"
 
 
 @_hoisted("overlap", (_ARRAY, _ARRAY), "BOOLEAN")
@@ -1077,7 +1281,7 @@ def _overlap(e: Engine, a: str, b: str) -> str:
         lambda p, q: _any(e, _pairs(e, p, q, lambda s, t: _at(e, _cut(e, s, t), 1))),
     )
     within = f"{_inside(e, b, f'{a}[1]', f'{a}[2]')} OR {_inside(e, a, f'{b}[1]', f'{b}[2]')}"
-    boxes = _let(e, "_h", _bounds(e, a), _let(e, "_l", _bounds(e, b), _boxes_meet("_h", "_l")))
+    boxes = _let(e, "_h", _bounds(e, a), _let(e, "_l", _bounds(e, b), _boxes_meet(e, "_h", "_l")))
     return f"({boxes} AND ({crossed} OR {within}))"
 
 
@@ -1088,7 +1292,7 @@ def _same_ring(e: Engine, a: str, b: str) -> str:
     point = lambda at: _vertex(b, at)  # noqa: E731
 
     def walked(step: str) -> str:
-        wrong = f"NOT {_same_point(point(step), _vertex(a, '_ii'))}"
+        wrong = f"NOT {_same_point(e, point(step), _vertex(a, '_ii'))}"
         return f"{e.size.format(e.filter.format(e.upto.format(n), '_ii', wrong))} = 0"
 
     forward, backward = f"(_st + _ii) % {n}", f"(_st + {n} - _ii) % {n}"
@@ -1109,8 +1313,11 @@ def _lines(add: Callable) -> None:
             f"CASE WHEN NOT {_fp_zero(d)} THEN {a} / {d} WHEN NOT {_fp_zero(f_)} THEN {b} / {f_} "
             f"WHEN NOT {_fp_zero(g)} THEN {c} / {g} ELSE {_ONE} END"
         )
-        equal = " AND ".join(_fp_eq(x, f"(_lr * {y})") for x, y in ((a, d), (b, f_), (c, g)))
-        return _let(e, "_lr", ratio, f"({equal})")
+        equal = " AND ".join(_fp_eq(e, x, f"(_lr * {y})") for x, y in ((a, d), (b, f_), (c, g)))
+        # Of a NaN, float8_eq of each: the ratio would answer false.
+        nan = " OR ".join(e.is_nan.format(v) for v in (a, b, c, d, f_, g))
+        exact = " AND ".join(_float8_eq(e, x, y) for x, y in ((a, d), (b, f_), (c, g)))
+        return f"CASE WHEN {nan} THEN {exact} ELSE {_let(e, '_lr', ratio, f'({equal})')} END"
 
     def apart(e: Engine, f: str) -> str:
         ratio = (
@@ -1209,7 +1416,7 @@ def _distances(add: Callable) -> None:
             e,
             "_sg",
             _segments(e, "_b", _is_closed(e, "b")),
-            f"CASE WHEN {e.size.format('_sg')} = 0 THEN {_NIL} ELSE {e.min_of.format(each)} END",
+            f"CASE WHEN {e.size.format('_sg')} = 0 THEN {_NIL} ELSE {_float8_min_of(e, each)} END",
         )
 
     both("dist_ppath", "dist_pathp", ("point", "path"), to_path)
@@ -1219,14 +1426,23 @@ def _closest(add: Callable) -> None:
     """close_: the point itself. A pair that close_ls and close_lseg call parallel answers NULL."""
 
     def point(e: Engine, values: str, f: str) -> str:
-        return _let(e, "_v", values, _shape(e, _list(e, "_v[2]", "_v[3]"), *_POINT, f))
+        """The point a helper found; NULL where its distance is NaN, as close_ answers."""
+        found = _shape(e, _list(e, "_v[2]", "_v[3]"), *_POINT, f)
+        return _let(
+            e, "_v", values, f"CASE WHEN {e.is_nan.format('_v[1]')} THEN NULL ELSE {found} END"
+        )
 
     def unless_parallel(e: Engine, one: str, other: str, answer: str) -> str:
         return _let(
             e,
             "_k1",
             one,
-            _let(e, "_k2", other, f"CASE WHEN _k1 = _k2 THEN NULL ELSE {answer} END"),
+            _let(
+                e,
+                "_k2",
+                other,
+                f"CASE WHEN {_cmp(e, '_k1', '=', '_k2')} THEN NULL ELSE {answer} END",
+            ),
         )
 
     add(
@@ -1290,7 +1506,7 @@ def _on(add: Callable) -> None:
         "on_sb",
         "a:lseg, b:box",
         1,
-        lambda e, _: f"{_in_box('_b', *_xy('_a'))} AND {_in_box('_b', *_xy('_a', 3))}",
+        lambda e, _: f"{_in_box(e, '_b', *_xy('_a'))} AND {_in_box(e, '_b', *_xy('_a', 3))}",
     )
     add(
         "inter_sl",
@@ -1346,7 +1562,7 @@ def _paths_and_polygons(add: Callable) -> None:
             ),
         )
         boxes = _let(
-            e, "_h", _bounds(e, "_a"), _let(e, "_l", _bounds(e, "_b"), _boxes_meet("_h", "_l"))
+            e, "_h", _bounds(e, "_a"), _let(e, "_l", _bounds(e, "_b"), _boxes_meet(e, "_h", "_l"))
         )
         return f"({boxes} AND {edges})"
 
@@ -1596,20 +1812,26 @@ def _circles(add: Callable) -> None:
         add(f"circle_{name}", "a:circle, b:circle", 1, lambda e, _: test(e))
 
     for name, fuzzy in _FUZZY.items():
-        on_two(name, lambda e, fuzzy=fuzzy: fuzzy(area_a, area_b))
-    on_two("ne", lambda e: f"(NOT {_fp_eq(area_a, area_b)})")
-    on_two("same", lambda e: f"{_fp_eq(ar, br)} AND {_fp_eq(ax, bx)} AND {_fp_eq(ay, by)}")
-    on_two("overlap", lambda e: _fp_le(centers(e), f"({ar} + {br})"))
-    on_two("contain", lambda e: _fp_le(centers(e), f"({ar} - {br})"))
-    on_two("contained", lambda e: _fp_le(centers(e), f"({br} - {ar})"))
-    on_two("left", lambda e: _fp_lt(f"({ax} + {ar})", f"({bx} - {br})"))
-    on_two("overleft", lambda e: _fp_le(f"({ax} + {ar})", f"({bx} + {br})"))
-    on_two("right", lambda e: _fp_gt(f"({ax} - {ar})", f"({bx} + {br})"))
-    on_two("overright", lambda e: _fp_ge(f"({ax} - {ar})", f"({bx} - {br})"))
-    on_two("below", lambda e: _fp_lt(f"({ay} + {ar})", f"({by} - {br})"))
-    on_two("overbelow", lambda e: _fp_le(f"({ay} + {ar})", f"({by} + {br})"))
-    on_two("above", lambda e: _fp_gt(f"({ay} - {ar})", f"({by} + {br})"))
-    on_two("overabove", lambda e: _fp_ge(f"({ay} - {ar})", f"({by} - {br})"))
+        on_two(name, lambda e, fuzzy=fuzzy: fuzzy(e, area_a, area_b))
+    on_two("ne", lambda e: f"(NOT {_fp_eq(e, area_a, area_b)})")
+    on_two(
+        "same",
+        lambda e: (
+            f"(({e.is_nan.format(ar)} AND {e.is_nan.format(br)}) OR {_fp_eq(e, ar, br)}) "
+            f"AND {_same_point(e, (ax, ay), (bx, by))}"
+        ),
+    )
+    on_two("overlap", lambda e: _fp_le(e, centers(e), f"({ar} + {br})"))
+    on_two("contain", lambda e: _fp_le(e, centers(e), f"({ar} - {br})"))
+    on_two("contained", lambda e: _fp_le(e, centers(e), f"({br} - {ar})"))
+    on_two("left", lambda e: _fp_lt(e, f"({ax} + {ar})", f"({bx} - {br})"))
+    on_two("overleft", lambda e: _fp_le(e, f"({ax} + {ar})", f"({bx} + {br})"))
+    on_two("right", lambda e: _fp_gt(e, f"({ax} - {ar})", f"({bx} + {br})"))
+    on_two("overright", lambda e: _fp_ge(e, f"({ax} - {ar})", f"({bx} - {br})"))
+    on_two("below", lambda e: _fp_lt(e, f"({ay} + {ar})", f"({by} - {br})"))
+    on_two("overbelow", lambda e: _fp_le(e, f"({ay} + {ar})", f"({by} + {br})"))
+    on_two("above", lambda e: _fp_gt(e, f"({ay} - {ar})", f"({by} + {br})"))
+    on_two("overabove", lambda e: _fp_ge(e, f"({ay} - {ar})", f"({by} - {br})"))
     q = _xy("_b")
     out = lambda e: _dist(e, (ax, ay), q) + f" - {ar}"  # noqa: E731
 
@@ -1653,10 +1875,15 @@ def _circles(add: Callable) -> None:
 
 
 def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
-    """circle_poly: ``n`` points of the circle ``_a``, as doubles."""
-    step = f"2.0 * pi() / {n}"
+    """circle_poly: ``n`` points of the circle ``_a``, as doubles. The points are drawn of a count
+    PostgreSQL would draw, none otherwise: ClickHouse builds every branch, raised or not."""
+    # geo_ops.c sizes the polygon in an int before it allocates: 40 bytes and 16 a point. Past
+    # INT_MAX it is 54000; past MaxAllocSize (1 GB - 1) palloc's XX000, naming the size.
+    size = f"(40 + 16 * {e.bigint.format(n)})"
+    drawn = f"(CASE WHEN {n} < 2 OR {size} > 1073741823 THEN 0 ELSE {n} END)"
+    step = f"2.0 * pi() / {drawn}"
     points = e.map.format(
-        e.upto.format(n),
+        e.upto.format(drawn),
         "_i",
         _list(
             e,
@@ -1672,9 +1899,6 @@ def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
         ),
         "','",
     )
-    # geo_ops.c sizes the polygon in an int before it allocates: 40 bytes and 16 a point. Past
-    # INT_MAX it is 54000; past MaxAllocSize (1 GB - 1) palloc's XX000, naming the size.
-    size = f"(40 + 16 * {e.bigint.format(n)})"
     alloc = "XX000: invalid memory alloc request size"
     if e is not CLICKHOUSE:  # ClickHouse's throwIf takes a constant message, so no size
         alloc += f" ' || {e.text.format(size)} || '"
@@ -1694,34 +1918,39 @@ def _lists(add: Callable) -> None:
     """lseg's comparisons, and what path and polygon answer from their points alone."""
     p0, p1 = _xy("_a"), _xy("_a", 3)
     q0, q1 = _xy("_b"), _xy("_b", 3)
-    same = " AND ".join(_fp_eq(f"_a[{i}]", f"_b[{i}]") for i in (1, 2, 3, 4))
-    add("lseg_eq", "a:lseg, b:lseg", 1, lambda e, _: same)
-    add("lseg_ne", "a:lseg, b:lseg", 1, lambda e, _: f"NOT ({same})")
+
+    def same(e: Engine) -> str:
+        return f"{_same_point(e, p0, q0)} AND {_same_point(e, p1, q1)}"
+
+    add("lseg_eq", "a:lseg, b:lseg", 1, lambda e, _: same(e))
+    add("lseg_ne", "a:lseg, b:lseg", 1, lambda e, _: f"NOT ({same(e)})")
     for name, fuzzy in _FUZZY.items():
         if name != "eq":
             add(
                 f"lseg_{name}",
                 "a:lseg, b:lseg",
                 1,
-                lambda e, _, fuzzy=fuzzy: fuzzy(_dist(e, p0, p1), _dist(e, q0, q1)),
+                lambda e, _, fuzzy=fuzzy: fuzzy(e, _dist(e, p0, p1), _dist(e, q0, q1)),
             )
     box = lambda e, name: _bounds(e, name)  # noqa: E731
     count = lambda e, name: _half(e, e.size.format(name))  # noqa: E731
-    for name, test in (
-        ("left", "_x[1] < _y[3]"),
-        ("overleft", "_x[1] <= _y[1]"),
-        ("right", "_x[3] > _y[1]"),
-        ("overright", "_x[3] >= _y[3]"),
-        ("below", "_x[2] < _y[4]"),
-        ("overbelow", "_x[2] <= _y[2]"),
-        ("above", "_x[4] > _y[2]"),
-        ("overabove", "_x[4] >= _y[4]"),
+    for name, (one, op, other) in (
+        ("left", ("_x[1]", "<", "_y[3]")),
+        ("overleft", ("_x[1]", "<=", "_y[1]")),
+        ("right", ("_x[3]", ">", "_y[1]")),
+        ("overright", ("_x[3]", ">=", "_y[3]")),
+        ("below", ("_x[2]", "<", "_y[4]")),
+        ("overbelow", ("_x[2]", "<=", "_y[2]")),
+        ("above", ("_x[4]", ">", "_y[2]")),
+        ("overabove", ("_x[4]", ">=", "_y[4]")),
     ):
         add(
             f"poly_{name}",
             "a:polygon, b:polygon",
             1,
-            lambda e, _, test=test: _let(e, "_x", box(e, "_a"), _let(e, "_y", box(e, "_b"), test)),
+            lambda e, _, test=(one, op, other): _let(
+                e, "_x", box(e, "_a"), _let(e, "_y", box(e, "_b"), _cmp(e, *test))
+            ),
         )
     add(
         "poly_circle",
@@ -1825,15 +2054,14 @@ def _rows() -> list[Row]:
 
     # point
     p, q = _xy("_a"), _xy("_b")
-    same = f"{_fp_eq(p[0], q[0])} AND {_fp_eq(p[1], q[1])}"
-    on_two("point_eq", "point", lambda e: same)
-    on_two("point_ne", "point", lambda e: f"NOT ({same})")
-    on_two("point_left", "point", lambda e: _fp_lt(p[0], q[0]))
-    on_two("point_right", "point", lambda e: _fp_gt(p[0], q[0]))
-    on_two("point_above", "point", lambda e: _fp_gt(p[1], q[1]))
-    on_two("point_below", "point", lambda e: _fp_lt(p[1], q[1]))
-    on_two("point_vert", "point", lambda e: _fp_eq(p[0], q[0]))
-    on_two("point_horiz", "point", lambda e: _fp_eq(p[1], q[1]))
+    on_two("point_eq", "point", lambda e: _same_point(e, p, q))
+    on_two("point_ne", "point", lambda e: f"NOT {_same_point(e, p, q)}")
+    on_two("point_left", "point", lambda e: _fp_lt(e, p[0], q[0]))
+    on_two("point_right", "point", lambda e: _fp_gt(e, p[0], q[0]))
+    on_two("point_above", "point", lambda e: _fp_gt(e, p[1], q[1]))
+    on_two("point_below", "point", lambda e: _fp_lt(e, p[1], q[1]))
+    on_two("point_vert", "point", lambda e: _fp_eq(e, p[0], q[0]))
+    on_two("point_horiz", "point", lambda e: _fp_eq(e, p[1], q[1]))
     add("point_distance", "a:point, b:point", 2, lambda e, f: _double(e, _dist(e, p, q), f))
     add("slope", "a:point, b:point", 2, lambda e, f: _slope(e, p, q, f))
     for verb, (move, divides) in _MOVES.items():
@@ -1842,9 +2070,17 @@ def _rows() -> list[Row]:
             text = _shape(e, _list(e, *move(p, q)), *_POINT, f)
             return _division(e, f"{q[0]} * {q[0]} + {q[1]} * {q[1]}", text) if divides else text
 
-        def boxed(e: Engine, f: str, move: Callable = move, divides: bool = divides) -> str:
+        def boxed(
+            e: Engine, f: str, move: Callable = move, divides: bool = divides, verb: str = verb
+        ) -> str:
             hi, lo = _xy("_a"), _xy("_a", 3)
-            text = _shape(e, _box_of(e, move(hi, q), move(lo, q)), *_BOX, f)
+            # box_add and box_sub move each corner; box_mul and box_div construct the box anew.
+            corners = (
+                _list(e, *move(hi, q), *move(lo, q))
+                if verb in ("add", "sub")
+                else _box_of(e, move(hi, q), move(lo, q))
+            )
+            text = _shape(e, corners, *_BOX, f)
             return _division(e, f"{q[0]} * {q[0]} + {q[1]} * {q[1]}", text) if divides else text
 
         add(f"point_{verb}", "a:point, b:point", 0, moved)
@@ -1853,28 +2089,40 @@ def _rows() -> list[Row]:
     # box: _a and _b are high x, high y, low x, low y
     hx, hy, lx, ly = (f"_a[{i}]" for i in (1, 2, 3, 4))
     bhx, bhy, blx, bly = (f"_b[{i}]" for i in (1, 2, 3, 4))
-    overlap = f"{_fp_le(lx, bhx)} AND {_fp_le(blx, hx)} AND {_fp_le(ly, bhy)} AND {_fp_le(bly, hy)}"
 
-    for name, test in (
-        ("left", _fp_lt(hx, blx)),
-        ("overleft", _fp_le(hx, bhx)),
-        ("right", _fp_gt(lx, bhx)),
-        ("overright", _fp_ge(lx, blx)),
-        ("below", _fp_lt(hy, bly)),
-        ("overbelow", _fp_le(hy, bhy)),
-        ("above", _fp_gt(ly, bhy)),
-        ("overabove", _fp_ge(ly, bly)),
-        ("below_eq", _fp_le(hy, bly)),
-        ("above_eq", _fp_ge(ly, bhy)),
+    def overlap(e: Engine) -> str:
+        return (
+            f"{_fp_le(e, lx, bhx)} AND {_fp_le(e, blx, hx)} "
+            f"AND {_fp_le(e, ly, bhy)} AND {_fp_le(e, bly, hy)}"
+        )
+
+    tests: tuple[tuple[str, Callable[[Engine], str]], ...] = (
+        ("left", lambda e: _fp_lt(e, hx, blx)),
+        ("overleft", lambda e: _fp_le(e, hx, bhx)),
+        ("right", lambda e: _fp_gt(e, lx, bhx)),
+        ("overright", lambda e: _fp_ge(e, lx, blx)),
+        ("below", lambda e: _fp_lt(e, hy, bly)),
+        ("overbelow", lambda e: _fp_le(e, hy, bhy)),
+        ("above", lambda e: _fp_gt(e, ly, bhy)),
+        ("overabove", lambda e: _fp_ge(e, ly, bly)),
+        ("below_eq", lambda e: _fp_le(e, hy, bly)),
+        ("above_eq", lambda e: _fp_ge(e, ly, bhy)),
         ("overlap", overlap),
-        ("contain", _box_contains("_a", "_b")),
-        ("contained", _box_contains("_b", "_a")),
-        ("same", " AND ".join(_fp_eq(f"_a[{i}]", f"_b[{i}]") for i in (1, 2, 3, 4))),
-    ):
-        on_two(f"box_{name}", "box", lambda e, test=test: test)
+        ("contain", lambda e: _box_contains(e, "_a", "_b")),
+        ("contained", lambda e: _box_contains(e, "_b", "_a")),
+        (
+            "same",
+            lambda e: (
+                f"{_same_point(e, _xy('_a'), _xy('_b'))} "
+                f"AND {_same_point(e, _xy('_a', 3), _xy('_b', 3))}"
+            ),
+        ),
+    )
+    for name, test in tests:
+        on_two(f"box_{name}", "box", test)
     area_a, area_b = f"(({hx} - {lx}) * ({hy} - {ly}))", f"(({bhx} - {blx}) * ({bhy} - {bly}))"
     for name, fuzzy in _FUZZY.items():
-        on_two(f"box_{name}", "box", lambda e, fuzzy=fuzzy: fuzzy(area_a, area_b))
+        on_two(f"box_{name}", "box", lambda e, fuzzy=fuzzy: fuzzy(e, area_a, area_b))
     add(
         "box_distance",
         "a:box, b:box",
@@ -1889,10 +2137,10 @@ def _rows() -> list[Row]:
             e,
             _list(
                 e,
-                f"greatest({hx}, {bhx})",
-                f"greatest({hy}, {bhy})",
-                f"least({lx}, {blx})",
-                f"least({ly}, {bly})",
+                _float8_max(e, hx, bhx),
+                _float8_max(e, hy, bhy),
+                _float8_min(e, lx, blx),
+                _float8_min(e, ly, bly),
             ),
             *_BOX,
             f,
@@ -1903,15 +2151,15 @@ def _rows() -> list[Row]:
         "a:box, b:box",
         0,
         lambda e, f: (
-            f"CASE WHEN {overlap} THEN "
+            f"CASE WHEN {overlap(e)} THEN "
             + _shape(
                 e,
                 _list(
                     e,
-                    f"least({hx}, {bhx})",
-                    f"least({hy}, {bhy})",
-                    f"greatest({lx}, {blx})",
-                    f"greatest({ly}, {bly})",
+                    _float8_min(e, hx, bhx),
+                    _float8_min(e, hy, bhy),
+                    _float8_max(e, lx, blx),
+                    _float8_max(e, ly, bly),
                 ),
                 *_BOX,
                 f,
@@ -1919,9 +2167,8 @@ def _rows() -> list[Row]:
             + " END"
         ),
     )
-    inside = "_b[1] <= _a[1] AND _b[1] >= _a[3] AND _b[2] <= _a[2] AND _b[2] >= _a[4]"
-    add("box_contain_pt", "a:box, b:point", 1, lambda e, _: inside)
-    add("on_pb", "b:point, a:box", 1, lambda e, _: inside)
+    add("box_contain_pt", "a:box, b:point", 1, lambda e, _: _in_box(e, "_a", "_b[1]", "_b[2]"))
+    add("on_pb", "b:point, a:box", 1, lambda e, _: _in_box(e, "_a", "_b[1]", "_b[2]"))
     add(
         "point_box",
         "a:point",
@@ -2050,12 +2297,14 @@ def _form(e: Engine, row: Row) -> str:
     body = row.body(e, row.name)
     for param, kind in reversed(shapes):
         body = _let(e, f"_{param}", _read(e, param, kind), body)
-    letters = " OR ".join(e.matches.format(e.text.format(p), _NOT_FINITE) for p, _ in shapes)
+    unread = [e.matches.format(e.text.format(p), _NOT_FINITE) for p, _ in shapes]
+    unread += [f"NOT {e.finite.format(e.double.format(p))}" for p, k in kinds if k == "double"]
+    finite = f"(NOT ({' OR '.join(unread)}))" if unread else "(1 = 1)"
+    body = body.replace(_ALL_FINITE, finite)
     nulls = " OR ".join(f"{p} IS NULL" for p, _ in kinds)
     sql_type = e.types[row.answers]
-    refused = e.raises.format(letters, f"0A000: {row.name} {REFUSED}", body) if shapes else body
     # A cast of a boolean or an integer: ClickHouse's comparisons are UInt8, a size is a BIGINT.
-    typed = f"CAST({refused} AS {sql_type})" if row.answers in (1, 3) else refused
+    typed = f"CAST({body} AS {sql_type})" if row.answers in (1, 3) else body
     return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {typed} END"
 
 
@@ -2307,10 +2556,11 @@ def planned(sql: str, dialect: str) -> str:
     routine the statement defines. A ClickHouse one is planned by its old analyzer: the new one takes
     most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
     1.3s), with the same answers. A DuckDB one has each run of names a pipeline (:func:`_pipelined`):
-    its deepest forms bound in gigabytes. A form is known by its check of a shape's letters."""
+    its deepest forms bound in gigabytes. A form is known by its reading of a shape's coordinates,
+    or width_bucket's by its check of a number's letters."""
     if dialect == "trino":
         return _defined(sql)
-    if f"'{_NOT_FINITE}'" not in sql:
+    if _COORDINATE not in sql and f"'{_NOT_FINITE}'" not in sql:
         return sql
     if dialect == "duckdb":
         return _pipelined(sql)
@@ -2322,6 +2572,17 @@ def planned(sql: str, dialect: str) -> str:
         f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0, "
         "precise_float_parsing = 1"
     )
+
+
+def bounding_box(e: Engine, param: str) -> str:
+    """spg_poly_quad_compress of the polygon ``param``: its make_bound_box box, poly_box's."""
+    row = Row(
+        "spg_poly_quad_compress",
+        f"{param}:polygon",
+        0,
+        lambda e, f: _shape(e, _bounds(e, f"_{param}"), *_BOX, f),
+    )
+    return _form(e, row)
 
 
 def forms(e: Engine) -> dict[tuple[str, str], str]:
@@ -2382,7 +2643,7 @@ def _inverse_slope(e: Engine, a: tuple[str, str], b: tuple[str, str], f: str) ->
     """point_invsl: of a vertical line 0, of a horizontal one infinite."""
     finite = f"({a[0]} - {b[0]}) / ({b[1]} - {a[1]})"
     return (
-        f"CASE WHEN {_fp_eq(a[0], b[0])} THEN 0.0 WHEN {_fp_eq(a[1], b[1])} THEN {e.infinity} "
+        f"CASE WHEN {_fp_eq(e, a[0], b[0])} THEN 0.0 WHEN {_fp_eq(e, a[1], b[1])} THEN {e.infinity} "
         f"ELSE {_double(e, finite, f)} END"
     )
 
@@ -2395,7 +2656,7 @@ def _line_perp(e: Engine, f: str) -> str:
     return (
         f"CASE WHEN {_fp_zero(a1)} THEN {_fp_zero(b2)} WHEN {_fp_zero(a2)} THEN {_fp_zero(b1)} "
         f"WHEN {_fp_zero(b1)} THEN {_fp_zero(a2)} WHEN {_fp_zero(b2)} THEN {_fp_zero(a1)} "
-        f"ELSE {_fp_eq(ratio, _MINUS)} END"
+        f"ELSE {_fp_eq(e, ratio, _MINUS)} END"
     )
 
 
@@ -2429,19 +2690,19 @@ def _measures() -> tuple[Row, ...]:
             lambda e, _: f"NOT ({_at(e, _meet(e, '_a', '_b'), 1)} = 1)",
         ),
         Row("line_perp", "a:line, b:line", 1, _line_perp),
-        Row("lseg_horizontal", "a:lseg", 1, lambda e, _: _fp_eq(p0[1], p1[1])),
-        Row("lseg_vertical", "a:lseg", 1, lambda e, _: _fp_eq(p0[0], p1[0])),
+        Row("lseg_horizontal", "a:lseg", 1, lambda e, _: _fp_eq(e, p0[1], p1[1])),
+        Row("lseg_vertical", "a:lseg", 1, lambda e, _: _fp_eq(e, p0[0], p1[0])),
         Row(
             "lseg_parallel",
             "a:lseg, b:lseg",
             1,
-            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _slope(e, q0, q1, f)),
+            lambda e, f: _fp_eq(e, _slope(e, p0, p1, f), _slope(e, q0, q1, f)),
         ),
         Row(
             "lseg_perp",
             "a:lseg, b:lseg",
             1,
-            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _inverse_slope(e, q0, q1, f)),
+            lambda e, f: _fp_eq(e, _slope(e, p0, p1, f), _inverse_slope(e, q0, q1, f)),
         ),
         Row("lseg_length", "a:lseg", 2, lambda e, f: _double(e, _dist(e, p0, p1), f)),
         Row("path_length", "a:path", 2, _path_length),
