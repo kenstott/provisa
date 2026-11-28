@@ -41,6 +41,7 @@ import {
   placeLanes,
   runLanes,
   LANE_GAP,
+  LANE_PAD,
   NODE_GAP,
   type LaneItem,
   type LaneLine,
@@ -925,5 +926,47 @@ describe("the canvas", () => {
     expect(css).not.toMatch(/radial-gradient|--pg-grid|background-size/);
     expect(Object.keys(graphTokens(false))).not.toContain("grid");
     expect(Object.keys(graphTokens(true))).not.toContain("grid");
+  });
+});
+
+// REQ-2239 (amended 2026-11-27): a product's lineage labels each line with its transforms; the
+// lanes stand far enough apart that a line's label between them is clear of both lanes' boxes.
+describe("the room between two lanes for the labels of the lines across them", () => {
+  const lanesOf = (label?: string, w2 = 100) =>
+    placeLanes(
+      [
+        { id: "inputs", items: [{ id: "a", w: 100, h: 40 }] },
+        { id: "tables", items: [{ id: "b", w: w2, h: 40 }] },
+      ],
+      [{ id: "a>b", source: "a", target: "b", ...(label !== undefined ? { label } : {}) }],
+    );
+  const span = (at: Map<string, At>, w2 = 100) =>
+    (at.get("b") as At).x - w2 / 2 - ((at.get("a") as At).x + 50);
+  const boxes = 2 * (LANE_PAD + 2);
+
+  it("keeps the lane gap when the line has no label, or a short one", () => {
+    expect(span(lanesOf())).toBe(boxes + LANE_GAP);
+    expect(span(lanesOf("SUM"))).toBe(boxes + LANE_GAP);
+  });
+
+  it("widens the gap so a long label stands clear of both lanes' boxes", () => {
+    const label = "SUM, COUNT, CAST, UPPER via staging.v";
+    const width = textWidth(label, SIZE.edgeLabel);
+    expect(span(lanesOf(label))).toBeGreaterThanOrEqual(width + boxes);
+  });
+
+  it("widens it further by half a narrower node's shortfall from its lane's edge", () => {
+    const label = "SUM, COUNT, CAST, UPPER via staging.v";
+    const at = placeLanes(
+      [
+        { id: "inputs", items: [{ id: "a", w: 100, h: 40 }, { id: "z", w: 200, h: 40 }] },
+        { id: "tables", items: [{ id: "b", w: 100, h: 40 }] },
+      ],
+      [{ id: "a>b", source: "a", target: "b", label }],
+    );
+    // a sits 50 short of its lane's right edge; the label's middle moves 25 toward it.
+    const laneRight = (at.get("z") as At).x + 100;
+    const bLeft = (at.get("b") as At).x - 50;
+    expect(bLeft - laneRight).toBeGreaterThanOrEqual(textWidth(label, SIZE.edgeLabel) + boxes);
   });
 });
