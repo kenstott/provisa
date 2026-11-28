@@ -13,8 +13,9 @@
 JSON:API publishes no server conformance suite, so the scenario set is derived from the 1.1
 specification (https://jsonapi.org/format/1.1/), one case per normative statement a read-only
 client can observe, named for its section: content negotiation, document structure, fetching
-data, query parameters, and errors. The resource type read is the first collection the surface's
-own OpenAPI document (/data/jsonapi/openapi.json) declares.
+data, query parameters, and errors. The resource type read is the job's fixture table
+(jsonapi_fixture.py: a key, two attributes and rows), as the surface's own OpenAPI document
+(/data/jsonapi/openapi.json) declares it.
 
 Every case is passed, skipped by design, a documented limit or failed (REQ-2167, amended
 2026-11-23); the run is
@@ -34,6 +35,7 @@ from typing import Any
 
 import httpx
 
+import jsonapi_fixture
 from surface_cases import Case, expect, report, run, write
 
 SUITE = "JSON:API 1.1 specification scenarios"
@@ -64,18 +66,16 @@ class JsonApi:
         return self.client.get(self.base + path, headers=headers, **kwargs)
 
     def collection(self) -> str:
-        """The path of the first collection the surface's OpenAPI document declares."""
+        """The path of the fixture table's collection, as the surface's OpenAPI document
+        declares it."""
         if self._collection is None:
             got = self.get(f"{PREFIX}/openapi.json", accept="application/json")
             expect(got.status_code == 200, f"GET {PREFIX}/openapi.json answered {got.status_code}")
-            paths = [
-                p
-                for p, item in (got.json().get("paths") or {}).items()
-                if "get" in item and "{" not in p and "/commands/" not in p
-            ]
-            expect(bool(paths), "the JSON:API document declares no collection")
+            wanted = f"/{jsonapi_fixture.SCHEMA}/{jsonapi_fixture.TABLE}"
+            item = (got.json().get("paths") or {}).get(wanted) or {}
+            expect("get" in item, f"the JSON:API document declares no collection {wanted}")
             servers = got.json().get("servers") or [{"url": PREFIX}]
-            self._collection = servers[0]["url"].rstrip("/") + sorted(paths)[0]
+            self._collection = servers[0]["url"].rstrip("/") + wanted
         assert self._collection is not None
         return self._collection
 
