@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button, Group, Radio, Select, TextInput, Textarea } from "@mantine/core";
 import type { ActionArg } from "../../api/actions";
+import { toIrType } from "../../irTypes";
 import { catalogTableName, type SqlNamedTable } from "../../naming";
 import { ModalLayout } from "../modal/ModalLayout";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
@@ -64,23 +65,26 @@ type Read = { value: ArgValue } | { problem: string };
 /** A scalar's text as its argument's type reads it. */
 function scalarRead(arg: ActionArg, text: string, t: TFunction): Read {
   const at = { name: arg.name };
-  switch (arg.type) {
-    case "Int":
+  // Read by its IR type (Int, int4 and integer alike); bigint and numeric stay their text, which
+  // a number would round.
+  switch (toIrType(arg.type)) {
+    case "smallint":
+    case "integer":
       return /^-?\d+$/.test(text.trim())
         ? { value: { kind: "scalar", value: Number(text) } }
         : { problem: t("commandQuery.notNumber", at) };
-    case "Float": {
+    case "float":
+    case "double": {
       const n = Number(text);
       return text.trim() !== "" && !Number.isNaN(n)
         ? { value: { kind: "scalar", value: n } }
         : { problem: t("commandQuery.notNumber", at) };
     }
-    case "Boolean":
+    case "boolean":
       return text === "true" || text === "false"
         ? { value: { kind: "scalar", value: text === "true" } }
         : { problem: t("commandQuery.notBoolean", at) };
     case "json":
-    case "JSON":
       try {
         return { value: { kind: "scalar", value: JSON.parse(text) } };
       } catch {

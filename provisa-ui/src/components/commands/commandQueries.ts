@@ -22,6 +22,7 @@
 import type { ActionArg } from "../../api/actions";
 import type { MetaReader } from "../../api/metaGraph";
 import type { QueryLink, RelationshipSurface } from "../relationships/relationshipQueries";
+import { toIrType } from "../../irTypes";
 
 /** A command the role's GraphQL schema offers, as /data/graph-schema lists it. */
 export interface ServedCommand {
@@ -104,6 +105,41 @@ function sqlLiteral(v: unknown): string {
   return sqlString(JSON.stringify(v));
 }
 
+/** The IR types whose value SQL writes as a number. */
+export const NUMBER_TYPES = new Set([
+  "smallint",
+  "integer",
+  "bigint",
+  "float",
+  "double",
+  "numeric",
+]);
+/** A number's text as SQL writes it unquoted: digits, a point, an exponent. */
+const SQL_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+/** The IR types SQL writes as a typed literal: the type's name before the quoted text. */
+const TYPED_LITERALS: Record<string, string> = {
+  date: "DATE",
+  time: "TIME",
+  timestamp: "TIMESTAMP",
+  timestamptz: "TIMESTAMPTZ",
+  interval: "INTERVAL",
+  uuid: "UUID",
+};
+
+/** A scalar argument as a SQL literal of its declared ``type``: a number unquoted (an exact
+ *  numeric's text as written), a boolean as true or false, a date or a time as a typed literal,
+ *  text quoted (REQ-1159). */
+export function sqlTypedLiteral(type: string, v: unknown): string {
+  if (v === null) return "null";
+  // A number SQL has no unquoted spelling of: its quoted text, which the type reads.
+  if (typeof v === "number" && !Number.isFinite(v)) return sqlString(String(v));
+  const ir = toIrType(type);
+  if (NUMBER_TYPES.has(ir) && typeof v === "string" && SQL_NUMBER.test(v.trim())) return v.trim();
+  const typed = TYPED_LITERALS[ir];
+  if (typed !== undefined && typeof v === "string") return `${typed} ${sqlString(v)}`;
+  return sqlLiteral(v);
+}
+
 function graphqlLiteral(v: unknown): string {
   if (v === null) return "null";
   if (Array.isArray(v)) return `[${v.map(graphqlLiteral).join(", ")}]`;
@@ -171,7 +207,13 @@ export function commandQueryLink(
   const args = given(call, values);
   switch (surface) {
     case "sql": {
-      const list = args.map(([, v]) => sqlLiteral(plainValue(v))).join(", ");
+      const list = call.arguments
+        .filter((a) => a.name in values)
+        .map((a) => {
+          const v = values[a.name];
+          return v.kind === "scalar" ? sqlTypedLiteral(a.type, v.value) : sqlLiteral(plainValue(v));
+        })
+        .join(", ");
       return {
         to: "/sql",
         state: { sql: `select * from ${nameIn(served, "sql")}(${list})`, autoRun },
