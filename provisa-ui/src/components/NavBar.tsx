@@ -8,11 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
 import { ActionIcon, Badge, Button, Checkbox, Menu, Stack, Text } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
 import { ModalLayout } from "./modal/ModalLayout";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
@@ -43,12 +42,7 @@ import {
   writeLastSubnav,
 } from "./navGroups";
 import { Tip } from "./Tip";
-
-// REQ-2277 (amended 2026-11-27): the widest window in which the single-row bar no longer fits —
-// every page link and the Domains, Env and Role pickers shown, in the locale whose labels run
-// longest (ru: 1687px at the close spacing App.css gives this width, plus a scrollbar's 15px). Below it the bar is two rows: logo, pickers and icon actions first, the page
-// links beneath, next to the sub-navigation row.
-export const NAVBAR_ROWS_QUERY = "(max-width: 107em)";
+import { measureSingleRow, nextNavbarRows } from "./navbarRows";
 
 export function NavBar() {
   const { t } = useTranslation();
@@ -78,10 +72,28 @@ export function NavBar() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const subnavRef = useRef<HTMLElement>(null);
-  // The links follow the pickers in the document as they do on screen, so reading and tab order
-  // match what is seen at either width.
-  // Read on the first render, so a narrow window never paints the single row first.
-  const rows = useMediaQuery(NAVBAR_ROWS_QUERY, undefined, { getInitialValueInEffect: false });
+  // One tree at either width: the rows are a class, so switching never remounts a picker (the
+  // Env picker would fetch again).
+  const [rows, setRows] = useState(false);
+
+  // Measured before the first paint and after every render (a route shows the Domains picker, a
+  // locale changes every label), then again whenever the bar or anything in it changes size (the
+  // window, a picker's label arriving).
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const decide = () => {
+      const { required, available } = measureSingleRow(nav);
+      setRows((current) => nextNavbarRows(current, required, available));
+    };
+    decide();
+    const observer = new ResizeObserver(decide);
+    observer.observe(nav);
+    nav
+      .querySelectorAll(".navbar-brand, .navbar-links, .navbar-org, .navbar-role > *")
+      .forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  });
 
   const routeGroup = activeGroupId(location.pathname);
   const adminGroup = NAV_GROUPS.find((g) => g.id === "admin");
@@ -239,7 +251,8 @@ export function NavBar() {
     </div>
   );
 
-  // The org, the pickers and the icon actions: beside the links on one row, or row 1 with the logo.
+  // The org, the pickers and the icon actions: beside the links on one row, or row 1 with the logo
+  // (App.css places them; the document order is the single row's).
   const controls = (
     <>
       <OrgSwitcher />
@@ -385,21 +398,9 @@ export function NavBar() {
   return (
     <>
       <nav className={rows ? "navbar navbar-rows" : "navbar"} ref={navRef}>
-        {rows ? (
-          <>
-            <div className="navbar-row" data-testid="navbar-row-context">
-              {brand}
-              {controls}
-            </div>
-            {pageLinks}
-          </>
-        ) : (
-          <>
-            {brand}
-            {pageLinks}
-            {controls}
-          </>
-        )}
+        {brand}
+        {pageLinks}
+        {controls}
       </nav>
       {/* REQ-1559: Admin's entries are drawn as a left-hand rail (AdminRail) instead, because two
           dozen of them only crowd a horizontal bar. One navigation, in one place, never both. */}

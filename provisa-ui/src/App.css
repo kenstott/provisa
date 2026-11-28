@@ -69,32 +69,52 @@ body {
 .navbar-links {
   display: flex;
   gap: 0.75rem;
-  /* REQ-2277: the single row is used only where it fits whole (NAVBAR_ROWS_QUERY in NavBar.tsx),
-     so the links keep their size and what is free goes to the org's name. */
+  /* REQ-2277: the single row is used only where it fits whole (measured live in NavBar.tsx), so
+     the links keep their size and what is free goes to the org's name. */
   flex: 0 0 auto;
   margin-right: auto;
 }
-/* REQ-2277: below the single-row width the bar is two rows. Row 1: logo, org, pickers and icon
-   actions, the pickers at the end. Row 2: the page links, whole, directly above the sub-navigation
-   row. */
+/* REQ-2277: where the single row does not fit, the bar is two rows. Row 1: logo, org, pickers and
+   icon actions, the pickers at the end. Row 2: the page links, whole, directly above the
+   sub-navigation row. The same elements as the single row, only placed: switching rows never
+   remounts a picker. The pickers are given their width before the org's name takes what is
+   left. */
 .navbar-rows {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: max-content 1fr minmax(0, max-content);
+  grid-template-areas:
+    "brand org role"
+    "links links links";
+  row-gap: 0.5rem;
 }
-.navbar-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
+.navbar-rows .navbar-brand {
+  grid-area: brand;
+}
+.navbar-rows .navbar-org {
+  grid-area: org;
 }
 .navbar-rows .navbar-role {
-  margin-left: auto;
+  grid-area: role;
 }
-/* The pickers give way (their labels cut at the end) before anything leaves the bar: row 1 holds
-   every picker at any width down to 768 pixels, and the single row holds a picker the measured
-   breakpoint does not count (the data address, shown only by a coordinator-served UI). The icon
-   actions keep their size. */
+.navbar-rows .navbar-links {
+  grid-area: links;
+  margin-right: 0;
+  /* Under the 768-pixel floor REQ-2277 sets (a phone), the links take another line rather than
+     push the page sideways. */
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+/* The one read of the single row's natural width (NavBar.tsx measureSingleRow): every child at its
+   natural size, the org's name at its least, since it only ever takes what is free. */
+.navbar.navbar-measure {
+  width: max-content;
+}
+.navbar-measure .navbar-org {
+  flex: 0 0 auto;
+  max-width: 4rem;
+}
+/* The pickers give way (their labels cut at the end) before anything leaves row 1: it holds every
+   picker at any width down to 768 pixels. The icon actions keep their size. */
 .navbar-role {
   flex: 0 1 auto;
   min-width: 0;
@@ -121,13 +141,6 @@ body {
   .navbar-rows .navbar-brand a span {
     display: none;
   }
-}
-.navbar-rows .navbar-links {
-  margin-right: 0;
-  /* Under the 768-pixel floor REQ-2277 sets (a phone), the links take another line rather than
-     push the page sideways. */
-  flex-wrap: wrap;
-  row-gap: 0.25rem;
 }
 .navbar-links a,
 .navbar-links .nav-group-label {
@@ -161,9 +174,9 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Closer spacing keeps the single row down to NAVBAR_ROWS_QUERY (107em): measured 2026-11-27 with
-   every link and picker in the longest locale (ru), the row needs 1687px closely spaced and 1827px
-   at the wide spacing, so the wide spacing starts only above 116em (each with a scrollbar spare). */
+/* Closer spacing keeps the single row for longer: measured 2026-11-27 with every link and picker in
+   the longest locale (ru), the row needs 1687px closely spaced and 1827px at the wide spacing, so
+   the wide spacing starts only above 116em (with a scrollbar spare). */
 @media (max-width: 116em) {
   .navbar {
     gap: 0.5rem;
