@@ -41,7 +41,7 @@ async function addCheckerSource(page: Page, sourceId: string, type: string) {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption(type);
   await fillCheckerConnection(page);
-  await submitSourceAndExpectListed(page, sourceId);
+  await submitSourceAndExpectListed(page, sourceId, { setupFlow: false });
 }
 
 const CHECKERS = [

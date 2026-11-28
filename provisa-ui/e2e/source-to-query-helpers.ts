@@ -119,7 +119,14 @@ export async function fillCheckerConnection(page: Page, backendUrl: string = BAC
     .fill("provisa");
 }
 
-export async function submitSourceAndExpectListed(page: Page, sourceId: string) {
+/** `setupFlow: false` for a type whose tables Provisa itself produces (Data Profiler, Great
+ * Expectations, Soda): REQ-2234 (amended 2026-11-27) gives it no setup flow, so the new source's
+ * panel opens straight on its read view. */
+export async function submitSourceAndExpectListed(
+  page: Page,
+  sourceId: string,
+  { setupFlow = true }: { setupFlow?: boolean } = {},
+) {
   await page.getByTestId("sources-submit").click();
   await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({
     timeout: 60000,
@@ -130,7 +137,11 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   // 40227062159: the next page's tables query outlasted its 15 s).
   // REQ-2234 / REQ-2262: the panel opens first on the source's setup, at its "Register tables"
   // step; Finish later shows the source, saved, in its read view (REQ-1974).
-  await page.getByTestId("source-setup-finish-later").click({ timeout: 60000 });
+  if (setupFlow) {
+    await page.getByTestId("source-setup-finish-later").click({ timeout: 60000 });
+  } else {
+    await expect(page.getByTestId("source-setup-finish-later")).toHaveCount(0);
+  }
   const edit = page.getByTestId("source-detail-edit");
   await expect(edit).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
@@ -797,9 +808,7 @@ export async function runSqlOnPage(
   const deadline = Date.now() + SOURCE_SERVING_BUDGET_MS;
   for (;;) {
     const runResp = withBody(
-      page.waitForResponse(
-        (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
-      ),
+      page.waitForResponse((r) => r.url().endsWith("/data/sql") && r.request().method() === "POST"),
     );
     await page.getByTestId("sql-run").click();
     const { response: resp, text } = await runResp;

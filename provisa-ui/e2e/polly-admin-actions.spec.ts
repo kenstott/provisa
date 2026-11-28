@@ -210,8 +210,9 @@ test.describe("Polly changes things through the admin API, as the user", () => {
       await expect(detail).toContainText(`PUT /admin/orgs/${org}/branding/logo`);
       await page.getByRole("button", { name: "Confirm" }).click();
 
-      // The file is chosen in the chat, then sent as its own bytes, typed as it is.
-      await page.locator('input[type="file"]').setInputFiles({
+      // The file is chosen in the chat's file prompt, then sent as its own bytes, typed as it is.
+      // The prompt is a dialog; the chat panel keeps its own attachment input beside it.
+      await page.getByRole("dialog").locator('input[type="file"]').setInputFiles({
         name: "logo.png",
         mimeType: "image/png",
         buffer: PNG,

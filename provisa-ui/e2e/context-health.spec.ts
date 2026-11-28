@@ -10,7 +10,8 @@
 
 // REQ-2259: Context Health against the real backend -- the steward summary and every card read
 // from the server; a draft made here is counted among the drafts in review, and the count links
-// to the Ontology page. The term is made under a name unique to the attempt and deleted after.
+// to the Ontology page's drafts. The term is made under a name unique to the attempt and deleted
+// after.
 
 import { test, expect } from "./coverage";
 
@@ -47,8 +48,10 @@ test("Context Health shows the steward summary and a card per signal, read from 
     }
     const draftCount = page.getByTestId("health-terms-drafts");
     await expect(draftCount).toHaveText(String(drafts + 1));
+    // REQ-2259: the count opens the Ontology page's term list filtered to the drafts it counts;
+    // the page reads ?panel=terms once and drops it, keeping the filter (useGlossaryPanel.ts).
     await draftCount.click();
-    await expect(page).toHaveURL(/\/context\/ontology$/);
+    await expect(page).toHaveURL(/\/context\/ontology\?status=draft$/);
   } finally {
     // A delete retires the term (REQ-2248); the page leaves for the Glossary, which reads its
     // entries once and asks nothing per term, before the term goes.

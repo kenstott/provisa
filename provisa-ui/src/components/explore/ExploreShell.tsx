@@ -101,8 +101,10 @@ export function ExploreSide({
   );
 }
 
-/** The least room the results keep below the editor. */
-const RESULTS_MIN = 120;
+/** The least room the results keep below the editor: their strip, a grid's filter row and chips,
+ * its header and a few rows. It holds on screen as well as on a drag: in a stack shorter than the
+ * editor's kept height and this, the editor gives way, down to its own least. */
+const RESULTS_MIN = 240;
 
 /** An editor above its results, the divider between them dragged to share the height. */
 export function ExploreStack({
@@ -132,7 +134,7 @@ export function ExploreStack({
   });
   return (
     <div className="explore-stack" ref={stackRef} data-testid={testId}>
-      <div ref={ref} className="explore-stack__editor" style={{ height: size }}>
+      <div ref={ref} className="explore-stack__editor" style={{ height: size, minHeight: min }}>
         {editor}
       </div>
       <SplitHandle
@@ -142,7 +144,9 @@ export function ExploreStack({
         onKeyDown={onHandleKeyDown}
         testId={`${testId}-handle`}
       />
-      <div className="explore-stack__results">{results}</div>
+      <div className="explore-stack__results" style={{ minHeight: RESULTS_MIN }}>
+        {results}
+      </div>
     </div>
   );
 }

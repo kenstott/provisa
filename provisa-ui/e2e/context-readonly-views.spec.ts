@@ -56,11 +56,12 @@ test("Context Classification lists the kinds and where each was detected, withou
   await expect(row.getByTestId("classification-kind-detected-us_ssn")).toBeVisible();
   await expect(page.getByTestId("classification-kind-enabled-us_ssn")).toHaveCount(0);
   await expect(page.getByRole("switch")).toHaveCount(0);
-  // A row opens the kind's panel, in the URL, read with no Edit.
+  // A row opens the kind's panel, in the URL. REQ-2147 (amended 2026-11-25): a holder of
+  // sensitive_data -- this suite's caller -- changes a kind in its panel, so the panel carries Edit.
   await row.click();
   await expect(page).toHaveURL(/[?&]kind=us_ssn\b/);
   await expect(page.getByTestId("classification-kind-detail-us_ssn")).toBeVisible();
-  await expect(page.getByTestId("classification-kind-edit-us_ssn")).toHaveCount(0);
+  await expect(page.getByTestId("classification-kind-edit-us_ssn")).toBeVisible();
 });
 
 test("Context Metrics shows the metrics with no control that writes", async ({ page }) => {

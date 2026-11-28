@@ -41,9 +41,13 @@ test.describe("custom AI endpoint via a Secrets-vault key, verified through /exp
     await expect(page.getByTestId("secrets-add")).toBeVisible({ timeout: 30000 });
     await page.getByTestId("secrets-add").click();
 
+    // REQ-2277: Name and Value are required, so each label carries its mark ("Name *"); the
+    // fields are found by their accessible names, which the mark is not part of.
     const secretForm = page.getByTestId("secret-form");
-    await secretForm.getByLabel("Name", { exact: true }).fill(secretName);
-    await secretForm.getByLabel("Value", { exact: true }).fill(process.env.OPENROUTER_API_KEY!);
+    await secretForm.getByRole("textbox", { name: "Name", exact: true }).fill(secretName);
+    await secretForm
+      .getByRole("textbox", { name: "Value", exact: true })
+      .fill(process.env.OPENROUTER_API_KEY!);
     await page.getByTestId("secret-submit").click();
     await expect(page.getByTestId(`secret-row-${secretName}`)).toBeVisible({ timeout: 15000 });
 

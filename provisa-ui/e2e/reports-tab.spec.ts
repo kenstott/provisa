@@ -50,7 +50,9 @@ for (const reportName of STANDARD_REPORTS) {
     await openReports(page);
     const item = page.getByTestId(`report-item-${reportName}`);
     await expect(item).toBeVisible({ timeout: 15000 });
-    await item.click();
+    // The name opens the report. A description longer than its two lines is a toggle that opens
+    // the text in place and stops there (ReportsTab.tsx), and a row's middle can land on it.
+    await item.getByRole("cell").first().click();
 
     // Either the results grid renders (rows, possibly zero) or the empty-state
     // text shows — never a query error.
