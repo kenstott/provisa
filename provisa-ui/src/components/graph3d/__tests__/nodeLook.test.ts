@@ -25,22 +25,22 @@ describe("a node's look", () => {
   it("draws terms as diamonds, a colour to each role, one look where the role is not read", () => {
     expect(nodeLook(n({ type: "term", role: "concept" }))).toEqual({
       shape: "diamond",
-      colour: "fam-other",
+      colour: "concept",
       variant: "concept",
     });
     expect(nodeLook(n({ type: "term", role: "class" }))).toEqual({
       shape: "diamond",
-      colour: "fam-boolean",
+      colour: "class",
       variant: "class",
     });
     expect(nodeLook(n({ type: "term", role: "property" }))).toEqual({
       shape: "diamond",
-      colour: "cool",
+      colour: "property",
       variant: "property",
     });
     expect(nodeLook(n({ type: "term" }))).toEqual({
       shape: "diamond",
-      colour: "cool",
+      colour: "term",
       variant: "plain",
     });
   });
@@ -48,12 +48,12 @@ describe("a node's look", () => {
   it("draws columns as cubes, in a data product or not in two colours", () => {
     expect(nodeLook(n({ type: "column", inProduct: true }))).toEqual({
       shape: "cube",
-      colour: "fam-numeric",
+      colour: "product",
       variant: "in_product",
     });
     expect(nodeLook(n({ type: "column", inProduct: false }))).toEqual({
       shape: "cube",
-      colour: "fam-other",
+      colour: "column",
       variant: "out_of_product",
     });
   });
@@ -61,20 +61,20 @@ describe("a node's look", () => {
   it("draws domains as spheres", () => {
     expect(nodeLook(n({ type: "domain" }))).toMatchObject({
       shape: "sphere",
-      colour: "fam-temporal",
+      colour: "domain",
     });
   });
 
   it("draws a table as a cylinder in every graph, a product's member or a table a column is in", () => {
     expect(nodeLook(n({ type: "table" }))).toEqual({
       shape: "cylinder",
-      colour: "fam-numeric",
+      colour: "table",
       variant: "plain",
     });
     expect(nodeLook(n({ type: "table", stored: true }))).toEqual(nodeLook(n({ type: "table" })));
     expect(nodeLook(n({ type: "relation" }))).toMatchObject({
       shape: "cylinder",
-      colour: "fam-foreign",
+      colour: "relation",
     });
   });
 

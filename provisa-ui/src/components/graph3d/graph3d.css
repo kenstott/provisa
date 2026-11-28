@@ -35,36 +35,6 @@
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.g3d-sw-product {
-  background: var(--p3d-accent);
-}
-.g3d-sw-domain {
-  background: var(--p3d-fam-temporal);
-}
-.g3d-sw-table {
-  background: var(--p3d-fam-numeric);
-}
-.g3d-sw-relation {
-  background: var(--p3d-fam-foreign);
-}
-.g3d-sw-column {
-  background: var(--p3d-fam-other);
-}
-.g3d-sw-command {
-  background: var(--p3d-warm);
-}
-.g3d-sw-checker {
-  background: var(--p3d-q-tail);
-}
-.g3d-sw-profile {
-  background: var(--p3d-q-mid);
-}
-.g3d-sw-tag {
-  background: var(--p3d-fam-boolean);
-}
-.g3d-sw-term {
-  background: var(--p3d-cool);
-}
 /* REQ-2130: a term's status is on its name alone (nodeLook's labelClass): live as is, draft
    italic, deprecated dimmed, retired dimmed and struck through. */
 .g3d-label-draft {

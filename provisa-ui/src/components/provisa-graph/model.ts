@@ -49,8 +49,6 @@ export interface GraphEdgeSpec {
   arrow?: "none" | "target" | "source" | "both";
   /** Pending or indirect. */
   dashed?: boolean;
-  /** The legs through an ERD junction. */
-  tone?: "via";
   /** Drawn over the placed nodes once laid out; places no node. */
   overlay?: boolean;
   data?: Record<string, unknown>;
@@ -248,7 +246,6 @@ export function edgeElement(e: GraphEdgeSpec, pathIndex = 0): Element {
       arrow: e.arrow ?? "none",
       pathIndex,
       ...(e.dashed ? { dashed: true } : {}),
-      ...(e.tone ? { tone: e.tone } : {}),
       ...(e.overlay ? { overlay: true } : {}),
     },
     classes: "pg-edge",

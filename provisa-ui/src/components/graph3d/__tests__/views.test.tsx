@@ -394,9 +394,14 @@ describe("a product's graph, expanded from its panel", () => {
   it("counts no folded columns as columns in what it says it shows", async () => {
     await open();
     await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    // REQ-2239 (amended 2026-11-27): the 3D Shown list names each look, as the scene colours it,
+    // so a column is counted under its look (in a data product or outside them).
     const shown = screen.getByText("Shown").closest("section") as HTMLElement;
-    const row = within(shown).getByText("column").closest(".p3d-row") as HTMLElement;
+    const row = within(shown)
+      .getByText("column outside data products")
+      .closest(".p3d-row") as HTMLElement;
     expect(row.querySelector(".p3d-num")).toHaveTextContent(/^1$/);
+    expect(within(shown).queryByText("column in a data product")).not.toBeInTheDocument();
   });
 });
 

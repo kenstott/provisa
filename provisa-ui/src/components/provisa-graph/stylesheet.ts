@@ -96,7 +96,8 @@ export function graphStylesheet(t: GraphTokens) {
     {
       // The one exception to the single shape (REQ-2239, A JUNCTION IS A DIAMOND): a junction is
       // Chen's relationship diamond. It keeps its band's colour (the border; the fill a tint of it),
-      // its icon above its name, and its legs (edge[tone = "via"]).
+      // its icon above its name, and its legs, drawn as every edge is (REQ-2239: ERD edges take the
+      // shared edge colour).
       selector: 'node[kind = "node"][shape = "diamond"]',
       style: {
         shape: "diamond",
@@ -217,10 +218,6 @@ export function graphStylesheet(t: GraphTokens) {
       style: { "source-arrow-shape": "triangle" },
     },
     { selector: "edge[?dashed]", style: { "line-style": "dashed", "line-dash-pattern": [5, 3] } },
-    {
-      selector: 'edge[tone = "via"]',
-      style: { "line-color": t.via, "target-arrow-color": t.via, "source-arrow-color": t.via },
-    },
     {
       // A line laid over the placed nodes: an arc beside them.
       selector: "edge[?overlay]",
