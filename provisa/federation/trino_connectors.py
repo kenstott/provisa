@@ -53,6 +53,13 @@ class _TrinoConnector(Connector):
             predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
         )
 
+    def catalog_details(self, source: Source, catalog_name: str) -> dict:
+        """The ``CREATE CATALOG`` properties of ``source``'s catalog named ``catalog_name``: its
+        ``details`` for every connector whose properties do not depend on the catalog's own name.
+        The ``file`` connectors override it to give each catalog its own ``base-directory``."""
+        del catalog_name
+        return self.details(source)
+
     def post_create(self, conn, source: Source, catalog_name: str) -> None:
         """Optional follow-up DDL after ``CREATE CATALOG`` succeeds. Default no-op — most
         connectors expose their schemas/tables the moment the catalog exists. Lakehouse
@@ -562,6 +569,20 @@ def _hive_adls_props(source: Source, props: dict) -> dict:
     return props
 
 
+# REQ-1992/REQ-1730: where each ``file`` catalog's adapter writes (conversion and Parquet caches,
+# its DuckDB catalog and spill, temporary files), as a path inside the Trino container. The
+# trino-file plugin (calcite engine-v0.131.1) requires ``base-directory`` and has no default. It is
+# under node.data-dir=/data/trino, which every Trino Provisa runs sets (trino/etc/node.properties,
+# install-host.sh, k8s_provisioner.py) and which the trinodb image gives to the uid Trino runs as.
+TRINO_FILE_BASE_ROOT = "/data/trino/file"
+
+
+def _with_file_base_directory(details: dict, catalog_name: str) -> dict:
+    """``details`` of a ``file`` catalog with its own ``base-directory`` (REQ-1992): one directory
+    per catalog, so two catalogs never share the adapter's DuckDB catalog or caches."""
+    return {**details, "base-directory": f"{TRINO_FILE_BASE_ROOT}/{catalog_name}"}
+
+
 class TrinoFilesConnector(_TrinoConnector):
     """The ``file`` catalog's own config docstring (extracted from the bundled
     calcite-trino-file plugin, trino/plugins/trino-file/) names the trade-off directly:
@@ -582,6 +603,9 @@ class TrinoFilesConnector(_TrinoConnector):
 
     def capability(self) -> Capability:
         return Capability()
+
+    def catalog_details(self, source: Source, catalog_name: str) -> dict:
+        return _with_file_base_directory(self.details(source), catalog_name)
 
     def details(self, source: Source) -> dict:
         from provisa.core.secrets import resolve_secrets
@@ -656,6 +680,9 @@ class _TrinoSingleFileConnector(_TrinoConnector):
 
     def capability(self) -> Capability:
         return Capability()
+
+    def catalog_details(self, source: Source, catalog_name: str) -> dict:
+        return _with_file_base_directory(self.details(source), catalog_name)
 
     def details(self, source: Source) -> dict:
         import os
