@@ -90,6 +90,7 @@ const BASE_PROPS: CanvasProps = {
   showingParentsCircular: new Set(),
   onToggleParentsCircular: vi.fn(),
   clusterLevel: "none",
+  exportName: "cypher-graph",
 };
 
 beforeEach(() => {

@@ -610,6 +610,8 @@ export function GraphExplorer({
     move("reset", null);
     setExpanded(new Set());
   };
+  // A download is named after the view (REQ-2239): the graph, and its preset where that differs.
+  const viewName = preset === exportName ? exportName : `${exportName}-${preset}`;
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
       <Text size="sm" c="dimmed">
@@ -632,6 +634,7 @@ export function GraphExplorer({
       onMore={toggleExpanded}
       command={command}
       opensOn={focusNode?.id ?? null}
+      exportName={viewName}
       testId={`${testId}-lanes`}
       bare={snippet}
     />
@@ -639,7 +642,7 @@ export function GraphExplorer({
     <GraphStage
       s={s}
       command={command}
-      exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
+      exportName={viewName}
       testId={`${testId}-stage`}
       controls={{
         testId,

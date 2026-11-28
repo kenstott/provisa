@@ -36,6 +36,7 @@ export function LaneStage({
   onMore,
   command,
   opensOn = null,
+  exportName,
   testId,
   bare = false,
 }: {
@@ -49,6 +50,8 @@ export function LaneStage({
   command: CameraCommand | null;
   /** The focus the diagram is drawn round: it opens, and Reset view comes back, with it in view. */
   opensOn?: string | null;
+  /** The view's name, which a downloaded image takes (REQ-2239). */
+  exportName: string;
   testId: string;
   /** A glance only (a card): no controls, legend or hint. */
   bare?: boolean;
@@ -90,7 +93,7 @@ export function LaneStage({
         lanes={lanes}
         testId={testId}
         ariaLabel={t("graph3d.lanesLabel")}
-        exportName="lanes"
+        exportName={exportName}
         bare={bare}
         selected={selected}
         onNodeClick={(id) => setSelected(id)}

@@ -99,6 +99,7 @@ const stage = (diagram: ReturnType<typeof laneDiagram>) => (
     setHover={vi.fn()}
     onMore={vi.fn()}
     command={null}
+    exportName="ontology"
     testId="lanes"
   />
 );

@@ -13,27 +13,31 @@
 // the canvas's centre and make the view the reader's own, which a resize keeps. The fit was
 // cytoscape's own, held at the least zoom and leaving no mode for a resize to keep.
 // REQ-2239 (amended 2026-11-27): the network graph's hover command bar is the one every graph shares
-// (GraphControls): zoom, fit, full screen and download, then its own commands.
+// (GraphControls): zoom, fit, full screen and download, then its own commands. Its downloads go
+// through the one image export every graph uses (exportImage.ts): on the canvas colour, named after
+// the view, with the cluster hulls.
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import type { CyInstance } from "../cytoscape-types";
 
-const { fitWhole, zoomAboutCentre, compositeGraphDownload, downloadGraphSvg } = vi.hoisted(() => ({
+const { fitWhole, zoomAboutCentre, exportSvg, exportPng, exportJpeg } = vi.hoisted(() => ({
   fitWhole: vi.fn(),
   zoomAboutCentre: vi.fn(),
-  compositeGraphDownload: vi.fn(),
-  downloadGraphSvg: vi.fn(),
+  exportSvg: vi.fn(),
+  exportPng: vi.fn(),
+  exportJpeg: vi.fn(),
 }));
 vi.mock("../../provisa-graph/viewport", async (actual) => ({
   ...(await actual<typeof import("../../provisa-graph/viewport")>()),
   fitWhole,
   zoomAboutCentre,
 }));
-vi.mock("../graph-export", async (actual) => ({
-  ...(await actual<typeof import("../graph-export")>()),
-  compositeGraphDownload,
-  downloadGraphSvg,
+vi.mock("../../provisa-graph/exportImage", async (actual) => ({
+  ...(await actual<typeof import("../../provisa-graph/exportImage")>()),
+  exportSvg,
+  exportPng,
+  exportJpeg,
 }));
 
 import { ResultGraphControls } from "../canvas/ResultGraphControls";
@@ -46,6 +50,8 @@ function controls(layoutMode: LayoutMode = "force", toggleLayout = vi.fn()) {
     <ResultGraphControls
       cyRef={{ current: cy }}
       stageRef={{ current: stage }}
+      canvas="#101113"
+      exportName="cypher-graph"
       layoutMode={layoutMode}
       toggleLayout={toggleLayout}
       nudgeHeldRef={{ current: false }}
@@ -107,7 +113,7 @@ describe("the result graph's command bar is the shared one", () => {
     expect(requestFullscreen).toHaveBeenCalled();
   });
 
-  it("download offers the graph as SVG, PNG and JPEG, each painting the cluster hulls", async () => {
+  it("download offers SVG, PNG and JPEG through the one image export, on the canvas colour, named after the view, with the hulls", async () => {
     const { cy, stage } = controls();
     const hulls = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     hulls.setAttribute("class", "gf-hulls");
@@ -115,14 +121,27 @@ describe("the result graph's command bar is the shared one", () => {
     fireEvent.click(screen.getByTestId("canvas-download"));
     expect(await screen.findByTestId("canvas-export-svg")).toBeInTheDocument();
     expect(screen.queryByTestId("canvas-export-json")).toBeNull();
+    const image = { cy, bg: "#101113", name: "cypher-graph", hulls };
     fireEvent.click(screen.getByTestId("canvas-export-svg"));
-    expect(downloadGraphSvg).toHaveBeenCalledWith(cy, hulls);
+    expect(exportSvg).toHaveBeenCalledWith(image);
     fireEvent.click(screen.getByTestId("canvas-download"));
     fireEvent.click(await screen.findByTestId("canvas-export-png"));
-    expect(compositeGraphDownload).toHaveBeenLastCalledWith(cy, hulls, "graph.png", "png");
+    expect(exportPng).toHaveBeenLastCalledWith(image);
     fireEvent.click(screen.getByTestId("canvas-download"));
     fireEvent.click(await screen.findByTestId("canvas-export-jpeg"));
-    expect(compositeGraphDownload).toHaveBeenLastCalledWith(cy, hulls, "graph.jpg", "jpg");
+    expect(exportJpeg).toHaveBeenLastCalledWith(image);
+  });
+
+  it("with no cluster drawn, an image has no hulls", async () => {
+    const { cy } = controls();
+    fireEvent.click(screen.getByTestId("canvas-download"));
+    fireEvent.click(await screen.findByTestId("canvas-export-png"));
+    expect(exportPng).toHaveBeenLastCalledWith({
+      cy,
+      bg: "#101113",
+      name: "cypher-graph",
+      hulls: null,
+    });
   });
 
   it("the layout toggle shows the hierarchy layout pressed and switches on click", () => {

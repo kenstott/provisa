@@ -157,6 +157,7 @@ const BASE_PROPS: CanvasProps = {
   showingParentsCircular: new Set(),
   onToggleParentsCircular: vi.fn(),
   clusterLevel: "none",
+  exportName: "cypher-graph",
 };
 
 /** The app's providers with the colour scheme set from outside, as the theme toggle sets it. */
