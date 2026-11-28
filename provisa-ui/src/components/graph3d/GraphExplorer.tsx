@@ -67,8 +67,9 @@ import { laneDiagram } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey, shownKinds } from "./nodeLook";
-import { OpenAsQuery } from "./OpenAsQuery";
-import type { QueryLanguage } from "./useOntology";
+import { OpenAsQuery, type CypherOf } from "./OpenAsQuery";
+import type { QueryLanguage, ViewCypher } from "./useOntology";
+import { termNode } from "./ontologyData";
 import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
@@ -97,6 +98,8 @@ const GROUNDING: ReadonlySet<LayerId> = new Set(["columns", "data"]);
 const DEPTHS = [1, 2, 3, 4, Infinity];
 
 /** A depth as the control and the remembered scope hold it: All as "all". */
+/** A term's node id's prefix (ontologyData.termNode). */
+const TERM_NODE = termNode(0).slice(0, -1);
 const depthValue = (d: number) => (d === Infinity ? "all" : String(d));
 const depthOf = (v: string) => (v === "all" ? Infinity : Number(v));
 
@@ -161,6 +164,8 @@ export function GraphExplorer({
     /** The language ``text`` is written in: GraphQL, or Cypher for All hops (REQ-2174, amended
      * 2026-11-26); null while there is no text. */
     language: QueryLanguage | null;
+    /** REQ-2136, REQ-2174: the view's terms as one Cypher query, in every state; null for none. */
+    cypher?: ViewCypher | null;
     /** The focus the query itself states (a product's graph, read for that product): no
      * neighbourhood beyond the query's own. */
     own?: string;
@@ -500,6 +505,22 @@ export function GraphExplorer({
     search,
     lateral,
   ]);
+  // REQ-2136, REQ-2174: the view opens as its own Cypher in every state: the walk its read states,
+  // or -- a focus drawing a neighbourhood the read does not state -- the terms drawn.
+  const viewCypher = query?.cypher ?? null;
+  const drawnTerms = focused
+    ? shown.nodes
+        .filter((n) => n.type === "term" && n.id.startsWith(TERM_NODE))
+        .map((n) => Number(n.id.slice(TERM_NODE.length)))
+        .sort((a, b) => a - b)
+        .join(",")
+    : null;
+  const cypherOf = useMemo((): CypherOf | null => {
+    if (viewCypher === null) return null;
+    if (drawnTerms === null) return { key: viewCypher.key, build: viewCypher.walk };
+    const terms = drawnTerms === "" ? [] : drawnTerms.split(",").map(Number);
+    return { key: `${viewCypher.key}|${drawnTerms}`, build: () => viewCypher.drawn(terms) };
+  }, [viewCypher, drawnTerms]);
   // REQ-2174 (amended 2026-11-07): in 3D a table's columns tied to no term drawn are one node.
   const folded = useMemo(
     () => foldUnbound(shown, expanded, (count) => t("graph3d.moreColumns", { count })),
@@ -755,6 +776,7 @@ export function GraphExplorer({
             query={query.text}
             language={query.language}
             focused={focused}
+            cypher={cypherOf}
             testId={testId}
           />
         )}

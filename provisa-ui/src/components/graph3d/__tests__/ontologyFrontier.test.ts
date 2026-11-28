@@ -213,7 +213,8 @@ describe("a snippet opened as a query: the one query that drew it", () => {
 
   it("a term's snippet at All opens as the Cypher walk from its root's terms", async () => {
     const got = await readOntology(reader(), snippet(Infinity), server(WORLD).read);
-    expect(got.opened).toEqual({ language: "cypher", roots: [7] });
+    // 5 is four steps from 7: the walk's depth, as far as the Cypher walks.
+    expect(got.opened).toEqual({ language: "cypher", roots: [7], depth: 4 });
   });
 
   it("draws at depth 3 every term within three steps with its grounding", async () => {
@@ -259,7 +260,7 @@ describe("a snippet opened as a query: the one query that drew it", () => {
     const got = await readOntology(reader(), productSnippet(Infinity), server(WORLD).read);
     // The root, then three hops: 5 is three steps off.
     expect(got.queries).toHaveLength(4);
-    expect(got.opened).toEqual({ language: "cypher", roots: [1] });
+    expect(got.opened).toEqual({ language: "cypher", roots: [1], depth: 3 });
   });
 
   it("is what the view hands Open as query", async () => {
@@ -411,11 +412,15 @@ describe("a hop is a step between terms", () => {
     expect((await chainRead(termScope(Infinity))).got.opened).toEqual({
       language: "cypher",
       roots: [TEST3],
+      // test3 to test2, test, then animal breed name: three steps.
+      depth: 3,
     });
     // Pet Health's own terms: breed name and breed code.
     expect((await chainRead(productScope(Infinity))).got.opened).toEqual({
       language: "cypher",
       roots: [BREED_NAME, BREED_CODE],
+      // animal breed name to test, test2, then test3: three steps (lineage is one from breed code).
+      depth: 3,
     });
   });
 });

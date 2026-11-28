@@ -170,7 +170,94 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
         else:
             new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-    return sql_ast.select(*new_expressions, append=False, copy=False)  # type: ignore[return-value]
+    rewritten_select = sql_ast.select(*new_expressions, append=False, copy=False)
+    return _distinct_below_json(rewritten_select)  # type: ignore[arg-type]
+
+
+#: The alias of the derived table a DISTINCT moves into (_distinct_below_json).
+_DISTINCT_ROWS = "_distinct_rows"
+
+
+def _builds_json(expr: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``expr`` builds a JSON value: a node, an edge or a path as the SELECT list holds it."""
+    return any(
+        isinstance(node, (exp.JSONObject, exp.JSONArray))
+        or (
+            isinstance(node, exp.Anonymous)
+            and str(node.this).upper() in ("JSON_OBJECT", "JSON_ARRAY", "JSON_BUILD_OBJECT")
+        )
+        for node in expr.walk()
+    )
+
+
+def _distinct_below_json(select: exp.Select) -> exp.Select:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``RETURN DISTINCT`` of a node, an edge or a path, its DISTINCT taken over the columns the
+    JSON values are built from, in a derived table, and the values built over its rows.
+
+    PostgreSQL has no equality for json, so a DISTINCT over a built node or edge was refused
+    ("could not identify an equality operator for type json"). Each value is built from its own
+    columns alone, so rows distinct in those columns are the rows distinct in the values: the
+    answer is the same on every engine, and no engine compares JSON (REQ-349, REQ-350).
+    A SELECT this cannot move as a whole -- grouped, aggregated, DISTINCT ON, a subquery or a
+    star in its list -- is returned as it is.
+    """
+    distinct = select.args.get("distinct")
+    if not distinct or distinct.args.get("on") is not None or select.args.get("group"):
+        return select
+    projections = list(select.expressions)
+    if not any(_builds_json(p) for p in projections):
+        return select
+    if any(
+        isinstance(node, (exp.AggFunc, exp.Subquery, exp.Select, exp.Star, exp.Window))
+        for p in projections
+        for node in p.walk()
+    ):
+        return select
+    order = select.args.get("order")
+    read = [*projections, *([order] if order is not None else [])]
+    names: dict[tuple[str, str], str] = {}
+    for part in read:
+        for column in part.find_all(exp.Column):
+            if column.table and isinstance(column.this, exp.Identifier):
+                names.setdefault((column.table, column.name), f"_d{len(names)}")
+    if not names:
+        return select
+
+    def over_rows(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, exp.Column) and (node.table, node.name) in names:
+            return exp.Column(
+                this=exp.Identifier(this=names[(node.table, node.name)], quoted=True),
+                table=exp.Identifier(this=_DISTINCT_ROWS),
+            )
+        return node
+
+    rows = select.copy()
+    for arg in ("with_", "order", "limit", "offset"):
+        rows.set(arg, None)
+    rows.set(
+        "expressions",
+        [
+            exp.alias_(
+                exp.Column(
+                    this=exp.Identifier(this=name, quoted=True),
+                    table=exp.Identifier(this=table),
+                ),
+                alias,
+                quoted=True,
+            )
+            for (table, name), alias in names.items()
+        ],
+    )
+    outer = exp.Select(
+        expressions=[p.copy().transform(over_rows) for p in projections],
+    ).from_(exp.Subquery(this=rows, alias=exp.TableAlias(this=exp.Identifier(this=_DISTINCT_ROWS))))
+    for arg in ("with_", "limit", "offset"):
+        held = select.args.get(arg)
+        if held is not None:
+            outer.set(arg, held)
+    if order is not None:
+        outer.set("order", order.copy().transform(over_rows))
+    return outer
 
 
 def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

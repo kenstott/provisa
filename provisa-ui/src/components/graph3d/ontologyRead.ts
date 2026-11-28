@@ -32,12 +32,14 @@ const reached = (t: TermRow): number[] => [
 ];
 
 /** What a read opens as: the GraphQL it read, or -- All, walked past its root -- the Cypher
- * variable-length query from the terms its root read (allHopsCypher, with the server's label). */
-export type Opened = { language: "graphql"; query: string } | { language: "cypher"; roots: number[] };
+ * variable-length query from the terms its root read (allHopsCypher, with the server's label),
+ * ``depth`` steps out: the hops the walk read to reach the end of the connected part. */
+export type Opened =
+  { language: "graphql"; query: string } | { language: "cypher"; roots: number[]; depth: number };
 
 /** What a read of the ontology answered -- its terms each once -- the queries it sent,
  * in order, and what it opens as: null when the role cannot read the terms. ``over``: All's walk
- * stopped, the terms read past the budget, before it was done. */
+ * stopped, the terms read past the budget, before it was done; it opens as the walk that far. */
 export interface OntologyRead {
   rows: OntologyRows;
   queries: string[];
@@ -74,7 +76,14 @@ export async function readOntology(
   const queries = [root];
   let frontier = got;
   for (let hop = 1; ; hop++) {
-    if (got.length > budget) return { rows: { ...rows, _terms: got }, queries, opened: null, over: true };
+    // Past the budget the walk stops: it opens as the walk as far as it went.
+    if (got.length > budget)
+      return {
+        rows: { ...rows, _terms: got },
+        queries,
+        opened: { language: "cypher", roots, depth: queries.length - 1 },
+        over: true,
+      };
     const ids = [...new Set(frontier.flatMap(reached))].filter((id) => !seen.has(id));
     if (ids.length === 0) break;
     const query = ontologyHopQuery(m, s, hop, ids);
@@ -88,7 +97,8 @@ export async function readOntology(
   return {
     rows: { ...rows, _terms: got },
     queries,
-    opened: { language: "cypher", roots },
+    // Each hop read after the root found terms no hop had: the last is the walk's depth.
+    opened: { language: "cypher", roots, depth: queries.length - 1 },
     over: false,
   };
 }
