@@ -235,12 +235,43 @@ async def superuser_login(body: SuperuserLoginRequest):
     this is the only sign-in it has. The same throttle guards it as every other password check.
     """
     from provisa.api.app import state
-    from provisa.auth.superuser import issue_superuser_session, resolve_superuser_config
+    from provisa.auth.superuser import (
+        BREAKGLASS_USERNAME,
+        PASSWORD_CHANGE_REQUIRED,
+        PasswordChangeRequired,
+        breakglass_state,
+        issue_breakglass_session,
+        issue_superuser_session,
+        resolve_superuser_config,
+    )
     from provisa.auth.throttle import LockedOut, login_attempt
 
     auth_cfg = getattr(state, "auth_config", None)
     if not auth_cfg:
         raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
+    if body.username == BREAKGLASS_USERNAME:
+        # REQ-1264: the seeded break-glass account, checked against the control plane's hash.
+        breakglass = breakglass_state()
+        if breakglass is None:
+            raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
+        bg_raw_secret = auth_cfg.get("jwt_secret")
+        bg_secret = resolve_secrets(bg_raw_secret, credential=True) if bg_raw_secret else None
+        try:
+            with login_attempt(body.username, body.password):
+                token = issue_breakglass_session(
+                    body.username, body.password, breakglass, bg_secret
+                )
+        except LockedOut as locked:
+            raise ApiError(429, "auth.too_many_attempts", str(locked))
+        except PasswordChangeRequired:
+            raise ApiError(
+                403,
+                PASSWORD_CHANGE_REQUIRED,
+                "The break-glass password must be changed before it signs in",
+            )
+        except ValueError as exc:
+            raise ApiError(401, "auth.invalid_credentials", str(exc))
+        return {"access_token": token, "token_type": "bearer"}
     su_config = resolve_superuser_config(auth_cfg.get("superuser"))
     if su_config is None:
         raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
@@ -254,6 +285,50 @@ async def superuser_login(body: SuperuserLoginRequest):
     except ValueError as exc:
         raise ApiError(401, "auth.invalid_credentials", str(exc))
     return {"access_token": token, "token_type": "bearer"}
+
+
+class SuperuserPasswordRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
+
+
+@router.post("/superuser-password")  # REQ-1264, REQ-2290
+async def superuser_password(body: SuperuserPasswordRequest):
+    """Change the break-glass password, and sign in with the new one.
+
+    The first sign-in with the generated password is refused until this call replaces it. Guarded
+    by the same throttle as every other password check; a wrong current password is the same 401.
+    """
+    from provisa.api.app import state
+    from provisa.auth.superuser import (
+        breakglass_state,
+        change_breakglass_password,
+        issue_breakglass_session,
+    )
+    from provisa.auth.throttle import LockedOut, login_attempt
+
+    auth_cfg = getattr(state, "auth_config", None)
+    breakglass = breakglass_state()
+    if not auth_cfg or breakglass is None:
+        raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
+    assert state.admin_db is not None  # the platform control plane holds the account
+    raw_secret = auth_cfg.get("jwt_secret")
+    secret = resolve_secrets(raw_secret, credential=True) if raw_secret else None
+    try:
+        with login_attempt(body.username, body.current_password):
+            changed = change_breakglass_password(
+                state.admin_db, body.username, body.current_password, body.new_password, breakglass
+            )
+    except LockedOut as locked:
+        raise ApiError(429, "auth.too_many_attempts", str(locked))
+    except ValueError as exc:
+        raise ApiError(401, "auth.invalid_credentials", str(exc))
+    if not secret:
+        # Changed; a browser session needs a signing key, which this deployment does not have.
+        return {"changed": True}
+    token = issue_breakglass_session(body.username, body.new_password, changed, secret)
+    return {"changed": True, "access_token": token, "token_type": "bearer"}
 
 
 @router.get("/provider-type")  # REQ-120
