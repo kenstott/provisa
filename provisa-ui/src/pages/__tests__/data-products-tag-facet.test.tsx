@@ -227,58 +227,6 @@ describe("the Data Products list's tag facet", () => {
   });
 });
 
-/** The domain facet's input. */
-const domainFacet = () => screen.getByRole("textbox", { name: "Domains" });
-
-/** Picks ``domain`` in the list's domain facet. */
-async function pickDomain(domain: string) {
-  await userEvent.click(domainFacet());
-  await userEvent.click(await screen.findByRole("option", { name: domain, hidden: true }));
-}
-
-describe("the Data Products list's domain facet", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    metaRead.unreadable = false;
-  });
-
-  it("offers the domain of every product listed, and no other", async () => {
-    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
-    await waitFor(() => expect(listed()).toHaveLength(3));
-    await userEvent.click(domainFacet());
-    await screen.findByRole("option", { name: "care", hidden: true });
-    expect(optionsOf(domainFacet())).toEqual(["care", "ops", "sales"]);
-  });
-
-  it("narrows the list to the products of the domains chosen", async () => {
-    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
-    await waitFor(() => expect(listed()).toHaveLength(3));
-    await pickDomain("care");
-    expect(listed()).toEqual(["pet_health"]);
-    await pickDomain("ops");
-    expect(listed()).toEqual(["pet_health", "workforce_ops"]);
-  });
-
-  it("composes with the tag facet", async () => {
-    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
-    await waitFor(() => expect(listed()).toHaveLength(3));
-    await pick("risk:high");
-    expect(listed()).toEqual(["eu_customers", "pet_health"]);
-    await pickDomain("sales");
-    expect(listed()).toEqual(["eu_customers"]);
-  });
-
-  it("composes with the text filter", async () => {
-    render(<DataProductsPage />, { initialEntries: ["/data-products?search=pet"] });
-    await waitFor(() => expect(listed()).toEqual(["pet_health"]));
-    await pickDomain("ops");
-    expect(listed()).toEqual([]);
-    expect(screen.getByTestId("data-products-empty")).toHaveTextContent(
-      "No data products match the filters",
-    );
-  });
-});
-
 describe("the Data Products list's empty text", () => {
   beforeEach(() => {
     localStorage.clear();

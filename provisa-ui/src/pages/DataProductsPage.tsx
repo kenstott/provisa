@@ -39,6 +39,8 @@ import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { FilterInput } from "../components/admin/FilterInput";
 import { MultiSelect } from "../components/MultiSelect";
+import { TagControl } from "../components/TagControl";
+import { useDomainFilter } from "../context/DomainFilterContext";
 import { useTagAssignments } from "../hooks/useTagQueries";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { isProductOwner } from "./data-products/productOwner";
@@ -56,6 +58,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import {
   detailListOf,
+  domainNarrowing,
   filterNarrowing,
   searchNarrowing,
   shownBy,
@@ -189,16 +192,21 @@ export function DataProductsPage() {
         .map((tag) => ({ id: tag, label: tag })),
     [productTags],
   );
-  // The list narrowed to the products of the domains chosen; offered the domains of the products
-  // the viewer reads, since a domain with none of them would only empty the list.
-  const [domainFilter, setDomainFilter] = useState<string[]>([]);
-  const productDomainOptions = useMemo(
-    () =>
-      [...new Set(dataProducts.map((p) => p.domainId))]
-        .sort()
-        .map((domain) => ({ id: domain, label: domain })),
+  // REQ-1659 (amended 2026-11-28): the list is narrowed by the navbar's Domains filter, which on
+  // this page lists the domains of the products listed -- a domain outside the role included,
+  // since a listing is discovery and offers decide access -- with a selection of its own.
+  const { setProductDomains, checkedProductDomains, ensureProductDomainChecked } =
+    useDomainFilter();
+  const productDomainIds = useMemo(
+    () => [...new Set(dataProducts.map((p) => p.domainId))].sort(),
     [dataProducts],
   );
+  const productDomainKey = productDomainIds.join(",");
+  useEffect(() => {
+    if (products.data === null) return;
+    setProductDomains(productDomainIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the domain SET (the joined ids), not the array identity
+  }, [productDomainKey, products.data === null, setProductDomains]);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -241,12 +249,11 @@ export function DataProductsPage() {
         (p) => tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
         () => setTagFilter([]),
       ),
-      filterNarrowing<DataProduct>(
+      domainNarrowing<DataProduct>(
         t,
-        domainFilter.length > 0,
-        t("dataProductsTab.domainFacetLabel"),
-        (p) => domainFilter.includes(p.domainId),
-        () => setDomainFilter([]),
+        checkedProductDomains.size > 0 ? checkedProductDomains : null,
+        ensureProductDomainChecked,
+        (p) => [p.domainId],
       ),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the setters are the page's own, fixed for its life; updateSearch and setToReviewOnly are redefined each render but act alike
@@ -258,7 +265,7 @@ export function DataProductsPage() {
       productFindings.findings,
       tagFilter,
       productTags,
-      domainFilter,
+      checkedProductDomains,
     ],
   );
   const detail = useRememberedDetail(
@@ -282,7 +289,7 @@ export function DataProductsPage() {
     search,
     toReviewOnly,
     tags: tagFilter,
-    domains: domainFilter,
+    domains: [...checkedProductDomains],
     creating,
     editing: editingId,
   });
@@ -688,15 +695,6 @@ export function DataProductsPage() {
             placeholder={t("dataProductsTab.tagFacetPlaceholder")}
           />
         </div>
-        <div data-testid="data-products-domain-facet" style={{ minWidth: 180, maxWidth: 360 }}>
-          <MultiSelect
-            options={productDomainOptions}
-            value={domainFilter}
-            onChange={setDomainFilter}
-            ariaLabel={t("dataProductsTab.domainFacetLabel")}
-            placeholder={t("dataProductsTab.domainFacetPlaceholder")}
-          />
-        </div>
         <Checkbox
           size="xs"
           label={t("dataProductsTab.toReview")}
@@ -803,9 +801,19 @@ export function DataProductsPage() {
                             }}
                           >
                             <Table.Td>
-                              <Text size="sm" fw={600} ff="monospace" truncate="end">
-                                {p.id}
-                              </Text>
+                              {/* REQ-1659 (amended 2026-11-28): its tags, edited here as on
+                                  the other list pages. */}
+                              <Group gap={4} wrap="wrap">
+                                <Text size="sm" fw={600} ff="monospace" truncate="end">
+                                  {p.id}
+                                </Text>
+                                <TagControl
+                                  objectType="product"
+                                  productId={p.id}
+                                  readOnly={!mayEdit(p)}
+                                  onChanged={() => setCoreVersion((v) => v + 1)}
+                                />
+                              </Group>
                             </Table.Td>
                             <Table.Td>
                               <Text size="xs" truncate="end">
