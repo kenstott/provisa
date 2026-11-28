@@ -28349,3 +28349,27 @@ Release emails on provisa.dev with double opt-in. A visitor gives a first name a
 **Code:** `site/index.html`, `site/register.html`, `site/functions/api/subscribe.js`, `site/functions/api/subscribe/confirm.js`, `site/functions/api/register.js`, `site/functions/api/register/confirm.js`, `site/functions/_lib/releases.js`, `site/schema.sql`, `site/wrangler.jsonc`, `site/privacy.html`, `site/README.md`
 
 **Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-2363 · Platform Admin Break-Glass Access {#REQ-2363}
+
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+
+Split from [REQ-1264](#REQ-1264) (audit 2026-11-28, recommended option accepted). The [REQ-125](#REQ-125) config superuser is removed. Its auth.superuser config, the security.superuser settings, the PROVISA_SUPERUSER environment variables, the terraform superuser variables and the setup writer for them are deleted, and the middleware, auth router and wiring paths that sign it in are removed. The cloud e2e setup signs in with an org_admin personal access token instead. Break-glass ([REQ-1264](#REQ-1264), [REQ-2290](#REQ-2290)) is the only recovery account.
+
+**Code:** —
+
+**Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2364 · OpenAPI Auto-Registration Connector {#REQ-2364}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Split from [REQ-2267](#REQ-2267) (audit 2026-11-28, recommended option accepted). The built-in GraphQL and OpenAPI code source pushes filters, keys, paging and nested selections into one remote call where the strict GraphQL shape allows it; the answer is disaggregated into its tables and DuckDB finishes the governed statement in memory, without landing. Repeats use the response cache ([REQ-544](#REQ-544)); there is no separate fetch cache.
+
+**Code:** —
+
+**Tests:** —

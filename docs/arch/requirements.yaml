@@ -100608,3 +100608,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     contact calls are checked at setup.
   related_reqs:
   - REQ-1793
+- id: REQ-2363
+  status: in-progress
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Platform Admin Break-Glass Access
+  feature: sign-in-and-identity-bootstrap
+  priority: MUST
+  type: behavioral
+  description: 'Split from REQ-1264 (audit 2026-11-28, recommended option accepted). The REQ-125 config superuser is removed. Its auth.superuser config, the security.superuser settings, the PROVISA_SUPERUSER environment variables, the terraform superuser variables and the setup writer for them are deleted, and the middleware, auth router and wiring paths that sign it in are removed. The cloud e2e setup signs in with an org_admin personal access token instead. Break-glass (REQ-1264, REQ-2290) is the only recovery account.'
+  scenario: |
+    Given a deployment whose config, environment and terraform name no superuser
+    When an operator needs platform access after the identity provider is down
+    Then they sign in as the break-glass platform-admin account
+    And no auth.superuser setting, PROVISA_SUPERUSER variable or superuser sign-in path exists
+  related_reqs:
+  - REQ-1264
+  - REQ-2290
+- id: REQ-2364
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: OpenAPI Auto-Registration Connector
+  feature: connector-catalog-remote-schemas
+  priority: SHOULD
+  type: behavioral
+  description: 'Split from REQ-2267 (audit 2026-11-28, recommended option accepted). The built-in GraphQL and OpenAPI code source pushes filters, keys, paging and nested selections into one remote call where the strict GraphQL shape allows it; the answer is disaggregated into its tables and DuckDB finishes the governed statement in memory, without landing. Repeats use the response cache (REQ-544); there is no separate fetch cache.'
+  related_reqs:
+  - REQ-2267
+  - REQ-2360
+
