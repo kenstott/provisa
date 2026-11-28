@@ -36,8 +36,20 @@ def _asset(tag: str, name: str, sha: str | None = "ab" * 32) -> dict:
     }
 
 
-def _release(tag: str, names: list[str], *, draft: bool = False) -> dict:
-    return {"tag_name": tag, "draft": draft, "assets": [_asset(tag, n) for n in names]}
+def _release(
+    tag: str,
+    names: list[str],
+    *,
+    draft: bool = False,
+    published_at: str = "2026-11-20T00:00:00Z",
+    sha: str = "ab" * 32,
+) -> dict:
+    return {
+        "tag_name": tag,
+        "draft": draft,
+        "published_at": None if draft else published_at,
+        "assets": [_asset(tag, n, sha) for n in names],
+    }
 
 
 _W509 = "provisa-0.1.0a509-cp312-cp312-manylinux_2_28_x86_64.whl"
@@ -129,14 +141,15 @@ def test_the_extension_wheels_are_indexed_beside_the_server(tmp_path):
 
 def test_every_link_carries_its_assets_sha256_fragment(tmp_path):
     sha = "0123456789abcdef" * 4
-    release = {"draft": False, "assets": [_asset("v0.1.0-alpha.510", _W510, sha)]}
+    release = _release("v0.1.0-alpha.510", [_W510], sha=sha)
     index.write_index([release], tmp_path, projects=("provisa",))
     page = (tmp_path / "simple" / "provisa" / "index.html").read_text()
     assert f'<a href="{_DL}/v0.1.0-alpha.510/{_W510}#sha256={sha}">{_W510}</a>' in page
 
 
 def test_a_wheel_without_a_sha256_digest_is_refused(tmp_path):
-    release = {"draft": False, "assets": [_asset("v0.1.0-alpha.510", _W510, None)]}
+    release = _release("v0.1.0-alpha.510", [_W510])
+    release["assets"][0]["digest"] = None
     with pytest.raises(ValueError, match="no sha256 digest"):
         index.write_index([release], tmp_path)
 
@@ -154,9 +167,53 @@ def test_a_release_missing_an_expected_project_is_refused_by_name(tmp_path):
         index.write_index([_release("v0.1.0-alpha.510", names)], tmp_path)
 
 
-def test_the_same_wheel_on_two_releases_is_refused(tmp_path):
-    with pytest.raises(ValueError, match="more than one release"):
-        index.write_index([_release("a", [_W510]), _release("b", [_W510])], tmp_path)
+_DUCKDB_ARM = "provisa_duckdb_ext-0.2.2-py3-none-macosx_11_0_arm64.whl"
+
+
+def test_the_same_wheel_with_the_same_bytes_on_two_releases_is_one_entry_at_the_newest(tmp_path):
+    """An unchanged extension version is attached to each release under one name: listed once,
+    linked at the newest release's asset, whatever order the listing gives the releases."""
+    releases = [
+        _release("v0.1.0-alpha.511", [_DUCKDB_ARM], published_at="2026-11-23T07:22:04Z"),
+        _release("v0.1.0-alpha.513", [_DUCKDB_ARM], published_at="2026-11-28T01:12:08Z"),
+        _release("v0.1.0-alpha.512", [_DUCKDB_ARM], published_at="2026-11-25T12:26:42Z"),
+    ]
+    listed = index.write_index(releases, tmp_path, projects=("provisa-duckdb-ext",))
+    assert listed == [_DUCKDB_ARM]
+    page = (tmp_path / "simple" / "provisa-duckdb-ext" / "index.html").read_text()
+    assert re.findall(r'href="([^"]+)"', page) == [
+        f"{_DL}/v0.1.0-alpha.513/{_DUCKDB_ARM}#sha256={'ab' * 32}"
+    ]
+    root = (tmp_path / "simple" / "index.html").read_text()
+    assert re.findall(r'href="([^"]+)"', root) == ["provisa-duckdb-ext/"]
+
+
+def test_the_same_wheel_with_different_bytes_is_listed_at_the_newest_and_hides_the_older(
+    tmp_path, capsys
+):
+    """Extension builds are not reproducible: each release's copy of one wheel name has its own
+    bytes. The name is listed once at the newest release's asset, and each older copy it hides is
+    printed with its release and sha256."""
+    releases = [
+        _release(
+            "v0.1.0-alpha.511", [_DUCKDB_ARM], published_at="2026-11-23T07:22:04Z", sha="ef" * 32
+        ),
+        _release(
+            "v0.1.0-alpha.513", [_DUCKDB_ARM], published_at="2026-11-28T01:12:08Z", sha="cd" * 32
+        ),
+        _release("v0.1.0-alpha.512", [_DUCKDB_ARM], published_at="2026-11-25T12:26:42Z"),
+    ]
+    listed = index.write_index(releases, tmp_path, projects=("provisa-duckdb-ext",))
+    assert listed == [_DUCKDB_ARM]
+    page = (tmp_path / "simple" / "provisa-duckdb-ext" / "index.html").read_text()
+    assert re.findall(r'href="([^"]+)"', page) == [
+        f"{_DL}/v0.1.0-alpha.513/{_DUCKDB_ARM}#sha256={'cd' * 32}"
+    ]
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        f"hidden: {_DUCKDB_ARM} on v0.1.0-alpha.512 sha256={'ab' * 32} (listed at a newer release)",
+        f"hidden: {_DUCKDB_ARM} on v0.1.0-alpha.511 sha256={'ef' * 32} (listed at a newer release)",
+    ]
 
 
 def test_main_reads_the_slurped_paginated_listing(tmp_path, capsys):
@@ -167,7 +224,7 @@ def test_main_reads_the_slurped_paginated_listing(tmp_path, capsys):
                 [_W510, _CLIENT, _NOTEBOOK, _PG_EXT, _DUCKDB_EXT, _SDK, _PYSPARK],
             )
         ],
-        [_release("v0.1.0-alpha.509", [_W509])],
+        [_release("v0.1.0-alpha.509", [_W509], published_at="2026-11-15T05:24:24Z")],
     ]
     listing = tmp_path / "releases.json"
     listing.write_text(json.dumps(pages))

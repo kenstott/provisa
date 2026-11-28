@@ -67,21 +67,34 @@ def _sha256(asset: dict) -> str:
     return digest[len("sha256:") :]
 
 
-def project_wheels(releases: Iterable[dict], project: str) -> list[tuple[str, str, str]]:
-    """(file name, download URL, sha256) of every wheel of ``project`` on a published release."""
+def project_wheels(
+    releases: Iterable[dict], project: str
+) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """The wheels of ``project`` on published releases, and the older copies the index hides.
+
+    Returns ((file name, download URL, sha256) of each listed wheel, (file name, hidden release
+    tag, sha256) of each hidden copy). A wheel whose version did not change between releases is
+    attached to each of them under one file name, and pip takes one file per name. The name is
+    listed once, at the newest release's asset (by ``published_at``), whatever its bytes: the
+    extension builds are not reproducible, so each copy may differ. Every older copy is returned
+    as hidden so the caller reports what the index leaves out.
+    """
     want = normalize(project)
+    published = [release for release in releases if not release["draft"]]
+    published.sort(key=lambda release: release["published_at"], reverse=True)
     wheels: dict[str, tuple[str, str, str]] = {}
-    for release in releases:
-        if release["draft"]:
-            continue
+    hidden: list[tuple[str, str, str]] = []
+    for release in published:
         for asset in release["assets"]:
             name = asset["name"]
             if wheel_project(name) != want:
                 continue
+            sha = _sha256(asset)
             if name in wheels:
-                raise ValueError(f"wheel {name} is attached to more than one release")
-            wheels[name] = (name, asset["browser_download_url"], _sha256(asset))
-    return [wheels[name] for name in sorted(wheels)]
+                hidden.append((name, release["tag_name"], sha))
+                continue
+            wheels[name] = (name, asset["browser_download_url"], sha)
+    return [wheels[name] for name in sorted(wheels)], hidden
 
 
 def _page(title: str, links: list[tuple[str, str]]) -> str:
@@ -101,7 +114,9 @@ def write_index(releases: list[dict], out: Path, projects: tuple[str, ...] = PRO
     names: list[str] = []
     listed: list[str] = []
     for project in projects:
-        wheels = project_wheels(releases, project)
+        wheels, hidden = project_wheels(releases, project)
+        for filename, tag, sha in hidden:
+            print(f"hidden: {filename} on {tag} sha256={sha} (listed at a newer release)")
         if not wheels:
             raise ValueError(f"no published release carries a {project} wheel")
         name = normalize(project)
