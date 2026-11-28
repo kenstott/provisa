@@ -78,10 +78,12 @@ describe("a frame header's downloads", () => {
     show(frame([{ n: 1 }]));
     fireEvent.click(screen.getByTestId("graph-frame-download-btn"));
     const menu = await screen.findByTestId("graph-frame-download-menu");
-    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
-      "JSON",
-      "CSV",
-    ]);
+    // Mantine draws the dropdown through a transition jsdom does not run: its items are queried hidden.
+    expect(
+      within(menu)
+        .getAllByRole("menuitem", { hidden: true })
+        .map((i) => i.textContent),
+    ).toEqual(["JSON", "CSV"]);
     fireEvent.click(within(menu).getByTestId("graph-frame-download-json"));
     fireEvent.click(screen.getByTestId("graph-frame-download-btn"));
     fireEvent.click(await screen.findByTestId("graph-frame-download-csv"));
