@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from provisa.compiler.naming import apply_gql_name
+from provisa.compiler.naming import suggest_metric_name
 
 HISTORY_NONE = "none"
 HISTORY_SCD2 = "scd2"
@@ -169,8 +169,8 @@ def fact_registration(f: Fact) -> dict:
         # the fact's registered table name).
         "metrics": [
             {
-                # REQ-194: snake case and an identifier, from the naming authority.
-                "name": apply_gql_name(f"{f.name}_{m.column}_{m.agg}", "snake"),
+                # REQ-2361, REQ-194: the metric name the naming authority suggests.
+                "name": suggest_metric_name(f.name, m.column, m.agg),
                 "expression": f"{m.agg.upper()}({f.name}.{m.column})",
                 "datatype": None,
                 "from_fact": f.name,

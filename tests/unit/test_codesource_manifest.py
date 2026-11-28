@@ -397,10 +397,14 @@ def test_each_runtime_runs_the_reader_and_deno_reads_only_what_it_is_given(tmp_p
 
 
 @pytest.mark.parametrize("runtime, flags", [("node", []), ("bun", ["--no-install"])])
-def test_the_host_runs_the_bundle_installing_nothing(tmp_path, runtime, flags):
+def test_the_host_runs_the_bundle_installing_nothing(tmp_path, monkeypatch, runtime, flags):
     # The host looks for the code's optional @opentelemetry/api (host-core.mjs); Bun, unless told
     # not to, installs a package it does not find, which a sandboxed host has nowhere to write.
+    from provisa.codesource import sandbox
     from provisa.node.worker import HOST, host_command
+
+    # rt/<runtime> is no runtime: on a Nix host the store grant would read its ELF header.
+    monkeypatch.setattr(sandbox, "nix_store_grant", lambda _exe, _read, _env: [])
 
     (tmp_path / "package.json").write_text(json.dumps({"type": "module", "main": "index.js"}))
     (tmp_path / "index.js").write_text("export const f = () => 1;\n")

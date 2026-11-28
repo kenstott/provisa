@@ -13,7 +13,6 @@
 // table step and the several-tables step both register from here, so the defaults are the same.
 
 import type { ColumnMetadata, TableMetadata } from "../../api/admin";
-import { toSnakeCase } from "../../naming";
 import type { Paging, PagingKind, UniqueConstraint } from "../../types/admin";
 import { offeredUnselected } from "../sources/qdrant";
 import { CDC_TYPES } from "./constants";
@@ -28,19 +27,26 @@ type Discovered = Pick<ColumnMetadata, "name" | "dataType"> &
     isPrimaryKey?: boolean | null;
   };
 
-/** Each discovered column as the step offers it: seen by every role, in domain scope. */
+/** Each discovered column as the step offers it: seen by every role, in domain scope, with the
+ * alias the naming authority suggests for it (REQ-2361: ``aliases`` in column order, null where
+ * the column is already named so). */
 export function discoveredColumns(
   columns: Discovered[],
+  aliases: (string | null)[],
   roleIds: string[],
   sourceType: string,
 ): ColumnForm[] {
-  return columns.map((c) => {
-    const snake = toSnakeCase(c.name);
+  if (aliases.length !== columns.length) {
+    throw new Error(`${aliases.length} alias suggestions for ${columns.length} columns`);
+  }
+  return columns.map((c, i) => {
+    const suggested = aliases[i];
     return {
       name: c.name,
       visibleTo: roleIds,
       masks: [],
-      alias: snake !== c.name ? snake : "",
+      // The form holds "no alias" as "": the authority's null says the column needs none.
+      alias: suggested === null ? "" : suggested,
       description: c.comment || "",
       // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
       selected: !offeredUnselected(sourceType, c.path),

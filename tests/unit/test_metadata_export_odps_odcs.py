@@ -32,12 +32,12 @@ from provisa.api.metadata_export.odps import (
     UNVERSIONED,
     OfferExport,
     contract_id,
-    logical_type,
     odps_document,
     offer_contract,
     product_documents,
 )
 from provisa.api.metadata_export.publishing import serving_endpoints
+from provisa.dq.contract_types import logical_type
 from provisa.core import offer_contracts
 from provisa.core.models import (
     Column,

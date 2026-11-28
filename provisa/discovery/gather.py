@@ -19,7 +19,8 @@ for the run and not recorded. System domains are never included.
 
 A table's values are read as the profiler reads them: through the governed pipeline as the org
 admin, by the name the table is published under, so a view, an API table and a file are read the
-one way. A table that cannot be read stops the run, named (:class:`TableUnreadable`).
+one way. A table that cannot be read is left out of the run and named with why
+(:class:`Unread`): the run goes on over the rest, and its result lists each table left out.
 
 A table that requires a parameter (REQ-1986) cannot give a row count and cannot be profiled. It
 is known from its registration (:func:`provisa.core.parameters.required_parameters` over its
@@ -40,7 +41,7 @@ request count before Run is computed from it. :func:`table_facts` adds what a ru
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import select
@@ -70,6 +71,19 @@ VALUES_PER_COLUMN = 500
 SAMPLE_ABOVE_CELLS: int | None = None
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
+
+
+@dataclass(frozen=True)
+class Unread:
+    """A table of the run's sets that could not be read, and so took no part in it: its id, its
+    ``domain.table`` name, and why."""
+
+    table_id: int
+    table: str
+    reason: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"table_id": self.table_id, "table": self.table, "reason": self.reason}
 
 
 class TableUnreadable(Exception):
@@ -439,35 +453,52 @@ async def table_facts(
     ids: Sequence[int],
     samples_per_column: int,
     on_table: Callable[[int, int], Awaitable[None]] | None = None,
-) -> list[TableFacts]:
+) -> tuple[list[TableFacts], list[Unread]]:
     """Every table of ``ids`` with its context and its columns' facts, as a run reads them: what
     is registered (:func:`registered_facts`), and for each table that is read, its columns'
-    classes and up to ``samples_per_column`` (the run's) sample values each.
-    ``on_table(read, total)`` is told after each table is read."""
+    classes and up to ``samples_per_column`` (the run's) sample values each. A table whose read
+    fails is not among them: it is one of the tables left out (:class:`Unread`), named with why.
+    ``on_table(read, total)`` is told after each table is read or left out."""
     registered = await registered_facts(state, conn, ids)
     decided = await _decided(conn, [t.table_id for t in registered])
     out: list[TableFacts] = []
-    for table in registered:
-        # A table never read, and one with no registered column, has nothing to classify or
-        # sample.
-        if not table.reduced and table.columns:
-            tid = table.table_id
-            matched = await _profiled_classes(conn, tid, table.table_name)
-            if matched is None:
-                matched = await _classified_now(state, tid, table.table_name)
-            classed = []
-            for c in table.columns:
-                classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
-                classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
-            sampled = [c.name for c in classed if c.groups and not c.sensitive]
-            samples = await _samples(state, tid, table.table_name, sampled, samples_per_column)
-            table = replace(
-                table, columns=tuple(replace(c, samples=samples.get(c.name, ())) for c in classed)
+    unread: list[Unread] = []
+    for done, table in enumerate(registered, start=1):
+        try:
+            out.append(await _read_facts(state, conn, table, decided, samples_per_column))
+        except TableUnreadable as exc:
+            unread.append(
+                Unread(table.table_id, f"{table.domain_id}.{table.table_name}", exc.reason)
             )
-        out.append(table)
         if on_table is not None:
-            await on_table(len(out), len(registered))
-    return out
+            await on_table(done, len(registered))
+    return out, unread
+
+
+async def _read_facts(
+    state: Any,
+    conn: "Connection",
+    table: TableFacts,
+    decided: dict[tuple[int, str], set[str]],
+    samples_per_column: int,
+) -> TableFacts:
+    """``table`` with its columns' classes and sample values, as a run reads them."""
+    # A table never read, and one with no registered column, has nothing to classify or sample.
+    if table.reduced or not table.columns:
+        return table
+    tid = table.table_id
+    matched = await _profiled_classes(conn, tid, table.table_name)
+    if matched is None:
+        matched = await _classified_now(state, tid, table.table_name)
+    classed = []
+    for c in table.columns:
+        classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
+        classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
+    sampled = [c.name for c in classed if c.groups and not c.sensitive]
+    samples = await _samples(state, tid, table.table_name, sampled, samples_per_column)
+    return replace(
+        table, columns=tuple(replace(c, samples=samples.get(c.name, ())) for c in classed)
+    )
 
 
 async def known(conn: "Connection") -> Known:

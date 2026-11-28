@@ -1358,6 +1358,19 @@ checker_latest_runs = Table(
     CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
 )
 
+# REQ-2158: each product member's latest declared-logical-type check (provisa.dq.scan
+# .check_member_types): its time, its outcome (fail when any offer contract's column no longer
+# fits its declared logicalType) and each failing column, by offer, with its declared and live type.
+contract_type_checks = Table(
+    "contract_type_checks",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("checked_at", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("failing", JSON, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="contract_type_checks_outcome_check"),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,

@@ -145,6 +145,7 @@ _PROBE = textwrap.dedent(
     def _provisa_preflight(source, fields, inputs, whole, pull, pa):
         found = {
             "environment": sorted(os.environ),
+            "ld library path": os.environ.get("LD_LIBRARY_PATH"),
             "own file": opened(__file__),
             "outside file": opened(ASKED["outside"]),
             "passwd": opened("/etc/passwd"),
@@ -195,7 +196,11 @@ async def test_code_in_the_confined_process_opens_no_file_and_no_connection(held
     assert found.pop("own file") == "done", "the probe did not run as the worker's code does"
     environment = found.pop("environment")
     assert "PROVISA_SECRET_KEY" not in environment
+    # On NixOS the worker's interpreter loads through nix-ld, which leaves LD_LIBRARY_PATH set in the
+    # process it loads, empty when the launcher passed none: present, it carries nothing.
+    assert found.pop("ld library path") in (None, "")
     assert set(environment) <= {
+        "LD_LIBRARY_PATH",
         "PATH",
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONUNBUFFERED",

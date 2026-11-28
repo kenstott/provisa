@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 from typing import TYPE_CHECKING
 
 import grpc
@@ -245,7 +246,74 @@ def _bind_arg_names(fn: dict, args: dict) -> dict:
     return args
 
 
-async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
+#: A relation argument written as a query: its text begins as a query does (REQ-1159).
+_QUERY_TEXT = re.compile(r"^[\s(]*(select|with|values)\b", re.IGNORECASE)
+
+
+def _relation_form(value: object) -> str:  # object-ok: an argument's value is any JSON
+    """How a relation argument's value gives its relation (REQ-1159, amended 2026-11-27): ``rows``
+    (a JSON array of row objects, as a list or as its text), ``query`` (the text of a query), or
+    ``table`` (a table reference)."""
+    if isinstance(value, list):
+        return "rows"
+    text = str(value).strip()
+    if text.startswith("["):
+        return "rows"
+    if _QUERY_TEXT.match(text):
+        return "query"
+    return "table"
+
+
+def _given_rows(fn: dict, name: str, value: object) -> dict:  # object-ok: any JSON
+    """A relation argument given as rows: each a JSON object, the relation's columns the names
+    they carry in the order first met."""
+    rows = value
+    if not isinstance(rows, list):
+        try:
+            rows = json.loads(str(value))
+        except json.JSONDecodeError as exc:
+            raise ApiError(
+                400,
+                "functions.relation_rows_invalid",
+                f"argument {name!r} of {fn.get('name')!r}: its rows are not JSON: {exc}",
+                name=name,
+            ) from exc
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        raise ApiError(
+            400,
+            "functions.relation_rows_invalid",
+            f"argument {name!r} of {fn.get('name')!r}: its rows must be a JSON array of objects",
+            name=name,
+        )
+    columns: list[str] = []
+    for row in rows:
+        columns.extend(c for c in row if c not in columns)
+    return {"kind": "result_set", "columns": columns, "rows": rows}
+
+
+async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | None) -> dict:
+    """A relation argument given as a query: run through the one governed pipeline as the
+    caller's role, as any statement the caller writes is (REQ-1159, amended 2026-11-27)."""
+    from provisa.executor.serialize import result_records
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+
+    if role_id is None:
+        raise ApiError(
+            400,
+            "functions.relation_query_no_role",
+            f"argument {name!r} of {fn.get('name')!r} is a query, which runs as a role; none is bound",
+            name=name,
+        )
+    plan = await _govern_and_route(sql, role_id)
+    result = await _execute_plan(plan, state)
+    return {
+        "kind": "result_set",
+        "columns": list(result.column_names),
+        "rows": result_records(result),
+    }
+
+
+async def _prepare_args(fn: dict, args: dict, state, role_id: str | None) -> tuple[dict, list[str]]:
     """Prepare a hosted-function payload by relation-argument kind; collect input refs."""
     args = _bind_arg_names(fn, args)
     kinds = _arg_kinds(fn)
@@ -257,6 +325,15 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
         if kind == "column_value":
             payload[name] = value
         elif kind == "table_ref":  # lazy: pass the reference, do not materialize
+            # A table_ref names a table its service reads; a query or rows names none.
+            if _relation_form(value) != "table":
+                raise ApiError(
+                    400,
+                    "functions.table_ref_not_a_table",
+                    f"argument {name!r} of {fn.get('name')!r} is a table_ref: it takes a table "
+                    "reference, not a query or rows",
+                    name=name,
+                )
             # REQ-1159: table_ref is not materialized here, so its rows cannot be validated at prepare
             # time — the service fetches them. The declared columns still travel as the contract the
             # service must honour; input-side enforcement happens only for the eager result_set kind.
@@ -268,7 +345,15 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
             declared = columns_by_arg.get(name)
             col_names = [c["name"] for c in declared] if declared else None
-            materialized = await _materialize_relation(str(value), state, col_names)
+            # REQ-1159 (amended 2026-11-27): given as a table, a query or rows.
+            form = _relation_form(value)
+            if form == "rows":
+                materialized = _given_rows(fn, name, value)
+            elif form == "query":
+                materialized = await _query_relation(fn, name, str(value), state, role_id)
+            else:
+                materialized = await _materialize_relation(str(value), state, col_names)
+                input_refs.append(str(value))
             schema = _schema_from_columns(declared)
             if (
                 schema is not None
@@ -277,7 +362,6 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
                     materialized["rows"], schema, where=f"command {fn.get('name')!r} input {name!r}"
                 )
             payload[name] = materialized
-            input_refs.append(str(value))
         else:
             raise ApiError(
                 400,
@@ -683,7 +767,7 @@ async def dispatch_function(  # REQ-885, REQ-886
         payload: dict = args
         input_refs: list[str] = []
     else:
-        payload, input_refs = await _prepare_args(fn, args, state)
+        payload, input_refs = await _prepare_args(fn, args, state, role_id)
 
     corr = correlation_id or new_correlation_id()
     session = mint_udf_session(corr, identity, role_id)

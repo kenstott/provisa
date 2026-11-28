@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -159,8 +161,13 @@ class WebhookApprovalHook(ApprovalHook):  # REQ-246
         return ApprovalResponse(approved=False, reason=f"fallback deny: {reason}")
 
 
-class GrpcApprovalHook(ApprovalHook):  # REQ-246
-    """gRPC approval hook with persistent channel."""
+class GrpcApprovalHook(ApprovalHook):  # REQ-246, REQ-555
+    """gRPC approval hook with one persistent channel per instance (REQ-555).
+
+    The channel is grpc's synchronous one, which any thread may call. Each request runs on its own
+    thread's event loop (REQ-1882, provisa.core.connection_loop), and a grpc.aio channel answers
+    only on the loop that made it: the first request's loop held it, and a call from any other
+    request's loop failed and was refused by the fallback (run 45940557737, call 3 of 5)."""
 
     def __init__(self, config: ApprovalHookConfig) -> None:
         self._url = config.url
@@ -168,21 +175,23 @@ class GrpcApprovalHook(ApprovalHook):  # REQ-246
         self._fallback = config.fallback
         self._channel: Any = None
         self._stub: Any = None
+        self._channel_lock = threading.Lock()
         self._breaker = CircuitBreaker(
             config.circuit_breaker_threshold, config.circuit_breaker_cooldown_s
         )
 
     def _ensure_channel(self) -> None:
-        if self._channel is not None:
-            return
-        try:
-            import grpc.aio  # type: ignore[import-untyped]
-            from provisa.auth import approval_pb2_grpc
+        with self._channel_lock:
+            if self._channel is not None:
+                return
+            try:
+                import grpc  # type: ignore[import-untyped]
+                from provisa.auth import approval_pb2_grpc
 
-            self._channel = grpc.aio.insecure_channel(self._url)
-            self._stub = approval_pb2_grpc.ApprovalServiceStub(self._channel)
-        except ImportError:
-            raise RuntimeError("grpcio required for gRPC approval hook")
+                self._channel = grpc.insecure_channel(self._url)
+                self._stub = approval_pb2_grpc.ApprovalServiceStub(self._channel)
+            except ImportError:
+                raise RuntimeError("grpcio required for gRPC approval hook")
 
     async def evaluate(self, request: ApprovalRequest) -> ApprovalResponse:
         if self._breaker.is_open and not self._breaker.is_half_open:
@@ -202,7 +211,10 @@ class GrpcApprovalHook(ApprovalHook):  # REQ-246
                 command=request.command,
                 arguments_json=json.dumps(request.arguments, default=str),
             )
-            proto_resp = await self._stub.Evaluate(proto_req, timeout=self._timeout)
+            # Off the event loop: on a connection loop it runs inline, on its request's thread.
+            proto_resp = await asyncio.to_thread(
+                self._stub.Evaluate, proto_req, timeout=self._timeout
+            )
             self._breaker.record_success()
             return ApprovalResponse(
                 approved=proto_resp.approved,

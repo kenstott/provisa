@@ -26,7 +26,6 @@ import {
   NumberInput,
   Pill,
   Select,
-  Tabs,
   Text,
   TextInput,
   Title,
@@ -57,8 +56,12 @@ import {
   type PaginationLinks,
 } from "./jsonapi/document";
 import "./JsonApiPage.css";
+import { ExploreMain, ExploreShell, ExploreSide } from "../components/explore/ExploreShell";
+import { ResultPanel } from "../components/explore/ResultPanel";
 import { Tip } from "../components/Tip";
 import { ParamsSection } from "./jsonapi/ParamsSection";
+import { CommandCallPanel } from "./jsonapi/CommandCallPanel";
+import { useCommandCall } from "./jsonapi/useCommandCall";
 import { dataColumnsOf, useJsonApiParams } from "./jsonapi/useJsonApiParams";
 import { getStoredJson, setStored } from "../lib/browserStorage";
 
@@ -74,6 +77,8 @@ export function JsonApiPage() {
   // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
   const roleId = actingRoles ?? "";
   const { checkedDomains } = useDomainFilter();
+  // REQ-1159: a command's call handed over by its Query it line replaces the table explorer.
+  const command = useCommandCall(roleId, (name) => t("jsonApiPage.commandNotJson", { name }));
   // A JSON:API URL handed to the page (NL "Open in JSON:API", Polly), whether the page was just
   // opened or already open. Each hand-off has its own sequence number: its pickers are seeded once
   // and it is run once.
@@ -83,6 +88,7 @@ export function JsonApiPage() {
   useNavPayload<{ jsonapiUrl?: string; autoRun?: boolean }>((payload) => {
     if (!payload.jsonapiUrl) return;
     const handed = payload.jsonapiUrl;
+    command.close();
     // The answer on screen is the last request's; this one's replaces it once it is in.
     setParsedDoc(null);
     setActiveUrl("");
@@ -584,6 +590,20 @@ export function JsonApiPage() {
     error: error || null,
     rows: resultMeta?.count ?? null,
     total: resultMeta?.total ?? null,
+    command: command.call && {
+      name: command.call.name,
+      method: command.call.write ? "POST" : "GET",
+      url: command.url,
+      arguments: Object.fromEntries(command.fields.map((f) => [f.name, f.text])),
+      status: command.error
+        ? "failed"
+        : command.running
+          ? "running"
+          : command.doc
+            ? "answered"
+            : "idle",
+      error: command.error || null,
+    },
   });
 
   const fieldsSummary =
@@ -610,414 +630,425 @@ export function JsonApiPage() {
         : t("jsonApiPage.resultCount", { count: resultMeta.count })
     : null;
 
+  if (command.call !== null) return <CommandCallPanel state={command} />;
+
   return (
-    <div className="jsonapi-page page">
-      <div className="jsonapi-layout">
-        <div className="jsonapi-sidebar">
-          <div className="jsonapi-sidebar-header">
-            <Title order={2} className="jsonapi-section-title">
-              {t("jsonApiPage.title")}
-            </Title>
-            <Anchor
-              component="button"
-              type="button"
-              className="jsonapi-spec-link"
-              data-testid="jsonapi-spec-download"
-              onClick={() => void downloadSpec()}
-              aria-label={t("jsonApiPage.downloadSpecAria")}
-            >
-              <Group gap={4} wrap="nowrap">
-                <Download size={12} />
-                {t("jsonApiPage.specLink")}
-              </Group>
-            </Anchor>
-          </div>
-          <p className="jsonapi-desc">{t("jsonApiPage.description")}</p>
+    <ExploreShell
+      testId="jsonapi-page"
+      className="jsonapi-page"
+      toolbar={
+        <div className="jsonapi-sidebar-header">
+          <Title order={2} className="jsonapi-section-title">
+            {t("jsonApiPage.title")}
+          </Title>
+          <Anchor
+            component="button"
+            type="button"
+            className="jsonapi-spec-link"
+            data-testid="jsonapi-spec-download"
+            onClick={() => void downloadSpec()}
+            aria-label={t("jsonApiPage.downloadSpecAria")}
+          >
+            <Group gap={4} wrap="nowrap">
+              <Download size={12} />
+              {t("jsonApiPage.specLink")}
+            </Group>
+          </Anchor>
+        </div>
+      }
+    >
+      <ExploreSide
+        storageKey="provisa.jsonapi.sideWidth"
+        initial={300}
+        min={240}
+        max={640}
+        testId="jsonapi-side"
+        className="jsonapi-sidebar"
+      >
+        <p className="jsonapi-desc">{t("jsonApiPage.description")}</p>
 
-          <Select
-            label={t("jsonApiPage.tableLabel")}
-            size="xs"
-            placeholder={
-              loading ? t("jsonApiPage.loadingOption") : t("jsonApiPage.selectTablePlaceholder")
-            }
-            data={tableSelectData}
-            value={effectiveSelectedTable || null}
-            onChange={(v) => setSelectedTable(v ?? "")}
-            disabled={loading}
-            searchable
-            data-testid="jsonapi-table-select"
-          />
-          {tableObj?.description && <p className="jsonapi-table-desc">{tableObj.description}</p>}
+        <Select
+          label={t("jsonApiPage.tableLabel")}
+          size="xs"
+          placeholder={
+            loading ? t("jsonApiPage.loadingOption") : t("jsonApiPage.selectTablePlaceholder")
+          }
+          data={tableSelectData}
+          value={effectiveSelectedTable || null}
+          onChange={(v) => setSelectedTable(v ?? "")}
+          disabled={loading}
+          searchable
+          data-testid="jsonapi-table-select"
+        />
+        {tableObj?.description && <p className="jsonapi-table-desc">{tableObj.description}</p>}
 
-          {columnNames.length > 0 && (
-            <>
+        {columnNames.length > 0 && (
+          <>
+            <div className="jsonapi-dropdown-group">
+              <button
+                type="button"
+                className="jsonapi-dropdown-trigger"
+                onClick={() => setFieldsOpen((o) => !o)}
+                aria-expanded={fieldsOpen}
+                data-testid="jsonapi-fields-trigger"
+              >
+                <span>{t("jsonApiPage.fieldsLabel")}</span>
+                <span className="jsonapi-dropdown-meta">
+                  {fieldsSummary} {fieldsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </span>
+              </button>
+              <Collapse in={fieldsOpen}>
+                <div className="jsonapi-field-list">
+                  {dataColumns.map((col) => {
+                    const apiName = toApiName(col);
+                    return (
+                      <Tip key={col.columnName} text={col.description ?? undefined}>
+                        <Checkbox
+                          className="jsonapi-field-item"
+                          size="xs"
+                          checked={checkedFields.has(apiName)}
+                          onChange={() => toggleField(apiName)}
+                          label={
+                            <span className="jsonapi-field-name">
+                              {col.alias ?? col.columnName}
+                            </span>
+                          }
+                        />
+                      </Tip>
+                    );
+                  })}
+                </div>
+              </Collapse>
+            </div>
+
+            {relationshipNames.length > 0 && (
               <div className="jsonapi-dropdown-group">
                 <button
                   type="button"
                   className="jsonapi-dropdown-trigger"
-                  onClick={() => setFieldsOpen((o) => !o)}
-                  aria-expanded={fieldsOpen}
-                  data-testid="jsonapi-fields-trigger"
+                  onClick={() => setIncludeOpen((o) => !o)}
+                  aria-expanded={includeOpen}
+                  data-testid="jsonapi-include-trigger"
                 >
-                  <span>{t("jsonApiPage.fieldsLabel")}</span>
+                  <span>{t("jsonApiPage.includeLabel")}</span>
                   <span className="jsonapi-dropdown-meta">
-                    {fieldsSummary}{" "}
-                    {fieldsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    {includeSummary}{" "}
+                    {includeOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </span>
                 </button>
-                <Collapse in={fieldsOpen}>
-                  <div className="jsonapi-field-list">
-                    {dataColumns.map((col) => {
-                      const apiName = toApiName(col);
-                      return (
-                        <Tip key={col.columnName} text={col.description ?? undefined}>
-                          <Checkbox
-                            className="jsonapi-field-item"
-                            size="xs"
-                            checked={checkedFields.has(apiName)}
-                            onChange={() => toggleField(apiName)}
-                            label={
-                              <span className="jsonapi-field-name">
-                                {col.alias ?? col.columnName}
-                              </span>
-                            }
-                          />
-                        </Tip>
-                      );
-                    })}
-                  </div>
+                <Collapse in={includeOpen}>
+                  <IncludeTree
+                    relationships={tableRelationships}
+                    checkedIncludes={checkedIncludes}
+                    showColumns={includeNodes && groupByCols.length > 0}
+                    toggleInclude={toggleInclude}
+                    toggleIncludeColumn={toggleIncludeColumn}
+                  />
                 </Collapse>
               </div>
+            )}
 
-              {relationshipNames.length > 0 && (
-                <div className="jsonapi-dropdown-group">
-                  <button
-                    type="button"
-                    className="jsonapi-dropdown-trigger"
-                    onClick={() => setIncludeOpen((o) => !o)}
-                    aria-expanded={includeOpen}
-                    data-testid="jsonapi-include-trigger"
+            <ParamsSection params={tableParams} values={paramValues} setValues={setParamValues} />
+
+            <div className="jsonapi-section-divider">
+              {t("jsonApiPage.filterSectionTitle")}{" "}
+              <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
+            </div>
+            <div className="jsonapi-row">
+              <Select
+                className="jsonapi-select-flex"
+                size="xs"
+                aria-label={t("jsonApiPage.filterSectionTitle")}
+                placeholder={t("jsonApiPage.fieldPlaceholder")}
+                data={columnSelectData}
+                value={filterField || null}
+                onChange={(v) => setFilterField(v ?? "")}
+                clearable
+                data-testid="jsonapi-filter-field-select"
+              />
+              <Select
+                className="jsonapi-select-op"
+                size="xs"
+                aria-label={t("jsonApiPage.filterSectionTitle")}
+                data={FILTER_OPS}
+                value={filterOp}
+                onChange={(v) => setFilterOp(v ?? "eq")}
+                disabled={!filterField}
+                allowDeselect={false}
+                data-testid="jsonapi-filter-op-select"
+              />
+            </div>
+            <TextInput
+              size="xs"
+              placeholder={t("jsonApiPage.filterValuePlaceholder")}
+              aria-label={t("jsonApiPage.filterValuePlaceholder")}
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.currentTarget.value)}
+              disabled={!filterField}
+              data-testid="jsonapi-filter-value-input"
+            />
+            {handedParams.length > 0 && (
+              <Group gap={4} mt={4} data-testid="jsonapi-handed-params">
+                {handedParams.map(([key, value]) => (
+                  <Pill
+                    key={key}
+                    withRemoveButton
+                    removeButtonProps={{
+                      "aria-label": t("jsonApiPage.removeHandedParam", { param: key }),
+                    }}
+                    onRemove={() =>
+                      setHandedParams((prev) => prev.filter(([other]) => other !== key))
+                    }
                   >
-                    <span>{t("jsonApiPage.includeLabel")}</span>
-                    <span className="jsonapi-dropdown-meta">
-                      {includeSummary}{" "}
-                      {includeOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </span>
-                  </button>
-                  <Collapse in={includeOpen}>
-                    <IncludeTree
-                      relationships={tableRelationships}
-                      checkedIncludes={checkedIncludes}
-                      showColumns={includeNodes && groupByCols.length > 0}
-                      toggleInclude={toggleInclude}
-                      toggleIncludeColumn={toggleIncludeColumn}
-                    />
-                  </Collapse>
+                    {`${key}=${value}`}
+                  </Pill>
+                ))}
+              </Group>
+            )}
+
+            <div className="jsonapi-section-divider">
+              {t("jsonApiPage.sortSectionTitle")}{" "}
+              <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
+            </div>
+            <div className="jsonapi-row">
+              <Select
+                className="jsonapi-select-flex"
+                size="xs"
+                aria-label={t("jsonApiPage.sortSectionTitle")}
+                placeholder={t("jsonApiPage.fieldPlaceholder")}
+                data={columnSelectData}
+                value={sortField || null}
+                onChange={(v) => setSortField(v ?? "")}
+                clearable
+                data-testid="jsonapi-sort-field-select"
+              />
+              <Select
+                className="jsonapi-select-op"
+                size="xs"
+                aria-label={t("jsonApiPage.sortSectionTitle")}
+                data={[
+                  { value: "asc", label: t("jsonApiPage.sortAsc") },
+                  { value: "desc", label: t("jsonApiPage.sortDesc") },
+                ]}
+                value={sortDir}
+                onChange={(v) => setSortDir((v as "asc" | "desc") ?? "asc")}
+                disabled={!sortField}
+                allowDeselect={false}
+                data-testid="jsonapi-sort-dir-select"
+              />
+            </div>
+
+            <div className="jsonapi-section-divider">
+              {t("jsonApiPage.aggregateSectionTitle")}{" "}
+              <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
+            </div>
+            <MultiSelect
+              aria-label={t("jsonApiPage.groupByColumns")}
+              size="xs"
+              placeholder={t("jsonApiPage.groupByColumns")}
+              data={groupByColumnOptions}
+              value={groupByCols}
+              onChange={setGroupByCols}
+              searchable
+              clearable
+              data-testid="jsonapi-groupby-picker"
+            />
+            <Checkbox.Group
+              data-testid="jsonapi-funcs-picker"
+              value={selectedFuncs}
+              onChange={setSelectedFuncs}
+              label={t("jsonApiPage.aggregateFunctions")}
+              mt="sm"
+              mb="sm"
+            >
+              <Group gap="xs" mt={8} mb={4}>
+                {AGG_FUNCS.map((fn) => (
+                  <Checkbox
+                    key={fn}
+                    value={fn}
+                    label={fn}
+                    size="xs"
+                    data-testid={`jsonapi-func-${fn}`}
+                  />
+                ))}
+              </Group>
+            </Checkbox.Group>
+            {groupByCols.length > 0 && (
+              <Checkbox
+                checked={includeNodes}
+                onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
+                label={t("jsonApiPage.includeNodes")}
+                size="xs"
+                mb="sm"
+                data-testid="jsonapi-include-nodes-checkbox"
+              />
+            )}
+          </>
+        )}
+
+        <div
+          className="jsonapi-section-divider"
+          style={{ marginTop: columnNames.length ? undefined : "0.5rem" }}
+        >
+          {t("jsonApiPage.paginationSectionTitle")}
+        </div>
+        <NumberInput
+          label={t("jsonApiPage.pageSizeLabel")}
+          size="xs"
+          min={1}
+          max={1000}
+          value={pageSize === "" ? "" : Number(pageSize)}
+          onChange={(v) => setPageSize(v === "" ? "" : String(v))}
+          data-testid="jsonapi-page-size-input"
+        />
+
+        {groupByCols.length > 0 && selectedFuncs.length === 0 && (
+          <Text size="xs" c="red" data-testid="jsonapi-funcs-required-hint">
+            {t("jsonApiPage.selectAtLeastOneFunc")}
+          </Text>
+        )}
+        <Button
+          className="jsonapi-run-btn"
+          onClick={handleRun}
+          disabled={
+            !effectiveSelectedTable ||
+            !paramsReady ||
+            (groupByCols.length > 0 && selectedFuncs.length === 0)
+          }
+          loading={running}
+          mt="sm"
+          data-testid="jsonapi-run-button"
+        >
+          {running ? t("jsonApiPage.runningButton") : t("jsonApiPage.runButton")}
+        </Button>
+      </ExploreSide>
+
+      <ExploreMain className="jsonapi-main">
+        <div className="jsonapi-url-bar">
+          <Badge className="jsonapi-method" color="green" variant="light" radius="sm">
+            {t("jsonApiPage.methodGet")}
+          </Badge>
+          <span className="jsonapi-url">{displayUrl || "—"}</span>
+          {displayUrl && (
+            <Tip text={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")} named>
+              <ActionIcon
+                className="jsonapi-copy-btn"
+                variant="subtle"
+                size="sm"
+                aria-label={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")}
+                onClick={handleCopy}
+                data-testid="jsonapi-copy-button"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+              </ActionIcon>
+            </Tip>
+          )}
+        </div>
+
+        <ResultPanel
+          testId="jsonapi-response"
+          title={t("jsonApiPage.responseLabel")}
+          meta={
+            resultCountText ? (
+              <span className="jsonapi-result-count">{resultCountText}</span>
+            ) : undefined
+          }
+          views={
+            parsedDoc
+              ? [
+                  {
+                    value: "summary",
+                    label: t("jsonApiPage.summaryTab"),
+                    testId: "jsonapi-summary-tab",
+                  },
+                  { value: "raw", label: t("jsonApiPage.rawTab"), testId: "jsonapi-raw-tab" },
+                ]
+              : undefined
+          }
+          view={viewTab}
+          onViewChange={(v) => setViewTab(v as "summary" | "raw")}
+          notice={
+            <>
+              {(paginationLinks?.prev || paginationLinks?.next) && (
+                <div className="jsonapi-pagination-bar">
+                  <ActionIcon
+                    className="jsonapi-page-btn"
+                    variant="subtle"
+                    size="sm"
+                    disabled={!paginationLinks.first}
+                    onClick={() => handlePaginate(paginationLinks!.first)}
+                    aria-label={t("jsonApiPage.firstPage")}
+                    data-testid="jsonapi-page-first"
+                  >
+                    <ChevronsLeft size={14} />
+                  </ActionIcon>
+                  <Button
+                    className="jsonapi-page-btn"
+                    variant="default"
+                    size="compact-xs"
+                    leftSection={<ChevronLeft size={12} />}
+                    disabled={!paginationLinks.prev}
+                    onClick={() => handlePaginate(paginationLinks!.prev)}
+                    data-testid="jsonapi-page-prev"
+                  >
+                    {t("jsonApiPage.previousPage")}
+                  </Button>
+                  <Button
+                    className="jsonapi-page-btn"
+                    variant="default"
+                    size="compact-xs"
+                    rightSection={<ChevronRight size={12} />}
+                    disabled={!paginationLinks.next}
+                    onClick={() => handlePaginate(paginationLinks!.next)}
+                    data-testid="jsonapi-page-next"
+                  >
+                    {t("jsonApiPage.nextPage")}
+                  </Button>
+                  <ActionIcon
+                    className="jsonapi-page-btn"
+                    variant="subtle"
+                    size="sm"
+                    disabled={!paginationLinks.last}
+                    onClick={() => handlePaginate(paginationLinks!.last)}
+                    aria-label={t("jsonApiPage.lastPage")}
+                    data-testid="jsonapi-page-last"
+                  >
+                    <ChevronsRight size={14} />
+                  </ActionIcon>
                 </div>
               )}
 
-              <ParamsSection params={tableParams} values={paramValues} setValues={setParamValues} />
-
-              <div className="jsonapi-section-divider">
-                {t("jsonApiPage.filterSectionTitle")}{" "}
-                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
-              </div>
-              <div className="jsonapi-row">
-                <Select
-                  className="jsonapi-select-flex"
-                  size="xs"
-                  aria-label={t("jsonApiPage.filterSectionTitle")}
-                  placeholder={t("jsonApiPage.fieldPlaceholder")}
-                  data={columnSelectData}
-                  value={filterField || null}
-                  onChange={(v) => setFilterField(v ?? "")}
-                  clearable
-                  data-testid="jsonapi-filter-field-select"
-                />
-                <Select
-                  className="jsonapi-select-op"
-                  size="xs"
-                  aria-label={t("jsonApiPage.filterSectionTitle")}
-                  data={FILTER_OPS}
-                  value={filterOp}
-                  onChange={(v) => setFilterOp(v ?? "eq")}
-                  disabled={!filterField}
-                  allowDeselect={false}
-                  data-testid="jsonapi-filter-op-select"
-                />
-              </div>
-              <TextInput
-                size="xs"
-                placeholder={t("jsonApiPage.filterValuePlaceholder")}
-                aria-label={t("jsonApiPage.filterValuePlaceholder")}
-                value={filterValue}
-                onChange={(e) => setFilterValue(e.currentTarget.value)}
-                disabled={!filterField}
-                data-testid="jsonapi-filter-value-input"
-              />
-              {handedParams.length > 0 && (
-                <Group gap={4} mt={4} data-testid="jsonapi-handed-params">
-                  {handedParams.map(([key, value]) => (
-                    <Pill
-                      key={key}
-                      withRemoveButton
-                      removeButtonProps={{
-                        "aria-label": t("jsonApiPage.removeHandedParam", { param: key }),
-                      }}
-                      onRemove={() =>
-                        setHandedParams((prev) => prev.filter(([other]) => other !== key))
-                      }
-                    >
-                      {`${key}=${value}`}
-                    </Pill>
-                  ))}
-                </Group>
-              )}
-
-              <div className="jsonapi-section-divider">
-                {t("jsonApiPage.sortSectionTitle")}{" "}
-                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
-              </div>
-              <div className="jsonapi-row">
-                <Select
-                  className="jsonapi-select-flex"
-                  size="xs"
-                  aria-label={t("jsonApiPage.sortSectionTitle")}
-                  placeholder={t("jsonApiPage.fieldPlaceholder")}
-                  data={columnSelectData}
-                  value={sortField || null}
-                  onChange={(v) => setSortField(v ?? "")}
-                  clearable
-                  data-testid="jsonapi-sort-field-select"
-                />
-                <Select
-                  className="jsonapi-select-op"
-                  size="xs"
-                  aria-label={t("jsonApiPage.sortSectionTitle")}
-                  data={[
-                    { value: "asc", label: t("jsonApiPage.sortAsc") },
-                    { value: "desc", label: t("jsonApiPage.sortDesc") },
-                  ]}
-                  value={sortDir}
-                  onChange={(v) => setSortDir((v as "asc" | "desc") ?? "asc")}
-                  disabled={!sortField}
-                  allowDeselect={false}
-                  data-testid="jsonapi-sort-dir-select"
-                />
-              </div>
-
-              <div className="jsonapi-section-divider">
-                {t("jsonApiPage.aggregateSectionTitle")}{" "}
-                <span className="jsonapi-section-hint">{t("jsonApiPage.optionalHint")}</span>
-              </div>
-              <MultiSelect
-                aria-label={t("jsonApiPage.groupByColumns")}
-                size="xs"
-                placeholder={t("jsonApiPage.groupByColumns")}
-                data={groupByColumnOptions}
-                value={groupByCols}
-                onChange={setGroupByCols}
-                searchable
-                clearable
-                data-testid="jsonapi-groupby-picker"
-              />
-              <Checkbox.Group
-                data-testid="jsonapi-funcs-picker"
-                value={selectedFuncs}
-                onChange={setSelectedFuncs}
-                label={t("jsonApiPage.aggregateFunctions")}
-                mt="sm"
-                mb="sm"
-              >
-                <Group gap="xs" mt={8} mb={4}>
-                  {AGG_FUNCS.map((fn) => (
-                    <Checkbox
-                      key={fn}
-                      value={fn}
-                      label={fn}
-                      size="xs"
-                      data-testid={`jsonapi-func-${fn}`}
-                    />
-                  ))}
-                </Group>
-              </Checkbox.Group>
-              {groupByCols.length > 0 && (
-                <Checkbox
-                  checked={includeNodes}
-                  onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
-                  label={t("jsonApiPage.includeNodes")}
-                  size="xs"
-                  mb="sm"
-                  data-testid="jsonapi-include-nodes-checkbox"
-                />
+              {error && (
+                <Alert
+                  className="jsonapi-error"
+                  color="red"
+                  icon={<AlertCircle size={16} />}
+                  variant="light"
+                >
+                  {error}
+                </Alert>
               )}
             </>
+          }
+        >
+          {parsedDoc && viewTab === "summary" ? (
+            <SummaryView
+              doc={parsedDoc}
+              noResultsLabel={t("jsonApiPage.noResults")}
+              includedLabel={t("jsonApiPage.includedDivider")}
+              relationshipTitle={relationshipTitle}
+            />
+          ) : (
+            <pre className="jsonapi-response-text">
+              {parsedDoc
+                ? JSON.stringify(parsedDoc, null, 2)
+                : running
+                  ? t("jsonApiPage.rawPlaceholderRunning")
+                  : t("jsonApiPage.rawPlaceholderEmpty")}
+            </pre>
           )}
-
-          <div
-            className="jsonapi-section-divider"
-            style={{ marginTop: columnNames.length ? undefined : "0.5rem" }}
-          >
-            {t("jsonApiPage.paginationSectionTitle")}
-          </div>
-          <NumberInput
-            label={t("jsonApiPage.pageSizeLabel")}
-            size="xs"
-            min={1}
-            max={1000}
-            value={pageSize === "" ? "" : Number(pageSize)}
-            onChange={(v) => setPageSize(v === "" ? "" : String(v))}
-            data-testid="jsonapi-page-size-input"
-          />
-
-          {groupByCols.length > 0 && selectedFuncs.length === 0 && (
-            <Text size="xs" c="red" data-testid="jsonapi-funcs-required-hint">
-              {t("jsonApiPage.selectAtLeastOneFunc")}
-            </Text>
-          )}
-          <Button
-            className="jsonapi-run-btn"
-            onClick={handleRun}
-            disabled={
-              !effectiveSelectedTable ||
-              !paramsReady ||
-              (groupByCols.length > 0 && selectedFuncs.length === 0)
-            }
-            loading={running}
-            mt="sm"
-            data-testid="jsonapi-run-button"
-          >
-            {running ? t("jsonApiPage.runningButton") : t("jsonApiPage.runButton")}
-          </Button>
-        </div>
-
-        <div className="jsonapi-main">
-          <div className="jsonapi-url-bar">
-            <Badge className="jsonapi-method" color="green" variant="light" radius="sm">
-              {t("jsonApiPage.methodGet")}
-            </Badge>
-            <span className="jsonapi-url">{displayUrl || "—"}</span>
-            {displayUrl && (
-              <Tip text={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")} named>
-                <ActionIcon
-                  className="jsonapi-copy-btn"
-                  variant="subtle"
-                  size="sm"
-                  aria-label={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")}
-                  onClick={handleCopy}
-                  data-testid="jsonapi-copy-button"
-                >
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                </ActionIcon>
-              </Tip>
-            )}
-          </div>
-
-          <div className="jsonapi-panel">
-            <div className="jsonapi-panel-header">
-              <div className="jsonapi-panel-header-left">
-                <Text size="xs" fw={600} tt="uppercase">
-                  {t("jsonApiPage.responseLabel")}
-                </Text>
-                {resultCountText && <span className="jsonapi-result-count">{resultCountText}</span>}
-              </div>
-              {parsedDoc && (
-                <Tabs
-                  value={viewTab}
-                  onChange={(v) => setViewTab((v as "summary" | "raw") ?? "summary")}
-                  className="jsonapi-tab-bar"
-                >
-                  <Tabs.List>
-                    <Tabs.Tab value="summary" data-testid="jsonapi-summary-tab">
-                      {t("jsonApiPage.summaryTab")}
-                    </Tabs.Tab>
-                    <Tabs.Tab value="raw" data-testid="jsonapi-raw-tab">
-                      {t("jsonApiPage.rawTab")}
-                    </Tabs.Tab>
-                  </Tabs.List>
-                </Tabs>
-              )}
-            </div>
-
-            {(paginationLinks?.prev || paginationLinks?.next) && (
-              <div className="jsonapi-pagination-bar">
-                <ActionIcon
-                  className="jsonapi-page-btn"
-                  variant="subtle"
-                  size="sm"
-                  disabled={!paginationLinks.first}
-                  onClick={() => handlePaginate(paginationLinks!.first)}
-                  aria-label={t("jsonApiPage.firstPage")}
-                  data-testid="jsonapi-page-first"
-                >
-                  <ChevronsLeft size={14} />
-                </ActionIcon>
-                <Button
-                  className="jsonapi-page-btn"
-                  variant="default"
-                  size="compact-xs"
-                  leftSection={<ChevronLeft size={12} />}
-                  disabled={!paginationLinks.prev}
-                  onClick={() => handlePaginate(paginationLinks!.prev)}
-                  data-testid="jsonapi-page-prev"
-                >
-                  {t("jsonApiPage.previousPage")}
-                </Button>
-                <Button
-                  className="jsonapi-page-btn"
-                  variant="default"
-                  size="compact-xs"
-                  rightSection={<ChevronRight size={12} />}
-                  disabled={!paginationLinks.next}
-                  onClick={() => handlePaginate(paginationLinks!.next)}
-                  data-testid="jsonapi-page-next"
-                >
-                  {t("jsonApiPage.nextPage")}
-                </Button>
-                <ActionIcon
-                  className="jsonapi-page-btn"
-                  variant="subtle"
-                  size="sm"
-                  disabled={!paginationLinks.last}
-                  onClick={() => handlePaginate(paginationLinks!.last)}
-                  aria-label={t("jsonApiPage.lastPage")}
-                  data-testid="jsonapi-page-last"
-                >
-                  <ChevronsRight size={14} />
-                </ActionIcon>
-              </div>
-            )}
-
-            {error && (
-              <Alert
-                className="jsonapi-error"
-                color="red"
-                icon={<AlertCircle size={16} />}
-                variant="light"
-              >
-                {error}
-              </Alert>
-            )}
-
-            {parsedDoc && viewTab === "summary" ? (
-              <SummaryView
-                doc={parsedDoc}
-                noResultsLabel={t("jsonApiPage.noResults")}
-                includedLabel={t("jsonApiPage.includedDivider")}
-                relationshipTitle={relationshipTitle}
-              />
-            ) : (
-              <pre className="jsonapi-response-text">
-                {parsedDoc
-                  ? JSON.stringify(parsedDoc, null, 2)
-                  : running
-                    ? t("jsonApiPage.rawPlaceholderRunning")
-                    : t("jsonApiPage.rawPlaceholderEmpty")}
-              </pre>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+        </ResultPanel>
+      </ExploreMain>
+    </ExploreShell>
   );
 }

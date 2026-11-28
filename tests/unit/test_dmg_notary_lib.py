@@ -20,6 +20,7 @@ job's 45-minute limit, so each submit attempt is bounded and a stalled one is se
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -28,6 +29,11 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 _LIB = _REPO / "packaging/macos/notary-lib.sh"
 _SCRIPTS = ("packaging/macos/notarize-dmg.sh",)
+#: The real sleep, found on this process's PATH (which holds no fake): a fake that execs /bin/sleep
+#: on a host whose /bin is served from the caller's PATH (NixOS's envfs) would exec the fake itself,
+#: forever. Not resolved further: on Nix the link's target is coreutils' multi-call binary, which
+#: picks its tool by the name it is run as.
+_SLEEP = shutil.which("sleep")
 
 
 def _run(
@@ -58,7 +64,7 @@ def _run(
         "fi\n"
         'if [ "$1 $2" = "notarytool submit" ]; then\n'
         f"  s=$(head -n1 {tmp_path}/submits); sed -i.bak 1d {tmp_path}/submits\n"
-        '  [ "$s" = hang ] && exec /bin/sleep 600\n'
+        f'  [ "$s" = hang ] && exec {_SLEEP} 600\n'
         '  [ "$s" = 0 ] && { echo \'{"id": "sub-1"}\'; exit 0; }\n'
         '  echo "HTTP status code: 403. A required agreement is missing or has expired." >&2; exit 69\n'
         "fi\n"
@@ -69,7 +75,7 @@ def _run(
     fake.chmod(0o755)
     # Each sleep is a real 0.2 s tick: retry pauses stay short, and the submit watchdog's 2 s
     # poll becomes 0.2 s, so a 10 s budget lasts 1 s, far longer than the fake submit takes.
-    (bin_dir / "sleep").write_text("#!/bin/sh\nexec /bin/sleep 0.2\n")
+    (bin_dir / "sleep").write_text(f"#!/bin/sh\nexec {_SLEEP} 0.2\n")
     (bin_dir / "sleep").chmod(0o755)
     program = (
         "set -euo pipefail\n"

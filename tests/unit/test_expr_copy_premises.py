@@ -89,6 +89,35 @@ def test_readable_writes_what_it_replaces() -> None:
     )
 
 
+#: Statements with a json_object call, each with what readable writes of it: one of keys and values
+#: is sqlglot's syntax and left unparsed; any other name readable writes is still read by its tree.
+_JSON_OBJECT_STATEMENTS = [
+    ("SELECT json_object('a', 1) FROM t", "SELECT json_object('a', 1) FROM t"),
+    ("SELECT json_object('{a,1}')", "SELECT PG_JSON_OBJECT('{a,1}')"),
+    ("SELECT json_object(ARRAY['a', 'b'])", "SELECT PG_JSON_OBJECT(ARRAY['a', 'b'])"),
+    ("SELECT pg_catalog.json_object('{a,b}')", "SELECT pg_catalog.pg_json_object('{a,b}')"),
+    (
+        "SELECT json_object('a', 1), json_object /* c */ ('{a,1}')",
+        "SELECT JSON_OBJECT('a': 1), PG_JSON_OBJECT('{a,1}')",
+    ),
+    (
+        "SELECT json_object('a', 1), CAST(x AS varbit)",
+        "SELECT JSON_OBJECT('a': 1), CAST(x AS BIT)",
+    ),
+    (
+        "SELECT json_object('a', 1), \"convert\"(a, b, c)",
+        "SELECT JSON_OBJECT('a': 1), PG_CONVERT(a, b, c)",
+    ),
+]
+
+
+@pytest.mark.parametrize(("sql", "written"), _JSON_OBJECT_STATEMENTS)
+def test_readable_of_json_object_reads_the_tree_only_where_it_writes(
+    sql: str, written: str
+) -> None:
+    assert pg_functions.readable(sql) == written
+
+
 def test_a_memoized_json_form_is_not_what_the_statement_edits() -> None:
     """``_form`` keeps one tree per text. Filling it is a copy: without one, the first statement's
     columns would be every later statement's."""

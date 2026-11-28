@@ -1,345 +1,614 @@
-# Provisa Roadmap
-
-> Generated from `docs/arch/requirements.yaml` and `docs/arch/features.yaml`. Do not hand-edit.
-
-## Model your data
-
-### Source registration
-
-- **REQ-1872** [SHOULD] [proposed] [2027-Q1] Federation — FederationEngine.discover() already probes every candidate connector's functional availability against the live engine connection (each C…
-- **REQ-1961** [MUST] [in-progress] Schema Registration — The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine intr…
-- **REQ-2050** [MUST] [in-progress] Schema Registration — A zoned timestamp is an instant, and the model has a type for it: timestamptz, carried as UTC with its zone marked, beside timestamp, a d…
-- **REQ-2170** [MUST] [proposed] [2026-Q4] Schema Registration — Discovery records the keys a source declares: its primary key, unique (alternate) keys and foreign keys, into the model (table_columns.is…
-- **REQ-2171** [MUST] [proposed] [2026-Q4] Schema Registration — The canonical IR has type aliases. An alias is declared once in the IR vocabulary: a name, a canonical base type, and per-surface details…
-
-### Connector catalog
-
-- **REQ-1664** [MAY] [accepted] [2026-Q4] Data Quality Sources — A Great Expectations check can be extended with a Python function registered through the Commands surface under a new implementation kind…
-- **REQ-1783** [SHOULD] [in-progress] Subscriptions — Kaggle registers under the admin UI's "Subscriptions" source category (provisa-ui/src/pages/sources/constants.ts SOURCE_TYPES). Its confi…
-- **REQ-1785** [SHOULD] [in-progress] [2026-Q4] Data Discovery — `crawl_directory` (provisa/file_source/crawler.py) shall accept `simple_links: bool = True`, `same_domain: bool = True`, and `exclude_pat…
-- **REQ-1786** [MAY] [proposed] [2026-Q4] Data Discovery — The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, trigg…
-- **REQ-1787** [SHOULD] [in-progress] [2026-Q4] Data Discovery — refresh_kaggle_source (provisa/api/admin/schema_mutation.py) shall skip re-downloading and re-staging a Kaggle dataset when nothing has c…
-- **REQ-1788** [MAY] [in-progress] [2026-Q4] Data Discovery — The files connector's Calcite operand builder (provisa/federation/pgwire_replica.py, _files_operand) shall pass through an optional `mapp…
-- **REQ-1923** [SHOULD] [in-progress] [2027-Q1] Branded API Sources — Branded source types implemented over the generic API sources. A branded source is a named source type (Stripe, HubSpot, GitHub and so on…
-- **REQ-453** [SHOULD] [in-progress] API & Integration — For all remote schema adapters (GraphQL, gRPC, OpenAPI), a root query/GET operation whose return type is a scalar (not an object or messa…
-- **REQ-454** [SHOULD] [in-progress] API & Integration — All infrastructure and classification decisions around representing remote schemas (scalar vs. object detection, virtual-table vs. tracke…
-- **REQ-491** [SHOULD] [in-progress] Source Connectors — Google Sheets source adapter (`provisa/google_sheets/`): registered via `POST /admin/sources/google_sheets`. Authenticates via service ac…
-- **REQ-493** [SHOULD] [accepted] [2026-Q4] Source Connectors — Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational via Trino's Accumulo connector. Column family…
-- **REQ-1957** [SHOULD] [in-progress] Branded API Sources — A source built from a published API specification carries exclusions: operations and request arguments of the specification that the sour…
-- **REQ-1964** [MUST] [proposed] GovData Sources — The row counts the AskAmerica adapter reports are for engines to optimise with and are read from recorded table metadata, never by scanni…
-- **REQ-1998** [SHOULD] [proposed] Source Connectors — A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with Duck…
-- **REQ-2017** [SHOULD] [in-progress] Source Connectors — A table on an Elasticsearch source can be registered from a native search instead of an index: one JSON document, {"index": ..., "query":…
-- **REQ-2018** [SHOULD] [proposed] Source Connectors — A table on a Prometheus source can be registered from a native PromQL query: an instant or range PromQL query (e.g. rate(http_requests_to…
-- **REQ-2019** [SHOULD] [proposed] Source Connectors — A table on a Splunk source can be registered from a native SPL query: a Splunk search (e.g. search index=web status={{status}} | stats co…
-- **REQ-2020** [SHOULD] [proposed] Source Connectors — A table on a GraphQL remote source can be registered from a native GraphQL query: one GraphQL query document whose variables are the para…
-- **REQ-2021** [SHOULD] [proposed] Source Connectors — A table on a Salesforce source can be registered from a native SOQL query: a SOQL query with bind variables (e.g. SELECT Account.Name, CO…
-- **REQ-2022** [SHOULD] [proposed] Source Connectors — A table on a Druid source can be registered from a native Druid native JSON queries query: a Druid native query (timeseries, topN or grou…
-- **REQ-2023** [SHOULD] [proposed] Source Connectors — A table on a Redis source can be registered from a native RediSearch FT.SEARCH / FT.AGGREGATE query: a RediSearch FT.SEARCH or FT.AGGREGA…
-- **REQ-2024** [SHOULD] [proposed] Source Connectors — A table on a DynamoDB source can be registered from a native PartiQL query: a PartiQL SELECT with ? parameters bound by DynamoDB, against…
-- **REQ-2025** [SHOULD] [proposed] Source Connectors — A table on a ServiceNow source can be registered from a native encoded queries query: a ServiceNow Table API read with an encoded query (…
-- **REQ-2026** [SHOULD] [proposed] Source Connectors — A table on a Cassandra source can be registered from a native CQL query: a CQL SELECT with ? markers bound by the driver, restricted on p…
-- **REQ-2027** [SHOULD] [proposed] Source Connectors — A table on a Microsoft 365 and Google Workspace source can be registered from a native Microsoft Graph $filter/$search and Gmail/Drive se…
-- **REQ-2028** [SHOULD] [proposed] Source Connectors — A table on a gRPC remote source can be registered from a native request message templates query: one unary method call with a request mes…
-- **REQ-2029** [SHOULD] [proposed] Source Connectors — A Qdrant search table (REQ-1983) can be registered from the full Qdrant Query API request (query_points), not only collection, query, usi…
-- **REQ-2069** [SHOULD] [in-progress] Enterprise SaaS — Jira Cloud is a source type (jira) read and written through its own Apache Calcite adapter's bundled pgwire server, as ServiceNow is (REQ…
-- **REQ-2100** [SHOULD] [in-progress] Source Connectors — A Node or Python code source's tables are reached two more ways beside landing (REQ-1984, REQ-1993, REQ-2098). ONE FRONT END: every built…
-- **REQ-2098** [SHOULD] [in-progress] Source Connectors — A Node or Python code source runs in one of two modes. DEV: its code on the Provisa server, in today's sandboxed worker (REQ-1984, REQ-19…
-- **REQ-2112** [SHOULD] [proposed] Source Connectors — A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the…
-- **REQ-2121** [SHOULD] [proposed] Source Connectors — A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form. On the code …
-- **REQ-2131** [SHOULD] [proposed] [2027-Q1] Source Connectors — A code-source function (Node, REQ-1984, or Python, REQ-1993) tagged @columns is a batch column transform, the batched form of REQ-1924's …
-- **REQ-2138** [SHOULD] [proposed] [2027-Q1] SPARQL — A sparql source (REQ-1683) may name a reasoner, HermiT first, and an OWL axioms file. At each refresh it pulls the slice of the graph its…
-- **REQ-2147** [SHOULD] [in-progress] [2027-Q1] Data Quality Sources — The profiler classifies columns from their profiled values, as Purview's classification rules do. Its plausible types (REQ-1934) gain cla…
-
-### Semantic model
-
-- **REQ-1363** [MUST] [in-progress] [2026-Q4] Domain Hierarchy — Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressi…
-- **REQ-1919** [MUST] [in-progress] [2026-Q4] Model Store — The model store. The model -- sources, tables and columns, relationships, roles and their assignments, row filters and masks, metrics, vi…
-- **REQ-466** [SHOULD] [proposed] Naming Convention — Dataset identity resolution requires a centralized service. Every registered dataset has two identity forms: physical (native source name…
-- **REQ-467** [SHOULD] [proposed] Naming Convention — Query-language dataset name resolution via centralized identity service (extends REQ-466). Any dataset name in SQL, Cypher, or GraphQL qu…
-- **REQ-477** [SHOULD] [in-progress] Domain Model — When use_domains=false, domain_prefix is forced off (internally overridden to false) and domain-based access gating is bypassed entirely.
-- **REQ-518** [SHOULD] [in-progress] Admin UI — ERD modal: The Entity Relationship Diagram is presented as a modal dialog (not an inline panel or separate page), rendering a Cytoscape-b…
-- **REQ-1969** [MUST] [proposed] Model Store — Every save of a model object passes one consequences gate on the server before it reaches the model store (REQ-1919). A save is a create,…
-- **REQ-2123** [SHOULD] [proposed] [2026-Q4] Profile Runs Terrain View — The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view…
-- **REQ-2124** [SHOULD] [proposed] [2026-Q4] Profile Runs 3D Relationship and Distribution Views — The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand …
-
-### Views
-
-- **REQ-1329** [MUST] [proposed] [2026-Q4] Source Identification — Replace the sentinel source ID entirely: source_id becomes nullable, and registered relations gain an explicit definition kind (base | de…
-
-### Glossary, tags and ontology
-
-- **REQ-1414** [SHOULD] [proposed] [2026-Q4] Tag Registry — Tag assignments are readable as a queryable relation, not only through the admin API: a `column_tags` view yields one row per (object_typ…
-- **REQ-1979** [SHOULD] [in-progress] Data Governance — The `deprecated` system tag applies to every object of the model: metrics, commands, roles and row-level rules, as well as source, table/…
-- **REQ-2130** [SHOULD] [proposed] [2026-Q4] Glossary Admin — the REQ-2128 3D graph engine scoped to the whole glossary rather than one data product, with the same layer, filter and preset controls a…
-- **REQ-2136** [SHOULD] [proposed] [2027-Q1] Glossary Admin — The Ontology page's filter controls are shorthand for a SPARQL query (REQ-2135) that scopes the graph. An export of the graph is that que…
-- **REQ-2141** [SHOULD] [proposed] [2027-Q1] Business Glossary & Ontology — A term stays the curated word, a SKOS concept, and its OWL role is derived from what it grounds. A term grounded in a table or view is a …
-- **REQ-2143** [SHOULD] [in-progress] [2027-Q1] Glossary Admin — The Ontology View reads, on the server, the graph it draws, and the query it reads is the one Open as query exports. The page's search is…
-- **REQ-2145** [MUST] [in-progress] [2027-Q1] Data Governance — PII is on columns, and Provisa offers to cover every column with the same meaning, including future ones. The pii system tag goes on a co…
-- **REQ-2150** [SHOULD] [proposed] [2027-Q1] Glossary Admin — A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right in layers: the terms whose relationshi…
-- **REQ-2163** [SHOULD] [proposed] [2026-Q4] Business Glossary & Ontology — A third generated system schema, ontology, holds the model's meaning, as meta holds its structure. Two parts. Definitions: the glossary v…
-- **REQ-2165** [SHOULD] [proposed] [2027-Q1] Business Glossary & Ontology — Bulk RDF export of the governed graph, the counterpart of the Neo4j export (REQ-392), so a customer who already runs a triple store (Jena…
-- **REQ-2166** [SHOULD] [proposed] [2027-Q1] Business Glossary & Ontology — A customer's own graph store queries Provisa live, with no copy: we work with what you have. RDF: a SPARQL 1.1 SERVICE clause in Jena, Gr…
-
-### Catalog and discovery
-
-- **REQ-1364** [SHOULD] [accepted] [2026-Q4] Config Export — Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling…
-- **REQ-1385** [MUST] [in-progress] [2026-Q4] Data Catalog Integration — Semantic URIs (provisa:// scheme) on metadata-exported assets, addressed by business identity, self-describing to the point practical: ki…
-- **REQ-1389** [MUST] [in-progress] [2026-Q4] Data Catalog Integration — Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter. Publishing is an UPSERT on the vendor's st…
-- **REQ-1636** [SHOULD] [in-progress] [2026-Q4] Data Catalog Integration — New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to REQ-1635's snowflake_horizon.py: populates BigQuery Dataplex…
-- **REQ-1639** [SHOULD] [in-progress] Data Catalog Integration — The Data Product detail panel shows a computed, read-only "Related Tables" section: tables one approved relationship away from the produc…
-- **REQ-1645** [SHOULD] [in-progress] [2026-Q4] Snowflake Horizon Catalog Export — Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product Product Page metadata including owner, domain, and member …
-- **REQ-1646** [MAY] [proposed] Snowflake Horizon Catalog Export — Snowflake Horizon Catalog export can optionally create a `_provisa` database containing user-facing exposure views organized as `{domain-…
-- **REQ-1953** [SHOULD] [proposed] Data Products — A data product shows the profiles of its tables without anyone wiring them to it. Where a table a product contains is a member of a data …
-- **REQ-1966** [SHOULD] [proposed] Semantic Interchange (Apache Ossie) — The model export offers the dbt semantic manifest and the Cube model as formats beside Ossie, each as one download from the same export s…
-- **REQ-2117** [SHOULD] [proposed] Data Catalog Integration — Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data prod…
-- **REQ-2118** [SHOULD] [proposed] Data Catalog Integration — The data product export publishes Provisa's data products as listings in the internal catalogs an enterprise's other data teams use. It i…
-- **REQ-2119** [MUST] [proposed] Data Catalog Integration — Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes …
-- **REQ-2122** [SHOULD] [proposed] Data Catalog Integration — Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Co…
-- **REQ-2127** [SHOULD] [proposed] [2026-Q4] Data Products — The Data Products page and the core of its detail panel are drawn from the meta domain through the governed pipeline as the signed-in use…
-- **REQ-2128** [SHOULD] [proposed] [2026-Q4] Data Products — The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the selected product. It shows a simplifi…
-- **REQ-2132** [SHOULD] [proposed] [2027-Q1] Data Products — A data-quality checker table's description states its quality claim: why the check exists, in business terms (for example, "Orders are co…
-- **REQ-2148** [SHOULD] [proposed] [2027-Q1] Data Catalog Integration — A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of tha…
-- **REQ-2157** [MUST] [proposed] [2026-Q4] Data Products — A data product's data quality has three parts. Expectations are checks the product owns on its inputs; promises are checks it owns on its…
-- **REQ-2158** [MUST] [proposed] [2026-Q4] Data Catalog Integration — A data product (ODPS) declares a data contract (ODCS) for each output port, stored with the product rather than generated at export: the …
-- **REQ-2160** [MUST] [proposed] [2026-Q4] Data Catalog Integration — The data product panel shows the product's owner a different subset from other readers. A consumer sees the product's promises (its contr…
+# Provisa Release Plan
 
-### Environments
+> Generated from `docs/arch/release-plan.json` by `scripts/gen_roadmap.py`. Do not hand-edit.
 
-- **REQ-1492** [MUST] [proposed] [2026-Q4] Environments — Write authority is granted into an environment and never carried between environments. Provisa executes mutations against sources -- comp…
-- **REQ-1498** [MUST] [in-progress] [2026-Q4] Environments — Every environment operation is available from the provisa command line, because an environment change is rarely the only thing happening:…
-- **REQ-1499** [MAY] [proposed] Environments — An organization may replicate an environment whole -- bindings, secrets, users and role assignments included -- when what it wants is the…
-- **REQ-1500** [MAY] [proposed] Environments — A non-prod environment can be exported as a configuration a desktop Provisa loads, so a developer works against the environment's model o…
-- **REQ-1501** [MUST] [in-progress] [2026-Q4] Environments — Environments take their shape from two exemplars, and which one governs is decided per half of the design rather than argued case by case…
-- **REQ-1503** [MUST] [accepted] [2026-Q4] Environments — A credential addresses exactly one environment. API keys, service tokens and any other non-interactive credential are issued into an envi…
-- **REQ-1506** [SHOULD] [accepted] [2026-Q4] Environments — A merge can be scoped to part of a model. Promoting one corrected metric should not require promoting every other change the source envir…
-- **REQ-1508** [MUST] [in-progress] [2026-Q4] Environments — One word, one meaning, and the two words stay apart. ENVIRONMENT names what an organization works in -- prod, dev, test, whatever it crea…
+One release every 2 days, from v0.1.0-alpha.513 to v0.1.0-alpha.524. Dates are publish dates; planned releases are not committed.
 
-### Commands and functions
+| Release | Date | Status | Requirements | Product rules |
+|---|---|---|---|---|
+| 513 | 2026-11-27 | converging | 18 | shipped |
+| 514 | 2026-11-29 | on main (cut from main) | 12 | shipped |
+| 515 | 2026-12-01 | planned | 18 | 30 |
+| 516 | 2026-12-03 | planned | 14 | 28 |
+| 517 | 2026-12-05 | planned | 17 | 30 |
+| 518 | 2026-12-07 | planned | 11 | 24 |
+| 519 | 2026-12-09 | planned | 9 | 30 |
+| 520 | 2026-12-11 | planned | 17 | 30 |
+| 521 | 2026-12-13 | planned | 11 | 30 |
+| 522 | 2026-12-15 | planned | 13 | 28 |
+| 523 | 2026-12-17 | planned | 8 | 30 |
+| 524 | 2026-12-19 | planned | 21 | 26 |
 
-- **REQ-1928** [SHOULD] [proposed] [2026-Q4] Extensible Functions — Command calls take bind parameters and column references as arguments. Today a registered command called from SQL (`SELECT fn(...)` or `S…
-- **REQ-2134** [MUST] [proposed] [2027-Q1] Extensible Functions — A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr ca…
+## v0.1.0-alpha.513: 2026-11-27 (converging)
 
-## Govern access
+### Querying & protocols
 
-### Roles and capabilities
+- **REQ-2204** BI-tool catalog query replay [SHOULD] [complete] — DBeaver, Metabase, Grafana and psql browse Provisa schemas the same way they browse PostgreSQL, tested against captured real tool traffic.
+- **REQ-2176** Ephemeral session objects in every language [SHOULD] [complete] — Users create temporary nodes, rows and graphs in a session without writing to sources, for what-if analysis.
 
-- **REQ-1299** [MUST] [in-progress] Authorization — The deployment can never be left with zero platform_admins. Revoking the platform_admin role from the last holder, and deleting or disabl…
-- **REQ-1303** [MUST] [in-progress] Authorization — When an org's administrators are unreachable, recovery runs through the platform_admin via an explicit, audited operation. It never runs …
-- **REQ-1955** [SHOULD] [proposed] MCP & AI Integration — One endpoint, given any two registered tables, returns the valid paths that connect them, and it is the only place paths are computed: th…
-- **REQ-1956** [SHOULD] [proposed] Query Governance — When the relationship guard refuses a join (REQ-603), the refusal names the valid paths that connect the two tables it refused. The paths…
-- **REQ-2060** [MUST] [proposed] Security — Rights follow the request. A request's data access AND its capabilities come only from the roles it names (X-Provisa-Role, or the session…
-- **REQ-2057** [SHOULD] [proposed] Security — Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RB…
-- **REQ-2078** [SHOULD] [proposed] Security — Derived roles join the Roles list. Each attribute the org declares as a derived role (REQ-2057) is a parent role in the main Roles list, …
-- **REQ-2079** [SHOULD] [proposed] Security — A derived role's detail panel, in the shared form layout with the standard save and notice: the source attribute, its description (editab…
-- **REQ-2080** [MUST] [proposed] Security — Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose description…
-- **REQ-2152** [MUST] [proposed] [2026-Q4] Authorization — A capability assigned to a role never widens that role's read or write grants. A capability opens a feature only; whatever the feature sh…
-- **REQ-2154** [MUST] [proposed] [2026-Q4] Security — Registering a table grants read on every one of its columns to the role the registrant is acting as and to the standard Viewer role (REQ-…
-- **REQ-2155** [MUST] [proposed] [2026-Q4] Security — Provisa ships standard roles: named collections of capabilities, maintained by Provisa, that organisations extend with their own roles. A…
-- **REQ-2159** [MUST] [proposed] [2026-Q4] Security — The access model has no carve-outs: one composition rule (inheritance as a union, REQ-2155), one access rule (a capability opens a featur…
-- **REQ-2161** [MUST] [proposed] [2026-Q4] Security — The Security page's role detail panel shows the role's effective rights, as the composition of scope, capabilities and grants (REQ-2159):…
-- **REQ-2162** [MUST] [proposed] [2026-Q4] Security — A table's detail panel answers who can read or write each of its columns: for a chosen column, every role that reads it, writes it, sees …
+### Sources
 
-### Row-level security, column visibility and masking
+- **REQ-1986** Parameterized tables [MUST] [complete] — API and native-query tables take typed parameters, so a caller can read an endpoint like /orders/{id} as a table without custom code.
+- **REQ-2112** VS Code extension for code sources [SHOULD] [complete] — Developers see which functions Provisa will serve, with inferred columns, and test edits live from their editor before registering anything.
+- **REQ-2270** Spark reads governed Provisa tables [MUST] [complete] — Data engineers read a governed table as a Spark DataFrame, with row rules and masks applied before data leaves Provisa.
+- **REQ-2138** OWL reasoning on SPARQL sources [SHOULD] [complete] — Inferred class memberships from an ontology become queryable, so rule-derived categories need no hand-maintained tables.
 
-- **REQ-1382** [MUST] [accepted] [2026-Q4] Data Governance — User attribute sources: the IdP is the system of record for attributes it provides (OIDC claims: groups, department, region); locally-adm…
-- **REQ-1383** [MUST] [accepted] [2026-Q4] Data Governance — Both IdP-sourced and local attributes resolve into the same `user.*` namespace consumed by RLS predicates; predicates are source-agnostic…
-- **REQ-1760** [MUST] [in-progress] [2026-Q4] Query Governance — Every call to provisa/federation/runtime.py's execute_engine (and any other physical execution primitive) MUST pass an explicit, typed au…
-- **REQ-2058** [SHOULD] [proposed] Security — Composite grant entries: an entry in a grant list (visible_to, writable_by, a mask entry's to) may be a+b, meaning the reader holds all o…
-- **REQ-2059** [SHOULD] [proposed] Security — Per-reader masks: a column's masking is one ordered list of entries, each {to: a grant list (composites allowed), a mask or unmasked}; th…
-- **REQ-2081** [MUST] [proposed] Security — Every row (RLS) rule carries a required description of what it is for, refused when empty by the configuration load, the GraphQL mutation…
+### Governance & security
 
-### Approvals and query limits
+- **REQ-1058** Anonymous access to published data [SHOULD] [complete] — An org can publish data to the open web from its own subdomain with no login, served only through a read-only public role.
+- **REQ-2059** Per-reader masks [SHOULD] [complete] — One column can show cleartext to some roles and different masks to others, in a visible precedence order an auditor can check.
+- **REQ-2145** PII tag by meaning, including future columns [MUST] [complete] — Tagging a business term as PII covers every column with that meaning, including columns added later, so new data is not left unprotected.
+- **REQ-2219** Per-person entitlements on coarse roles (delivered rules; the rest is REQ-2348) [SHOULD] [complete] — The identity provider grants a person specific tables and columns as attributes, so roles stay few instead of one role per person.
 
-- **REQ-1995** [SHOULD] [proposed] [2027-Q1] Registration & Governance — A pending creation request can be referred to another domain. A steward refers it with a note, for example "I think this might be in your…
+### Identity & organizations
 
-### Lineage and provenance
+- **REQ-1246** Firebase sign-in creates the user profile [MUST] [complete] — Users who sign in with Google or email links get an account on first login without a separate password to manage.
 
-- **REQ-1366** [SHOULD] [proposed] [2026-Q4] Federation Engine Abstraction — Spike: generalize time-travel (as_of) from a hardcoded Iceberg/Delta source-type special case to a general connector capability, so time-…
-- **REQ-2064** [SHOULD] [proposed] Materialization Store — The as-of header (X-Provisa-As-Of, REQ-1163) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every vers…
-- **REQ-2156** [MUST] [proposed] [2026-Q4] Federation-Wide Provenance Graph — Every lineage surface answers only what the caller can read, through one shared server-side filter: the admin Lineage page (the federatio…
+### Modeling & semantic layer
 
-### Public data publishing
+- **REQ-194** One naming authority for client-facing names [MUST] [complete] — Every client sees the same governed names on SQL, GraphQL and Cypher, and physical column names never leak to users.
 
-- **REQ-1058** [SHOULD] [proposed] [2026-Q4] Public Data Publishing — Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the…
-- **REQ-1059** [SHOULD] [proposed] [2026-Q4] Public Data Publishing — Publishing is a governance grant, not new machinery: each org has a built-in 'public' role starting with ZERO visibility. Publishing an a…
-- **REQ-1060** [MUST] [proposed] [2026-Q4] Public Data Publishing — Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no login gate, so they inherit the ti…
-- **REQ-1959** [MUST] [in-progress] Governance Column Visibility — What is public is available to all domains. An item marked public is served to every role of the organisation whatever domains that role'…
-- **REQ-2153** [MUST] [proposed] [2026-Q4] Governance Column Visibility — A column's scope says how far beyond its table's domain it reaches, and nothing else: domain, listed or public. domain, the default: outs…
+### UI & modeling
 
-## Query it any way
+- **REQ-2259** Context navigation group [MUST] [complete] — Glossary, ontology, metrics, tags, classification and documents sit under one menu, so stewards find the context layer in one place.
 
-### GraphQL
+### Install & ops
 
-- **REQ-1929** [MUST] [in-progress] [2026-Q4] Protocol Support — GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it. Everything a surface offers a role -- tables, columns, …
-- **REQ-450** [SHOULD] [in-progress] API & Integration — Every GraphQL one-to-many nested path must expose the same query arguments as the related target table's root query field.
-- **REQ-451** [SHOULD] [in-progress] API & Integration — GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, …
-- **REQ-1987** [SHOULD] [proposed] Compiler & Schema — Every source's structured types are real, shared, named types on every surface: nested objects, lists of objects and enums are named Grap…
+- **REQ-2269** One-script Linux host install with Trino [SHOULD] [complete] — An operator installs Provisa with a Trino engine on an existing Linux VM or server with one command, without Kubernetes.
 
-### SQL over HTTP
+### Engines & performance
 
-- **REQ-1965** [MUST] [in-progress] JSON Columns — Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for …
+- **REQ-2003** Freshness rules for per-statement tables [MUST] [complete] — Native-query and parameterized tables have predictable caching, so users know when they see live data and when a kept copy.
 
-### Cypher and graph analytics
+### Environments & change control
 
-- **REQ-2168** [SHOULD] [proposed] [2026-Q4] Graph Query — Common APOC calls work unchanged against Provisa's Cypher surface (HTTP and Bolt), scheduled before green because agent frameworks depend…
+- **REQ-1919** The model store (delivered rules; the rest is REQ-2308) [MUST] [complete] — Sources, tables, roles, rules and products are held in one versioned store per org, the base for environments, sync and git projection.
 
-### SPARQL
+### Catalog & data products
 
-- **REQ-2135** [SHOULD] [in-progress] [2027-Q1] SPARQL Query Frontend — SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full surface: a SPARQL tab beside SQL, GraphQL…
-- **REQ-2137** [MAY] [proposed] [2027-Q2] SPARQL Query Frontend — Later: SPARQL Update is lowered to the governed writes that exist: ontology curation (under its rights, REQ-1590), mutations and commands…
+- **REQ-2122** Catalogs admin panel (publish and read) (delivered rules; the rest is REQ-2331) [SHOULD] [complete] — Each catalog connection is set up once and used both to publish and to read metadata.
 
-### MCP server for AI agents
+### Modeling & naming
 
-- **REQ-2082** [SHOULD] [proposed] MCP Authentication — MCP tool describe_role returns only the caller's resolved role (for a meta-role, also its members, derived roles among them) with each on…
+- **REQ-194** Names across the whole data estate [MUST] [complete] — Every admitted object, export and grounded column term gets a checked, clash-free name, and only the worker that changed the model rewrites the names, so names stay consistent as the model grows.
 
-## Run it fast and fresh
+## v0.1.0-alpha.514: 2026-11-29 (on main (cut from main))
 
-### Federation and routing
+> Provisa's GitHub organization becomes simpleishard-llc with this release: the repository, release assets and container images (ghcr.io/simpleishard-llc) move there (maintainer 2026-11-27).
 
-- **REQ-1871** [SHOULD] [in-progress] [2027-Q3] Federation — (Amended 2026-09-28, LIVE-TESTED, mixed per-source verdict:) Evaluate Supabase's `wrappers` framework (github.com/supabase/wrappers, Apac…
-- **REQ-1874** [MAY] [accepted] [2026-Q4] Federation — (Amended 2026-09-28, scope widened to include mongodb; see REQ-1871's policy decision) A captive-Postgres pattern for source types reache…
-- **REQ-2164** [SHOULD] [proposed] [2027-Q1] Operations — Redacted log export: an operator can export the server's recent logs as one plain-text file with redaction applied, to attach to a suppor…
-- **REQ-2167** [SHOULD] [proposed] [2026-Q4] Protocol Conformance — Every protocol and language Provisa serves is checked against its public conformance suite, run in CI against a test instance, scheduled …
-- **REQ-2169** [SHOULD] [proposed] [2027-Q1] Extensibility — Provisa is extended through drivers, one kind per core contract: source drivers, engine drivers and secrets drivers, alongside command bi…
+### Querying & protocols
 
-### Replicas and freshness
+- **REQ-2194** Rust pgwire row encoder [SHOULD] [complete] — SQL clients over the PostgreSQL protocol get large results many times faster (measured 14x text, 40x binary) with every PostgreSQL type supported.
+- **REQ-1961** Exact numeric precision and scale [MUST] [complete] — Money and decimal columns keep their exact digits on every engine and protocol, so financial figures never round differently by client.
 
-- **REQ-882** [SHOULD] [in-progress] [2026-Q4] Materialization Store — An aggregate query is answered from a fresh materialized view that pre-aggregates its table, with nothing declared (Amended 2026-10-14, m…
-- **REQ-1632** [MUST] [in-progress] [2026-Q4] Boot-Time Replica Landing — Boot-time eager landing for MATERIALIZED sources must create schema-only (zero-row) replica tables, not full data copies. Before creating…
-- **REQ-1941** [SHOULD] [proposed] Federation — A registered table's data can be copied or moved to another source. Copy reads the table through the governed pipeline as the organisatio…
-- **REQ-2003** [MUST] [in-progress] Table Registration — A table Provisa reads itself for each statement (a parameterized or native-query table: a MongoDB pipeline, a Cosmos DB query, a Qdrant s…
-- **REQ-2061** [SHOULD] [proposed] Materialization Store — Fixed table arguments: a table whose source takes arguments (a parameterized API table, such as a GitHub table taking owner and name) may…
-- **REQ-2062** [SHOULD] [proposed] Materialization Store — Landing filter: a table may declare landing_filter, a SQL predicate over its own columns that is applied when its replica lands, so only …
+### UI & modeling
 
-### Performance and scale
+- **REQ-2262** Relate tables right after registering them [MUST] [complete] — Source setup ends with proposed relationships for the new tables, so a first query can join them minutes after connecting.
+- **REQ-2239** One 2D graph component [MUST] [complete] — The ERD, lane diagram and ontology graph look and behave alike, so users read every diagram the same way.
 
-- **REQ-1040** [MUST] [in-progress] [2026-Q4] Trino Resource Management — Per-tenant Trino resource groups enforce isolated CPU/memory ceilings and concurrency limits (maxRunning, maxQueued) per org_id, preventi…
-- **REQ-1042** [SHOULD] [proposed] [2026-Q4] Trino Resource Management — Workload separation: interactive user queries and MV/batch-refresh workloads run under distinct Trino resource groups (and eventually dis…
-- **REQ-1866** [SHOULD] [in-progress] [2027-Q1] Compilation Caching — Raw-SQL-text surfaces (pgwire, Flight SQL, HTTP Cypher-to-SQL, Bolt) should cache the compiled physical-to-semantic table-ref rewrite, ke…
+### AI assistance
 
-### High availability and multi-worker serving
+- **REQ-2115** Polly operates the UI visibly [SHOULD] [complete] — The assistant fills forms and presses buttons while the user watches, so new users learn the product by seeing each step done.
 
-- **REQ-1041** [SHOULD] [in-progress] [2026-Q4] Trino Scaling & HA — Horizontal Trino worker scale-out path: staged from single-node (coordinator executes, worker replicas=0) -> dedicated workers (include-c…
-- **REQ-1459** [MUST] [in-progress] [2026-Q4] Deployment Topology — HIGH AVAILABILITY on this platform means a PUBLISHED RECOVERY TIME MEASURED IN MINUTES, and it is BASELINE for every tier rather than an …
+### Install & ops
 
-## Live data
+- **REQ-1212** Docker image builds its own UI [MUST] [complete] — Every published image carries the UI built from the same commit, so the console always matches the server.
 
-### Change events and streams
+### Sources
 
-- **REQ-116** [SHOULD] [in-progress] Kafka Sources & Sink — Schema Registry integration: fetch Avro/Protobuf/JSON Schema from Confluent Schema Registry. Auto-map schema fields to column definitions…
-- **REQ-2133** [SHOULD] [proposed] [2027-Q1] Table Processor (Shared) — The Python preflight check (REQ-1165) can call Provisa's services, the provisa_services module a code source's worker gets (REQ-2106: llm…
-
-## Workspace
-
-### Admin console
-
-- **REQ-1975** [SHOULD] [in-progress] UI & Design Patterns — A working surface is not modal: an editor or a form an operator works in is part of the page. A dialog is used only for a short interrupt…
+- **REQ-1874** Wrapper-catalog services as brands (delivered rules; the rest is REQ-2306) [MAY] [complete] — Stripe, OpenMetadata and DataHub connect as brands over the OpenAPI source, with no API spec to find.
+- **REQ-2225** Spark connector in Sources (delivered rules; the rest is REQ-2350) [SHOULD] [complete] — Teams connect a Spark cluster as a source from the UI with the cluster as structured fields, without writing glue code.
+- **REQ-2267** Discovered code-source tables and live API sources (delivered rules; the rest is REQ-2360) [SHOULD] [complete] — A code source can generate its own tables and relationships at discovery, and OpenAPI and GraphQL sources run as built-in code sources.
 
-### Explorers
+### Catalog & data products
 
-- **REQ-2071** [SHOULD] [in-progress] UI — Explore has two top-level tabs, Python and Notebook, that run Python in the user's browser over the governed data their role is served. B…
+- **REQ-2180** Data product access requests (delivered rules; the rest is REQ-2340) [MUST] [complete] — A user who can see a product but not read it asks its owner in one step, and the grant is recorded instead of handled by email.
 
-### Chat assistant
+### Governance & security
 
-- **REQ-2012** [SHOULD] [in-progress] Chat UI — Polly's spend is metered and, in demo sandboxes, capped. Every model call marks the repeated prefix (the tool definitions, the system pro…
-- **REQ-2114** [SHOULD] [proposed] Catalog Explore — Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of…
-- **REQ-2115** [SHOULD] [proposed] Catalog Explore — Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the u…
+- **REQ-2278** Column rules by tag or classification [MUST] [complete] — One rule hides or masks every column carrying a tag such as PII, wherever it appears, instead of maintaining rules column by column.
+- **REQ-2279** Template fakes for JSON columns [SHOULD] [complete] — Masked JSON columns return realistic fake objects with the right shape, so test and demo environments work without real personal data.
 
-### Product tour and named demos
+## v0.1.0-alpha.515: 2026-12-01 (planned)
 
-- **REQ-2006** [SHOULD] [in-progress] Demo Provisioning — provisa.dev has a live demos page with one card for each published named demo: its title, description and screenshot, and an "Open live d…
-- **REQ-2008** [SHOULD] [proposed] UI — Everything the UI saves in the browser is saved per control plane and organization, so each demo, instance and org keeps its own state: t…
-- **REQ-2009** [SHOULD] [proposed] UI — A named demo ships example GraphQL queries, one file a query in its directory (demo/named/<name>/queries/*.graphql), and the GraphQL expl…
-- **REQ-2010** [SHOULD] [proposed] UI — A named demo has its own tour, the story of the demo told with its own data, for a demo that runs with no one to present it. Its steps ar…
-- **REQ-2013** [SHOULD] [proposed] UI — Each tour declares its prerequisites, what its steps show of the org beyond the rights its pages need: the sources, the registered tables…
-- **REQ-2030** [SHOULD] [in-progress] UI — The reviews named demo: an electronics shop's three NoSQL stores, read live and joined on the product id they share. MongoDB holds the ca…
-- **REQ-2032** [SHOULD] [in-progress] UI — A named demo, files (Instant data lake): a folder of mixed CSV, Parquet, XLSX and JSON files (a small city open-data drop: 311 complaints…
-- **REQ-2033** [SHOULD] [proposed] UI — A named demo, streaming (Live order stream): A live order feed arriving through Kafka or a webhook, joined to a static product catalog, o…
-- **REQ-2034** [SHOULD] [proposed] UI — A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and renewals, ServiceNow incidents, Jira issues and…
-- **REQ-2035** [SHOULD] [proposed] UI — A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so …
-- **REQ-2036** [SHOULD] [proposed] UI — A named demo, vulnerabilities (Are we shipping an exploited vulnerability?): A demo GitHub organization whose repositories pin old depend…
-- **REQ-2037** [SHOULD] [proposed] UI — An industry vertical demo, insurance: Where is our property exposure concentrated against hazard risk? Private data (generated): policies…
-- **REQ-2038** [SHOULD] [in-progress] UI — An industry vertical demo, pharma: Which of our products face shortage or recall risk? Private data: a hospital pharmacy's formulary of r…
-- **REQ-2039** [SHOULD] [proposed] UI — An industry vertical demo, agriculture: Does weather explain crop insurance losses in our portfolio? Private data (generated): farm portf…
-- **REQ-2040** [SHOULD] [proposed] UI — An industry vertical demo, audit firm: Single Audit readiness: do a nonprofit client's recorded federal awards match what the government …
-- **REQ-2041** [SHOULD] [proposed] UI — An industry vertical demo, tax firm: Nonprofit 990 benchmarking: are a client's executive pay and overhead in line with peers of similar …
-- **REQ-2042** [SHOULD] [proposed] UI — An industry vertical demo, local government: Opioid settlement funds: which areas have the highest overdose deaths relative to current tr…
-- **REQ-2043** [MAY] [proposed] UI — An industry vertical demo, banking: Which loans are concentrated in counties at high disaster risk? Private data (generated): loan book. …
-- **REQ-2044** [MAY] [proposed] UI — An industry vertical demo, markets: Which portfolio holdings face regulatory or lobbying exposure? Private data (generated): holdings. Pu…
-- **REQ-2045** [MAY] [proposed] UI — An industry vertical demo, reinsurance: Catastrophe accumulation across ceded portfolios, by region. Private data (generated): treaties a…
-- **REQ-2046** [MAY] [proposed] UI — An industry vertical demo, healthcare: Are members steered to low-quality, understaffed facilities? Private data (generated): claims. Pub…
-- **REQ-2047** [MAY] [proposed] UI — An industry vertical demo, retail: Which stocked items are under a recall? Private data (generated): inventory. Public data (govdata): fd…
-- **REQ-2048** [MAY] [proposed] UI — An industry vertical demo, manufacturing: Which bill-of-materials parts depend on imported critical minerals? Private data (generated): b…
-- **REQ-2016** [SHOULD] [in-progress] UI — The sonnets named demo: Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning, grown into a graph. Its databas…
-- **REQ-2049** [SHOULD] [in-progress] Demo Provisioning — Each published named demo is its own bundle, built and published on its own and never part of a release or the app image. A bundle holds …
-- **REQ-2051** [SHOULD] [in-progress] UI — A feature demo, data quality (quality): a medallion over the demo's own Postgres, every layer after bronze a materialized view kept curre…
-- **REQ-2052** [SHOULD] [proposed] UI — A feature demo, data profiling: The built-in Data Profiler (REQ-1934) profiles a demo's tables on a schedule; its results are governed ta…
-- **REQ-2053** [SHOULD] [in-progress] UI — A feature demo, environments and test data: The model's git-branch environments (dev, test, prod) with fake data generated per environmen…
-- **REQ-2056** [SHOULD] [in-progress] UI — A capability demo, insider review at an investment bank: Is anyone sending deal-sensitive or customer data out of the bank? Generated pri…
-- **REQ-2063** [SHOULD] [proposed] UI — A feature demo, data vault: how to set up a data vault in Provisa. Built on a well-known public sample dataset (Northwind preferred: cust…
-- **REQ-2067** [SHOULD] [proposed] UI — A capability demo, provisioning: a warehouse takes several feeds (orders, inventory, prices) and builds large datasets as materialized vi…
-- **REQ-2068** [SHOULD] [proposed] Demo Provisioning — A hosted demo sandbox can carry two regions, so a regions demo (REQ-2035) runs live and not only locally. The bundle build lands each reg…
-- **REQ-2083** [SHOULD] [proposed] UI — A named demo's tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an…
-- **REQ-2084** [SHOULD] [proposed] UI — A named demo may ship a notebook (notebook.ipynb beside its tour.yaml). The setup status carries its code cells, in order, as demo_notebo…
-- **REQ-2085** [SHOULD] [proposed] UI — The named demo churn answers which customers of a subscription business are about to cancel. Its customers and twelve months of their usa…
-- **REQ-2107** [SHOULD] [in-progress] UI — A named demo, banking: end-of-day reporting without copying the ledger. Its business question: "Can the warehouse report each day's close…
-- **REQ-2139** [SHOULD] [proposed] [2027-Q1] UI — The named demo "beneficial ownership": KYC parties, companies, owners and their stakes, over a few sources, with an ontology whose terms …
-- **REQ-2140** [SHOULD] [proposed] [2027-Q1] UI — The named demo "groupexposure" joins company data to public linked data by an identifier both share. A Prague bank's own database, read l…
-- **REQ-2151** [SHOULD] [proposed] [2027-Q1] Demo Provisioning — A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries (visitor: attributes: {name: value}). Op…
+### Identity & organizations
 
-## Identity and organizations
+- **REQ-1022** Email approvers on new requests [MUST] [in-progress] — Approvers get an email with approve and deny links when a creation request is raised, so requests do not sit unseen.
+- **REQ-2290** Generated break-glass password with forced rotation [MUST] [in-progress] — The emergency admin account cannot be used from a leaked config file or a reused password.
+- **REQ-2291** Last-platform-admin guard and recovery [MUST] [in-progress] — An installation can never lock itself out of platform administration.
+- **REQ-2293** Audit entry for org deletion [MUST] [in-progress] — Auditors can see who deleted an org and when, after its data is gone.
 
-### Sign-in and identity
+### Install & ops
 
-- **REQ-1246** [MUST] [in-progress] [2026-Q4] Authentication — First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password path. No password is creat…
-- **REQ-1264** [MUST] [in-progress] [2026-Q4] Platform Admin Break-Glass Access — Platform super-admin is a seeded local break-glass account (username + bcrypt password via simple auth provider), created at install with…
-- **REQ-1296** [MUST] [in-progress] Authentication — A claimed platform-admin slot lands the administrator in a populated deployment, not an empty one. The bootstrap org id is 'root' and its…
+- **REQ-1459** High availability as published recovery time [MUST] [in-progress] — Every tier gets a stated recovery time in minutes, so buyers can plan around it without paying for an HA upgrade.
+- **REQ-2288** Every protocol on secondary nodes [MUST] [in-progress] — Clients on pgwire, Bolt, gRPC or MCP are load-balanced across every node of a cluster.
+- **REQ-2289** cert-manager certificates in Helm [MUST] [in-progress] — Kubernetes operators get certificates issued and renewed automatically instead of managing TLS Secrets by hand.
 
-### Organizations
+### Engines & performance
 
-- **REQ-1062** [SHOULD] [in-progress] [2026-Q4] Org Branding — An org building a data portal can brand the surfaces it would expose to the portal's readers, such as the glossary and Explore, as its ow…
-- **REQ-1250** [SHOULD] [proposed] Org Membership — Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry table org_join_requests(user_id, org_id, sta…
-- **REQ-1251** [SHOULD] [proposed] Org Membership — Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provi…
-- **REQ-1252** [SHOULD] [proposed] Org Administration — Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests for the org, approve requests, and de…
-- **REQ-1261** [MUST] [in-progress] [2026-Q4] Multi-Tenant Onboarding — Self-service multi-tenant onboarding with four coupled workstreams: (1) sign-up → create-org → become-org-admin workflow where any authen…
-- **REQ-1300** [MUST] [in-progress] Authorization — An organization can be deleted. Deletion drops the org's tenant schema, its membership and invite rows in the control plane, and its entr…
-- **REQ-1304** [SHOULD] [in-progress] Authorization — Pressing delete on an organization downloads that org's configuration before the deletion is confirmed. The download is the live config Y…
-- **REQ-1305** [MUST] [in-progress] Authorization — Removing a person from an org is an org_admin operation and it removes them from both planes. Removal must be available to the org's own …
-- **REQ-1312** [MUST] [in-progress] Authorization — Deletion scrubs personal data while preserving the record that the deletion happened. Deleting an org (REQ-1300) drops every tenant-scope…
-- **REQ-1992** [MUST] [in-progress] Tenant Isolation — Every file Provisa itself generates (a source's conversion caches and crawl downloads, the Calcite file adapter's working files, replicas…
+- **REQ-2284** Tier-keyed Trino resource groups [MUST] [in-progress] — Higher tiers get more concurrency and memory on shared Trino, so paying tenants are not throttled like free ones.
+- **REQ-2300** Schema-only boot replicas on every engine [MUST] [in-progress] — Restarts are fast and never re-copy source data.
+- **REQ-2307** Edit conflicts and one reconcile path [MUST] [in-progress] — Two admins can no longer silently overwrite each other's model edits.
 
-## Install and operate
+### Catalog & data products
 
-### Installation
+- **REQ-2294** URI reserved words and rename aliases [MUST] [in-progress] — Catalogs that stored an object's old address still find it after a rename.
+- **REQ-2296** OneLake catalog target; user descriptions kept [MUST] [in-progress] — Microsoft Fabric shops publish to OneLake, and no catalog path overwrites descriptions people wrote.
 
-- **REQ-1211** [MUST] [in-progress] [2026-Q3] Linux AppImage Deployment — Linux AppImage deployments must stage the docker-compose tree out of the AppImage's self-mount into a persistent, writable location (${PR…
-- **REQ-1212** [MUST] [in-progress] [2026-Q3] Docker Image Build — The provisa/provisa:local core Docker image must have the built React SPA present in static/ at image-build time; CI core-image jobs must…
-- **REQ-2014** [MUST] [accepted] Control Plane — The control plane is PostgreSQL only, in every tier and every test: embedded PostgreSQL (pgserver) where no control-plane URL is given --…
+### Environments & change control
 
-### Deployment
+- **REQ-2298** Bind environment sources from the CLI [MUST] [in-progress] — Environment setup is scriptable in CI without the UI.
+- **REQ-2299** Present-and-inert environment state [MUST] [in-progress] — Admins see at a glance which environments still need data bindings.
+- **REQ-2308** Model store owns every write [MUST] [in-progress] — Every model change is versioned and synced the same way, whatever was edited.
 
-- **REQ-1027** [MUST] [proposed] [2026-Q3] First-Customer Deployment — Object storage externalized to Cloudflare R2 (Trino exchange/spill and any object storage), replacing bundled MinIO for first-customer pr…
-- **REQ-1230** [MUST] [in-progress] [2026-Q3] Clustered Deployment Configuration — Secondary nodes in a cluster deployment run application tier only (Provisa API/UI + in-process protocol listeners on ports 3000, 5439, 76…
-- **REQ-1239** [MUST] [in-progress] [2026-Q3] Deployment & Infrastructure — Wildcard TLS for `*.provisa.dev` via ACME DNS-01. Obtain a true wildcard `*.provisa.dev` cert from Let's Encrypt using ACME DNS-01 with a…
-- **REQ-1256** [MUST] [in-progress] [2026-Q4] Kubernetes Deployment — Helm chart must ship a served UI surface: a provisa-ui Deployment + Service exposing the SPA on port 3000 internally, reverse-proxying th…
-- **REQ-1257** [MUST] [in-progress] [2026-Q4] Kubernetes Deployment — Helm chart must support operator TLS on every endpoint (REQ-1226 parity): PROVISA_TLS_CERT and PROVISA_TLS_KEY env vars, a TLS cert Secre…
-- **REQ-1258** [MUST] [in-progress] [2026-Q4] Kubernetes Deployment — Helm provisa Service must expose all protocol endpoints served by the API container: pgwire (5439), Bolt (7687), MCP (8009), gRPC (50051)…
-- **REQ-1259** [MUST] [in-progress] [2026-Q4] Kubernetes Deployment — Helm chart cert provisioning must be a values.yaml toggle: supply an existing TLS Secret name, or specify cert-manager issuer configurati…
-- **REQ-1536** [MUST] [in-progress] [2026-Q4] Control Plane — EVERY CONTROL-PLANE STORE THE CAPABILITY CATALOG OFFERS MUST BE OPENABLE, AND THE ENVIRONMENT SUPPORT OF EACH MUST BE ESTABLISHED BY PROB…
-- **REQ-506** [SHOULD] [in-progress] [2026-Q4] Control Plane & Deployment — Control plane module (`provisa/control_plane/`): manages SLA monitoring, quota enforcement, and cluster health aggregation across multi-t…
-- **REQ-507** [SHOULD] [in-progress] Control Plane & Deployment — Helm chart (`helm/`): Kubernetes deployment via Helm chart. Values schema (`values.schema.json`) validates all configurable values at `he…
-- **REQ-509** [SHOULD] [in-progress] Control Plane & Deployment — WSL2 Windows deployment: `start-ui.sh` and install scripts detect WSL2 environment and adjust host network bindings accordingly. Docker s…
-- **REQ-1932** [MUST] [in-progress] [2026-Q4] State Store — The platform state store. The control plane has three stores. The model store (REQ-1919) holds the model, per org, shared by all the org'…
+### Governance & security
 
-### Observability
+- **REQ-2302** Complete typed engine authorization [MUST] [in-progress] — No engine statement runs without a verified authorization, closing the last ungoverned paths.
+- **REQ-2319** Public metrics [MUST] [in-progress] — Company-wide metrics are defined once and visible to every domain.
 
-- **REQ-1386** [SHOULD] [in-progress] Operational Views — Management/operations reporting is delivered as defined views in the built-in ops domain, extending the REQ-884 registry mechanism (_OPS_…
+### Modeling & naming
 
-### Sizing guide
+- **REQ-2361** One naming authority end to end [MUST] [in-progress] — Names suggested before saving and names shown after saving come from one place, so a table or relationship is called the same thing in the UI, the API and every query language.
 
-- **REQ-2005** [SHOULD] [in-progress] Sizing Guide — The documentation has a sizing guide for a customer, and the steps to run the sizing tool that produces it. The tool measures the custome…
+## v0.1.0-alpha.516: 2026-12-03 (planned)
 
-### Licensing and editions
+### Querying & protocols
 
-- **REQ-1507** [SHOULD] [accepted] [2026-Q4] Environments — Environments are gated by an entitlement feature, not by a product name. The gate is a Feature in provisa/control_plane/entitlements.py w…
-- **REQ-1793** [MUST] [in-progress] [2026-Q4] Licensing — Double opt-in web registration for free Provisa licenses: users submit a registration form on /register (company, position, role, first/l…
+- **REQ-2320** Portable JSON operations [MUST] [in-progress] — JSON queries give the same answer on every engine, and type drift is caught instead of returning wrong data.
+- **REQ-2337** Total landing of subtypes [MUST] [in-progress] — inet, money and range columns are always readable on every engine.
+- **REQ-2352** Polyfill provenance and hint rows [MUST] [in-progress] — Buyers see where each PostgreSQL equivalence was verified and which source-specific hints apply.
+- **REQ-1987** Shared named types on every surface [SHOULD] [in-progress] — Nested objects and enums appear as named, reused types in GraphQL and gRPC, so generated client code stays small and stable.
+
+### Governance & security
+
+- **REQ-2323** Generated files always in the org folder [MUST] [in-progress] — One org's generated code and data never land where another org's process can read them.
+- **REQ-2342** Metric ownership by domain [MUST] [in-progress] — Each metric has an accountable owner, and only they or an org admin change it.
+
+### Catalog & data products
+
+- **REQ-2330** Alation export target [MUST] [in-progress] — Alation customers get Provisa's model in their catalog like the other supported catalogs.
+- **REQ-2336** Contract type check and alias names [MUST] [in-progress] — Consumers are warned when a source breaks a data contract, and never see physical column names.
+- **REQ-2340** Role and column requests; suggestion outcomes [MUST] [in-progress] — Buyers ask for the role and columns they need in one form and see what was decided.
+
+### Demos & website
+
+- **REQ-2286** Contact-sales form [MUST] [in-progress] — Enterprise prospects reach sales from the site without needing a mail client.
+
+### Engines & performance
+
+- **REQ-1042** Separate interactive and batch workloads [SHOULD] [in-progress] — Materialized-view refreshes cannot slow interactive queries.
+- **REQ-2283** Opt out of view answers per request [SHOULD] [in-progress] — An analyst who needs the live base-table answer bypasses pre-aggregated views for one query without changing the model.
+
+### Install & ops
+
+- **REQ-2285** Single-node Trino and queue-aware autoscaling [SHOULD] [in-progress] — A small Helm install runs Trino in one pod, and larger ones add workers when queries queue, not only when CPU is busy.
+
+### Identity & organizations
+
+- **REQ-2292** Mandatory config download on org deletion [SHOULD] [in-progress] — No org is deleted without a restorable copy of its configuration.
+
+## v0.1.0-alpha.517: 2026-12-05 (planned)
+
+### Install & ops
+
+- **REQ-2295** Ops trend, usage and freshness reports [SHOULD] [in-progress] — Operators see trends, resource use and data freshness in built-in reports instead of ad-hoc log queries.
+- **REQ-2314** Prometheus metrics and cluster health [SHOULD] [in-progress] — Operators monitor Provisa in their existing Prometheus and OpenTelemetry stack.
+- **REQ-2315** Helm values schema [SHOULD] [in-progress] — A wrong Helm value fails at install with a clear message instead of a broken deployment.
+- **REQ-2316** WSL2 network bindings [SHOULD] [in-progress] — Windows users on WSL2 reach the UI from their Windows browser without manual port setup.
+
+### Modeling & semantic layer
+
+- **REQ-2297** column_tags relation [SHOULD] [in-progress] — Analysts join tag assignments with data in SQL and see only what their role may see.
+
+### Catalog & data products
+
+- **REQ-2301** Domain in Horizon listings [SHOULD] [in-progress] — Snowflake consumers see which business domain owns a listed product.
+
+### Sources
+
+- **REQ-2303** Crawl-scope fields in the source form [SHOULD] [in-progress] — Admins limit what an HTTP crawl follows from the UI instead of editing config.
+- **REQ-2309** Wikidata endpoints, Atlassian brands, Wikidata grounding [SHOULD] [in-progress] — Atlassian Cloud or Data Center and custom Wikidata endpoints connect by brand, and terms can point to shared Wikidata meanings.
+- **REQ-2311** Scalar OpenAPI and gRPC operations as functions [SHOULD] [in-progress] — Single-value API calls are used in queries as functions, the same as GraphQL scalars.
+- **REQ-2313** Google Sheets OAuth, per-sheet tables, refresh [SHOULD] [in-progress] — Each tab of a spreadsheet becomes its own table under the user's own Google sign-in.
+- **REQ-2317** Protobuf topics and schema evolution [SHOULD] [in-progress] — Protobuf Kafka topics are queryable, and schema changes are caught before they break readers.
+- **REQ-2318** Exclusions in the source form [SHOULD] [in-progress] — Admins hide unwanted API endpoints from the UI without editing config.
+
+### Engines & performance
+
+- **REQ-2305** Cached rewrite on Flight SQL, Cypher and Bolt [SHOULD] [in-progress] — Repeated queries over Flight SQL, Cypher and Bolt return faster.
+
+### Querying & protocols
+
+- **REQ-2312** One Cypher and GraphQL catalog [SHOULD] [in-progress] — Graph tools see the same labels whether they connect over Bolt or HTTP.
+
+### UI & modeling
+
+- **REQ-2321** Confirm every delete [SHOULD] [in-progress] — Users cannot remove saved settings with one accidental click.
+
+### Governance & security
+
+- **REQ-2322** Deprecate metrics, roles and row rules [SHOULD] [in-progress] — Teams retire any model object with a warning period, not only tables and columns.
+
+### AI assistance
+
+- **REQ-2324** Sandbox and daily assistant budgets [SHOULD] [in-progress] — Trial assistant use has a hard, visible spending cap.
+
+## v0.1.0-alpha.518: 2026-12-07 (planned)
+
+### Sources
+
+- **REQ-2327** Jira Data Center [SHOULD] [in-progress] — Self-hosted Jira shops query issues the same way Cloud users do.
+- **REQ-2328** Registered remote hosts for code sources [SHOULD] [in-progress] — Code sources run on the customer's own machines, close to their data.
+- **REQ-2335** Custom classification kinds [SHOULD] [in-progress] — Organizations detect their own identifiers, such as employee ids, the way built-in kinds are detected.
+- **REQ-2343** Teradata, Db2, Vertica, Netezza, Informix, Sybase, Spanner sources [SHOULD] [in-progress] — Enterprises with legacy warehouses query them directly beside modern sources.
+
+### Catalog & data products
+
+- **REQ-2329** Catalog approvers and Alation data products [SHOULD] [in-progress] — Catalog users request access from the right approvers, and Alation shops see products too.
+- **REQ-2331** Catalog pick list, refresh and lock [SHOULD] [in-progress] — Stewards reuse descriptions already written in their catalog and keep one source of truth.
+
+### UI & modeling
+
+- **REQ-2332** Ontology graph export; focus carried to queries [SHOULD] [in-progress] — Teams take the governed ontology into other RDF tools and keep their focus when moving to a query.
+- **REQ-2338** One-request ontology graph [SHOULD] [in-progress] — Large ontology graphs open in one request.
+
+### Modeling & semantic layer
+
+- **REQ-2334** owl:sameAs and Purview term roles [SHOULD] [in-progress] — Ontology counts are per real-world entity, and Purview shows each term's role.
+- **REQ-2341** Workbook row citations; uncited passages [SHOULD] [in-progress] — Citations to spreadsheets stay correct as the sheet changes.
+
+### AI assistance
+
+- **REQ-2339** Found terms to relationships [SHOULD] [in-progress] — Terms found in a document turn into model relationships in one step.
+
+## v0.1.0-alpha.519: 2026-12-09 (planned)
+
+### Governance & security
+
+- **REQ-2344** Policy tags with gates and why-not answers [SHOULD] [in-progress] — Every refusal explains which policy caused it, and policy tags enforce exports and promotion without custom code.
+- **REQ-2348** Entitlements tab, why-not trace, preview as [SHOULD] [in-progress] — Admins see and test exactly what a person can reach without signing in as them.
+
+### Sources
+
+- **REQ-2349** Code connector catalog, setup fields and Flight [SHOULD] [in-progress] — Organizations build full connectors in code, with typed setup forms and fast Arrow reads.
+- **REQ-2350** Spark named demo [SHOULD] [in-progress] — Prospects see Spark data governed and joined with other sources end to end.
+- **REQ-2360** One serving path for OpenAPI and GraphQL [SHOULD] [in-progress] — API sources behave identically however they were added, with one code path to fix and secure.
+
+### Modeling & semantic layer
+
+- **REQ-2351** dbt tests as data quality [SHOULD] [in-progress] — dbt test results show up as Provisa data quality, with no second test framework.
+- **REQ-2353** Ontology releases with reviewed differences [SHOULD] [in-progress] — Teams adopt new versions of standard ontologies like FIBO deliberately, seeing what changed.
+- **REQ-2355** Sync schedules, webhooks and full take-from-catalog [SHOULD] [in-progress] — Catalog and Provisa stay in step on a schedule, with differences decided by people or the customer's own workflow.
+- **REQ-2356** Restore on re-register; retired-link findings [SHOULD] [in-progress] — Undoing a removal keeps history and links, and broken references are found, not discovered by users.
+
+## v0.1.0-alpha.520: 2026-12-11 (planned)
+
+### Sources
+
+- **REQ-454** Identical remote-schema handling for all adapters [SHOULD] [in-progress] — GraphQL, gRPC and OpenAPI sources classify and register operations the same way, so behavior is predictable across source types.
+- **REQ-2186** HTML lists read as tables [SHOULD] [in-progress] — Bulleted and numbered lists on web pages become tables, widening what a file source can read.
+- **REQ-2304** Visible discovery failures [MAY] [in-progress] — Admins see why no tables were discovered instead of an empty list.
+- **REQ-2254** Shared pgwire-calcite runtime [MUST] [accepted] — The Calcite connector runtime loads once and is shared by every pgwire server, cutting memory and start time per source.
+- **REQ-2255** pgwire-calcite protocol parity [MUST] [accepted] — Sources reached through Calcite report column sizes and types like Provisa's own server, so SQL tools display them correctly.
+- **REQ-2256** Calcite dialect fixes at the source [MUST] [accepted] — SQL sent to JDBC sources is fixed in the Calcite dialect, so every source on that dialect benefits.
+- **REQ-2257** Production Db2, Trino, Vertica and Firebolt dialects [MUST] [accepted] — These four databases get correct pushed-down SQL, so queries against them return right answers.
+
+### UI & modeling
+
+- **REQ-1062** Org branding on portal surfaces [SHOULD] [in-progress] — An org publishing a data portal shows its own brand on the glossary and Explore pages it exposes.
+
+### AI assistance
+
+- **REQ-1955** One endpoint for valid join paths [SHOULD] [in-progress] — Agents and the join guard get the same list of valid paths between two tables, so AI-generated joins follow approved relationships.
+- **REQ-2357** Domain-scoped generated descriptions [MUST] [accepted] — AI-written descriptions never read or change tables outside the domains a steward is working in.
+- **REQ-2177** Citations agents can hand over intact [MUST] [accepted] — Agent answers carry a citation of the governed path and its trust, so a person can verify where an answer came from.
+
+### Demos & website
+
+- **REQ-2325** Customer 360 demo: match quality and a second question [SHOULD] [in-progress] — Prospects see entity-resolution quality measured, not asserted.
+- **REQ-2326** OSV data in the vulnerabilities demo [SHOULD] [in-progress] — The demo answers exposure questions with real public vulnerability data.
+
+### Governance & security
+
+- **REQ-1060** Rate and cost caps on public endpoints [MUST] [accepted] — Published anonymous endpoints have the tightest limits, so a public data portal cannot run up engine costs or be abused.
+
+### Environments & change control
+
+- **REQ-1969** One consequences gate on every model save [MUST] [accepted] — Every create, update or delete from UI, API, config load or agent is checked the same way before it reaches the model.
+
+### Modeling & semantic layer
+
+- **REQ-1329** Base and derived relations without a sentinel source [MUST] [accepted] — Views and metrics show their real lineage instead of a placeholder source, so provenance reads correctly.
+
+### Catalog & data products
+
+- **REQ-2181** Buyer view of a data product [MUST] [accepted] — A user who cannot yet read a product sees what it offers and how to request it, which turns the catalog into a self-serve storefront.
+
+## v0.1.0-alpha.521: 2026-12-13 (planned)
+
+### Sources
+
+- **REQ-2258** JDBC packs for hard-to-reach sources [MUST] [accepted] — SQL Server, Oracle, ClickHouse, Redshift, Exasol and others are reached through a dedicated JDBC pack where the engines' own connectors fall short.
+- **REQ-2272** Spark Connect catalog as a source [MUST] [accepted] — Provisa reads a Spark cluster's databases and tables through Spark Connect, so lakehouse tables join with other sources in one query.
+
+### Identity & organizations
+
+- **REQ-1251** Approve or deny org join requests [SHOULD] [accepted] — Org admins approve people who ask to join, so teams onboard colleagues without a support ticket.
+- **REQ-2346** Role members from SCIM, LDAP, Graph and Google [SHOULD] [in-progress] — Reviews and reports see who actually holds a role, whatever system manages membership.
+
+### Environments & change control
+
+- **REQ-1507** Environments gated by entitlement [SHOULD] [accepted] — Environments are enabled by license feature rather than product name, so edition upgrades turn them on without a reinstall.
+
+### Install & ops
+
+- **REQ-2164** Redacted log export for support [SHOULD] [accepted] — Operators send support a log file with secrets and personal data removed.
+
+### Engines & performance
+
+- **REQ-2183** Edge index via relationship materialize [SHOULD] [accepted] — Graph traversals over a materialized relationship read a prebuilt edge index, speeding large-graph queries.
+- **REQ-2206** Volatile tables never served from copies [SHOULD] [accepted] — Tables marked volatile always read live, so time-critical data is never stale.
+
+### Governance & security
+
+- **REQ-2209** Periodic access reviews with attestation [SHOULD] [accepted] — Roles, rules and masks carry review schedules with recorded sign-off, which auditors ask for.
+- **REQ-2210** Access requests from the catalog [SHOULD] [accepted] — Users ask for a table or column they found, and the request becomes a reviewed grant.
+- **REQ-2211** Effective-access explainer [SHOULD] [accepted] — Admins see exactly what a set of roles and session values can read and why, answering access questions in seconds.
+
+## v0.1.0-alpha.522: 2026-12-15 (planned)
+
+### Querying & protocols
+
+- **REQ-2212** SQL dialect per connection [SHOULD] [accepted] — A client written for SQL Server or another database connects without rewriting its SQL.
+- **REQ-2213** Text search as an API query pattern [SHOULD] [accepted] — Tables offer stemmed text search from their API tab with no search engine to set up.
+- **REQ-2268** Tags in the Cypher graph [SHOULD] [accepted] — Tags appear as nodes linked to the tables and columns they mark, so graph queries can traverse governance.
+- **REQ-2310** Bind parameters in command calls [SHOULD] [accepted] — Commands are called from SQL and Cypher with parameters and column values, so queries stay parameterised.
+- **REQ-2345** Case-insensitive SQL names [SHOULD] [accepted] — SQL users and BI tools find tables regardless of letter case.
+
+### Engines & performance
+
+- **REQ-2271** Engine impersonation (opt-in) [SHOULD] [accepted] — Engines can run queries as the requesting user, so engine-side audit logs name the real person.
+
+### Governance & security
+
+- **REQ-2287** Published data over pgwire and Bolt [SHOULD] [accepted] — Published open data is readable from SQL clients and graph tools without a login, not only over HTTP.
+
+### Environments & change control
+
+- **REQ-2347** Production access requests built on branches [SHOULD] [accepted] — Production users get access through a reviewed, time-limited request instead of new roles.
+
+### AI assistance
+
+- **REQ-2354** Assistant tests columns against policy sections [SHOULD] [accepted] — Stewards get a fast, governed first check of policy compliance without the assistant making legal claims.
+
+### Modeling & semantic layer
+
+- **REQ-2358** OpenLineage import of sources and tables [SHOULD] [accepted] — Teams that already emit OpenLineage bootstrap their Provisa model from it instead of registering tables by hand.
+
+### Catalog & data products
+
+- **REQ-2359** Collibra, Alation, Atlan, OneLake and Dataplex as sources [SHOULD] [accepted] — Governance teams query catalog metadata beside live data to find where catalog and enforcement disagree.
+
+### Sources
+
+- **REQ-1872** Engine discover() introspection fix [SHOULD] [accepted] — Source introspection through each engine returns complete table lists.
+- **REQ-1941** Copy or move a table to another source [SHOULD] [accepted] — A table is copied under governance to another source, for migrations or offloading.
+
+## v0.1.0-alpha.523: 2026-12-17 (planned)
+
+### Catalog & data products
+
+- **REQ-1966** dbt and Cube model export [SHOULD] [accepted] — The model exports to dbt semantic and Cube formats, so existing BI layers reuse it.
+
+### Modeling & semantic layer
+
+- **REQ-1995** Refer creation requests to another domain [SHOULD] [accepted] — Stewards hand a request to the right domain with a note instead of rejecting it.
+- **REQ-2178** Terms linked to commands [SHOULD] [accepted] — Process terms such as "close of day" point to the commands that carry them out.
+
+### Sources
+
+- **REQ-2018** Prometheus tables from PromQL [SHOULD] [accepted] — Metrics from a PromQL query join business data in SQL, so operations and business numbers sit in one report.
+- **REQ-2028** gRPC tables from request templates [SHOULD] [accepted] — A unary gRPC call becomes a parameterized table.
+- **REQ-2029** Full Qdrant Query API tables [SHOULD] [accepted] — Hybrid dense and sparse vector search with fusion is available as a table.
+- **REQ-2192** Generic OData source [SHOULD] [accepted] — SAP and Microsoft OData services connect from a service URL with no handwritten spec.
+
+### Platform principles
+
+- **REQ-2169** Drivers for sources, engines and secrets [SHOULD] [accepted] — Every built-in implementation is a driver, so partners extend Provisa the same way.
+
+## v0.1.0-alpha.524: 2026-12-19 (planned)
+
+### UI & modeling
+
+- **REQ-2207** My Reports (saved queries) [SHOULD] [accepted] — Users save a named query and return to it, without creating a shared view.
+
+### Sources
+
+- **REQ-2251** One descriptor per source type [SHOULD] [accepted] — Each source type's facts live in one descriptor, so adding a source type touches one place.
+- **REQ-2273** Spark time travel [SHOULD] [accepted] — Delta, Iceberg and Hudi tables on Spark answer as-of queries, so audits and restatements read past versions directly.
+- **REQ-2274** Spark change data [SHOULD] [accepted] — Inserts, updates and deletes on Delta and Iceberg tables are served as change data for downstream sync.
+- **REQ-2275** Spark procedures as commands [SHOULD] [accepted] — Maintenance such as compaction and snapshot expiry runs as governed commands from Provisa.
+- **REQ-2280** OneDrive and Google Drive file crawling [SHOULD] [accepted] — Hosted and server installs read files straight from OneDrive and Google Drive, with no desktop sync client.
+- **REQ-2306** Twelve SaaS brands over OpenAPI [MAY] [accepted] — Teams connect common SaaS tools by picking a brand and signing in, with no API spec to find.
+- **REQ-1664** Custom Great Expectations checks as commands [MAY] [accepted] — Teams extend quality checks with their own Python functions through the same governed command surface.
+- **REQ-2264** Marquez source [MAY] [accepted] — Lineage held in Marquez is queryable through its public API.
+- **REQ-2276** Databricks catalog functions and models [MAY] [accepted] — Unity Catalog functions and MLflow models are offered as governed functions.
+
+### Modeling & semantic layer
+
+- **REQ-2281** Entity resolution from tags [SHOULD] [accepted] — Records that refer to the same customer or product across sources are linked in one shared map, so cross-source questions return one answer per entity.
+- **REQ-2282** Entities found in text [SHOULD] [accepted] — Notes and documents link to the products and tables they mention, so unstructured text joins structured data.
+
+### Demos & website
+
+- **REQ-2139** Beneficial ownership demo [SHOULD] [accepted] — Shows KYC ownership chains with OWL transitive control reasoning.
+- **REQ-2182** Internal data marketplace demo [SHOULD] [accepted] — Shows products offered to an organisation's own people with existing primitives.
+- **REQ-2220** Masked-column request demo [SHOULD] [accepted] — Shows an analyst seeing why a column is masked, requesting it, and getting a governed grant.
+- **REQ-2232** dbt project demo [SHOULD] [accepted] — Shows a dbt project governed by role with lineage, unchanged.
+- **REQ-2250** Wildfire exposure demo [SHOULD] [accepted] — Shows insured value inside this week's wildfire perimeter and which policyholders to call first.
+
+### Environments & change control
+
+- **REQ-1499** Replicate a whole environment [MAY] [accepted] — An org copies an environment with bindings, secrets and users when it wants the control plane as it stands.
+- **REQ-1500** Export an environment to desktop [MAY] [accepted] — A developer works against a non-prod environment's model on their own machine.
+
+### Querying & protocols
+
+- **REQ-2333** SPARQL Update to curation and commands [MAY] [accepted] — RDF tools curate the ontology and run commands under the same rights as the UI.
+
+### Catalog & data products
+
+- **REQ-1646** Horizon _provisa exposure views [MAY] [accepted] — Snowflake users see governed views organized by domain in a clean database.
+
+## Decisions applied
+
+- **REQ-1367, REQ-1991, REQ-1756, REQ-2235, REQ-2277, REQ-2167** Standing principles or processes, off the release train (amended; REQ-2277 accepted).
+- **REQ-1027, REQ-1240, REQ-1563, REQ-1564, REQ-1779** Cloud-dev operations track, off the release train (amended).
+- **REQ-818** Superseded by REQ-2176 and REQ-1925 (superseded_by REQ-2176); REQ-346 repointed to REQ-2176 and REQ-798 to REQ-1925, since a superseded requirement cannot be a successor.
+- **REQ-1536** Superseded by REQ-2014.
+- **REQ-1871, REQ-1366** Spikes closed complete with findings recorded in the description.
+- **REQ-1859, REQ-1860** Results internal: REQ-1860 complete with its public format withdrawn; REQ-1859 stays open as internal work, off the train.
+- **REQ-1964** Accepted and handed to the govdata session, off the train.
+- **REQ-1793** Kept; behaviour present since 2026-09, completes once tested (no product work planned).
+- **all proposed** Accepted (maintainer accept-all); every one is planned below or completed.
+- **REQ-1742** Complete in 513, but it is end-to-end test coverage, not a product feature, so it is left out of the release notes.
+- **REQ-2166** Accepted; no product work remains (only tests), so not planned as a feature.
+- **REQ-2242** Accepted and parked until sqlglot allows interpreted subclasses of its compiled classes; not planned.
+
+## Off the release train
+
+REQ-818, REQ-1027, REQ-1240, REQ-1366, REQ-1367, REQ-1536, REQ-1563, REQ-1564, REQ-1756, REQ-1779, REQ-1859, REQ-1860, REQ-1871, REQ-1964, REQ-1991, REQ-2167, REQ-2235, REQ-2277.
+
+## Appendix: already shipped
+
+- **REQ-116** Kafka Schema Registry integration (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2317)
+- **REQ-259** Apollo Federation v2 subgraph as a declared role (tests present at v0.1.0-alpha.512; now in-progress)
+- **REQ-450** One-to-many nested fields carry target's root args (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-451** Object relationships expose no collection args (behaviour present, no test dates it; now in-progress)
+- **REQ-453** Scalar remote operations become tracked functions (behaviour present, no test dates it; now in-progress; remainder REQ-2311)
+- **REQ-469** One catalog module per query language (behaviour present, no test dates it; now in-progress; remainder REQ-2312)
+- **REQ-477** use_domains=false forces domain_prefix off (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-491** Google Sheets source (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2313)
+- **REQ-506** SLA monitoring with stored breaches (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2314)
+- **REQ-507** Helm chart (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2315)
+- **REQ-509** WSL2 install handling (behaviour present, no test dates it; now in-progress; remainder REQ-2316)
+- **REQ-882** Aggregate queries answered from pre-aggregating views (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2283)
+- **REQ-1040** Per-org Trino resource groups by tier (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2284)
+- **REQ-1041** Trino worker scale-out path and autoscaling (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2285)
+- **REQ-1051** Hosted docs on Cloudflare Pages (behaviour present, no test dates it; now in-progress)
+- **REQ-1052** Marketing site calls to action (tests present at v0.1.0-alpha.512; now in-progress; remainder REQ-2286)
+- **REQ-1059** Publishing via a built-in public role (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2287)
+- **REQ-1211** AppImage stages compose files to a writable home (behaviour present, no test dates it; now in-progress)
+- **REQ-1230** Secondary cluster nodes run the app tier only (behaviour present, no test dates it; now in-progress; remainder REQ-2288)
+- **REQ-1256** Helm chart serves the UI (behaviour present, no test dates it; now in-progress)
+- **REQ-1257** Helm chart TLS on every endpoint (behaviour present, no test dates it; now in-progress)
+- **REQ-1258** Helm Service exposes every protocol port (behaviour present, no test dates it; now in-progress)
+- **REQ-1259** Helm certificate source: Secret or cert-manager (behaviour present, no test dates it; now in-progress; remainder REQ-2289)
+- **REQ-1261** Self-service multi-tenant onboarding (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1264** Seeded break-glass platform admin account (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2290)
+- **REQ-1296** Claimed platform admin lands in a populated root org (tests present at v0.1.0-alpha.512; now in-progress)
+- **REQ-1299** Never zero platform admins (tests present at v0.1.0-alpha.512; now in-progress; remainder REQ-2291)
+- **REQ-1300** Deleting an organization (tests present at v0.1.0-alpha.512; now in-progress)
+- **REQ-1303** Audited recovery of an org's administration (tests present at v0.1.0-alpha.512; now in-progress)
+- **REQ-1304** Org config downloaded before deletion (tests present at v0.1.0-alpha.512; now in-progress; remainder REQ-2292)
+- **REQ-1305** Offboarding a member from both planes (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1312** Deletion scrubs personal data, keeps the record (tests present at v0.1.0-alpha.512; now in-progress; remainder REQ-2293)
+- **REQ-1327** Platform admin is control-plane only; administration layers (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1364** Config export JSON Pointer refs and resourcePath (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1382** IdP vs local user attributes precedence (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1383** Attributes in user.* namespace with provenance display (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1385** provisa:// semantic URIs on exported assets (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2294)
+- **REQ-1386** Ops-domain management reports (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2295)
+- **REQ-1389** Catalog upsert preserves human enrichment (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2296)
+- **REQ-1414** Tag assignments as a queryable SQL relation (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2297)
+- **REQ-1498** Environment operations on the CLI (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2298)
+- **REQ-1501** Environments: Hasura structure, LaunchDarkly state (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2299)
+- **REQ-1508** Environment vs lane vocabulary (behaviour present, no test dates it; now in-progress)
+- **REQ-1632** Boot-time replicas are schema-only and idempotent (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2300)
+- **REQ-1639** Data product Related Tables section (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1645** Horizon listing description from product page (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2301)
+- **REQ-1760** Typed authorization on every engine execution (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2302)
+- **REQ-1783** Kaggle two-step source form (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1785** HTTP crawl scope settings (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2303)
+- **REQ-1786** Table discovery on every source creation (behaviour present, no test dates it; now in-progress; remainder REQ-2304)
+- **REQ-1787** Skip Kaggle refresh when unchanged (behaviour present, no test dates it; now in-progress)
+- **REQ-1788** Files source Calcite refreshInterval passthrough (behaviour present, no test dates it; now in-progress)
+- **REQ-1793** Double opt-in web license registration (behaviour present, no test dates it; now in-progress)
+- **REQ-1866** Cache semantic rewrite on raw-SQL surfaces (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2305)
+- **REQ-1914** Model/governance changes reach every worker (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2307)
+- **REQ-1923** Branded sources over generic API sources (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2309)
+- **REQ-1928** Command calls take bind params and column refs (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2310)
+- **REQ-1932** Platform state store (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-1953** Data product shows its tables' profiles (behaviour present, no test dates it; now in-progress)
+- **REQ-1957** Exclusions on spec-built sources (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2318)
+- **REQ-1959** Public items served to all domains (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2319)
+- **REQ-1965** Nested columns as JSON; typed arrays in the IR (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2320)
+- **REQ-1975** Non-modal working surfaces and delete confirmation (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2321)
+- **REQ-1979** Deprecated tag on every model object (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2322)
+- **REQ-1992** Per-org file folder with vault-keyed encryption (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2323)
+- **REQ-2005** Customer sizing guide and sizing tool docs (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2006** Live demos page and no-signup demo sandboxes (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2012** Polly spend metering and sandbox caps (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2324)
+- **REQ-2016** Sonnets named demo and demo setup.yaml/extras (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2017** Elasticsearch native search tables (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2030** Reviews named demo (MongoDB, Elasticsearch, Neo4j) (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2032** Files named demo (instant data lake) (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2034** Customer 360 demo with hub and entity resolution (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2325)
+- **REQ-2036** Vulnerabilities named demo (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2326)
+- **REQ-2038** Pharma vertical demo (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2040** Audit firm vertical demo (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2050** timestamptz instant type end to end (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2051** Data quality medallion demo (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2056** Insider review demo at an investment bank (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2058** Composite (all-of) grant entries (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2069** Jira Cloud source through a Calcite pgwire adapter (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2327)
+- **REQ-2071** Explore Python and Notebook tabs on self-hosted Pyodide (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2092** Benchmark governance knobs and local pass (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2098** Remote hosts for Node/Python code sources (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2328)
+- **REQ-2107** Banking end-of-day reporting demo (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2118** Data product listings in internal catalogs (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2329)
+- **REQ-2119** Real-service e2e test for every metadata export target (tests present at v0.1.0-alpha.512; now in-progress; remainder REQ-2330)
+- **REQ-2136** Ontology graph: Open as query and graph export (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2332)
+- **REQ-2137** SPARQL Update lowered to governed writes (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2333)
+- **REQ-2141** Term roles: Class, Property, Concept; table grounding (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2334)
+- **REQ-2143** Ontology View reads its graph on the server; budget, search syntax (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2147** Profiler classification kinds (SSN, IBAN, cities...) (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2335)
+- **REQ-2150** Term read view neighbourhood graph (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2158** Data contracts per output port (ODPS/ODCS) (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2336)
+- **REQ-2168** APOC calls and command bindings (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2171** IR subtypes (inet, money, ranges...) and per-dialect function rules (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2337)
+- **REQ-2172** Demo: Give an agent your data (agentdata) (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2174** 3D/2D graph stage: best view, layouts, lanes, one ontology graph (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2338)
+- **REQ-2179** Find terms in a document (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2339)
+- **REQ-2184** Deploy a single-source view to its source (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2185** Reference library with graph retrieval (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2341)
+- **REQ-2188** Row rules with R/U/D rights; product ownership via rules (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2342)
+- **REQ-2190** pgwire catalog answered from the meta domain (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2196** Teradata, Db2, Vertica, Netezza, Informix, Sybase, Spanner source types (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2343)
+- **REQ-2203** PostgreSQL drivers' own test suites against pgwire (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2205** Dev container and three-step Codespace demo (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2208** Policy citations and the tag builder (tags explain why) (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2344)
+- **REQ-2214** SQL names are case-insensitive (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2345)
+- **REQ-2215** Resolve a role to its members across membership sources (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2346)
+- **REQ-2217** Access built in branches; production access requests (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2347)
+- **REQ-2221** Organization code connectors built from git (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2349)
+- **REQ-2222** Config-driven CLI: validate, diff, apply, export, query, explain (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2228** dbt source type (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2351)
+- **REQ-2231** provisa.dev home page structure (behaviour present, no test dates it; now complete)
+- **REQ-2233** Works-with pages on the site (behaviour present, no test dates it; now complete)
+- **REQ-2236** Polyfill grid (PostgreSQL behaviour on other engines) (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2352)
+- **REQ-2237** Import external ontologies (OWL/RDF, Ossie) (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2353)
+- **REQ-2240** Select and bulk delete in every list (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2244** UI wording pairs (Show/Hide, Expand/Collapse, Enlarge, Stop, Derived) (tests present at v0.1.0-alpha.512; now complete)
+- **REQ-2245** Assistant tests a column against a cited section (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2354)
+- **REQ-2247** Syncing page: catalog differences with Accept and standing choices (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2355)
+- **REQ-2248** Retire, never hard-delete, model objects (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2356)
+- **REQ-2253** AI features work only within selected domains (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2357)
+- **REQ-2263** OpenLineage as a way to add sources and tables (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2358)
+- **REQ-2265** Governance catalogs as live branded sources (tests present at v0.1.0-alpha.512; now complete; remainder REQ-2359)
+
+## Planning basis
+
+Capacity: about 30 missing product rules per release.
+
+Capacity is planned in missing product rules, not requirements: about 30 per 2-day release. Basis: 53 requirements reached complete in the 14 days to 2026-11-27, at about 3.9 delivered rules each (the verification's mean), so about 15 rules a day. It is recalibrated after each release from the product rules actually delivered. Rules are counted from the 2026-11-27 rule-by-rule verification (req-verify-1127 batches 1-7) against origin/main 9a5d7e81ed; REQ-2196 counts 7 (seven source types) and REQ-2018 counts 10 (ten native-query sources). Coverage-only gaps are not features and are not planned. 513 and 514 list what their code ships: a requirement belongs to the first release whose branch (tag v0.1.0-alpha.512, origin/release/v0.1.0-alpha.513, origin/main for 514) holds every test named for its delivered rules, plus the requirements v1 recorded as completed in that window; requirements whose delivered tests were already at 512 are in the appendix. From 515: the 78 split requirements (REQ-2283..REQ-2360) and the not-started requirements, ordered in-progress first, then MUST, SHOULD, MAY, then remaining work of shipped features and correctness before new surface (demos last within a priority), dependencies first. 138 requirements, 286 product rules.

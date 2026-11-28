@@ -10,6 +10,7 @@
     "rowsShown": "Показано {{shown}} из {{total}} строк",
     "figure": "Рисунок {{n}}",
     "resizeLabel": "Изменить размер редактора и вывода",
+    "output": "Вывод",
     "notebookFrame": "Блокнот Jupyter",
     "copyCode": "Копировать код",
     "clearCode": "Очистить редактор",

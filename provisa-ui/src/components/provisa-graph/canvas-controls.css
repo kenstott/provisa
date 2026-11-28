@@ -1,4 +1,5 @@
-/* REQ-2239: the one stack of view controls in a graph's canvas, 2D (.pg-stage) and 3D (.p3d-stage):
+/* REQ-2239: the one stack of view controls in a graph's canvas, 2D (.pg-stage), 3D (.p3d-stage) and
+ * the network graph (.gf-canvas-wrap):
  * bottom-left, shown while the pointer is over the canvas or a control in it has the keyboard's
  * focus, and while a recording it started is running (ExportMenu). */
 .pg-controls {
@@ -15,6 +16,7 @@
 }
 .pg-stage:hover .pg-controls,
 .p3d-stage:hover .pg-controls,
+.gf-canvas-wrap:hover .pg-controls,
 .pg-controls:focus-within,
 .pg-controls:has(.pg-beside) {
   opacity: 1;

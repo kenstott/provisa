@@ -68,6 +68,9 @@ class Rewrite:
     #: For a rule of no pattern: read before any rule's pattern, as a rule over every call, which
     #: holds whatever row a call's own name has (Grid.read_first).
     first: bool = False
+    #: The form of a dialect that keeps the old table's (polyfill.trino.KEPT): the function
+    #: answers None of every node, so the grid's walk does not call it.
+    keeps_old: bool = False
 
     @property
     def name(self) -> str:

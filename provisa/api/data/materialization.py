@@ -1118,6 +1118,19 @@ async def _fetch_gql_remote_rows(
     return rows, answer.cut
 
 
+def _registered_selections(registration: dict) -> list[tuple[str, str | None, str | None]]:
+    """The columns the model registers for a remote GraphQL table, each ``(name, data_type,
+    gql_selection)``; a parameter column is an argument of the call, never a selected field
+    (REQ-1986)."""
+    from provisa.core.parameters import is_parameter
+
+    return [
+        (c["column_name"], c["data_type"], c["gql_selection"])
+        for c in registration["columns"]
+        if not is_parameter(c)
+    ]
+
+
 async def _mat_gql_remote_table(
     tn: str,
     gql_reg: dict,
@@ -1160,7 +1173,11 @@ async def _mat_gql_remote_table(
         "boolean": "boolean",
         "jsonb": "jsonb",
     }
-    col_dicts = list(gql_tbl.get("columns", []))
+    from provisa.graphql_remote.executor import column_selection, with_registered_columns
+
+    col_dicts = with_registered_columns(
+        list(gql_tbl.get("columns", [])), _registered_selections(registration)
+    )
     if extra_selections:
         _existing_names = {c["name"] for c in col_dicts}
         for _fname, _gql_sel in extra_selections.items():
@@ -1175,22 +1192,7 @@ async def _mat_gql_remote_table(
     )
     if _governed_excluded:
         col_dicts = [c for c in col_dicts if c["name"] not in _governed_excluded]
-    from provisa.compiler.naming import (
-        apply_sql_name as _apply_sql_name,
-        apply_gql_name as _apply_gql_name,
-    )
-
-    def _gql_selection(c: dict) -> str:
-        # The store lands under the semantic sql name; the remote keys the field by its GraphQL
-        # name. When they differ, emit a GraphQL alias ``<sql_name>: <gqlField>`` so the outbound
-        # field matches the remote AND the response comes back keyed by the sql name the store
-        # expects; when they coincide, the bare field. gql_selection (nested object path) still
-        # wins. Mirrors source_loader.py's _selection / cypher_exec.py's _gql_selection.
-        if c.get("gql_selection"):
-            return c["gql_selection"]
-        sql_name = _apply_sql_name(c["name"])
-        gql_field = _apply_gql_name(c["name"])
-        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
     def _sel_from_obj_fields(fname: str, sub_fields: list) -> str:
         parts = []
@@ -1209,7 +1211,7 @@ async def _mat_gql_remote_table(
     # Map raw GQL field name → SQL name (snake_case) so CTE headers match SQL column refs
     _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in col_dicts}
     col_names = [_gql_to_sql[c["name"]] for c in col_dicts]
-    col_selections = [_gql_selection(c) for c in col_dicts]
+    col_selections = [column_selection(c) for c in col_dicts]
     col_objs = [
         _GCol(name=_gql_to_sql[c["name"]], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string"))
         for c in col_dicts

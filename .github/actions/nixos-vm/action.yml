@@ -1,12 +1,18 @@
 name: Boot the NixOS guest
 description: >-
-  Build one of packaging/nixos's systems (`ci` unless asked otherwise) as a QEMU VM, boot it on this runner under KVM, and copy the
+  Build a NixOS system (packaging/nixos's `ci` unless asked otherwise) as a QEMU VM, boot it on this runner under KVM, and copy the
   checkout onto its disk at ~/provisa. Afterwards `packaging/nixos/vm-run '<script>'` runs a script
   in the guest, and PROVISA_VM_SSH_CONFIG names the ssh config (host `vm`) for scp.
 inputs:
+  flake:
+    description: "The flake whose system is booted: packaging/nixos, or packaging/nixos/host (a user's host, its provisa input taken from this checkout)"
+    default: packaging/nixos
   system:
-    description: "Which system of packaging/nixos/flake.nix to boot: ci (the Provisa host), bare (a host without its settings) or prepared (bare plus the settings)"
+    description: "Which of the flake's nixosConfigurations to boot. packaging/nixos: ci (the Provisa host), bare (a host without its settings) or prepared (bare plus the settings); packaging/nixos/host: ci"
     default: ci
+  user:
+    description: "The guest user the workflow logs in as"
+    default: provisa
 runs:
   using: composite
   steps:
@@ -38,12 +44,12 @@ runs:
       shell: bash
       run: |
         ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/vm_key"
-        cp "$RUNNER_TEMP/vm_key.pub" packaging/nixos/ci_authorized_key.pub
+        cp "$RUNNER_TEMP/vm_key.pub" "${{ inputs.flake }}/ci_authorized_key.pub"
         cat > "$RUNNER_TEMP/vm_ssh_config" <<EOF
         Host vm
           HostName 127.0.0.1
           Port 2222
-          User provisa
+          User ${{ inputs.user }}
           IdentityFile $RUNNER_TEMP/vm_key
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
@@ -54,12 +60,19 @@ runs:
         echo "PROVISA_VM_SSH_CONFIG=$RUNNER_TEMP/vm_ssh_config" >> "$GITHUB_ENV"
 
     # path: takes the directory as it is on disk, the run's key included; a git flake would see
-    # only tracked files.
+    # only tracked files. A host flake's provisa input is this checkout, in place of GitHub's.
+    # path: also avoids `revCount is not available` on GitHub's shallow-clone runners: git+file://
+    # requires a full git history for revCount; path: hashes the directory tree directly.
+    # REQ-1900: the NixOS CI workflow must pass the module service job (run 45637595821).
     - name: Build the VM
       shell: bash
       run: |
-        nix build "path:$GITHUB_WORKSPACE/packaging/nixos#nixosConfigurations.${{ inputs.system }}.config.system.build.vm" \
-          --out-link "$RUNNER_TEMP/vm" --print-build-logs
+        provisa=()
+        if [ "${{ inputs.flake }}" != packaging/nixos ]; then
+          provisa=(--override-input provisa "path:$GITHUB_WORKSPACE" --no-write-lock-file)
+        fi
+        nix build "path:$GITHUB_WORKSPACE/${{ inputs.flake }}#nixosConfigurations.${{ inputs.system }}.config.system.build.vm" \
+          "${provisa[@]}" --out-link "$RUNNER_TEMP/vm" --print-build-logs
 
     - name: Boot
       shell: bash
@@ -67,11 +80,18 @@ runs:
         PROVISA_SRC: ${{ github.workspace }}
         NIX_DISK_IMAGE: ${{ runner.temp }}/nixos.qcow2
       run: |
-        nohup "$RUNNER_TEMP/vm/bin/run-provisa-nixos-vm" > "$RUNNER_TEMP/vm-console.log" 2>&1 < /dev/null &
+        # run-<hostName>-vm: the one script the build makes.
+        nohup "$RUNNER_TEMP"/vm/bin/run-*-vm > "$RUNNER_TEMP/vm-console.log" 2>&1 < /dev/null &
         qemu=$!
         for _ in $(seq 1 60); do
           if ssh -F "$PROVISA_VM_SSH_CONFIG" -o ConnectTimeout=5 vm true 2>/dev/null; then
-            ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'nixos-version; nproc; free -g; df -h /'
+            ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'nixos-version; nproc; free -g; df -h /; swapon --show'
+            # vm-guest.nix gives the guest swap; a guest without it is a broken image, not a lane's
+            # memory problem (run 45997449404 booted with none, and the kernel killed ClickHouse).
+            if [ -z "$(ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'swapon --show --noheadings')" ]; then
+              echo "the guest has no swap: vm-guest.nix swapDevices did not reach the VM"
+              exit 1
+            fi
             exit 0
           fi
           if ! kill -0 "$qemu" 2>/dev/null; then break; fi
@@ -81,6 +101,15 @@ runs:
         tail -n 200 "$RUNNER_TEMP/vm-console.log"
         exit 1
 
+    # cp -r inside the guest reads symlinks via the virtio-9p driver, which returns
+    # ELOOP for relative symlinks that traverse multiple directory levels (e.g.
+    # demo/named/starthere/files/inquiries.sqlite -> ../../../files/inquiries.sqlite).
+    # Archiving from the HOST runner's native FS avoids the 9P readlink() path: tar -c
+    # on the host reads symlinks correctly, then pipes the archive over SSH; the guest's
+    # tar -x recreates symlinks with symlinkat() without touching /mnt/src again.
     - name: Checkout onto the guest's disk
       shell: bash
-      run: ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'cp -r /mnt/src ~/provisa'
+      run: |
+        set -eo pipefail
+        tar -C "$GITHUB_WORKSPACE" -cf - . \
+          | ssh -F "$PROVISA_VM_SSH_CONFIG" vm 'mkdir ~/provisa && tar -C ~/provisa -xf -'
