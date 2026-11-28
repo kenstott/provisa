@@ -20,7 +20,8 @@ normative statement a client observes, named for its source:
   into one pool, every method's types found;
 - health checking (doc/health-checking.md, grpc.health.v1.Health);
 - status codes (doc/statuscodes.md): which code a server answers each condition with;
-- a query of the first table RPC the service declares, answered OK with its rows.
+- a query of the fixture table's RPC (pgwire_catalog_types.FIXTURE_TABLE, the one table of the
+  model every conformance instance loads), answered OK with its rows.
 
 Every case is passed, skipped by design, a documented limit or failed (REQ-2167, amended
 2026-11-23); the run is
@@ -44,6 +45,7 @@ from google.protobuf.message_factory import GetMessageClass
 from grpc_health.v1 import health_pb2
 from grpc_reflection.v1alpha import reflection_pb2 as v1alpha_pb2
 
+from pgwire_catalog_types import FIXTURE_TABLE
 from surface_cases import Case, expect, report, run, write
 
 SUITE = "gRPC server reflection, health checking and status code scenarios"
@@ -136,17 +138,19 @@ class Grpc:
         return self._pool
 
     def query_method(self) -> Any:
-        """The first server-streaming Query<Table> method the service declares."""
+        """The fixture table's server-streaming Query<Table> method. The role's service also
+        declares the control plane's own tables (data products, commands, ...), which the
+        conformance instance leaves empty, so the first Query RPC declared is not the fixture's.
+        Matched on the table's name without case or underscores, as the type name is the
+        table's in PascalCase."""
+        wanted = "query" + FIXTURE_TABLE.replace("_", "").lower()
+        declared = []
         for service in self.provisa_services():
-            described = self.pool().FindServiceByName(service)
-            for method in described.methods:
-                if (
-                    method.name.startswith("Query")
-                    and method.server_streaming
-                    and not (method.name.endswith(("Batch", "Aggregate", "GroupBy")))
-                ):
+            for method in self.pool().FindServiceByName(service).methods:
+                declared.append(method.name)
+                if method.name.lower() == wanted and method.server_streaming:
                     return method
-        raise AssertionError("the service declares no Query<Table> RPC")
+        raise AssertionError(f"the service declares no RPC for {FIXTURE_TABLE}: {declared}")
 
     def _path(self, method: Any) -> str:
         return f"/{method.containing_service.full_name}/{method.name}"

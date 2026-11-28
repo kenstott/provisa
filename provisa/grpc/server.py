@@ -341,7 +341,14 @@ def _streaming(body):
 
 # How many method names' handlers a servicer keeps (ProvisaServicer.rpc_handler).
 _HANDLERS_KEPT = 4096
-_REFLECTION_METHOD = ("grpc.reflection.v1alpha.ServerReflection", "ServerReflectionInfo")
+# Server reflection under both of its published packages (grpc/grpc doc/server-reflection.md):
+# grpc.reflection.v1 and its predecessor v1alpha, whose messages are the same on the wire, so one
+# handler answers both. grpcio-reflection ships only v1alpha's generated messages.
+_REFLECTION_SERVICES = (
+    "grpc.reflection.v1.ServerReflection",
+    "grpc.reflection.v1alpha.ServerReflection",
+)
+_REFLECTION_METHOD = "ServerReflectionInfo"
 
 
 class _OrgBoundService(grpc.GenericRpcHandler):
@@ -356,7 +363,7 @@ class _OrgBoundService(grpc.GenericRpcHandler):
         service, _, method = (handler_call_details.method or "").lstrip("/").partition("/")
         if service == SERVICE_NAME:
             return self._servicer.rpc_handler(method)
-        if self._reflection and (service, method) == _REFLECTION_METHOD:
+        if self._reflection and service in _REFLECTION_SERVICES and method == _REFLECTION_METHOD:
             return self._servicer.reflection_handler()
         return None
 
@@ -576,7 +583,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             with rpc_scope() as rpc:
                 service = rpc.run(described(_RpcContext(context)))
             yield from reflection.ReflectionServicer(
-                (SERVICE_NAME, reflection.SERVICE_NAME), pool=service.pool
+                (SERVICE_NAME, *_REFLECTION_SERVICES), pool=service.pool
             ).ServerReflectionInfo(requests, context)
 
         return grpc.stream_stream_rpc_method_handler(
