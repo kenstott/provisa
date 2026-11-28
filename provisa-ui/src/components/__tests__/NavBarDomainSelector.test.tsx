@@ -92,7 +92,10 @@ describe("the navbar's domain selector", () => {
     expect(trigger).toHaveTextContent("Domains (2/6)");
 
     await userEvent.click(trigger);
-    const menu = await screen.findByRole("menu");
+    // Mantine keeps the dropdown display:none in jsdom (no layout), so find it by its contents.
+    const systemLabel = await screen.findByTestId("navbar-domain-system-label");
+    const menu = systemLabel.closest<HTMLElement>('[role="menu"]');
+    if (!menu) throw new Error("the System label is not inside the domains menu");
     const sequence = Array.from(
       menu.querySelectorAll<HTMLElement>(
         '[data-testid^="navbar-domain-item-"], [data-testid^="navbar-domain-system-"]',
