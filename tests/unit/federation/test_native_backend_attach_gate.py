@@ -41,6 +41,9 @@ class _RecordingRuntime:
     def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
         """The ops views a native walk defines (the engine's landed traces, REQ-862)."""
 
+    def hold_reads(self, key, hold) -> None:  # noqa: ANN001
+        """The lease on the landed traces' folder every query holds (native_traces.ReadLease)."""
+
 
 def _source(sid: str, type_value: str):
     return SimpleNamespace(
