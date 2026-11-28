@@ -263,9 +263,9 @@ function placeAcross(
   rows: Map<string, number>,
 ): Map<string, At> {
   const out = new Map<string, At>();
+  const drawn = lanes.filter((l) => l.items.length > 0);
   let left = 0;
-  for (const { id, items } of lanes) {
-    if (items.length === 0) continue;
+  for (const [i, { id, items }] of drawn.entries()) {
     const width = Math.max(...items.map((n) => n.w));
     const ys = id === beside ? placeRows(items, lines, overlay, (m) => out.get(m)?.y) : rows;
     for (const n of items) out.set(n.id, { x: left + width / 2, y: ys.get(n.id) as number });
@@ -277,9 +277,38 @@ function placeAcross(
       for (const path of routes.values()) room = Math.max(room, path[1].x - right);
       for (const b of besideNames(routes, lines).values()) room = Math.max(room, b.x2 - right);
     }
-    left += width + room + 2 * (LANE_PAD + LANE_EDGE) + gap;
+    const boxes = 2 * (LANE_PAD + LANE_EDGE);
+    const named = drawn[i + 1] ? crossingRoom(items, width, drawn[i + 1].items, lines) : 0;
+    left += width + room + boxes + Math.max(gap, named - room - boxes);
   }
   return out;
+}
+
+/** REQ-2239: the room the names of the lines between two neighbouring lanes need between the
+ * lanes' widest nodes. A line's name is centred on it, so its two nodes stand its name's width
+ * apart, with an arrowhead's room and their lane boxes' padding at each end, the name clear of both
+ * boxes; a node narrower than its lane's widest sits short of the lane's edge, which moves the name
+ * toward the narrower side by half the difference. */
+function crossingRoom(
+  here: LaneItem[],
+  width: number,
+  next: LaneItem[],
+  lines: LaneLine[],
+): number {
+  const nextWidth = Math.max(...next.map((n) => n.w));
+  const inHere = new Map(here.map((n) => [n.id, n]));
+  const inNext = new Map(next.map((n) => [n.id, n]));
+  let need = 0;
+  for (const k of lines) {
+    if (!k.label) continue;
+    const [a, b] = inHere.has(k.source) ? [k.source, k.target] : [k.target, k.source];
+    const s = inHere.get(a);
+    const t = inNext.get(b);
+    if (!s || !t) continue;
+    const short = Math.abs((width - s.w) / 2 - (nextWidth - t.w) / 2);
+    need = Math.max(need, nameWidth(k.label) + 2 * (NAME_END + LANE_PAD + LANE_EDGE) + short);
+  }
+  return need;
 }
 
 /** The heights sortLanes keys on: every lane but the ``beside`` lane spread over the height of the

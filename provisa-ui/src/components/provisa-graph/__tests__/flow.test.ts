@@ -13,7 +13,9 @@
 
 import { describe, expect, it } from "vitest";
 import { cytoscape, type Core } from "../core";
-import { flowParts, foldsLast, packUnder } from "../flow";
+import { flowParts, foldsLast, layerGap, packUnder } from "../flow";
+import { textWidth } from "../model";
+import { SIZE } from "../tokens";
 
 const node = (id: string, x: number, y: number, parent?: string, kind = "node") => ({
   data: { id, kind, ...(parent ? { parent } : {}) },
@@ -63,5 +65,20 @@ describe("the flow preset", () => {
     expect(cy.getElementById("c").position("y") - cy.getElementById("fold").position("y")).toBe(
       before,
     );
+  });
+});
+
+// REQ-2239 (amended 2026-11-27): lineage labels its lines with their transforms; the layers stand
+// far enough apart that the widest label is clear of the nodes at both ends.
+describe("layerGap", () => {
+  it("keeps the least gap when every label is short", () => {
+    expect(layerGap(["", "SUM"])).toBe(140);
+  });
+
+  it("widens to the widest label, with an arrowhead's room at each end", () => {
+    const long = "SUM, COUNT, CAST, UPPER, SUBSTRING(1, 3) · 5 columns";
+    const gap = layerGap(["SUM", long]);
+    expect(gap).toBeGreaterThan(140);
+    expect(gap).toBeGreaterThanOrEqual(textWidth(long, SIZE.edgeLabel) + 2 * 2 + 2 * 12);
   });
 });

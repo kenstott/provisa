@@ -19,6 +19,8 @@
 import { packBoxes } from "./arrange";
 import type { Core } from "./core";
 import { PROVISA_ELK } from "./elkLayout";
+import { textWidth } from "./model";
+import { SIZE } from "./tokens";
 
 /** The space between two things packed under the laid-out part, and above them. */
 const PACK_GAP = 48;
@@ -32,7 +34,21 @@ const GROUP_OPTIONS = {
   "elk.layered.nodePlacement.strategy": "SIMPLE",
 };
 
-export function flowLayout(eles: unknown) {
+/** The least space between two layers, and the room an arrowhead takes at a line's end. */
+const LAYER_GAP = 140;
+const ARROW_ROOM = 12;
+/** An edge label's text background padding (stylesheet ``text-background-padding``). */
+const LABEL_PAD = 2;
+
+/** REQ-2239: the space between layers, so the widest of the lines' ``labels`` -- lineage names
+ * each transform on its line -- stands clear of the nodes at both its ends. */
+export function layerGap(labels: string[]): number {
+  const widest = Math.max(0, ...labels.map((l) => textWidth(l, SIZE.edgeLabel)));
+  return Math.max(LAYER_GAP, Math.ceil(widest + 2 * LABEL_PAD + 2 * ARROW_ROOM));
+}
+
+/** The flow layout of ``eles``, its layers ``gap`` apart (layerGap). */
+export function flowLayout(eles: unknown, gap: number) {
   return {
     name: PROVISA_ELK,
     animate: false,
@@ -44,7 +60,7 @@ export function flowLayout(eles: unknown) {
       "elk.direction": "RIGHT",
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
       // Room between layers for a line's label: lineage names each transform on its line.
-      "elk.layered.spacing.nodeNodeBetweenLayers": "140",
+      "elk.layered.spacing.nodeNodeBetweenLayers": String(gap),
       "elk.spacing.nodeNode": "44",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
