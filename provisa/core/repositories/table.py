@@ -21,6 +21,7 @@ from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
+from provisa.core.ir_types import names_null_type
 from provisa.core.models import Table
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 from provisa.core.repositories import data_product as data_product_repo
@@ -583,6 +584,11 @@ async def _upsert(
             raise ValueError(
                 f"column {table.table_name}.{col.name} has no data_type; "
                 "resolve the type at registration — an untyped column cannot be persisted"
+            )
+        if names_null_type(_resolved):  # REQ-1426: the type of NULL is no type
+            raise ValueError(
+                f"column {table.table_name}.{col.name} is typed as NULL ({_resolved!r}); "
+                "resolve the type at registration — a column typed as NULL cannot be persisted"
             )
         _resolved_types[col.name] = _resolved
     # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that

@@ -562,14 +562,14 @@ describe("buildErdElements — junction relationships", () => {
     const spec = erdGraph(erd, []);
     expect(spec.nodes.find((n) => n.id === "t:11")?.type).toBe("junction");
     expect(spec.nodes.find((n) => n.id === "t:10")?.type).toBe("table");
-    const els = graphElements(spec, (type) => type, "all");
+    const els = graphElements(spec, "all");
     const junction = els.find((e) => e.data.id === "t:11");
     const entity = els.find((e) => e.data.id === "t:10");
     expect(junction?.data.shape).toBe("diamond");
     expect(junction?.data.w).toBe(SIZE.diamondWidth);
     expect(junction?.data.h).toBe(SIZE.diamondHeight);
-    // Its name and type, no body.
-    expect(junction?.data.label).toBe("pet_companions\nJUNCTION");
+    // Its name only: no type row, no body (REQ-2239, compact).
+    expect(junction?.data.label).toBe("pet_companions");
     expect(entity?.data.shape).toBe("box");
     expect(entity?.data.w).toBe(SIZE.nodeWidth);
     // Its legs are solid, drawn as every edge is: no tone of their own (REQ-2239).
@@ -601,7 +601,7 @@ describe("buildErdElements — junction relationships", () => {
     const spec = erdGraph(erd, []);
     expect(spec.edges.length).toBeGreaterThan(0);
     expect(spec.edges.every((e) => e.arrow === "target" || e.arrow === "both")).toBe(true);
-    const els = graphElements(spec, (type) => type, "all").filter((e) => e.group === "edges");
+    const els = graphElements(spec, "all").filter((e) => e.group === "edges");
     for (const el of els) expect(Object.keys(el.data)).not.toContain("tone");
     for (const dark of [false, true]) {
       const t = graphTokens(dark);
@@ -838,7 +838,7 @@ describe("buildErdElements — withdrawn tables and relationships", () => {
     expect(spec.nodes.find((n) => n.id === "t:2")?.withdrawn).toBe(true);
     expect(spec.nodes.find((n) => n.id === "t:1")?.withdrawn).toBeUndefined();
     expect(spec.edges.find((e) => e.data?.relationshipId === "1")?.dashed).toBe(true);
-    const els = graphElements(spec, (type) => type, "all");
+    const els = graphElements(spec, "all");
     expect(els.find((e) => e.data.id === "t:2")?.data.withdrawn).toBe("yes");
     expect(els.find((e) => e.data.id === "t:3")?.data.withdrawn).toBe("yes");
     expect(els.find((e) => e.data.id === "t:1")?.data.withdrawn).toBeUndefined();

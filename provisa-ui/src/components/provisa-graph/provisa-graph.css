@@ -100,6 +100,11 @@
   color: var(--mantine-color-dimmed);
   line-height: 1.4;
 }
+/* A box's rows it cut short, whole: the box's own monospace. */
+.pg-tip-rows {
+  font-family: var(--mantine-font-family-monospace);
+  overflow-wrap: anywhere;
+}
 /* What the card is attached to: the node on the drawing, or a point on a line. */
 .pg-tip-anchor {
   position: absolute;

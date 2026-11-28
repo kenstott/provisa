@@ -52,6 +52,7 @@ const ICON_COMPONENTS = new Set([
   "ErdToggle",
   "ImportsToggle",
   "DiscoverButton",
+  "ProductMapButton",
 ]);
 
 /** Containers read through: their children stand in the toolbar in their order. */

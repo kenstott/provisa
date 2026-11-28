@@ -51,6 +51,7 @@ import {
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { MarkdownLink } from "./DocsLink";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -105,6 +106,7 @@ const SUGGESTION_KEYS = ["name", "page", "sources", "inflation", "profile", "fak
 const WRAP = { whiteSpace: "pre-wrap", wordBreak: "break-word" } as const;
 const MARKDOWN_COMPONENTS = {
   pre: (props: React.ComponentPropsWithoutRef<"pre">) => <pre {...props} style={WRAP} />,
+  a: MarkdownLink,
 };
 
 export function ChatPanel() {

@@ -11,7 +11,7 @@
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { PageHelp } from "./PageHelp";
-import { PAGE_HELP, pageHelpDocsHref, type PageHelpPlacement } from "./pageHelpRegistry";
+import { PAGE_HELP, type PageHelpPlacement } from "./pageHelpRegistry";
 
 /**
  * REQ-2277 rule 8: the current page's (?) help, read from the registry by its route. Each header
@@ -34,7 +34,7 @@ export function RoutePageHelp({ placement }: { placement: PageHelpPlacement }) {
       paragraphs={[t(entry.purpose), ...(entry.more ?? []).map((key) => t(key))]}
       ariaLabel={t("pageHelp.title")}
       testId="page-help"
-      docs={{ href: pageHelpDocsHref(entry), label: t("pageHelp.docsLink") }}
+      docs={entry.docs}
     />
   );
 }

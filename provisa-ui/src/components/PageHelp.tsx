@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Link } from "react-router-dom";
-import { ActionIcon, Anchor, Popover, Stack, Text } from "@mantine/core";
+import { ActionIcon, Popover, Stack, Text } from "@mantine/core";
 import { CircleHelp } from "lucide-react";
+import { DocsLink } from "./DocsLink";
+import type { DocsTarget } from "./docsTarget";
 import { STAY_OPEN_CLOSE_DELAY_MS, useStayOpen } from "./useStayOpen";
 
 /**
@@ -37,8 +38,8 @@ export function PageHelp({
   paragraphs: string[];
   ariaLabel: string;
   testId: string;
-  /** The page's documentation: the in-app Docs route and the link's text. */
-  docs: { href: string; label: string };
+  /** The page's documentation, linked (in a new tab) at the end of the card. */
+  docs: DocsTarget;
 }) {
   const { opened, pinned, open, closeSoon, set } = useStayOpen();
   return (
@@ -88,9 +89,7 @@ export function PageHelp({
               {p}
             </Text>
           ))}
-          <Anchor component={Link} to={docs.href} size="xs" data-testid={`${testId}-docs`}>
-            {docs.label}
-          </Anchor>
+          <DocsLink target={docs} testId={`${testId}-docs`} />
         </Stack>
       </Popover.Dropdown>
     </Popover>

@@ -11,8 +11,8 @@
 // REQ-2239: the one stylesheet every 2D graph is drawn with (SPEC.md). Selectors read only what
 // graphElements writes: the kind of element, its type, and the marks the component sets.
 
-import { NODE_TYPES, SIZE, typeIcon, type GraphTokens, type NodeType } from "./tokens";
-import { TEXT_LEFT, TEXT_RIGHT } from "./model";
+import { NODE_TYPES, SIZE, type GraphTokens, type NodeType } from "./tokens";
+import { GROUP_PAD, TEXT_LEFT } from "./model";
 
 type Ele = { data(k: string): unknown };
 
@@ -36,10 +36,37 @@ const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 /** Where the band ends across a box ``w`` wide. */
 const band = (e: Ele) => `${((SIZE.band / (e.data("w") as number)) * 100).toFixed(2)}%`;
-/** The label's room: the node's own (model.ts sizes the box for its label). */
-const textRoom = (e: Ele) => `${e.data("textW") as number}px`;
-/** The label's room is centred between the icon's right and the box's right edge. */
-const TEXT_SHIFT = (TEXT_LEFT - TEXT_RIGHT) / 2;
+
+const escapeXml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&apos;");
+
+/** A box's text, drawn as one image over its fill (REQ-2239, amended 2026-11-28, THE SHARED NODE
+ * STYLE IS COMPACT): its name bold on the first row, its body's rows under it in a small
+ * monospace, tight, all from TEXT_LEFT. Cytoscape draws one font per label, so the two sizes and
+ * weights of a box are drawn as an image; model.ts has already cut each row to the box's room. */
+export function cardImage(e: Ele, t: GraphTokens): string {
+  const w = e.data("w") as number;
+  const h = e.data("h") as number;
+  const rows = (e.data("rows") as string[] | undefined) ?? [];
+  const italic = e.data("status") === "draft" ? " font-style='italic'" : "";
+  const name =
+    `<text x='${TEXT_LEFT}' y='${SIZE.padY + SIZE.nameStep / 2}' dominant-baseline='central'` +
+    ` font-family='${FONT}' font-size='${SIZE.name}' font-weight='600' fill='${t.text}'${italic}>` +
+    `${escapeXml(e.data("title") as string)}</text>`;
+  const top = SIZE.padY + SIZE.nameStep + SIZE.bodyGap;
+  const body = rows
+    .map(
+      (r, i) =>
+        `<text x='${TEXT_LEFT}' y='${top + i * SIZE.lineStep + SIZE.lineStep / 2}'` +
+        ` dominant-baseline='central' font-family='${MONO}' font-size='${SIZE.lineFont}'` +
+        ` fill='${t.textMuted}' xml:space='preserve'>${escapeXml(r)}</text>`,
+    )
+    .join("");
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'` +
+    ` viewBox='0 0 ${w} ${h}'>${name}${body}</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
 
 export function graphStylesheet(t: GraphTokens) {
   const types = Object.keys(NODE_TYPES) as NodeType[];
@@ -58,31 +85,33 @@ export function graphStylesheet(t: GraphTokens) {
         "underlay-opacity": t.shadowOpacity,
         "underlay-padding": 2,
         "underlay-shape": "round-rectangle",
-        label: "data(label)",
+        // A diamond's or a fold node's name, centred (a box's text is its card); model.ts has
+        // already cut it to the room, so it never wraps.
+        label: "data(caption)",
         "font-family": FONT,
         "font-size": SIZE.name,
-        "font-weight": 500,
+        "font-weight": 600,
         color: t.text,
-        // The label runs from past the icon to short of the right edge, and wraps rather than
-        // run past either: at its spaces, or anywhere when a word is wider than its room.
-        "text-wrap": "wrap",
-        "text-overflow-wrap": "data(wrap)",
-        "text-max-width": textRoom,
+        "text-wrap": "none",
         "text-valign": "center",
         "text-halign": "center",
-        "text-justification": "left",
-        "text-margin-x": TEXT_SHIFT,
-        "line-height": 1.25,
-        "background-width": SIZE.icon,
-        "background-height": SIZE.icon,
-        "background-position-x": SIZE.band + 8,
-        "background-position-y": "50%",
-        "background-clip": "none",
-        "background-fit": "none",
         cursor: "pointer",
       },
     },
-    // The band on the leading edge and the icon, by type.
+    {
+      // A box: its text is its card, drawn over the whole box.
+      selector: 'node[kind = "node"][shape = "box"]',
+      style: {
+        "background-image": (e: Ele) => cardImage(e, t),
+        "background-width": "100%",
+        "background-height": "100%",
+        "background-position-x": 0,
+        "background-position-y": 0,
+        "background-fit": "none",
+        "background-clip": "node",
+      },
+    },
+    // The thin band on the leading edge, by type.
     ...types.map((type) => ({
       selector: `node[kind = "node"][type = "${type}"]`,
       style: {
@@ -90,14 +119,13 @@ export function graphStylesheet(t: GraphTokens) {
         "background-gradient-direction": "to-right",
         "background-gradient-stop-colors": `${NODE_TYPES[type].colour} ${NODE_TYPES[type].colour} ${t.nodeFill} ${t.nodeFill}`,
         "background-gradient-stop-positions": (e: Ele) => `0% ${band(e)} ${band(e)} 100%`,
-        "background-image": typeIcon(type),
       },
     })),
     {
       // The one exception to the single shape (REQ-2239, A JUNCTION IS A DIAMOND): a junction is
       // Chen's relationship diamond. It keeps its band's colour (the border; the fill a tint of it),
-      // its icon above its name, and its legs, drawn as every edge is (REQ-2239: ERD edges take the
-      // shared edge colour).
+      // its name, and its legs, drawn as every edge is (REQ-2239: ERD edges take the shared edge
+      // colour).
       selector: 'node[kind = "node"][shape = "diamond"]',
       style: {
         shape: "diamond",
@@ -107,35 +135,20 @@ export function graphStylesheet(t: GraphTokens) {
         "border-color": (e: Ele) => NODE_TYPES[e.data("type") as NodeType].colour,
         // Cytoscape draws no diamond underlay; the diamond goes without the box's under-glow.
         "underlay-opacity": 0,
-        "text-max-width": `${SIZE.diamondWidth - 40}px`,
-        "text-justification": "center",
-        "text-margin-x": 0,
-        "text-margin-y": 7,
-        "background-position-x": "50%",
-        "background-position-y": 18,
       },
     },
     {
-      // A node with a body: its lines in monospace, its icon beside its name.
-      selector: 'node[body = "yes"]',
-      style: {
-        "font-family": MONO,
-        "font-size": 10,
-        "background-position-y": 10,
-      },
-    },
-    {
-      // A fold node: the same box, dashed, with no band.
+      // A fold node: the same box, dashed, with no band, its name muted.
       selector: 'node[kind = "more"]',
       style: {
         "border-style": "dashed",
         color: t.textMuted,
-        "text-margin-x": 0,
-        "text-justification": "center",
+        "font-weight": 400,
       },
     },
     // A withdrawn table (REQ-1921): the same box, its border dashed.
     { selector: 'node[withdrawn = "yes"]', style: { "border-style": "dashed" } },
+    // A draft's name is italic (its card draws it so; a diamond's label here).
     { selector: 'node[status = "draft"]', style: { "font-style": "italic" } },
     { selector: 'node[status = "deprecated"]', style: { opacity: 0.55 } },
     { selector: 'node[status = "retired"]', style: { opacity: 0.35 } },
@@ -162,11 +175,20 @@ export function graphStylesheet(t: GraphTokens) {
         "text-background-color": t.canvas,
         "text-background-opacity": 1,
         "text-background-padding": "3px",
-        padding: "28px",
+        // Inside the room ELK keeps round a group (flow.ts GROUP_OPTIONS, presets.ts), so a drawn box
+        // never reaches past the place it was laid out in.
+        padding: `${GROUP_PAD}px`,
         "compound-sizing-wrt-labels": "include",
-        "min-width": 120,
-        "min-height": 80,
+        // The least size of what is inside the padding: a collapsed group, empty, is a one-row node's.
+        "min-width": SIZE.nodeWidth,
+        "min-height": SIZE.nodeHeight,
       },
+    },
+    {
+      // REQ-2239 (amended 2026-11-28): a group's box is at least as wide as its title
+      // (groupMinWidth), widened evenly round its nodes, as ELK keeps the room (groupSizeOptions).
+      selector: 'node[kind = "group"]',
+      style: { "min-width": "data(minInner)" },
     },
     {
       // A lane's box is drawn behind what is in it, and takes no pointer.

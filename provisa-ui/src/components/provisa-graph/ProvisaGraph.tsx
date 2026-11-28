@@ -52,7 +52,7 @@ import {
 } from "./marks";
 import { graphElements, typesDrawn, type Detail, type GraphSpec } from "./model";
 import { readPlaces, standPlaces, type GraphPlaces, type Pt, type StandPlaces } from "./places";
-import { ERD_ELK_LAYOUT } from "./presets";
+import { GROUPED_ELK_LAYOUT } from "./presets";
 import { graphStylesheet } from "./stylesheet";
 import { bendPairs } from "./pairs";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
@@ -172,9 +172,10 @@ interface TipAt {
   y: number;
   width: number;
   height: number;
-  /** What the default card says: the thing's name and description. */
+  /** What the default card says: the thing's name and description, and its rows cut short. */
   name: string;
   description: string;
+  clipped: string[];
 }
 
 /** The nodes and lines drawn, on the page: what a card should stay off. */
@@ -257,7 +258,7 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(() => graphElements(graph, typeName, detail), [graph, typeName, detail]);
+  const elements = useMemo(() => graphElements(graph, detail), [graph, detail]);
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
@@ -475,6 +476,10 @@ export function ProvisaGraph({
       return {
         name: String(data("name") ?? data("label") ?? ""),
         description: String(data("description") ?? ""),
+        // A box's rows cut short to its width, whole (REQ-2239, THE SHARED NODE STYLE IS COMPACT).
+        clipped: ((data("clipped") as string[] | undefined) ?? []).filter(
+          (r) => r !== data("name"),
+        ),
       };
     };
     const enter = (h: GraphHover) => (evt: EventObject) => {
@@ -552,6 +557,12 @@ export function ProvisaGraph({
           const rect = box.getBoundingClientRect();
           packUnder(cy, isolated, rect.height > 0 ? rect.width / rect.height : 1.6);
           fitClear(cy as unknown as CyInstance);
+          // A view may route its lines orthogonally (the role graph's, REQ-2161), as an ERD's
+          // reader may; lineage's stay bezier.
+          if (latest.current.options?.routing === "taxi") {
+            cy.$(".pg-edge").style("curve-style", "taxi");
+            applyTaxiLanes(c);
+          }
           finish();
         };
         // Every group is laid out, the ones no line reaches too: ELK stacks their nodes.
@@ -599,9 +610,9 @@ export function ProvisaGraph({
         cy.nodes('[kind = "node"]').forEach((n) => {
           if (!connected.has(n.id())) n.style("display", "none");
         });
-        // ELK through Provisa's own adapter (ERD_ELK_LAYOUT names it), which says a failure after
+        // ELK through Provisa's own adapter (GROUPED_ELK_LAYOUT names it), which says a failure after
         // the layout started.
-        laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
+        laying.run(cy.layout(GROUPED_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
           const opts = latest.current.options;
           const rect = box.getBoundingClientRect();
           const arranged = arrangeLayered(c, {
@@ -804,6 +815,13 @@ export function ProvisaGraph({
     <>
       <b>{tip.name}</b>
       {tip.description && <div className="pg-tip-body">{tip.description}</div>}
+      {tip.clipped.length > 0 && (
+        <div className="pg-tip-body pg-tip-rows">
+          {tip.clipped.map((r) => (
+            <div key={r}>{r}</div>
+          ))}
+        </div>
+      )}
     </>
   ) : null;
 

@@ -165,6 +165,11 @@ describe("Related to guidance", () => {
       "href",
       "/docs-site/ontology/#building-a-glossary-that-grounds",
     );
+    expect(screen.getByTestId("glossary-related-to-guide")).toHaveAttribute("target", "_blank");
+    expect(screen.getByTestId("glossary-related-to-guide")).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
     fireEvent.click(screen.getByTestId("glossary-related-to-only"));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
@@ -223,6 +228,7 @@ describe("Related to guidance", () => {
       "href",
       "/docs-site/ontology/#building-a-glossary-that-grounds",
     );
+    expect(screen.getByTestId("glossary-edge-guide")).toHaveAttribute("target", "_blank");
   });
 
   // REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): each Related to the assistant added comes

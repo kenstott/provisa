@@ -162,6 +162,8 @@ describe("a page command's description and documentation", () => {
     const link = within(card).getByTestId("page-command-docs");
     expect(link).toHaveTextContent("Read the documentation");
     expect(link).toHaveAttribute("href", "/docs?page=configuration/#tables");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
     // The card stays open while the pointer crosses onto it, so the link can be clicked; leaving
     // both closes it. (jsdom positions nothing, so Mantine keeps the card display:none: whether it
     // is mounted is what tells here.)

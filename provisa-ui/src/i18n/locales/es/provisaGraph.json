@@ -26,7 +26,8 @@
       "checker": "Comprobación de calidad",
       "profile": "Perfil",
       "tag": "Etiqueta",
-      "more": "Más"
+      "more": "Más",
+      "role": "Rol"
     }
   }
 }

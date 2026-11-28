@@ -14,6 +14,7 @@
 
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
 import { PROVISA_ELK } from "./elkLayout";
+import { groupSizeOptions } from "./model";
 
 export const ERD_ELK_LAYOUT = {
   name: PROVISA_ELK,
@@ -22,10 +23,19 @@ export const ERD_ELK_LAYOUT = {
     algorithm: "layered",
     "elk.direction": "UP",
     "elk.hierarchyHandling": "INCLUDE_CHILDREN",
-    "elk.layered.spacing.nodeNodeBetweenLayers": "150",
-    "elk.spacing.nodeNode": "60",
+    "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+    "elk.spacing.nodeNode": "32",
     "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-    "elk.padding": "[top=40,left=20,bottom=20,right=20]",
+    "elk.padding": "[top=30,left=16,bottom=16,right=16]",
   },
+} as CyLayoutOptions;
+
+/** ProvisaGraph's layered layout (ERD_ELK_LAYOUT): each of its groups keeps at least its title's
+ * width (groupMinWidth, on the group's data as ``minW``; REQ-2239, amended 2026-11-28). Every
+ * parent ProvisaGraph draws is a group. */
+export const GROUPED_ELK_LAYOUT = {
+  ...ERD_ELK_LAYOUT,
+  nodeLayoutOptions: (n: { isParent(): boolean; data(k: string): unknown }) =>
+    n.isParent() ? groupSizeOptions(n.data("minW") as number) : {},
 } as CyLayoutOptions;

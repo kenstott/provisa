@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import or_, select
 
 from provisa.core.column_scope import COLUMN_SCOPES, SCOPE_DOMAIN, ColumnScopeInvalid
+from provisa.core.ir_types import names_null_type
 from provisa.core.schema_org import registered_tables, roles, sources, table_columns
 from provisa.api.engine_error_names import client_text
 
@@ -125,6 +126,13 @@ async def _resolve_ref_schema(conn, ref_names: set[str]) -> dict[str, dict[str, 
     return schema
 
 
+def _untyped(column) -> bool:
+    """A column with no data type, or typed as NULL ('null', 'unknown'), which is no type
+    (REQ-1426)."""
+    data_type = getattr(column, "data_type", None)
+    return not data_type or names_null_type(data_type)
+
+
 def _annotate_view_output_types(view_sql: str, schema: dict[str, dict[str, str]]) -> dict[str, str]:
     """Return {output column -> SQL type} for a view, inferred by SQLGlot from `schema`.
 
@@ -155,7 +163,7 @@ def _annotate_view_output_types(view_sql: str, schema: dict[str, dict[str, str]]
         if isinstance(_inner, exp.Column):
             _tbl = schema.get(_inner.table or "")
             _stored = _tbl.get(_inner.name) if _tbl else None
-            if _stored:
+            if _stored and not names_null_type(_stored):  # REQ-1426
                 out[sel.alias_or_name] = _stored
                 continue
         _t = sel.type
@@ -228,7 +236,7 @@ async def _ensure_view_column_types(
     referenced tables' stored types — and refuse the registration when one cannot be resolved
     (REQ-1426), so a view is never persisted with an untyped or guessed column.
     """
-    if not any(getattr(c, "data_type", None) in (None, "") for c in columns):
+    if not any(_untyped(c) for c in columns):
         return columns, None
     import sqlglot
     import sqlglot.errors
@@ -243,7 +251,7 @@ async def _ensure_view_column_types(
     annotated = _annotate_view_output_types(view_sql, type_map)
     unresolved: list[str] = []
     for c in columns:
-        if getattr(c, "data_type", None) in (None, ""):
+        if _untyped(c):
             resolved = annotated.get(c.name)
             if resolved:
                 c.data_type = resolved
@@ -711,7 +719,7 @@ async def _ensure_source_column_types(input, columns) -> "MutationResult | None"
     """
     from provisa.api.admin.types import MutationResult
 
-    missing = [c for c in columns if getattr(c, "data_type", None) in (None, "")]
+    missing = [c for c in columns if _untyped(c)]
     if not missing:
         return None
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
@@ -719,7 +727,9 @@ async def _ensure_source_column_types(input, columns) -> "MutationResult | None"
     meta = await resolve_available_columns_metadata(
         input.source_id, input.schema_name, input.table_name
     )
-    type_by_name = {m.name: m.data_type for m in meta if m.data_type}
+    type_by_name = {
+        m.name: m.data_type for m in meta if m.data_type and not names_null_type(m.data_type)
+    }
     unresolved: list[str] = []
     for c in missing:
         resolved = type_by_name.get(c.name)

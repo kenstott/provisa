@@ -417,6 +417,16 @@ def subtype_of(native_type: str, platform: str | None = None) -> str | None:
     return subtype_named(name)
 
 
+# REQ-1426 (amended 2026-11-28): the spellings of the type of NULL — what a source reports for a
+# column that is only ever NULL (a NULL literal in a view, Trino's ``unknown``). It is no type.
+_NULL_TYPE_NAMES = frozenset({"null", "unknown"})
+
+
+def names_null_type(type_spelling: str) -> bool:
+    """Whether ``type_spelling`` is the type of NULL (REQ-1426), in any case or quoting."""
+    return type_spelling.strip().strip("\"'`").strip().lower() in _NULL_TYPE_NAMES
+
+
 def subtype_named(type_spelling: str) -> str | None:
     """The subtype ``type_spelling`` names, in any of its spellings (REQ-2171), or None."""
     name = type_name(type_spelling)

@@ -30,34 +30,55 @@ function legendBand(cy: CyInstance): number {
   return Math.max(0, legend.getBoundingClientRect().bottom - box.getBoundingClientRect().top);
 }
 
-/** The least zoom a fit takes: below it a label is too small to read, so a diagram too big for
- * its canvas at this zoom is drawn at it from its top left and scrolls (down, and across). */
+/** The least zoom a diagram (a Mermaid one) opens at: below it a label is too small to read. */
 export const READABLE_ZOOM = 0.8;
+
+/** The least zoom a graph's opening fit takes (REQ-2239, amended 2026-11-28: a graph opens fitted
+ * to its panel when the fitted zoom stays readable): below it a compact node's text is too small to
+ * read, so a graph too big for its canvas at this zoom is drawn at it from its top left and
+ * scrolls (down, and across). */
+export const GRAPH_READABLE_ZOOM = 0.6;
+
+/** The most zoom a graph's opening fit takes (REQ-2239, amended 2026-11-28): natural size. A graph
+ * that would fit its canvas larger opens at it, centred, so a small graph shows the room its compact
+ * nodes save; the reader may still zoom in by hand. */
+export const GRAPH_OPENING_MAX_ZOOM = 1;
 
 /** How a graph opens and Reset view: fit the diagram by its drawn extent, `padding` round it,
  * below the legend (which sits over the canvas's top right: a lane's or a group's title is never
- * under it). The whole diagram is fitted while that keeps the zoom at READABLE_ZOOM or more; past
- * that it is drawn at the readable zoom from its top (and, wider than the canvas, its left) and
- * scrolled (scrollBy). */
+ * under it). The fitted zoom is held between GRAPH_READABLE_ZOOM and GRAPH_OPENING_MAX_ZOOM: a
+ * diagram that would fit larger than natural size is drawn at natural size, centred; one that
+ * fits between the two is fitted; past that it is drawn at the readable zoom from its top (and,
+ * wider than the canvas, its left) and scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
-  // A fit that shows the whole diagram is a fit of the whole, which a resize keeps; one held at
-  // the readable zoom is the opening view, which a resize opens again.
-  const whole = fitBelowLegend(cy, padding, READABLE_ZOOM);
-  modes.set(cy, whole ? { kind: "whole", padding } : { kind: "opening" });
+  // A fit that shows the whole diagram is the opening fit of the whole, which a resize keeps
+  // (at no more than natural size); one held at the readable zoom is the opening view, which a
+  // resize opens again.
+  const whole = fitBelowLegend(cy, padding, GRAPH_READABLE_ZOOM, GRAPH_OPENING_MAX_ZOOM);
+  modes.set(cy, whole ? { kind: "fitted", padding } : { kind: "opening" });
 }
 
 /** The fit control: the whole diagram in the canvas, below the legend, however small that makes
  * it (REQ-2239, FIT MEANS THE WHOLE IMAGE). */
 export function fitWhole(cy: CyInstance, padding: number = FIT_PADDING): void {
-  fitBelowLegend(cy, padding, 0);
+  // The fit control fills the canvas: no bound above.
+  fitBelowLegend(cy, padding, 0, Number.POSITIVE_INFINITY);
   modes.set(cy, { kind: "whole", padding });
 }
 
-/** What a view is, for a resize to keep (REQ-2277): the whole diagram fitted, the opening view
- * (fitClear held at the readable zoom, its focus brought in), or a view the reader zoomed or
- * moved. */
+/** The opening fit of the whole diagram at a new size: the whole, at no more than natural size. */
+function fitOpeningWhole(cy: CyInstance, padding: number): void {
+  fitBelowLegend(cy, padding, 0, GRAPH_OPENING_MAX_ZOOM);
+  modes.set(cy, { kind: "fitted", padding });
+}
+
+/** What a view is, for a resize to keep (REQ-2277): the whole diagram fitted by the fit control,
+ * the whole diagram as it opened (fitClear showing it whole, at no more than natural size), the
+ * opening view (fitClear held at the readable zoom, its focus brought in), or a view the reader
+ * zoomed or moved. */
 export type ViewMode =
   | { kind: "whole"; padding: number }
+  | { kind: "fitted"; padding: number }
   | { kind: "opening" }
   | { kind: "kept" };
 
@@ -95,12 +116,14 @@ export interface Size {
 }
 
 /** REQ-2277: the canvas was ``was`` and is resized (cytoscape told already): the view keeps its
- * mode. The whole diagram fitted is fitted again at the new size; a view the reader zoomed or
+ * mode. The whole diagram fitted is fitted again at the new size (as it opened, at no more than
+ * natural size); a view the reader zoomed or
  * moved keeps its zoom and the point of the diagram at the canvas's centre. The opening view is
  * left to the caller, who opens it again (fitClear, its focus, its marks); its mode is returned. */
 export function followResize(cy: CyInstance, was: Size): ViewMode["kind"] {
   const mode = viewMode(cy);
   if (mode.kind === "whole") fitWhole(cy, mode.padding);
+  else if (mode.kind === "fitted") fitOpeningWhole(cy, mode.padding);
   else if (mode.kind === "kept") {
     const box = cy.container();
     const z = cy.zoom();
@@ -126,9 +149,9 @@ function readerMinZoom(cy: CyInstance): number {
   return least;
 }
 
-/** Fit by the drawn extent below the legend, at no less than `floor`; whether the whole diagram
- * is in view. */
-function fitBelowLegend(cy: CyInstance, padding: number, floor: number): boolean {
+/** Fit by the drawn extent below the legend, at no less than `floor` and no more than `most`;
+ * whether the whole diagram is in view. */
+function fitBelowLegend(cy: CyInstance, padding: number, floor: number, most: number): boolean {
   const box = cy.container();
   if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) {
     // A canvas not on the page (headless, or not yet laid out): cytoscape's own fit.
@@ -153,7 +176,7 @@ function fitBelowLegend(cy: CyInstance, padding: number, floor: number): boolean
   // the reader's own zooming only; a fit goes below it when that is what shows the whole diagram,
   // and the reader may zoom out as far as that fit.
   cy.minZoom(Math.min(readerMinZoom(cy), fits));
-  cy.zoom(Math.max(fits, floor));
+  cy.zoom(Math.min(Math.max(fits, floor), most));
   // The zoom the instance accepted: it holds its own limits.
   const z = cy.zoom();
   const wide = bb.w * z > width;

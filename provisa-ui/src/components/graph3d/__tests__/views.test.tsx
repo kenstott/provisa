@@ -109,6 +109,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 
 import { OntologySnippet, OntologyView, ProductMapButton } from "../OntologyGraph";
+import { PageCommand } from "../../PageCommand";
 import { productPreset, termPreset, type SnippetPreset } from "../ontologyPresets";
 import { setStored } from "../../../lib/browserStorage";
 
@@ -632,6 +633,37 @@ describe("the Product map entry point", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
   };
   const kinds = (g: GraphData) => [...new Set(g.nodes.map((n) => n.type))].sort();
+
+  it("is an icon in the page header: its words are the command's card", async () => {
+    // As the Data Products page's header draws it (maintainer 2026-11-28).
+    render(
+      <PageCommand
+        description="Draw every data product, its tables and the links between them as one graph."
+        docs="data-products/"
+      >
+        <ProductMapButton />
+      </PageCommand>,
+    );
+    const button = screen.getByTestId("product-map-open");
+    // No visible label: the icon alone, named for a screen reader.
+    expect(button).toHaveTextContent("");
+    expect(button.querySelector("svg")).not.toBeNull();
+    expect(button).toHaveAccessibleName("Product map");
+    expect(button).toHaveAttribute("data-variant", "subtle");
+    // Resting on it opens the card with the description and the documentation link.
+    fireEvent.mouseEnter(button.closest<HTMLElement>(".page-command")!);
+    const card = await screen.findByTestId("page-command-card");
+    expect(card).toHaveTextContent(
+      "Draw every data product, its tables and the links between them as one graph.",
+    );
+    const link = within(card).getByTestId("page-command-docs");
+    expect(link).toHaveTextContent("Read the documentation");
+    expect(link).toHaveAttribute("href", "/docs?page=data-products/");
+    // Pressing it opens the Product map.
+    fireEvent.click(button);
+    await screen.findByTestId("graph3d");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+  });
 
   it("opens on every product, its member tables and the links between products", async () => {
     await openMap();

@@ -21,3 +21,9 @@ export function docsHref(target: DocsTarget): string {
   const [page, section] = target.split("#");
   return `/docs?page=${page}${section === undefined ? "" : `#${section}`}`;
 }
+
+/** Whether an address is the documentation: the app's Docs route, the docs site it serves under
+ *  /docs-site/, or the hosted site. A link to it opens in a new tab (DocsLink.tsx). */
+export function isDocsHref(href: string): boolean {
+  return /^(?:https?:\/\/provisa\.dev)?\/docs(?:-site)?(?:[/?#]|$)/.test(href);
+}

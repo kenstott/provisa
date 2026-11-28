@@ -47,7 +47,7 @@ function drawn(spec: GraphSpec, at: Record<string, Pt>, routing: "bezier" | "tax
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,
-    elements: graphElements(spec, (t) => t, "all"),
+    elements: graphElements(spec, "all"),
     style: graphStylesheet(graphTokens(false)),
   } as unknown as Parameters<typeof cytoscape>[0]) as unknown as CyInstance;
   for (const [id, p] of Object.entries(at)) cy.getElementById(id).position(p);
@@ -223,7 +223,7 @@ describe("the lanes preset: two lines between one pair of nodes (REQ-2277)", () 
     const cy = cytoscape({
       headless: true,
       styleEnabled: true,
-      elements: graphElements(SPEC, (t) => t, "all"),
+      elements: graphElements(SPEC, "all"),
       style: graphStylesheet(graphTokens(false)),
     } as unknown as Parameters<typeof cytoscape>[0]) as unknown as Core;
     await new Promise<void>((done) => runLanes(cy, headless, OPTS, [], done));

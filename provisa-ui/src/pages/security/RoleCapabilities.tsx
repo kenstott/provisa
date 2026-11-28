@@ -14,10 +14,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Group, Loader, Table, Text } from "@mantine/core";
-import { LineageDag } from "../../components/lineage/LineageDag";
+import { ProvisaGraph, type LayeredOptions } from "../../components/provisa-graph/ProvisaGraph";
 import { fetchRoleEffective, type RoleEffective } from "../../api/roleRights";
 import { CapabilityNames } from "./CapabilityNames";
 import { roleLineageGraph } from "./roleLineage";
+
+// The role graph's lines run orthogonally between the role boxes, every capability listed.
+const ROLE_GRAPH: LayeredOptions = { detail: "all", routing: "taxi", gridSnap: 0, showOrphans: true };
 
 export function RoleCapabilities({ roleId }: { roleId: string }) {
   const { t } = useTranslation();
@@ -55,9 +58,20 @@ export function RoleCapabilities({ roleId }: { roleId: string }) {
       <Text size="sm" c="dimmed" mb="xs">
         {t("roleRights.lineageHint")}
       </Text>
-      {/* The whole lineage fitted to the panel, on every open and for every role: a role is a new
-          diagram, and a tab coming back has an area again, which fits it (LineageDag). */}
-      <LineageDag key={roleId} graph={graph} height={480} allColumns />
+      {/* The lineage fitted to the panel, on every open and for every role: a role is a new
+          diagram, and a tab coming back has an area again, which fits it (ProvisaGraph). */}
+      <div style={{ position: "relative", width: "100%", height: 480 }}>
+        <ProvisaGraph
+          key={roleId}
+          graph={graph}
+          preset="flow"
+          options={ROLE_GRAPH}
+          testId="role-lineage"
+          ariaLabel={t("roleRights.tab_capabilities")}
+          exportName={`role-${roleId}`}
+          hint={t("provisaGraph.hint")}
+        />
+      </div>
       <Table mt="md" data-testid="role-capabilities-list">
         <Table.Thead>
           <Table.Tr>

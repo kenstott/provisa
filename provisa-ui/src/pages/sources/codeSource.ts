@@ -33,6 +33,7 @@
 import generated from "../../generated/sourceTypes.json";
 import type { CodeLanguage as EditorLanguage } from "../../components/CodeEditorField";
 import { mappingKeysOf } from "./descriptor";
+import type { DocsTarget } from "../../components/docsTarget";
 
 export const NODE = "node";
 export const PYTHON = "python";
@@ -71,11 +72,11 @@ const CODE_REFERENCE_SECTION: Record<string, string> = {
   [SPARK]: "spark-reference",
 };
 
-/** The in-app Docs route for a code language's reference section. */
-export function codeReferenceHref(type: string): string {
+/** The docs target of a code language's reference section. */
+export function codeReferenceTarget(type: string): DocsTarget {
   const section = CODE_REFERENCE_SECTION[type];
   if (!section) throw new Error(`${type} is not a code source type`);
-  return `/docs?page=${CODE_REFERENCE_PAGE}#${section}`;
+  return `${CODE_REFERENCE_PAGE}#${section}`;
 }
 
 /** The languages whose source names where its code is entered: Python's module, Go's package,

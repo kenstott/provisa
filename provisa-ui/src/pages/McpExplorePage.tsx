@@ -28,6 +28,7 @@ import {
 } from "@chatscope/chat-ui-kit-react";
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
 import ReactMarkdown from "react-markdown";
+import { MarkdownLink } from "../components/DocsLink";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Trash2, Compass } from "lucide-react";
 import { HelpBubble } from "../components/HelpBubble";
@@ -39,6 +40,9 @@ import { useScreenInputs } from "../mcp/screenState";
 import { useViewDomains } from "../lib/viewDomains";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
+/** A docs link in an answer opens in a new tab (components/DocsLink.tsx). */
+const MARKDOWN_COMPONENTS = { a: MarkdownLink };
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -557,7 +561,7 @@ export function McpExplorePage() {
                   >
                     <Message.CustomContent>
                       <div className="mcp-md">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                           {t("mcpExplore.emptyState")}
                         </ReactMarkdown>
                       </div>
@@ -586,7 +590,10 @@ export function McpExplorePage() {
                       <Message.CustomContent>
                         <div className="mcp-bubble">
                           <div className="mcp-md">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={MARKDOWN_COMPONENTS}
+                            >
                               {m.text ||
                                 (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
                             </ReactMarkdown>

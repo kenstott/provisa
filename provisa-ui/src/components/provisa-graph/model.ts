@@ -78,34 +78,29 @@ export interface Element {
   classes: string;
 }
 
-const RULE = "─".repeat(18);
-
-/** A node's label: its name and its type's name, then its body at ``detail``. */
-export function nodeLabel(
-  node: GraphNodeSpec,
-  typeName: string,
-  detail: Detail,
-): { label: string; lineCount: number } {
-  const head = [node.name, typeName.toUpperCase()];
+/** What a box shows (REQ-2239, amended 2026-11-28, THE SHARED NODE STYLE IS COMPACT): its name, then
+ * its body at ``detail``. No type row: the type is the band's colour and the legend's. */
+export function nodeRows(node: GraphNodeSpec, detail: Detail): { name: string; rows: string[] } {
   const body = detail === "none" ? [] : (node.lines ?? []).filter((l) => detail === "all" || l.key);
-  const lines = body.length > 0 ? [...head, RULE, ...body.map((l) => l.text)] : head;
-  return { label: lines.join("\n"), lineCount: lines.length };
+  return { name: node.name, rows: body.map((l) => l.text) };
 }
 
-/** A node's height: two lines, or its body's. */
-export const nodeHeight = (lineCount: number) =>
-  lineCount <= 2 ? SIZE.nodeHeight : lineCount * SIZE.line + 14;
+/** A box's height: its name's row, and its body's rows under it. */
+export const nodeHeight = (rowCount: number) =>
+  rowCount === 0
+    ? SIZE.nodeHeight
+    : 2 * SIZE.padY + SIZE.nameStep + SIZE.bodyGap + rowCount * SIZE.lineStep;
 
-/** Where a box's label may run: from past its band and icon to short of its right edge. */
-export const TEXT_LEFT = SIZE.band + 8 + SIZE.icon + 8;
-export const TEXT_RIGHT = 10;
-/** The widest a box grows for its label; past it the label wraps. */
-export const NODE_MAX_WIDTH = 360;
+/** Where a box's text runs: from past its band to short of its right edge. */
+export const TEXT_LEFT = SIZE.band + SIZE.padX;
+export const TEXT_RIGHT = SIZE.padX;
+/** The widest a box grows for its text; past it the text is ellipsised. */
+export const NODE_MAX_WIDTH = 240;
+/** A bold name is a little wider than ``textWidth``'s regular weight. */
+const BOLD = 1.08;
 
 /** A line's width drawn at ``size`` px, as near as can be told without a canvas: a little over the
- * system sans (or, ``mono``, the monospace) widths, so a node sized by it is wide enough. A label
- * longer than its node still never runs past its room: it wraps (labelWrap, the stylesheet's
- * ``text-overflow-wrap``). */
+ * system sans (or, ``mono``, the monospace) widths, so a node sized by it is wide enough. */
 export function textWidth(line: string, size: number, mono = false): number {
   if (mono) return line.length * size * 0.62;
   let em = 0;
@@ -119,11 +114,23 @@ export function textWidth(line: string, size: number, mono = false): number {
   return em * size;
 }
 
-/** A box's width and the label's room in it: wide enough for its name and type's lines (from
- * SIZE.nodeWidth to NODE_MAX_WIDTH); its body's lines wrap inside it. */
-export function boxWidth(head: string[], mono: boolean): { w: number; text: number } {
-  const size = mono ? 10 : SIZE.name;
-  const need = Math.max(...head.map((l) => textWidth(l, size, mono)));
+/** The width of a box's name (bold, SIZE.name). */
+export const nameWidth = (name: string) => textWidth(name, SIZE.name) * BOLD;
+/** The width of one of a box's body rows (monospace, SIZE.lineFont). */
+export const rowWidth = (row: string) => textWidth(row, SIZE.lineFont, true);
+
+/** ``text`` cut to ``room`` px as ``measure`` reads it, its end an ellipsis; whole when it fits. */
+export function ellipsise(text: string, room: number, measure: (t: string) => number): string {
+  if (measure(text) <= room) return text;
+  let cut = text.length;
+  while (cut > 0 && measure(`${text.slice(0, cut)}…`) > room) cut--;
+  return `${text.slice(0, cut)}…`;
+}
+
+/** A box's width and its text's room: as wide as its name and body need, from SIZE.nodeWidth up
+ * to NODE_MAX_WIDTH. */
+export function boxWidth(name: string, rows: string[]): { w: number; text: number } {
+  const need = Math.max(nameWidth(name), ...rows.map(rowWidth));
   const w = Math.min(
     NODE_MAX_WIDTH,
     Math.max(SIZE.nodeWidth, Math.ceil(TEXT_LEFT + need + TEXT_RIGHT)),
@@ -131,29 +138,35 @@ export function boxWidth(head: string[], mono: boolean): { w: number; text: numb
   return { w, text: w - TEXT_LEFT - TEXT_RIGHT };
 }
 
-/** How a label wraps in ``room`` px: at its spaces, unless a word of it is wider than the room
- * (a dotted name such as shelter.assignments_by_employee), which then breaks where it must. */
-export function labelWrap(
-  lines: string[],
-  room: number,
-  size: number,
-  mono: boolean,
-): "whitespace" | "anywhere" {
-  const words = lines.flatMap((l) => l.split(/\s+/));
-  return words.some((w) => textWidth(w, size, mono) > room) ? "anywhere" : "whitespace";
+/** The room ELK keeps round a group's nodes at each side, and the padding its drawn box takes
+ * there (stylesheet, flow.ts GROUP_OPTIONS, presets.ts): one value, so the two agree. */
+export const GROUP_PAD = 16;
+/** The title's text background padding each side (stylesheet ``text-background-padding``). */
+const TITLE_BG_PAD = 3;
+/** The room a group's title keeps from the box's rounded corners, each side. */
+const TITLE_INSET = 8;
+
+/** REQ-2239 (amended 2026-11-28): the least width of a group's box, padding included, so its title
+ * (uppercase, bold, SIZE.groupLabel) lies inside its sides; never less than a one-node box's. */
+export function groupMinWidth(title: string): number {
+  const titled = textWidth(title, SIZE.groupLabel) * BOLD + 2 * TITLE_BG_PAD + 2 * TITLE_INSET;
+  return Math.ceil(Math.max(SIZE.nodeWidth + 2 * GROUP_PAD, titled));
 }
 
-/** How many lines ``lines`` take in ``room`` px, each wrapped where it runs past. */
-const wrappedCount = (lines: string[], room: number, size: number, mono: boolean) =>
-  lines.reduce((n, l) => n + Math.max(1, Math.ceil(textWidth(l, size, mono) / room)), 0);
+/** A group's ELK options for its least width (groupMinWidth): ELK keeps that room for the group,
+ * its nodes centred across it, as the drawn box (min-width, centred on its nodes) takes it, so a
+ * neighbour never comes nearer than the group's title. */
+export function groupSizeOptions(minWidth: number): Record<string, string> {
+  return {
+    "elk.nodeSize.constraints": "[MINIMUM_SIZE]",
+    "elk.nodeSize.minimum": `(${minWidth}, 0)`,
+    "elk.contentAlignment": "[H_CENTER, V_TOP]",
+  };
+}
 
 /** The elements of ``spec``. Group ids, node ids and edge ids are the view's; each element also
  * carries its view data, handed back on a click. */
-export function graphElements(
-  spec: GraphSpec,
-  typeName: (type: NodeType) => string,
-  detail: Detail = "all",
-): Element[] {
+export function graphElements(spec: GraphSpec, detail: Detail = "all"): Element[] {
   const groups: Element[] = (spec.groups ?? []).map((g) => ({
     group: "nodes",
     data: {
@@ -161,6 +174,9 @@ export function graphElements(
       id: g.id,
       kind: "group",
       title: g.label.toUpperCase(),
+      // The least width of its box, padding included (groupMinWidth); its body's, inside it.
+      minW: groupMinWidth(g.label.toUpperCase()),
+      minInner: groupMinWidth(g.label.toUpperCase()) - 2 * GROUP_PAD,
       label: g.label,
       description: g.description ?? "",
       hue: groupHue(g.hue ?? g.id),
@@ -170,22 +186,18 @@ export function graphElements(
   const nodes: Element[] = spec.nodes.map((n) => {
     const kind = n.kind ?? "node";
     const shape = kind === "node" ? typeShape(n.type) : "box";
-    const { label, lineCount } =
-      kind === "more"
-        ? { label: n.name, lineCount: 1 }
-        : // A diamond carries its name and type only; it has no body.
-          nodeLabel(n, typeName(n.type), shape === "diamond" ? "none" : detail);
-    const mono = lineCount > 2;
-    const lines = label.split("\n");
+    // A diamond and a fold node carry their name only, centred; a box its name and body.
+    const { name, rows } =
+      kind === "node" && shape === "box" ? nodeRows(n, detail) : { name: n.name, rows: [] };
     const box =
-      kind === "node" && shape === "box"
-        ? boxWidth(lines.slice(0, 2), mono)
-        : { w: SIZE.nodeWidth, text: SIZE.nodeWidth - 2 * TEXT_RIGHT };
-    // The lines the label takes in its room, a long name wrapped.
-    const drawnLines =
-      kind === "node" && shape === "box"
-        ? wrappedCount(lines, box.text, mono ? 10 : SIZE.name, mono)
-        : lineCount;
+      shape === "diamond"
+        ? { w: SIZE.diamondWidth, text: SIZE.diamondWidth - 2 * SIZE.diamondInset }
+        : boxWidth(name, rows);
+    const title = ellipsise(name, box.text, nameWidth);
+    const shown = rows.map((r) => ellipsise(r, box.text, rowWidth));
+    // What was cut is shown whole on hover (the default card).
+    const clipped = [...(title !== name ? [name] : []), ...rows.filter((r, i) => shown[i] !== r)];
+    const card = kind === "node" && shape === "box";
     return {
       group: "nodes",
       data: {
@@ -194,24 +206,17 @@ export function graphElements(
         kind,
         type: n.type,
         name: n.name,
-        label,
-        lineCount,
+        label: [title, ...shown].join("\n"),
+        // A box's text is drawn as its card (stylesheet cardImage); the rest as a centred label.
+        caption: card ? "" : title,
+        title,
+        rows: shown,
+        clipped,
         shape,
-        h:
-          shape === "diamond"
-            ? SIZE.diamondHeight
-            : kind === "more"
-              ? SIZE.nodeHeight - 12
-              : nodeHeight(drawnLines),
-        w: shape === "diamond" ? SIZE.diamondWidth : box.w,
+        h: shape === "diamond" ? SIZE.diamondHeight : nodeHeight(shown.length),
+        w: box.w,
         textW: box.text,
-        wrap: labelWrap(
-          lines,
-          shape === "diamond" ? SIZE.diamondWidth - 40 : box.text,
-          mono ? 10 : SIZE.name,
-          mono,
-        ),
-        body: lineCount > 2 ? "yes" : "no",
+        body: shown.length > 0 ? "yes" : "no",
         description: n.description ?? "",
         ...(n.parent !== undefined ? { parent: n.parent } : {}),
         ...(n.lane !== undefined ? { lane: n.lane } : {}),

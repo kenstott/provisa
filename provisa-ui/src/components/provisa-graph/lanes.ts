@@ -50,15 +50,15 @@ export interface LanesOptions {
 }
 
 /** The space between two lanes' boxes; a glance's lanes sit closer. */
-export const LANE_GAP = 56;
-const TIGHT_LANE_GAP = 24;
+export const LANE_GAP = 44;
+const TIGHT_LANE_GAP = 16;
 /** A lane's box round its nodes, and the room above them for its title. */
 export const LANE_PAD = 16;
 /** A lane box's dashed border, as drawn past its size (stylesheet). */
 const LANE_EDGE = 2;
 const LANE_TITLE = 12;
 /** The least gap between two nodes of a lane. */
-export const NODE_GAP = 14;
+export const NODE_GAP = 8;
 /** How far right of its lane's widest node the first line beside the lane runs, and the step out
  * to each next one. */
 const TRACK_INSET = 14;
