@@ -67,6 +67,8 @@ describe("HelpBubble", () => {
     expect(card).toContainElement(link);
     expect(link).toHaveTextContent("Read the documentation");
     expect(link).toHaveAttribute("href", "/docs?page=configuration/#tables");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
     // Last in the card.
     expect(link.parentElement?.lastElementChild).toBe(link);
   });

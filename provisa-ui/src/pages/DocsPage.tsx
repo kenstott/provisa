@@ -125,6 +125,9 @@ export function DocsPage() {
   return (
     <div className="docs-page">
       {toolbar}
+      {/* Maintainer 2026-11-28: every docs link elsewhere in the app opens in a new tab
+          (components/DocsLink.tsx). The links that move between docs pages here, in the frame's
+          own navigation, stay in this tab: they are inside the docs already. */}
       <iframe
         className="docs-frame"
         src={src}

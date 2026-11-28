@@ -8,7 +8,6 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-
 // REQ-1984 (amended 2026-11-24): a code source's dialog links the reference of the language chosen,
 // the link changes with the language, and it opens the in-app Docs page at that language's section.
 
@@ -22,7 +21,7 @@ import { sourceFormProps, sourceOf } from "../../../test-utils/sourceForm";
 import { DocsPage } from "../../DocsPage";
 import { CodeReferenceLink } from "../CodeReferenceLink";
 import { SourceFormFields } from "../SourceFormFields";
-import { codeReferenceHref } from "../codeSource";
+import { codeReferenceTarget } from "../codeSource";
 
 const LANGUAGES = [
   ["node", "Node.js", "node-reference"],
@@ -78,7 +77,7 @@ describe("a code source's reference link", () => {
   });
 
   it("refuses a type that is not a code language by name", () => {
-    expect(() => codeReferenceHref("postgresql")).toThrow("postgresql is not a code source type");
+    expect(() => codeReferenceTarget("postgresql")).toThrow("postgresql is not a code source type");
   });
 
   it("opens the Docs page framed at that section", async () => {

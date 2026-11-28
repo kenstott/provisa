@@ -37,6 +37,7 @@ describe("PageTitle", () => {
       "Register the databases, files and services Provisa reads from, and set how each one is reached.",
     );
     expect(screen.getByTestId("page-help-docs")).toHaveAttribute("href", "/docs?page=sources/");
+    expect(screen.getByTestId("page-help-docs")).toHaveAttribute("target", "_blank");
   });
 
   it("draws no help on a route whose help another header carries", () => {

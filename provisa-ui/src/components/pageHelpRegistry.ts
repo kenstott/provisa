@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { docsHref, type DocsTarget } from "./docsTarget";
+import type { DocsTarget } from "./docsTarget";
 
 // REQ-2277 rule 8: every page has the page help (?) in its header. This registry holds each page's
 // help, keyed by its route: the purpose line, any further paragraphs, and the documentation page it
@@ -265,8 +265,3 @@ export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
     placement: "title",
   },
 };
-
-/** The in-app Docs route for an entry's documentation page. */
-export function pageHelpDocsHref(entry: PageHelpEntry): string {
-  return docsHref(entry.docs);
-}
