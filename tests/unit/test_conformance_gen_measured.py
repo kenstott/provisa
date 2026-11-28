@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8a9a3310-5c8c-45dd-858d-f6f2b634ac4d
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """measured.py's tables written from a Conformance (functions) run (REQ-2236): a row that refuses
 only a NULL argument is not said to refuse every call, though the run records no sample of it."""
 
