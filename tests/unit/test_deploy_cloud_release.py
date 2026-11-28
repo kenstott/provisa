@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 623440ee-fa31-4f58-a818-0d2aecd2b039
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -100,7 +101,8 @@ def test_the_release_engine_images_are_the_tag():
 
 
 def test_no_source_is_pushed():
-    text = _SCRIPT.read_text()
+    # Comments name the hot-patch's steps to say why they are absent; calls are what count.
+    text = re.sub(r"^\s*#.*$", "", _SCRIPT.read_text(), flags=re.M)
     for push in (
         "build_ui",
         "build_api",
@@ -116,10 +118,10 @@ def test_no_source_is_pushed():
         "push_cp_compose",
     ):
         assert not re.search(rf"\b{push}\b", text), push
-    assert "deploy-cloud.sh" not in re.sub(r"^#.*$", "", text, flags=re.M)
+    assert "deploy-cloud.sh" not in text
     # Nothing from the checkout is packed for the node: the one file sent is the installer
     # this script writes.
-    assert "tar " not in text
+    assert not re.search(r"\btar\s", text)
     assert re.findall(r"scp_node ([^ ]+)", text) == ['"$STAGE/node-install.sh"']
 
 
