@@ -139,7 +139,9 @@ locals {
 
   # Release asset filenames. The VM curls these straight from the public GitHub
   # release at boot (see base_startup) — no GCS staging hop.
-  images_zip = "provisa-core-images-amd64-${var.provisa_version}.zip"
+  # The core image assets' manifest: it lists one asset per image (a large image in parts,
+  # each under GitHub's 2 GiB asset limit) with its sha256 (scripts/ci/package_core_images.sh).
+  images_manifest = "provisa-core-images-amd64-${var.provisa_version}.sha256"
 
   # Trino custom-connector jars ride a separate release asset (the slim AppImage
   # excludes trino/plugins/ to stay under GitHub's 2 GB limit). first-launch's
@@ -219,10 +221,13 @@ locals {
     gh_base="https://github.com/${var.github_repo}/releases/download/${var.provisa_version}"
     curl -fSL --retry 5 --retry-all-errors "$gh_base/Provisa-${var.provisa_version}-linux-x86_64.AppImage" -o /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
-    # Core-images zip beside the AppImage. first-launch searches cwd for
-    # provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
-    # (airgap path), so we cd /opt before launching below.
-    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.images_zip}" -o /opt/${local.images_zip}
+    # The core image assets beside the AppImage: the manifest and every asset it lists.
+    # first-launch finds them in cwd, checks each against its sha256 and docker-loads
+    # them locally (airgap path), so we cd /opt before launching below.
+    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.images_manifest}" -o /opt/${local.images_manifest}
+    for asset in $(awk '{print $2}' /opt/${local.images_manifest}); do
+      curl -fSL --retry 5 --retry-all-errors "$gh_base/$asset" -o "/opt/$asset"
+    done
     # Trino plugins tarball beside the AppImage. first-launch's load_trino_plugins
     # finds it via cwd (we cd /opt below) and extracts it into compose/trino/plugins/
     # so the bind-mounts resolve (else Trino crash-loops: "No service providers of

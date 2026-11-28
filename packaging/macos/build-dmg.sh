@@ -504,8 +504,9 @@ create_dmg() {
   # Slim base (REQ-979): the core container images are NOT bundled in the DMG — that
   # kept the default (native) install under GitHub's 2 GB asset limit once the native
   # runtime is bundled. The Docker/Trino tier fetches them via first-launch's
-  # acquire_addon from the published provisa-core-images-<version>.tar.gz (or a copy
-  # pre-staged beside the installer for airgapped installs).
+  # acquire_core_images from the published core image assets listed in
+  # provisa-core-images-arm64-<version>.sha256 (or copies pre-staged beside the installer for
+  # airgapped installs).
 
   if [ "$EDITION" = "core" ]; then
     # Native tier payload (hidden): the interpreter with provisa already installed.

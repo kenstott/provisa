@@ -405,8 +405,8 @@ jobs:
               "jdbc_name": "provisa-jdbc-v1.2.3-alpha.45.jar",
               "obs_images_name": "provisa-obs-images-v1.2.3-alpha.45.tar.gz",
               "demo_images_name": "provisa-demo-images-v1.2.3-alpha.45.tar.gz",
-              "core_images_name": "provisa-core-images-v1.2.3-alpha.45.tar.gz",
-              "core_images_amd64_name": "provisa-core-images-amd64-v1.2.3-alpha.45.zip",
+              "core_images_manifest_name": "provisa-core-images-arm64-v1.2.3-alpha.45.sha256",
+              "core_images_amd64_manifest_name": "provisa-core-images-amd64-v1.2.3-alpha.45.sha256",
               "trino_image_name": "provisa-trino-image-v1.2.3-alpha.45.tar.gz",
               "trino_image_amd64_name": "provisa-trino-image-amd64-v1.2.3-alpha.45.tar.gz",
               "plugins_name": "provisa-trino-plugins-v1.2.3-alpha.45.tar.gz",
@@ -474,6 +474,36 @@ jobs:
           fi
           echo "no release $TAG"
 
+  # check-release-asset-size passes a file under GitHub's 2 GiB asset limit and fails one at it
+  # (a sparse file: nothing is written to disk).
+  check-release-asset-size:
+    name: action / check-release-asset-size
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: One file under the limit, one at it
+        run: |
+          head -c 1024 /dev/zero > under.bin
+          truncate -s 2147483648 at.bin
+      - name: Under the limit passes
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: under.bin
+      - name: At the limit fails
+        id: at
+        continue-on-error: true
+        uses: ./.github/actions/check-release-asset-size
+        with:
+          files: |
+            under.bin
+            at.bin
+      - name: The check refused the file at the limit
+        env:
+          OUTCOME: ${{ steps.at.outcome }}
+        run: '[ "$OUTCOME" = "failure" ]'
+
   # Level 0 as one job: it succeeds only when every composite action's check did, and level 1
   # needs it.
   level-0:
@@ -495,6 +525,7 @@ jobs:
       - release-metadata
       - ensure-release-off
       - attach-release-assets-off
+      - check-release-asset-size
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -715,6 +746,7 @@ jobs:
       - release-metadata
       - ensure-release-off
       - attach-release-assets-off
+      - check-release-asset-size
       - lane
       - lane-fails
       - lane-results

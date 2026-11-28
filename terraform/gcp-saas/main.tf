@@ -198,7 +198,9 @@ locals {
     var.dns_zone != "" ? "https://cloud.${var.dns_zone}" : ""
   )
 
-  images_zip      = "provisa-core-images-amd64-${var.provisa_version}.zip"
+  # The core image assets' manifest: it lists one asset per image (a large image in parts,
+  # each under GitHub's 2 GiB asset limit) with its sha256 (scripts/ci/package_core_images.sh).
+  images_manifest = "provisa-core-images-amd64-${var.provisa_version}.sha256"
   plugins_tarball = "provisa-trino-plugins-${var.provisa_version}.tar.gz"
 
   # ── Protocol surface (identical contract to enterprise) ──────────────────────
@@ -259,7 +261,10 @@ locals {
     gh_base="https://github.com/${var.github_repo}/releases/download/${var.provisa_version}"
     curl -fSL --retry 5 --retry-all-errors "$gh_base/Provisa-${var.provisa_version}-linux-x86_64.AppImage" -o /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
-    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.images_zip}" -o /opt/${local.images_zip}
+    curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.images_manifest}" -o /opt/${local.images_manifest}
+    for asset in $(awk '{print $2}' /opt/${local.images_manifest}); do
+      curl -fSL --retry 5 --retry-all-errors "$gh_base/$asset" -o "/opt/$asset"
+    done
     curl -fSL --retry 5 --retry-all-errors "$gh_base/${local.plugins_tarball}" -o /opt/${local.plugins_tarball}
     export HOME=/root
     export PROVISA_VERSION="${var.provisa_version}"

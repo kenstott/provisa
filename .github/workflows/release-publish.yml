@@ -70,8 +70,8 @@ jobs:
       npm_version: ${{ steps.meta.outputs.npm_version }}
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
-      core_images_name: ${{ steps.meta.outputs.core_images_name }}
-      core_images_amd64_name: ${{ steps.meta.outputs.core_images_amd64_name }}
+      core_images_manifest_name: ${{ steps.meta.outputs.core_images_manifest_name }}
+      core_images_amd64_manifest_name: ${{ steps.meta.outputs.core_images_amd64_manifest_name }}
       trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
       trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
@@ -123,8 +123,10 @@ jobs:
             ${{ needs.metadata.outputs.jdbc_name }}
             ${{ needs.metadata.outputs.obs_images_name }}
             ${{ needs.metadata.outputs.demo_images_name }}
-            ${{ needs.metadata.outputs.core_images_name }}
-            ${{ needs.metadata.outputs.core_images_amd64_name }}
+            ${{ needs.metadata.outputs.core_images_manifest_name }}
+            ${{ needs.metadata.outputs.core_images_amd64_manifest_name }}
+            provisa-core-image-*-arm64-${{ inputs.version }}.tar.gz*
+            provisa-core-image-*-amd64-${{ inputs.version }}.tar.gz*
             ${{ needs.metadata.outputs.trino_image_name }}
             ${{ needs.metadata.outputs.trino_image_amd64_name }}
             ${{ needs.metadata.outputs.plugins_name }}

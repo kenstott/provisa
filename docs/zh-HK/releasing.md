@@ -55,8 +55,8 @@ CI 工作流程（`build-dmg.yml`，名為「Build Provisa Packages」）會在�
 | `Provisa-Container-<tag>-windows-x64.exe` | Windows x64 容器層升級（WSL2 + Trino） |
 | `provisa-jdbc-<tag>.jar` | JDBC 驅動程式 — Tableau、PowerBI、DBeaver |
 | `provisa_client-<pep440>-py3-none-any.whl` | Python 客戶端（同時發佈於 PyPI） |
-| `provisa-core-images-<tag>.tar.gz` | Core Services 映像 tarball（arm64，離線環境） |
-| `provisa-core-images-amd64-<tag>.zip` | Core Services 映像（amd64，Windows 容器層／離線環境） |
+| `provisa-core-images-<arch>-<tag>.sha256` | Core Services 映像清單（arm64、amd64）：每個映像資產及其 sha256 |
+| `provisa-core-image-<name>-<arch>-<tag>.tar.gz` | 單一 Core Services 映像（arm64、amd64；離線環境）；1 GiB 或以上的映像以 `.part1`、`.part2`、... 發佈 |
 | `provisa-obs-images-<tag>.tar.gz` | Observability Stack 映像（選用） |
 | `provisa-demo-images-<tag>.tar.gz` | Demo Data Pack 映像（選用） |
 | `provisa-trino-plugins-<tag>.tar.gz` | Coordination Engine 連接器（SharePoint、Splunk、File） |

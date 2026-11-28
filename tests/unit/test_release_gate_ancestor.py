@@ -50,9 +50,9 @@ def _git(repo: Path, *args: str) -> str:
 
 def _path(name: str) -> str:
     """A keyword name as a path: ``__`` is ``/`` and a trailing ``_md``/``_py``/``_yml`` the
-    extension, so ``docs__guide_md`` is ``docs/guide.md``."""
+    extension (``_json`` too), so ``docs__guide_md`` is ``docs/guide.md``."""
     path = name.replace("__", "/")
-    for ext in ("md", "py", "yml"):
+    for ext in ("md", "py", "yml", "json"):
         if path.endswith(f"_{ext}"):
             return f"{path[: -len(ext) - 1]}.{ext}"
     return path
@@ -146,6 +146,20 @@ def test_a_documentation_only_commit_needs_no_rerun(release, tmp_path):
     assert "`unit-tests.yml`: http://run/unit-tests.yml/0" in listing
     assert f"`{docs[:10]}`: documentation only" in listing
     assert "Known failures" not in listing
+
+
+def test_a_previous_cuts_notes_commit_needs_no_rerun(release, tmp_path):
+    release.suites_ran_on_base("unit-tests.yml", "integration-suite.yml")
+    notes = _commit(
+        release.repo,
+        "chore(release): notes",
+        CHANGELOG_md="x\n",
+        docs__releases__v1_md="# v1\n",
+        **{"provisa-ui__src__generated__releaseNotes_json": "{}\n"},
+    )
+    code, out = release.cut(_ALPHA, tmp_path)
+    assert code == 0
+    assert f"`{notes[:10]}`: documentation only" in out.read_text()
 
 
 def test_a_listed_fix_is_accepted_when_its_targeted_runs_are_green(release, tmp_path):

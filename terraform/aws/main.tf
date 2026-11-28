@@ -151,7 +151,8 @@ resource "aws_iam_role_policy" "s3_appimage" {
       Action = ["s3:GetObject"]
       Resource = [
         "arn:aws:s3:::${var.appimage_s3_bucket}/${var.appimage_s3_key}",
-        "arn:aws:s3:::${var.appimage_s3_bucket}/${local.images_key}",
+        # The core images manifest and every asset it lists (provisa-core-image-*).
+        "arn:aws:s3:::${var.appimage_s3_bucket}/${local.images_dir}/provisa-core-image*",
       ]
     }]
   })
@@ -186,8 +187,11 @@ locals {
 
   # Core-images zip lives in the same S3 directory as the AppImage. dirname of a
   # bare key (no slash) is ".", so keep appimage_s3_key prefixed (default: releases/).
-  images_zip = "provisa-core-images-amd64-${var.provisa_version}.zip"
-  images_key = "${dirname(var.appimage_s3_key)}/${local.images_zip}"
+  # The core image assets sit in the AppImage's S3 directory: their manifest lists one asset
+  # per image (a large image in parts, each under GitHub's 2 GiB asset limit) with its sha256
+  # (scripts/ci/package_core_images.sh).
+  images_manifest = "provisa-core-images-amd64-${var.provisa_version}.sha256"
+  images_dir      = dirname(var.appimage_s3_key)
 
   # ── Protocol surface ─────────────────────────────────────────────────────────
   # One row per externally-reachable protocol. `enabled` gates the whole chain:
@@ -221,10 +225,13 @@ locals {
     apt-get install -y -qq awscli fuse unzip
     aws s3 cp ${local.appimage_url} /opt/Provisa.AppImage
     chmod +x /opt/Provisa.AppImage
-    # Stage the amd64 core-images zip beside the AppImage. first-launch searches cwd
-    # for provisa-core-images-amd64-$PROVISA_VERSION.zip and docker-loads it locally
-    # (airgap path), so we cd /opt before launching below.
-    aws s3 cp s3://${var.appimage_s3_bucket}/${local.images_key} /opt/${local.images_zip}
+    # Stage the amd64 core image assets beside the AppImage: the manifest and every asset
+    # it lists. first-launch finds them in cwd, checks each against its sha256 and
+    # docker-loads them locally (airgap path), so we cd /opt before launching below.
+    aws s3 cp s3://${var.appimage_s3_bucket}/${local.images_dir}/${local.images_manifest} /opt/${local.images_manifest}
+    for asset in $(awk '{print $2}' /opt/${local.images_manifest}); do
+      aws s3 cp "s3://${var.appimage_s3_bucket}/${local.images_dir}/$asset" "/opt/$asset"
+    done
     export PROVISA_VERSION="${var.provisa_version}"
     # Deployment choices (parity with the desktop wizard, REQ-972..979). The Linux
     # first-launch reads these env vars in --non-interactive mode.
