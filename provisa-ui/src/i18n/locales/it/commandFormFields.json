@@ -72,6 +72,9 @@
     "argDefault": "Valore predefinito dell'argomento {{name}}",
     "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)",
     "nativeSql": "SQL nativo",
-    "nativeSqlHint": "SQL nel dialetto proprio della sorgente, un’istruzione o più, eseguite sulla sorgente in un’unica transazione: vengono confermate tutte o nessuna. Scrivi un argomento come {{placeholder}}; ognuno è associato come valore. La risposta sono le righe dell’ultima istruzione."
+    "nativeSqlHint": "SQL nel dialetto proprio della sorgente, un’istruzione o più, eseguite sulla sorgente in un’unica transazione: vengono confermate tutte o nessuna. Scrivi un argomento come {{placeholder}}; ognuno è associato come valore. La risposta sono le righe dell’ultima istruzione.",
+    "enteredCodeHint": "Python conservato con il modello ed eseguito in sandbox. Contrassegna la funzione chiamata dal comando con @query (legge) o @command (scrive); tipizza i suoi parametri e il suo risultato.",
+    "enteredFunctionHint": "La funzione del codice chiamata da questo comando.",
+    "enteredDeclarationHint": "Letto dalla dichiarazione della funzione a ogni salvataggio del comando."
   }
 }
