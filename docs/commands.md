@@ -42,7 +42,7 @@ Each argument declares an `arg_kind`:
 `http` and `grpc` commands **must** declare at least one `table_ref` or `result_set` argument.
 
 A relation argument given as a table names it by its logical name, the `schema.table` a SQL
-statement reads it by (for example `pet_store.orders`). A `result_set` table is read through the
+statement reads it by (for example `pet_store.pets`). A `result_set` table is read through the
 governed pipeline as the calling role, so that role's row filters, masks and column visibility
 apply, and only the argument's declared columns are read. A physical `source.schema.table`
 reference, or any name SQL serves no table by, is refused with HTTP 400 naming the form it takes.
@@ -76,52 +76,53 @@ table-valued function. Use it in a `FROM` clause or a `JOIN`.
 
 ## Calling commands
 
-The examples below use `enrich_orders` and `random_dataset`, two `python` commands from the demo.
-`random_dataset` takes primitive arguments and returns fabricated rows. `enrich_orders` takes
-one `result_set` argument (the orders to enrich) and returns derived columns.
+The examples below use `label_pets` and `random_python_set`, two `python` commands from the demo.
+`random_python_set` takes primitive arguments and returns fabricated rows. `label_pets` takes
+one `result_set` argument (a pet relation) plus optional scalar args, and returns derived columns.
 
 ### 1. Primitive arguments only
 
 Pass a SQL literal where a command expects a scalar. Provisa reads it like PostgreSQL reads
-an unknown-typed literal: by the declared parameter's own input function. `random_dataset('10')`
+an unknown-typed literal: by the declared parameter's own input function. `random_python_set('10')`
 reads `'10'` as an integer — the same conversion `SELECT '10'::integer` performs. The literal
 `'5.5'` passed to a `double` parameter becomes the float `5.5`.
 
 ```sql
--- random_dataset(rows integer, seed integer)
-SELECT * FROM random_dataset('5');
-SELECT * FROM random_dataset('5', '42');  -- seed for reproducible output
+-- random_python_set(rows integer, seed integer)
+SELECT * FROM random_python_set('5');
+SELECT * FROM random_python_set('5', '42');  -- seed for reproducible output
 ```
 
 A literal that cannot be converted raises with PostgreSQL's error code:
 
 | SQLSTATE | Meaning | Example |
 | --- | --- | --- |
-| `22P02` | Invalid input syntax for the type | `random_dataset('abc')` → not an integer |
-| `22003` | Value out of range for the type | `random_dataset('99999999999')` → too large for `integer` |
+| `22P02` | Invalid input syntax for the type | `random_python_set('abc')` → not an integer |
+| `22003` | Value out of range for the type | `random_python_set('99999999999')` → too large for `integer` |
 | `22008` | Date/time field value out of range | a date command called with `'2026-13-01'` |
 
-Non-literal values — a Cypher string, a SQL `TRUE`, a typed parameter — are checked as-is
-against the declared type, not re-read by the input function.
+Non-literal values — a Cypher string or a SQL `TRUE` — are checked as-is against the declared type, not re-read by the input function.
 
 ### 2. One dataset argument
 
-A `result_set` argument accepts three forms. All three read only the argument's declared
-columns and apply the calling role's row-level security and column masks.
+A `result_set` argument accepts three forms, all of which read only the argument's declared columns and apply the calling role's row-level security and column masks.
+
+Provisa reads the relation whole, up to the caller's hard row cap. For roles with a `max_rows` limit that cap applies; for roles without one the server's default limit applies. A relation that exceeds the cap is refused by name before the command runs.
 
 **Logical served name.** The name must be `schema.table` — the name SQL reads it by in the
 served model. Physical three-part names (`source.schema.table`) are refused.
 
 ```sql
-SELECT * FROM enrich_orders('pet_store.orders');
+SELECT * FROM label_pets('pet_store.pets');
 ```
 
 **Query text.** Any `SELECT`, `WITH` or `VALUES` expression works. The query runs through the
-same governed pipeline, as the calling role.
+same governed pipeline, as the calling role. If no role is bound to the call, passing a query
+fails with `functions.relation_query_no_role`.
 
 ```sql
-SELECT * FROM enrich_orders(
-  'SELECT id, region FROM pet_store.orders WHERE region = ''north'''
+SELECT * FROM label_pets(
+  'SELECT id, name FROM pet_store.pets WHERE available = TRUE'
 );
 ```
 
@@ -129,13 +130,27 @@ SELECT * FROM enrich_orders(
 from an external source.
 
 ```sql
-SELECT * FROM enrich_orders(
-  '[{"id": 1, "region": "north"}, {"id": 2, "region": "south"}]'
+SELECT * FROM label_pets(
+  '[{"id": 1, "name": "Buddy"}, {"id": 2, "name": "Luna"}]'
 );
 ```
 
-The same three forms work on every surface — GraphQL, REST, gRPC and the others — by passing
-the value as a string under the argument's name.
+The same three forms work on every surface — GraphQL, pgwire, REST, gRPC, Bolt, Arrow Flight and MCP — by passing the value as a string under the argument's name.
+
+A `table_ref` argument works differently: it accepts only a `schema.table` name. Provisa passes that name (plus a minted token and connection details) to the callable, which fetches the data itself. Passing a query string or a JSON array to a `table_ref` argument fails with `functions.table_ref_not_a_table`.
+
+### Composing a query as a dataset argument
+
+A command call also works as the query-form value of a `result_set` argument. The inner query runs first; its rows are passed as a materialized `result_set` to the outer command.
+
+```sql
+-- Feed a filtered query result directly into label_pets.
+SELECT * FROM label_pets(
+  (SELECT id, name FROM pet_store.pets WHERE available = TRUE)
+);
+```
+
+Each command runs through its own I/O contract check. The inner query's result becomes a `{"kind": "result_set", "columns": [...], "rows": [...]}` dict that the outer command receives as its `input` argument.
 
 ### 3. Multiple dataset arguments
 
@@ -144,15 +159,15 @@ under its own name. The function reads them independently and can join or merge 
 it needs.
 
 ```python
-def merge_records(payload, session):
-    orders = payload["orders"]     # {"kind": "result_set", "columns": [...], "rows": [...]}
-    customers = payload["customers"]
+def match_pets_to_vets(payload, session):
+    pets = payload["pets"]     # {"kind": "result_set", "columns": [...], "rows": [...]}
+    vets = payload["vets"]
 
-    customer_map = {r["id"]: r for r in customers["rows"]}
+    vet_map = {v["specialty"]: v for v in vets["rows"]}
     result = []
-    for row in orders["rows"]:
-        customer = customer_map.get(row["customer_id"], {})
-        result.append({**row, "customer_name": customer.get("name")})
+    for row in pets["rows"]:
+        vet = vet_map.get(row["species"], {})
+        result.append({**row, "vet_name": vet.get("name")})
     return result
 ```
 
@@ -160,30 +175,32 @@ Registered with two `result_set` arguments:
 
 ```yaml
 arguments:
-  - name: orders
-    type: String
-    arg_kind: result_set
-    columns:
-      - {name: id, type: integer}
-      - {name: customer_id, type: integer}
-  - name: customers
+  - name: pets
     type: String
     arg_kind: result_set
     columns:
       - {name: id, type: integer}
       - {name: name, type: text}
+      - {name: species, type: text}
+  - name: vets
+    type: String
+    arg_kind: result_set
+    columns:
+      - {name: id, type: integer}
+      - {name: name, type: text}
+      - {name: specialty, type: text}
 ```
 
 Call it with two table references, one per argument:
 
 ```sql
-SELECT * FROM merge_records('pet_store.orders', 'pet_store.customers');
+SELECT * FROM match_pets_to_vets('pet_store.pets', 'pet_store.vets');
 ```
 
 On GraphQL and REST, pass each argument by name:
 
 ```json
-{ "orders": "pet_store.orders", "customers": "pet_store.customers" }
+{ "pets": "pet_store.pets", "vets": "pet_store.vets" }
 ```
 
 ### 4. A dataset plus primitive arguments
@@ -198,25 +215,25 @@ arguments:
     arg_kind: result_set
     columns:
       - {name: id, type: integer}
-      - {name: region, type: text}
-  - name: factor
-    type: double
-    default: 1.0
-  - name: label_prefix
+      - {name: name, type: text}
+  - name: prefix
     type: text
-    default: "R-"
+    default: "P-"
+  - name: min_score
+    type: integer
+    default: 0
 ```
 
 The SQL call passes the table as the first argument and scalars as typed literals after it:
 
 ```sql
-SELECT * FROM enrich_orders('pet_store.orders', '1.5', 'zone-');
+SELECT * FROM label_pets('pet_store.pets', 'PET-', '30');
 ```
 
 Leave out arguments that have defaults and they take their declared values:
 
 ```sql
-SELECT * FROM enrich_orders('pet_store.orders');  -- factor = 1.0, label_prefix = "R-"
+SELECT * FROM label_pets('pet_store.pets');  -- prefix = 'P-', min_score = 0
 ```
 
 ### 5. The session argument
@@ -226,14 +243,14 @@ the invocation context. Use it to tag output rows with the trace id, branch on t
 or write audit information that joins back to the invocation trace.
 
 ```python
-def enrich_orders(payload, session):
+def label_pets(payload, session):
     rows = []
     for row in payload["input"]["rows"]:
-        score = round(((int(row["id"]) * 37) % 100) / 100.0, 2)
+        score_pct = (int(row["id"]) * 37) % 100
         rows.append({
             "id": int(row["id"]),
-            "score": score,
-            "region_label": f"R-{row['region']}",
+            "score": round(score_pct / 100.0, 2),
+            "label": f"{payload.get('prefix', 'P-')}{row['name']}",
             # Tag each output row with the trace id.
             # Audit rows written during this call carry the same id,
             # so they join back to this invocation in the trace log.
@@ -241,8 +258,8 @@ def enrich_orders(payload, session):
         })
 
     # Restrict output for roles without full access.
-    if session.role_id not in ("sales_admin", "org_admin"):
-        rows = [r for r in rows if r["region_label"] != "R-restricted"]
+    if session.role_id not in ("data_steward", "org_admin"):
+        rows = [r for r in rows if r["score"] > 0.3]
 
     return rows
 ```
@@ -272,7 +289,7 @@ Both contracts are validated fail-loud at every invocation:
 - **Output:** rows returned by the command are validated against `output_columns` before they
   reach the caller.
 - **Narrow projection:** when an input contract is declared, the read of a table projects
-  **only those columns** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`)
+  **only those columns** (`SELECT "pets"."id", "pets"."name" FROM "pet_store"."pets"`)
   rather than `SELECT *`.
 
 ### The IR type vocabulary
@@ -296,28 +313,34 @@ This example is a `python` command, so it loads only where host code is allowed 
 
 ```yaml
 functions:
-  - name: enrich_orders
-    description: Enrich orders inline — deterministic score + region label
-    domain_id: sales-analytics
+  - name: label_pets
+    description: Label pets with a prefix and score threshold
+    domain_id: pet-store
     kind: query
     impl_kind: python
     source_id: ""
-    function_name: enrich_orders
+    function_name: label_pets
     returns: ""
     binding:
-      callable: demo.py_functions:enrich_orders
+      callable: demo.py_functions:label_pets
     arguments:
       - name: input
         type: String
         arg_kind: result_set
         columns:
           - {name: id, type: integer}   # narrow input contract
-          - {name: region, type: text}
-    visible_to: [admin]
+          - {name: name, type: text}
+      - name: prefix
+        type: text
+        default: "P-"
+      - name: min_score
+        type: integer
+        default: 0
+    visible_to: [data_steward]
     output_columns:
       - {name: id, type: integer}
       - {name: score, type: double}
-      - {name: region_label, type: text}
+      - {name: label, type: text}
     return_schema:
       type: array
       items:
@@ -325,7 +348,7 @@ functions:
         properties:
           id: {type: integer}
           score: {type: number}
-          region_label: {type: string}
+          label: {type: string}
 ```
 
 The gRPC variant (`enrich_grpc_set`) follows the same pattern but specifies `impl_kind: grpc`
@@ -361,11 +384,11 @@ register or update the command without a config reload.
 Commands can appear **inside** a larger SQL statement, where you join, subquery or project them; `SELECT * FROM fn(args)` is only the simplest form. A remote source's write operation is the exception, because it's called on its own (see [Why it cannot be composed](#why-it-cannot-be-composed)).
 
 ```sql
--- Enrich the orders relation and join the result back inline.
-SELECT o.id, o.amount, e.score, e.region_label
-FROM   pet_store.orders o
-JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
-WHERE  e.score > 0.8;
+-- Label pets inline and join the result back to the source table.
+SELECT p.id, p.name, lp.score, lp.label
+FROM   pet_store.pets p
+JOIN   label_pets('pet_store.pets') lp ON p.id = lp.id
+WHERE  lp.score > 0.8;
 ```
 
 Before governance, validation, or routing runs, the pipeline detects registered command calls,
@@ -377,21 +400,6 @@ above that threshold it registers as a named local relation in the engine.
 
 A localized statement routes normally. Single-source queries stay on the source; only genuinely
 cross-source queries go to the federation engine.
-
-### Composing a command inside a dataset argument
-
-A command call also works as the query-form value of a `result_set` argument. The inner command
-runs first, its output substituted, then the outer command receives it as a materialized input.
-
-```sql
--- Feed the output of random_dataset directly into enrich_orders.
-SELECT * FROM enrich_orders(
-  (SELECT * FROM random_dataset('5'))
-);
-```
-
-This is a double substitution: `random_dataset` executes and its rows become the query string
-that `enrich_orders` receives. Each command runs through its own I/O contract check in turn.
 
 ## A remote source's write operation
 
@@ -683,8 +691,8 @@ export function scoreOrders(
 In Python, Go, and Rust, the tags are lines inside the docstring or doc comment:
 
 ```python
-def enrich_orders(payload, session):
-    """@query Enrich orders with a score and region label."""
+def label_pets(payload, session):
+    """@query Label pets with a prefix and score."""
     ...
 
 def refund_order(payload, session):

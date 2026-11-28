@@ -80,3 +80,34 @@ def enrich_orders(payload: dict[str, Any], _session: Any) -> list[dict[str, Any]
         score = round(((int(row["id"]) * 37) % 100) / 100.0, 2)
         out.append({"id": int(row["id"]), "score": score, "region_label": f"R-{row['region']}"})
     return out
+
+
+def label_pets(payload: dict[str, Any], _session: Any) -> list[dict[str, Any]]:
+    """Label pets with a prefix and filter by minimum score (0–100 integer scale) — demo of mixed
+    result_set + scalar args (REQ-885).
+
+    Takes a result_set of pet rows (id, name) plus optional primitive args: a text prefix
+    (default "P-") and an integer min_score threshold (default 0). Returns derived columns only.
+    Score derived deterministically from id, so the demo/tests are reproducible.
+    """
+    prefix = str(payload.get("prefix", "P-"))
+    min_score = int(payload.get("min_score", 0))
+    relation = next(
+        (v for v in payload.values() if isinstance(v, dict) and v.get("kind") == "result_set"),
+        None,
+    )
+    if relation is None:
+        raise ValueError("label_pets expects a result_set relation argument (arg_kind: result_set)")
+    out: list[dict[str, Any]] = []
+    for row in relation.get("rows") or []:
+        # integer score_pct avoids floating-point comparison issues in the min_score filter
+        score_pct = (int(row["id"]) * 37) % 100
+        if score_pct >= min_score:
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "score": round(score_pct / 100.0, 2),
+                    "label": f"{prefix}{row['name']}",
+                }
+            )
+    return out
