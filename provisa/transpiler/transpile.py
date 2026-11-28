@@ -26,6 +26,7 @@ from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
     function_macros,
     opengauss_bytea_like,
+    opengauss_regexp,
     pg_forms_enum,
     pg_forms_geometric,
     pg_forms_type_io,
@@ -2266,6 +2267,11 @@ def transpile(
     if engine_kind == opengauss_bytea_like.KIND and opengauss_bytea_like.mentioned(pg_sql):
         # REQ-2236: openGauss matches bytea LIKE as multibyte text; its rawlike matches bytes.
         lowered = opengauss_bytea_like.byte_wise(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if engine_kind == opengauss_regexp.KIND and opengauss_regexp.mentioned(pg_sql):
+        # REQ-2236: openGauss's four-argument regexp_replace from a start replaces every match.
+        lowered = opengauss_regexp.first_match_from_start(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if column_types is not None:
