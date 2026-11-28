@@ -11522,5 +11522,6 @@
   "pt/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "pt/yourData.json::yourData.rest": "REST",
   "pt/yourData.json::yourData.sql": "SQL",
-  "pt/yourData.json::yourData.title": "Your data"
+  "pt/yourData.json::yourData.title": "Your data",
+  "pt/graph3d.json::graph3d.openAsQueryCypherOnly": "All hops is a Cypher query: open it as Cypher."
 }

@@ -463,7 +463,9 @@ _ONTOLOGY = (
 def test_the_ontology_view_s_one_query_is_its_cypher(meta):
     model, con = meta
     cypher = _same_rows(model, con, _ONTOLOGY)
-    assert "OPTIONAL MATCH (a)-[jr0:KIND_OF|PART_OF]->(j0:Terms)" in cypher
+    # REQ-2174: edgesOut is each term's one list (its where kept in its grouped read), so its
+    # relationships are a COLLECT of the term's row, not OPTIONAL MATCH rows beside it.
+    assert "COLLECT { MATCH (a)-[b:KIND_OF|PART_OF]->(c:Terms) RETURN {" in cypher
     assert "EXISTS { MATCH (a)<-[" in cypher and "-[:GROUNDS]->" in cypher
     assert "t1." not in cypher and "-[]-" not in cypher
 

@@ -402,6 +402,9 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
             _node,
             join_to_rel,
             _key_prop_for_label,
+            lambda tbl, where, near_sql, near_label: junction_hop(
+                tbl, where, near_sql, near_label, ctx, label_map, domain_to_sql_name, params
+            ),
         )
     except UntranslatableSubquery:
         return None

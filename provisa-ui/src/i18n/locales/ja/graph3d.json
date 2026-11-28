@@ -102,6 +102,7 @@
     "openAsQueryFocused": "検索またはフォーカスの近傍は、まだ 1 つのクエリでは表せません。",
     "openAsQueryCompiling": "クエリをコンパイル中…",
     "openAsQueryNoCypher": "このクエリには Cypher 形式がありません。",
+    "openAsQueryCypherOnly": "すべてのホップは Cypher クエリです。Cypher として開いてください。",
     "layersMenu": "レイヤー",
     "termsMenu": "用語",
     "menuAll": "すべて",

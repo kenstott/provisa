@@ -102,6 +102,7 @@
     "openAsQueryFocused": "De omgeving van zoeken of focus is nog niet als één query uit te drukken.",
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
+    "openAsQueryCypherOnly": "Alle stappen is een Cypher-query: open hem als Cypher.",
     "layersMenu": "Lagen",
     "termsMenu": "Termen",
     "menuAll": "alle",

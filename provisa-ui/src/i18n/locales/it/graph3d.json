@@ -102,6 +102,7 @@
     "openAsQueryFocused": "L’intorno della ricerca o del focus non è ancora esprimibile come una sola query.",
     "openAsQueryCompiling": "Compilazione della query…",
     "openAsQueryNoCypher": "Questa query non ha forma Cypher.",
+    "openAsQueryCypherOnly": "Tutti i passi è una query Cypher: aprila come Cypher.",
     "layersMenu": "Livelli",
     "termsMenu": "Termini",
     "menuAll": "tutti",
