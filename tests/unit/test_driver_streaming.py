@@ -339,8 +339,13 @@ def test_clickhouse_reads_arrow_batches_as_asked_and_kills_one_closed_early(monk
                 yield pa.record_batch([pa.array(block, pa.int64())], schema=schema)
 
     context = _Context()
+    from clickhouse_connect.driver.query import QueryContext
+
     client = SimpleNamespace(
-        query_arrow_stream=lambda sql, parameters, use_strings, settings: context
+        create_query_context=lambda query, parameters: QueryContext(
+            query=query, parameters=parameters
+        ),
+        query_arrow_stream=lambda sql, parameters, use_strings, settings: context,
     )
     driver = ClickHouseDriver()
     pool = _Pool(client)

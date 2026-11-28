@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "從某個數據來源註冊一張表，使其可被查詢和治理。",
+    "addView": "定義檢視：從 SQL 或指標計算得出的受治理數據集。",
+    "addRelationship": "聲明兩張表之間的連接，使查詢可以沿其關聯。",
+    "clearRejections": "讓您已拒絕的建議重新被提出。",
+    "addSource": "將數據庫、檔案、API 或服務連接為表的數據來源。",
+    "addCommand": "定義命令：呼叫方執行的操作，例如寫入或函數呼叫。",
+    "addRole": "新增獲授予權限的角色，或由使用者屬性衍生的角色。",
+    "addDataProduct": "將表發佈為數據產品，包含擁有者、輸出埠和合約。",
+    "productMap": "將每個數據產品、其表以及它們之間的連結繪製為一張圖。",
+    "addMetric": "定義指標：每個查詢都以相同方式計算的命名度量。",
+    "invite": "透過電郵邀請某人，並選擇其擁有的角色。",
+    "glossaryDomains": "只顯示所選網域的術語。",
+    "reviewsDue": "只顯示審閱日期已過的文件。",
+    "reembedAll": "重新計算以舊模型讀取的文件的搜尋嵌入。",
+    "addDocument": "新增一份文件，其文字可供詞彙表和代理引用。",
+    "addDomain": "新增網域：擁有自己擁有者和權限的一組表。",
+    "addPackageRegistry": "新增代碼來源安裝套件所用的登錄庫。",
+    "addOrg": "建立擁有自己使用者、數據和設定的組織。",
+    "addInvite": "邀請某人建立或加入一個組織。",
+    "addScheduledTask": "排程 Webhook 或 SQL 語句按 cron 執行。",
+    "addClassificationKind": "新增分析器可將欄歸入的類型。",
+    "addReport": "新增報告：ops 網域的一個檢視，在此頁面上閱讀。",
+    "addRegion": "聲明區域：位於同一地點的引擎及其儲存。",
+    "addContainerRegistry": "新增拉取代碼解析器映像所用的登錄庫。",
+    "addSecret": "儲存一個設定按名稱引用的密鑰。",
+    "addTag": "新增標籤，用於標記表、欄和術語。",
+    "addEnvironment": "建立環境：模型的副本，可在合併前修改和測試。",
+    "addSyncTarget": "新增發佈模型的目錄。"
+  }
+}

@@ -696,6 +696,9 @@ def jsonapi_document(
             base_path, page_number, page_size, total_count, extra or None, has_next=has_next
         )
     )
+    # JSON:API 1.1 (JSON:API Object, REQ-257): a table read states the version it follows,
+    # as the Rust encoder writes it (rust/encoders/json/src/surfaces.rs jsonapi()).
+    doc["jsonapi"] = {"version": "1.1"}
     return doc
 
 

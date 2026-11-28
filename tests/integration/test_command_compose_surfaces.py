@@ -54,7 +54,7 @@ _ORDER_REGION = {1: "us-east", 2: "us-east", 3: "us-west", 4: "eu-west", 5: "us-
 # The composed statement — the command JOINed INLINE with the source table (the point of REQ-1159).
 _COMPOSED_SQL = (
     "SELECT o.id, e.score, e.region_label "
-    "FROM sa__orders o JOIN enrich_orders('sales-pg.public.orders') e ON o.id = e.id "
+    "FROM sa__orders o JOIN enrich_orders('sales_analytics.orders') e ON o.id = e.id "
     "ORDER BY o.id LIMIT 3"
 )
 

@@ -189,7 +189,15 @@ def test_negative_inner_product_reads_and_writes_back() -> None:
         ("postgres", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1', 'g') FROM t"),
         ("duckdb", "SELECT pg_catalog.regexp_replace(s, 'a(b)', '\\1', 'g') FROM t"),
         ("trino", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1') AS regexp_replace FROM t"),
-        ("clickhouse", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\\\1') AS regexp_replace FROM t"),
+        # ClickHouse: the pattern as RE2 reads it as PostgreSQL does (are_re2), every match by
+        # replaceRegexpAll, 0A000 where it can match the empty text (polyfill.regex).
+        (
+            "clickhouse",
+            "SELECT CASE WHEN throwIf(ifNull(match('', '(?s:a(b))'), 0), 'postgresql-error 0A000: "
+            "regexp_replace() of a pattern that matches the empty text has no form on clickhouse"
+            "<end of postgresql-error>') = 0 THEN replaceRegexpAll(s, '(?s:a(b))', '\\\\1') "
+            "ELSE NULL END AS regexp_replace FROM t",
+        ),
     ],
 )
 def test_pg_catalog_regexp_replace_is_the_bare_call(dialect: str, written: str) -> None:

@@ -1251,6 +1251,7 @@ async def reclamation_loop(  # REQ-234
     check_interval: int = 30,
     config_mv_ids: set[str] | None = None,
     should_run: Callable[[], bool] | None = None,
+    engine_serving: Callable[[], Awaitable[bool]] | None = None,
 ) -> None:
     """Background STORAGE-RECLAMATION loop (REQ-234): drop MV tables removed from config and
     reap orphaned MV tables past their grace period. It NO LONGER refreshes MVs — the event loop
@@ -1268,12 +1269,21 @@ async def reclamation_loop(  # REQ-234
         should_run: Asked before each sweep (REQ-1900). The sweep drops tables in the SHARED
             materialization store, so of N worker processes one runs it: the server passes its
             scheduler holder's ``holds``. ``None`` sweeps every time.
+        engine_serving: Asked before each sweep, after ``should_run`` (REQ-1448). On the hosted
+            control plane the store is reached through a shard that idles to zero, and a sweep
+            that dialed it then went to the released pod's IP every time; the server passes
+            ``engine_wake.attach_if_serving``, which attaches the terminal to a live coordinator
+            without waking one. False leaves the sweep for a later one. ``None`` sweeps every
+            time.
     """
     orphan_tracker: dict[str, float] = {}
 
     while True:
         try:
             if should_run is not None and not should_run():
+                await asyncio.sleep(check_interval)
+                continue
+            if engine_serving is not None and not await engine_serving():
                 await asyncio.sleep(check_interval)
                 continue
             for engine, registry in registries():

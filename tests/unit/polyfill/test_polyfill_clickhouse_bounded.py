@@ -195,7 +195,9 @@ def test_a_group_at_the_bound_answers_and_one_past_it_raises(runtime, monkeypatc
 
 def test_the_stated_bound_is_the_one_enforced():
     feature = next(f for f in GRID.features if f.name == "avg")
-    (stated,) = feature.read.limitations["clickhouse"]
+    # The bound; the row's other limitation on clickhouse is its refusal by name of (interval)
+    # and (numeric) (measured.py).
+    (stated,) = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
     assert str(aggregates.MOST_VALUES) in stated.text
     assert f"count($v) > {aggregates.MOST_VALUES}" in aggregates.avg_form()
 

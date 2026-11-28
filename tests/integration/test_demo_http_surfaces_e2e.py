@@ -181,6 +181,29 @@ def test_a_path_is_answered_with_its_nodes_and_edges(instance):
     assert all(e["type"] == "HAS_PETS" for e in path["edges"]), path
 
 
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        # A junction hop: its junction (_term_refs) is a governed relation under rTableColumns__via.
+        "MATCH (n:Ontology:Terms) OPTIONAL MATCH "
+        "(n)-[rTableColumns:REFERENCED_BY]-(mTableColumns:Meta:TableColumns) "
+        "RETURN n, rTableColumns, mTableColumns LIMIT 1000",
+        # An FK hop: its far node is a governed relation under mRegisteredTa.
+        "MATCH (n:Meta:TableColumns) OPTIONAL MATCH "
+        "(n)-[rRegisteredTa:HAS_TABLE_COLUMNS]-(mRegisteredTa:Meta:RegisteredTables) "
+        "RETURN n, rRegisteredTa, mRegisteredTa LIMIT 2500",
+    ],
+    ids=["junction", "fk"],
+)
+def test_an_explorer_label_click_hop_under_mixed_case_variables_is_answered(instance, cypher):
+    """The Cypher explorer's label-click statement (2026-11-28): each relation of the OPTIONAL
+    hop, governed under a mixed-case variable, binds the qualifiers that read it."""
+    body = _cypher_ok(instance, cypher)
+    assert body["rows"], body
+    far = body["columns"][2]  # the hop's far node, the third returned
+    assert any(row[far] is not None for row in body["rows"]), body["rows"][:3]
+
+
 def test_a_cypher_answer_says_whether_it_came_from_the_cache(instance):
     """REQ-536: every data response names its cache status; a HIT also names its age."""
     resp = _cypher(instance, "MATCH (n:Meta:RegisteredTables) RETURN n LIMIT 1")
@@ -353,7 +376,15 @@ def test_write_operations_are_offered_and_adding_the_source_registers_only_the_d
     )
     offered = {f["name"] for f in data["availableFunctions"]}
     assert {"placeOrder", "deleteOrder", "addPet"} <= offered, offered
-    assert "getInventory" not in offered  # a GET is a table, not a command
+    # A typed GET with no required parameter is a plain list: a table, not offered (REQ-316).
+    assert not {"findPetsByStatus", "findPetsByTags"} & offered, offered
+    # A GET that requires a parameter is a function returning its table's rows (REQ-1986,
+    # 2026-11-16: "Every operation of a source that requires a parameter is a function").
+    assert {"getPetById", "getOrderById", "getUserByName"} <= offered, offered
+    # getInventory's rows are a map with no properties, so it is an untyped GET: a command that
+    # reads, beside a table whose columns the operator declares (REQ-1924 DECLARED COLUMNS,
+    # REQ-1874; commit 4eaa859c33).
+    assert "getInventory" in offered, offered
     actions = httpx.get(f"{instance.url}/admin/actions", headers=_ADMIN, timeout=_TIMEOUT).json()
     # The install config declares one operation as a command, add_pet (addPet, REQ-2134).
     registered = [

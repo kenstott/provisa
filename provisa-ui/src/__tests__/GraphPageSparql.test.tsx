@@ -179,7 +179,7 @@ const CONSTRUCT = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 5";
 function Run() {
   const navigate = useNavigate();
   return (
-    <button onClick={() => navigate("/sparql", { state: { query: CONSTRUCT, autoRun: true } })}>
+    <button onClick={() => navigate("/sparql", { state: { query: CONSTRUCT } })}>
       run
     </button>
   );

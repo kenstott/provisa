@@ -34,6 +34,8 @@ import sqlglot.expressions as exp
 # columns' forms are read in them. Neither module imports the transpiler where it is defined.
 import provisa.db2.dialect  # noqa: F401
 import provisa.saphana.dialect  # noqa: F401
+from provisa.core.engine_kinds import ENGINE_KINDS
+from provisa.core.source_registry import LAKE_ONLY_SOURCES, SOURCE_TO_DIALECT, engine_dialect
 from provisa.transpiler.polyfill import notation
 from provisa.transpiler.polyfill.matching import Bindings, match
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
@@ -79,6 +81,11 @@ DIALECTS: Mapping[str, Connector] = {
 }
 
 
+#: The source types a hint may read: those that run SQL (each has a dialect) and the lakes an
+#: engine attaches (REQ-2236, SQL CONNECTORS ONLY).
+_ATTACHED_SOURCES = frozenset(SOURCE_TO_DIALECT) | frozenset(LAKE_ONLY_SOURCES)
+
+
 def column_of(dialect: str) -> str | None:
     """The column of the grid ``dialect`` is (its own), or None for a dialect Provisa sends no SQL
     to: a rule matched there has no form, and the translator refuses the call by name."""
@@ -90,12 +97,36 @@ def written_in(dialect: str) -> str:
     return DIALECTS[dialect].written_in
 
 
+#: The bound of a last-digits difference (REQ-2236, amended 2026-11-25): a float4 or float8 result an
+#: engine computes with its own math library differs from PostgreSQL's by at most this part of
+#: PostgreSQL's value. The widest measured is a ClickHouse server's ln(100), 2.1e-10 of it
+#: (4.6051701869546955, PostgreSQL 4.605170185988092); exp(0.5) there is 8.3e-13. Anything a single
+#: precision step or a wrong formula makes (1e-7 and more) is beyond it. A float4 has no difference
+#: this small but none, so on a float4 the bound admits none.
+LAST_DIGITS_BOUND = 1e-9
+
+
 @dataclass(frozen=True)
 class Limitation:
-    """A difference from PostgreSQL on a dialect, and the refusal a client receives for it."""
+    """A difference from PostgreSQL on a dialect, and the refusal a client receives for it.
+    ``last_digits``: the difference is a float result's last significant digits, within
+    :data:`LAST_DIGITS_BOUND`, and nothing else (``last_digits``)."""
 
     text: str
     refusal: Refusal | None = None
+    last_digits: bool = False
+
+
+def last_digits(engine: str, computed: str) -> Limitation:
+    """The limitation of a row whose float result ``engine`` computes with its own math library
+    (REQ-2236, amended 2026-11-25): a documented difference within :data:`LAST_DIGITS_BOUND`.
+    ``computed``: what it computes so, as the row's text says it."""
+    return Limitation(
+        f"{engine} computes {computed} with its own math library: a float result can differ from "
+        f"PostgreSQL's in its last significant digits, by at most {LAST_DIGITS_BOUND:g} of "
+        "PostgreSQL's value.",
+        last_digits=True,
+    )
 
 
 @dataclass(frozen=True)
@@ -140,6 +171,36 @@ class Feature:
     write: Side = Side()
 
 
+@dataclass(frozen=True)
+class Hint:
+    """A hint (REQ-2236, A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR; REQ-2352): a row of the
+    grid for a difference from PostgreSQL that one engine shows, on its own tables or reading one
+    source it attaches, which its dialect's rows do not, and its fix: a rule in the grid's notation
+    that replaces the dialect's rule there. ``dialect``: the column whose page lists it. ``engine``:
+    the engine kind (provisa.core.engine_kinds) whose dialect that is. ``source``: the source type
+    whose attached columns it applies to (a source hint), or None for the engine's own tables (an
+    engine hint). ``setting``: the source's version or setting it depends on, where it does.
+    ``features``: the grid rows it refines. ``test``: the test that reproduced the difference and
+    checks the answer, from the repository's root; ``service``: the docker-compose.test.yml service
+    that test runs the engine and source in, read for the hint's provenance."""
+
+    name: str
+    dialect: str
+    engine: str
+    source: str | None
+    difference: str
+    rule: Rule
+    features: tuple[str, ...]
+    test: str
+    service: str
+    setting: str | None = None
+
+    @property
+    def form(self) -> Form:
+        """The hint's form on its dialect."""
+        return self.rule.forms[self.dialect]
+
+
 class Status(enum.Enum):
     """A feature on a dialect, as the summary across the dialects shows it."""
 
@@ -168,8 +229,9 @@ def _first(rule: Rule) -> bool:
 class Grid:
     """The grid: its features, validated, and the lookups the translator and the docs make."""
 
-    def __init__(self, features: tuple[Feature, ...]) -> None:
+    def __init__(self, features: tuple[Feature, ...], hints: tuple[Hint, ...] = ()) -> None:
         self.features = features
+        self.hints = hints
         self._by_root: dict[str, list[tuple[Feature, Rule]]] = {}
         self._rewrites: list[tuple[Feature, Rule]] = []
         #: The rules of no pattern read before any pattern (Rewrite.first).
@@ -183,6 +245,7 @@ class Grid:
         for feature in features:
             for side in (feature.read, feature.write):
                 self._check(feature, side)
+        self._check_hints(frozenset(names))
         for feature in features:
             for rule in feature.read.rules:
                 if rule.pattern is None and _first(rule):
@@ -219,6 +282,45 @@ class Grid:
                 if isinstance(form, str):
                     assert rule.pattern is not None
                     notation.replacement(form, written_in(dialect), rule.pattern)
+
+    def _check_hints(self, features: frozenset[str]) -> None:
+        """Each hint is of a dialect of the grid and an engine kind that writes it, reads a source
+        type that runs SQL or a lake an engine attaches, refines rows the grid has, and has one form,
+        its dialect's (REQ-2236, A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR)."""
+        keys = [(h.dialect, h.engine, h.source, h.setting, h.name) for h in self.hints]
+        twice = sorted({k[-1] for k in keys if keys.count(k) > 1})
+        if twice:
+            raise RuleError(f"hints named twice on one engine and source: {twice}")
+        for hint in self.hints:
+            if hint.dialect not in DIALECTS:
+                raise RuleError(f"hint {hint.name}: no dialect {hint.dialect!r}")
+            if hint.engine not in ENGINE_KINDS:
+                raise RuleError(f"hint {hint.name}: no engine kind {hint.engine!r}")
+            if engine_dialect(hint.engine) != hint.dialect:
+                raise RuleError(
+                    f"hint {hint.name}: engine {hint.engine!r} does not write {hint.dialect!r}"
+                )
+            if hint.source is not None and hint.source not in _ATTACHED_SOURCES:
+                raise RuleError(f"hint {hint.name}: no SQL or lake source type {hint.source!r}")
+            if set(hint.rule.forms) != {hint.dialect}:
+                raise RuleError(f"hint {hint.name}: its one form is of {hint.dialect!r}")
+            if not hint.features:
+                raise RuleError(f"hint {hint.name}: names the rows it refines")
+            unknown = sorted(set(hint.features) - features)
+            if unknown:
+                raise RuleError(f"hint {hint.name}: no rows {unknown}")
+            if not hint.test or not hint.service:
+                raise RuleError(f"hint {hint.name}: names its reproducing test and its service")
+            self._check(Feature(hint.name, "hint", hint.difference), Side(rules=(hint.rule,)))
+
+    def hints_on(self, dialect: str) -> tuple[Hint, ...]:
+        """The hints ``dialect``'s page lists, by engine, then source (its own tables first)."""
+        return tuple(
+            sorted(
+                (h for h in self.hints if h.dialect == dialect),
+                key=lambda h: (h.engine, h.source or "", h.setting or "", h.name),
+            )
+        )
 
     @property
     def names(self) -> frozenset[str]:

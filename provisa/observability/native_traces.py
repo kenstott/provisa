@@ -19,7 +19,8 @@ gives, so ``"ops"."traces"`` is the same governed table on both.
 
 The rows are those Trino's compaction keeps: a request span or the root span of background work
 (``ops_schema.is_trace_record``), never a catalog-driver statement span. Rows are kept
-indefinitely, as Trino keeps them; compaction removes only the batch files it merged.
+indefinitely, as Trino keeps them; compaction removes only the batch files it merged, and only
+while no reader holds a lease on the folder (``ReadLease``).
 """
 
 from __future__ import annotations
@@ -30,8 +31,9 @@ import os
 import re
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -69,19 +71,28 @@ SPAN_KEY = ("trace_id", "span_id", "tenant_id")
 #: (``compact``). Not Parquet, so the view's glob skips it.
 MERGED_FILE = "_merged.json"
 
-#: How long a merged file is kept beside its merged copy: past any directory listing that began
-#: before its merged copy was renamed into place. A listing (``readdir``) that runs while a file is
-#: added and another removed may return neither, so a merged input is never removed by the pass
-#: that merged it; the next pass, a minute later (``compact_otel_signals``), removes it.
+#: How long a merged file is kept beside its merged copy at least: a merged input is never removed
+#: by the pass that merged it; the first pass after the grace (``compact_otel_signals``, a minute
+#: later) removes it, if no reader holds a lease then (``READERS_DIR``).
 #:
-#: A longer grace protects no read. DuckDB lists a glob when a query starts and opens the files it
-#: listed when the scan begins, all at once, closing each as it finishes; a file removed after it
-#: was opened is still read, and one removed between the listing and the scan fails the query
-#: ("Cannot open file"). Every read that lists the folder while a merged file is kept lists that
-#: file too, so keeping it longer only moves the moment a removal can meet a read whose scan has
-#: not begun; it does not make that moment rarer. Kept an hour (the longest request timeout), a
-#: day's folder held every batch of the last hour, and one read opened them all (#338).
+#: No grace protects a read on its own. DuckDB lists a glob when a query binds and opens the files
+#: it listed each time a scan of them begins -- once for a plain read, once per iteration for a
+#: scan inside a recursive CTE (a Cypher variable-length path) -- so a file removed at any moment
+#: of the query's run fails it ("Cannot open file"). Every read that lists the folder while a
+#: merged file is kept lists that file too; only the reader's lease, held for the whole query,
+#: tells a pass a removal is safe. Kept an hour, a day's folder held every batch of the last hour,
+#: and one read opened them all (#338).
 MERGED_GRACE_S = 30.0
+
+#: The folder of reader leases at the folder's root: one lock file per process reading the folder,
+#: locked for as long as a query of that process runs (``ReadLease``). Dot-named and not Parquet,
+#: so no read of the folder lists it.
+READERS_DIR = ".readers"
+
+#: The lock file at the folder's root under which a lease is taken or given back, and under which
+#: a pass checks the leases and removes merged files (``_readers_gate``): no read can start between
+#: the check and the removal.
+READERS_GATE = ".readers.lock"
 
 #: How many small rolled files of one level a pass merges into one file of the next level. A pass
 #: merges the day's batches into one rolled file of level 1; a rolled file is merged again only
@@ -147,12 +158,13 @@ def traces_scan(root: str) -> str:
     written with ``TRACES_SCHEMA`` (``write_batch``, ``compact``), so none needs its columns
     matched by name.
 
-    A query of the view lists the folder when it starts and opens every listed file when its scan
-    begins, so a file removed between the two fails it ("Cannot open file"). ``compact`` keeps each
-    file it merged in place, beside its merged copy, for ``MERGED_GRACE_S``; the view reads each
-    span once
-    (DISTINCT ON its key, ``SPAN_KEY``: a batch's rows and their merged copy are the same spans,
-    and a record landed for another org is another span of that org's)."""
+    A query of the view lists the folder when it binds and opens the listed files each time a scan
+    of them begins, so a file removed while it runs fails it ("Cannot open file"). The engine holds
+    a reader lease on the folder for every query (``ReadLease``), and ``compact`` removes the files
+    it merged only while no lease is held; until then each is kept in place beside its merged copy,
+    and the view reads each span once (DISTINCT ON its key, ``SPAN_KEY``: a batch's rows and their
+    merged copy are the same spans, and a record landed for another org is another span of that
+    org's)."""
     schema = os.path.join(root, SCHEMA_FILE).replace("'", "''")
     every = os.path.join(root, "**", "*.parquet").replace("'", "''")
     key = ", ".join(SPAN_KEY)
@@ -188,6 +200,79 @@ def _write_atomic(table: pa.Table, path: str) -> None:
 
 def _day_dir(root: str, day: Any) -> str:
     return os.path.join(root, f"_date={day.isoformat()}")
+
+
+@contextmanager
+def _readers_gate(root: str) -> Iterator[None]:
+    """Hold the folder's readers gate (``READERS_GATE``). Each holder holds it for a few file
+    operations, so a wait for it is short."""
+    gate = FileLock(Path(root) / READERS_GATE)
+    gate.acquire()
+    try:
+        yield
+    finally:
+        gate.release()
+
+
+class ReadLease:
+    """One process's lease on the folder at ``root``: engaged, compaction removes no file of it.
+
+    Engaged, it is a lock file of its own under ``READERS_DIR``, locked, which a pass finds locked
+    (``_readers_active``); the operating system releases the lock when the process ends, however it
+    ends, so a lease left by a process that died is found unlocked and cleared. Taken and given
+    back under the readers gate, so a pass that found no lease removes its files before any read
+    can begin. Not re-entrant: the engine engages it once while any of its queries runs
+    (``duckdb_runtime._CatalogGate``)."""
+
+    def __init__(self, root: str) -> None:
+        self.root = root
+        self._lease: FileLock | None = None
+
+    def engage(self) -> None:
+        if self._lease is not None:
+            raise RuntimeError(f"the read lease on {self.root} is already engaged")
+        lease = FileLock(Path(self.root) / READERS_DIR / f"{os.getpid()}-{uuid.uuid4().hex}.lock")
+        with _readers_gate(self.root):
+            if not lease.try_acquire():
+                # A name no other lease has: nobody else opens it.
+                raise RuntimeError(f"{lease.path} is held by another lease")
+        self._lease = lease
+
+    def disengage(self) -> None:
+        lease, self._lease = self._lease, None
+        if lease is None:
+            raise RuntimeError(f"the read lease on {self.root} is not engaged")
+        with _readers_gate(self.root):
+            lease.release()
+            os.remove(lease.path)
+
+
+@contextmanager
+def reading(root: str) -> Iterator[None]:
+    """Hold a read lease on the folder at ``root`` while the block reads it."""
+    lease = ReadLease(root)
+    lease.engage()
+    try:
+        yield
+    finally:
+        lease.disengage()
+
+
+def _readers_active(root: str) -> bool:
+    """Whether a reader holds a lease on the folder at ``root``. Called under the readers gate.
+    A lease found unlocked was left by a process that ended while it was engaged, and is cleared."""
+    folder = os.path.join(root, READERS_DIR)
+    if not os.path.isdir(folder):
+        return False
+    active = False
+    for name in os.listdir(folder):
+        lease = FileLock(Path(folder) / name)
+        if not lease.try_acquire():
+            active = True
+            continue
+        lease.release()
+        os.remove(lease.path)
+    return active
 
 
 def span_row(span: Any) -> dict:
@@ -263,8 +348,9 @@ def compact(
 
     Each input is written to the merged file as it is read, so a pass holds one input file of
     Arrow at a time, never a day's. A merged file is kept in place, beside its merged copy, for
-    ``grace_s`` seconds (``MERGED_GRACE_S``) and is removed by the first compaction after that; it
-    is never merged again. A read listing the folder meanwhile reads each row once
+    ``grace_s`` seconds (``MERGED_GRACE_S``) and is removed by the first compaction after that which
+    finds no reader lease held (``ReadLease``): a query of the folder may open any file it listed
+    at any moment of its run. It is never merged again. A read listing the folder meanwhile reads each row once
     (``traces_scan``). The merged files are renamed into place before any input is recorded, so
     no row is ever absent from the folder.
     """
@@ -278,16 +364,18 @@ def compact(
         for entry in sorted(os.listdir(root)):
             folder = os.path.join(root, entry)
             if entry.startswith("_date=") and os.path.isdir(folder):
-                removed += _compact_day(folder, target_bytes, grace_s, clock)
+                removed += _compact_day(root, folder, target_bytes, grace_s, clock)
         return removed
     finally:
         lock.release()
 
 
-def _compact_day(folder: str, target_bytes: int, grace_s: float, clock: Callable[[], float]) -> int:
-    """:func:`compact` for one day's folder, under the folder's lock: merge its batches, then each
-    level's small rolled files ``MERGE_FANIN`` at a time, record the inputs, and remove the
-    recorded ones past ``grace_s``."""
+def _compact_day(
+    root: str, folder: str, target_bytes: int, grace_s: float, clock: Callable[[], float]
+) -> int:
+    """:func:`compact` for one day's folder of ``root``, under the folder's lock: merge its
+    batches, then each level's small rolled files ``MERGE_FANIN`` at a time, record the inputs, and
+    remove the recorded ones past ``grace_s`` if no reader holds a lease on ``root``."""
     merged = _merged(folder)
     live = [
         name
@@ -317,11 +405,16 @@ def _compact_day(folder: str, target_bytes: int, grace_s: float, clock: Callable
         level += 1
     removed = 0
     now = clock()
-    for name, at in list(merged.items()):
-        if now - at >= grace_s:
-            os.remove(os.path.join(folder, name))
-            del merged[name]
-            removed += 1
+    due = [name for name, at in merged.items() if now - at >= grace_s]
+    if due:
+        # Under the gate: no read begins between finding no lease and the last removal. A lease
+        # held keeps every due file for a later pass.
+        with _readers_gate(root):
+            if not _readers_active(root):
+                for name in due:
+                    os.remove(os.path.join(folder, name))
+                    del merged[name]
+                    removed += 1
     _write_merged(folder, merged)
     return removed
 
@@ -389,17 +482,19 @@ def _write_merged(folder: str, merged: dict[str, float]) -> None:
 
 def _landed(root: str) -> pa.Table:
     """Every trace row landed under ``root``, each file read as itself (see ``compact``) and a
-    merged batch kept beside its merged copy not read again."""
-    paths = [
-        os.path.join(folder, name)
-        for folder, _dirs, names in os.walk(root)
-        for name in sorted(names)
-        if name.endswith(".parquet")
-        and name != SCHEMA_FILE
-        and not name.startswith(".")
-        and name not in _merged(folder)
-    ]
-    tables = [pq.ParquetFile(p).read().cast(TRACES_SCHEMA) for p in sorted(paths)]
+    merged batch kept beside its merged copy not read again; read under a lease (``reading``), so
+    no file listed is removed before it is read."""
+    with reading(root):
+        paths = [
+            os.path.join(folder, name)
+            for folder, _dirs, names in os.walk(root)
+            for name in sorted(names)
+            if name.endswith(".parquet")
+            and name != SCHEMA_FILE
+            and not name.startswith(".")
+            and name not in _merged(folder)
+        ]
+        tables = [pq.ParquetFile(p).read().cast(TRACES_SCHEMA) for p in sorted(paths)]
     return pa.concat_tables(tables) if tables else TRACES_SCHEMA.empty_table()
 
 

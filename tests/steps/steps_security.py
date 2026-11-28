@@ -525,6 +525,9 @@ def request_to_skip_path(shared_data: dict) -> None:
         # REQ-1472: the break-glass credential exchange produces a token, so it cannot sit behind
         # the bearer gate any more than /auth/login can.
         "/auth/superuser-login",
+        # REQ-1264 (REQ-594 amended 2026-11-27): before its first rotation the break-glass account
+        # cannot obtain a token, so the password change checks the current password in its body.
+        "/auth/superuser-password",
         "/auth/provider-type",
         "/auth/bootstrap-status",
         # REQ-1265: SAML web SSO runs before any token exists. /login sends the browser to the

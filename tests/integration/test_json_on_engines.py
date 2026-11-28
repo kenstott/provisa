@@ -35,6 +35,10 @@ from tests.unit.pgwire.pg17_json_matrix import MATRIX, SERVED, outcome, text_of
 pytestmark = [pytest.mark.integration]
 
 
+#: What each statement the engine raised on said, for a failure to say.
+_SAID: dict[str, str] = {}
+
+
 def _served(sql: str, rows: list[Any]) -> list[tuple]:
     casts = result_casts(sql) or ()
 
@@ -56,14 +60,16 @@ def _replayed(
 ) -> dict[str, str]:
     """Each statement's outcome on ``engine``, where it is not an answer PostgreSQL gave."""
     found: dict[str, str] = {}
+    _SAID.clear()
     for sql in remaining("json", engine, RECORDED):
         recorded = RECORDED[sql]
         try:
             found[sql] = outcome(sql, recorded, _served(sql, run(written(sql))), False)
         except FunctionRefused:
             found[sql] = outcome(sql, recorded, None, True)
-        except Exception:  # noqa: BLE001 -- any error of the engine's is this statement's outcome
+        except Exception as error:  # noqa: BLE001 -- any error of the engine's is its outcome
             found[sql] = outcome(sql, recorded, None, False)
+            _SAID[sql] = str(error)[:300]
     return {sql: said for sql, said in found.items() if said != SERVED}
 
 
@@ -75,7 +81,7 @@ def test_json_on_trino(trino_conn):
         return cursor.fetchall()
 
     found = _replayed("trino", lambda sql: transpile_to_trino(sql, generated=False), run)
-    assert found == _expected("trino"), json.dumps({"trino": found})
+    assert found == _expected("trino"), json.dumps({"trino": found, "said": _SAID})
 
 
 @pytest.mark.requires_clickhouse
@@ -93,4 +99,4 @@ def test_json_on_clickhouse():
         return transpile(sql, "clickhouse", generated=False)
 
     found = _replayed("clickhouse", written, lambda sql: list(client.query(sql).result_rows))
-    assert found == _expected("clickhouse"), json.dumps({"clickhouse": found})
+    assert found == _expected("clickhouse"), json.dumps({"clickhouse": found, "said": _SAID})

@@ -521,12 +521,10 @@ def test_an_input_no_row_reads_is_refused_by_name(sql):
         transpile(sql, "clickhouse", generated=False)
 
 
-def test_a_shift_outside_the_bound_raises_0a000(runtime):
-    with pytest.raises(Exception) as raised:
-        _rows(runtime, OUTSIDE)
-    error = from_engine(raised.value)
-    assert error is not None and error.sqlstate == "0A000", str(raised.value)[:300]
-    assert "has no exact form on clickhouse" in str(error)
+def test_a_shift_outside_1900_is_held_and_answers_postgresql_s(runtime):
+    """1899-12-31 is held exactly (polyfill.held_instants, REQ-2236): the periods meet at
+    1900-01-01 and do not overlap, as PostgreSQL answers."""
+    assert _rows(runtime, OUTSIDE) == [False]
 
 
 ADAPTED = {

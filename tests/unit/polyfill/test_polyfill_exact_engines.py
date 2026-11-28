@@ -32,6 +32,7 @@ sys.path.insert(0, str(_ROOT / "scripts" / "conformance"))
 import polyfill_provenance  # noqa: E402
 
 _PROVENANCE = polyfill_provenance.read(GRID)
+_HINT_PROVENANCE = polyfill_provenance.read_hints(GRID)
 _DIALECT_SOURCES = {
     "db2": _ROOT / "provisa/db2/dialect.py",
     "saphana": _ROOT / "provisa/saphana/dialect.py",
@@ -58,7 +59,7 @@ def _row_constructs(dialect: str) -> set[str]:
 @pytest.mark.parametrize("dialect", ["db2", "saphana"])
 def test_db2_and_hana_are_columns_of_the_grid(dialect: str):
     assert dialect in DIALECTS
-    assert f"{docs.DIRECTORY}/{dialect}.md" in docs.pages(GRID, _PROVENANCE)
+    assert f"{docs.DIRECTORY}/{dialect}.md" in docs.pages(GRID, _PROVENANCE, _HINT_PROVENANCE)
 
 
 @pytest.mark.parametrize("dialect", ["db2", "saphana"])
@@ -155,7 +156,7 @@ def test_db2_division_is_no_refusal_of_the_grid():
     ],
 )
 def test_each_stated_limitation_is_on_the_engines_page(dialect: str, phrase: str):
-    page = docs.pages(GRID, _PROVENANCE)[f"{docs.DIRECTORY}/{dialect}.md"]
+    page = docs.pages(GRID, _PROVENANCE, _HINT_PROVENANCE)[f"{docs.DIRECTORY}/{dialect}.md"]
     assert phrase in page.replace("&#x27;", "'")
 
 

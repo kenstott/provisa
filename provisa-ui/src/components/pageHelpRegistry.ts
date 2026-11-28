@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { docsHref, type DocsTarget } from "./docsTarget";
+
 // REQ-2277 rule 8: every page has the page help (?) in its header. This registry holds each page's
 // help, keyed by its route: the purpose line, any further paragraphs, and the documentation page it
 // links. pageHelpGuard.test.ts fails a route of the app's route table without an entry here, an
@@ -22,34 +24,56 @@ export interface PageHelpEntry {
   purpose: string;
   /** i18n keys of further paragraphs: the rules a reader cannot see on the screen. */
   more?: readonly string[];
-  /** The docs site page as /docs?page= takes it (a path under docs/ ending in /), with an
-   *  optional #section. */
-  docs: string;
+  /** The page's documentation (docsTargets.test.ts checks it is a published page and section). */
+  docs: DocsTarget;
   placement: PageHelpPlacement;
 }
 
 const p = (id: string) => `pageHelp.purpose.${id}`;
 
 export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
-  "/sources": { purpose: p("sources"), docs: "sources/", placement: "title" },
-  "/tables": { purpose: p("tables"), docs: "configuration/#tables", placement: "title" },
+  "/sources": {
+    purpose: p("sources"),
+    more: ["sourcesPage.purposeBody", "sourcesPage.purposeAdd"],
+    docs: "sources/",
+    placement: "title",
+  },
+  "/tables": {
+    purpose: p("tables"),
+    more: ["tablesPage.purposeBody", "tablesPage.purposeAdd", "tablesPage.purposeModel"],
+    docs: "configuration/#tables",
+    placement: "title",
+  },
   "/views": {
     purpose: p("views"),
+    more: ["tablesPage.purposeAdd"],
     docs: "configuration/#views-governed-computed-datasets",
     placement: "title",
   },
   "/relationships": {
     purpose: p("relationships"),
+    more: ["relationshipsPage.purposeBody", "relationshipsPage.purposeAdd"],
     docs: "configuration/#relationships",
     placement: "title",
   },
-  "/metrics": { purpose: p("metrics"), docs: "modeling/#metrics", placement: "title" },
+  "/metrics": {
+    purpose: p("metrics"),
+    more: ["metricsPage.purposeBody", "metricsPage.purposeAdd"],
+    docs: "modeling/#metrics",
+    placement: "title",
+  },
   "/commands": { purpose: p("commands"), docs: "commands/", placement: "title" },
   "/lineage": { purpose: p("lineage"), docs: "lineage/", placement: "title" },
-  "/data-products": { purpose: p("dataProducts"), docs: "data-products/", placement: "title" },
+  "/data-products": {
+    purpose: p("dataProducts"),
+    more: ["dataProductsTab.purposeBody"],
+    docs: "data-products/",
+    placement: "title",
+  },
   "/team": { purpose: p("team"), docs: "access-model/#grants", placement: "title" },
   "/security/roles": {
     purpose: p("roles"),
+    more: ["securityPage.rolePurposeBody", "securityPage.rolePurposeAdd"],
     docs: "security/#roles-granted-derived-and-meta",
     placement: "title",
   },
@@ -236,6 +260,7 @@ export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
   "/admin/import": { purpose: p("import"), docs: "import/", placement: "title" },
   "/admin/tags": {
     purpose: p("tags"),
+    more: ["tagsTab.purposeBody", "tagsTab.purposeAdd"],
     docs: "admin/#tags-library-sections-and-objects",
     placement: "title",
   },
@@ -243,6 +268,5 @@ export const PAGE_HELP: Readonly<Record<string, PageHelpEntry>> = {
 
 /** The in-app Docs route for an entry's documentation page. */
 export function pageHelpDocsHref(entry: PageHelpEntry): string {
-  const [page, section] = entry.docs.split("#");
-  return `/docs?page=${page}${section === undefined ? "" : `#${section}`}`;
+  return docsHref(entry.docs);
 }

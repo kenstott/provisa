@@ -165,3 +165,66 @@ async def test_orphans_in_an_embedded_store_are_found_through_its_broker(tmp_pat
     assert await refresh.detect_orphans(engine, reg, "org_a_mv_cache", "mat_store") == [
         "mv_removed"
     ]
+
+
+# --- the sweep never dials a shard that is not serving (REQ-1448) -------------------------------
+#
+# On cloud-dev (2026-11-28) the idle reaper scaled the shared shard to zero after its idle window,
+# and from then on every 30s sweep dialed the released pod IP through the shared terminal
+# (EngineUnreachable: dial tcp 10.20.0.7:8480: i/o timeout) -- the blind dial
+# engine_wake.attach_if_serving exists to stop. The sweep asks it first, as the scheduled engine
+# jobs do, and leaves the work for a sweep with a live shard.
+
+
+def _one_sweep(engine_serving) -> list[str]:
+    import asyncio
+    from unittest.mock import patch
+
+    ran: list[str] = []
+
+    class _Registry:
+        def all(self):
+            return [SimpleNamespace(target_catalog="c", target_schema="s", orphan_grace_period=1)]
+
+    async def _detect(*_a, **_k):
+        ran.append("detect_orphans")
+        return []
+
+    async def _drop(*_a, **_k):
+        ran.append("drop_expired_orphans")
+
+    async def _stop(_seconds):
+        raise asyncio.CancelledError
+
+    with (
+        patch.object(refresh, "detect_orphans", _detect),
+        patch.object(refresh, "drop_expired_orphans", _drop),
+        patch.object(refresh.asyncio, "sleep", _stop),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        asyncio.run(
+            refresh.reclamation_loop(
+                lambda: [(object(), _Registry())], engine_serving=engine_serving
+            )
+        )
+    return ran
+
+
+def test_the_sweep_waits_for_a_serving_engine():
+    async def _down() -> bool:
+        return False
+
+    async def _up() -> bool:
+        return True
+
+    assert _one_sweep(_down) == []
+    assert _one_sweep(_up) == ["detect_orphans", "drop_expired_orphans"]
+
+
+def test_the_server_gates_the_sweep_on_attach_if_serving():
+    from provisa.api import app_startup
+
+    src = inspect.getsource(app_startup._start_background_tasks)
+    loop = src[src.index("reclamation_loop(") : src.index('name="mv-reclamation"')]
+    assert "engine_serving=" in loop
+    assert "attach_if_serving" in src[: src.index('name="mv-reclamation"')]

@@ -34,13 +34,23 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import function_legs  # noqa: E402
+import yaml  # noqa: E402
 import polyfill_check  # noqa: E402
 
 from provisa.transpiler.polyfill.grid import DIALECTS, Grid  # noqa: E402
-from provisa.transpiler.polyfill.provenance import Leg, Provenance, Run, required  # noqa: E402
+from provisa.transpiler.polyfill.provenance import (  # noqa: E402
+    HintProvenance,
+    Leg,
+    Provenance,
+    Run,
+    hints_required,
+    required,
+)
 
 #: The record of the last measured Conformance (functions) run (functions_baseline.py writes it).
 MEASURED = Path(__file__).resolve().parent / "expected" / "functions.json"
+#: The services the hints' reproducing tests run their engine and source in.
+COMPOSE = ROOT / "docker-compose.test.yml"
 
 
 def _image(leg: dict[str, Any]) -> str:
@@ -86,3 +96,25 @@ def provenance(grid: Grid, legs: dict[str, Any], measured: dict[str, Any]) -> di
 def read(grid: Grid) -> dict[str, Provenance]:
     """Each dialect's provenance from the committed configuration."""
     return provenance(grid, function_legs.load(), json.loads(MEASURED.read_text()))
+
+
+def hint_provenance(grid: Grid, compose: dict[str, Any]) -> dict[str, HintProvenance]:
+    """Each hint's service's provenance, by service, from ``compose`` (docker-compose.test.yml):
+    the image the service runs (REQ-2236, a hint on its engine and source pair)."""
+    services = compose["services"]
+    of: dict[str, HintProvenance] = {}
+    for hint in grid.hints:
+        service = services.get(hint.service)
+        if service is None:
+            raise ValueError(f"hint {hint.name}: docker-compose.test.yml has no {hint.service!r}")
+        image = service.get("image")
+        if not image:
+            raise ValueError(f"hint {hint.name}: service {hint.service!r} names no image")
+        of[hint.service] = HintProvenance(hint.service, str(image))
+    hints_required(of, grid)
+    return of
+
+
+def read_hints(grid: Grid) -> dict[str, HintProvenance]:
+    """Each hint's service's provenance from the committed configuration."""
+    return hint_provenance(grid, yaml.safe_load(COMPOSE.read_text()))

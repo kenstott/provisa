@@ -32,12 +32,14 @@ Ogni argomento dichiara un `arg_kind`:
 | `arg_kind` | Comportamento |
 | --- | --- |
 | `column_value` | Scalare; passato direttamente nel payload della richiesta |
-| `table_ref` | Lazy; Provisa passa il riferimento di relazione così com'è; il servizio recupera i dati |
-| `result_set` | Eager; Provisa materializza la relazione referenziata e invia le sue righe |
+| `table_ref` | Lazy; Provisa passa il nome della tabella; il servizio recupera i dati |
+| `result_set` | Eager; Provisa legge la relazione e invia le sue righe |
 
 I comandi `http` e `grpc` **devono** dichiarare almeno un argomento `table_ref` o `result_set`.
 Un comando esterno che riceve solo argomenti scalari verrebbe invocato una volta per riga, il che
 vanifica il batching. Il dispatcher rifiuta questa configurazione al momento della chiamata (422).
+
+Un argomento di relazione dato come tabella la indica con il suo nome logico, lo `schema.table` con cui un'istruzione SQL la legge (ad esempio `pet_store.orders`). Una tabella `result_set` viene letta attraverso la pipeline governata come il ruolo chiamante, quindi si applicano i filtri di riga, le maschere e la visibilità delle colonne di quel ruolo, e vengono lette solo le colonne dichiarate dell'argomento. Un riferimento fisico `source.schema.table`, o qualsiasi nome con cui SQL non serve alcuna tabella, viene rifiutato con HTTP 400 indicando la forma attesa. Un `result_set` può anche essere dato come query, eseguita allo stesso modo, o come array JSON di righe.
 
 Un comando che restituisce un set (dichiarato tramite `output_columns` e `return_schema`) è una
 funzione table-valued. Si usa in una clausola `FROM` o in un `JOIN`.
@@ -56,7 +58,7 @@ Entrambi i contratti vengono validati fail-loud a ogni invocazione:
 - **Output:** le righe restituite dal comando vengono validate contro `output_columns` prima di
   raggiungere il chiamante.
 - **Proiezione ristretta:** quando è dichiarato un contratto di input, la query di
-  materializzazione proietta **solo quelle colonne** (`SELECT "id", "region" FROM ...`) anziché
+  materializzazione proietta **solo quelle colonne** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`) anziché
   `SELECT *`.
 
 ### Il vocabolario di tipi IR {: #the-ir-type-vocabulary }
@@ -146,8 +148,8 @@ I comandi possono comparire **dentro** un'istruzione SQL più ampia, dove li uni
 ```sql
 -- Enrich the orders relation and join the result back inline.
 SELECT o.id, o.amount, e.score, e.region_label
-FROM   orders o
-JOIN   enrich_orders('main.public.orders') e ON o.id = e.id
+FROM   pet_store.orders o
+JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
 WHERE  e.score > 0.8;
 ```
 

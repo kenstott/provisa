@@ -61,5 +61,5 @@ export function useSparqlExample(
       cancelled = true;
     };
   }, [tableId, role, wanted]);
-  return wanted && query ? { to: "/sparql", state: { query, autoRun: true } } : null;
+  return wanted && query ? { to: "/sparql", state: { query } } : null;
 }

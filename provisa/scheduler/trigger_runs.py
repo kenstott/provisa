@@ -28,6 +28,8 @@ from typing import Any
 
 import httpx
 
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
+
 log = logging.getLogger(__name__)
 
 SUCCEEDED = "succeeded"
@@ -58,7 +60,9 @@ async def post_webhook(url: str, trigger_id: str, args: dict) -> None:  # REQ-21
     ) as client:
         resp = await client.post(resolve_secrets(url), json={"trigger_id": trigger_id, **args})
         resp.raise_for_status()
-    log.info("Trigger %s: webhook %s returned %s", trigger_id, url, resp.status_code)
+    log.info(
+        "Trigger %s: webhook %s returned %s", trigger_id, redact_url_password(url), resp.status_code
+    )
 
 
 async def _run_command(trigger: dict, given: dict, state: Any) -> None:

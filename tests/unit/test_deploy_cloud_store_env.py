@@ -24,13 +24,19 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 #: The real sed, by its resolved path: a fake that execs /usr/bin/sed on a host whose /usr/bin is
 #: served from the caller's PATH (NixOS's envfs) would exec the fake itself, forever.
 _SED = os.path.realpath(shutil.which("sed", path="/usr/bin:/bin"))
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    text = _SCRIPT.read_text()
+    text = _source()
     start = text.index(f"{name}() {{")
     return text[start : text.index("\n}\n", start) + 3]
 
@@ -108,8 +114,8 @@ def test_a_node_naming_no_store_address_is_refused(tmp_path):
 
 @pytest.mark.parametrize("arm", ["api", "cfg", "all", "patch"])
 def test_every_arm_that_pushes_compose_files_reconciles_first(arm):
-    line = next(line for line in _SCRIPT.read_text().splitlines() if re.match(rf"\s+{arm}\)", line))
-    body = _SCRIPT.read_text().split(line, 1)[1].split(";;", 1)[0]
+    line = next(line for line in _source().splitlines() if re.match(rf"\s+{arm}\)", line))
+    body = _source().split(line, 1)[1].split(";;", 1)[0]
     assert body.index("push_store_env") < body.index("push_app") < body.index("push_obs")
 
 
@@ -123,7 +129,7 @@ def _list(name: str) -> str:
 
 
 def test_the_patch_overlay_and_the_sandbox_vm_read_the_lists():
-    assert "packaging/linux/demo-stores/sandbox-tier-bundles" in _SCRIPT.read_text()
+    assert "packaging/linux/demo-stores/sandbox-tier-bundles" in _source()
     tf = (_REPO / "terraform" / "gcp-saas" / "sandbox.tf").read_text()
     assert "demo-stores/sandbox-tier-bundles" in tf and "demo-stores/regions-tier-bundles" in tf
     # The VM's sync takes both lists, those demos with a bundle (test_sandbox_vm_terraform.py).

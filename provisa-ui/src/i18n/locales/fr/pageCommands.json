@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Enregistrez une table de l’une de vos sources pour qu’elle puisse être interrogée et gouvernée.",
+    "addView": "Définissez une vue : un jeu de données gouverné calculé à partir de SQL ou de métriques.",
+    "addRelationship": "Déclarez une jointure entre deux tables pour que les requêtes puissent la suivre.",
+    "clearRejections": "Permettez aux suggestions que vous avez rejetées d’être à nouveau proposées.",
+    "addSource": "Connectez une base de données, un fichier, une API ou un service comme source de tables.",
+    "addCommand": "Définissez une commande : une action que les appelants exécutent, comme une écriture ou un appel de fonction.",
+    "addRole": "Ajoutez un rôle auquel des droits sont accordés, ou un rôle dérivé d’un attribut utilisateur.",
+    "addDataProduct": "Publiez des tables comme produit de données avec un propriétaire, des ports de sortie et un contrat.",
+    "productMap": "Dessinez chaque produit de données, ses tables et les liens entre eux dans un seul graphe.",
+    "addMetric": "Définissez une métrique : une mesure nommée que chaque requête calcule de la même façon.",
+    "invite": "Invitez une personne par e-mail et choisissez les rôles qu’elle détient.",
+    "glossaryDomains": "Afficher uniquement les termes des domaines choisis.",
+    "reviewsDue": "Afficher uniquement les documents dont la date de revue est dépassée.",
+    "reembedAll": "Recalculez les embeddings de recherche des documents lus avec un modèle plus ancien.",
+    "addDocument": "Ajoutez un document dont le texte peut être cité par le glossaire et les agents.",
+    "addDomain": "Ajoutez un domaine : un groupe de tables avec ses propres propriétaires et droits.",
+    "addPackageRegistry": "Ajoutez un registre depuis lequel les sources de code installent leurs paquets.",
+    "addOrg": "Créez une organisation avec ses propres utilisateurs, données et paramètres.",
+    "addInvite": "Invitez une personne à créer une organisation ou à la rejoindre.",
+    "addScheduledTask": "Planifiez un webhook ou une instruction SQL à exécuter selon un cron.",
+    "addClassificationKind": "Ajoutez un type selon lequel le profileur peut classer une colonne.",
+    "addReport": "Ajoutez un rapport : une vue du domaine ops, lue sur cette page.",
+    "addRegion": "Déclarez une région : un moteur et ses stockages en un même lieu.",
+    "addContainerRegistry": "Ajoutez un registre d’où sont tirées les images des résolveurs de code.",
+    "addSecret": "Enregistrez un secret que la configuration désigne par son nom.",
+    "addTag": "Ajoutez une étiquette pour marquer des tables, des colonnes et des termes.",
+    "addEnvironment": "Créez un environnement : une copie du modèle à modifier et tester avant de la fusionner.",
+    "addSyncTarget": "Ajoutez un catalogue dans lequel le modèle est publié."
+  }
+}

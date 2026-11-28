@@ -33,7 +33,7 @@ import re
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import duckdb
 
@@ -120,7 +120,60 @@ class _CatalogGate(ReadersWriterGate):
     Reader-priority, deliberately: a waiting writer must NOT block new readers. Execution paths that
     stream (run_sync, run_arrow_stream) keep their read hold until the cursor drains, and the thread
     that opened such a stream may itself be the next one to pause a file -- writer preference would
-    let that thread block on its own outstanding read."""
+    let that thread block on its own outstanding read.
+
+    It also engages each read hold (``hold_reads``) while any query holds the gate for read, from
+    the first reader in to the last reader out: a folder of files the connection's views list,
+    which another party removes files from only while no hold is engaged (the landed traces,
+    ``native_traces.ReadLease``). A query opens the files it listed at any moment of its run, so
+    the hold spans the whole of it, a stream's drain included."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._holds: dict[str, _ReadHold] = {}
+
+    def hold_reads(self, key: str, hold: _ReadHold) -> None:
+        """Engage ``hold`` while any query reads, under ``key``; a key held already is kept."""
+        with self._cond:
+            if key in self._holds:
+                return
+            if self._readers:
+                hold.engage()
+            self._holds[key] = hold
+
+    def acquire_read(self) -> None:
+        with self._cond:
+            while self._writing:
+                self._cond.wait()
+            if self._readers == 0:
+                engaged: list[_ReadHold] = []
+                try:
+                    for hold in self._holds.values():
+                        hold.engage()
+                        engaged.append(hold)
+                except BaseException:
+                    for hold in reversed(engaged):
+                        hold.disengage()
+                    raise
+            self._readers += 1
+
+    def release_read(self) -> None:
+        with self._cond:
+            self._readers -= 1
+            if self._readers == 0:
+                try:
+                    for hold in self._holds.values():
+                        hold.disengage()
+                finally:
+                    self._cond.notify_all()
+
+
+class _ReadHold(Protocol):
+    """A hold the catalog gate engages while any query reads (``_CatalogGate.hold_reads``)."""
+
+    def engage(self) -> None: ...
+
+    def disengage(self) -> None: ...
 
 
 # REQ-1901: a `mat_store.<schema>.<table>` read on the engine connection (quoted or bare parts).
@@ -1072,6 +1125,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._on_instance(f"CREATE SCHEMA IF NOT EXISTS {ident(catalog, schema)}")
         for name, select in views.items():
             self._on_instance(f"CREATE OR REPLACE VIEW {ident(catalog, schema, name)} AS {select}")
+
+    def hold_reads(self, key: str, hold: _ReadHold) -> None:
+        """Engage ``hold`` for as long as any query of this runtime runs (``_CatalogGate``): the
+        lease on a folder its views list, which is kept whole while a lease is held."""
+        self._catalog_gate.hold_reads(key, hold)
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.

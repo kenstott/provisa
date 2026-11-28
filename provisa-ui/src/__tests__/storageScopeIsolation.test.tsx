@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { restoreCheckedDomains } from "../context/DomainFilterContext";
 import { emptyTab, loadTabsMeta, persistTabsMeta } from "../pages/sql/tabHelpers";
 import { bindStorageScope, getStored, setStored, storageScope } from "../lib/browserStorage";
-import { CHECKED_DOMAINS_KEY } from "../lib/domainFilterKeys";
+import { CHECKED_DOMAINS_KEY, ROLE_DOMAIN_KEYS } from "../lib/domainFilterKeys";
 
 const auth = vi.hoisted(() => ({
   value: {
@@ -39,16 +39,22 @@ afterEach(() => localStorage.clear());
 describe("state saved per control plane and org", () => {
   it("keeps each demo's domain filter, and restores it on coming back", () => {
     bindStorageScope(PET_DEMO);
-    restoreCheckedDomains(["pets", "ops"]);
+    restoreCheckedDomains(["pets", "ops"], ROLE_DOMAIN_KEYS);
     setStored(CHECKED_DOMAINS_KEY, JSON.stringify(["pets"])); // the user unchecks ops
 
     bindStorageScope(WEBLOGS_DEMO);
     // A demo never visited starts with every domain checked: nothing of the pet store's carries.
-    expect([...restoreCheckedDomains(["shop", "ops"])].sort()).toEqual(["ops", "shop"]);
+    expect([...restoreCheckedDomains(["shop", "ops"], ROLE_DOMAIN_KEYS)].sort()).toEqual([
+      "ops",
+      "shop",
+    ]);
 
     bindStorageScope(PET_DEMO);
     // Back in the pet store, ops is still unchecked; a domain new since then is checked.
-    expect([...restoreCheckedDomains(["pets", "ops", "vet"])].sort()).toEqual(["pets", "vet"]);
+    expect([...restoreCheckedDomains(["pets", "ops", "vet"], ROLE_DOMAIN_KEYS)].sort()).toEqual([
+      "pets",
+      "vet",
+    ]);
   });
 
   it("keeps each demo's saved query tabs, and restores them on coming back", () => {

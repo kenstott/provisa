@@ -26,6 +26,7 @@ from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
     function_macros,
     opengauss_bytea_like,
+    opengauss_regexp,
     pg_forms_enum,
     pg_forms_geometric,
     pg_forms_type_io,
@@ -40,6 +41,7 @@ from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
 from provisa.transpiler.polyfill import ported as polyfill_ported
+from provisa.transpiler.polyfill.regex import ENGINE_PATTERN
 from provisa.transpiler.pg_literals import (
     ROOM,
     TIGHT,
@@ -49,6 +51,7 @@ from provisa.transpiler.pg_literals import (
     postgres_literals,
 )
 from provisa.transpiler.pg_input_refusals import refuse_past_inputs
+from provisa.transpiler.polyfill.duckdb_literals import refuse_past_stamps
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
@@ -765,6 +768,7 @@ def _duckdb_form(pg_sql: str, generated: bool) -> str:
     on each run, its plan kept or not. A refusal raises and is not kept."""
     # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
     refuse_past_inputs(pg_sql)
+    refuse_past_stamps(pg_sql)  # REQ-2236: a timestamp past DuckDB's, as its grid row states
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
     written = transpile(
@@ -869,6 +873,26 @@ def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
             icu = read(written.this)
             if icu is not None:
                 written.replace(exp.Literal.string(icu))
+                continue
+            # REQ-2236: a text PostgreSQL reads as no zone raises its 22023, where DuckDB's
+            # TIMEZONE raises an error of its own.
+            unrecognized = pg_zones.zone_unrecognized(written.this)
+            if unrecognized is not None:
+                raise unrecognized
+    # DuckDB's TIMEZONE(zone, value), as the forms of timezone() write it, of a text PostgreSQL
+    # reads as no zone: its 22023 (REQ-2236). Its zone is the form's, not rewritten here.
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() != "timezone" or len(call.expressions) != 2:  # noqa: PLR2004
+            continue
+        written = call.expressions[0]
+        while isinstance(written, exp.Cast):
+            written = written.this
+        if isinstance(written, exp.Literal) and written.is_string:
+            from provisa.transpiler import pg_zones
+
+            unrecognized = pg_zones.zone_unrecognized(written.this)
+            if unrecognized is not None:
+                raise unrecognized
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -2089,6 +2113,11 @@ def transpile(
         SQL string in target dialect.
     """
     given = pg_sql  # the statement as given, whose columns pgwire describes (REQ-2236)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
+        from provisa.transpiler.polyfill.instants import refuse_past_range
+
+        refuse_past_range(pg_sql)
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
     pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
@@ -2171,6 +2200,13 @@ def transpile(
 
     if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
         function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
+    if target_dialect == "clickhouse":
+        # REQ-2236: a call of literals, one a date or a timestamp ClickHouse's calendar does not
+        # read, answered from PostgreSQL's integers before any step reads its instant
+        # (a range's subdiff among them).
+        from provisa.transpiler.polyfill import held_instants
+
+        lowered = held_instants.folded(pg_sql, lowered)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges
@@ -2233,6 +2269,11 @@ def transpile(
         lowered = opengauss_bytea_like.byte_wise(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    if engine_kind == opengauss_regexp.KIND and opengauss_regexp.mentioned(pg_sql):
+        # REQ-2236: openGauss's four-argument regexp_replace from a start replaces every match.
+        lowered = opengauss_regexp.first_match_from_start(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if column_types is not None:
         # REQ-2236: last before the dialect writes, so no rewrite above drops the types.
         if target_dialect not in TYPED_DIALECTS:
@@ -2240,6 +2281,13 @@ def transpile(
         lowered = typed(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             column_types,
+        )
+    if target_dialect == "clickhouse":
+        # REQ-2171: two columns of one name, as PostgreSQL answers them, are two aliases there.
+        from provisa.transpiler.polyfill.clickhouse import distinct_result_names
+
+        lowered = distinct_result_names(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
@@ -2470,7 +2518,9 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
             this="REGEXP_INSTR", expressions=[value.copy(), exp.Literal.string(pattern)]
         )
         return exp.GT(this=position, expression=exp.Literal.number(0))
-    return exp.RegexpLike(this=value.copy(), expression=exp.Literal.string(pattern))
+    found = exp.RegexpLike(this=value.copy(), expression=exp.Literal.string(pattern))
+    found.meta[ENGINE_PATTERN] = True  # the engine's flavour: no PostgreSQL pattern to translate
+    return found
 
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere

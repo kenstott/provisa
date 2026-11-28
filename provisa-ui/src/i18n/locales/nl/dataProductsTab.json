@@ -311,8 +311,6 @@
     "tagFacetLabel": "Tags",
     "tagFacetPlaceholder": "Filteren op tag",
     "noMatch": "Geen dataproducten voldoen aan de filters",
-    "domainFacetLabel": "Domeinen",
-    "domainFacetPlaceholder": "Filteren op domein",
     "colSync": "Synchronisatie",
     "syncNone": "Niet gesynchroniseerd",
     "syncSynced_one": "Gesynchroniseerd",

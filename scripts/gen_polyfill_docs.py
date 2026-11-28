@@ -31,7 +31,9 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="exit 1 if a page differs")
     args = parser.parse_args()
     drifted = []
-    for relative, text in pages(GRID, polyfill_provenance.read(GRID)).items():
+    for relative, text in pages(
+        GRID, polyfill_provenance.read(GRID), polyfill_provenance.read_hints(GRID)
+    ).items():
         path = ROOT / relative
         if args.check:
             if not path.exists() or path.read_text() != text:

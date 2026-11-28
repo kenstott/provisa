@@ -32,6 +32,8 @@ import {
   IMPL_KINDS,
   argumentsText,
   isNativeSql,
+  returnShapeOf,
+  returnShapeText,
   type FormState,
 } from "./types";
 
@@ -216,6 +218,9 @@ export function FunctionRead({
                     ]
                   : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
   const toTable = Boolean(fn.returns);
+  // REQ-1159 (amended 2026-11-28): the shape of the dataset it returns, as the list shows it,
+  // each column with its type.
+  const shape = returnShapeOf(fn);
   return (
     <div className="detail-groups" data-testid={`function-read-${fn.name}`}>
       <DetailFields
@@ -246,7 +251,10 @@ export function FunctionRead({
                     : t("commandFormFields.datasetColumns"),
                 },
               ]),
-          ...(toTable ? [{ label: t("commandFormFields.returnsTable"), value: fn.returns }] : []),
+          {
+            label: t("commandsPage.colReturns"),
+            value: shape === null ? null : returnShapeText(shape, true),
+          },
           {
             label: t("commandFormFields.visibleTo"),
             value: roles(fn.visibleTo) ?? t("commandsPage.all"),

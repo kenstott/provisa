@@ -97,6 +97,16 @@ def _rewritten(node: exp.Expr) -> exp.Expr:
     return _raw_match(value, pattern, negated)
 
 
+def rewritten(node: exp.Expr, _dialect: str) -> exp.Expr | None:
+    """A LIKE on bytea written as openGauss's byte-wise rawlike or rawnlike.
+
+    None for any other node. The form of the grid's hint of openGauss
+    (provisa.transpiler.polyfill.hints)."""
+    written = _rewritten(node)
+    return None if written is node else written
+
+
 def byte_wise(tree: exp.Expr) -> exp.Expr:
-    """``tree`` with each LIKE on bytea written as openGauss's byte-wise rawlike or rawnlike."""
-    return tree.transform(_rewritten, copy=False)
+    """``tree`` with each LIKE on bytea written as openGauss's byte-wise rawlike or rawnlike: the
+    grid's hint of openGauss (provisa.transpiler.polyfill.hints), applied to every node."""
+    return tree.transform(lambda node: rewritten(node, "postgres") or node, copy=False)

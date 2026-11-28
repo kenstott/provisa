@@ -564,7 +564,7 @@ export function CommandFormFields({
                   {!isSourceOperation && !declaresItsShape && form.returnSchemaMode === "table" && (
                     <FormField size="medium">
                       <Select
-                        label={t("commandFormFields.returnsTable")}
+                        label={t("commandsPage.colReturns")}
                         placeholder={t("commandFormFields.selectTable")}
                         data={physicalTableOptions(form.sourceId)}
                         value={form.returns || null}

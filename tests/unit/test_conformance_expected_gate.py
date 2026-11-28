@@ -571,6 +571,26 @@ def test_a_regenerated_baseline_keeps_a_listed_entrys_job_and_day():
     assert by_case["trino::f2(integer)"]["since"] == "2026-12-01"
 
 
+def test_a_known_failure_carries_its_reason_and_keeps_it_on_regeneration(tmp_path, monkeypatch):
+    doc = _functions_doc(_edge_wrong(), _edge_error())
+    reason = "the engine's regular expressions skip an empty match touching a non-empty one"
+    first = functions_baseline.baseline(doc, {}, "J1400", SINCE, {}, {"trino::f0(integer)": reason})
+    by_case = {e["case"]: e for e in first["expected"]}
+    assert by_case["trino::f0(integer)"]["reason"] == reason
+    assert "reason" not in by_case["trino::f1(integer)"]
+    # The gate reads an entry with a reason, and a regenerated file keeps it.
+    assert _run_functions(tmp_path, monkeypatch, doc, first) == 0
+    kept = {e["case"]: e for e in first["expected"]}
+    again = functions_baseline.baseline(doc, kept, "J1500", "2026-12-01", {})
+    assert {e["case"]: e for e in again["expected"]}["trino::f0(integer)"]["reason"] == reason
+
+
+def test_a_reason_for_a_case_the_run_does_not_fail_is_refused():
+    doc = _functions_doc(_edge_wrong())
+    with pytest.raises(functions_baseline.baseline_gate.Refused, match="does not fail"):
+        functions_baseline.baseline(doc, {}, "J1400", SINCE, {}, {"trino::f9(integer)": "x"})
+
+
 def test_a_baseline_is_not_written_from_a_run_with_a_leg_missing():
     doc = _functions_doc()
     doc["engines_incomplete"] = ["trino"]

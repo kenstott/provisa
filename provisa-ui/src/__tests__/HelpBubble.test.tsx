@@ -38,6 +38,7 @@ describe("HelpBubble", () => {
         paragraphs={["First.", "Second."]}
         ariaLabel="About this"
         testId="bubble"
+        docs="configuration/#tables"
       />,
     );
     const target = screen.getByTestId("bubble");
@@ -46,6 +47,28 @@ describe("HelpBubble", () => {
     expect(await screen.findByText("Title")).toBeInTheDocument();
     expect(screen.getByText("First.")).toBeInTheDocument();
     expect(screen.getByText("Second.")).toBeInTheDocument();
+  });
+
+  // Maintainer 2026-11-28: a (?) help ends with a link to its documentation, on a card the pointer
+  // can move onto to follow it.
+  it("ends its (?) card with a link to the documentation", async () => {
+    render(
+      <HelpBubble
+        title="Title"
+        paragraphs={["First."]}
+        ariaLabel="About this"
+        testId="bubble"
+        docs="configuration/#tables"
+      />,
+    );
+    fireEvent.mouseEnter(screen.getByTestId("bubble"));
+    const card = await screen.findByTestId("bubble-card");
+    const link = screen.getByTestId("bubble-docs");
+    expect(card).toContainElement(link);
+    expect(link).toHaveTextContent("Read the documentation");
+    expect(link).toHaveAttribute("href", "/docs?page=configuration/#tables");
+    // Last in the card.
+    expect(link.parentElement?.lastElementChild).toBe(link);
   });
 
   // An icon-only button is the opaque thing being explained, so it becomes the hover

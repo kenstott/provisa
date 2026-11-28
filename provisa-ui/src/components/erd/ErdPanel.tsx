@@ -209,7 +209,11 @@ export function ErdPanel({
               arrange();
               setCollapsedGroups(next);
             }}
-            help={{ title: t("erdModal.title"), text: t("erdModal.hint") }}
+            help={{
+              title: t("erdModal.title"),
+              text: t("erdModal.hint"),
+              docs: "configuration/#relationships",
+            }}
           />
         }
       />

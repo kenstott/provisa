@@ -55,7 +55,7 @@ const QUERY =
 function Run() {
   const navigate = useNavigate();
   return (
-    <button onClick={() => navigate("/graph", { state: { query: QUERY, autoRun: true } })}>
+    <button onClick={() => navigate("/graph", { state: { query: QUERY } })}>
       run
     </button>
   );

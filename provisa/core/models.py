@@ -558,9 +558,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         if st == "druid":
             return f"jdbc:avatica:remote:url=http://{h}:{po}/druid/v2/sql/avatica/"
         # ClickHouse: Trino's connector speaks the JDBC driver over the HTTP interface, which is the
-        # port a clickhouse source declares (8123 when it names none).
+        # port a clickhouse source declares (8123 when it names none). compress=false: the driver
+        # Trino bundles (clickhouse-jdbc 0.9 v1) reads a compressed response only as LZ4 blocks,
+        # and ClickHouse 26 compresses one with ZSTD ("Magic is not correct - expect [-126] but
+        # got [-112]": 0x82 is LZ4's method byte, 0x90 ZSTD's), so the response is sent plain.
         if st == "clickhouse":
-            return f"jdbc:clickhouse://{h}:{po or 8123}/{self.database}"
+            return f"jdbc:clickhouse://{h}:{po or 8123}/{self.database}?compress=false"
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",

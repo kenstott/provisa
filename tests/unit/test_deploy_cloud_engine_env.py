@@ -34,14 +34,20 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 
 _VERSION = "v0.1.0-alpha.512"
 _ENGINE_IMG = f"ghcr.io/simpleishard-llc/provisa-trino-engine:{_VERSION}"
 _ZAYCHIK_IMG = f"ghcr.io/simpleishard-llc/provisa-zaychik:{_VERSION}"
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    source = _SCRIPT.read_text()
+    source = _source()
     found = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", source, re.S | re.M)
     assert found is not None, f"deploy-cloud.sh has no {name}"
     return found.group(0)
@@ -49,7 +55,7 @@ def _function(name: str) -> str:
 
 def _constant(name: str) -> str:
     """The `NAME=value` assignment for a simple variable (no quoting required)."""
-    text = _SCRIPT.read_text()
+    text = _source()
     match = re.search(rf'^{name}="([^"]*)"$', text, re.MULTILINE)
     assert match, f"deploy-cloud.sh has no {name}= assignment"
     return f'{name}="{match.group(1)}"'
@@ -182,13 +188,13 @@ class TestPushEngineEnvSetsImages:
         assert _ENGINE_IMG in result.stdout
 
     def test_image_registry_prefix_is_ghcr_kenstott(self):
-        text = _SCRIPT.read_text()
+        text = _source()
         assert 'IMAGE_REGISTRY="ghcr.io/simpleishard-llc"' in text
 
 
 def _target_steps(target: str) -> list[str]:
     """The function calls a deploy target runs, in order, from the script's case arm."""
-    text = _SCRIPT.read_text()
+    text = _source()
     arm = re.search(
         rf"^  {re.escape(target)}\)\n(.*?)\n    ;;$|^  {re.escape(target)}\)\n(.*?) ;;$",
         text,

@@ -5,10 +5,14 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 /* eslint-disable react-refresh/only-export-components -- context Provider + hook colocated by design */
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useCallback, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { fetchSettings } from "../api/admin";
-import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
+import {
+  PRODUCT_DOMAIN_KEYS,
+  ROLE_DOMAIN_KEYS,
+  type DomainSelectionKeys,
+} from "../lib/domainFilterKeys";
 import { getStoredJson, setStored } from "../lib/browserStorage";
 
 interface DomainFilterContextValue {
@@ -25,6 +29,16 @@ interface DomainFilterContextValue {
    * reader's, so a list narrowed by them is not yet the one the page shows (REQ-2277 rule 9).
    */
   domainsPending: boolean;
+  /**
+   * REQ-1659 (amended 2026-11-28): the Data Products page's domains -- those of the products it
+   * lists, any domain the role does not reach included -- with their own checked set, kept apart
+   * from the role's (PRODUCT_DOMAIN_KEYS says why).
+   */
+  productDomains: string[];
+  setProductDomains: (d: string[]) => void;
+  checkedProductDomains: Set<string>;
+  toggleProductDomain: (id: string) => void;
+  ensureProductDomainChecked: (id: string) => void;
 }
 
 // Pure merge of the persisted domain-filter state against the currently-available domains. A domain
@@ -49,22 +63,22 @@ export function mergeCheckedDomains(
 // explicitly unchecked is in the known set but not the checked set, so it stays unchecked. Both sets
 // are saved as restored: saving only the known set made a new domain "known but not checked" on the
 // next load, so it read as unchecked by the user and its tables vanished from every list.
-export function restoreCheckedDomains(available: string[]): Set<string> {
+export function restoreCheckedDomains(available: string[], keys: DomainSelectionKeys): Set<string> {
   try {
     const merged = mergeCheckedDomains(
       available,
-      getStoredJson(CHECKED_DOMAINS_KEY),
-      getStoredJson(KNOWN_DOMAINS_KEY),
+      getStoredJson(keys.checked),
+      getStoredJson(keys.known),
     );
     if (merged) {
-      setStored(KNOWN_DOMAINS_KEY, JSON.stringify(available));
-      setStored(CHECKED_DOMAINS_KEY, JSON.stringify([...merged]));
+      setStored(keys.known, JSON.stringify(available));
+      setStored(keys.checked, JSON.stringify([...merged]));
       return merged;
     }
   } catch {
     // ignore
   }
-  setStored(KNOWN_DOMAINS_KEY, JSON.stringify(available));
+  setStored(keys.known, JSON.stringify(available));
   return new Set(available);
 }
 
@@ -78,7 +92,45 @@ const DomainFilterContext = createContext<DomainFilterContextValue>({
   ensureDomainChecked: () => {},
   domainsEnabled: true,
   domainsPending: false,
+  productDomains: [],
+  setProductDomains: () => {},
+  checkedProductDomains: new Set(),
+  toggleProductDomain: () => {},
+  ensureProductDomainChecked: () => {},
 });
+
+/** One persisted selection: a toggle and a reveal over ``setChecked``, saved under ``keys``. */
+function selectionActions(
+  keys: DomainSelectionKeys,
+  setDomains: (f: (prev: string[]) => string[]) => void,
+  setChecked: (f: (prev: Set<string>) => Set<string>) => void,
+) {
+  function toggle(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setStored(keys.checked, JSON.stringify([...next]));
+      return next;
+    });
+  }
+  // Reveal a domain immediately -- used when the user creates an asset in a domain (e.g. a new
+  // view) so it appears in the filtered lists without a reload. Adds it to the known + available
+  // sets too.
+  function ensure(id: string) {
+    if (!id) return;
+    setDomains((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setChecked((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev).add(id);
+      setStored(keys.checked, JSON.stringify([...next]));
+      return next;
+    });
+    const known = getStoredJson<string[]>(keys.known) ?? [];
+    if (!known.includes(id)) setStored(keys.known, JSON.stringify([...known, id]));
+  }
+  return { toggle, ensure };
+}
 
 export function DomainFilterProvider({ children }: { children: React.ReactNode }) {
   const { selectedRoles } = useAuth();
@@ -86,6 +138,8 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   const [selectedDomain, setSelectedDomain] = useState("all");
   const [checkedDomains, setCheckedDomains] = useState<Set<string>>(new Set());
   const [domainsEnabled, setDomainsEnabled] = useState(true);
+  const [productDomains, setProductDomainList] = useState<string[]>([]);
+  const [checkedProductDomains, setCheckedProductDomains] = useState<Set<string>>(new Set());
   // The role set whose domains have been answered (or refused): until it is the current one, the
   // checked domains are still being restored.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
@@ -125,7 +179,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         const ids = [...new Set(answers.flat())];
         if (!stale && ids.length > 0) {
           setDomains(ids);
-          setCheckedDomains(restoreCheckedDomains(ids));
+          setCheckedDomains(restoreCheckedDomains(ids, ROLE_DOMAIN_KEYS));
         }
       })
       .catch(() => {})
@@ -138,30 +192,19 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
   }, [roleIds, namedDomains]);
 
-  function toggleDomain(id: string) {
-    setCheckedDomains((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      setStored(CHECKED_DOMAINS_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  }
+  const roleSelection = selectionActions(ROLE_DOMAIN_KEYS, setDomains, setCheckedDomains);
+  const productSelection = selectionActions(
+    PRODUCT_DOMAIN_KEYS,
+    setProductDomainList,
+    setCheckedProductDomains,
+  );
 
-  // Reveal a domain immediately — used when the user creates an asset in a domain (e.g. a new view)
-  // so it appears in the filtered lists without a reload. Adds it to the known + available sets too.
-  function ensureDomainChecked(id: string) {
-    if (!id) return;
-    setDomains((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setCheckedDomains((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev).add(id);
-      setStored(CHECKED_DOMAINS_KEY, JSON.stringify([...next]));
-      return next;
-    });
-    const known = getStoredJson<string[]>(KNOWN_DOMAINS_KEY) ?? [];
-    if (!known.includes(id)) setStored(KNOWN_DOMAINS_KEY, JSON.stringify([...known, id]));
-  }
+  // The page hands over the domains of the products it lists each time they change; the saved
+  // product selection is restored against them as the role's is against the role's domains.
+  const setProductDomains = useCallback((ids: string[]) => {
+    setProductDomainList(ids);
+    setCheckedProductDomains(restoreCheckedDomains(ids, PRODUCT_DOMAIN_KEYS));
+  }, []);
 
   return (
     <DomainFilterContext.Provider
@@ -171,10 +214,15 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         selectedDomain,
         setSelectedDomain,
         checkedDomains,
-        toggleDomain,
-        ensureDomainChecked,
+        toggleDomain: roleSelection.toggle,
+        ensureDomainChecked: roleSelection.ensure,
         domainsEnabled,
         domainsPending,
+        productDomains,
+        setProductDomains,
+        checkedProductDomains,
+        toggleProductDomain: productSelection.toggle,
+        ensureProductDomainChecked: productSelection.ensure,
       }}
     >
       {children}

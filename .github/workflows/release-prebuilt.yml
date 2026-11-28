@@ -137,7 +137,13 @@ jobs:
 
   pull-images-core:
     name: Pull core Docker images (arm64)
-    runs-on: ubuntu-latest
+    # A native arm64 runner, not QEMU on an x86 one: under emulation this job took 54 min to
+    # 2 h 10 min (alpha.512-513) and the app image's `vite build` sat in "rendering chunks" for
+    # 2.5 h until the run was cancelled (alpha.514, job 140926997608); release 513's dry run hung
+    # 4 h+ in it. The amd64 twin, native, takes 17-29 min with the same steps.
+    runs-on: ubuntu-24.04-arm
+    # Twice the native twin's slowest measured run: a stall fails this job by name, not the run.
+    timeout-minutes: 60
     permissions:
       contents: write   # attaches what it builds to the draft release
     # metadata is needed for the versioned trino_image_name the save step writes.
@@ -158,11 +164,6 @@ jobs:
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
       - name: Free runner disk
         uses: ./.github/actions/free-runner-disk
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       # The app image takes Pyodide from this directory, not from its CDN mid-build.
       - name: Pyodide downloads
@@ -226,7 +227,7 @@ jobs:
       # REQ-2071: provisa depends on provisa-notebook, which PyPI does not have until the release
       # publishes it: its wheel is built first and found beside the others. REQ-2194: provisa's own
       # wheel carries its compiled encoders, so it comes from the Dockerfile's provisa-wheel stage
-      # (cross-compiled on this runner, not under QEMU) and the rest are collected for it.
+      # (built natively on this arm64 runner) and the rest are collected for it.
       - name: Build provisa wheels for linux/arm64
         run: |
           mkdir -p provisa-wheels

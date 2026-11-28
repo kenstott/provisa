@@ -26,7 +26,6 @@ from buenavista.core import BVType
 from buenavista.postgres import BVTYPE_TO_OID
 
 from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype
-from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 
@@ -214,9 +213,12 @@ def test_an_array_that_is_not_a_null_is_answered_on_clickhouse(pg_sql, answer):
     assert _on_clickhouse(pg_sql) == [answer]
 
 
-def test_array_cat_of_two_arrays_is_still_refused_on_clickhouse():
-    with pytest.raises(FunctionRefused, match=r"array_cat\(\) has no form on clickhouse"):
-        transpile("SELECT array_cat(a, b) AS v FROM t", "clickhouse", generated=False)
+def test_array_cat_of_two_arrays_is_clickhouse_s_concatenation():
+    # Run 45453337906: array_cat was refused on ClickHouse; its form is arrayConcat (a column of
+    # an array is never NULL there).
+    assert "arrayConcat(a, b)" in transpile(
+        "SELECT array_cat(a, b) AS v FROM t", "clickhouse", generated=False
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])

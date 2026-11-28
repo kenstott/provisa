@@ -39,6 +39,8 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 import { FilterInput } from "./FilterInput";
+import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
@@ -245,20 +247,22 @@ export function ReportsTab({ title }: { title: string }) {
           onChange={setFilter}
           placeholder={t("reportsTab.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {/* A report is a view registered in the ops domain, so adding one asks what
               registering a table asks; reading the reports is the ops domain's right. */}
           <CapabilityGate capability="table_registration">
-            <Button
-              variant={addOpen ? "outline" : "filled"}
-              onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
-              aria-label={addOpen ? t("reportsTab.closeForm") : undefined}
-              data-testid="add-report-btn"
-            >
-              {addOpen ? <X size={14} /> : t("reportsTab.addTitle")}
-            </Button>
+            <PageCommand description={t("pageCommands.addReport")} docs="admin/#reports-viewer">
+              <Button
+                variant={addOpen ? "outline" : "filled"}
+                onClick={() => (addOpen ? setAddOpen(false) : openAdd())}
+                aria-label={addOpen ? t("reportsTab.closeForm") : undefined}
+                data-testid="add-report-btn"
+              >
+                {addOpen ? <X size={14} /> : t("reportsTab.addTitle")}
+              </Button>
+            </PageCommand>
           </CapabilityGate>
-        </div>
+        </PageActions>
       </div>
       <SplitPane
         outOfList={detail.outOfList}

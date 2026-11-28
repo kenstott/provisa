@@ -8,9 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ReactElement } from "react";
-import { ActionIcon, Stack, Text } from "@mantine/core";
-import { CircleHelp } from "lucide-react";
+import type { ComponentProps } from "react";
+import { Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
+import { docsHref, type DocsTarget } from "./docsTarget";
+import { PageHelp } from "./PageHelp";
 import { TipSurface } from "./Tip";
 
 /**
@@ -19,23 +21,42 @@ import { TipSurface } from "./Tip";
  * the label already says what it does and the purpose is the part nobody can read off the
  * screen.
  *
- * Beside an add button it renders its own "?" target. An icon-only button is already the
- * opaque thing being explained, so it passes itself as `target` and hovering the icon opens
+ * Beside an add button it renders its own "?" target: a (?) help, which ends with a "Read the
+ * documentation" link to `docs` (maintainer 2026-11-28), so it is drawn as the page help is
+ * (PageHelp), a card the pointer can move onto to follow the link. An icon-only button is already
+ * the opaque thing being explained, so it passes itself as `target` and hovering the icon opens
  * the card: a second "?" per icon would double the row of glyphs it is meant to decode.
  */
+type HelpBubbleProps = {
+  title: string;
+  paragraphs: string[];
+  ariaLabel: string;
+  testId: string;
+} & (
+  | { target: ComponentProps<typeof TipSurface>["children"]; docs?: never }
+  | { target?: undefined; docs: DocsTarget }
+);
+
 export function HelpBubble({
   title,
   paragraphs,
   ariaLabel,
   testId,
   target,
-}: {
-  title: string;
-  paragraphs: string[];
-  ariaLabel: string;
-  testId: string;
-  target?: ReactElement;
-}) {
+  docs,
+}: HelpBubbleProps) {
+  const { t } = useTranslation();
+  if (target === undefined) {
+    return (
+      <PageHelp
+        title={title}
+        paragraphs={paragraphs}
+        ariaLabel={ariaLabel}
+        testId={testId}
+        docs={{ href: docsHref(docs), label: t("pageHelp.docsLink") }}
+      />
+    );
+  }
   return (
     // The same surface as every one-line hint (components/Tip.tsx), as a titled card.
     <TipSurface
@@ -55,11 +76,7 @@ export function HelpBubble({
         </Stack>
       }
     >
-      {target ?? (
-        <ActionIcon variant="subtle" color="gray" aria-label={ariaLabel} data-testid={testId}>
-          <CircleHelp size={16} />
-        </ActionIcon>
-      )}
+      {target}
     </TipSurface>
   );
 }

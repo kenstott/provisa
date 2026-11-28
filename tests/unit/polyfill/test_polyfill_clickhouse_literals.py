@@ -46,7 +46,7 @@ import pytest
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import RowRefused
-from provisa.transpiler.polyfill import GRID, clocks
+from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile
 
 _US = 1_000_000
@@ -60,7 +60,7 @@ def _clock(hours: int, minutes: int, seconds: int = 0, micros: int = 0) -> int:
 
 #: 1. A text cast to a time, answered as its microseconds of the day: the select list shows it as
 #: time_out's text, read back here as pgwire reads it. 24:00:00 is read through a cast to text: a
-#: result column of it raises (test_a_result_column_of_the_last_time_raises).
+#: result column of it is its text (test_a_result_column_of_the_last_time_answers_it).
 TIMES = [
     ("SELECT '12:30'::time AS v", _clock(12, 30)),
     ("SELECT '1:2'::time AS v", _clock(1, 2)),
@@ -213,7 +213,7 @@ BOUND = [
     "SELECT pg_catalog.date_pli('2299-12-31'::date, 1) AS v",
     "SELECT pg_catalog.date_mii('1900-01-01'::date, 1) AS v",
     "SELECT pg_catalog.integer_pl_date(1, '2299-12-31'::date) AS v",
-    "SELECT 1234567890123456789012345678901234567890::numeric AS v",
+    "SELECT 123456789012345678901234567890123456789::numeric AS v",
 ]
 
 #: A text time_in reads that no row here reads: refused by name.
@@ -266,14 +266,11 @@ def test_clickhouse_answers_postgresql_s(runtime, sql, want):
 @pytest.mark.parametrize(
     "sql", ["SELECT '24:00'::time AS v", "SELECT '23:59:60'::time AS v", "SELECT time '24:00' AS v"]
 )
-def test_a_result_column_of_the_last_time_raises(sql):
-    """24:00:00 is held (and compared) as PostgreSQL holds it, but pgwire reads no time of day past
-    23:59:59.999999 back: a result column of it raises the row's stated 0A000 (REQ-2236, AN EDGE
-    CASE RAISES), never 00:00:00."""
-    with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse", generated=False)
-    assert refused.value.sqlstate == "0A000"
-    assert str(refused.value) == clocks.LAST_SHOWN.message
+def test_a_result_column_of_the_last_time_answers_it(runtime, sql):
+    """24:00:00 is held (and compared) as PostgreSQL holds it, and a result column of it is its
+    text, which pgwire passes on as the time (cast_types.clock_of_text, REQ-2236), never
+    00:00:00."""
+    assert _rows(runtime, sql) == ["24:00:00"]
 
 
 @pytest.mark.parametrize(("sql", "state"), RAISED)
@@ -384,3 +381,127 @@ def test_another_engine_is_unchanged(dialect, sql):
         return
     written = transpile(sql, dialect, generated=False)
     assert "throwIf" not in written and "toTime64" not in written
+
+
+# --- a literal past PostgreSQL's own range (REQ-2236, as on DuckDB) ------------------------------
+
+_BIG = "123456789012345678901234567890.123456789012345678901234567890"
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT pg_catalog.date_out('5874898-01-01'::date) AS v", 'date out of range: "5874898-01-01"'),
+        (
+            "SELECT pg_catalog.isfinite('294277-01-01 00:00:00+00'::timestamp with time zone) AS v",
+            'timestamp out of range: "294277-01-01 00:00:00+00"',
+        ),
+        (
+            "SELECT pg_catalog.timestamp_out('294277-01-01 00:00:00'::timestamp without time zone) AS v",
+            'timestamp out of range: "294277-01-01 00:00:00"',
+        ),
+        ("SELECT pg_catalog.\"timestamp\"('5874897-12-31'::date) AS v", "date out of range for timestamp"),
+        (
+            "SELECT pg_catalog.datetime_pl('5874897-12-31'::date, '12:30:45'::time without time zone) AS v",
+            "date out of range for timestamp",
+        ),
+        ("SELECT pg_catalog.date_part('year'::text, '5874897-12-31'::date) AS v", "date out of range for timestamp"),
+        ("SELECT pg_catalog.date_mi('infinity'::date, '2024-06-15'::date) AS v", "cannot subtract infinite dates"),
+        ("SELECT pg_catalog.date_mi('2024-06-15'::date, '-infinity'::date) AS v", "cannot subtract infinite dates"),
+        (f"SELECT pg_catalog.money('{_BIG}'::numeric) AS v", "bigint out of range"),
+    ],
+)  # fmt: skip
+def test_a_literal_past_postgresql_s_range_raises_its_error_at_transpile(sql, message):
+    """PostgreSQL reads a literal when it parses the statement, and a function of literals raises
+    before any value is computed: each is PostgreSQL 17's error, raised before a form reads it."""
+    from provisa.core.pg_error import PostgresError
+
+    with pytest.raises(PostgresError) as raised:
+        transpile(sql, "clickhouse", generated=False)
+    state = "22003" if "bigint" in message else "22008"
+    assert (raised.value.sqlstate, str(raised.value)) == (state, message)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.date_mi('infinity'::date, NULL::date) AS v",
+        "SELECT pg_catalog.\"timestamp\"('5874897-12-31'::date, NULL::time) AS v",
+    ],
+)
+def test_a_strict_call_of_a_null_raises_nothing_at_transpile(sql):
+    """A NULL argument answers NULL: PostgreSQL's function is not called, so its error is not
+    raised (each literal is still in its type's range)."""
+    from provisa.core.pg_error import PostgresError
+
+    try:
+        transpile(sql, "clickhouse", generated=False)
+    except PostgresError as raised:  # pragma: no cover - the failure's message
+        pytest.fail(str(raised))
+    except RowRefused:
+        pass  # a row's own refusal by name of a value it does not hold: not this check's
+
+
+@pytest.mark.parametrize("precision", ["'-2147483648'::integer", "'2147483647'::integer", "7"])
+def test_an_instant_s_precision_past_0_to_6_raises_22023(precision):
+    sql = (
+        "SELECT pg_catalog.timestamptz('2024-06-15 12:30:45+00'::timestamp with time zone, "
+        f"{precision}) AS v"
+    )
+    with pytest.raises(RowRefused) as refused:
+        transpile(sql, "clickhouse", generated=False)
+    number = re.search(r"-?\d+", precision.replace("'", ""))
+    assert number is not None
+    assert refused.value.sqlstate == "22023"
+    assert str(refused.value) == f"timestamp({number[0]}) precision must be between 0 and 6"
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        (
+            "SELECT pg_catalog.timestamptz(NULL::timestamp with time zone, '2147483647'::integer) AS v",
+            None,
+        ),
+        (
+            "SELECT pg_catalog.timestamptz('2024-06-15 12:30:45.123456+00'::timestamp with time zone,"
+            " '-1'::integer) AS v",
+            datetime.datetime(2024, 6, 15, 12, 30, 45, 123456),
+        ),
+    ],
+)  # fmt: skip
+def test_an_instant_of_no_precision_or_a_null_answers(runtime, sql, want):
+    (got,) = _rows(runtime, sql)
+    if isinstance(got, datetime.datetime):
+        got = got.replace(tzinfo=None)
+    assert got == want
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        (f"SELECT '{_BIG}'::numeric AS v", Decimal(_BIG)),
+        (
+            f"SELECT pg_catalog.numrange(2.5::numeric, '{_BIG}'::numeric, '[)'::text) AS v",
+            f"[2.5,{_BIG})",
+        ),
+        ("SELECT pg_catalog.numrange(1.50::numeric, 3::numeric, '[]'::text) AS v", "[1.50,3]"),
+    ],
+)
+def test_a_numeric_of_up_to_38_digits_each_side_is_held(runtime, sql, want):
+    """A numeric literal of no precision said is a Decimal256 at its own scale, and a range's bound
+    is written at that scale, as numeric_out writes it (trailing zeros kept)."""
+    assert _rows(runtime, sql) == [want]
+
+
+def test_a_reversed_range_of_a_wide_numeric_raises_22000():
+    """A range of literals is read as the statement is transpiled: range_serialize's error."""
+    from provisa.core.pg_error import PostgresError
+
+    sql = f"SELECT pg_catalog.numrange('{_BIG}'::numeric, 2.5::numeric, '[)'::text) AS v"
+    with pytest.raises(PostgresError) as raised:
+        transpile(sql, "clickhouse", generated=False)
+    assert (raised.value.sqlstate, str(raised.value)) == (
+        "22000",
+        "range lower bound must be less than or equal to range upper bound",
+    )

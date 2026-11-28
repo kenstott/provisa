@@ -279,7 +279,9 @@ export function checkObjectPage(source: string, creates: boolean): ObjectRule[] 
     creates &&
     !elements.some(
       (n) =>
-        tagName(n) === "Button" && insideClass(n, "page-actions") && insideClass(n, "page-header"),
+        tagName(n) === "Button" &&
+        (inside(n, "PageActions") || insideClass(n, "page-actions")) &&
+        insideClass(n, "page-header"),
     )
   )
     out.push("no-create");
@@ -291,7 +293,7 @@ export function checkObjectPage(source: string, creates: boolean): ObjectRule[] 
 describe("the admin object page rule fails what it is meant to fail", () => {
   const whole =
     `const x = <><div className="page-header"><PageTitle icon={I}>T</PageTitle>` +
-    `<FilterInput value={q} onChange={f} /><div className="page-actions"><Button>Add</Button></div>` +
+    `<FilterInput value={q} onChange={f} /><PageActions><Button>Add</Button></PageActions>` +
     `</div><SplitPane list={l}>{p}</SplitPane></>; const d = useRememberedDetail("x", ids);`;
 
   it("passes the whole anatomy", () => {
@@ -313,8 +315,8 @@ describe("the admin object page rule fails what it is meant to fail", () => {
   it("fails a create action outside the header", () => {
     expect(
       checkObjectPage(
-        whole.replace(`<div className="page-actions"><Button>Add</Button></div>`, "") +
-          `const y = <Group className="page-actions"><Button>Add</Button></Group>;`,
+        whole.replace(`<PageActions><Button>Add</Button></PageActions>`, "") +
+          `const y = <PageActions><Button>Add</Button></PageActions>;`,
         true,
       ),
     ).toEqual(["no-create"]);

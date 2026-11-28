@@ -22,7 +22,8 @@
   decision: >-
     Provisa does not model a source's sequences, so nextval, currval and setval are refused by name;
     lastval is answered from the session's own inserts. regexp_replace with a start position, an
-    occurrence number and flags is refused by name; its other forms are served.
+    occurrence number and flags is answered where an engine has an exact form (ClickHouse) and
+    refused by name where it has none yet; its other forms are served.
   case: "^catalog function::(?:(?:nextval|currval|setval)\\(|regexp_replace\\(text, text, text, integer, integer, text\\)$)"
   reason: "^not served: (?:ERROR:\\s+)?(?:nextval|currval|setval|regexp_replace)\\(\\) has no form "
 

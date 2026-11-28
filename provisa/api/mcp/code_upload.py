@@ -29,6 +29,22 @@ from urllib.parse import quote
 
 UPLOAD_CODE = "upload_code"
 
+#: How a function of code Polly writes is tagged (provisa/codesource/manifest.py,
+#: docs/arch/code-sources.md section 6.1). A function's tag says what it is; a read-only function
+#: tagged @command was registered as a mutation (maintainer, 2026-11-28).
+CODE_TAGS_RULE = (
+    "TAGGING CODE FUNCTIONS: a function's tag is a line of its doc comment that is exactly the "
+    "tag (in Python, a line of its docstring), never prose that mentions it. "
+    "@table -- a catalog table that returns rows: def orders(region: str) -> list[Order] with "
+    "@table. @query -- a command of kind query: it reads and returns rows and changes nothing: "
+    "def churn_score(account_id: str) -> list[Score] with @query. @command -- a command of kind "
+    "mutation: it changes something (writes, sends, deletes, calls a service that acts): def "
+    "close_ticket(ticket_id: str) -> list[Result] with @command. A function that only computes "
+    "or reads and returns rows is @query, never @command, however it is used. A code resolver is "
+    "a @query with exactly two table parameters. Also @stream (a generator of rows), @columns (a "
+    "batch column transform) and the lifecycle tags."
+)
+
 #: The archive's name, as the upload route records it.
 ARCHIVE_NAME = "code.zip"
 

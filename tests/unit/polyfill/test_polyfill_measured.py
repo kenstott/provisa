@@ -128,8 +128,9 @@ def test_a_kept_row_the_old_table_has_no_form_of_is_refused_by_the_grid() -> Non
     applied = GRID.read(sqlglot.parse_one("area(CAST(NULL AS box))", read="postgres"), "tsql")
     assert applied is not None
     assert applied.form == Refusal("0A000", "area() has no form on tsql")
-    duckdb_form = GRID.read(sqlglot.parse_one("area(CAST(NULL AS box))", read="postgres"), "duckdb")
-    assert duckdb_form is not None and duckdb_form.form is trino.KEPT
+    # DuckDB, Trino and ClickHouse have geo_ops forms of it; Athena keeps the old table's.
+    athena_form = GRID.read(sqlglot.parse_one("area(CAST(NULL AS box))", read="postgres"), "athena")
+    assert athena_form is not None and athena_form.form is trino.KEPT
 
 
 def test_a_refusal_for_some_values_is_a_limitation() -> None:

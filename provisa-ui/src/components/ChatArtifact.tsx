@@ -99,7 +99,7 @@ export function ChatArtifact({ artifact }: { artifact: Artifact }) {
           size="compact-xs"
           variant="light"
           leftSection={<Network size={12} />}
-          onClick={() => navigate("/graph", { state: { query: artifact.cypher, autoRun: true } })}
+          onClick={() => navigate("/graph", { state: { query: artifact.cypher } })}
           data-testid="chat-graph-open"
         >
           {t("chatPanel.openOnGraphPage")}

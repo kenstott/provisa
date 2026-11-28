@@ -37,7 +37,6 @@ Every other dialect keeps what it had: no row here has a form outside ClickHouse
 
 from __future__ import annotations
 
-import datetime
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -61,7 +60,7 @@ from provisa.transpiler.interval_input import (
     past_the_type,
     rejected,
 )
-from provisa.transpiler.polyfill import clocks, instants, trino
+from provisa.transpiler.polyfill import clocks, held_instants, instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
@@ -370,27 +369,14 @@ def _read_by_a_row(column: exp.Column) -> bool:
     return False
 
 
-#: A timestamp's or a date's literal, read here: its micro seconds from the epoch.
-_STAMP = re.compile(
-    r"\s*(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*", re.ASCII
-)
-_DATE = re.compile(r"\s*(\d{4})-(\d{2})-(\d{2})\s*", re.ASCII)
-_EPOCH = datetime.datetime(1970, 1, 1)
-_FIRST_US = (instants.FIRST - _EPOCH) // datetime.timedelta(microseconds=1)
-_LAST_US = (instants.LAST - _EPOCH) // datetime.timedelta(microseconds=1)
-
-
 def _instant_literal(text: str, day: bool) -> int | None:
-    matched = (_DATE if day else _STAMP).fullmatch(text)
-    if matched is None:
+    """A timestamp's or a date's literal, read as PostgreSQL holds it (polyfill.held_instants): its
+    microseconds from the epoch, a year BC and one past 9999 among them; None for any other text
+    and for an infinity, which no row here reads."""
+    value = held_instants.date_value(text) if day else held_instants.stamp_value(text, False)
+    if not isinstance(value, int):
         return None
-    parts = [int(g) if g else 0 for g in matched.groups()[:6]]
-    fraction = 0 if day or not matched.group(7) else int(matched.group(7).ljust(6, "0"))
-    try:
-        stamp = datetime.datetime(*parts, microsecond=fraction)  # type: ignore[misc]
-    except ValueError:
-        return None
-    return (stamp - _EPOCH) // datetime.timedelta(microseconds=1)
+    return value * _DAY_US if day else value
 
 
 def _instant(argument: exp.Expr, kind: str, untyped: bool) -> str | None:
@@ -753,17 +739,22 @@ _MONTH_DAYS = "[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]"
 def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
     """timestamp_pl_interval (and _mi_, the interval negated first, 22008 where a field cannot
     be): the months added, the day clamped to its month's last day, then the days, then the
-    microseconds; each step inside DateTime64's bound, or 0A000. The timestamp is a literal, so its
-    calendar is read here; the answer is DateTime64(6, 'UTC'), its wall time."""
-    message = instants.out_of_bound(function, instants.STAMP_BOUND)
+    microseconds; a step outside PostgreSQL's range raises 22008 (timestamp out of range), as
+    timestamp.c does. The timestamp is a literal, so its calendar is read here (a year BC too);
+    the answer is DateTime64(6, 'UTC') of its microseconds (polyfill.held_instants), and one past
+    the last an Int64 from 1970 holds raises 0A000."""
+    message = (
+        f"{function}() of a timestamp past {held_instants.HELD_LAST} has no exact form on "
+        f"{_CLICKHOUSE}"
+    )
 
     def form(sql: _Sql, stamp: str, interval: str) -> str:
         if stamp == "NULL":
             return _NULL_STAMP
         t = int(stamp)
-        whole = _EPOCH + datetime.timedelta(microseconds=t)
+        year, month, day_of_month = held_instants.civil(t // _DAY_US)
         tod = t - (t // _DAY_US) * _DAY_US
-        start = whole.year * 12 + whole.month - 1
+        start = year * 12 + month - 1
 
         def body(x: str) -> str:
             m0, d0 = (f"toInt64({_field(x, i)})" for i in (1, 2))
@@ -784,16 +775,24 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
                 def day(y: str, m: str) -> str:
                     leap = f"(({y} % 4 = 0 AND {y} % 100 != 0) OR {y} % 400 = 0)"
                     last = f"if({m} = 2 AND {leap}, 29, arrayElement({_MONTH_DAYS}, toUInt8({m})))"
-                    nd = f"least({whole.day}, {last})"
+                    nd = f"least({day_of_month}, {last})"
                     first = f"toInt128({_days_from_civil(y, m, nd)}) * {_DAY_US} + {tod}"
                     s1 = f"if({m0} = 0, toInt128({t}), {first})"
 
                     def steps(one: str, two: str, three: str) -> str:
-                        outside = " OR ".join(
-                            f"({s} < {_FIRST_US} OR {s} > {_LAST_US})" for s in (one, two, three)
+                        past = " OR ".join(
+                            f"({s} < {held_instants.PG_FIRST_US} "
+                            f"OR {s} >= {held_instants.PG_STAMP_END_US})"
+                            for s in (one, two, three)
                         )
-                        raised = _raise("0A000", message, f"({outside})")
-                        held = f"toInt64(if({outside}, {_FIRST_US}, {three}))"
+                        unheld = f"(NOT ({past}) AND {three} > {held_instants.HELD_LAST_US})"
+                        outside = f"(({past}) OR {unheld})"
+                        raised = (
+                            _raise("22008", "timestamp out of range", f"({past})")
+                            + " + "
+                            + _raise("0A000", message, unheld)
+                        )
+                        held = f"toInt64(if({outside}, 0, {three}))"
                         return f"fromUnixTimestamp64Micro({held} + {raised} + {negation}, 'UTC')"
 
                     def after(one: str) -> str:
@@ -1443,6 +1442,18 @@ def _call(node: exp.Expr, name: str | None = None) -> tuple[str, _Row, list[exp.
     return name, row, args
 
 
+def _past_the_type(argument: exp.Expr) -> None:
+    """PostgreSQL's 22008 of a literal of interval whose months, its years' and its own together,
+    pass int32 ('178956971 years'): interval_in raises it as the statement is read, before any
+    call reads the value (REQ-2236, amended 2026-11-23, as on DuckDB)."""
+    value = argument.unnest()
+    if not isinstance(value, exp.Cast) or _said(value) != "interval":
+        return
+    text = _string(value.this.unnest())
+    if text is not None and past_the_type(text):
+        raise Refused(Refusal("22008", _RANGE), ruling=True)
+
+
 def _written(node: exp.Expr, sql: _Sql) -> str | None:
     """The ClickHouse SQL of ``node``, a call of a row here, its arguments read; None where the row
     does not read them. An interval answer is the held tuple."""
@@ -1463,6 +1474,8 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
     for kind, argument in zip(row.kinds, args):
         if kind == "i":
             value = _interval(argument, sql, untyped=row.untyped)
+            if value is None:
+                _past_the_type(argument)
             if value is None and name not in _SHARED and isinstance(argument.unnest(), exp.Column):
                 # a table's column: ClickHouse holds no interval of it to read (and the call's
                 # name says the column is one, which no other row answers)
@@ -1755,10 +1768,12 @@ _DOCS["interval_div"] = _Doc(
     _SCALED_STATED,
 )
 _SHIFT_STATED = (
-    " The {} is read as a literal in ISO form or a NULL; any other is refused by name. The answer "
-    "is held as DateTime64(6, 'UTC'): an answer, or the step of it after the months or after the "
-    f"days, outside {instants.STAMP_BOUND} raises 0A000 ({{}}() of a value outside "
-    f"{instants.STAMP_BOUND} has no exact form on clickhouse)."
+    " The {} is read as a literal in ISO form (a year BC and one past 9999 too) or a NULL; any "
+    "other, and infinity, is refused by name. The answer is held as DateTime64(6, 'UTC') of its "
+    "microseconds: an answer, or the step of it after the months or after the days, outside "
+    "PostgreSQL's range raises 22008 (timestamp out of range), as PostgreSQL does; one past "
+    f"{held_instants.HELD_LAST}, the last an Int64 from 1970 holds, raises 0A000 ({{}}() of a "
+    f"timestamp past {held_instants.HELD_LAST} has no exact form on clickhouse)."
 )
 for _name, _what, _summary in (
     ("timestamp_pl_interval", "timestamp", "A timestamp plus an interval (+)."),

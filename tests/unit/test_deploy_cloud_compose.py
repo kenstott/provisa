@@ -30,12 +30,18 @@ pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "deploy-cloud.sh"
+_LIB = _REPO / "scripts" / "cloud-node-lib.sh"
 _REGIONS_CONFIG = _REPO / "config" / "provisa-sandbox-regions.yaml"
 _NODE_FILE = "/root/.provisa/compose-control-plane.yml"
 
 
+def _source() -> str:
+    """deploy-cloud.sh with the node library it sources (its shared functions live there)."""
+    return _LIB.read_text() + _SCRIPT.read_text()
+
+
 def _function(name: str) -> str:
-    source = _SCRIPT.read_text()
+    source = _source()
     found = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", source, re.S | re.M)
     assert found is not None, f"deploy-cloud.sh has no {name}"
     return found.group(0)
@@ -97,5 +103,5 @@ def test_a_node_already_on_this_compose_is_left_running(tmp_path):
 def test_the_deploy_replaces_the_vms_compose_before_its_overlay_and_only_there():
     body = _function("deploy_sandbox_vm")
     assert body.index("push_compose") < body.index("push_overlay")
-    arms = _SCRIPT.read_text().rsplit('case "$TARGET" in', 1)[1]
+    arms = _source().rsplit('case "$TARGET" in', 1)[1]
     assert "push_compose" not in arms, "the coordinator's compose is not this function's"

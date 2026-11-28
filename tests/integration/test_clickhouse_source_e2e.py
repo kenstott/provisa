@@ -15,7 +15,8 @@ external creds. ClickHouse-native Arrow reads for the embedded (chdb) engine are
 tests/unit/test_native_arrow_transport.py.
 
 REQ-2194: the source's results are read as Arrow, with the server's types, and a server older
-than 26 (the ``clickhouse`` service, 24.3, ``requires_clickhouse``) is refused at connect by name.
+than 26 (the ``clickhouse-24`` service, 24.3, ``requires_clickhouse_24``) is refused at connect by
+name.
 """
 
 from __future__ import annotations
@@ -199,14 +200,14 @@ async def test_a_result_is_read_as_arrow_with_the_servers_types():
         await driver.close()
 
 
-@pytest.mark.requires_clickhouse
+@pytest.mark.requires_clickhouse_24
 @pytest.mark.asyncio
 async def test_a_server_older_than_26_is_refused_at_connect_by_name():
-    """The ``clickhouse`` test service is 24.3: the DIRECT driver refuses it at connect."""
+    """The ``clickhouse-24`` test service is 24.3: the DIRECT driver refuses it at connect."""
     from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
 
     with pytest.raises(ClickHouseServerTooOld) as refused:
-        await _driver(int(os.environ["CLICKHOUSE_PORT"]))
+        await _driver(int(os.environ["CLICKHOUSE_24_PORT"]))
     assert refused.value.version.startswith("24.3.")
     assert "26" in str(refused.value)
 
@@ -260,3 +261,75 @@ async def test_nonutf8_string_direct_reads_as_bytes_not_text():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+# A row of each type whose Arrow form is not the row read's value (REQ-2194). UUID is read as
+# Arrow from ClickHouse 26 on, the oldest server the driver accepts.
+_PARITY_SQL = """
+SELECT
+    toUUID('61f0c404-5cb3-11e7-907b-a6006ad3dba0') AS id,
+    CAST(NULL AS Nullable(UUID)) AS id_null,
+    [toUUID('00000000-0000-0000-0000-000000000001')] AS ids,
+    toIPv4('1.2.3.4') AS ipv4,
+    CAST(NULL AS Nullable(IPv4)) AS ipv4_null,
+    toIPv6('2001:db8::1') AS ipv6,
+    toIPv6('::ffff:1.2.3.4') AS ipv6_mapped,
+    toDateTime('2024-01-02 03:04:05') AS dt,
+    toDateTime('2024-01-02 03:04:05', 'Asia/Tokyo') AS dt_zoned,
+    toDateTime64('2024-01-02 03:04:05.123456', 6) AS dt64,
+    toDateTime64('1960-05-06 07:08:09.123456789', 9) AS dt64_ns,
+    toDateTime64('2024-07-02 03:04:05.123', 3, 'America/New_York') AS dt64_zoned,
+    toDate('2024-01-02') AS d,
+    toDecimal64(12.345, 3) AS dec,
+    CAST(NULL AS Nullable(Decimal(18, 3))) AS dec_null,
+    [toIPv4('5.6.7.8')] AS ipv4s,
+    [toDateTime('2024-01-02 03:04:05')] AS dts,
+    map('a', toIPv4('1.2.3.4')) AS m,
+    CAST('b' AS Enum8('a' = 1, 'b' = 2)) AS e,
+    toInt128(-5) AS i128,
+    tuple(toIPv4('1.2.3.4'), 'x') AS t
+"""
+
+
+@pytest.mark.requires_clickhouse_26
+@pytest.mark.asyncio
+async def test_a_result_read_as_arrow_holds_the_row_reads_values(seeded):
+    """The driver reads a whole result as ClickHouse's Arrow output; every value equals, in value
+    and type, what clickhouse-connect's row read of the same statement gives."""
+    import clickhouse_connect
+
+    from provisa.executor.result import ArrowResult
+
+    del seeded
+    pool = SourcePool()
+    await pool.add(
+        source_id=_SID,
+        source_type="clickhouse",
+        host=_HOST or "localhost",
+        port=_port(),
+        database="default",
+        user=os.environ.get("CLICKHOUSE_USER", "default"),
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+    )
+    driver = pool.get(_SID)
+    client = clickhouse_connect.get_client(
+        host=_HOST or "localhost",
+        port=_port(),
+        username=os.environ.get("CLICKHOUSE_USER", "default"),
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+        autogenerate_session_id=False,
+    )
+    try:
+        result = await driver.execute(_PARITY_SQL)
+        rows = client.query(_PARITY_SQL)
+    finally:
+        client.close()
+        await driver.close()
+    assert isinstance(result, ArrowResult)
+    assert result.column_names == list(rows.column_names)
+    expected = [tuple(r) for r in rows.result_rows]
+    got = result.rows
+    for name, g, e in zip(result.column_names, got[0], expected[0], strict=True):
+        assert (type(g), g) == (type(e), e), name
+        if hasattr(e, "utcoffset"):
+            assert g.utcoffset() == e.utcoffset(), name

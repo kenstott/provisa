@@ -16,11 +16,14 @@ by hand: its counts are the run's, base calls and edge calls apart, and its list
 answer and engine error of the run, each naming its engine, overload, where it fails (a base call
 or an edge value), its first failing call and what the engine and PostgreSQL said of it.
 
-An entry the file already holds, failing in the same place and way, keeps its job and the day it
-was listed; every other entry is new, and takes ``--job`` and ``--since``.
+An entry the file already holds, failing in the same place and way, keeps its job, the day it
+was listed and its reason; every other entry is new, and takes ``--job`` and ``--since``.
+``--reason CASE=TEXT`` gives a case of the run its reason: why a known failure stays listed (a
+decision, such as an engine's own regular expression semantics). It is refused for a case the run
+does not fail.
 
 Usage: functions_baseline.py <function_support.json> --job J<n> --since YYYY-MM-DD
-           [--run <run id>] [--sha <commit>] [--breakdown <out.md>]
+           [--run <run id>] [--sha <commit>] [--breakdown <out.md>] [--reason CASE=TEXT ...]
 
 ``--breakdown`` also writes the list by engine and function family, for cutting the jobs that
 shorten it.
@@ -46,15 +49,29 @@ def _clipped(text: str) -> str:
     return text if len(text) <= SAID_MAX else text[: SAID_MAX - 1] + "…"
 
 
-def baseline(doc: dict, kept: dict[str, dict], job: str, since: str, measured: dict) -> dict:
+def baseline(
+    doc: dict,
+    kept: dict[str, dict],
+    job: str,
+    since: str,
+    measured: dict,
+    reasons: dict[str, str] | None = None,
+) -> dict:
     """The expected-failures file of the merged run ``doc``. ``kept``: the entries of the file it
-    replaces, by case."""
+    replaces, by case. ``reasons``: a reason by case, for cases of the run's failures."""
     unjudged = sorted(set(doc["engines_without_a_result"]) | set(doc["engines_incomplete"]))
     if unjudged:
         raise baseline_gate.Refused(f"no full result on {unjudged}: a baseline is of a full run")
     engines = sorted(doc["engines"])
+    failures = baseline_gate.function_failures(doc, engines)
+    given = reasons or {}
+    unfailing = sorted(set(given) - set(failures))
+    if unfailing:
+        raise baseline_gate.Refused(
+            f"a reason is given for {unfailing}, which the run does not fail"
+        )
     entries = []
-    for case, found in sorted(baseline_gate.function_failures(doc, engines).items()):
+    for case, found in sorted(failures.items()):
         before = kept.get(case, {})
         same = (before.get("at"), before.get("kind")) == (found["at"], found["kind"])
         entry = {**found, "said": _clipped(found["said"])}
@@ -62,6 +79,9 @@ def baseline(doc: dict, kept: dict[str, dict], job: str, since: str, measured: d
             entry["postgres"] = _clipped(entry["postgres"])
         entry["job"] = before["job"] if same else job
         entry["since"] = before["since"] if same else since
+        reason = given.get(case) or (before.get("reason") if same else None)
+        if reason:
+            entry["reason"] = reason
         entries.append(entry)
     return {
         "measured": measured,
@@ -107,6 +127,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--run", default="")
     parser.add_argument("--sha", default="")
     parser.add_argument("--breakdown", type=Path)
+    parser.add_argument("--reason", action="append", default=[], metavar="CASE=TEXT")
     args = parser.parse_args(argv)
     out = baseline_gate.EXPECTED / "functions.json"
     try:
@@ -119,8 +140,14 @@ def main(argv: list[str]) -> int:
         doc = json.loads(args.report.read_text())
         before = json.loads(out.read_text()) if out.is_file() else {}
         kept = {e["case"]: e for e in before.get("expected", ())}
+        reasons: dict[str, str] = {}
+        for given in args.reason:
+            case, sep, text = given.partition("=")
+            if not sep or not case or not text:
+                raise baseline_gate.Refused(f"reason {given!r} is not CASE=TEXT")
+            reasons[case] = text
         measured = {"run": args.run, "sha": args.sha}
-        made = baseline(doc, kept, args.job, args.since, measured)
+        made = baseline(doc, kept, args.job, args.since, measured, reasons)
     except baseline_gate.Refused as refused:
         print(f"::error::{refused}", file=sys.stderr)
         return 1

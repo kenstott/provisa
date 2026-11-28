@@ -37,7 +37,6 @@ import {
   TextInput,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
-import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
 import { RefreshCw, Database } from "lucide-react";
 import { fetchSettings, fetchSourceReach } from "../api/admin";
@@ -176,6 +175,8 @@ import { athenaHints } from "./sources/athena";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -1938,32 +1939,29 @@ export function SourcesPage() {
           hidden={regionHidden}
           error={regionError}
         />
-        <div className="page-actions">
+        <PageActions>
           {/* Not shown while its form is open: the panel has its own close. */}
           {!editingSourceId && !showForm && (
-            <Button
-              data-tour="sources-add"
-              data-testid="sources-add-toggle"
-              onClick={() => setAddPickerOpen(true)}
-            >
-              {t("sourcesPage.addSource")}
-            </Button>
+            <PageCommand description={t("pageCommands.addSource")} docs="sources/">
+              <Button
+                data-tour="sources-add"
+                data-testid="sources-add-toggle"
+                onClick={() => setAddPickerOpen(true)}
+              >
+                {t("sourcesPage.addSource")}
+              </Button>
+            </PageCommand>
           )}
-          {/* Closed without a choice, it opens nothing. */}
-          <SourceTypePicker
-            opened={addPickerOpen}
-            onClose={() => setAddPickerOpen(false)}
-            groups={typeSelectData()}
-            value={form.type}
-            onPick={openEmptyForm}
-          />
-          <HelpBubble
-            title={t("sourcesPage.purposeTitle")}
-            paragraphs={[t("sourcesPage.purposeBody"), t("sourcesPage.purposeAdd")]}
-            ariaLabel={t("sourcesPage.purposeAria")}
-            testId="sources-purpose-help"
-          />
-        </div>
+        </PageActions>
+        {/* The add's type picker, a modal: no command of the row. Closed without a choice, it
+            opens nothing. */}
+        <SourceTypePicker
+          opened={addPickerOpen}
+          onClose={() => setAddPickerOpen(false)}
+          groups={typeSelectData()}
+          value={form.type}
+          onPick={openEmptyForm}
+        />
       </div>
 
       {error && (

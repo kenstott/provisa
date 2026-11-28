@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """REQ-1159 (amended 2026-11-27): a relation argument is given as a table, a query or a few rows,
-on every surface as the one value the argument takes. A table reference is materialized as before;
-a query runs through the one governed pipeline as the caller's role; rows (a JSON array of
+on every surface as the one value the argument takes. A table is named by its logical, served name
+and read through the one governed pipeline as the caller's role, its declared columns only; a
+physical source.schema.table is refused by name (amended 2026-11-28). A query runs through the one governed pipeline as the caller's role; rows (a JSON array of
 objects) are the relation themselves. A table_ref, which names a table its service reads, refuses
 a query or rows by name. Each is validated against the argument's declared columns."""
 
@@ -28,6 +29,7 @@ import provisa.executor.function_dispatch as fd
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import MemoryUdfTraceSink
+from tests.served_names import served_names
 
 pytestmark = pytest.mark.unit
 
@@ -51,6 +53,7 @@ def _state():
         udf_trace_sink=MemoryUdfTraceSink(),
         minted_sessions=[],
         udf_egress_allowlist=["svc"],
+        names_table=served_names("sales.orders", "shop.items"),
     )
 
 
@@ -168,11 +171,51 @@ async def test_a_query_with_no_role_bound_is_refused(sent, governed):
 
 
 @pytest.mark.asyncio
-async def test_a_table_reference_is_materialized_as_before(sent):
+@pytest.mark.parametrize("ref", ["shop.items", '"shop"."items"', "SHOP.Items"])
+async def test_a_table_is_read_governed_by_its_served_name(sent, governed, ref):
     st = _state()
-    await dispatch_function(_fn(), {"input": "s3.public.items"}, st, "ops")
-    assert st.source_pools.calls == [("s3", 'SELECT * FROM "public"."items"', [])]
-    assert sent["args"]["input"]["rows"] == [{"id": 1, "name": "ada"}]
+    await dispatch_function(_fn(), {"input": ref}, st, "ops")
+    assert len(governed) == 1 and governed[0][1] == "ops"
+    assert governed[0][0].replace('"', "").lower() == "select * from shop.items"
+    assert sent["args"]["input"]["rows"] == [{"id": 7, "name": "x"}]
+    assert st.source_pools.calls == []  # never read from the source past governance
+
+
+@pytest.mark.asyncio
+async def test_a_table_is_read_for_its_declared_columns_only(sent, governed):
+    fn = _fn(columns=[{"name": "id", "type": "integer"}, {"name": "name", "type": "text"}])
+    await dispatch_function(fn, {"input": '"shop"."items"'}, _state(), "ops")
+    assert governed == [('SELECT "items"."id", "items"."name" FROM "shop"."items"', "ops")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["result_set", "table_ref"])
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "s3.public.items",  # a physical source.schema.table
+        "public.items",  # a physical schema.table SQL serves no table by
+        "items",  # unqualified
+        "shop.missing",  # a name SQL serves nothing by
+        "shop.items x",  # not a table name alone
+    ],
+)
+async def test_a_table_not_named_by_its_served_name_is_refused(sent, governed, kind, ref):
+    st = _state()
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(_fn(kind), {"input": ref}, st, "ops")
+    assert ei.value.status_code == 400
+    assert "logical name" in ei.value.detail and "schema.table" in ei.value.detail
+    assert "source.schema.table" in ei.value.detail and repr(ref) in ei.value.detail
+    assert governed == [] and st.source_pools.calls == [] and "args" not in sent
+
+
+@pytest.mark.asyncio
+async def test_a_table_with_no_role_bound_is_refused(sent, governed):
+    with pytest.raises(HTTPException) as ei:
+        await dispatch_function(_fn(), {"input": "shop.items"}, _state(), None)
+    assert ei.value.status_code == 400
+    assert governed == []
 
 
 @pytest.mark.asyncio

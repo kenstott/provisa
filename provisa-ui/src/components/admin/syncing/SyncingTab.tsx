@@ -65,6 +65,8 @@ import { FilterInput } from "../FilterInput";
 import { EntryPanel } from "./EntryPanel";
 import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
+import { PageActions } from "../../PageActions";
+import { PageCommand } from "../../PageCommand";
 
 /** A new entry being made in the panel: empty from Add, or filled from the kept entry it
  *  duplicates. A kept entry open in the panel is the URL's ?entry=. */
@@ -163,18 +165,23 @@ export function SyncingTab() {
         placeholder={t("syncingTab.filterPlaceholder")}
         testId="syncing-filter"
       />
-      <div className="page-actions">
+      <PageActions>
         {/* An entry is added to the list once it is read. */}
         {s !== null && (
-          <Button
-            leftSection={<Plus size={14} />}
-            data-testid="syncing-add"
-            onClick={() => openNew()}
+          <PageCommand
+            description={t("pageCommands.addSyncTarget")}
+            docs="metadata-export/#operating-it-from-the-context-sync-page"
           >
-            {t("syncingTab.addEntry")}
-          </Button>
+            <Button
+              leftSection={<Plus size={14} />}
+              data-testid="syncing-add"
+              onClick={() => openNew()}
+            >
+              {t("syncingTab.addEntry")}
+            </Button>
+          </PageCommand>
         )}
-      </div>
+      </PageActions>
     </div>
   );
 

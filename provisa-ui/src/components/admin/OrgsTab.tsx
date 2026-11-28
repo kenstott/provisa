@@ -54,6 +54,8 @@ import { detailListOf, searchNarrowing, shownBy } from "../list/leftOut";
 import { useUrlFilter, useUrlTab } from "../list/useUrlFilter";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { useRequiredFields } from "../form/useRequiredFields";
+import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 const PAGE_SIZE = 50;
 
@@ -747,27 +749,37 @@ export function OrgsTab({ title }: { title: string }) {
             view === "orgs" ? "orgsTab.orgsFilterPlaceholder" : "orgsTab.invitesFilterPlaceholder",
           )}
         />
-        <div className="page-actions">
+        <PageActions>
           {view === "orgs" ? (
-            <Button
-              variant={creating ? "outline" : "filled"}
-              onClick={() => (creating ? closeForm() : openForm("org"))}
-              aria-label={creating ? t("orgsTab.closeFormLabel") : undefined}
-              data-testid="org-create-toggle"
+            <PageCommand
+              description={t("pageCommands.addOrg")}
+              docs="access-model/#three-layers-of-administration"
             >
-              {creating ? <X size={14} /> : t("orgsTab.addOrg")}
-            </Button>
+              <Button
+                variant={creating ? "outline" : "filled"}
+                onClick={() => (creating ? closeForm() : openForm("org"))}
+                aria-label={creating ? t("orgsTab.closeFormLabel") : undefined}
+                data-testid="org-create-toggle"
+              >
+                {creating ? <X size={14} /> : t("orgsTab.addOrg")}
+              </Button>
+            </PageCommand>
           ) : (
-            <Button
-              variant={creating ? "outline" : "filled"}
-              onClick={() => (creating ? closeForm() : openForm("invite"))}
-              aria-label={creating ? t("orgsTab.closeFormLabel") : undefined}
-              data-testid="invite-create-toggle"
+            <PageCommand
+              description={t("pageCommands.addInvite")}
+              docs="access-model/#three-layers-of-administration"
             >
-              {creating ? <X size={14} /> : t("orgsTab.addInvite")}
-            </Button>
+              <Button
+                variant={creating ? "outline" : "filled"}
+                onClick={() => (creating ? closeForm() : openForm("invite"))}
+                aria-label={creating ? t("orgsTab.closeFormLabel") : undefined}
+                data-testid="invite-create-toggle"
+              >
+                {creating ? <X size={14} /> : t("orgsTab.addInvite")}
+              </Button>
+            </PageCommand>
           )}
-        </div>
+        </PageActions>
       </div>
       <Tabs
         value={view}

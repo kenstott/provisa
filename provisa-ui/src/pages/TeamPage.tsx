@@ -68,6 +68,8 @@ import { EntitlementGrants } from "../components/entitlements/EntitlementGrants"
 import { entityName } from "../components/entityName";
 import { useCapability } from "../hooks/useCapability";
 import { administersOrg, conferrableRoles } from "../lib/capabilities";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -516,19 +518,21 @@ export function TeamPage() {
             placeholder={t("teamPage.filterPlaceholder")}
             testId="team-members-filter"
           />
-          <div className="page-actions">
-            <Button
-              variant={inviting ? "outline" : "filled"}
-              onClick={() => {
-                if (!inviting) detail.close();
-                setInviting(!inviting);
-              }}
-              aria-label={inviting ? t("teamPage.closeInvite") : undefined}
-              data-testid="team-invite-open"
-            >
-              {inviting ? <X size={14} /> : t("teamPage.inviteButton")}
-            </Button>
-          </div>
+          <PageActions>
+            <PageCommand description={t("pageCommands.invite")} docs="access-model/#grants">
+              <Button
+                variant={inviting ? "outline" : "filled"}
+                onClick={() => {
+                  if (!inviting) detail.close();
+                  setInviting(!inviting);
+                }}
+                aria-label={inviting ? t("teamPage.closeInvite") : undefined}
+                data-testid="team-invite-open"
+              >
+                {inviting ? <X size={14} /> : t("teamPage.inviteButton")}
+              </Button>
+            </PageCommand>
+          </PageActions>
         </div>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}

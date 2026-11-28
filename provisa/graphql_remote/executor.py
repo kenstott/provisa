@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from provisa.core.statement_warnings import ServerWarning, warn
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.federation.replica_errors import BuildFailure
 from provisa.graphql_remote.introspect import _build_headers
 
@@ -297,7 +298,12 @@ async def _post(
             if resp.status_code in _RETRY_AFTER_STATUSES:
                 return resp
             raise Throttled(url, said)
-        log.warning("graphql_remote %s: rate limited (%s); retrying in %.1fs", url, said, wait)
+        log.warning(
+            "graphql_remote %s: rate limited (%s); retrying in %.1fs",
+            redact_url_password(url),
+            said,
+            wait,
+        )
         await asyncio.sleep(wait)
     raise AssertionError("unreachable")  # the last attempt returns or raises
 
@@ -718,7 +724,10 @@ def iter_remote_rows_spooled(  # REQ-1915, REQ-1923
                         raise Throttled(url, said)
                     throttled += 1
                     log.warning(
-                        "graphql_remote %s: rate limited (%s); retrying in %.1fs", url, said, wait
+                        "graphql_remote %s: rate limited (%s); retrying in %.1fs",
+                        redact_url_password(url),
+                        said,
+                        wait,
                     )
                     time.sleep(wait)
                     continue

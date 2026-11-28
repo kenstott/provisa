@@ -33,6 +33,8 @@ import platform
 import sys
 from pathlib import Path
 
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
+
 _DEFAULT_DATA_DIR = Path.home() / ".provisa" / "native"
 _PKG_ROOT = Path(__file__).resolve().parent  # the installed ``provisa`` package
 _REPO_ROOT = Path(__file__).resolve().parents[1]  # repo root when running from source
@@ -257,10 +259,13 @@ async def _announce_ready(
                 await asyncio.sleep(0.5)
                 waited += 0.5
             else:
-                print(f"\nProvisa is still starting — open {url} in your browser.", flush=True)
+                print(
+                    f"\nProvisa is still starting — open {redact_url_password(url)} in your browser.",
+                    flush=True,
+                )
                 return
 
-        print(f"\n✓ Provisa is ready — {url}", flush=True)
+        print(f"\n✓ Provisa is ready — {redact_url_password(url)}", flush=True)
         if open_browser:
             import webbrowser
 
@@ -269,9 +274,14 @@ async def _announce_ready(
             except Exception:
                 opened = False
             if not opened:
-                print(f"  Open {url} in your browser to get started.", flush=True)
+                print(
+                    f"  Open {redact_url_password(url)} in your browser to get started.", flush=True
+                )
     except Exception as exc:  # never let the announcer crash the servers
-        print(f"\nProvisa is running — open {url} in your browser (announce: {exc}).", flush=True)
+        print(
+            f"\nProvisa is running — open {redact_url_password(url)} in your browser (announce: {exc}).",
+            flush=True,
+        )
 
 
 # uvicorn's 5s default expires an idle connection while the browser still holds it pooled, and the

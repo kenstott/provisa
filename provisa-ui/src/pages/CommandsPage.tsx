@@ -11,6 +11,7 @@
 import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import { CommandQueryLinks } from "../components/commands/CommandQueryLinks";
+import { servedSchemasChanged } from "../api/metaGraph";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -74,6 +75,8 @@ import {
   deriveReturnSchema,
   columnsFromReturnSchema,
   CODE_ENTERED,
+  returnShapeOf,
+  returnShapeText,
 } from "./commands/types";
 import { enteredCommandInput, enteredFieldsOf, enteredSourceInput } from "./commands/enteredCode";
 import { CommandFormFields } from "./commands/CommandFormFields";
@@ -88,8 +91,23 @@ import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
+import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 /** A function's or a webhook's row, as the list's narrowings read it. */
+/** REQ-1159 (amended 2026-11-28): a function's Returns as its row shows it: the registered table
+ *  or its own column names; a dash only for a command that declares no columns. */
+const returnsCell = (fn: TrackedFunction, dash: string) => {
+  const shape = returnShapeOf(fn);
+  return shape === null ? dash : returnShapeText(shape, false);
+};
+
+/** Its Returns on hover: the table, or each column with its type. */
+const returnsTitle = (fn: TrackedFunction) => {
+  const shape = returnShapeOf(fn);
+  return shape === null ? undefined : returnShapeText(shape, true);
+};
+
 interface CommandRow {
   /** Its `commands` id (commandId). */
   id: string;
@@ -141,7 +159,7 @@ export function CommandsPage() {
     fn.sourceId,
     fn.domainId,
     `${fn.schemaName}.${fn.functionName}`,
-    fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : ""),
+    returnsCell(fn, ""),
     String(fn.arguments.length),
     fn.visibleTo.join(", ") || t("commandsPage.all"),
   ];
@@ -439,6 +457,9 @@ export function CommandsPage() {
           editingName,
         );
       }
+      // REQ-2252, REQ-1159: the server rebuilt the served schemas before it answered the save, so
+      // what each role is served -- the command's Query it line -- is read again.
+      servedSchemasChanged();
       setMsg(t("commandsPage.savedMessage", { type: form.actionType, name: form.name }));
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
@@ -516,10 +537,8 @@ export function CommandsPage() {
     {
       key: "returns",
       label: t("commandsPage.colReturns"),
-      sortValue: (f) =>
-        f.returns || (f.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash")),
-      groupValue: (f) =>
-        f.returns || (f.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash")),
+      sortValue: (f) => returnsCell(f, t("commandsPage.dash")),
+      groupValue: (f) => returnsCell(f, t("commandsPage.dash")),
     },
     { key: "args", label: t("commandsPage.colArgs"), sortValue: (f) => f.arguments.length },
     {
@@ -696,6 +715,7 @@ export function CommandsPage() {
                       testId={`command-delete-fn-${fn.name}`}
                       onDelete={async () => {
                         await deleteFunction(fn.name);
+                        servedSchemasChanged();
                         await load();
                         detail.close({ only: commandId("function", fn.name) });
                       }}
@@ -753,6 +773,7 @@ export function CommandsPage() {
                       testId={`command-delete-wh-${wh.name}`}
                       onDelete={async () => {
                         await deleteWebhook(wh.name);
+                        servedSchemasChanged();
                         await load();
                         detail.close({ only: commandId("webhook", wh.name) });
                       }}
@@ -789,17 +810,22 @@ export function CommandsPage() {
           }}
           placeholder={t("commandsPage.filterPlaceholder")}
         />
-        <div className="page-actions">
+        <PageActions>
           {mayAuthor && !editingName && !showForm && (
-            <Button
-              leftSection={<Plus size={14} />}
-              data-testid="commands-toggle-form"
-              onClick={openCreate}
+            <PageCommand
+              description={t("pageCommands.addCommand")}
+              docs="commands/#authoring-a-command"
             >
-              {t("commandsPage.addCommand")}
-            </Button>
+              <Button
+                leftSection={<Plus size={14} />}
+                data-testid="commands-toggle-form"
+                onClick={openCreate}
+              >
+                {t("commandsPage.addCommand")}
+              </Button>
+            </PageCommand>
           )}
-        </div>
+        </PageActions>
       </div>
 
       {error && (
@@ -891,11 +917,11 @@ export function CommandsPage() {
                           <Table.Td>
                             {fn.schemaName}.{fn.functionName}
                           </Table.Td>
-                          <Table.Td>
-                            {fn.returns ||
-                              (fn.returnSchema
-                                ? t("commandsPage.customSchema")
-                                : t("commandsPage.dash"))}
+                          <Table.Td
+                            data-testid={`commands-fn-returns-${fn.name}`}
+                            title={returnsTitle(fn)}
+                          >
+                            {returnsCell(fn, t("commandsPage.dash"))}
                           </Table.Td>
                           <Table.Td>{fn.arguments.length}</Table.Td>
                           <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>

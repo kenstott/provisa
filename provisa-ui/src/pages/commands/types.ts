@@ -8,7 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ActionArg, DatasetColumn, InlineField, LanguageBinding } from "../../api/actions";
+import type {
+  ActionArg,
+  DatasetColumn,
+  InlineField,
+  LanguageBinding,
+  TrackedFunction,
+} from "../../api/actions";
 
 export const GRAPHQL_TYPES = [
   "String",
@@ -299,3 +305,32 @@ export const argumentsText = (list: readonly ActionArg[], t: (key: string) => st
         )
         .join(", ")
     : null;
+
+/** REQ-1159 (amended 2026-11-28): the shape of the dataset a command returns: the registered
+ *  table it returns, or its own columns. */
+export type ReturnShape =
+  { table: string } | { columns: readonly { name: string; type: string }[] };
+
+/** REQ-1159 (amended 2026-11-28): a command's return shape. Its own columns are its declared
+ *  output columns (a code source's declared ones among them), else what its statement declares
+ *  (REQ-2001), else its GraphQL return schema's. Null for a command that declares no columns:
+ *  a VOID command, which returns no rows, or one whose output is undeclared. */
+export function returnShapeOf(
+  fn: Pick<TrackedFunction, "returns" | "outputColumns" | "contract" | "returnSchema">,
+): ReturnShape | null {
+  if (fn.returns) return { table: fn.returns };
+  const own = [
+    fn.outputColumns ?? [],
+    fn.contract?.outputs ?? [],
+    columnsFromReturnSchema(fn.returnSchema),
+  ];
+  const columns = own.find((c) => c.length > 0);
+  return columns === undefined ? null : { columns };
+}
+
+/** REQ-1159 (amended 2026-11-28): a return shape as text: the table, or the column names, each
+ *  with its type when ``typed``. */
+export function returnShapeText(shape: ReturnShape, typed: boolean): string {
+  if ("table" in shape) return shape.table;
+  return shape.columns.map((c) => (typed ? `${c.name}: ${c.type}` : c.name)).join(", ");
+}

@@ -15,13 +15,26 @@
 // then the (?) help last. An icon-only button is borderless wherever it is: subtle or transparent,
 // or light for a toggle while it is on. A list page's filter is no toolbar control: it stands in the
 // page header between the title and the toolbar, where it grows (TablesPage), never inside one.
+// A page header draws one (?) help: the page's own, which its PageTitle carries (RoutePageHelp). A
+// second (?) anywhere in the header -- a HelpBubble with no target of its own, or a PageHelp --
+// fails, so a page never shows two.
+// Every command of a page header's PageActions is a PageCommand (or a CapabilityGate around one)
+// with a description and a literal docs target, and every (?) -- a HelpBubble with no target of
+// its own, or a PageHelp -- names its docs: each ends with a "Read the documentation" link
+// (maintainer 2026-11-28). docsTargets.test.ts checks each literal target is a published page.
 
 import ts from "typescript";
 
 export type ToolbarKind = "named" | "icon" | "help";
 
 export interface ToolbarViolation {
-  rule: "bordered-icon-button" | "toolbar-order" | "filter-in-toolbar";
+  rule:
+    | "bordered-icon-button"
+    | "toolbar-order"
+    | "filter-in-toolbar"
+    | "second-page-help"
+    | "command-without-docs"
+    | "help-without-docs";
   line: number;
   detail: string;
 }
@@ -38,6 +51,7 @@ const ICON_COMPONENTS = new Set([
   "OntologyToggle",
   "ErdToggle",
   "ImportsToggle",
+  "DiscoverButton",
 ]);
 
 /** Containers read through: their children stand in the toolbar in their order. */
@@ -45,6 +59,11 @@ const CONTAINERS = new Set(["Group", "div", "span", "Stack", ""]);
 
 /** What a toolbar shows that is no control: its labels, badges and spacing. */
 const NEUTRAL = new Set(["Text", "Divider", "Space", "Badge"]);
+
+/** The shared page-header toolbar component: a toolbar by its name. */
+const TOOLBAR_COMPONENTS = new Set(["PageActions"]);
+
+const isPageHeader = (className: string) => /\bpage-header\b/.test(className);
 
 const isToolbar = (className: string) =>
   /\btoolbar\b|-toolbar\b|\bp3d-toolbar\b/.test(className) || /\bpage-actions\b/.test(className);
@@ -125,7 +144,13 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
     if (!open) return;
     const tag = open.tagName.getText();
     const children = ts.isJsxElement(n) ? n.children : [];
-    if (tag === "Tip" || tag === "TipSurface" || CONTAINERS.has(tag)) {
+    if (
+      tag === "Tip" ||
+      tag === "TipSurface" ||
+      tag === "PageCommand" ||
+      tag === "CapabilityGate" ||
+      CONTAINERS.has(tag)
+    ) {
       children.forEach(take);
       return;
     }
@@ -153,6 +178,45 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
   return out;
 }
 
+/** The elements a PageActions holds as its commands, read through conditions and fragments. */
+function commandElements(nodes: readonly ts.Node[]): ts.Node[] {
+  const out: ts.Node[] = [];
+  const take = (n: ts.Node): void => {
+    if (ts.isJsxText(n)) return;
+    if (ts.isJsxFragment(n)) return n.children.forEach(take);
+    if (ts.isJsxExpression(n) || ts.isParenthesizedExpression(n)) {
+      ts.forEachChild(n, take);
+      return;
+    }
+    if (ts.isBinaryExpression(n)) return take(n.right);
+    if (ts.isConditionalExpression(n)) {
+      take(n.whenTrue);
+      take(n.whenFalse);
+      return;
+    }
+    if (opening(n)) out.push(n);
+  };
+  nodes.forEach(take);
+  return out;
+}
+
+/** What is wrong with one command of a PageActions, or null when it is a documented PageCommand. */
+function commandProblem(n: ts.Node): string | null {
+  let open = opening(n)!;
+  if (open.tagName.getText() === "CapabilityGate" && ts.isJsxElement(n)) {
+    const inner = commandElements(n.children);
+    if (inner.length !== 1) return "a CapabilityGate holding other than one PageCommand";
+    open = opening(inner[0])!;
+  }
+  const tag = open.tagName.getText();
+  if (tag !== "PageCommand") return `${tag} is not a PageCommand`;
+  if (!attr(open, "description")) return "a PageCommand with no description";
+  const docs = attr(open, "docs");
+  if (!docs || !docs.initializer || !ts.isStringLiteral(docs.initializer))
+    return "a PageCommand with no literal docs target";
+  return null;
+}
+
 const RANK: Record<ToolbarKind, number> = { named: 0, icon: 1, help: 2 };
 
 /** A panel's head draws its actions in its one style, borderless (PanelHeadStyle): an action there
@@ -173,9 +237,42 @@ export function checkToolbarRules(file: string, source: string): ToolbarViolatio
       if (wrong.length > 0)
         out.push({ rule: "bordered-icon-button", line: lineOf(n), detail: wrong.join(", ") });
     }
+    if (open) {
+      const tag = open.tagName.getText();
+      const helpWithoutDocs =
+        (tag === "HelpBubble" && !attr(open, "target") && !attr(open, "docs")) ||
+        (tag === "PageHelp" && !attr(open, "docs"));
+      if (helpWithoutDocs)
+        out.push({ rule: "help-without-docs", line: lineOf(n), detail: `${tag} with no docs` });
+    }
+    if (open && ts.isJsxElement(n) && TOOLBAR_COMPONENTS.has(open.tagName.getText())) {
+      for (const c of commandElements(n.children)) {
+        const problem = commandProblem(c);
+        if (problem !== null)
+          out.push({ rule: "command-without-docs", line: lineOf(c), detail: problem });
+      }
+    }
     if (open && ts.isJsxElement(n)) {
       const cls = attr(open, "className");
-      if (attr(open, "data-toolbar") || (cls && attrStrings(cls).some(isToolbar))) {
+      if (cls && attrStrings(cls).some(isPageHeader)) {
+        // Each (?) the header draws: its PageTitle's, and every help-kind control in it.
+        const helps: number[] = [];
+        const count = (c: ts.Node): void => {
+          const o = opening(c);
+          const tag = o?.tagName.getText();
+          if (o && (tag === "PageTitle" || tag === "PageHelp")) helps.push(lineOf(c));
+          if (o && tag === "HelpBubble" && !attr(o, "target")) helps.push(lineOf(c));
+          ts.forEachChild(c, count);
+        };
+        n.children.forEach(count);
+        for (const line of helps.slice(1))
+          out.push({ rule: "second-page-help", line, detail: `${helps.length} (?) helps` });
+      }
+      if (
+        attr(open, "data-toolbar") ||
+        TOOLBAR_COMPONENTS.has(open.tagName.getText()) ||
+        (cls && attrStrings(cls).some(isToolbar))
+      ) {
         const filters = (c: ts.Node): void => {
           const o = opening(c);
           if (o && o.tagName.getText() === "FilterInput")

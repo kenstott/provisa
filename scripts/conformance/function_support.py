@@ -37,7 +37,10 @@ Each overload gets one outcome per engine:
                 it does on every engine
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
                 or the side effect it had; or an edge call answers otherwise than PostgreSQL
-                (``wrong_at_edge``)
+                (``wrong_at_edge``). ``last_digits``: every wrong call differs only in float4 and
+                float8 values within LAST_DIGITS_BOUND of PostgreSQL's, which a grid row stating
+                that difference on the engine makes a documented difference (REQ-2236, amended
+                2026-11-25)
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
                 message is kept); or an edge call got no answer at all, or raised where the grid
                 row states no bound (``error_at_edge``)
@@ -172,7 +175,7 @@ import yaml
 from psycopg import pq
 from psycopg import sql as psql
 
-from provisa.transpiler.polyfill.grid import Limitation
+from provisa.transpiler.polyfill.grid import LAST_DIGITS_BOUND, Limitation
 
 import function_edges
 import function_report
@@ -1805,19 +1808,20 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
     given = _given(fn)
     with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
     # An argument given literals of its own takes only the edges function_edges gives it there,
-    # first, so the round robin reaches them whatever the arity (an empty regexp pattern).
-    per_position = [
+    # all first, whatever the arity (a regexp's empty pattern, regexp_replace's empty matches).
+    own = [
         (i, function_edges.given_edges(fn.name, i))
         for i in sorted(given)
         if function_edges.given_edges(fn.name, i)
-    ] + [
+    ]
+    per_position = [
         (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
         for i, t in enumerate(fn.argtypes)
         if i not in given
     ]
     first = _rows(fn)[0]
     out = []
-    for position, edge in function_edges.chosen(per_position):
+    for position, edge in function_edges.chosen(own, per_position):
         argtype = fn.argtypes[position]
         row = list(first)
         row[position] = _cast(edge.literal, argtype)
@@ -2038,18 +2042,18 @@ Rules = frozenset[str] | None
 _SAME: frozenset[str] = frozenset()
 
 
-def _floats_equal(a: str, b: str) -> bool:
+def _floats_equal(a: str, b: str, tolerance: float) -> bool:
     try:
         x, y = float(a), float(b)
     except ValueError:
         return False
     if not (math.isfinite(x) and math.isfinite(y)):
         return False
-    return abs(x - y) <= FLOAT_TOLERANCE * max(abs(x), abs(y))
+    return abs(x - y) <= tolerance * max(abs(x), abs(y))
 
 
-def _float_rules(want: str, got: str) -> Rules:
-    if not _floats_equal(want, got):
+def _float_rules(want: str, got: str, tolerance: float) -> Rules:
+    if not _floats_equal(want, got, tolerance):
         return None
     return frozenset({NUMBER_VALUE if float(want) == float(got) else FLOAT_CLOSE})
 
@@ -2106,7 +2110,7 @@ def _parsed_rules(a: Any, b: Any) -> Rules:
             return None
         if decimal.Decimal(a) == decimal.Decimal(b):
             return frozenset({NUMBER_VALUE})
-        return frozenset({FLOAT_CLOSE}) if _floats_equal(str(a), str(b)) else None
+        return frozenset({FLOAT_CLOSE}) if _floats_equal(str(a), str(b), FLOAT_TOLERANCE) else None
     if type(a) is not type(b):
         return None
     if isinstance(a, dict):
@@ -2219,18 +2223,19 @@ def _json_read(sql: str, oid: int, want: str) -> bool:
 
 
 def _value_rules(
-    want: str | None, got: str | None, oid: int, sql: str, function: str = ""
+    want: str | None, got: str | None, oid: int, sql: str, function: str, tolerance: float
 ) -> Rules:
+    """``tolerance``: the part of its value a float4 or float8 may differ by."""
     if want == got:
         return _SAME
     if want is None or got is None:
         return None
     if oid in _FLOAT_OIDS:
-        return _float_rules(want, got)
+        return _float_rules(want, got, tolerance)
     if oid == _NUMERIC_OID:
         return _numeric_rules(want, got)
     if oid in _FLOAT_ARRAY_OIDS:
-        return _array_rules(want, got, _float_rules)
+        return _array_rules(want, got, functools.partial(_float_rules, tolerance=tolerance))
     if oid == _NUMERIC_ARRAY_OID:
         return _array_rules(want, got, _numeric_rules)
     if oid in JSON_OIDS or _json_read(sql, oid, want):
@@ -2364,10 +2369,14 @@ def shared_zones(
 
 @dataclass(frozen=True)
 class Compared:
-    """``difference``: how an answer differs, None if it does not. ``rules``: what it took."""
+    """``difference``: how an answer differs, None if it does not. ``rules``: what it took.
+    ``last_digits``: the answer differs only in float4 and float8 values, each within
+    ``LAST_DIGITS_BOUND`` of PostgreSQL's: the difference of an engine's own math library, which a
+    grid row stating it makes a documented difference (REQ-2236, amended 2026-11-25)."""
 
     difference: str | None = None
     rules: frozenset[str] = _SAME
+    last_digits: bool = False
 
 
 def compare(
@@ -2380,7 +2389,26 @@ def compare(
     enums: frozenset[int] = frozenset(),
 ) -> Compared:
     """Provisa's answer to ``sql``, a call of ``function``, against PostgreSQL's. ``values`` False
-    compares the result types alone. ``enums``: the oids of PostgreSQL's enum types and arrays."""
+    compares the result types alone. ``enums``: the oids of PostgreSQL's enum types and arrays.
+    An answer that differs is compared again with floats within ``LAST_DIGITS_BOUND``, which says
+    whether it differs in their last digits alone (``Compared.last_digits``)."""
+    compared = _compared(want, got, values, sql, function, enums, FLOAT_TOLERANCE)
+    if compared.difference is None:
+        return compared
+    within = _compared(want, got, values, sql, function, enums, LAST_DIGITS_BOUND)
+    return Compared(compared.difference, last_digits=within.difference is None)
+
+
+def _compared(
+    want: dict[str, Any],
+    got: dict[str, Any],
+    values: bool,
+    sql: str,
+    function: str,
+    enums: frozenset[int],
+    tolerance: float,
+) -> Compared:
+    """``compare`` with float4 and float8 values the same within ``tolerance`` of their value."""
     typed = _field_rules(want["fields"], got["fields"], enums)
     if typed is None:
         return Compared(f"result type oids {got['fields']}, PostgreSQL {want['fields']}")
@@ -2398,7 +2426,7 @@ def compare(
         return Compared(f"{len(b)} rows, PostgreSQL {len(a)}")
 
     def value(wv: str | None, gv: str | None, oid: int) -> Rules:
-        rules = _value_rules(wv, gv, oid, sql, function)
+        rules = _value_rules(wv, gv, oid, sql, function, tolerance)
         if rules is None and _model_answer(function, wv, gv):
             return frozenset({MODEL_ANSWER})
         return rules
@@ -2607,8 +2635,9 @@ GROUPS = {
     "sequences (amended 2026-11-04, Server state, internal types and the check's own call shapes "
     "(2)).",
     # REQ-2167, amended 2026-11-02, Six-argument regexp_replace is not supported.
-    REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
-    "refused by name.",
+    REGEXP_GROUP: "The PostgreSQL 16 form with a start position, an occurrence number and flags "
+    "is answered where an engine has an exact form (ClickHouse) and refused by name where it has "
+    "none yet: only a refusal is skipped by design under this decision.",
     # REQ-2167, amended 2026-11-03, Privileges, visibility and notifications (1).
     SYSTEM_CATALOG_WRITE_GROUP: "has_table_privilege and the column variants answer false for a "
     "write on PostgreSQL's own system catalogs, for every role: nobody writes a system catalog "
@@ -3547,6 +3576,8 @@ class EdgeResults:
     wrong: list[dict[str, str]] = dataclasses.field(default_factory=list)
     raised: list[dict[str, str]] = dataclasses.field(default_factory=list)
     errors: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    #: Of ``wrong``, those that differ in float values' last digits alone (``Compared.last_digits``).
+    last_digits: int = 0
 
     def summary(self) -> dict[str, int]:
         return {
@@ -3617,6 +3648,8 @@ def _measure_edges(
             found.agreed += 1
         else:
             found.wrong.append({**said, "difference": compared.difference})
+            if compared.last_digits:
+                found.last_digits += 1
     return found
 
 
@@ -3654,6 +3687,7 @@ def _measure_calls(
     made = 0  # the calls PostgreSQL answered with a real value or anything but NULL
     routes: set[str] = set()
     rules: set[str] = set()
+    last_digits = 0  # of ``wrong``, those differing in float values' last digits alone
     lost = False
     volatile_typed = fn.volatility == "v" and not side_effect(fn)
     for call_ in planned:
@@ -3724,6 +3758,8 @@ def _measure_calls(
                 decided.append(group)
             else:
                 wrong.append({"statement": call_.sql, "difference": differs})
+                if compared.last_digits and differs == compared.difference:
+                    last_digits += 1
     entry["calls"] = accepted
     entry["answers_compared"] = answered
     entry["answers_checked"] = answered > 0
@@ -3758,6 +3794,7 @@ def _measure_calls(
         entry["outcome"] = "wrong_answer"
         entry["detail"] = wrong[0]
         entry["wrong_calls"] = len(wrong)
+        _mark_last_digits(entry, last_digits, len(wrong))
     elif errors:
         entry["outcome"] = "error"
         entry["detail"] = errors[0]
@@ -3781,6 +3818,15 @@ def _measure_calls(
     return entry
 
 
+def _mark_last_digits(entry: dict[str, Any], last_digits: int, wrong: int) -> None:
+    """A wrong answer each of whose ``wrong`` calls differs in float values' last digits alone,
+    within ``LAST_DIGITS_BOUND``: ``last_digits``, which polyfill_check makes a documented
+    difference where its grid row on the engine states one (REQ-2236, amended 2026-11-25), and a
+    wrong answer where it does not."""
+    if last_digits == wrong:
+        entry["last_digits"] = True
+
+
 def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
     """A passing overload held to its edge calls: one answering otherwise than PostgreSQL is a wrong
     answer, one that does not answer at all an error, and one raising where PostgreSQL does not is
@@ -3796,6 +3842,7 @@ def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
         # Every wrong edge call: a limitation naming edge values states only a wrong answer at
         # them (polyfill_check._difference_stated).
         entry["edge_wrong"] = edges.wrong
+        _mark_last_digits(entry, edges.last_digits, len(edges.wrong))
     elif edges.errors:
         entry["outcome"] = "error"
         entry["detail"] = edges.errors[0]

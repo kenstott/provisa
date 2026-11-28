@@ -23,6 +23,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { exportProviderName } from "../lib/exportProviders";
+import { explorerHandoff } from "../lib/explorerHandoff";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
@@ -733,7 +734,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // A bound value goes to the explorer as the next statement's values ($1).
             const handed = step.openQuery.stateKey === "params" ? [text] : text;
             navigate(route, {
-              state: { [step.openQuery.stateKey]: handed, autoRun: true },
+              state: explorerHandoff(route, { [step.openQuery.stateKey]: handed }, null),
             });
           }
           await nextPaint();
@@ -763,7 +764,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // Land on the explorer with the branch's demo query pre-filled + auto-run,
             // exactly as NlPage's "Open in X" button does.
             const { stateKey, query } = BRANCH_NAV[step.openBranch];
-            navigate(route, { state: { [stateKey]: query, autoRun: true } });
+            navigate(route, { state: explorerHandoff(route, { [stateKey]: query }, null) });
           } else {
             navigate(route);
           }

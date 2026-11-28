@@ -1,6 +1,8 @@
 {
   "collapsible": {
     "expandAll": "Espandi tutto",
-    "collapseAll": "Comprimi tutto"
+    "collapseAll": "Comprimi tutto",
+    "hidePanel": "Nascondi il pannello",
+    "showPanel": "Mostra il pannello"
   }
 }

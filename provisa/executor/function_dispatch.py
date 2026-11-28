@@ -48,8 +48,8 @@ if TYPE_CHECKING:
     from provisa.otel_compat import UdfTrace, UdfTraceSink
 
 _HTTP_DEFAULT_TIMEOUT_S = 30.0
-# A result_set relation ref is fully qualified as source.schema.table.
-_QUALIFIED_REF_PARTS = 3
+# A table given as a relation argument is named schema.table, as SQL serves it (REQ-1159).
+_SERVED_NAME_PARTS = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -175,34 +175,52 @@ async def _grpc_call(
 # --------------------------------------------------------------------------- #
 
 
-async def _materialize_relation(ref: str, state, columns: list[str] | None = None) -> dict:
-    """Eagerly materialize a referenced relation to an Arrow-compatible batch (result_set).
+def _served_table(fn: dict, name: str, value: object, state) -> str:  # object-ok: any JSON
+    """A relation argument given as a table, named by its logical, served name: the schema-qualified
+    name a statement reads it by on SQL (for example ``pet_store.orders``), as the names table
+    serves it (REQ-1159, amended 2026-11-28). A physical ``source.schema.table``, or any name SQL
+    serves no table by, is refused naming the form it takes. Returns the name as given."""
+    from provisa.pgwire.minted import CallTokenRefused, table_key
 
-    REQ-1159: when the arg declares an input column contract, project ONLY those columns (a narrow
-    input keeps the taint-closure lineage tight and satisfies the contract exactly — a ``SELECT *``
-    would carry extra columns the contract rejects). No contract ⇒ full ``SELECT *``."""
-    parts = ref.split(".")
-    if len(parts) < _QUALIFIED_REF_PARTS:
+    ref = str(value).strip()
+    expected = (
+        f"argument {name!r} of {fn.get('name')!r} names table {ref!r}: a table is given by its "
+        "logical name as SQL serves it, schema.table (for example pet_store.orders), never by a "
+        "physical source.schema.table"
+    )
+    try:
+        parts = table_key(ref)
+    except CallTokenRefused as exc:
         raise ApiError(
-            400,
-            "functions.result_set_ref_invalid",
-            f"result_set ref {ref!r} must be source.schema.table",
-            ref=ref,
-        )
-    src_id, schema, table = parts[0], parts[1], parts[2]
-    if not state.source_pools.has(src_id):
+            400, "functions.relation_table_not_logical", expected, name=name, ref=ref
+        ) from exc
+    names = state.names_table
+    if names is None:
         raise ApiError(
             503,
-            "functions.source_not_connected",
-            f"Source '{src_id}' not connected",
-            source_id=src_id,
+            "functions.relation_no_model",
+            f"argument {name!r} of {fn.get('name')!r}: there is no model yet to name {ref!r} in",
+            name=name,
+            ref=ref,
         )
-    projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
-    sql = f'SELECT {projection} FROM "{schema}"."{table}"'
-    result = await state.source_pools.execute(src_id, sql, [])
-    from provisa.executor.serialize import result_records
+    served = (
+        names.resolve_sql(("sql", parts[0]), parts[1]) if len(parts) == _SERVED_NAME_PARTS else None
+    )
+    if served is None or served.object_kind not in ("table", "view"):
+        raise ApiError(400, "functions.relation_table_not_logical", expected, name=name, ref=ref)
+    return ref
 
-    return {"kind": "result_set", "columns": result.column_names, "rows": result_records(result)}
+
+async def _table_relation(
+    fn: dict, name: str, ref: str, columns: list[str] | None, state, role_id: str | None
+) -> dict:
+    """A result_set argument given as a table: the governed read of its declared columns (every
+    column the role sees when it declares none) from its served name, as the calling role, so the
+    role's row filters, masks and column visibility hold (REQ-1159, amended 2026-11-28). The read
+    is the one a code call's table argument is read with (``minted.read_statement``)."""
+    from provisa.pgwire.minted import read_statement
+
+    return await _query_relation(fn, name, read_statement(ref, columns or []), state, role_id)
 
 
 def _arg_kinds(fn: dict) -> dict[str, str]:
@@ -301,7 +319,7 @@ async def _query_relation(fn: dict, name: str, sql: str, state, role_id: str | N
         raise ApiError(
             400,
             "functions.relation_query_no_role",
-            f"argument {name!r} of {fn.get('name')!r} is a query, which runs as a role; none is bound",
+            f"argument {name!r} of {fn.get('name')!r} is read as the calling role; none is bound",
             name=name,
         )
     plan = await _govern_and_route(sql, role_id)
@@ -334,6 +352,9 @@ async def _prepare_args(fn: dict, args: dict, state, role_id: str | None) -> tup
                     "reference, not a query or rows",
                     name=name,
                 )
+            # REQ-1159 (amended 2026-11-28): named by its served name; its service reads it as the
+            # caller (a code source over the minted-token listener, codesource/table_reads.py).
+            value = _served_table(fn, name, value, state)
             # REQ-1159: table_ref is not materialized here, so its rows cannot be validated at prepare
             # time — the service fetches them. The declared columns still travel as the contract the
             # service must honour; input-side enforcement happens only for the eager result_set kind.
@@ -352,8 +373,9 @@ async def _prepare_args(fn: dict, args: dict, state, role_id: str | None) -> tup
             elif form == "query":
                 materialized = await _query_relation(fn, name, str(value), state, role_id)
             else:
-                materialized = await _materialize_relation(str(value), state, col_names)
-                input_refs.append(str(value))
+                ref = _served_table(fn, name, value, state)
+                materialized = await _table_relation(fn, name, ref, col_names, state, role_id)
+                input_refs.append(ref)
             schema = _schema_from_columns(declared)
             if (
                 schema is not None
