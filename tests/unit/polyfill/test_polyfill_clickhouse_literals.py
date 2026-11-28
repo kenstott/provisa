@@ -46,7 +46,7 @@ import pytest
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import RowRefused
-from provisa.transpiler.polyfill import GRID, clocks
+from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile
 
 _US = 1_000_000
@@ -60,7 +60,7 @@ def _clock(hours: int, minutes: int, seconds: int = 0, micros: int = 0) -> int:
 
 #: 1. A text cast to a time, answered as its microseconds of the day: the select list shows it as
 #: time_out's text, read back here as pgwire reads it. 24:00:00 is read through a cast to text: a
-#: result column of it raises (test_a_result_column_of_the_last_time_raises).
+#: result column of it is its text (test_a_result_column_of_the_last_time_answers_it).
 TIMES = [
     ("SELECT '12:30'::time AS v", _clock(12, 30)),
     ("SELECT '1:2'::time AS v", _clock(1, 2)),
@@ -266,14 +266,11 @@ def test_clickhouse_answers_postgresql_s(runtime, sql, want):
 @pytest.mark.parametrize(
     "sql", ["SELECT '24:00'::time AS v", "SELECT '23:59:60'::time AS v", "SELECT time '24:00' AS v"]
 )
-def test_a_result_column_of_the_last_time_raises(sql):
-    """24:00:00 is held (and compared) as PostgreSQL holds it, but pgwire reads no time of day past
-    23:59:59.999999 back: a result column of it raises the row's stated 0A000 (REQ-2236, AN EDGE
-    CASE RAISES), never 00:00:00."""
-    with pytest.raises(RowRefused) as refused:
-        transpile(sql, "clickhouse", generated=False)
-    assert refused.value.sqlstate == "0A000"
-    assert str(refused.value) == clocks.LAST_SHOWN.message
+def test_a_result_column_of_the_last_time_answers_it(runtime, sql):
+    """24:00:00 is held (and compared) as PostgreSQL holds it, and a result column of it is its
+    text, which pgwire passes on as the time (cast_types.clock_of_text, REQ-2236), never
+    00:00:00."""
+    assert _rows(runtime, sql) == ["24:00:00"]
 
 
 @pytest.mark.parametrize(("sql", "state"), RAISED)

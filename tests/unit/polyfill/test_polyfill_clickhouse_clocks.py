@@ -77,6 +77,24 @@ ANSWERED = [
     ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "2024-06-15 12:30:45"),
     ('SELECT pg_catalog."datetime_pl"(\'2024-06-15\'::date, \'12:30:45\'::time) AS v', "2024-06-15 12:30:45"),
     ('SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v', None),
+    # 24:00:00 in a result column: its text, which pgwire passes on (cast_types.clock_of_text).
+    (
+        'SELECT pg_catalog."max"(c1) AS v FROM (VALUES (\'24:00:00\'::time without time zone), '
+        '(\'24:00:00\'::time without time zone)) AS t(c1)',
+        "24:00:00",
+    ),
+    (
+        'SELECT pg_catalog."min"(c1) AS v FROM (VALUES (\'24:00:00\'::time without time zone), '
+        '(\'24:00:00\'::time without time zone)) AS t(c1)',
+        "24:00:00",
+    ),
+    ('SELECT pg_catalog."time_larger"(\'24:00:00\'::time, \'12:30:45\'::time) AS v', "24:00:00"),
+    ('SELECT pg_catalog."time"(\'24:00:00\'::time without time zone, 3::integer) AS v', "24:00:00"),
+    ("SELECT '24:00'::time AS v", "24:00:00"),
+    # A precision outside 0 to 6 leaves the time (AdjustTimeForTypmod), its integer quoted.
+    ('SELECT pg_catalog."time"(\'12:30:45.5\'::time, \'-2147483648\'::integer) AS v', "12:30:45.5"),
+    ('SELECT pg_catalog."time"(\'12:30:45.5\'::time, \'2147483647\'::integer) AS v', "12:30:45.5"),
+    ('SELECT pg_catalog."time"(\'12:30:45.5\'::time, \'0\'::integer) AS v', "12:30:46"),
 ]  # fmt: skip
 
 #: PostgreSQL's error of a value a time's input does not read, read at run time (a table's column):
@@ -136,6 +154,20 @@ def test_an_edge_raises_the_rows_stated_0a000(runtime, sql):
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == "0A000", str(raised.value)[:300]
     assert "has no exact form on clickhouse" in str(error)
+
+
+def test_a_precision_past_an_integer_raises_int4in_s_22003():
+    sql = "SELECT pg_catalog.\"time\"('12:30:45'::time, '2147483648'::integer) AS v"
+    with pytest.raises(RowRefused) as refused:
+        transpile(sql, "clickhouse", generated=False)
+    assert refused.value.sqlstate == "22003"
+    assert str(refused.value) == 'value "2147483648" is out of range for type integer'
+
+
+def test_the_last_time_reaches_pgwire_as_its_text():
+    """pgwire passes 24:00:00, which no datetime.time holds, on as its text (REQ-2236)."""
+    assert clock_of_text("24:00:00") == "24:00:00"
+    assert not hasattr(clocks, "LAST_SHOWN")
 
 
 def test_a_time_minus_a_time_no_row_reads_is_refused_by_name():

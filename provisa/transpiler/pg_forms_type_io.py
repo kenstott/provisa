@@ -614,7 +614,11 @@ _HELD: tuple[tuple[str, str, str, str | None], ...] = (
     (
         "timetz_in",
         "timetz_out",
-        "([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]*[1-9])?[+-][0-9][0-9]",
+        # timetz_out's text: a clock to 24:00:00, then the zone as EncodeTimezone writes it, to
+        # TZDISP_LIMIT: its hours (+00 of none), its minutes where not 0, its seconds where not 0.
+        "(([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]*[1-9])?|24:00:00)"
+        "([+](0[0-9]|1[0-5])|-(0[1-9]|1[0-5])|[+-](0[0-9]|1[0-5]):(0[1-9]|[1-5][0-9])"
+        "|[+-](0[0-9]|1[0-5]):[0-5][0-9]:(0[1-9]|[1-5][0-9]))",
         None,
     ),
 )
@@ -713,6 +717,8 @@ _DATE = "[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])"
 _CLOCK = "([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9]([.][0-9]{1,6})?)?"
 _FULL_CLOCK = "([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{1,6})?"
 _ZONE = "[+-](0[0-9]|1[0-5])(:[0-5][0-9])?"
+#: datetime.h's TZDISP_LIMIT: the largest offset a zone has, 15:59:59, in seconds.
+_ZONE_LIMIT = 15 * 3600 + 59 * 60 + 59
 
 
 def _era_out(e: Engine, text: str) -> str:
@@ -1064,6 +1070,20 @@ def _points_of_path(e: Engine, text: str) -> str:
     return e.word_hex(f"CAST({e.chars(e.numbers(text))} / 32 AS {e.int8})", 4)
 
 
+def _zone_west(e: Engine, text: str) -> str:
+    """A timetz's zone, as PostgreSQL holds it: its seconds west of UTC, of its text's offset
+    (``[+-]HH[:MM[:SS]]``)."""
+    offset = e.sub(text, "^.*([+-][0-9:]+)$", chr(92) + "1")
+    minutes = (
+        f"CASE WHEN length({offset}) >= 6 THEN CAST(substr({offset}, 5, 2) AS {e.int8}) ELSE 0 END"
+    )
+    seconds = (
+        f"CASE WHEN length({offset}) >= 9 THEN CAST(substr({offset}, 8, 2) AS {e.int8}) ELSE 0 END"
+    )
+    east = f"(CAST(substr({offset}, 2, 2) AS {e.int8}) * 3600 + {minutes} * 60 + {seconds})"
+    return f"CASE WHEN substr({offset}, 1, 1) = '+' THEN -{east} ELSE {east} END"
+
+
 def _parts_sends() -> list[Row]:
     """The sends a form writes from its text's parts."""
 
@@ -1082,10 +1102,9 @@ def _parts_sends() -> list[Row]:
     def timetz(e: Engine) -> str:
         text = e.as_text("v")
         clock = e.sub(text, "[+-][0-9:]+$", "")
-        hours = f"CAST({e.sub(text, '^.*[+-]([0-9][0-9])$', chr(92) + '1')} AS {e.int8})"
-        east = e.full_match(text, ".*[+][0-9:]+")
-        zone = f"CASE WHEN {east} THEN -{hours} * 3600 ELSE {hours} * 3600 END"
-        return e.of_hex(f"{e.word_hex(_micros(e, clock), 8)} || {e.word_hex(zone, 4)}")
+        return e.of_hex(
+            f"{e.word_hex(_micros(e, clock), 8)} || {e.word_hex(_zone_west(e, text), 4)}"
+        )
 
     return [
         _noted(_row("tidsend", "v", _binary, tid), "bytea"),
@@ -1150,20 +1169,6 @@ def _hashes() -> list[Row]:
         )
         return h.xor.format(low, complement)
 
-    def zone(e: Engine, text: str) -> str:
-        """A timetz's zone, as PostgreSQL holds it: its seconds west of UTC."""
-        offset = e.sub(text, "^.*([+-][0-9:]+)$", chr(92) + "1")
-        minutes = (
-            f"CASE WHEN length({offset}) >= 6 THEN CAST(substr({offset}, 5, 2) AS {e.int8}) "
-            "ELSE 0 END"
-        )
-        seconds = (
-            f"CASE WHEN length({offset}) >= 9 THEN CAST(substr({offset}, 8, 2) AS {e.int8}) "
-            "ELSE 0 END"
-        )
-        east = f"(CAST(substr({offset}, 2, 2) AS {e.int8}) * 3600 + {minutes} * 60 + {seconds})"
-        return f"CASE WHEN substr({offset}, 1, 1) = '+' THEN -{east} ELSE {east} END"
-
     # A word of this module's integers is Nullable on ClickHouse, which lookup3's fold refuses: the
     # form's CASE has answered a NULL, so the word is the hash engine's value of it.
     bare = {
@@ -1186,7 +1191,7 @@ def _hashes() -> list[Row]:
     def timetz(e: Engine, h: hashing.Engine, seed: str | None) -> str:
         text = e.as_text(h.value)
         time = hash_word(e, h, clock(e, h, e.sub(text, "[+-][0-9:]+$", "")), seed)
-        return h.xor.format(time, hash_word(e, h, zone(e, text), seed))
+        return h.xor.format(time, hash_word(e, h, _zone_west(e, text), seed))
 
     rows: list[Row] = []
     for stem, hashed in (
@@ -1572,6 +1577,157 @@ def _fold_row(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     return _fold_text(name, text, arguments)
 
 
+#: date.c's Julian day of 2000-01-01, from which a date's days and a timestamp's microseconds count.
+_EPOCH_JULIAN = 2451545
+#: A time PostgreSQL holds and Trino's TIME does not: 24:00:00, its fraction only zeros.
+_END_OF_DAY = re.compile(r"24:00(?::00(?:\.0{1,6})?)?")
+#: A date or timestamp as PostgreSQL's ISO text writes it: its date (of any year PostgreSQL holds,
+#: 5874897 the last), a clock, an offset (``[+-]HH[:MM[:SS]]``), and the era of a year BC.
+_ISO_TEXT = re.compile(
+    r"(?P<y>[0-9]{4,})-(?P<m>[0-9]{2})-(?P<d>[0-9]{2})"
+    r"(?: (?P<h>[0-9]{2}):(?P<mi>[0-9]{2}):(?P<s>[0-9]{2})(?:\.(?P<f>[0-9]{1,6}))?)?"
+    r"(?P<z>[+-][0-9]{2}(?::[0-9]{2}(?::[0-9]{2})?)?)?(?P<bc> BC)?"
+)
+#: date.c's and timestamp.h's infinities: DATEVAL_NOEND and NOBEGIN, DT_NOEND and NOBEGIN.
+_INSTANT_INFINITIES = {
+    "date": {"infinity": 2**31 - 1, "-infinity": -(2**31)},
+    "timestamp": {"infinity": 2**63 - 1, "-infinity": -(2**63)},
+}
+#: The first Julian day a date or timestamp holds (4714-11-24 BC), and date2j(5874898, 1, 1), the
+#: first a date does not.
+_FIRST_JULIAN = 0
+_DATE_END_JULIAN = 2147483494
+#: timestamp.h's END_TIMESTAMP: 294277-01-01 00:00:00 UTC, the first a timestamp does not hold.
+_STAMP_END_US = 9223371331200000000
+#: The functions of a time, a date or a timestamp whose literal is answered here, and the type each
+#: reads: its out's text, its send's bytes, its hash's hashint8 of the value's microseconds.
+_EDGE_FUNCTIONS = {
+    "time_out": "time", "time_send": "time", "time_hash": "time", "time_hash_extended": "time",
+    "date_out": "date", "date_send": "date",
+    "timestamp_out": "timestamp", "timestamp_send": "timestamp", "timestamp_hash": "timestamp",
+    "timestamp_hash_extended": "timestamp",
+    "timestamptz_out": "timestamptz", "timestamptz_send": "timestamptz",
+}  # fmt: skip
+
+
+def _date2j(year: int, month: int, day: int) -> int:
+    """date.c's date2j: the Julian day of a date of the proleptic Gregorian calendar, its year
+    astronomical (1 BC is 0)."""
+    if month > 2:
+        month, year = month + 1, year + 4800
+    else:
+        month, year = month + 13, year + 4799
+    century = year // 100
+    return year * 365 - 32167 + year // 4 - century + century // 4 + 7834 * month // 256 + day
+
+
+def _j2date(julian: int) -> tuple[int, int, int]:
+    """date.c's j2date: the date of a Julian day, its year astronomical."""
+    julian += 32044
+    quad = julian // 146097
+    extra = (julian - quad * 146097) * 4 + 3
+    julian += 60 + quad * 3 + extra // 146097
+    quad = julian // 1461
+    julian -= quad * 1461
+    year = julian * 4 // 1461
+    julian = ((julian + 305) % 365 if year != 0 else (julian + 306) % 366) + 123
+    year += quad * 4
+    quad = julian * 2141 // 65536
+    return year - 4800, (quad + 10) % 12 + 1, julian - 7834 * quad // 256
+
+
+def _instant(text: str, typed: str) -> int | None:
+    """A date's days, or a timestamp's microseconds in UTC, both from 2000-01-01, of a text
+    ``_ISO_TEXT`` spells (or infinity), as ``typed``'s input reads it; None for any other text and
+    a day no calendar holds, what the type's row reads. A value past the type raises PostgreSQL's
+    22008 (date_in's, timestamp_in's)."""
+    infinite = _INSTANT_INFINITIES["date" if typed == "date" else "timestamp"].get(text)
+    if infinite is not None:
+        return infinite
+    iso = _ISO_TEXT.fullmatch(text)
+    if iso is None or (typed == "date") != (iso["h"] is None and iso["z"] is None):
+        return None
+    if iso["z"] is not None and typed != "timestamptz":
+        return None
+    written_year, month, day = int(iso["y"]), int(iso["m"]), int(iso["d"])
+    year = 1 - written_year if iso["bc"] else written_year  # astronomical: 1 BC is 0
+    julian = _date2j(year, month, day)
+    if written_year == 0 or not 1 <= month <= 12 or _j2date(julian) != (year, month, day):
+        return None
+    if typed == "date":
+        if not _FIRST_JULIAN <= julian < _DATE_END_JULIAN:
+            raise literals.Refused("22008", f'date out of range: "{text}"')
+        return julian - _EPOCH_JULIAN
+    hours, minutes, seconds = (int(iso[k]) for k in ("h", "mi", "s"))
+    if hours > 23 or minutes > 59 or seconds > 59:
+        return None
+    clock = ((hours * 60 + minutes) * 60 + seconds) * 1_000_000 + int(iso["f"] or 0) * 10 ** (
+        6 - len(iso["f"] or "")
+    )
+    zone = iso["z"] or "+00"
+    east = sum(int(n) * s for n, s in zip(zone[1:].split(":"), (3600, 60, 1), strict=False))
+    if east > _ZONE_LIMIT:
+        return None
+    utc = (
+        (julian - _EPOCH_JULIAN) * _DAY_US + clock - (east if zone[0] == "+" else -east) * 1_000_000
+    )
+    if julian < _FIRST_JULIAN or not -_EPOCH_JULIAN * _DAY_US <= utc < _STAMP_END_US:
+        raise literals.Refused("22008", f'timestamp out of range: "{text}"')
+    return utc
+
+
+def _instant_text(instant: int, typed: str) -> str:
+    """date_out's, timestamp_out's or timestamptz_out's text (ISO, in UTC) of a value."""
+    infinite = {
+        v: k for k, v in _INSTANT_INFINITIES["date" if typed == "date" else "timestamp"].items()
+    }
+    if instant in infinite:
+        return infinite[instant]
+    days, clock = divmod(instant, _DAY_US) if typed != "date" else (instant, None)
+    year, month, day = _j2date(days + _EPOCH_JULIAN)
+    written = f"{year if year > 0 else 1 - year:04d}-{month:02d}-{day:02d}"
+    if clock is not None:
+        seconds, fraction = divmod(clock, 1_000_000)
+        written += f" {seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+        written += f".{fraction:06d}".rstrip("0") if fraction else ""
+        written += "+00" if typed == "timestamptz" else ""
+    return written + (" BC" if year <= 0 else "")
+
+
+def _hashed_int8(name: str, number: int, arguments: list[exp.Expr]) -> exp.Expr:
+    """time_hash's or timestamp_hash's answer, (extended: of its seed): hashint8 of the value's
+    microseconds, as date.c and timestamp.c compute it."""
+    word = _said_number(number, "bigint")
+    if name.endswith("_extended"):
+        return exp.Anonymous(this="hashint8extended", expressions=[word, arguments[1].copy()])
+    return exp.Anonymous(this="hashint8", expressions=[word])
+
+
+def _edge_of_clock_or_era(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | None:
+    """A literal answered as the statement is read, which no engine's type need hold (REQ-2236):
+    time 24:00:00, which Trino's TIME does not hold (and the time row reads as its text), and a
+    date or timestamp of any day PostgreSQL holds, BC and past 9999 too, and its infinities, which
+    ClickHouse's Date32 and DateTime64 hold only from 1900 to 2299, and Trino's types without
+    infinity or a year BC. A date or timestamp past its type raises PostgreSQL's 22008."""
+    typed = _EDGE_FUNCTIONS.get(name)
+    if typed is None:
+        return None
+    if typed == "time":
+        if _END_OF_DAY.fullmatch(text.strip()) is None:
+            return None
+        number, written = _DAY_US, "24:00:00"
+    else:
+        instant = _instant(text, typed)
+        if instant is None:
+            return None
+        number, written = instant, _instant_text(instant, typed)
+    if name.endswith("_out"):
+        return _said_text(written)
+    if name.endswith("_send"):
+        return _said_bytes(number.to_bytes(4 if typed == "date" else 8, "big", signed=True))
+    return _hashed_int8(name, number, arguments)
+
+
 def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     if name in _INTEGER_RANGES and _OTHER_BASE.search(text):
         return _other_base(name, text)
@@ -1705,6 +1861,23 @@ def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
         return _said_refusal(refusal)
 
 
+#: The dialects these forms are written for (``ENGINES``; None is DuckDB's), whose literal of a
+#: time, date or timestamp ``_edge_of_clock_or_era`` answers.
+_FORMED = frozenset({None, *(d for e in ENGINES for d in e.dialects)})
+
+
+def _edge_folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
+    """``_edge_of_clock_or_era`` of a call's literal, with PostgreSQL's refusal of a value past its
+    type as an expression that raises it."""
+    text = _literal_text(arguments[0]) if arguments else None
+    if text is None:
+        return None
+    try:
+        return _edge_of_clock_or_era(name, text, arguments)
+    except literals.Refused as refusal:
+        return _said_refusal(refusal)
+
+
 def _record_text(arguments: list[exp.Expr]) -> exp.Expr | None:
     """record_out of a ROW of literals."""
     words: list[str | None] = []
@@ -1755,7 +1928,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
                 target.set("expressions", [exp.Literal.string("")])
                 return node
             return exp.alias_(said, name) if in_select else said
-        folded = _folded(name, arguments)
+        folded = _edge_folded(name, arguments) if dialect in _FORMED else None
+        folded = _folded(name, arguments) if folded is None else folded
         if folded is not None and name == "interval_in":
             if _infinite_unheld(folded, dialect):
                 # pgwire has no interval value of it: the call of the text it reads as, for the

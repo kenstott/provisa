@@ -252,9 +252,13 @@ pub fn interval_fields(text: &str) -> Option<(i128, i128, i128)> {
     (!text.is_empty()).then_some((months, days, micros))
 }
 
-/// time_out's text, "HH:MM:SS[.ffffff]", as its microseconds since midnight; None for any other
-/// text, and for 24:00:00, which is no time of day. As cast_types.clock_of_text reads it.
+/// time_out's text, "HH:MM:SS[.ffffff]", as its microseconds since midnight, 24:00:00 the last
+/// (86 400 000 000, which PostgreSQL's time holds); None for any other text. As
+/// cast_types.clock_of_text reads it.
 pub fn clock_of_text(text: &str) -> Option<i64> {
+    if text == "24:00:00" {
+        return Some(DAY_US as i64);
+    }
     let b = text.as_bytes();
     let two = |at: usize| -> Option<i64> {
         let (h, l) = (*b.get(at)?, *b.get(at + 1)?);

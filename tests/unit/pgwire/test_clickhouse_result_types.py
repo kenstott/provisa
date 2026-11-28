@@ -150,10 +150,26 @@ def test_time_out_text_is_the_time_it_reads_as(text, clock):
     assert cast_types.clock_of_text(text) == clock
 
 
-@pytest.mark.parametrize("text", ["", "1:02:03", "24:00:00", "01:60:00", "01:02:03.1234567"])
+@pytest.mark.parametrize(
+    "text", ["", "1:02:03", "24:00:01", "24:00:00.5", "01:60:00", "01:02:03.1234567"]
+)
 def test_a_text_time_out_does_not_write_is_refused(text):
     with pytest.raises(ValueError, match="invalid input syntax for type time"):
         cast_types.clock_of_text(text)
+
+
+def test_the_last_time_is_passed_on_as_its_text():
+    """24:00:00, which PostgreSQL's time holds and no datetime.time does, as duckdb_arrow's rows
+    hold it (REQ-2236)."""
+    assert cast_types.clock_of_text("24:00:00") == "24:00:00"
+
+
+def test_the_encoder_writes_the_last_time():
+    """time_out's 24:00:00 and time_send's 86 400 000 000 microseconds."""
+    (text,) = [encoder.encode_rows([("24:00:00",)], ["TIME"], [0], [["clock_text"]])]
+    (binary,) = [encoder.encode_rows([("24:00:00",)], ["TIME"], [1], [["clock_text"]])]
+    assert text.endswith(b"\x00\x00\x00\x0824:00:00")
+    assert binary.endswith(b"\x00\x00\x00\x08" + (86_400_000_000).to_bytes(8, "big"))
 
 
 @pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
