@@ -230,34 +230,42 @@ def test_a_date_written_as_days_is_a_date():
 
 
 @pytest.mark.parametrize(
-    ("expr", "zone", "wall"),
+    ("expr", "zone", "wall", "unit"),
     [
-        ("toDateTime('2024-01-02 03:04:05', 'Asia/Tokyo')", "Asia/Tokyo", (2024, 1, 2, 3, 4, 5, 0)),
+        (
+            "toDateTime('2024-01-02 03:04:05', 'Asia/Tokyo')",
+            "Asia/Tokyo",
+            (2024, 1, 2, 3, 4, 5, 0),
+            "s",
+        ),
         (
             "toDateTime64('2024-07-02 03:04:05.123456', 6, 'America/New_York')",
             "America/New_York",
             (2024, 7, 2, 3, 4, 5, 123456),
+            "us",
         ),
         (
             "toDateTime64('2024-01-02 03:04:05.1234567', 7, 'Asia/Kolkata')",
             "Asia/Kolkata",
             (2024, 1, 2, 3, 4, 5, 123456),
+            "ns",
         ),
     ],
 )
-def test_a_datetime_in_its_own_zone_is_that_zones(expr, zone, wall):
+def test_a_datetime_in_its_own_zone_is_that_zones(expr, zone, wall, unit):
     """clickhouse-connect gives a column's own zone (chdb's Native header drops it, so the row
     read's value is written out: the wall time in that zone, at its offset)."""
     result = _execute(f"SELECT {expr} AS v")
     expected = datetime(*wall, tzinfo=ZoneInfo(zone))
     (value,) = result.rows[0]
     assert value == expected and value.utcoffset() == expected.utcoffset()
-    assert result.table.column("v").type == pa.timestamp("us", tz=zone)
+    # The unit of the server's type; the row holds the microsecond, a finer value floored.
+    assert result.table.column("v").type == pa.timestamp(unit, tz=zone)
 
 
 def test_a_naive_datetime_is_utc_wall_time_in_arrow():
     result = _execute("SELECT toDateTime64('2024-01-02 03:04:05.5', 1) AS a, toDateTime(0) AS b")
-    assert result.table.schema.types == [pa.timestamp("us"), pa.timestamp("us")]
+    assert result.table.schema.types == [pa.timestamp("ms"), pa.timestamp("s")]
     assert result.rows == [(datetime(2024, 1, 2, 3, 4, 5, 500000), datetime(1970, 1, 1))]
 
 
@@ -346,3 +354,44 @@ def test_a_streamed_read_gives_what_a_whole_read_gives():
     assert isinstance(whole.rows[1][1], ipaddress.IPv4Address)
     assert isinstance(whole.rows[1][5], uuid.UUID)
     assert whole.rows[1][4] == "b"
+
+
+# -- Every read path converts alike --------------------------------------------------------------
+
+_TEMPORALS = (
+    "SELECT toDateTime(1700000000 + number) AS dt,"
+    " toDateTime64(1700000000.5 + number, 0) AS dt64_0,"
+    " toDateTime64(1700000000.123 + number, 3, 'Europe/Berlin') AS dt64_3,"
+    " toDateTime64(1700000000.123456 + number, 6) AS dt64_6,"
+    " toDateTime64('1960-05-06 07:08:09.123456789', 9) AS dt64_9,"
+    " toIPv4(toUInt32(number)) AS ip"
+    " FROM numbers(5)"
+)
+
+
+def test_a_datetime_is_the_unit_of_the_servers_type():
+    """DateTime is seconds; DateTime64(s) is the unit ClickHouse's Arrow output writes that scale
+    in. The row holds the microsecond, a finer value floored, as the row read holds it."""
+    result = _execute(_TEMPORALS)
+    assert result.table.schema.types[:5] == [
+        pa.timestamp("s"),
+        pa.timestamp("s"),
+        pa.timestamp("ms", tz="Europe/Berlin"),
+        pa.timestamp("us"),
+        pa.timestamp("ns"),
+    ]
+    assert _typed(result.rows) == _typed(_row_read(_TEMPORALS))
+
+
+def test_a_keyed_fetch_and_a_replica_stream_convert_as_execute_does():
+    """execute_arrow (a keyed row-materialize fetch) and iter_arrow_batches (a replica stream)
+    hold the same table execute does: one conversion for every read path (REQ-2194)."""
+    whole = _execute(_TEMPORALS).table
+
+    fetched = asyncio.run(_driver(_ChdbClient()).execute_arrow(_TEMPORALS))
+    assert fetched.equals(whole)
+
+    stream_client = _ChdbStreamClient({"max_block_size": "2"})
+    batches = list(_driver(stream_client).iter_arrow_batches(_TEMPORALS))
+    assert len(batches) == 3
+    assert pa.Table.from_batches(batches).equals(whole)

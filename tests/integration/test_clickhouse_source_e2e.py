@@ -15,7 +15,8 @@ external creds. ClickHouse-native Arrow reads for the embedded (chdb) engine are
 tests/unit/test_native_arrow_transport.py.
 
 REQ-2194: the source's results are read as Arrow, with the server's types, and a server older
-than 26 (the ``clickhouse`` service, 24.3, ``requires_clickhouse``) is refused at connect by name.
+than 26 (the ``clickhouse-24`` service, 24.3, ``requires_clickhouse_24``) is refused at connect by
+name.
 """
 
 from __future__ import annotations
@@ -199,14 +200,14 @@ async def test_a_result_is_read_as_arrow_with_the_servers_types():
         await driver.close()
 
 
-@pytest.mark.requires_clickhouse
+@pytest.mark.requires_clickhouse_24
 @pytest.mark.asyncio
 async def test_a_server_older_than_26_is_refused_at_connect_by_name():
-    """The ``clickhouse`` test service is 24.3: the DIRECT driver refuses it at connect."""
+    """The ``clickhouse-24`` test service is 24.3: the DIRECT driver refuses it at connect."""
     from provisa.executor.drivers.clickhouse import ClickHouseServerTooOld
 
     with pytest.raises(ClickHouseServerTooOld) as refused:
-        await _driver(int(os.environ["CLICKHOUSE_PORT"]))
+        await _driver(int(os.environ["CLICKHOUSE_24_PORT"]))
     assert refused.value.version.startswith("24.3.")
     assert "26" in str(refused.value)
 
@@ -290,6 +291,7 @@ SELECT
 """
 
 
+@pytest.mark.requires_clickhouse_26
 @pytest.mark.asyncio
 async def test_a_result_read_as_arrow_holds_the_row_reads_values(seeded):
     """The driver reads a whole result as ClickHouse's Arrow output; every value equals, in value
@@ -304,7 +306,7 @@ async def test_a_result_read_as_arrow_holds_the_row_reads_values(seeded):
         source_id=_SID,
         source_type="clickhouse",
         host=_HOST or "localhost",
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+        port=_port(),
         database="default",
         user=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
@@ -312,7 +314,7 @@ async def test_a_result_read_as_arrow_holds_the_row_reads_values(seeded):
     driver = pool.get(_SID)
     client = clickhouse_connect.get_client(
         host=_HOST or "localhost",
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+        port=_port(),
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
         autogenerate_session_id=False,

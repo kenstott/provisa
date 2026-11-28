@@ -24,9 +24,11 @@ as the IR holds it, by Arrow compute and numpy over whole columns (no per-row Py
 
 - ``IPv4``, ``IPv6``: the address text PostgreSQL's inet_out writes (``ir_arrow.text_of``);
 - ``UUID``: its canonical text;
-- ``DateTime``, ``DateTime64``: microsecond timestamps in the zone the row read applies
-  (``QueryContext.active_tz``: the column's own zone, else the server's), naive for UTC; a
-  sub-microsecond value is floored, as the row read floors it;
+- ``DateTime``, ``DateTime64``: timestamps in the unit of the server's type (``DateTime`` and
+  ``DateTime64(0)`` seconds, ``DateTime64(1..3)`` milliseconds, ``(4..6)`` microseconds,
+  ``(7..9)`` nanoseconds: the unit ClickHouse's own Arrow output gives a ``DateTime64``), in the
+  zone the row read applies (``QueryContext.active_tz``: the column's own zone, else the
+  server's), naive for UTC;
 - ``Date`` as ``uint16``: ``date32``;
 - ``Enum8``, ``Enum16``: the label;
 - ``Int128``, ``UInt128``, ``Int256``, ``UInt256``: ``decimal256(76, 0)``;
@@ -34,7 +36,8 @@ as the IR holds it, by Arrow compute and numpy over whole columns (no per-row Py
 
 Rows built from the table (``to_rows``) hold the row read's Python values: an ``IPv4Address`` or
 ``IPv6Address``, a ``uuid.UUID``, an ``int`` of a wide integer, a ``dict`` of a ``Map``, a
-``tuple`` of a ``Tuple``.
+``tuple`` of a ``Tuple``, a ``datetime`` (to the microsecond, a finer value floored, as the row
+read floors it).
 """
 
 # Requirements: REQ-2194
@@ -53,8 +56,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from provisa.core.ir_arrow import column_values
-from provisa.executor.drivers.arrow_result import source_arrow_result
-from provisa.executor.result import ArrowResult
 
 # A ClickHouse type as clickhouse-connect's registry parses it (base_type, nullable, element_type,
 # key_type/value_type, element_types, tzinfo, type_def).
@@ -110,16 +111,6 @@ def described_types(client: Any, sql: str, parameters: dict[str, Any] | None) ->
 
     described = client.query(f"DESCRIBE ({sql})", parameters=parameters)
     return [get_from_name(row[1]) for row in described.result_rows]
-
-
-def clickhouse_arrow_result(
-    table: pa.Table, types: Sequence[CHType] | None, zone_of: ZoneOf
-) -> ArrowResult:
-    """The executor's Arrow result of ClickHouse's Arrow ``table``: converted to the row read's
-    values when ``types`` (from ``described_types``) is given; ``needs_types`` says when."""
-    if types is None:
-        return source_arrow_result(table)
-    return ArrowResult(row_values_table(table, types, zone_of), to_rows=row_builder(types))
 
 
 def _check_width(types: Sequence[CHType], width: int) -> None:
@@ -210,7 +201,7 @@ def _convert(arr: pa.Array, t: CHType, zone_of: ZoneOf) -> pa.Array:  # noqa: C9
     if base == "UUID":
         return uuid_text(arr)
     if base in _DATETIMES:
-        return _timestamps(arr, zone_of(t.tzinfo))
+        return _timestamps(arr, _unit_of(t), zone_of(t.tzinfo))
     if base == "Date" and pa.types.is_uint16(arr.type):
         return arr.cast(pa.int32()).cast(pa.date32())
     if base in ("Enum8", "Enum16"):
@@ -377,21 +368,85 @@ def uuid_text(arr: pa.Array) -> pa.Array:
 _PER_SECOND = {"s": 1, "ms": 1_000, "us": 1_000_000, "ns": 1_000_000_000}
 
 
-def _timestamps(arr: pa.Array, zone: tzinfo | None) -> pa.Array:
-    """A DateTime (uint32 seconds) or DateTime64 (an Arrow timestamp) column as microseconds since
-    the epoch, in ``zone`` (naive when None), each sub-microsecond value floored."""
-    if pa.types.is_uint32(arr.type):
-        ticks, per_second = arr.cast(pa.int64()), 1
-    else:
-        ticks, per_second = arr.cast(pa.int64()), _PER_SECOND[arr.type.unit]
-    if per_second <= 1_000_000:
-        micros = _call("multiply", ticks, pa.scalar(1_000_000 // per_second, pa.int64()))
-    else:
-        divisor = pa.scalar(per_second // 1_000_000, pa.int64())
-        micros = _call("divide", ticks, divisor)  # toward zero
-        over = _call("greater", _call("multiply", micros, divisor), ticks)
-        micros = _call("subtract", micros, over.cast(pa.int64()))
-    return micros.cast(pa.timestamp("us", tz=None if zone is None else zone_name(zone)))
+def _unit_of(t: CHType) -> str:
+    """The Arrow unit of a ClickHouse ``DateTime`` (seconds) or ``DateTime64(scale)``: the unit
+    ClickHouse's Arrow output writes that scale in."""
+    if t.base_type == "DateTime":
+        return "s"
+    scale = t.scale
+    if scale == 0:
+        return "s"
+    if scale <= 3:
+        return "ms"
+    if scale <= 6:
+        return "us"
+    return "ns"
+
+
+def _rescaled(ticks: pa.Array, from_unit: str, to_unit: str) -> pa.Array:
+    """Epoch ``ticks`` (int64) of ``from_unit`` in ``to_unit``, a finer value floored."""
+    have, want = _PER_SECOND[from_unit], _PER_SECOND[to_unit]
+    if have == want:
+        return ticks
+    if have < want:
+        return _call("multiply", ticks, pa.scalar(want // have, pa.int64()))
+    divisor = pa.scalar(have // want, pa.int64())
+    whole = _call("divide", ticks, divisor)  # toward zero
+    over = _call("greater", _call("multiply", whole, divisor), ticks)
+    return _call("subtract", whole, over.cast(pa.int64()))
+
+
+def _timestamps(arr: pa.Array, unit: str, zone: tzinfo | None) -> pa.Array:
+    """A DateTime (uint32 seconds) or DateTime64 (an Arrow timestamp) column as a timestamp of
+    ``unit`` (the server type's, ``_unit_of``), in ``zone`` (naive when None)."""
+    from_unit = "s" if pa.types.is_uint32(arr.type) else arr.type.unit
+    ticks = _rescaled(arr.cast(pa.int64()), from_unit, unit)
+    return ticks.cast(pa.timestamp(unit, tz=None if zone is None else zone_name(zone)))
+
+
+def _micros(arr: pa.Array, t: CHType) -> pa.Array:
+    """A converted column with each DateTime in it (nested too) as microseconds, a finer value
+    floored: the precision of the row read's ``datetime``."""
+    base = t.base_type
+    if base == "Array":
+        return _relist(arr, _micros(arr.values, t.element_type))
+    if base == "Map":
+        return pa.MapArray.from_arrays(
+            arr.offsets,
+            _micros(arr.keys, t.key_type),
+            _micros(arr.items, t.value_type),
+            mask=arr.is_null() if arr.null_count else None,
+        )
+    if base == "Tuple":
+        fields = [_micros(arr.field(i), et) for i, et in enumerate(t.element_types)]
+        names = [arr.type.field(i).name for i in range(arr.type.num_fields)]
+        return pa.StructArray.from_arrays(
+            fields, names=names, mask=arr.is_null() if arr.null_count else None
+        )
+    if base in _DATETIMES and arr.type.unit != "us":
+        micros = _rescaled(arr.cast(pa.int64()), arr.type.unit, "us")
+        return micros.cast(pa.timestamp("us", tz=arr.type.tz))
+    return arr
+
+
+def _holds_datetime(t: CHType) -> bool:
+    base = t.base_type
+    if base == "Array":
+        return _holds_datetime(t.element_type)
+    if base == "Map":
+        return _holds_datetime(t.key_type) or _holds_datetime(t.value_type)
+    if base == "Tuple":
+        return any(_holds_datetime(et) for et in t.element_types)
+    return base in _DATETIMES
+
+
+def _column_micros(column: Any, t: CHType) -> Any:  # noqa: ANN401 — an Arrow Array or ChunkedArray
+    if isinstance(column, pa.ChunkedArray):
+        return pa.chunked_array(
+            [_micros(chunk, t) for chunk in column.chunks],
+            type=_micros(_empty(column.type), t).type,
+        )
+    return _micros(column, t)
 
 
 def zone_name(zone: tzinfo) -> str:
@@ -436,11 +491,12 @@ def _wide_ints(arr: pa.Array, *, signed: bool) -> pa.Array:
 def row_builder(types: Sequence[CHType]) -> Callable[[Any], list[tuple]]:
     """``to_rows`` of a converted table: each value as clickhouse-connect's row read gives it."""
     restores = [_restore_of(t) for t in types]
+    datetimes = [_holds_datetime(t) for t in types]
 
     def to_rows(data: Any) -> list[tuple]:  # noqa: ANN401 — a pyarrow Table or RecordBatch
         columns = []
-        for column, restore in zip(data.columns, restores, strict=True):
-            values = column_values(column)
+        for column, t, restore, timed in zip(data.columns, types, restores, datetimes, strict=True):
+            values = column_values(_column_micros(column, t) if timed else column)
             columns.append(values if restore is None else [restore(v) for v in values])
         return list(zip(*columns))
 

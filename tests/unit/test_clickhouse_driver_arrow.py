@@ -117,7 +117,8 @@ def test_a_result_is_arrow_with_each_ambiguous_column_typed_by_describe():
         [
             ("id", pa.string()),
             ("amount", pa.decimal128(18, 4)),
-            ("at", pa.timestamp("us", tz=_ZONE)),
+            # DateTime64(3): milliseconds, the unit of the server's type.
+            ("at", pa.timestamp("ms", tz=_ZONE)),
             ("tags", pa.list_(pa.string())),
             ("name", pa.string()),
         ]
@@ -295,8 +296,8 @@ def test_iter_arrow_batches_direct_with_nonutf8_string_returns_bytes_column():
     class _StreamClient2:
         server_version = "26.8.46.6"
 
-        def query_arrow_stream(self, sql, use_strings=None, settings=None):
-            del sql
+        def query_arrow_stream(self, sql, parameters=None, use_strings=None, settings=None):
+            del sql, parameters
             # Return a context manager whose iterator yields one batch per table batch.
             source_batches = source.to_batches()
 
@@ -368,9 +369,8 @@ def test_a_datetime_and_a_date_read_as_the_temporals_their_integers_encode():
     )
     result = asyncio.run(_driver(client).execute("SELECT at, day, n FROM t"))
 
-    # execute holds the row read's values (clickhouse_arrow): a DateTime as microseconds, naive
-    # for UTC.
-    assert result.table.schema.field("at").type == pa.timestamp("us")
+    # A DateTime is seconds, the unit of the server's type, naive for UTC.
+    assert result.table.schema.field("at").type == pa.timestamp("s")
     assert result.table.schema.field("day").type == pa.date32()
     assert result.table.schema.field("n").type == pa.uint32()
     assert result.rows[0] == (datetime(2023, 11, 14, 22, 13, 20), datetime(2023, 11, 14).date(), 7)
