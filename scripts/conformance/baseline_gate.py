@@ -110,6 +110,7 @@ FUNCTION_ENTRY_FIELDS = {
     "postgres",
     "job",
     "since",
+    "reason",
 }
 BASE_COUNTS = ("passed", "wrong_answer", "engine_error", "refused_by_name")
 EDGE_COUNTS = ("served", "wrong_answer", "engine_error", "documented_limit")

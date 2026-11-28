@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on Druid. A fe
 
 When Druid is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 407, of which 258 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 407, of which 255 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 No Conformance (functions) leg runs Druid. No run has verified them: function_legs.yaml has no leg whose engine runs this dialect. Each row prints this provenance, read from scripts/conformance/function_legs.yaml and scripts/conformance/expected/functions.json, never written by hand.
 
@@ -167,11 +167,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>regexp_replace from a start</strong><br>regexp_replace from a start: its first match, or its Nth (0 every match), with flags or without.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>regexp_replace($s, $p, $r, $b::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
+refused (its error is under the limitations)</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text)
+refused (its error is under the limitations)</code></pre><pre><code>regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: regexp_replace($s, $p, $r, $b::integer). <code>0A000</code> regexp_replace() has no form on druid</li><li>Refused: regexp_replace($s, $p, $r, $b::integer, $n::integer). <code>0A000</code> regexp_replace() has no form on druid</li><li>Refused: regexp_replace($s, $p, $r, $b::integer, $n::integer, $f::text). <code>0A000</code> regexp_replace() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -510,7 +510,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_size_pretty</strong><br>A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_size_pretty($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> pg_size_pretty() has no form on druid</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> pg_size_pretty() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_encoding_max_length($v). <code>0A000</code> pg_encoding_max_length() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -1042,5 +1042,5 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.<br><em>Made on: no leg. Verified on: none (function_legs.yaml has no leg whose engine runs this dialect).</em></td><td><pre><code>encode($a, $f)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> encode() has no form on druid</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

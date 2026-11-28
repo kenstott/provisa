@@ -701,7 +701,9 @@ def test_a_statement_of_record_is_marked_by_feature_not_by_its_wording():
     import function_edges as edges
 
     [avg] = [f for f in GRID.features if f.name == "avg"]
-    [limitation] = avg.read.limitations["clickhouse"]
+    # The row's statement of record; its refusal by name of (interval) and (numeric) is the
+    # other limitation it holds on clickhouse (measured.py).
+    [limitation] = [lim for lim in avg.read.limitations["clickhouse"] if lim.refusal is None]
     assert edges.of_record("avg", "clickhouse", limitation)
     assert not edges.of_record("sum", "clickhouse", limitation)
     assert not edges.of_record("avg", "trino", limitation)
