@@ -582,3 +582,139 @@ def _land_one(root: str, day: str, n: int) -> None:
         _date=ts.date(),
     )
     nt.write_batch(root, [row])
+
+
+_RECURSIVE_READ = (
+    "WITH RECURSIVE r(n) AS (SELECT compact_now(0) UNION ALL "
+    "SELECT r.n + 1 FROM r JOIN otel.signals.traces t "
+    "ON t.trace_id = '2026-11-28-' || CAST(r.n + 1 AS VARCHAR) WHERE r.n < 2) "
+    "SELECT count(*) FROM r"
+)
+
+
+def _compacting_mid_query(con: Any, root: str, removed: list[int]) -> None:
+    """``compact_now(x)``: the first call compacts ``root`` (no grace), recording what it removed;
+    each returns ``x``. Called in a recursive CTE's anchor, it compacts after the query listed the
+    folder and before the recursion opens the listed files again."""
+
+    def compact_now(x: int) -> int:
+        if not removed:
+            removed.append(nt.compact(root, grace_s=0))
+        return x
+
+    con.create_function(
+        "compact_now", compact_now, ["BIGINT"], "BIGINT", type="native", side_effects=True
+    )
+
+
+def test_a_query_with_no_lease_fails_when_compaction_removes_a_file_it_listed(tmp_path):
+    """The failure the lease prevents (maintainer 2026-11-28, a Cypher variable-length path over
+    the ontology): DuckDB opens the files it listed each time the recursion scans them again, so a
+    batch compaction removed while the query ran fails it."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    _land_one(root, "2026-11-28", 0)
+    _land_one(root, "2026-11-28", 1)
+    _land_one(root, "2026-11-28", 2)
+    removed: list[int] = []
+    _compacting_mid_query(con, root, removed)
+    with pytest.raises(duckdb.IOException, match="Cannot open file .*batch-"):
+        con.execute(_RECURSIVE_READ).fetchall()
+    assert removed == [3]
+
+
+def test_compaction_removes_no_file_a_running_query_of_the_engine_may_open(tmp_path):
+    """The engine holds a lease on the folder while any of its queries runs (_CatalogGate), so a
+    compaction during a query keeps every file it merged: the query reads each row, and the first
+    compaction after it removes the merged files."""
+    from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+    root = str(tmp_path / "traces")
+    for n in range(3):
+        _land_one(root, "2026-11-28", n)
+    rt = DuckDBFederationRuntime()
+    try:
+        rt.hold_reads(root, nt.ReadLease(root))
+        rt._on_instance("ATTACH ':memory:' AS otel")
+        rt._on_instance("CREATE SCHEMA otel.signals")
+        for name, select in nt.signal_views(
+            root, lambda sql: transpile_to_duckdb(sql, generated=False)
+        ).items():
+            rt._on_instance(f"CREATE VIEW otel.signals.{name} AS {select}")
+        removed: list[int] = []
+        _compacting_mid_query(rt._con, root, removed)
+        assert rt.run_arrow(_RECURSIVE_READ).to_pylist() == [{"count_star()": 3}]
+        assert removed == [0]
+        assert len(_day_parquet(root, "2026-11-28")) == 4
+        # No query runs now: the lease is given back, and the merged batches go.
+        assert os.listdir(os.path.join(root, nt.READERS_DIR)) == []
+        assert nt.compact(root, grace_s=0) == 3
+        assert [n[:7] for n in _day_parquet(root, "2026-11-28")] == ["rolled-"]
+    finally:
+        rt.close()
+
+
+def test_a_streamed_result_keeps_the_lease_until_it_drains(tmp_path):
+    """A stream's scan runs as its batches are pulled: its lease is held until it ends."""
+    from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+    root = str(tmp_path / "traces")
+    for n in range(3):
+        _land_one(root, "2026-11-28", n)
+    assert nt.compact(root, grace_s=60) == 0  # merged, kept: recorded for removal
+    rt = DuckDBFederationRuntime()
+    try:
+        rt.hold_reads(root, nt.ReadLease(root))
+        _schema, batches = rt.run_arrow_stream("SELECT 1 AS one")
+        assert nt.compact(root, grace_s=0) == 0
+        assert len(list(batches)) == 1
+        assert nt.compact(root, grace_s=0) == 3
+    finally:
+        rt.close()
+
+
+def test_compaction_keeps_merged_files_while_a_lease_is_held(tmp_path):
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-11-28": 3})
+    with nt.reading(root):
+        assert nt.compact(root, grace_s=0) == 0
+        assert nt.compact(root, grace_s=0) == 0
+        assert len(_files(root)["_date=2026-11-28"]) == 5  # 3 + rolled + record
+    assert nt.compact(root, grace_s=0) == 3
+
+
+def test_a_lease_left_by_a_process_that_ended_is_cleared(tmp_path):
+    """The operating system releases a dead process's lock: its lease file is found unlocked,
+    removed, and holds back no removal."""
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-11-28": 3})
+    readers = os.path.join(root, nt.READERS_DIR)
+    os.makedirs(readers)
+    open(os.path.join(readers, "999999-dead.lock"), "w").close()
+    assert nt.compact(root, grace_s=0) == 3
+    assert os.listdir(readers) == []
+
+
+def test_the_catalog_gate_engages_its_holds_from_the_first_reader_to_the_last():
+    from provisa.federation.duckdb_runtime import _CatalogGate
+
+    events: list[str] = []
+
+    class Hold:
+        def engage(self) -> None:
+            events.append("engage")
+
+        def disengage(self) -> None:
+            events.append("disengage")
+
+    gate = _CatalogGate()
+    gate.acquire_read()
+    gate.hold_reads("folder", Hold())  # held while a reader is in: engaged at once
+    gate.hold_reads("folder", Hold())  # one hold per key
+    gate.acquire_read()
+    gate.release_read()
+    assert events == ["engage"]
+    gate.release_read()
+    with gate.read():
+        pass
+    assert events == ["engage", "disengage", "engage", "disengage"]

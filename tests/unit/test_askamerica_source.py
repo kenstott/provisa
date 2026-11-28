@@ -2408,6 +2408,9 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
         def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
             """The ops views a native walk defines (the engine's landed traces, REQ-862)."""
 
+        def hold_reads(self, key, hold) -> None:  # noqa: ANN001
+            """The lease on the landed traces' folder every query holds (native_traces.ReadLease)."""
+
         def detach_source(self, *_a) -> None:
             pass
 
