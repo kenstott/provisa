@@ -172,7 +172,7 @@ async def test_a_reconcile_that_recreates_the_table_is_read_with_no_failed_state
     assert status == "recreated"
     assert ("main", "pg1__public__orders") not in store_writer.shared_store(env.dsn).ensured
 
-    def _no_failed_statement(exc):
+    def _no_failed_statement(exc, dialect):
         raise AssertionError(f"a statement failed against the row-cache table: {exc}")
 
     monkeypatch.setattr(store_writer, "missing_table_or_column", _no_failed_statement)
@@ -230,23 +230,29 @@ async def test_a_missing_table_again_after_the_ensure_is_raised(env, monkeypatch
 
 
 @pytest.mark.parametrize(
-    "orig, missing",
+    "orig, dialect, missing",
     [
-        (types.SimpleNamespace(sqlstate="42P01", args=()), True),
-        (types.SimpleNamespace(sqlstate="42703", args=()), True),
-        (types.SimpleNamespace(pgcode="42P01", args=()), True),
-        (types.SimpleNamespace(sqlstate="40P01", args=()), False),
-        (types.SimpleNamespace(args=(1146, "Table 'x' doesn't exist")), True),
-        (types.SimpleNamespace(args=(1054, "Unknown column")), True),
-        (types.SimpleNamespace(args=(1213, "Deadlock")), False),
-        (types.SimpleNamespace(args=("42S02", "Invalid object name")), True),
-        (types.SimpleNamespace(args=("42S22", "Invalid column name")), True),
+        (types.SimpleNamespace(sqlstate="42P01", args=()), "postgresql", True),
+        (types.SimpleNamespace(sqlstate="42703", args=()), "postgresql", True),
+        (types.SimpleNamespace(pgcode="42P01", args=()), "postgresql", True),
+        (types.SimpleNamespace(sqlstate="40P01", args=()), "postgresql", False),
+        (types.SimpleNamespace(args=(1146, "Table 'x' doesn't exist")), "mysql", True),
+        (types.SimpleNamespace(args=(1054, "Unknown column")), "mysql", True),
+        (types.SimpleNamespace(args=(1213, "Deadlock")), "mysql", False),
+        (types.SimpleNamespace(args=("42S02", "Invalid object name")), "mssql", True),
+        (types.SimpleNamespace(args=("42S22", "Invalid column name")), "mssql", True),
+        (Exception("no such table: t"), "sqlite", True),
+        (Exception("no such column: c"), "sqlite", True),
+        (Exception("table t has no column named c"), "sqlite", True),
+        (Exception("database is locked"), "sqlite", False),
+        # SQLite's message text carries no code: only a SQLite store's error is read by it.
+        (Exception("no such table: t"), "postgresql", False),
     ],
 )
-def test_missing_table_or_column_reads_each_drivers_code(orig, missing):
+def test_missing_table_or_column_reads_each_drivers_code(orig, dialect, missing):
     exc = sa.exc.DBAPIError("SELECT 1", {}, Exception("x"))
     exc.orig = orig  # pyright: ignore[reportAttributeAccessIssue]
-    assert store_writer.missing_table_or_column(exc) is missing
+    assert store_writer.missing_table_or_column(exc, dialect) is missing
 
 
 def test_forget_ensured_forgets_the_address_in_every_store(tmp_path):
@@ -306,5 +312,5 @@ def test_dispose_shared_stores_closes_each_pool_and_forgets_it(tmp_path):
 
 
 def test_a_duckdb_store_is_never_given_a_pooled_handle(tmp_path):
-    with pytest.raises(ValueError, match="REQ-989"):
+    with pytest.raises(ValueError, match="never through a pooled store handle"):
         store_writer.shared_store(f"duckdb:///{tmp_path}/s.duckdb")

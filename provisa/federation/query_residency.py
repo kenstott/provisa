@@ -1471,6 +1471,7 @@ async def _ensure_and_read_row_cache(
             schema, name, full_columns, pk_columns, keys
         )
         return None, cached
+    from sqlalchemy import make_url
     from sqlalchemy.exc import DBAPIError
 
     from provisa.federation.store_writer import missing_table_or_column
@@ -1486,7 +1487,8 @@ async def _ensure_and_read_row_cache(
         # an operator's DROP, another process's reconcile. ``_row_cache_connection`` forgot it as
         # the read failed, so it is ensured again and read once more. Any other error, or the
         # same one again, is raised as it is.
-        if not missing_table_or_column(exc):
+        dsn = engine.engine.materialize_store()
+        if not missing_table_or_column(exc, make_url(dsn).get_backend_name()):
             raise
         cache_table = await _ensure_row_cache_table(engine, backend, state, schema, name, columns)
         cached = await _read_row_cache(

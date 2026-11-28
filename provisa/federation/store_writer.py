@@ -106,7 +106,8 @@ def shared_store(dsn: str) -> SharedStore:
 
     if make_url(dsn).get_backend_name() == "duckdb":
         raise ValueError(
-            "a DuckDB store is written through the engine's own connection (REQ-989), "
+            # REQ-989: an embedded DuckDB store has one writer, the engine's own connection.
+            "a DuckDB store is written through the engine's own connection, "
             "never through a pooled store handle"
         )
     with _shared_lock:
@@ -144,8 +145,9 @@ _MISSING_MYSQL_ERRNOS = frozenset({1146, 1054})
 _MISSING_SQLITE_MESSAGES = ("no such table", "no such column", "has no column named")
 
 
-def missing_table_or_column(exc: DBAPIError) -> bool:
-    """Whether ``exc`` says the table it ran against, or a column it named, does not exist."""
+def missing_table_or_column(exc: DBAPIError, dialect: str) -> bool:
+    """Whether ``exc``, raised by a store of SQLAlchemy dialect ``dialect``, says the table it ran
+    against, or a column it named, does not exist."""
     orig = exc.orig
     if (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) in _MISSING_SQLSTATES:
         return True
@@ -153,9 +155,7 @@ def missing_table_or_column(exc: DBAPIError) -> bool:
     first = args[0] if args else None
     if first in _MISSING_SQLSTATES or first in _MISSING_MYSQL_ERRNOS:
         return True
-    import sqlite3
-
-    return isinstance(orig, sqlite3.Error) and any(m in str(orig) for m in _MISSING_SQLITE_MESSAGES)
+    return dialect == "sqlite" and any(m in str(orig) for m in _MISSING_SQLITE_MESSAGES)
 
 
 def dispose_shared_stores() -> None:
