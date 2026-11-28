@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-194 (audit B16): the GraphQL alias a reverse relationship is offered is named by the
-// deployment's GraphQL convention through naming.ts -- snake_case under hasura_graphql, camelCase
-// under apollo_graphql -- never by a hard camelCase of the page's own.
+// REQ-2361, REQ-194 (audit B16): the aliases a reverse relationship is offered are the server's
+// naming authority's suggestion (naming.suggest_reverse_rel_alias, under the org's GraphQL
+// convention), asked with the forward relationship's own aliases; the page builds none itself.
 
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -50,7 +50,10 @@ const UPSERT = { upsertRelationship: vi.fn() };
 const DELETE = { deleteRelationship: vi.fn() };
 const AUTH = { capabilities: ["create_relationship"] };
 const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<string>() };
-const SETTINGS = vi.hoisted(() => ({ convention: "apollo_graphql" }));
+const SUGGEST = vi.hoisted(() => ({
+  asked: [] as [string | null, string | null][],
+  answer: { graphqlAlias: "", cypherAlias: "" },
+}));
 
 vi.mock("../../hooks/useAdminQueries", () => ({
   // REQ-2249: no code resolver set is in service here.
@@ -73,17 +76,21 @@ vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FIL
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
-  fetchSettings: vi.fn(async () => ({
-    naming: { convention: SETTINGS.convention, use_domains: false, default_domain: "" },
-  })),
+}));
+vi.mock("../../hooks/useNameSuggestions", () => ({
+  useSuggestReverseRelAlias: () => async (gql: string | null, cql: string | null) => {
+    SUGGEST.asked.push([gql, cql]);
+    return SUGGEST.answer;
+  },
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
 }));
 vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 
-async function suggestedGraphqlAlias(convention: string): Promise<string> {
-  SETTINGS.convention = convention;
+async function openReverse(answer: { graphqlAlias: string; cypherAlias: string }) {
+  SUGGEST.asked = [];
+  SUGGEST.answer = answer;
   render(<RelationshipsPage />);
   fireEvent.click(
     within(screen.getByTestId("relationships-list")).getByText("shop_access.customer_id"),
@@ -93,17 +100,24 @@ async function suggestedGraphqlAlias(convention: string): Promise<string> {
   });
   await waitFor(() => expect(reverse).toBeEnabled());
   fireEvent.click(reverse);
-  // The Cypher alias is the same under either convention; only the GraphQL one follows it.
-  expect(screen.getByTestId("reverse-rel-alias")).toHaveValue("BY_CUSTOMER_BY");
-  return (screen.getByTestId("reverse-rel-graphql-alias") as HTMLInputElement).value;
+  await screen.findByTestId("reverse-rel-alias");
 }
 
-describe("RelationshipsPage: the reverse form's GraphQL alias follows the convention", () => {
-  it("is snake_case under hasura_graphql", async () => {
-    expect(await suggestedGraphqlAlias("hasura_graphql")).toBe("by_customer_by");
+describe("RelationshipsPage: the reverse form's aliases are the naming authority's", () => {
+  it("asks the server with the forward relationship's aliases", async () => {
+    await openReverse({ graphqlAlias: "byCustomerBy", cypherAlias: "BY_CUSTOMER_BY" });
+    expect(SUGGEST.asked).toEqual([[null, "BY_CUSTOMER"]]);
   });
 
-  it("is camelCase under apollo_graphql", async () => {
-    expect(await suggestedGraphqlAlias("apollo_graphql")).toBe("byCustomerBy");
+  it("fills both aliases with the server's suggestion as given", async () => {
+    await openReverse({ graphqlAlias: "by_customer_by", cypherAlias: "BY_CUSTOMER_BY" });
+    expect(screen.getByTestId("reverse-rel-alias")).toHaveValue("BY_CUSTOMER_BY");
+    expect(screen.getByTestId("reverse-rel-graphql-alias")).toHaveValue("by_customer_by");
+  });
+
+  it("shows a suggestion the page could not have computed, so none is built locally", async () => {
+    await openReverse({ graphqlAlias: "<gql>", cypherAlias: "<cql>" });
+    expect(screen.getByTestId("reverse-rel-alias")).toHaveValue("<cql>");
+    expect(screen.getByTestId("reverse-rel-graphql-alias")).toHaveValue("<gql>");
   });
 });

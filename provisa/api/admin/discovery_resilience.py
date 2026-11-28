@@ -20,7 +20,8 @@ default (an empty list, a noop stats object) for the parts it could not reach.
 `discovery_fallback` is the ONE place allowed to swallow a broad exception on the
 read side, and only around optional introspection. The caller seeds its default
 before the block and keeps it when the block fails. Everywhere else, let errors
-propagate.
+propagate. A connector bundle that is not staged (``BundleUnavailable``) is never swallowed here:
+it is an install defect whose refusal names the fix.
 """
 
 from __future__ import annotations
@@ -40,8 +41,15 @@ def discovery_fallback(what: str):
     the ``with`` body, so their exceptions reach this boundary. The caller keeps
     whatever default it assigned before entering the block.
     """
+    from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
+
     try:
         yield
+    except BundleUnavailable:
+        # A connector bundle that is not staged is an install defect, not a source the read could
+        # not reach: its refusal names the bundle and the stage command, and the caller answers
+        # with it. Swallowed, the Register Table form said the schema had no tables.
+        raise
     # complexity-gate: allow-ble=1 reason="THE one sanctioned discovery-read boundary: an optional source introspection (list schemas/tables/columns) or live-stats read failing (unreachable source / no information_schema / transient engine error) must not blank the admin UI — it is logged and the caller keeps its safe default. Every scattered read-side try/except funnels through here instead of swallowing broadly in place. Mirrors startup_resilience.tolerate_startup_failure for the read side."
     except Exception as exc:
         log.warning("[discovery] %s failed — skipped: %s", what, exc)

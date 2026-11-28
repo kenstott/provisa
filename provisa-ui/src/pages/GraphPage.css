@@ -965,62 +965,10 @@
   z-index: 2;
 }
 
-.gf-canvas-controls {
-  position: absolute;
-  bottom: 12px;
-  inset-inline-end: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.gf-canvas-wrap:hover .gf-canvas-controls {
-  opacity: 1;
-}
-
-.gf-ctrl-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: rgba(15, 17, 23, 0.85);
-  color: var(--text);
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.gf-ctrl-btn:hover {
-  background: var(--surface);
-}
-
-.gf-ctrl-btn.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-}
-
 .gf-ctrl-divider {
   height: 1px;
   background: var(--border);
   margin: 2px 0;
-}
-
-.gf-ctrl-label {
-  width: 28px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted, var(--text-muted));
-  font-size: 0.85rem;
 }
 
 /* Native vertical range for the edge-distance picker (Mantine has no vertical

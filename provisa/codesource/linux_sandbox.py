@@ -35,12 +35,15 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import functools
 import os
 import platform
+import shutil
 import socket
 import struct
+import subprocess  # nosec B404 - nix-store, by its resolved path, with a fixed argv
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 #: The Landlock ABI that restricts TCP: Linux 6.7.
 NET_ABI = 4
@@ -134,7 +137,18 @@ _libc = ctypes.CDLL(None, use_errno=True)
 _libc.syscall.restype = ctypes.c_long
 
 
-def _syscall(name: str, *args: object) -> int:
+#: What a raw syscall takes: the C integer and pointer types its arguments are passed as.
+_CArg = (
+    ctypes.c_int
+    | ctypes.c_long
+    | ctypes.c_size_t
+    | ctypes.c_uint
+    | ctypes.c_uint32
+    | ctypes.c_void_p
+)
+
+
+def _syscall(name: str, *args: _CArg) -> int:
     nr = _SYSCALLS[_machine()][name]
     result = _libc.syscall(ctypes.c_long(nr), *args)
     if result < 0:
@@ -151,7 +165,7 @@ def landlock_abi() -> int:
     try:
         return _syscall(
             "landlock_create_ruleset",
-            None,
+            ctypes.c_void_p(None),  # NULL attr: the call asks for the ABI version
             ctypes.c_size_t(0),
             ctypes.c_uint32(_LANDLOCK_CREATE_RULESET_VERSION),
         )
@@ -255,6 +269,107 @@ def apply_landlock(read: Sequence[str], connect_ports: Sequence[int]) -> int:
     finally:
         os.close(ruleset)
     return abi
+
+
+# -- the Nix store ----------------------------------------------------------------------------------
+
+NIX_STORE = "/nix/store"
+#: nix-ld's library directory on NixOS (its ld.so is in it too): what nix-ld gives the loader when
+#: NIX_LD_LIBRARY_PATH is unset, as a worker's environment leaves it. nix-ld's own default, mirrored
+#: so the grant names the libraries nix-ld will load; absent on a host without nix-ld.
+NIX_LD_DEFAULT_LIBRARY_PATH = "/run/current-system/sw/share/nix-ld/lib"
+
+_ELF_MAGIC = b"\x7fELF"
+_PT_INTERP = 3
+
+
+def _store_path(path: str) -> str | None:
+    """The store path (``/nix/store/<hash>-<name>``) ``path`` resolves into, or None when it
+    resolves outside the store. Landlock judges the file a symlink resolves to."""
+    real = os.path.realpath(path)
+    if not real.startswith(NIX_STORE + "/"):
+        return None
+    return os.path.join(NIX_STORE, real[len(NIX_STORE) + 1 :].split("/")[0])
+
+
+def elf_interpreter(path: str) -> str | None:
+    """The loader (PT_INTERP) the ELF executable ``path`` names; None for a static binary or a
+    file that is not ELF."""
+    with open(path, "rb") as f:
+        header = f.read(64)
+        if len(header) < 64 or header[:4] != _ELF_MAGIC:
+            return None
+        order = "<" if header[5] == 1 else ">"
+        if header[4] == 2:  # ELFCLASS64
+            (phoff,) = struct.unpack_from(order + "Q", header, 32)
+            phentsize, phnum = struct.unpack_from(order + "HH", header, 54)
+            entry_format, offset_at, size_at = order + "IIQQQQQ", 2, 5
+        else:
+            (phoff,) = struct.unpack_from(order + "I", header, 28)
+            phentsize, phnum = struct.unpack_from(order + "HH", header, 42)
+            entry_format, offset_at, size_at = order + "IIIIIII", 1, 4
+        f.seek(phoff)
+        table = f.read(phentsize * phnum)
+        for i in range(phnum):
+            fields = struct.unpack_from(entry_format, table, i * phentsize)
+            if fields[0] == _PT_INTERP:
+                f.seek(fields[offset_at])
+                return f.read(fields[size_at]).rstrip(b"\0").decode()
+    return None
+
+
+def _nix_ld_libraries(environ: Mapping[str, str]) -> list[str]:
+    """Each library (and the loader) nix-ld gives a program started with ``environ``."""
+    value = environ.get("NIX_LD_LIBRARY_PATH")
+    directories = value.split(":") if value else [NIX_LD_DEFAULT_LIBRARY_PATH]
+    found = [environ["NIX_LD"]] if environ.get("NIX_LD") else []
+    for directory in directories:
+        if os.path.isdir(directory):
+            found += [os.path.join(directory, name) for name in os.listdir(directory)]
+    return found
+
+
+def _system_certificates() -> list[str]:
+    """The system's certificate files under SYSTEM_READ's /etc directories: on NixOS each is a
+    symlink into the store, which Landlock judges by its target."""
+    found: list[str] = []
+    for top in SYSTEM_READ:
+        if top.startswith("/etc/") and os.path.isdir(top):
+            for root, dirs, files in os.walk(top):
+                found += [os.path.join(root, name) for name in (*dirs, *files)]
+    return found
+
+
+@functools.lru_cache(maxsize=64)
+def _closure(paths: tuple[str, ...]) -> tuple[str, ...]:
+    """``nix-store -qR``: every store path ``paths`` reference, themselves included."""
+    nix_store = shutil.which("nix-store")
+    if nix_store is None:
+        raise SandboxUnavailable(
+            "this host has a Nix store but no nix-store on PATH to read a runtime's closure with"
+        )
+    done = subprocess.run(  # nosec B603
+        [nix_store, "--query", "--requisites", *paths], capture_output=True, text=True
+    )
+    if done.returncode != 0:
+        raise SandboxUnavailable(f"nix-store could not read the closure: {done.stderr.strip()}")
+    return tuple(line for line in done.stdout.splitlines() if line)
+
+
+def nix_store_grant(executable: str, read: Sequence[str], environ: Mapping[str, str]) -> list[str]:
+    """The Nix store paths a worker reads (REQ-1984): the closure of its runtime ``executable``,
+    of what it is given to read (the host program among it), of the runtime's loader, and of the
+    library set nix-ld loads it with -- never the whole store, where every other program's files
+    are (on NixOS /etc/hosts and the rest of /etc resolve into it). Empty on a host with no
+    store, or when nothing the worker runs resolves into it."""
+    if not os.path.isdir(NIX_STORE):
+        return []
+    seeds = [executable, *read, *_nix_ld_libraries(environ), *_system_certificates()]
+    loader = elf_interpreter(executable)
+    if loader is not None:
+        seeds.append(loader)
+    store = sorted({p for p in map(_store_path, seeds) if p is not None})
+    return list(_closure(tuple(store))) if store else []
 
 
 # -- seccomp ----------------------------------------------------------------------------------------
@@ -450,8 +565,11 @@ def main(args: Sequence[str]) -> int:
         sys.stderr.write(f"code-source sandbox unavailable: {exc}\n")
         return 3
     argv = rest[1:]
-    os.execv(argv[0], argv)
-    return 127  # execv does not return
+    # The worker's environment is the one it was given, on every host: nix-ld, which loads this
+    # launcher's Python on NixOS, leaves LD_LIBRARY_PATH behind (set, empty when it was unset).
+    env = {k: v for k, v in os.environ.items() if k != "LD_LIBRARY_PATH"}
+    os.execve(argv[0], argv, env)
+    return 127  # execve does not return
 
 
 if __name__ == "__main__":

@@ -224,6 +224,13 @@ class NamesTable:
         surface raises KeyError: a name not in the names table does not exist (REQ-194)."""
         return self._by_table[(table_id, surface)]
 
+    def sql_address(self, table_id: int) -> tuple[str, str]:  # REQ-2361
+        """Table ``table_id``'s SQL schema (its domain's SQL name, the namespace its SQL name is
+        unique in) and its SQL name, as a statement names it. KeyError when the table names no
+        such table on SQL (REQ-194: a name not in the names table does not exist)."""
+        row = self.table_row(table_id, "sql")
+        return row.scope[1], row.name
+
     def object_name(self, object_kind: str, object_id: str, surface: str) -> str:  # REQ-467
         """The object's name on ``surface``; KeyError when it has none there."""
         return self._by_object[(object_kind, object_id, surface)].name

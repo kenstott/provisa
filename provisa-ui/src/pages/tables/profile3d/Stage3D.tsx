@@ -9,8 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-2123: the canvas of a 3D profile view, with its label layer, loader, hover card, hint and
-// legend. REQ-2239 (amended 2026-11-11): its view controls -- Reset view, Rotate, Grid where the
-// scene draws a floor grid, Full screen and Download -- in the one stack every graph's canvas has
+// legend. REQ-2239 (amended 2026-11-11): its view controls -- Reset view, Full screen and Download,
+// then Rotate and Grid where the scene draws a floor grid -- in the one stack every graph's canvas has
 // (CanvasControls), bottom-left; the legend stands beside it.
 
 import type { ReactNode } from "react";
@@ -122,6 +122,14 @@ export function Stage3D({
               onClick={controls.onReset}
               testId={`${controls.testId}-reset`}
             />
+            {/* The shared ones first, as on every graph (GraphControls), then the view's own. */}
+            <FullscreenButton stageRef={wrapRef} testId={testId} />
+            <ExportMenu
+              scene={ready ? exportable : null}
+              stage={wrapRef}
+              name={exportName}
+              testId={testId}
+            />
             <CanvasButton
               label={t("profile3d.rotate")}
               icon={<Rotate3d size={CONTROL_ICON} />}
@@ -138,13 +146,6 @@ export function Stage3D({
                 testId={`${controls.testId}-grid`}
               />
             )}
-            <FullscreenButton stageRef={wrapRef} testId={testId} />
-            <ExportMenu
-              scene={ready ? exportable : null}
-              stage={wrapRef}
-              name={exportName}
-              testId={testId}
-            />
           </CanvasControls>
           <div className="p3d-hint">{t(flat ? "profile3d.hintFlat" : "profile3d.hint")}</div>
         </>

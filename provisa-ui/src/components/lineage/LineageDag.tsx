@@ -19,7 +19,8 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
-import { ChevronsDownUp, ChevronsUpDown, Expand } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { ExpandModalIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 import { CONTROL_ICON } from "../provisa-graph/CanvasControls";
 import type { GraphCommandButton } from "../provisa-graph/GraphControls";
@@ -124,7 +125,17 @@ export function LineageDag({
           : n,
       ),
     };
-  }, [graph, collapsedRelations, allColumns, relationLabel, describeColumn, words, links, onToggleRelation, t]);
+  }, [
+    graph,
+    collapsedRelations,
+    allColumns,
+    relationLabel,
+    describeColumn,
+    words,
+    links,
+    onToggleRelation,
+    t,
+  ]);
 
   // A collapsed relation's card previews its every column; an open one shows them.
   const columnsOf = useCallback(
@@ -184,7 +195,9 @@ export function LineageDag({
       ? [
           {
             label: t("lineageDag.enlarge"),
-            icon: <Expand size={CONTROL_ICON} />,
+            // REQ-2239: the enlarge-into-a-dialog icon the result graph's Enlarge uses; the Expand
+            // icon is the bar's Full screen.
+            icon: <ExpandModalIcon size={CONTROL_ICON} />,
             onClick: onOpenModal,
             testId: "lineage-open-modal",
           },

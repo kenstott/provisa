@@ -1506,7 +1506,10 @@ _find_payload() {
 # torch among them (build-appimage.sh fetches it from PyTorch's CPU index), so no index is used.
 setup_native_venv() {
   local venv="${PROVISA_HOME}/venv"
-  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
+  # -I: vm-run cds to ~/provisa before every command; without -I, python -c would import the
+  # checkout's provisa/ (no compiled _encoders.so) instead of the venv's.  Same fix as
+  # dc53c8fd1a applied to the macOS and Windows installers.  REQ-2194.
+  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -I -c "import provisa" 2>/dev/null; then
     return 0
   fi
 
@@ -1545,7 +1548,8 @@ setup_native_venv() {
     exit 1
   }
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
-  "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
+  # -I: isolate from cwd (vm-run cds to ~/provisa; the checkout's provisa/ has no compiled .so).
+  "${venv}/bin/python3" -I -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
     exit 1
   }

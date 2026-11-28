@@ -132,10 +132,10 @@ class TestGrpcApprovalHook:
         proto_resp = _mock_proto_response(approved=True, reason="policy ok")
 
         stub_mock = MagicMock()
-        stub_mock.Evaluate = AsyncMock(return_value=proto_resp)
+        stub_mock.Evaluate = MagicMock(return_value=proto_resp)
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             response = await hook.evaluate(_request())
@@ -151,10 +151,10 @@ class TestGrpcApprovalHook:
         proto_resp = _mock_proto_response(approved=False, reason="denied by opa")
 
         stub_mock = MagicMock()
-        stub_mock.Evaluate = AsyncMock(return_value=proto_resp)
+        stub_mock.Evaluate = MagicMock(return_value=proto_resp)
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             response = await hook.evaluate(_request())
@@ -169,10 +169,10 @@ class TestGrpcApprovalHook:
 
         # Simulate stub raising a generic RPC error
         stub_mock = MagicMock()
-        stub_mock.Evaluate = AsyncMock(side_effect=RuntimeError("grpc unavailable"))
+        stub_mock.Evaluate = MagicMock(side_effect=RuntimeError("grpc unavailable"))
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             response = await hook.evaluate(_request())
@@ -186,10 +186,10 @@ class TestGrpcApprovalHook:
         hook = GrpcApprovalHook(config)
 
         stub_mock = MagicMock()
-        stub_mock.Evaluate = AsyncMock(side_effect=RuntimeError("grpc unavailable"))
+        stub_mock.Evaluate = MagicMock(side_effect=RuntimeError("grpc unavailable"))
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             response = await hook.evaluate(_request())
@@ -205,7 +205,7 @@ class TestGrpcApprovalHook:
         captured_req = {}
         proto_resp = _mock_proto_response(approved=True, reason="")
 
-        async def _capture_evaluate(proto_req, timeout=None):
+        def _capture_evaluate(proto_req, timeout=None):
             captured_req["user"] = proto_req.user
             captured_req["roles"] = list(proto_req.roles)
             captured_req["tables"] = list(proto_req.tables)
@@ -216,7 +216,7 @@ class TestGrpcApprovalHook:
         stub_mock.Evaluate = _capture_evaluate
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             await hook.evaluate(_request(user="bob", roles=["manager"], tables=["customers"]))
@@ -232,10 +232,10 @@ class TestGrpcApprovalHook:
         hook = GrpcApprovalHook(config)
 
         stub_mock = MagicMock()
-        stub_mock.Evaluate = AsyncMock(side_effect=RuntimeError("down"))
+        stub_mock.Evaluate = MagicMock(side_effect=RuntimeError("down"))
 
         with (
-            patch("grpc.aio.insecure_channel", return_value=MagicMock()),
+            patch("grpc.insecure_channel", return_value=MagicMock()),
             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=stub_mock),
         ):
             for _ in range(2):
