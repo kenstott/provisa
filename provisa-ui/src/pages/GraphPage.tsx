@@ -126,15 +126,15 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   // A view a navigation asks for, by frame: applied by the frame once per seq.
   const [frameViews, setFrameViews] = useState<Record<string, FrameView>>({});
   const viewSeqRef = useRef(0);
-  useNavPayload<{ query?: string; autoRun?: boolean; view?: GraphView }>((payload) => {
+  useNavPayload<{ query?: string; view?: GraphView }>((payload) => {
     const { maxNodes: requestedMax, ...frameView } = payload.view ?? {};
     if (requestedMax !== undefined) setMaxNodes(requestedMax);
     const view: FrameView | undefined =
       Object.keys(frameView).length > 0 ? { ...frameView, seq: ++viewSeqRef.current } : undefined;
     if (payload.query) {
+      // Every query handed to the explorer runs, once per navigation (maintainer 2026-11-28).
       const query = payload.query;
-      if (payload.autoRun) setForwarded((prev) => ({ query, seq: (prev?.seq ?? 0) + 1, view }));
-      else setHistoryQuery(query);
+      setForwarded((prev) => ({ query, seq: (prev?.seq ?? 0) + 1, view }));
       return;
     }
     // No query: the view is for the frame on screen, the newest one, and its query is kept.

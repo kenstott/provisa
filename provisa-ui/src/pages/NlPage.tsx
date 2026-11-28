@@ -36,6 +36,7 @@ import { useViewDomains } from "../lib/viewDomains";
 import { getStored, setStored } from "../lib/browserStorage";
 import { kept, restored, type KeptResult } from "../lib/resultWithQuery";
 import { readBulk, writeBulk } from "../lib/bulkStorage";
+import { explorerHandoff } from "../lib/explorerHandoff";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
@@ -273,7 +274,7 @@ export function NlPage() {
         navigate(route.path);
         return;
       }
-      navigate(route.path, { state: { [route.stateKey]: _query, autoRun: true } });
+      navigate(route.path, { state: explorerHandoff(route.path, { [route.stateKey]: _query }, true) });
     },
     [navigate],
   );

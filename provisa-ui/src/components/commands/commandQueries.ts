@@ -223,7 +223,7 @@ export function commandQueryLink(
       const list = args.map(([, v]) => cypherLiteral(plainValue(v))).join(", ");
       return {
         to: "/graph",
-        state: { query: `CALL ${nameIn(served, "cypher")}(${list})`, autoRun },
+        state: { query: `CALL ${nameIn(served, "cypher")}(${list})` },
       };
     }
     case "graphql": {

@@ -22,6 +22,7 @@ import { quoteIdent, tableSqlRef } from "../../naming";
 import { allPrefixes, compactIri, withUsedPrefixes, type SparqlVocabulary } from "../graph/sparql";
 import { grpcExample } from "../../pages/data-products/tableExamples";
 import type { ServedCommand } from "../commands/commandQueries";
+import { explorerHandoff } from "../../lib/explorerHandoff";
 
 /** The rows a relationship's query reads at most. */
 export const RELATIONSHIP_QUERY_LIMIT = 25;
@@ -355,7 +356,7 @@ export function relationshipQueryLinks(
 ): { surface: RelationshipSurface; link: QueryLink }[] {
   const { reader, graph, vocabulary } = surfaces;
   const run = (to: string, key: string, text: string | null): QueryLink | null =>
-    text === null ? null : { to, state: { [key]: text, autoRun: true } };
+    text === null ? null : { to, state: explorerHandoff(to, { [key]: text }, true) };
   const built: Record<RelationshipSurface, QueryLink | null> = {
     cypher: graph ? run("/graph", "query", relationshipCypher(rel, graph)) : null,
     sql: reader && readsTables(rel, reader) ? run("/sql", "sql", relationshipSql(rel)) : null,

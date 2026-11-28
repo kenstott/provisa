@@ -113,7 +113,7 @@ const SURFACES: [string, string][] = [
 ];
 
 const EXPECTED: Record<string, { to: string; state: Record<string, unknown> }> = {
-  cypher: { to: "/graph", state: { query: "MATCH (n:Clients) RETURN n LIMIT 25", autoRun: true } },
+  cypher: { to: "/graph", state: { query: "MATCH (n:Clients) RETURN n LIMIT 25" } },
   sql: { to: "/sql", state: { sql: 'select * from "sales"."clients" limit 25', autoRun: true } },
   sparql: {
     to: "/sparql",
@@ -121,7 +121,6 @@ const EXPECTED: Record<string, { to: string; state: Record<string, unknown> }> =
       query:
         "PREFIX sales: <https://provisa.example/sales/>\n\n" +
         "SELECT * WHERE {\n  ?s a sales:clients . ?s ?p ?o .\n}\nLIMIT 25",
-      autoRun: true,
     },
   },
   graphql: {
@@ -163,7 +162,7 @@ describe("a table's Identity section query links", () => {
       const got = opened();
       if (surface === "sparql") {
         expect(got.to).toBe(EXPECTED.sparql.to);
-        expect(got.state.autoRun).toBe(true);
+        expect(got.state).not.toHaveProperty("autoRun");
         expect(got.state.query).toContain("?s a sales:clients . ?s ?p ?o .");
         expect(got.state.query).toContain("LIMIT 25");
       } else {
@@ -245,14 +244,13 @@ describe("a parameterized table's query links", () => {
     return opened();
   };
 
-  it("Cypher binds each parameter as an _nf_ condition", async () => {
+  it("Cypher binds each parameter as an _nf_ condition, handed with no autoRun (the Graph page runs it)", async () => {
     expect(await open("cypher")).toEqual({
       to: "/graph",
       state: {
         query:
           "MATCH (n:Clients) WHERE n._nf_region = '<region>' AND n._nf_since = '<since>' " +
           "RETURN n LIMIT 25",
-        autoRun: false,
       },
     });
   });
