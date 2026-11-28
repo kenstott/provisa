@@ -2021,7 +2021,9 @@ class _Lowering:
             cond = self._iri_match(left_var, str(e.other), labels)
             return cond if op == "=" else Unary("NOT", cond)
         if op in ("IN", "NOT IN"):
-            items = ListLiteral([self.expr(x, bindings, labels) for x in e.other])
+            # rdflib writes an empty list, ``IN ()``, as rdf:nil: a list of no item.
+            listed = [] if e.other == RDF_NIL else e.other
+            items = ListLiteral([self.expr(x, bindings, labels) for x in listed])
             cond = Binary("IN", self.expr(e.expr, bindings, labels), items, cross_kinds="error")
             return cond if op == "IN" else Unary("NOT", cond)
         return Binary(

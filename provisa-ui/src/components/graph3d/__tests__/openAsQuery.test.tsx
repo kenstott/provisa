@@ -36,6 +36,15 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
   }),
 }));
 
+const sparqls = vi.hoisted(() => ({ calls: [] as [string, string][] }));
+vi.mock("../ontologyCypher", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyCypher")>()),
+  cypherAsSparql: async (role: string, cypher: string) => {
+    sparqls.calls.push([role, cypher]);
+    return { sparql: `# SPARQL of: ${cypher}`, error: null };
+  },
+}));
+
 import { OpenAsQuery } from "../OpenAsQuery";
 import type { QueryLanguage } from "../useOntology";
 
@@ -70,6 +79,7 @@ const landed = () => JSON.parse(screen.getByTestId("landed").textContent ?? "nul
 
 beforeEach(() => {
   compiles.calls.length = 0;
+  sparqls.calls.length = 0;
   compiles.answer = {
     queries: [
       {
@@ -237,12 +247,14 @@ describe("All hops' Open as query (REQ-2174, amended 2026-11-26)", () => {
     "MATCH (t:Ontology:Terms {id: 7})-[:KIND_OF|PART_OF*0..4]-(a:Ontology:Terms) " +
     "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF]->(b:Ontology:Terms) RETURN DISTINCT a, r, b";
 
-  it("opens its Cypher as itself, compiling nothing, and offers no other surface", async () => {
+  it("opens its Cypher as itself and as its SPARQL, compiling nothing, and offers no GraphQL or SQL", async () => {
     view(CYPHER, false, "cypher");
     fireEvent.click(screen.getByTestId("x-open-as-query"));
-    for (const other of ["graphql", "sql", "sparql"])
+    for (const other of ["graphql", "sql"])
       expect(await screen.findByTestId(`x-open-as-${other}`)).toHaveAttribute("data-disabled");
+    await waitFor(() => expect(screen.getByTestId("x-open-as-sparql")).not.toBeDisabled());
     expect(compiles.calls).toEqual([]);
+    expect(sparqls.calls).toEqual([["analyst", CYPHER]]);
     fireEvent.click(screen.getByTestId("x-open-as-cypher"));
     expect(landed()).toEqual(["/graph", { query: CYPHER }]);
   });

@@ -44,7 +44,8 @@ _WALKS = json.loads(
         / "provisa-ui/src/components/graph3d/__tests__/ontologyWalks.json"
     ).read_text()
 )
-_TYPES = {("Term", "id"): "INTEGER", ("Term", "name"): "VARCHAR"}
+_TERM = "Ontology_Terms"
+_TYPES = {(_TERM, "id"): "INTEGER", (_TERM, "name"): "VARCHAR"}
 
 
 @pytest.fixture(autouse=True)
@@ -53,13 +54,14 @@ def public_url(monkeypatch):
 
 
 def _model() -> CypherLabelMap:
-    """The terms and their links, each link type a type of one junction, as the ontology's."""
-    assert _WALKS["graph"]["label"] == "Term"
+    """The terms and their links, each link type a type of one junction, the terms labelled by
+    their domain and table (``Ontology:Terms``) as the graph schema names them."""
+    assert _WALKS["graph"]["label"] == "Ontology:Terms"
     term = NodeMapping(
-        label="Term",
-        type_name="Term",
-        domain_label=None,
-        table_label="Term",
+        label="Ontology:Terms",
+        type_name=_TERM,
+        domain_label="Ontology",
+        table_label="Terms",
         table_id=1,
         source_id="pg-main",
         id_column="id",
@@ -73,8 +75,8 @@ def _model() -> CypherLabelMap:
     links = {
         t: RelationshipMapping(
             rel_type=t,
-            source_label="Term",
-            target_label="Term",
+            source_label=_TERM,
+            target_label=_TERM,
             join_source_column="id",
             join_target_column="id",
             field_name=t.lower(),
@@ -92,7 +94,12 @@ def _model() -> CypherLabelMap:
         )
         for t in _WALKS["graph"]["links"]
     }
-    return CypherLabelMap(nodes={"Term": term}, relationships=links)
+    return CypherLabelMap(
+        nodes={_TERM: term},
+        relationships=links,
+        domains={"Ontology": [_TERM]},
+        nodes_by_table={"Terms": [_TERM]},
+    )
 
 
 @pytest.fixture
@@ -185,8 +192,8 @@ def test_each_hop_reaches_further_and_all_reaches_the_end_of_the_connected_part(
 
 def test_a_bounded_walk_is_a_nested_optional_path_and_a_link_of_several_types_a_branch_each():
     sparql = _export(
-        "MATCH (t:Term {id: 1})-[:KIND_OF|RELATED_TO*0..3]-(a:Term) "
-        "OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN DISTINCT a, r, b"
+        "MATCH (t:Ontology:Terms {id: 1})-[:KIND_OF|RELATED_TO*0..3]-(a:Ontology:Terms) "
+        "OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Ontology:Terms) RETURN DISTINCT a, r, b"
     )
     step = "(rel:KIND_OF|^rel:KIND_OF|rel:RELATED_TO|^rel:RELATED_TO)"
     assert f"?t ({step}/({step}/{step}?)?)? ?a ." in sparql
@@ -200,17 +207,20 @@ def test_a_bounded_walk_is_a_nested_optional_path_and_a_link_of_several_types_a_
     "cypher, why",
     [
         (
-            "MATCH (t:Term)-[:KIND_OF*0..2]-(a:Term) RETURN a.name",
+            "MATCH (t:Ontology:Terms)-[:KIND_OF*0..2]-(a:Ontology:Terms) RETURN a.name",
             "variable-length relationship in a statement whose rows are not DISTINCT",
         ),
-        ("MATCH (t:Term)-[r:KIND_OF*0..2]-(a:Term) RETURN DISTINCT a", "relationship variable"),
         (
-            "MATCH (a:Term)-[r:KIND_OF|RELATED_TO]->(b:Term) RETURN b.name",
+            "MATCH (t:Ontology:Terms)-[r:KIND_OF*0..2]-(a:Ontology:Terms) RETURN DISTINCT a",
+            "relationship variable",
+        ),
+        (
+            "MATCH (a:Ontology:Terms)-[r:KIND_OF|RELATED_TO]->(b:Ontology:Terms) RETURN b.name",
             "A property of b, matched in a branch per relationship type",
         ),
         (
-            "MATCH (a:Term) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Term) "
-            "OPTIONAL MATCH (b)-[:KIND_OF]->(c:Term) RETURN a, r, b, c",
+            "MATCH (a:Ontology:Terms) OPTIONAL MATCH (a)-[r:KIND_OF|RELATED_TO]->(b:Ontology:Terms) "
+            "OPTIONAL MATCH (b)-[:KIND_OF]->(c:Ontology:Terms) RETURN a, r, b, c",
             "branched on before the statement's last step",
         ),
     ],
@@ -218,3 +228,58 @@ def test_a_bounded_walk_is_a_nested_optional_path_and_a_link_of_several_types_a_
 def test_what_the_export_cannot_say_exactly_is_refused_by_name(cypher, why):
     with pytest.raises(SparqlExportRefused, match=why):
         _export(cypher)
+
+
+def _endpoint(monkeypatch):
+    """POST /data/sparql/of-cypher's handler over the term graph, as the role ``analyst``."""
+    import sys
+    from types import ModuleType, SimpleNamespace
+
+    from provisa.api.rest import sparql_router
+
+    lm = _model()
+    vocab = build_vocabulary(lm, BASE, _TYPES, Grounding())
+
+    async def _vocabulary(_state, _role_id, _ctx, _lm):
+        return vocab
+
+    app = ModuleType("provisa.api.app")
+    app.state = SimpleNamespace()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "provisa.api.app", app)
+    monkeypatch.setattr(
+        "provisa.api.role_surface.role_surface",
+        lambda _state, role: SimpleNamespace(context=None) if role == "analyst" else None,
+    )
+    monkeypatch.setattr("provisa.api.rest.cypher_exec._build_label_map", lambda *_a: lm)
+    monkeypatch.setattr("provisa.api.rest.sparql_router.vocabulary_for", _vocabulary)
+
+    async def call(cypher: str, role: str = "analyst"):
+        request = SimpleNamespace(state=SimpleNamespace(role=role))
+        response = await sparql_router.sparql_of_cypher(
+            request,  # type: ignore[arg-type]
+            sparql_router.CypherText(cypher=cypher),
+        )
+        return response.status_code, json.loads(bytes(response.body))
+
+    return call
+
+
+async def test_the_endpoint_writes_the_view_s_cypher_as_its_sparql(monkeypatch):
+    call = _endpoint(monkeypatch)
+    walk = next(w for w in _WALKS["walks"] if w["name"] == "Hops 2 from several roots")
+    status, body = await call(walk["cypher"])
+    assert status == 200
+    assert body == {"sparql": _export(walk["cypher"]), "sparql_error": None}
+
+
+async def test_the_endpoint_says_why_a_read_has_no_sparql(monkeypatch):
+    call = _endpoint(monkeypatch)
+    status, body = await call("MATCH (a:Ontology:Terms) RETURN collect(a.name) AS names")
+    assert status == 200
+    assert body["sparql"] is None and "collect()" in body["sparql_error"]
+
+
+async def test_the_endpoint_answers_no_role_without_a_schema(monkeypatch):
+    call = _endpoint(monkeypatch)
+    status, body = await call("MATCH (a:Ontology:Terms) RETURN a", role="nobody")
+    assert status == 503

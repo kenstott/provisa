@@ -2707,13 +2707,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         # Domain + table (any order): intersect to get unique type_name
         if domain_hits and table_hits:
-            domain_set = set(self._lm.domains[domain_hits[0]])
-            # Every type of the table label, a Class's among them, which keeps no bare label where
-            # a model table has it (label_map, REQ-2163).
-            table_set = set(self._lm.nodes_by_table.get(table_hits[0], ())) | {
-                t for t, nm in self._lm.nodes.items() if nm.table_label == table_hits[0]
-            }
-            candidates = domain_set & table_set
+            candidates = self._lm.domain_table_types(domain_hits[0], table_hits[0])
             if len(candidates) == 1:
                 return candidates.pop(), domain_hits[0]
             if len(candidates) > 1:

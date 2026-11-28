@@ -13,7 +13,8 @@
 // semantic SQL), Cypher or SPARQL (where its one root maps). A focus (the page's search, or a node
 // focused) is drawn as a neighbourhood the query does not state, so with one set the view does not
 // open as its GraphQL. A view that says its own Cypher (the ontology's: its terms and their links,
-// REQ-2174) opens as it in every state, focused or not.
+// REQ-2174) opens as it in every state, focused or not, and as the SPARQL the server writes from
+// that Cypher (its Cypher export, the one a GraphQL read's SPARQL is written by).
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,6 +26,7 @@ import { useCompileQuery } from "../../hooks/useAdminQueries";
 import type { CompileResult } from "../../api/admin";
 import { Tip } from "../Tip";
 import type { QueryLanguage } from "./useOntology";
+import { cypherAsSparql } from "./ontologyCypher";
 
 /** What the query compiles to: its semantic SQL, its Cypher or why it has none, and its SPARQL or
  * why it has none. */
@@ -107,12 +109,52 @@ export function OpenAsQuery({
     error: string | null;
   } | null>(null);
   const own = cypher !== null && written !== null && written.key === cypher.key ? written : null;
+  // A Cypher query (All hops) has no GraphQL or SQL form to open as: it opens as itself, and as
+  // its SPARQL.
+  const cypherOnly = language === "cypher";
+  // The view's own Cypher -- the query itself (All hops), or the one it writes -- as SPARQL,
+  // written by the server when the menu opens, for that Cypher.
+  const [translated, setTranslated] = useState<{
+    cypher: string;
+    sparql: string | null;
+    error: string | null;
+  } | null>(null);
+  const saysCypher = cypherOnly || cypher !== null;
+  const sourceCypher = cypherOnly ? query : cypher !== null ? (own?.text ?? null) : null;
+  const ownSparql =
+    sourceCypher !== null && translated !== null && translated.cypher === sourceCypher
+      ? translated
+      : null;
+
+  const translate = (text: string) => {
+    if (actingRoles === null || translated?.cypher === text) return;
+    cypherAsSparql(actingRoles, text).then(
+      (r) => setTranslated({ cypher: text, ...r }),
+      (e: unknown) =>
+        setTranslated({
+          cypher: text,
+          sparql: null,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+    );
+  };
 
   const write = () => {
-    if (cypher === null || language === "cypher" || own) return;
+    if (cypherOnly) {
+      if (query !== null) translate(query);
+      return;
+    }
+    if (cypher === null) return;
+    if (own) {
+      if (own.text !== null) translate(own.text);
+      return;
+    }
     const { key } = cypher;
     cypher.build().then(
-      (text) => setWritten({ key, text, error: null }),
+      (text) => {
+        setWritten({ key, text, error: null });
+        translate(text);
+      },
       (e: unknown) =>
         setWritten({ key, text: null, error: e instanceof Error ? e.message : String(e) }),
     );
@@ -130,8 +172,6 @@ export function OpenAsQuery({
     );
   };
 
-  // A Cypher query (All hops) has no GraphQL, SQL or SPARQL form to open as: it opens as itself.
-  const cypherOnly = language === "cypher";
   const unavailable = focused
     ? t("graph3d.openAsQueryFocused")
     : cypherOnly
@@ -153,16 +193,21 @@ export function OpenAsQuery({
             : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
           : t("graph3d.openAsQueryCompiling")));
 
-  const sparqlWhy =
-    unavailable ??
-    current?.error ??
-    (current
-      ? current.result?.sparql
-        ? null
-        : current.result?.sparqlWhy === "roots"
-          ? t("graph3d.openAsQuerySparqlRoots")
-          : (current.result?.sparqlWhy ?? t("graph3d.openAsQueryNoSparql"))
-      : t("graph3d.openAsQueryCompiling"));
+  // REQ-2136: a view that says its own Cypher opens as its SPARQL wherever it opens as that
+  // Cypher: off only while it is written, or with the reason it has none.
+  const sparqlWhy = saysCypher
+    ? ownSparql
+      ? ownSparql.error
+      : (own?.error ?? t("graph3d.openAsQueryCompiling"))
+    : (unavailable ??
+      current?.error ??
+      (current
+        ? current.result?.sparql
+          ? null
+          : current.result?.sparqlWhy === "roots"
+            ? t("graph3d.openAsQuerySparqlRoots")
+            : (current.result?.sparqlWhy ?? t("graph3d.openAsQueryNoSparql"))
+        : t("graph3d.openAsQueryCompiling")));
 
   const item = (target: string, why: string | null, open: () => void) => {
     const entry = (
@@ -216,7 +261,9 @@ export function OpenAsQuery({
           }),
         )}
         {item("sparql", sparqlWhy, () =>
-          navigate("/sparql", { state: { query: current?.result?.sparql } }),
+          navigate("/sparql", {
+            state: { query: saysCypher ? ownSparql?.sparql : current?.result?.sparql },
+          }),
         )}
       </Menu.Dropdown>
     </Menu>

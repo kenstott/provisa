@@ -191,6 +191,21 @@ class _Printer:
             raise SparqlExportRefused(f"The label {label} has no class in the SPARQL vocabulary")
         return nm, classes[0]
 
+    def _type_of(self, var: str, labels: list[str]) -> str:
+        """The node type ``labels`` name: one type's own label, or a domain and a table label
+        (``Ontology:Terms``, as the graph schema names a node) naming one type of the two."""
+        if len(labels) == 1:
+            return labels[0]
+        if len(labels) == 2:
+            for domain, table in (labels, labels[::-1]):
+                if domain in self.lm.domains:
+                    types = self.lm.domain_table_types(domain, table)
+                    if len(types) == 1:
+                        return types.pop()
+        raise SparqlExportRefused(
+            f"The node {var}'s labels {':'.join(labels)} name no one node type"
+        )
+
     # -- patterns --
 
     def node(self, n: NodePattern, group: _Group) -> str:
@@ -199,14 +214,13 @@ class _Printer:
             raise SparqlExportRefused("A node with no variable has no SPARQL form here")
         var = n.variable
         if var in self.label:
-            if n.labels and n.labels != [self.label[var]]:
+            if n.labels and self._type_of(var, n.labels) != self.label[var]:
                 raise SparqlExportRefused(f"The node {var} is matched with another label")
             return var
-        if len(n.labels) != 1:
-            raise SparqlExportRefused(f"The node {var} needs exactly one label")
-        nm, cls = self._node_of(n.labels[0])
+        label = self._type_of(var, n.labels)
+        nm, cls = self._node_of(label)
         self.prefix(nm.domain_id, self.vocab.prefixes[nm.domain_id])
-        self.label[var] = n.labels[0]
+        self.label[var] = label
         self.group[var] = group
         self.names.add(_var_name(var))
         group.triples.append(f"?{_var_name(var)} a {self._iri(cls)} .")
@@ -350,10 +364,6 @@ class _Printer:
                 left, right = self.expr(e.left, required_in), self.expr(e.right, required_in)
                 return f"{left} {_COMPARISONS[op]} {right}"
             if op == "IN" and isinstance(e.right, ListLiteral):
-                if not e.right.items:
-                    # IN an empty list holds of nothing, as false does.
-                    self.expr(e.left, required_in)
-                    return "false"
                 items = ", ".join(self.literal(i) for i in e.right.items)
                 return f"{self.expr(e.left, required_in)} IN ({items})"
             if op in _STRING_TESTS and isinstance(e.right, Literal) and e.right.kind == "string":

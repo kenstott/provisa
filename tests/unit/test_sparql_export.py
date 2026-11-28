@@ -102,10 +102,23 @@ def test_a_property_is_bound_where_its_node_is_and_returned_by_its_name():
     assert sparql.startswith("PREFIX ")
 
 
+def test_a_whole_node_is_its_subject_iri(con):
+    """A node returned whole is its subject: the same people, by their keys (REQ-2136)."""
+    sparql = _export("MATCH (p:Person) WHERE p.age > 30 RETURN p")
+    assert "SELECT ?p" in sparql
+    got = sorted(
+        r["p"].removeprefix(f"{BASE}/id/hr/persons/")
+        for r in _answer(con, sparql)  # each subject as its IRI
+    )
+    expected = sorted(
+        str(r[0]) for r in _cypher_rows(con, "MATCH (p:Person) WHERE p.age > 30 RETURN p.id")
+    )
+    assert got and got == expected
+
+
 @pytest.mark.parametrize(
     "cypher, why",
     [
-        ("MATCH (p:Person) RETURN p", "A whole node"),
         ("MATCH (p:Person) RETURN {name: p.name} AS m", "map"),
         ("MATCH (p:Person) RETURN collect(p.name) AS names", r"collect\(\)"),
         ("MATCH (p:Person) RETURN sum(p.age) AS s", r"sum\(\)"),

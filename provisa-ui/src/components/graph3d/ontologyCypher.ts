@@ -124,3 +124,21 @@ function keptLinks(graph: TermsGraph, edgeTypes: readonly string[]): string | nu
   const types = graph.links.filter((t) => edgeTypes.length === 0 || edgeTypes.includes(t));
   return types.length === 0 ? null : types.join("|");
 }
+
+/** A Cypher read written as SPARQL over ``role``'s vocabulary, by the server's own export (the
+ * one a GraphQL read's SPARQL is written by, REQ-2136): the SPARQL, or why the read has none. */
+export async function cypherAsSparql(
+  role: string,
+  cypher: string,
+): Promise<{ sparql: string | null; error: string | null }> {
+  const resp = await fetch("/data/sparql/of-cypher", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
+    body: JSON.stringify({ cypher }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+  const body = (await resp.json()) as { sparql: string | null; sparql_error: string | null };
+  if (body.sparql === null && body.sparql_error === null)
+    throw new Error("the server wrote no SPARQL and said no reason");
+  return { sparql: body.sparql, error: body.sparql_error };
+}

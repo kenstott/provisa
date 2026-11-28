@@ -463,6 +463,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             return None
         return column, sorted(v for v in values if not v.startswith("__"))
 
+    def domain_table_types(self, domain: str, table: str) -> set[str]:  # REQ-572, REQ-2163
+        """The node types ``Domain:Table`` names: the domain's types of the table label, a
+        Class's among them, which keeps no bare label where a model table has it."""
+        table_set = set(self.nodes_by_table.get(table, ())) | {
+            t for t, nm in self.nodes.items() if nm.table_label == table
+        }
+        return set(self.domains.get(domain, ())) & table_set
+
     def node(self, label: str) -> NodeMapping:  # REQ-572
         try:
             return self.nodes[label]

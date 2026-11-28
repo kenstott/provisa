@@ -935,3 +935,11 @@ def test_exists_beside_another_filter_is_read_as_well(con):
         'SELECT ?n WHERE { ?s p:name ?n FILTER(?n != "Ann") FILTER EXISTS { ?s rel:KNOWS ?o } }',
     )
     assert [r["n"] for r in rows] == ["Bo"]
+
+
+def test_in_an_empty_list_holds_of_nothing(con):
+    """``IN ()`` is false and ``NOT IN ()`` true (SPARQL 1.1, 17.4.1.9): rdflib reads the empty
+    list as rdf:nil, a list of no item."""
+    assert _answer(con, "SELECT ?n WHERE { ?s p:name ?n FILTER(?n IN ()) }") == []
+    rows = _answer(con, "SELECT ?n WHERE { ?s p:name ?n FILTER(?n NOT IN ()) }")
+    assert sorted(r["n"] for r in rows) == ["Ann", "Bo", "Cy", "Di"]

@@ -14,7 +14,8 @@
 // through the whole graph (an untyped, unbounded [*] timed out over 185k nodes, 2026-11-28).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allHopsCypher, drawnCypher, termsCypherGraph } from "../ontologyCypher";
+import { allHopsCypher, cypherAsSparql, drawnCypher, termsCypherGraph } from "../ontologyCypher";
+import WALKS from "./ontologyWalks.json";
 
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -154,5 +155,54 @@ describe("termsCypherGraph", () => {
     expect(fetchMock).toHaveBeenCalledWith("/data/graph-schema", {
       headers: { "X-Provisa-Role": "analyst" },
     });
+  });
+});
+
+// REQ-2136: the walks the server's SPARQL export is proven equivalent on
+// (tests/unit/test_sparql_export_walks.py) are the writer's own text.
+describe("the walks the SPARQL export is proven on", () => {
+  it.each(WALKS.walks.map((w) => [w.name, w] as const))("%s is what the view writes", (_n, w) => {
+    const written =
+      w.writer === "drawn"
+        ? drawnCypher(WALKS.graph, w.roots, w.edgeTypes)
+        : allHopsCypher(WALKS.graph, w.roots, w.depth, w.edgeTypes);
+    expect(written).toBe(w.cypher);
+  });
+});
+
+describe("cypherAsSparql", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("asks the server to write the Cypher as SPARQL, as the role", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ sparql: "SELECT ?a WHERE { ?a a <x> }", sparql_error: null }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await cypherAsSparql("analyst", "MATCH (a:T) RETURN a")).toEqual({
+      sparql: "SELECT ?a WHERE { ?a a <x> }",
+      error: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/data/sparql/of-cypher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Provisa-Role": "analyst" },
+      body: JSON.stringify({ cypher: "MATCH (a:T) RETURN a" }),
+    });
+  });
+
+  it("says why a read has no SPARQL, and fails on a failed request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ sparql: null, sparql_error: "UNION" }),
+      })),
+    );
+    expect(await cypherAsSparql("analyst", "x")).toEqual({ sparql: null, error: "UNION" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 503, text: async () => "no schema" })),
+    );
+    await expect(cypherAsSparql("analyst", "x")).rejects.toThrow("HTTP 503: no schema");
   });
 });
