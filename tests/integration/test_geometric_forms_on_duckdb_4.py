@@ -18,7 +18,7 @@ import pytest
 
 from tests.integration.geometric_engines import duckdb_form_slice, duckdb_forms
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.isolated]
 
 
 @pytest.mark.parametrize("function", duckdb_form_slice(3))
