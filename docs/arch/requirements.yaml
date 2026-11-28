@@ -1401,7 +1401,7 @@
     /auth/provider-type (REQ-1267); /auth/bootstrap-status (REQ-1288); /setup/status; /sandboxes/limits
     (REQ-2006, the limits the hosted-sandbox page states); /billing/signup, /billing/webhook; /orgs/branding,
     /orgs/branding/logo (REQ-1486). Each was added by the requirement named, which states why it carries
-    no bearer token; an addition is still a deliberate edit to this list.'
+    no bearer token; an addition is still a deliberate edit to this list. (Amended 2026-11-27, REQ-1264) The exact set of paths the auth middleware skips also holds /auth/superuser-password, the break-glass password change. Before its first rotation the account cannot obtain a token, so the endpoint checks the current password in its body under the login throttle.'
   use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC signature,
     not a bearer token), health/liveness probes, the pre-login provider probes, and OpenAPI docs to function
     without a JWT while all other paths enforce authentication.
