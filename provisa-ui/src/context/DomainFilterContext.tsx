@@ -63,10 +63,7 @@ export function mergeCheckedDomains(
 // explicitly unchecked is in the known set but not the checked set, so it stays unchecked. Both sets
 // are saved as restored: saving only the known set made a new domain "known but not checked" on the
 // next load, so it read as unchecked by the user and its tables vanished from every list.
-export function restoreCheckedDomains(
-  available: string[],
-  keys: DomainSelectionKeys,
-): Set<string> {
+export function restoreCheckedDomains(available: string[], keys: DomainSelectionKeys): Set<string> {
   try {
     const merged = mergeCheckedDomains(
       available,

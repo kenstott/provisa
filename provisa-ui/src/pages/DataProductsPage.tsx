@@ -41,6 +41,7 @@ import { FilterInput } from "../components/admin/FilterInput";
 import { MultiSelect } from "../components/MultiSelect";
 import { TagControl } from "../components/TagControl";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { productScope } from "./data-products/productScope";
 import { useTagAssignments } from "../hooks/useTagQueries";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { isProductOwner } from "./data-products/productOwner";
@@ -107,7 +108,6 @@ export function DataProductsPage() {
   };
   // REQ-2127: the list is data_products_meta, read as the user through the governed pipeline.
   const products = useMetaProducts();
-  const dataProducts = useMemo(() => products.data ?? [], [products.data]);
   const { loading, error } = products;
   const { domains } = useDomains();
   const { tables, refetch: refetchTables } = useTables(); // REQ-1634: member-table list + assignment
@@ -134,6 +134,13 @@ export function DataProductsPage() {
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
   const { selectedRoles, availableRoles, actingRoles, userId } = useAuth();
+  // REQ-1659 (amended 2026-11-28): the products and domains of this page follow the active role:
+  // every product of a domain it holds a product right in, and every product offered.
+  const scope = useMemo(
+    () => productScope(products.data ?? [], selectedRoles),
+    [products.data, selectedRoles],
+  );
+  const dataProducts = scope.products;
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
@@ -193,18 +200,13 @@ export function DataProductsPage() {
     [productTags],
   );
   // REQ-1659 (amended 2026-11-28): the list is narrowed by the navbar's Domains filter, which on
-  // this page lists the domains of the products listed -- a domain outside the role included,
-  // since a listing is discovery and offers decide access -- with a selection of its own.
+  // this page lists the scope's domains (productScope) with a selection of its own.
   const { setProductDomains, checkedProductDomains, ensureProductDomainChecked } =
     useDomainFilter();
-  const productDomainIds = useMemo(
-    () => [...new Set(dataProducts.map((p) => p.domainId))].sort(),
-    [dataProducts],
-  );
-  const productDomainKey = productDomainIds.join(",");
+  const productDomainKey = scope.domains.join(",");
   useEffect(() => {
     if (products.data === null) return;
-    setProductDomains(productDomainIds);
+    setProductDomains(scope.domains);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the domain SET (the joined ids), not the array identity
   }, [productDomainKey, products.data === null, setProductDomains]);
   const [creating, setCreating] = useState(false);
@@ -272,7 +274,7 @@ export function DataProductsPage() {
     "products",
     detailListOf(
       t,
-      products.data,
+      products.data === null ? null : dataProducts,
       (p) => p.id,
       (p) => p.name,
       productNarrowings,

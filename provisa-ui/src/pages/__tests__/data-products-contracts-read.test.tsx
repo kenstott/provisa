@@ -43,7 +43,10 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
+    // REQ-1659: product read in every domain, so every product is listed whatever its status.
+    selectedRoles: [
+      { id: "admin", effectiveCapabilities: ["data_product_read"], domain_access: ["*"] },
+    ],
     availableRoles: [],
   }),
 }));

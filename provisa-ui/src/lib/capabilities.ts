@@ -96,20 +96,28 @@ export const IMPORT_SURFACE: CapabilityRequirement = {
 };
 
 /**
- * REQ-1944: the domains a holder of the hiding rights governs -- the union of `domain_access`
- * over the roles that CARRY one of them (never every role held, as on the server), or `null`
- * when one of those roles reaches every domain.
+ * REQ-1944: the domains a holder of any of ``rights`` reaches with it -- the union of
+ * `domain_access` over the roles that CARRY one of them (never every role held, as on the server's
+ * domain_access_for_capability), or `null` when one of those roles reaches every domain.
  */
-export function hidingDomains(
-  roles: { effectiveCapabilities: string[]; domain_access: string[] }[],
+export function domainsCarrying(
+  roles: readonly { effectiveCapabilities: string[]; domain_access: string[] }[],
+  rights: readonly string[],
 ): Set<string> | null {
   const out = new Set<string>();
   for (const role of roles) {
-    if (!role.effectiveCapabilities.some((c) => (HIDING_RIGHTS as string[]).includes(c))) continue;
+    if (!role.effectiveCapabilities.some((c) => rights.includes(c))) continue;
     if (role.domain_access.includes("*")) return null;
     for (const d of role.domain_access) out.add(d);
   }
   return out;
+}
+
+/** REQ-1944: the domains a holder of the hiding rights governs (see domainsCarrying). */
+export function hidingDomains(
+  roles: { effectiveCapabilities: string[]; domain_access: string[] }[],
+): Set<string> | null {
+  return domainsCarrying(roles, HIDING_RIGHTS);
 }
 
 /**
