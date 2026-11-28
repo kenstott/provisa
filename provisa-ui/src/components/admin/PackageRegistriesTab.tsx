@@ -65,6 +65,7 @@ import { useRememberedDetail } from "../list/useDetailParam";
 import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 const KINDS: readonly RegistryKind[] = ["npm", "pypi", "goproxy", "cargo", "git"];
 
@@ -410,14 +411,19 @@ export function PackageRegistriesTab({ title }: { title: string }) {
           testId="package-registries-filter"
         />
         <PageActions>
-          <Button
-            variant={mode === "create" ? "outline" : "filled"}
-            onClick={() => (mode === "create" ? closeForm() : openForm("create", blank("npm")))}
-            aria-label={mode === "create" ? t("packageRegistries.closeForm") : undefined}
-            data-testid="package-registries-add"
+          <PageCommand
+            description={t("pageCommands.addPackageRegistry")}
+            docs="package-registries/"
           >
-            {mode === "create" ? <X size={14} /> : t("packageRegistries.add")}
-          </Button>
+            <Button
+              variant={mode === "create" ? "outline" : "filled"}
+              onClick={() => (mode === "create" ? closeForm() : openForm("create", blank("npm")))}
+              aria-label={mode === "create" ? t("packageRegistries.closeForm") : undefined}
+              data-testid="package-registries-add"
+            >
+              {mode === "create" ? <X size={14} /> : t("packageRegistries.add")}
+            </Button>
+          </PageCommand>
         </PageActions>
       </div>
       <Stack gap="md" data-testid="package-registries">

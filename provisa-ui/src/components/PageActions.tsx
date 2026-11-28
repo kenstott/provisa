@@ -13,14 +13,18 @@
 // never crowds or clips. The filter gives first: the header's grid lets its track shrink to its
 // minimum (App.css, --page-filter-min) before the actions track is short of room. The page's one
 // (?) help is its title's (PageTitle), so nothing that must stay visible stands in this row.
+// Each button is a PageCommand: its description and documentation open on hover in the row, and
+// stand beneath it in the menu (maintainer 2026-11-28).
 
 import {
   Children,
+  cloneElement,
   isValidElement,
   useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import {
@@ -34,6 +38,8 @@ import {
 } from "@mantine/core";
 import { Ellipsis } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { CapabilityGate } from "./CapabilityGate";
+import { PageCommand, type PageCommandProps } from "./PageCommand";
 
 /** Inside the (...) menu a button's own menu or picker opens in place, not in a portal: the outer
  * menu then reads a click in it as a click inside, and stays open for it. */
@@ -52,9 +58,38 @@ function overflows(row: HTMLElement): boolean {
   return header.scrollWidth > header.clientWidth;
 }
 
+/** A command the row holds: a PageCommand, or a CapabilityGate around one (a command only some
+ * roles have; the gate draws nothing, or the command inert and badged, for the others). */
+type Command =
+  ReactElement<PageCommandProps> | ReactElement<{ children: ReactElement<PageCommandProps> }>;
+
+const isCommand = (node: unknown): node is ReactElement<PageCommandProps> =>
+  isValidElement(node) && node.type === PageCommand;
+
+/** The row's commands. Anything else is a page built wrong: toolbarGuard fails it statically, and
+ * this throws for one that reaches the browser, rather than draw a command with no help. */
+function commandsOf(children: ReactNode): Command[] {
+  return Children.toArray(children)
+    .filter(isValidElement)
+    .map((item) => {
+      if (isCommand(item)) return item;
+      const inner = (item.props as { children?: unknown }).children;
+      if (item.type === CapabilityGate && isCommand(inner))
+        return item as ReactElement<{ children: ReactElement<PageCommandProps> }>;
+      throw new Error("PageActions holds only PageCommand children (description and docs)");
+    });
+}
+
+/** The command as the (...) menu draws it: its description and link stand beneath it. */
+function inMenu(item: Command): ReactElement {
+  if (isCommand(item)) return cloneElement(item, { inMenu: true });
+  const gated = item as ReactElement<{ children: ReactElement<PageCommandProps> }>;
+  return cloneElement(gated, {}, cloneElement(gated.props.children, { inMenu: true }));
+}
+
 export function PageActions({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const items = Children.toArray(children).filter(isValidElement);
+  const items = commandsOf(children);
   const total = items.length;
   const rowRef = useRef<HTMLDivElement>(null);
   // How many buttons stand in the row, for the number of buttons the page now has: a page that
@@ -100,7 +135,7 @@ export function PageActions({ children }: { children: ReactNode }) {
     if (hit !== null && !hit.hasAttribute("aria-haspopup")) setOpened(false);
   };
 
-  const hidden = items.slice(shown);
+  const hidden = items.slice(shown).map(inMenu);
   return (
     <div className="page-actions" ref={rowRef} data-testid="page-actions">
       {items.slice(0, shown)}
@@ -126,7 +161,7 @@ export function PageActions({ children }: { children: ReactNode }) {
           </Menu.Target>
           <Menu.Dropdown data-testid="page-actions-menu" onClick={closeOnCommand}>
             <MantineThemeProvider theme={IN_MENU}>
-              <Stack gap="xs" p={4} align="flex-start">
+              <Stack gap="sm" p={4} align="flex-start">
                 {hidden}
               </Stack>
             </MantineThemeProvider>

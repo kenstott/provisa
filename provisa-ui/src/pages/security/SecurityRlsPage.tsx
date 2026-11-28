@@ -714,6 +714,7 @@ export function SecurityRlsPage() {
             paragraphs={[t("securityPage.purposeBody"), t("securityPage.purposeAdd")]}
             ariaLabel={t("securityPage.purposeAria")}
             testId="security-purpose-help"
+            docs="security/#row-level-security-rls"
           />
           <RoutePageHelp placement="own" />
         </Group>

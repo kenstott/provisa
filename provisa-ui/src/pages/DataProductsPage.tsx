@@ -70,6 +70,7 @@ import { useAuth } from "../context/AuthContext";
 import { profileDialogInputs } from "./tables/useProfileRunsParam";
 import { heldRoles } from "../lib/roles";
 import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -661,15 +662,19 @@ export function DataProductsPage() {
         <PageActions>
           {/* Hidden while its form is open: the form ends with Save and Cancel. */}
           {canEdit && !creating && (
-            <Button
-              leftSection={<Plus size={13} />}
-              onClick={openCreate}
-              data-testid="data-products-new-button"
-            >
-              {t("dataProductsTab.newDataProduct")}
-            </Button>
+            <PageCommand description={t("pageCommands.addDataProduct")} docs="data-products/">
+              <Button
+                leftSection={<Plus size={13} />}
+                onClick={openCreate}
+                data-testid="data-products-new-button"
+              >
+                {t("dataProductsTab.newDataProduct")}
+              </Button>
+            </PageCommand>
           )}
-          <ProductMapButton />
+          <PageCommand description={t("pageCommands.productMap")} docs="data-products/">
+            <ProductMapButton />
+          </PageCommand>
         </PageActions>
       </div>
       {/* The list's facets, under the header's filter. */}

@@ -91,6 +91,7 @@ import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../component
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 /** A function's or a webhook's row, as the list's narrowings read it. */
 /** REQ-1159 (amended 2026-11-28): a function's Returns as its row shows it: the registered table
@@ -808,13 +809,18 @@ export function CommandsPage() {
         />
         <PageActions>
           {mayAuthor && !editingName && !showForm && (
-            <Button
-              leftSection={<Plus size={14} />}
-              data-testid="commands-toggle-form"
-              onClick={openCreate}
+            <PageCommand
+              description={t("pageCommands.addCommand")}
+              docs="commands/#authoring-a-command"
             >
-              {t("commandsPage.addCommand")}
-            </Button>
+              <Button
+                leftSection={<Plus size={14} />}
+                data-testid="commands-toggle-form"
+                onClick={openCreate}
+              >
+                {t("commandsPage.addCommand")}
+              </Button>
+            </PageCommand>
           )}
         </PageActions>
       </div>

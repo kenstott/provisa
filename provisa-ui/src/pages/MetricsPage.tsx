@@ -48,6 +48,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { listGlossaryTerms } from "../api/glossary";
 import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 
 interface MetricForm {
   name: string;
@@ -523,9 +524,11 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
         <PageActions>
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
           {!readOnly && !creating && editingName === null && (
-            <Button onClick={openCreate} data-testid="metrics-new-button">
-              {t("metricsPage.newMetric")}
-            </Button>
+            <PageCommand description={t("pageCommands.addMetric")} docs="modeling/#metrics">
+              <Button onClick={openCreate} data-testid="metrics-new-button">
+                {t("metricsPage.newMetric")}
+              </Button>
+            </PageCommand>
           )}
         </PageActions>
       </div>

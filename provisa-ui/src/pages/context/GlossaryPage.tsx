@@ -49,6 +49,7 @@ import {
   type TermRef,
 } from "./glossaryBook";
 import { PageActions } from "../../components/PageActions";
+import { PageCommand } from "../../components/PageCommand";
 
 const SORTS: readonly GlossarySort[] = ["name", "recent"];
 
@@ -107,17 +108,24 @@ export function GlossaryPage() {
         remember={false}
       />
       <PageActions>
-        <MultiSelect
-          aria-label={t("glossaryPage.domainFilter")}
-          placeholder={domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined}
-          data={domainOptions}
-          value={domains}
-          onChange={setDomains}
-          clearable
-          searchable
-          comboboxProps={{ withinPortal: true }}
-          data-testid="glossary-domain-filter"
-        />
+        <PageCommand
+          description={t("pageCommands.glossaryDomains")}
+          docs="ontology/#building-a-glossary-that-grounds"
+        >
+          <MultiSelect
+            aria-label={t("glossaryPage.domainFilter")}
+            placeholder={
+              domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined
+            }
+            data={domainOptions}
+            value={domains}
+            onChange={setDomains}
+            clearable
+            searchable
+            comboboxProps={{ withinPortal: true }}
+            data-testid="glossary-domain-filter"
+          />
+        </PageCommand>
       </PageActions>
     </div>
   );

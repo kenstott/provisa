@@ -62,6 +62,7 @@ import { useUrlFilter } from "../list/useUrlFilter";
 import { FilterInput } from "./FilterInput";
 import { ColumnRules } from "./ColumnRules";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 /** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
  * kind was detected (REQ-2259). */
@@ -563,14 +564,19 @@ export function ClassificationKindsTab({
         />
         {canEdit && (
           <PageActions>
-            <Button
-              variant={creating ? "outline" : "filled"}
-              onClick={() => (creating ? closeForm() : openCreate())}
-              data-testid="classification-kinds-create"
-              aria-label={creating ? t("classificationKinds.closeForm") : undefined}
+            <PageCommand
+              description={t("pageCommands.addClassificationKind")}
+              docs="test-data/#profile-a-table"
             >
-              {creating ? <X size={14} /> : t("classificationKinds.addKind")}
-            </Button>
+              <Button
+                variant={creating ? "outline" : "filled"}
+                onClick={() => (creating ? closeForm() : openCreate())}
+                data-testid="classification-kinds-create"
+                aria-label={creating ? t("classificationKinds.closeForm") : undefined}
+              >
+                {creating ? <X size={14} /> : t("classificationKinds.addKind")}
+              </Button>
+            </PageCommand>
           </PageActions>
         )}
       </div>

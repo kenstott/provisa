@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Registrieren Sie eine Tabelle aus einer Ihrer Quellen, damit sie abgefragt und gesteuert werden kann.",
+    "addView": "Definieren Sie eine Sicht: einen gesteuerten Datensatz, berechnet aus SQL oder aus Metriken.",
+    "addRelationship": "Deklarieren Sie einen Join zwischen zwei Tabellen, damit Abfragen ihm folgen können.",
+    "clearRejections": "Lassen Sie die abgelehnten Vorschläge erneut vorschlagen.",
+    "addSource": "Verbinden Sie eine Datenbank, Datei, API oder einen Dienst als Quelle von Tabellen.",
+    "addCommand": "Definieren Sie einen Befehl: eine Aktion, die Aufrufer ausführen, etwa ein Schreibvorgang oder ein Funktionsaufruf.",
+    "addRole": "Fügen Sie eine Rolle hinzu, der Rechte erteilt werden, oder eine, die aus einem Benutzerattribut abgeleitet wird.",
+    "addDataProduct": "Veröffentlichen Sie Tabellen als Datenprodukt mit einem Eigentümer, Output Ports und einem Vertrag.",
+    "productMap": "Zeichnen Sie jedes Datenprodukt, seine Tabellen und die Verbindungen zwischen ihnen als einen Graphen.",
+    "addMetric": "Definieren Sie eine Metrik: eine benannte Kennzahl, die jede Abfrage gleich berechnet.",
+    "invite": "Laden Sie eine Person per E-Mail ein und wählen Sie die Rollen, die sie erhält.",
+    "glossaryDomains": "Nur die Begriffe der gewählten Domänen anzeigen.",
+    "reviewsDue": "Nur die Dokumente anzeigen, deren Prüfdatum überschritten ist.",
+    "reembedAll": "Berechnen Sie die Such-Embeddings der Dokumente neu, die mit einem älteren Modell eingelesen wurden.",
+    "addDocument": "Fügen Sie ein Dokument hinzu, dessen Text das Glossar und Agenten zitieren können.",
+    "addDomain": "Fügen Sie eine Domäne hinzu: eine Gruppe von Tabellen mit eigenen Eigentümern und Rechten.",
+    "addPackageRegistry": "Fügen Sie eine Registry hinzu, aus der Code-Quellen ihre Pakete installieren.",
+    "addOrg": "Erstellen Sie eine Organisation mit eigenen Benutzern, Daten und Einstellungen.",
+    "addInvite": "Laden Sie eine Person ein, eine Organisation zu erstellen oder ihr beizutreten.",
+    "addScheduledTask": "Planen Sie einen Webhook oder eine SQL-Anweisung, die nach einem Cron-Zeitplan läuft.",
+    "addClassificationKind": "Fügen Sie eine Art hinzu, als die der Profiler eine Spalte klassifizieren kann.",
+    "addReport": "Fügen Sie einen Bericht hinzu: eine Sicht der Ops-Domäne, die auf dieser Seite gelesen wird.",
+    "addRegion": "Deklarieren Sie eine Region: eine Engine und ihre Speicher an einem Ort.",
+    "addContainerRegistry": "Fügen Sie eine Registry hinzu, aus der die Images von Code-Resolvern bezogen werden.",
+    "addSecret": "Speichern Sie ein Secret, auf das die Konfiguration über seinen Namen verweist.",
+    "addTag": "Fügen Sie ein Tag hinzu, um Tabellen, Spalten und Begriffe zu kennzeichnen.",
+    "addEnvironment": "Erstellen Sie eine Umgebung: eine Kopie des Modells, die Sie vor dem Merge ändern und testen.",
+    "addSyncTarget": "Fügen Sie einen Katalog hinzu, in dem das Modell veröffentlicht wird."
+  }
+}

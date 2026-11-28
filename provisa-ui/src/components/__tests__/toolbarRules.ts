@@ -18,13 +18,23 @@
 // A page header draws one (?) help: the page's own, which its PageTitle carries (RoutePageHelp). A
 // second (?) anywhere in the header -- a HelpBubble with no target of its own, or a PageHelp --
 // fails, so a page never shows two.
+// Every command of a page header's PageActions is a PageCommand (or a CapabilityGate around one)
+// with a description and a literal docs target, and every (?) -- a HelpBubble with no target of
+// its own, or a PageHelp -- names its docs: each ends with a "Read the documentation" link
+// (maintainer 2026-11-28). docsTargets.test.ts checks each literal target is a published page.
 
 import ts from "typescript";
 
 export type ToolbarKind = "named" | "icon" | "help";
 
 export interface ToolbarViolation {
-  rule: "bordered-icon-button" | "toolbar-order" | "filter-in-toolbar" | "second-page-help";
+  rule:
+    | "bordered-icon-button"
+    | "toolbar-order"
+    | "filter-in-toolbar"
+    | "second-page-help"
+    | "command-without-docs"
+    | "help-without-docs";
   line: number;
   detail: string;
 }
@@ -41,6 +51,7 @@ const ICON_COMPONENTS = new Set([
   "OntologyToggle",
   "ErdToggle",
   "ImportsToggle",
+  "DiscoverButton",
 ]);
 
 /** Containers read through: their children stand in the toolbar in their order. */
@@ -133,7 +144,13 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
     if (!open) return;
     const tag = open.tagName.getText();
     const children = ts.isJsxElement(n) ? n.children : [];
-    if (tag === "Tip" || tag === "TipSurface" || CONTAINERS.has(tag)) {
+    if (
+      tag === "Tip" ||
+      tag === "TipSurface" ||
+      tag === "PageCommand" ||
+      tag === "CapabilityGate" ||
+      CONTAINERS.has(tag)
+    ) {
       children.forEach(take);
       return;
     }
@@ -161,6 +178,45 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
   return out;
 }
 
+/** The elements a PageActions holds as its commands, read through conditions and fragments. */
+function commandElements(nodes: readonly ts.Node[]): ts.Node[] {
+  const out: ts.Node[] = [];
+  const take = (n: ts.Node): void => {
+    if (ts.isJsxText(n)) return;
+    if (ts.isJsxFragment(n)) return n.children.forEach(take);
+    if (ts.isJsxExpression(n) || ts.isParenthesizedExpression(n)) {
+      ts.forEachChild(n, take);
+      return;
+    }
+    if (ts.isBinaryExpression(n)) return take(n.right);
+    if (ts.isConditionalExpression(n)) {
+      take(n.whenTrue);
+      take(n.whenFalse);
+      return;
+    }
+    if (opening(n)) out.push(n);
+  };
+  nodes.forEach(take);
+  return out;
+}
+
+/** What is wrong with one command of a PageActions, or null when it is a documented PageCommand. */
+function commandProblem(n: ts.Node): string | null {
+  let open = opening(n)!;
+  if (open.tagName.getText() === "CapabilityGate" && ts.isJsxElement(n)) {
+    const inner = commandElements(n.children);
+    if (inner.length !== 1) return "a CapabilityGate holding other than one PageCommand";
+    open = opening(inner[0])!;
+  }
+  const tag = open.tagName.getText();
+  if (tag !== "PageCommand") return `${tag} is not a PageCommand`;
+  if (!attr(open, "description")) return "a PageCommand with no description";
+  const docs = attr(open, "docs");
+  if (!docs || !docs.initializer || !ts.isStringLiteral(docs.initializer))
+    return "a PageCommand with no literal docs target";
+  return null;
+}
+
 const RANK: Record<ToolbarKind, number> = { named: 0, icon: 1, help: 2 };
 
 /** A panel's head draws its actions in its one style, borderless (PanelHeadStyle): an action there
@@ -180,6 +236,21 @@ export function checkToolbarRules(file: string, source: string): ToolbarViolatio
       const wrong = bordered.filter((v) => !BORDERLESS.has(v));
       if (wrong.length > 0)
         out.push({ rule: "bordered-icon-button", line: lineOf(n), detail: wrong.join(", ") });
+    }
+    if (open) {
+      const tag = open.tagName.getText();
+      const helpWithoutDocs =
+        (tag === "HelpBubble" && !attr(open, "target") && !attr(open, "docs")) ||
+        (tag === "PageHelp" && !attr(open, "docs"));
+      if (helpWithoutDocs)
+        out.push({ rule: "help-without-docs", line: lineOf(n), detail: `${tag} with no docs` });
+    }
+    if (open && ts.isJsxElement(n) && TOOLBAR_COMPONENTS.has(open.tagName.getText())) {
+      for (const c of commandElements(n.children)) {
+        const problem = commandProblem(c);
+        if (problem !== null)
+          out.push({ rule: "command-without-docs", line: lineOf(c), detail: problem });
+      }
     }
     if (open && ts.isJsxElement(n)) {
       const cls = attr(open, "className");

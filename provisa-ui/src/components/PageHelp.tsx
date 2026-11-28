@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ActionIcon, Anchor, Popover, Stack, Text } from "@mantine/core";
 import { CircleHelp } from "lucide-react";
+import { STAY_OPEN_CLOSE_DELAY_MS, useStayOpen } from "./useStayOpen";
 
 /**
  * A page's own (?) help: what the page is, who uses what it holds, and the one or two rules a
@@ -24,7 +24,7 @@ import { CircleHelp } from "lucide-react";
  */
 
 /** Long enough to cross the gap between the icon and the card, short enough not to be waited for. */
-export const PAGE_HELP_CLOSE_DELAY_MS = 150;
+export const PAGE_HELP_CLOSE_DELAY_MS = STAY_OPEN_CLOSE_DELAY_MS;
 
 export function PageHelp({
   title,
@@ -40,29 +40,7 @@ export function PageHelp({
   /** The page's documentation: the in-app Docs route and the link's text. */
   docs: { href: string; label: string };
 }) {
-  const [opened, setOpened] = useState(false);
-  const pinned = useRef(false);
-  const timer = useRef<number | null>(null);
-  const cancel = useCallback(() => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = null;
-  }, []);
-  useEffect(() => cancel, [cancel]);
-  const open = () => {
-    cancel();
-    setOpened(true);
-  };
-  const closeSoon = () => {
-    cancel();
-    if (pinned.current) return;
-    timer.current = window.setTimeout(() => setOpened(false), PAGE_HELP_CLOSE_DELAY_MS);
-  };
-  // Escape and click-outside arrive here with false: closing also unpins.
-  const set = (next: boolean) => {
-    cancel();
-    pinned.current = next;
-    setOpened(next);
-  };
+  const { opened, pinned, open, closeSoon, set } = useStayOpen();
   return (
     <Popover
       opened={opened}
@@ -83,7 +61,7 @@ export function PageHelp({
           data-testid={testId}
           // Open from hover or closed: pin it open. Pinned: this click closes it.
           onClick={() => set(!(opened && pinned.current))}
-          onMouseEnter={open}
+          onMouseEnter={() => open()}
           onMouseLeave={closeSoon}
           onFocus={(e) => {
             // A click focuses too; only a focus the keyboard made opens it, so the click that
@@ -98,7 +76,7 @@ export function PageHelp({
       <Popover.Dropdown
         aria-label={title}
         data-testid={`${testId}-card`}
-        onMouseEnter={open}
+        onMouseEnter={() => open()}
         onMouseLeave={closeSoon}
       >
         <Stack gap="xs">

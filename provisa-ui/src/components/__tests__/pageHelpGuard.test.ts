@@ -12,7 +12,7 @@
 // by route. This guard reads the app's route table (App.tsx) and fails:
 // - a page route with no registry entry, and an entry for no route;
 // - an entry whose purpose or paragraph has no English string;
-// - a docs link to no page of docs/, or to no section of that page;
+// - a docs link to no page of docs/ that mkdocs.yml publishes, or to no section of that page;
 // - an entry whose placement no header of the page draws: "title" needs a PageTitle in the page,
 //   "subnav" a page of a navigation group with a subnav and no PageTitle, "own" a RoutePageHelp in
 //   the page's own header.
@@ -23,9 +23,9 @@ import { dirname, resolve } from "node:path";
 import i18n from "../../i18n";
 import { PAGE_HELP } from "../pageHelpRegistry";
 import { activeGroupId } from "../navGroups";
+import { docsTargetProblem } from "./docsSite";
 
 const SRC = resolve(__dirname, "../..");
-const DOCS = resolve(SRC, "../../docs");
 const APP = readFileSync(resolve(SRC, "App.tsx"), "utf8");
 
 /** Elements a route's element wraps its page in, never the page itself. */
@@ -101,31 +101,6 @@ function drawnFiles(file: string): string[] {
   return [file, ...children];
 }
 
-/** The section ids of a docs page as mkdocs' toc writes them: explicit `{: #id }`, else the
- *  heading's text slugified (python-markdown's default slugify). */
-function sectionIds(md: string): Set<string> {
-  const ids = new Set<string>();
-  for (const m of md.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)) {
-    const explicit = /\{:\s*#([\w-]+)\s*\}$/.exec(m[1]);
-    if (explicit !== null) {
-      ids.add(explicit[1]);
-      continue;
-    }
-    const text = m[1]
-      .replace(/`/g, "")
-      .normalize("NFKD")
-      .replace(/[^ -~]/g, "");
-    ids.add(
-      text
-        .replace(/[^\w\s-]/g, "")
-        .trim()
-        .toLowerCase()
-        .replace(/[-\s]+/g, "-"),
-    );
-  }
-  return ids;
-}
-
 const ROUTES = pageRoutes();
 
 describe("page help registry (REQ-2277 rule 8)", () => {
@@ -152,14 +127,7 @@ describe("page help registry (REQ-2277 rule 8)", () => {
   });
 
   it.each(Object.entries(PAGE_HELP))("%s links a docs page and section", (_path, entry) => {
-    const [page, section] = entry.docs.split("#");
-    expect(page.endsWith("/"), `${entry.docs}: a page path ends in /`).toBe(true);
-    const candidates = [resolve(DOCS, `${page.slice(0, -1)}.md`), resolve(DOCS, page, "index.md")];
-    const file = candidates.find((c) => existsSync(c));
-    expect(file, `${entry.docs}: no page under docs/`).toBeDefined();
-    if (section !== undefined) {
-      expect(sectionIds(readFileSync(file!, "utf8")).has(section), entry.docs).toBe(true);
-    }
+    expect(docsTargetProblem(entry.docs)).toBeNull();
   });
 
   it.each(ROUTES.map((r) => [r.path, r.component]))(

@@ -176,6 +176,7 @@ import { athenaHints } from "./sources/athena";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -1941,23 +1942,26 @@ export function SourcesPage() {
         <PageActions>
           {/* Not shown while its form is open: the panel has its own close. */}
           {!editingSourceId && !showForm && (
-            <Button
-              data-tour="sources-add"
-              data-testid="sources-add-toggle"
-              onClick={() => setAddPickerOpen(true)}
-            >
-              {t("sourcesPage.addSource")}
-            </Button>
+            <PageCommand description={t("pageCommands.addSource")} docs="sources/">
+              <Button
+                data-tour="sources-add"
+                data-testid="sources-add-toggle"
+                onClick={() => setAddPickerOpen(true)}
+              >
+                {t("sourcesPage.addSource")}
+              </Button>
+            </PageCommand>
           )}
-          {/* Closed without a choice, it opens nothing. */}
-          <SourceTypePicker
-            opened={addPickerOpen}
-            onClose={() => setAddPickerOpen(false)}
-            groups={typeSelectData()}
-            value={form.type}
-            onPick={openEmptyForm}
-          />
         </PageActions>
+        {/* The add's type picker, a modal: no command of the row. Closed without a choice, it
+            opens nothing. */}
+        <SourceTypePicker
+          opened={addPickerOpen}
+          onClose={() => setAddPickerOpen(false)}
+          groups={typeSelectData()}
+          value={form.type}
+          onPick={openEmptyForm}
+        />
       </div>
 
       {error && (

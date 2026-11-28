@@ -1,0 +1,32 @@
+{
+  "pageCommands": {
+    "addTable": "Registreer een tabel uit een van je bronnen, zodat die bevraagd en beheerd kan worden.",
+    "addView": "Definieer een view: een beheerde dataset, berekend uit SQL of uit metrics.",
+    "addRelationship": "Declareer een join tussen twee tabellen, zodat query’s die kunnen volgen.",
+    "clearRejections": "Laat de suggesties die je hebt afgewezen opnieuw voorstellen.",
+    "addSource": "Koppel een database, bestand, API of dienst als bron van tabellen.",
+    "addCommand": "Definieer een opdracht: een actie die aanroepers uitvoeren, zoals een schrijfactie of een functieaanroep.",
+    "addRole": "Voeg een rol toe die rechten krijgt, of een rol die is afgeleid van een gebruikersattribuut.",
+    "addDataProduct": "Publiceer tabellen als dataproduct met een eigenaar, output ports en een contract.",
+    "productMap": "Teken elk dataproduct, zijn tabellen en de koppelingen ertussen als één graaf.",
+    "addMetric": "Definieer een metric: een benoemde maat die elke query op dezelfde manier berekent.",
+    "invite": "Nodig iemand uit per e-mail en kies de rollen die diegene krijgt.",
+    "glossaryDomains": "Toon alleen de termen van de domeinen die je kiest.",
+    "reviewsDue": "Toon alleen de documenten waarvan de reviewdatum is verstreken.",
+    "reembedAll": "Bereken de zoek-embeddings opnieuw van de documenten die met een ouder model zijn gelezen.",
+    "addDocument": "Voeg een document toe waarvan de tekst door de woordenlijst en agents geciteerd kan worden.",
+    "addDomain": "Voeg een domein toe: een groep tabellen met eigen eigenaren en rechten.",
+    "addPackageRegistry": "Voeg een register toe waaruit codebronnen hun pakketten installeren.",
+    "addOrg": "Maak een organisatie met eigen gebruikers, data en instellingen.",
+    "addInvite": "Nodig iemand uit om een organisatie te maken of er lid van te worden.",
+    "addScheduledTask": "Plan een webhook of een SQL-statement om volgens een cron te draaien.",
+    "addClassificationKind": "Voeg een soort toe waarin de profiler een kolom kan classificeren.",
+    "addReport": "Voeg een rapport toe: een view van het ops-domein, gelezen op deze pagina.",
+    "addRegion": "Declareer een regio: een engine en zijn opslag op één plek.",
+    "addContainerRegistry": "Voeg een register toe waaruit de images van coderesolvers worden opgehaald.",
+    "addSecret": "Sla een secret op waarnaar de configuratie verwijst met zijn naam.",
+    "addTag": "Voeg een tag toe om tabellen, kolommen en termen te labelen.",
+    "addEnvironment": "Maak een omgeving: een kopie van het model om te wijzigen en te testen voordat je die merget.",
+    "addSyncTarget": "Voeg een catalogus toe waarin het model wordt gepubliceerd."
+  }
+}

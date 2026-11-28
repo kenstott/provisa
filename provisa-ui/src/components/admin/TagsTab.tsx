@@ -85,6 +85,7 @@ import { EntityLink } from "../EntityLink";
 import { CommandColumnTags } from "./CommandColumnTags";
 import { ColumnRules } from "./ColumnRules";
 import { PageActions } from "../PageActions";
+import { PageCommand } from "../PageCommand";
 
 const PAGE_SIZE = 50;
 
@@ -815,14 +816,19 @@ export function TagsTab({ readOnly = false, title }: { readOnly?: boolean; title
         />
         <PageActions>
           {!readOnly && (
-            <Button
-              variant={createOpen ? "outline" : "filled"}
-              onClick={() => (createOpen ? closeForm() : openCreate())}
-              data-testid="tags-create-button"
-              aria-label={createOpen ? t("tagsTab.closeForm") : undefined}
+            <PageCommand
+              description={t("pageCommands.addTag")}
+              docs="admin/#tags-library-sections-and-objects"
             >
-              {createOpen ? <X size={14} /> : t("tagsTab.addTag")}
-            </Button>
+              <Button
+                variant={createOpen ? "outline" : "filled"}
+                onClick={() => (createOpen ? closeForm() : openCreate())}
+                data-testid="tags-create-button"
+                aria-label={createOpen ? t("tagsTab.closeForm") : undefined}
+              >
+                {createOpen ? <X size={14} /> : t("tagsTab.addTag")}
+              </Button>
+            </PageCommand>
           )}
         </PageActions>
       </div>

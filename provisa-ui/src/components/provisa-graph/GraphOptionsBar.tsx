@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Group, Select, Switch } from "@mantine/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import type { DocsTarget } from "../docsTarget";
 import { HelpBubble } from "../HelpBubble";
 import { Tip } from "../Tip";
 import type { Detail } from "./model";
@@ -49,7 +50,7 @@ export function GraphOptionsBar({
   groupIds: string[];
   collapsed: ReadonlySet<string>;
   onCollapsedChange: (next: Set<string>) => void;
-  help?: { title: string; text: string };
+  help?: { title: string; text: string; docs: DocsTarget };
   /** REQ-1921: Show withdrawn, for a person who may preview withdrawn objects. */
   showWithdrawn?: ShowWithdrawn;
 }) {
@@ -144,6 +145,7 @@ export function GraphOptionsBar({
             paragraphs={[help.text]}
             ariaLabel={help.text}
             testId={`${testId}-hint`}
+            docs={help.docs}
           />
         </Group>
       )}

@@ -77,6 +77,7 @@ import { derivedRoleMatches, roleRowTexts } from "./security/roleRowTexts";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { PageActions } from "../components/PageActions";
+import { PageCommand } from "../components/PageCommand";
 /** A role may be saved once it lists a domain, or holds no capability to apply in one (REQ-2155). */
 function listsADomain(form: { domainAccess: string[]; capabilities: Capability[] }): boolean {
   return form.domainAccess.length > 0 || form.capabilities.length === 0;
@@ -676,41 +677,45 @@ export function SecurityRolesPage() {
           onChange={setRoleSearch}
           placeholder={t("securityPage.filterByRoleId")}
         />
-        {/* The bubble explains this button, so it travels with it. */}
         <PageActions>
           {mayDefine && !showRoleForm && !showDerivedForm && (
             // REQ-2078: a role is granted rights; a derived one comes from an attribute.
-            <Menu position="bottom-end" withinPortal>
-              <Menu.Target>
-                <Button data-testid="toggle-role-form">{t("securityPage.addRole")}</Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  data-testid="add-granted-role"
-                  onClick={() => {
-                    setExpandedRole(null);
-                    handleNewRole();
-                  }}
-                >
-                  {t("securityPage.addGrantedRole")}
-                </Menu.Item>
-                <Tip text={t("securityPage.derivedRolesHelp")} position="left">
+            <PageCommand
+              description={t("pageCommands.addRole")}
+              docs="security/#roles-granted-derived-and-meta"
+            >
+              <Menu position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <Button data-testid="toggle-role-form">{t("securityPage.addRole")}</Button>
+                </Menu.Target>
+                <Menu.Dropdown>
                   <Menu.Item
-                    data-testid="add-derived-role"
+                    data-testid="add-granted-role"
                     onClick={() => {
                       setExpandedRole(null);
-                      setEditingRoleInRow(null);
-                      setShowRoleForm(false);
-                      setDerivedPick(null);
-                      setDerivedSeed(null);
-                      setShowDerivedForm(true);
+                      handleNewRole();
                     }}
                   >
-                    {t("securityPage.addDerivedRole")}
+                    {t("securityPage.addGrantedRole")}
                   </Menu.Item>
-                </Tip>
-              </Menu.Dropdown>
-            </Menu>
+                  <Tip text={t("securityPage.derivedRolesHelp")} position="left">
+                    <Menu.Item
+                      data-testid="add-derived-role"
+                      onClick={() => {
+                        setExpandedRole(null);
+                        setEditingRoleInRow(null);
+                        setShowRoleForm(false);
+                        setDerivedPick(null);
+                        setDerivedSeed(null);
+                        setShowDerivedForm(true);
+                      }}
+                    >
+                      {t("securityPage.addDerivedRole")}
+                    </Menu.Item>
+                  </Tip>
+                </Menu.Dropdown>
+              </Menu>
+            </PageCommand>
           )}
         </PageActions>
       </div>
