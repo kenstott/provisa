@@ -37,7 +37,7 @@ import {
   type TableColumnsRow,
 } from "./tableColumns";
 import { readOntology } from "./ontologyRead";
-import { allHopsCypher, termsCypherLabel } from "./ontologyCypher";
+import { allHopsCypher, termsCypherGraph } from "./ontologyCypher";
 import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
@@ -79,7 +79,13 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   );
   // REQ-2174 (amended 2026-11-12): All follows the connected part to its end under the budget --
   // past it the reads stop, and that it is past is said, as at the root.
-  const past = { over: NODE_BUDGET, rows: counted, query, language: "graphql", hops: true } as const;
+  const past = {
+    over: NODE_BUDGET,
+    rows: counted,
+    query,
+    language: "graphql",
+    hops: true,
+  } as const;
   if (over) return past;
   // REQ-2136, REQ-2174 (amended 2026-11-27): what the view opens as is the one query that read it,
   // its hops its reach filter; All's, the Cypher variable-length query from its root's terms.
@@ -90,7 +96,12 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
     opened.language === "graphql"
       ? { query: opened.query, language: opened.language }
       : {
-          query: allHopsCypher(await termsCypherLabel(role), opened.roots),
+          query: allHopsCypher(
+            await termsCypherGraph(role),
+            opened.roots,
+            opened.depth,
+            scope.edgeTypes,
+          ),
           language: opened.language,
         };
   // Only the Product map reads products apart, and draws their lineage.

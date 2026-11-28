@@ -247,6 +247,7 @@
   "tests/integration/test_glossary_domain_authority.py": 5.9,
   "tests/integration/test_glossary_lifecycle.py": 3.7,
   "tests/integration/test_glossary_meta_domain.py": 1.5,
+  "tests/integration/test_ontology_all_hops_cypher.py": 10.0,
   "tests/integration/test_go_decorators.py": 75.0,
   "tests/integration/test_go_install_live.py": 155.1,
   "tests/integration/test_go_worker.py": 72.6,

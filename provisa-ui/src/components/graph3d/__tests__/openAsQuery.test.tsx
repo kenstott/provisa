@@ -233,7 +233,9 @@ describe("a graph view's Open as query", () => {
 });
 
 describe("All hops' Open as query (REQ-2174, amended 2026-11-26)", () => {
-  const CYPHER = "MATCH p = (t:Ontology:Terms {id: 7})-[*]-(n) RETURN p";
+  const CYPHER =
+    "MATCH (t:Ontology:Terms {id: 7})-[:KIND_OF|PART_OF*0..4]-(a:Ontology:Terms) " +
+    "OPTIONAL MATCH (a)-[r:KIND_OF|PART_OF]->(b:Ontology:Terms) RETURN DISTINCT a, r, b";
 
   it("opens its Cypher as itself, compiling nothing, and offers no other surface", async () => {
     view(CYPHER, false, "cypher");

@@ -887,6 +887,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # the node's columns). Its columns are carried as "<var>.<column>", and a segment after
         # the WITH reads the node as its own row of them (_expose_split_nodes).
         self._split_carried: dict[str, tuple[str, list[str]]] = {}
+        # The required WHERE of the MATCH steps being read, whose conditions on a walk's start
+        # alone also narrow the rows the walk starts from (PathFunctionsMixin._seed_filter).
+        self._stage_where: WhereClause | None = None
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -1058,7 +1061,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         stage_where, optional_wheres = _steps_where(match_steps)
         held: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if all_matches:
+            self._stage_where = stage_where
             from_clause, joins = self._build_from_joins(all_matches)
+            self._stage_where = None
             held = list(self._held_end_conditions)
             from_clause, joins = _optional_start(
                 from_clause, list(joins), all_matches, carried, self._lateral_bound
@@ -1303,7 +1308,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 from_clause = uw_from
                 joins = list(uw_joins)
         elif all_matches:
+            self._stage_where = stage_where[0]
             from_clause, joins = self._build_from_joins(all_matches)
+            self._stage_where = None
             carried = cte_defs[-1][0] if cte_defs else None
             from_clause, joins = _optional_start(
                 from_clause, list(joins), all_matches, carried, self._lateral_bound
