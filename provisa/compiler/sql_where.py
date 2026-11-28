@@ -460,9 +460,10 @@ def junction_hop(  # REQ-1586
 
 class RelationshipConditions:  # REQ-2136
     """A where's relationship conditions, for a where over ``type_name``'s rows read as
-    ``alias``: each a row with a related row matching its own where, compiled to EXISTS over the
-    relationship's target. Every target read is added to the statement's ``sources``, and the
-    EXISTS body is governed as the rest of the statement is (stage2._govern_selects)."""
+    ``alias``: each a row with a related row matching its own where, compiled to the row's key IN
+    the keys of the relationship's target rows matching it (EXISTS through a junction). Every
+    target read is added to the statement's ``sources``, and the subquery is governed as the rest
+    of the statement is (stage2._govern_selects)."""
 
     def __init__(
         self,
@@ -516,7 +517,18 @@ class RelationshipConditions:  # REQ-2136
                 f"EXISTS (SELECT 1 FROM {hop.from_clause(target_from)}"
                 f" WHERE {hop.to_source} AND ({cond}))"
             )
-        return f"EXISTS (SELECT 1 FROM {target_from} WHERE {tgt} = {src} AND ({cond}))"
+        # The related rows' keys, not a correlated EXISTS: uncorrelated, PostgreSQL plans the
+        # subquery once and hashes it. A correlated EXISTS it plans twice (as EXISTS and as the
+        # hashed IN it may become), and each nested condition twice within each, so the ontology
+        # view's reach filter (REQ-2174), nested a hop per level, took most of a second to plan at
+        # four hops. The same truth as EXISTS: the null keys are left out (an equality never
+        # matches them) and a null source key is FALSE (COALESCE), so NOT keeps the row as NOT
+        # EXISTS does. ``cond`` is its conditions ANDed (_compile_where), so it needs no parens --
+        # each level of nesting is a level of the parser's recursion too.
+        return (
+            f"COALESCE({src} IN (SELECT {tgt} FROM {target_from}"
+            f" WHERE {tgt} IS NOT NULL AND {cond}), FALSE)"
+        )
 
 
 def _compile_where(

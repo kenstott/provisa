@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """REQ-2136: a where states a relationship's condition, Hasura's shape -- ``{ rel: { ... } }`` --
-read as "a related row matches it" and compiled to EXISTS over the relationship's target, governed
-as the rest of the statement is; and ``ilike`` matches with case ignored."""
+read as "a related row matches it" and compiled to the row's key IN the keys of the relationship's
+target rows matching it, governed as the rest of the statement is; and ``ilike`` matches with case
+ignored."""
 
 from pathlib import Path
 
@@ -67,14 +68,16 @@ def test_the_where_offers_each_relationship_as_its_target_s_where(schema_and_ctx
     assert "customer" in schema.get_type("OrdersWhere").fields
 
 
-def test_a_relationship_s_condition_is_an_exists_over_its_target(schema_and_ctx):
+def test_a_relationship_s_condition_is_its_key_in_the_target_s_keys(schema_and_ctx):
     q = _compiled(
         schema_and_ctx, '{ customers(where: { orders: { region: { eq: "us" } } }) { id name } }'
     )
     assert 'FROM "public"."customers" "t0"' in q.sql
+    # Uncorrelated, so PostgreSQL plans it once and hashes it (REQ-2174's reach filter); null keys
+    # left out and a null source key FALSE, so it is true exactly where EXISTS is.
     assert (
-        'EXISTS (SELECT 1 FROM "public"."orders" "w1" WHERE "w1"."customer_id" = "t0"."id"'
-        ' AND ("w1"."region" = $1))'
+        'COALESCE("t0"."id" IN (SELECT "w1"."customer_id" FROM "public"."orders" "w1"'
+        ' WHERE "w1"."customer_id" IS NOT NULL AND "w1"."region" = $1), FALSE)'
     ) in q.sql
     assert q.params == ["us"]
     # The target is one of the statement's tables: routing and the floor see it.
@@ -83,7 +86,7 @@ def test_a_relationship_s_condition_is_an_exists_over_its_target(schema_and_ctx)
 
 def test_an_empty_condition_is_any_related_row(schema_and_ctx):
     q = _compiled(schema_and_ctx, "{ customers(where: { orders: {} }) { id } }")
-    assert 'WHERE "w1"."customer_id" = "t0"."id" AND (TRUE))' in q.sql
+    assert 'WHERE "w1"."customer_id" IS NOT NULL AND TRUE), FALSE)' in q.sql
 
 
 def test_conditions_combine_and_nest_each_under_its_own_alias(schema_and_ctx):
@@ -94,10 +97,38 @@ def test_conditions_combine_and_nest_each_under_its_own_alias(schema_and_ctx):
               { region: { eq: "eu" } }
             ] }) { id } }""",
     )
-    assert '"w1"."id" = "t0"."customer_id"' in q.sql
-    assert '"w2"."customer_id" = "w1"."id" AND ("w2"."status" = $1)' in q.sql
+    assert 'COALESCE("t0"."customer_id" IN (SELECT "w1"."id" FROM' in q.sql
+    assert (
+        'COALESCE("w1"."id" IN (SELECT "w2"."customer_id" FROM "public"."orders" "w2"'
+        ' WHERE "w2"."customer_id" IS NOT NULL AND "w2"."status" = $1), FALSE)'
+    ) in q.sql
     assert '"t0"."region" = $2' in q.sql
     assert q.params == ["open", "eu"]
+
+
+@pytest.mark.parametrize(
+    ("where", "kept"),
+    [
+        ('{ customer: { name: { eq: "ann" } } }', [1]),
+        # NOT keeps what NOT EXISTS keeps: the order with no customer, and one whose customer
+        # is not ann -- never dropped as an IN over a null would drop it.
+        ('{ _not: { customer: { name: { eq: "ann" } } } }', [2, 3]),
+        ("{ customer: {} }", [1, 2]),
+        ("{ _not: { customer: {} } }", [3]),
+    ],
+)
+def test_a_relationship_s_condition_holds_where_exists_holds(schema_and_ctx, where, kept):
+    import duckdb
+
+    q = _compiled(schema_and_ctx, f"{{ orders(where: {where}) {{ id }} }}")
+    db = duckdb.connect()
+    db.execute("CREATE SCHEMA public")
+    db.execute("CREATE TABLE public.customers (id INTEGER, name VARCHAR)")
+    db.execute("INSERT INTO public.customers VALUES (10, 'ann'), (11, 'bo'), (NULL, 'ann')")
+    db.execute("CREATE TABLE public.orders (id INTEGER, customer_id INTEGER)")
+    db.execute("INSERT INTO public.orders VALUES (1, 10), (2, 11), (3, NULL)")
+    rows = db.execute(q.sql, q.params).fetchall()
+    assert sorted(r[0] for r in rows) == kept
 
 
 def test_the_exists_body_is_governed_with_the_target_s_row_rules(schema_and_ctx):
@@ -107,8 +138,8 @@ def test_the_exists_body_is_governed_with_the_target_s_row_rules(schema_and_ctx)
     )
     rls = RLSContext(rules={ORDERS: "\"region\" = 'us-east'"})
     governed = governed_for_role(q.sql, ctx, "admin", rls=rls)
-    exists = governed[governed.index("EXISTS") :]
-    assert "'us-east'" in exists
+    related = governed[governed.index(" IN (SELECT") :]
+    assert "'us-east'" in related
 
 
 def test_ilike_ignores_case(schema_and_ctx):
@@ -120,19 +151,19 @@ def test_ilike_ignores_case(schema_and_ctx):
 def test_a_relationship_s_condition_in_a_nested_where_correlates_with_the_nested_rows(
     schema_and_ctx,
 ):
-    """A nested field's where states a relationship's condition as a root's does: EXISTS over the
-    target, correlated with the nested field's own rows (the Ontology View's edges to the terms
+    """A nested field's where states a relationship's condition as a root's does: the nested
+    field's own rows' key IN the target's keys (the Ontology View's edges to the terms
     its filters keep)."""
     q = _compiled(
         schema_and_ctx,
         '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
     )
     # REQ-2174: applied inside the field's grouped read, to the rows it groups.
-    assert 'FROM "public"."orders" "t1" WHERE EXISTS' in q.sql
+    assert 'FROM "public"."orders" "t1" WHERE COALESCE(' in q.sql
     assert 'GROUP BY "t1"."customer_id"' in q.sql
     assert (
-        'EXISTS (SELECT 1 FROM "public"."customers" "w1" WHERE "w1"."id" = "t1"."customer_id"'
-        ' AND ("w1"."name" = $1))'
+        'COALESCE("t1"."customer_id" IN (SELECT "w1"."id" FROM "public"."customers" "w1"'
+        ' WHERE "w1"."id" IS NOT NULL AND "w1"."name" = $1), FALSE)'
     ) in q.sql
     assert q.params[0] == "x"
 
@@ -149,8 +180,8 @@ def test_a_nested_where_s_exists_body_is_governed_with_the_target_s_row_rules(sc
         CUSTOMERS: [("id", "integer"), ("name", "varchar")],
     }
     governed = governed_for_role(q.sql, ctx, "admin", rls=rls, column_types=columns)
-    exists = governed[governed.index("EXISTS") :]
-    assert '"w1"."name" = \'ann\'' in exists
+    related = governed[governed.index(" IN (SELECT") :]
+    assert '"w1"."name" = \'ann\'' in related
 
 
 def test_a_nested_where_without_a_relationship_reads_its_rows_under_the_alias(schema_and_ctx):

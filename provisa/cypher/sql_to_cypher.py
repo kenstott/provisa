@@ -138,6 +138,9 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     if not isinstance(tree, exp.Select):
         return None
+    # A relationship's condition, compiled as the row's key IN its related rows' keys
+    # (sql_where.RelationshipConditions.exists), is the EXISTS it states.
+    tree = cast(exp.Select, tree.transform(_relationship_exists))
 
     if params:
         # The Cypher stands on its own -- it is run as written, with no parameters of its own --
@@ -553,6 +556,43 @@ def _read_call_values(cypher_lines: list[str], call_vars: dict[str, dict[str, st
 
 
 # --- Extracted helpers for semantic_sql_to_cypher ---
+
+
+def _relationship_exists(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``COALESCE(src IN (SELECT w.k FROM target w WHERE w.k IS NOT NULL AND ...), FALSE)``, the
+    form sql_where compiles a relationship's condition to, as the EXISTS it states:
+    ``EXISTS (SELECT 1 FROM target w WHERE w.k = src AND ...)``. Any other node as it is."""
+    if not (
+        isinstance(node, exp.Coalesce)
+        and isinstance(node.this, exp.In)
+        and len(node.expressions) == 1
+        and isinstance(node.expressions[0], exp.Boolean)
+        and not node.expressions[0].this
+    ):
+        return node
+    query = node.this.args.get("query")
+    sub = query.this if isinstance(query, exp.Subquery) else query
+    if not isinstance(sub, exp.Select) or len(sub.expressions) != 1:
+        return node
+    key = sub.expressions[0]
+    where = sub.args.get("where")
+    conjuncts = _conjuncts(where.this) if where is not None else []
+    if not conjuncts or not (
+        isinstance(conjuncts[0], exp.Is)
+        and conjuncts[0].args.get("negate")
+        and isinstance(conjuncts[0].expression, exp.Null)
+        and conjuncts[0].this == key
+    ):
+        return node
+    correlated = exp.and_(
+        exp.EQ(this=key.copy(), expression=node.this.this.copy()),
+        # transform() does not descend into the node it replaced: a nested condition here.
+        *[c.transform(_relationship_exists) for c in conjuncts[1:]],
+    )
+    body = sub.copy()
+    body.set("expressions", [exp.Literal.number(1)])
+    body.set("where", exp.Where(this=correlated))
+    return exp.Exists(this=body)
 
 
 def _conjuncts(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
