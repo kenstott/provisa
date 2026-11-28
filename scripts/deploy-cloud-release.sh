@@ -148,6 +148,10 @@ wait_for_stack() {
     }
     sleep 5
   done
+  # Before the install the stack being replaced may be the broken one this deploy exists to replace
+  # (the 513 deploy, 2026-11-28: an old hot-patch tree failed startup, /health 503, and the deploy
+  # stopped here, never installing): its API is not waited for. After the recreate it is.
+  [ "${2:-}" = before-install ] && return 0
   verify_api
 }
 
@@ -270,7 +274,7 @@ restart_app() {
 check_release
 wake_node
 keep_awake
-wait_for_stack "the current stack on $NODE"
+wait_for_stack "the current stack on $NODE" before-install
 preflight_engine
 check_sandbox_tier
 install_release
