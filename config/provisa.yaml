@@ -1424,6 +1424,52 @@ functions:
           type: number
         active:
           type: boolean
+- name: label_pets
+  description: Demo Provisa-hosted Python command — labels pets with a prefix and optional score
+    threshold (mixed result_set + scalar args, REQ-885)
+  domain_id: pet-store
+  kind: query
+  impl_kind: python
+  source_id: ''
+  function_name: label_pets
+  returns: ''
+  binding:
+    callable: demo.py_functions:label_pets
+  arguments:
+  - name: input
+    type: String
+    arg_kind: result_set
+    columns:
+    - name: id
+      type: integer
+    - name: name
+      type: text
+  - name: prefix
+    type: text
+    default: P-
+  - name: min_score
+    type: integer
+    default: 0
+  visible_to:
+  - data_steward
+  output_columns:
+  - name: id
+    type: integer
+  - name: score
+    type: double
+  - name: label
+    type: text
+  return_schema:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: integer
+        score:
+          type: number
+        label:
+          type: string
 - name: random_grpc_set
   description: Demo gRPC command returning a random-valued dataset (set-returning)
     via the JSON unary bridge (REQ-885)

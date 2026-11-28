@@ -6,6 +6,8 @@ Commands are one of the ways to write business logic in Provisa. See [Business L
 
 A command is a **governed RPC**. Its inputs and outputs are declared, typed, validated, traced and wired into lineage. An ad-hoc ETL step, an ungoverned curl call or a subprocess has none of that.
 
+Every command returns a dataset — a list of typed rows. A mutation is no different: its return rows describe what changed. A command declared with no output columns returns an empty dataset, not an error.
+
 ## Implementation kinds
 
 These are the `impl_kind` values you register most often:
@@ -40,7 +42,7 @@ Each argument declares an `arg_kind`:
 `http` and `grpc` commands **must** declare at least one `table_ref` or `result_set` argument.
 
 A relation argument given as a table names it by its logical name, the `schema.table` a SQL
-statement reads it by (for example `pet_store.orders`). A `result_set` table is read through the
+statement reads it by (for example `pet_store.pets`). A `result_set` table is read through the
 governed pipeline as the calling role, so that role's row filters, masks and column visibility
 apply, and only the argument's declared columns are read. A physical `source.schema.table`
 reference, or any name SQL serves no table by, is refused with HTTP 400 naming the form it takes.
@@ -72,6 +74,207 @@ it. The default is checked against the argument's type when the command is saved
 A command that returns a set (declared via `output_columns` and `return_schema`) is a
 table-valued function. Use it in a `FROM` clause or a `JOIN`.
 
+## Calling commands
+
+The examples below use `label_pets` and `random_python_set`, two `python` commands from the demo.
+`random_python_set` takes primitive arguments and returns fabricated rows. `label_pets` takes
+one `result_set` argument (a pet relation) plus optional scalar args, and returns derived columns.
+
+### 1. Primitive arguments only
+
+Pass a SQL literal where a command expects a scalar. Provisa reads it like PostgreSQL reads
+an unknown-typed literal: by the declared parameter's own input function. `random_python_set('10')`
+reads `'10'` as an integer — the same conversion `SELECT '10'::integer` performs. The literal
+`'5.5'` passed to a `double` parameter becomes the float `5.5`.
+
+```sql
+-- random_python_set(rows integer, seed integer)
+SELECT * FROM random_python_set('5');
+SELECT * FROM random_python_set('5', '42');  -- seed for reproducible output
+```
+
+A literal that cannot be converted raises with PostgreSQL's error code:
+
+| SQLSTATE | Meaning | Example |
+| --- | --- | --- |
+| `22P02` | Invalid input syntax for the type | `random_python_set('abc')` → not an integer |
+| `22003` | Value out of range for the type | `random_python_set('99999999999')` → too large for `integer` |
+| `22008` | Date/time field value out of range | a date command called with `'2026-13-01'` |
+
+Non-literal values — a Cypher string or a SQL `TRUE` — are checked as-is against the declared type, not re-read by the input function.
+
+### 2. One dataset argument
+
+A `result_set` argument accepts three forms, all of which read only the argument's declared columns and apply the calling role's row-level security and column masks.
+
+Provisa reads the relation whole, up to the caller's hard row cap. For roles with a `max_rows` limit that cap applies; for roles without one the server's default limit applies. A relation that exceeds the cap is refused by name before the command runs.
+
+**Logical served name.** The name must be `schema.table` — the name SQL reads it by in the
+served model. Physical three-part names (`source.schema.table`) are refused.
+
+```sql
+SELECT * FROM label_pets('pet_store.pets');
+```
+
+**Query text.** Any `SELECT`, `WITH` or `VALUES` expression works. The query runs through the
+same governed pipeline, as the calling role. If no role is bound to the call, passing a query
+fails with `functions.relation_query_no_role`.
+
+```sql
+SELECT * FROM label_pets(
+  'SELECT id, name FROM pet_store.pets WHERE available = TRUE'
+);
+```
+
+**JSON rows.** Pass a JSON array of row objects when the data is already in memory or arrives
+from an external source.
+
+```sql
+SELECT * FROM label_pets(
+  '[{"id": 1, "name": "Buddy"}, {"id": 2, "name": "Luna"}]'
+);
+```
+
+The same three forms work on every surface — GraphQL, pgwire, REST, gRPC, Bolt, Arrow Flight and MCP — by passing the value as a string under the argument's name.
+
+A `table_ref` argument works differently: it accepts only a `schema.table` name. Provisa passes that name (plus a minted token and connection details) to the callable, which fetches the data itself. Passing a query string or a JSON array to a `table_ref` argument fails with `functions.table_ref_not_a_table`.
+
+### Composing a query as a dataset argument
+
+A command call also works as the query-form value of a `result_set` argument. The inner query runs first; its rows are passed as a materialized `result_set` to the outer command.
+
+```sql
+-- Feed a filtered query result directly into label_pets.
+SELECT * FROM label_pets(
+  (SELECT id, name FROM pet_store.pets WHERE available = TRUE)
+);
+```
+
+Each command runs through its own I/O contract check. The inner query's result becomes a `{"kind": "result_set", "columns": [...], "rows": [...]}` dict that the outer command receives as its `input` argument.
+
+### 3. Multiple dataset arguments
+
+When a command declares more than one `result_set` argument, each arrives in the Python payload
+under its own name. The function reads them independently and can join or merge them however
+it needs.
+
+```python
+def match_pets_to_vets(payload, session):
+    pets = payload["pets"]     # {"kind": "result_set", "columns": [...], "rows": [...]}
+    vets = payload["vets"]
+
+    vet_map = {v["specialty"]: v for v in vets["rows"]}
+    result = []
+    for row in pets["rows"]:
+        vet = vet_map.get(row["species"], {})
+        result.append({**row, "vet_name": vet.get("name")})
+    return result
+```
+
+Registered with two `result_set` arguments:
+
+```yaml
+arguments:
+  - name: pets
+    type: String
+    arg_kind: result_set
+    columns:
+      - {name: id, type: integer}
+      - {name: name, type: text}
+      - {name: species, type: text}
+  - name: vets
+    type: String
+    arg_kind: result_set
+    columns:
+      - {name: id, type: integer}
+      - {name: name, type: text}
+      - {name: specialty, type: text}
+```
+
+Call it with two table references, one per argument:
+
+```sql
+SELECT * FROM match_pets_to_vets('pet_store.pets', 'pet_store.vets');
+```
+
+On GraphQL and REST, pass each argument by name:
+
+```json
+{ "pets": "pet_store.pets", "vets": "pet_store.vets" }
+```
+
+### 4. A dataset plus primitive arguments
+
+Mix `result_set` and `column_value` arguments freely. Provisa prepares each relation-kind
+argument by materializing or referencing the named table, then passes scalars through unchanged.
+
+```yaml
+arguments:
+  - name: input
+    type: String
+    arg_kind: result_set
+    columns:
+      - {name: id, type: integer}
+      - {name: name, type: text}
+  - name: prefix
+    type: text
+    default: "P-"
+  - name: min_score
+    type: integer
+    default: 0
+```
+
+The SQL call passes the table as the first argument and scalars as typed literals after it:
+
+```sql
+SELECT * FROM label_pets('pet_store.pets', 'PET-', '30');
+```
+
+Leave out arguments that have defaults and they take their declared values:
+
+```sql
+SELECT * FROM label_pets('pet_store.pets');  -- prefix = 'P-', min_score = 0
+```
+
+### 5. The session argument
+
+Python commands receive a second argument alongside the payload: a session object that carries
+the invocation context. Use it to tag output rows with the trace id, branch on the calling role,
+or write audit information that joins back to the invocation trace.
+
+```python
+def label_pets(payload, session):
+    rows = []
+    for row in payload["input"]["rows"]:
+        score_pct = (int(row["id"]) * 37) % 100
+        rows.append({
+            "id": int(row["id"]),
+            "score": round(score_pct / 100.0, 2),
+            "label": f"{payload.get('prefix', 'P-')}{row['name']}",
+            # Tag each output row with the trace id.
+            # Audit rows written during this call carry the same id,
+            # so they join back to this invocation in the trace log.
+            "trace_id": session.correlation_id,
+        })
+
+    # Restrict output for roles without full access.
+    if session.role_id not in ("data_steward", "org_admin"):
+        rows = [r for r in rows if r["score"] > 0.3]
+
+    return rows
+```
+
+The session object has four fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `correlation_id` | `str` | The invocation trace id. Audit rows join back to it. |
+| `identity` | `str` | `"definer"` or `"invoker"` — which identity the call runs under. |
+| `role_id` | `str \| None` | The calling role's id. |
+| `token` | `str` | A short-lived token for the minted pgwire session. |
+
+The session is read-only. You cannot change its role or token from inside the command.
+
 ## The dataset contract
 
 Each `table_ref` or `result_set` argument may declare an **input column contract**: an ordered,
@@ -86,7 +289,7 @@ Both contracts are validated fail-loud at every invocation:
 - **Output:** rows returned by the command are validated against `output_columns` before they
   reach the caller.
 - **Narrow projection:** when an input contract is declared, the read of a table projects
-  **only those columns** (`SELECT "orders"."id", "orders"."region" FROM "pet_store"."orders"`)
+  **only those columns** (`SELECT "pets"."id", "pets"."name" FROM "pet_store"."pets"`)
   rather than `SELECT *`.
 
 ### The IR type vocabulary
@@ -110,28 +313,34 @@ This example is a `python` command, so it loads only where host code is allowed 
 
 ```yaml
 functions:
-  - name: enrich_orders
-    description: Enrich orders inline — deterministic score + region label
-    domain_id: sales-analytics
+  - name: label_pets
+    description: Label pets with a prefix and score threshold
+    domain_id: pet-store
     kind: query
     impl_kind: python
     source_id: ""
-    function_name: enrich_orders
+    function_name: label_pets
     returns: ""
     binding:
-      callable: demo.py_functions:enrich_orders
+      callable: demo.py_functions:label_pets
     arguments:
       - name: input
         type: String
         arg_kind: result_set
         columns:
           - {name: id, type: integer}   # narrow input contract
-          - {name: region, type: text}
-    visible_to: [admin]
+          - {name: name, type: text}
+      - name: prefix
+        type: text
+        default: "P-"
+      - name: min_score
+        type: integer
+        default: 0
+    visible_to: [data_steward]
     output_columns:
       - {name: id, type: integer}
       - {name: score, type: double}
-      - {name: region_label, type: text}
+      - {name: label, type: text}
     return_schema:
       type: array
       items:
@@ -139,7 +348,7 @@ functions:
         properties:
           id: {type: integer}
           score: {type: number}
-          region_label: {type: string}
+          label: {type: string}
 ```
 
 The gRPC variant (`enrich_grpc_set`) follows the same pattern but specifies `impl_kind: grpc`
@@ -175,11 +384,11 @@ register or update the command without a config reload.
 Commands can appear **inside** a larger SQL statement, where you join, subquery or project them; `SELECT * FROM fn(args)` is only the simplest form. A remote source's write operation is the exception, because it's called on its own (see [Why it cannot be composed](#why-it-cannot-be-composed)).
 
 ```sql
--- Enrich the orders relation and join the result back inline.
-SELECT o.id, o.amount, e.score, e.region_label
-FROM   pet_store.orders o
-JOIN   enrich_orders('pet_store.orders') e ON o.id = e.id
-WHERE  e.score > 0.8;
+-- Label pets inline and join the result back to the source table.
+SELECT p.id, p.name, lp.score, lp.label
+FROM   pet_store.pets p
+JOIN   label_pets('pet_store.pets') lp ON p.id = lp.id
+WHERE  lp.score > 0.8;
 ```
 
 Before governance, validation, or routing runs, the pipeline detects registered command calls,
@@ -426,9 +635,77 @@ PROVISA_COMMANDS_ALLOW_HOST_CODE=true
 [Code sources](code-sources.md) are the governed alternative: their code runs in a sandbox, is
 pinned to a version, and is promoted with the model.
 
+### Code source sandbox vs. python in-process
+
+A code source worker runs under the operating system's process sandbox. On macOS, `sandbox-exec`
+applies a deny-all profile that permits only reads from declared directories and network access
+through the egress proxy. On Linux, Landlock restricts filesystem access and a seccomp filter
+blocks new socket creation except TCP. Either way, a worker cannot read arbitrary files, write
+to the filesystem, or dial an address outside the egress proxy's allow-list.
+
+A `python` command (`impl_kind: python`) works differently. It runs in-process on the server —
+no worker, no sandbox. It has the same access as the server process itself. Use `python` commands
+only when you control and trust the callable. Code sources are the right choice for user-supplied
+code or any code you want sandboxed, versioned, and promoted with the model.
+
 ## Invocation tracing
 
 Every invocation emits a trace, whatever the outcome. The trace holds the command name, transport kind, identity model (DEFINER or INVOKER), input relation references, role id and output cardinality. The dispatcher emits it, so no `impl_kind` can skip it.
+
+## Opening in the explorers
+
+When you follow a command's Cypher or SPARQL link from the Commands page or from a table's
+command list, the query runs at once. You see results immediately without an extra Run step.
+
+A mutation command opens in the Cypher explorer without running. The explorer holds it unrun
+because executing it immediately would perform the write. Fill in any parameters, then run it
+deliberately.
+
+## Code source declarations
+
+A code source's exports become commands and tables through tags in their documentation comments.
+An export tagged `@command` is a mutation; `@query` is a read.
+
+In Node.js, the tags are JSDoc comment lines above the function:
+
+```typescript
+/**
+ * @command Refund an order.
+ * @param order_id - The order to refund.
+ */
+export async function refundOrder(inputs: { order_id: number }): Promise<{ ok: boolean }> {
+  // ...
+}
+
+/**
+ * @query Score orders for a region.
+ */
+export function scoreOrders(
+  inputs: { factor: number },
+  orders: TableRef<{ id: number; region: string }>
+): Array<{ id: number; score: number }> {
+  // ...
+}
+```
+
+In Python, Go, and Rust, the tags are lines inside the docstring or doc comment:
+
+```python
+def label_pets(payload, session):
+    """@query Label pets with a prefix and score."""
+    ...
+
+def refund_order(payload, session):
+    """@command Refund an order and return the updated row."""
+    ...
+```
+
+An unrecognized tag is an error at bundle-read time. The source is refused and every unknown tag
+is listed by name. Standard JSDoc tags (`@param`, `@returns`, etc.) are accepted alongside
+Provisa's in Node.js sources; Python, Go, and Rust accept only Provisa's tags.
+
+The description you write in the docstring or JSDoc comment becomes the command's description
+in the UI and in generated API documentation.
 
 ## CLI: provisa metadata export
 
