@@ -23,7 +23,7 @@ import { labelFit, loosen, type ViewNode } from "../../pages/tables/profile3d/be
 import { edgeClass } from "./layeredLayout";
 import { hiddenLabels, labelPx, LABEL_FONT_PX } from "./labelSize";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
-import { groundClass, labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
+import { groundClass, labelClass, lookColour, nodeLook, type Shape } from "./nodeLook";
 
 export type GraphHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -464,38 +464,10 @@ export class GraphScene extends BaseScene<GraphHover> {
     const key = `look:${colour}`;
     let m = this.mats[key];
     if (!m) {
-      m = this.solid(this.colourOf(colour));
+      m = this.solid(lookColour(colour));
       this.mats[key] = m;
     }
     return m;
-  }
-
-  private colourOf(c: Colour): string {
-    const th = this.theme;
-    switch (c) {
-      case "accent":
-        return th.accent;
-      case "fam-temporal":
-        return th.family.temporal;
-      case "fam-numeric":
-        return th.family.numeric;
-      case "fam-foreign":
-        return th.family.foreign;
-      case "fam-other":
-        return th.family.other;
-      case "warm":
-        return th.warm;
-      case "q-tail":
-        return th.qTail;
-      case "q-mid":
-        return th.qMid;
-      case "fam-boolean":
-        return th.family.boolean;
-      case "cool":
-        return th.cool;
-      case "hl":
-        return th.hl;
-    }
   }
 
   /** ``kind``'s material; ``faded`` for an edge away from what is picked (same hue, dimmer). */

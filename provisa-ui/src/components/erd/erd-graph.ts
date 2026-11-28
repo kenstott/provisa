@@ -65,9 +65,9 @@ export function erdGraph(elements: ErdElements, tables: ListedTable[]): GraphSpe
       target: e.target,
       label: e.label,
       arrow: arrowOf(e.cardinality, e.bidirectional),
-      // A line to a collapsed group, or of a withdrawn relationship (REQ-1921).
+      // A line to a collapsed group, or of a withdrawn relationship (REQ-1921). Every line,
+      // a junction's legs included, is drawn in the shared edge colour (REQ-2239).
       dashed: e.proxy || e.withdrawn,
-      ...(e.via ? { tone: "via" as const } : {}),
       data: { relationshipId: e.relationshipId },
     })),
   };

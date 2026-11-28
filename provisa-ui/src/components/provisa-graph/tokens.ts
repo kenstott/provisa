@@ -30,8 +30,6 @@ export interface GraphTokens {
   textMuted: string;
   edge: string;
   accent: string;
-  /** The ERD junction's hue: the VIA badge's grape (REQ-1588). */
-  via: string;
   /** The junction diamond's fill: a tint of its grape. */
   junctionFill: string;
 }
@@ -46,7 +44,6 @@ const LIGHT: GraphTokens = {
   textMuted: gray[6],
   edge: gray[5],
   accent: brand[6],
-  via: hue("grape"),
   junctionFill: hue("grape", 0),
 };
 
@@ -60,7 +57,6 @@ const DARK: GraphTokens = {
   textMuted: dark[2],
   edge: dark[3],
   accent: brand[4],
-  via: hue("grape", 4),
   junctionFill: dark[6],
 };
 
@@ -100,30 +96,47 @@ export const NODE_TYPES = {
   product: { colour: brand[6], icon: "package" },
   source: { colour: hue("teal"), icon: "database" },
   domain: { colour: hue("violet"), icon: "folder" },
+  // A group is a domain's box under another name: the same concept, the same look.
   group: { colour: hue("violet"), icon: "folder" },
   table: { colour: hue("blue"), icon: "table" },
   view: { colour: hue("cyan"), icon: "eye" },
-  relation: { colour: hue("cyan"), icon: "merge" },
+  // A table outside the model (an input a product reads that no member is): "outside", the same
+  // concept as lineage's external field, in one colour; the icon says table-level.
+  relation: { colour: hue("cyan", 8), icon: "merge" },
   junction: { colour: hue("grape"), icon: "link", shape: "diamond" },
   column: { colour: hue("gray"), icon: "column" },
   term: { colour: hue("orange"), icon: "book" },
+  // A concept is a term by its role: the term's own colour (REQ-2239, each role its own colour).
   concept: { colour: hue("orange"), icon: "book" },
   class: { colour: hue("yellow", 7), icon: "book" },
   property: { colour: hue("lime", 7), icon: "book" },
   command: { colour: hue("pink"), icon: "terminal" },
-  // Lineage's fields, by their role in the flow (REQ-1665, REQ-2116, REQ-2229).
-  intermediate: { colour: hue("cyan"), icon: "merge" },
-  output: { colour: hue("blue"), icon: "column" },
-  native: { colour: hue("orange"), icon: "database" },
+  // Lineage's fields, by their role in the flow (REQ-1665, REQ-2116, REQ-2229). Each role its own
+  // colour across every kind of graph (REQ-2239, amended 2026-11-27): none borrows an ontology
+  // role's colour or icon.
+  intermediate: { colour: hue("indigo"), icon: "step" },
+  output: { colour: hue("green", 8), icon: "column" },
+  native: { colour: hue("violet", 4), icon: "database" },
   job: { colour: hue("orange", 8), icon: "terminal" },
-  external: { colour: hue("gray"), icon: "column" },
+  external: { colour: hue("cyan", 8), icon: "external" },
   checker: { colour: hue("red"), icon: "shield" },
   profile: { colour: hue("green"), icon: "chart" },
-  tag: { colour: hue("violet"), icon: "tag" },
+  tag: { colour: hue("grape", 8), icon: "tag" },
+  // A fold node stands for a table's columns not drawn: the column's concept.
   more: { colour: hue("gray"), icon: "more" },
 } as const satisfies Record<string, NodeTypeLook>;
 
 export type NodeType = keyof typeof NODE_TYPES;
+
+/** The types that are one concept under two names, and so share a colour (REQ-2239: each node
+ * role has its own colour across kinds, save where two names are one role). Every other type's
+ * colour is its own. */
+export const SAME_CONCEPT: readonly (readonly NodeType[])[] = [
+  ["domain", "group"],
+  ["term", "concept"],
+  ["column", "more"],
+  ["relation", "external"],
+];
 
 /** The shape a type is drawn in: the rounded rectangle, or the junction's diamond. */
 export function typeShape(type: NodeType): "box" | "diamond" {

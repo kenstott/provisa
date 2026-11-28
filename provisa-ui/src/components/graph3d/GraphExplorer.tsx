@@ -66,7 +66,7 @@ import { LaneStage } from "./LaneStage";
 import { laneDiagram } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
-import { kindKey } from "./nodeLook";
+import { kindKey, shownKinds } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
 import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
@@ -875,6 +875,7 @@ export function GraphExplorer({
           expanded={expanded}
           // In 2D a table's unbound columns fold into one node, whatever the scope.
           folds={scope.foldColumns || flat}
+          flat={flat}
           toggleExpanded={toggleExpanded}
           onFocus={(id) => {
             setRotate(false);
@@ -894,6 +895,7 @@ function GraphDetail({
   setHover,
   expanded,
   folds,
+  flat,
   toggleExpanded,
   onFocus,
   testId,
@@ -905,6 +907,8 @@ function GraphDetail({
   expanded: ReadonlySet<string>;
   /** Whether a table's columns fold into it (and so can be shown on asking). */
   folds: boolean;
+  /** Drawn in 2D: the shown list takes the 2D canvas's colours, else the 3D scene's. */
+  flat: boolean;
   toggleExpanded: (id: string) => void;
   onFocus: (id: string) => void;
   testId: string;
@@ -925,19 +929,8 @@ function GraphDetail({
     const read = folds ? of(data).filter((n) => n.type === "column").length : 0;
     return Math.max(read, table.columns ?? 0) > drawnColumns;
   }
-  // Each kind drawn, named as its look shows it, with how many.
-  const counts = useMemo(() => {
-    const by = new Map<string, { key: string; type: string; count: number }>();
-    for (const n of graph.nodes) {
-      // A table's folded columns are one node drawn, not one column.
-      if (n.folded) continue;
-      const key = kindKey(n);
-      const seen = by.get(key);
-      if (seen) seen.count += 1;
-      else by.set(key, { key, type: n.type, count: 1 });
-    }
-    return [...by.values()].sort((a, b) => b.count - a.count);
-  }, [graph]);
+  // Each kind drawn, named and coloured as the canvas of this view draws it, with how many.
+  const counts = useMemo(() => shownKinds(graph.nodes, flat), [graph, flat]);
   return (
     <div className="p3d-detail">
       {node && (
@@ -1029,10 +1022,14 @@ function GraphDetail({
       <section>
         <h5 className="p3d-section-title">{t("graph3d.shown")}</h5>
         <div className="p3d-list">
-          {counts.map(({ key, type, count }) => (
-            <div key={key} className="p3d-row p3d-row-compact">
+          {counts.map(({ key, colour, count }) => (
+            <div
+              key={key}
+              className="p3d-row p3d-row-compact"
+              data-testid={`${testId}-shown-${key}`}
+            >
               <span className="p3d-row-name is-wrap">
-                <i className={`p3d-dot g3d-sw-${type}`} />
+                <i className="p3d-dot" style={{ background: colour }} />
                 <BreakableName name={t(key)} />
               </span>
               <span className="p3d-num">{count}</span>

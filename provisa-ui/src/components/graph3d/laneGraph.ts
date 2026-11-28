@@ -17,7 +17,7 @@ import type { GraphEdgeSpec, GraphNodeSpec, GraphSpec } from "../provisa-graph/m
 import type { NodeType } from "../provisa-graph/tokens";
 
 /** What a graph node is, as the one graph names its types: a term by its role. */
-const typeOf = (n: GraphNode): NodeType => (n.type === "term" && n.role ? n.role : n.type);
+export const typeOf = (n: GraphNode): NodeType => (n.type === "term" && n.role ? n.role : n.type);
 
 /** A term's status, as the graph draws a term held back; an approved term is drawn plain. */
 const statusOf = (n: GraphNode): GraphNodeSpec["status"] =>
