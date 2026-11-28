@@ -31,6 +31,7 @@ from collections.abc import Iterator
 from typing import IO, Any, AsyncGenerator
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 
 log = logging.getLogger(__name__)
 
@@ -238,7 +239,11 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
         import httpx
 
         watermark = self._watermark or datetime.now(timezone.utc)
-        log.info("RSSProvider: polling %s every %.0fs", self._url, self._poll_interval)
+        log.info(
+            "RSSProvider: polling %s every %.0fs",
+            redact_url_password(self._url),
+            self._poll_interval,
+        )
 
         async with httpx.AsyncClient(
             follow_redirects=True, timeout=30.0, event_hooks=sandbox_egress.http_event_hooks()

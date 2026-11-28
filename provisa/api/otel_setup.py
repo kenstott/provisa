@@ -22,6 +22,7 @@ from typing import Any
 from opentelemetry.sdk.trace import SpanProcessor
 
 from provisa.core.config_location import config_path_str
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.otel_compat import (
     ORG_ATTRIBUTE,
     bind_request_span,
@@ -170,7 +171,10 @@ class _CollectorReport:
             first = self._failed == 1
         if first:
             logging.getLogger(__name__).warning(
-                "OTel %s are not reaching %s: %s", self._signal, self._endpoint, reason
+                "OTel %s are not reaching %s: %s",
+                self._signal,
+                redact_url_password(self._endpoint),
+                reason,
             )
 
     def raised(self, error: BaseException) -> None:
@@ -189,7 +193,7 @@ class _CollectorReport:
             logging.getLogger(__name__).warning(
                 "OTel %s are reaching %s again (%d export(s) did not)",
                 self._signal,
-                self._endpoint,
+                redact_url_password(self._endpoint),
                 failed,
             )
 
@@ -757,7 +761,9 @@ def attach_otlp_exporters(
         _logging.getLogger().addHandler(handler)
         install_on_every_handler()  # REQ-2087
 
-        _log.info("OTel exporters attached → %s (service=%s)", endpoint, service_name)
+        _log.info(
+            "OTel exporters attached → %s (service=%s)", redact_url_password(endpoint), service_name
+        )
     except Exception as e:
         _log.warning("Failed to attach OTel exporters: %s", e)
 
@@ -930,7 +936,7 @@ def setup_otel(
             )
             _log.info(
                 "OTel tracing → %s (service=%s, redact_sql=%s)",
-                endpoint,
+                redact_url_password(endpoint),
                 service_name,
                 _internal_redact_sql,
             )
@@ -949,7 +955,9 @@ def setup_otel(
                 ),
             )
             _log.info(
-                "OTel support tracing → %s (redact_sql=%s)", support_endpoint, _support_redact_sql
+                "OTel support tracing → %s (redact_sql=%s)",
+                redact_url_password(support_endpoint),
+                _support_redact_sql,
             )
         else:
             _log.debug(
@@ -961,7 +969,7 @@ def setup_otel(
             from opentelemetry import metrics
 
             _export_metrics(_make_metric_exporter(endpoint, otlp_protocol), resource, endpoint)
-            _log.info("OTel metrics → %s (service=%s)", endpoint, service_name)
+            _log.info("OTel metrics → %s (service=%s)", redact_url_password(endpoint), service_name)
 
             import provisa.api.otel_setup as _self
 
@@ -1008,7 +1016,7 @@ def setup_otel(
             handler.addFilter(OrgLogFilter())
             _logging.getLogger().addHandler(handler)
             install_on_every_handler()  # REQ-2087
-            _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
+            _log.info("OTel logs → %s (service=%s)", redact_url_password(endpoint), service_name)
 
         # REQ-1432: each block is one subsystem, instrumented only when its switch is on.
         # REQ-1910: every instrumentor below stays installed in either trace detail, because the

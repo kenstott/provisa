@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from provisa.core.models import EventTrigger, Webhook
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.webhooks.executor import execute_webhook
 
 if TYPE_CHECKING:
@@ -262,7 +263,7 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
             except httpx.HTTPStatusError as exc:
                 logger.warning(
                     "Webhook %s returned %d (attempt %d/%d)",
-                    trigger.webhook_url,
+                    redact_url_password(trigger.webhook_url),
                     exc.response.status_code,
                     attempt + 1,
                     max_retries + 1,
@@ -270,7 +271,7 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
             except httpx.HTTPError as exc:
                 logger.warning(
                     "Webhook %s failed (attempt %d/%d): %s",
-                    trigger.webhook_url,
+                    redact_url_password(trigger.webhook_url),
                     attempt + 1,
                     max_retries + 1,
                     exc,
@@ -284,5 +285,5 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
             "Webhook delivery failed after %d attempts for %s → %s",
             max_retries + 1,
             trigger.table_id,
-            trigger.webhook_url,
+            redact_url_password(trigger.webhook_url),
         )

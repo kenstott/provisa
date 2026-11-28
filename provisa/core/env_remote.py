@@ -51,6 +51,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
+
 log = logging.getLogger(__name__)
 
 #: A probe runs while an operator waits on a form, so it gets the announcement budget of REQ-1527
@@ -396,7 +398,7 @@ def _pr_github(
                 f"({made.status_code}): {made.text[:200]}"
             )
         opened = made.json()
-    log.info("opened GitHub pull request %s", opened["html_url"])
+    log.info("opened GitHub pull request %s", redact_url_password(opened["html_url"]))
     return {"url": opened["html_url"], "number": opened["number"], "new": True}
 
 
@@ -435,5 +437,5 @@ def _pr_gitlab(
                 f"({made.status_code}): {made.text[:200]}"
             )
         opened = made.json()
-    log.info("opened GitLab merge request %s", opened["web_url"])
+    log.info("opened GitLab merge request %s", redact_url_password(opened["web_url"]))
     return {"url": opened["web_url"], "number": opened["iid"], "new": True}

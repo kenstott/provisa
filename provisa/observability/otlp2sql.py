@@ -51,6 +51,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 )
 
 from provisa.core.database import sync_engine_from_url
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.otel_compat import ORG_ATTRIBUTE
 from provisa.observability.ops_schema import (
     TRACE_DETAIL_RETENTION_HOURS,
@@ -348,7 +349,10 @@ def build_app(db_url: str | None = None) -> Starlette:
         _engine = sync_engine_from_url(url)
         _tables = ensure_tables(_engine)
         _prune_trace_details()  # REQ-1910: detail rows left past their retention by a prior run
-        log.info("otlp2sql: ready -> %s", _engine.url.render_as_string(hide_password=True))
+        log.info(
+            "otlp2sql: ready -> %s",
+            redact_url_password(_engine.url.render_as_string(hide_password=False)),
+        )
         flusher = asyncio.create_task(_flush_loop())
         try:
             yield

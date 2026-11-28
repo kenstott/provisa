@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class WebSocketNotificationProvider(NotificationProvider):  # REQ-338, REQ-339, 
     ) -> AsyncGenerator[ChangeEvent, None]:  # REQ-338, REQ-339, REQ-340, REQ-341
         import websockets
 
-        log.info("WebSocketProvider: connecting to %s", self._url)
+        log.info("WebSocketProvider: connecting to %s", redact_url_password(self._url))
         while self._running:
             try:
                 async with websockets.connect(self._url) as ws:

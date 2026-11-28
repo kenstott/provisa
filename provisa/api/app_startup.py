@@ -31,6 +31,7 @@ from provisa.federation.execution_auth import system_auth
 from provisa.core.schema_org import sources as _sources_t
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.config_location import config_path_str
+from provisa.api.admin.secret_redaction import redact_url_password  # REQ-1575
 from provisa.core.connection_loop import spawn_background, spawn_long_lived
 from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -601,10 +602,11 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.core import settings_registry as _settings
 
     _public_url = _settings.value("server.public_url")
+    _iri_base = redact_url_password(str(_public_url).rstrip("/")) if _public_url else None
     _log.info(
         "SPARQL subject IRIs under %s",
-        f"{str(_public_url).rstrip('/')}/id/"
-        if _public_url
+        f"{_iri_base}/id/"
+        if _iri_base
         else "nothing: server.public_url is unset, so a query answering with one is refused",
     )
 
@@ -646,16 +648,22 @@ async def _start_servers(_log: logging.Logger) -> None:
     # Live Query Engines are each org's, started with its prod runtime once the process's
     # scheduler runs (provisa.api.app_rebuild.start_org_live_engine; REQ-1266).
 
-    # REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
-    # REQ-829: with no URL, RedisAPQCache(None) uses embedded fakeredis so desktop
-    # exercises the same APQ code path as production.
+    _start_apq_cache(_log)
+
+
+def _start_apq_cache(_log: logging.Logger) -> None:
+    """REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
+    REQ-829: with no URL, RedisAPQCache(None) uses embedded fakeredis so desktop
+    exercises the same APQ code path as production."""
+    from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
+
     try:
         from provisa.apq.cache import RedisAPQCache
 
         state.apq_cache = RedisAPQCache(state.redis_url, ttl=state.apq_ttl)
         _log.info(
             "APQ cache initialized (Redis: %s, ttl=%ds)",
-            state.redis_url or "embedded fakeredis",
+            redact_url_password(state.redis_url) or "embedded fakeredis",
             state.apq_ttl,
         )
     except Exception:
