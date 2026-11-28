@@ -60893,7 +60893,7 @@
     a ?product= parameter names, ahead of the row remembered in localStorage, and writes the parameter
     when a row is expanded so the address bar is itself a link to the open product. A loopback base_url
     (the install default, localhost) links to https://cloud.provisa.dev as-is, since a catalog consumer
-    reads the listing elsewhere and this org names no host there.'
+    reads the listing elsewhere and this org names no host there. (Amended 2026-11-28, maintainer) The Data Products page has no domain filter of its own; it uses the navbar Domains filter as the other list pages do. On this page that filter lists the unique domains of the products currently offered in the marketplace (not the domains the role may create tables in), including domains outside the role, since a listing is discovery and offers decide access. A product''s tags are edited from the list, beside its id, as on the other list pages.'
   use_case: A consumer reading the listing in Snowsight or the Analytics Hub console can reach the product's
     owner, members, lineage and terms in one click instead of searching for it in Provisa.
   code:
