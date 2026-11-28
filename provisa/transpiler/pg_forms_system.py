@@ -190,7 +190,7 @@ OF_A_STORED_VALUE = frozenset(
 )
 
 
-def _regexp_refused(engine: _Engine) -> str:
+def _regexp_refused(engine: _Engine, *, empty: bool = True) -> str:
     """What this form cannot answer as PostgreSQL does, whose search keeps its place in the text: an
     anchor, a pattern that matches nothing at all, a replacement of more than a group's number.
 
@@ -213,7 +213,7 @@ def _regexp_refused(engine: _Engine) -> str:
             *(has("pattern", text("\\" + anchor)) for anchor in "AbBmMyYZ"),
             has("replacement", text("\\&")),
             has("replacement", text("\\\\")),
-            engine.matches_nothing.format("pattern"),
+            *((engine.matches_nothing.format("pattern"),) if empty else ()),
         )
     )
 
@@ -273,6 +273,43 @@ _CLICKHOUSE_REPLACED = (
     f"substring({_CLICKHOUSE_TAIL}, {_CLICKHOUSE_HEAD} + "
     f"length({_CLICKHOUSE_NTH}) + 1))))"
 )
+#: A pattern that matches the empty text, on ClickHouse (REQ-2236): PostgreSQL searches from start
+#: and, past an empty match, copies the next character and searches again, where extractAll and
+#: splitByRegexp skip an empty match. Its search is written here: at each character from start, the
+#: pattern's match there is the Nth (or n is 0) and replaced, or copied; an empty match copies the
+#: character after it; a character where nothing matches is copied. The pattern is read at the
+#: text's first character as it is, and past it behind one character of the text (?s:.), so its ^
+#: and \\A match only at the text's start, as PostgreSQL's do. The replacement's \\1 to \\9 are
+#: the match's groups (replaceRegexpOne of the text from there).
+_CH_V = "assumeNotNull(value)"
+_CH_P = "assumeNotNull(pattern)"
+_CH_AT = "substringUTF8(" + _CH_V + ", _i - 1)"
+_CH_LENGTH = (
+    f"if(_i = 1, if(match({_CH_V}, concat('^(?:', {_CH_P}, ')')), "
+    f"toInt64(lengthUTF8(extract({_CH_V}, concat('^((?:', {_CH_P}, '))')))), -1), "
+    f"if(match({_CH_AT}, concat('^(?s:.)(?:', {_CH_P}, ')')), "
+    f"toInt64(lengthUTF8(extract({_CH_AT}, concat('^(?s:.)((?:', {_CH_P}, '))')))), -1))"
+)
+_CH_SAID = (
+    f"if(_i = 1, replaceRegexpOne({_CH_V}, concat('^(?:', {_CH_P}, ')(?s:.*)'), "
+    f"{_CLICKHOUSE_RESULT}), replaceRegexpOne({_CH_AT}, "
+    f"concat('^(?s:.)(?:', {_CH_P}, ')(?s:.*)'), {_CLICKHOUSE_RESULT}))"
+)
+_CH_POSITIONS = (
+    f"range(toUInt64(greatest({_CLICKHOUSE_START}, 1)), toUInt64(lengthUTF8({_CH_V})) + 2)"
+)
+_CLICKHOUSE_EMPTY_MATCH = (
+    f"concat(leftUTF8({_CH_V}, {_CLICKHOUSE_START} - 1), tupleElement(arrayFold("
+    "(_acc, _i, _l) -> if(_i < tupleElement(_acc, 2), _acc, if(_l < 0, "
+    f"tuple(concat(tupleElement(_acc, 1), substringUTF8({_CH_V}, _i, 1)), toUInt64(_i + 1), "
+    "tupleElement(_acc, 3)), "
+    f"tuple(concat(tupleElement(_acc, 1), if({_CLICKHOUSE_N} = 0 OR "
+    f"tupleElement(_acc, 3) + 1 = {_CLICKHOUSE_N}, {_CH_SAID}, "
+    f"substringUTF8({_CH_V}, _i, _l)), if(_l = 0, substringUTF8({_CH_V}, _i, 1), '')), "
+    "toUInt64(_i + greatest(_l, 1)), tupleElement(_acc, 3) + 1))), "
+    f"{_CH_POSITIONS}, arrayMap(_i -> {_CH_LENGTH}, {_CH_POSITIONS}), "
+    f"tuple('', toUInt64(greatest({_CLICKHOUSE_START}, 1)), toUInt64(0))), 1))"
+)
 _REPLACED = {
     id(_DUCKDB_ENGINE): ("left(value, start - 1)", _DUCKDB_REPLACED),
     id(_TRINO_ENGINE): ("substr(value, 1, start - 1)", _TRINO_REPLACED),
@@ -285,15 +322,20 @@ _REPLACED = {
 
 def _regexp_replace_nth(engine: _Engine) -> str:
     """regexp_replace(value, pattern, replacement, start, n): strict; n 0 is every match, else the
-    Nth, found by the pieces between matches. PostgreSQL checks start, then n."""
+    Nth, found by the pieces between matches. PostgreSQL checks start, then n. On ClickHouse a
+    pattern that matches the empty text is searched as PostgreSQL searches it
+    (_CLICKHOUSE_EMPTY_MATCH)."""
     before, replaced = _REPLACED[id(engine)]
     nulls = " OR ".join(f"{p} IS NULL" for p in _REGEXP_PARAMS)
     if engine is _CLICKHOUSE_ENGINE:
-        answer = f"concat({before}, {replaced})"
+        answer = (
+            f"if(match('', assumeNotNull(pattern)), {_CLICKHOUSE_EMPTY_MATCH}, "
+            f"concat({before}, {replaced}))"
+        )
         return (
             f"if({nulls}, NULL, if("
             f"throwIf(coalesce(NOT ({nulls}) AND "
-            f"(start < 1 OR n < 0 OR {_regexp_refused(engine)}), 0), "
+            f"(start < 1 OR n < 0 OR {_regexp_refused(engine, empty=False)}), 0), "
             f"{_marked('0A000', f'regexp_replace {REFUSED}')}) = 0, "
             f"{answer}, NULL))"
         )
@@ -311,6 +353,11 @@ def _regexp_replace_nth(engine: _Engine) -> str:
 
 
 _REGEXP_PARAMS = ("value", "pattern", "replacement", "start", "n")
+#: regexp_replace's Nth match on ClickHouse, its parameters REGEXP_PARAMS, which the polyfill grid
+#: writes with a literal pattern read as PostgreSQL reads it (provisa.transpiler.polyfill.regex,
+#: REQ-2236): ClickHouse's RE2 reads the pattern it is given at run time.
+REGEXP_PARAMS = _REGEXP_PARAMS
+CLICKHOUSE_REGEXP_REPLACE_NTH = _regexp_replace_nth(_CLICKHOUSE_ENGINE)
 
 #: repeat on Trino, whose own builds an array: strict, and nothing for a count below one. rpad takes
 #: the length in characters and refuses an empty padding.

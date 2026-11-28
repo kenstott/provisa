@@ -727,6 +727,118 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT pg_catalog.regexp_replace('abc'::text, ''::text, 'x'::text, 'i') AS v", "xabc"),
     ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text, 'g') AS v", None),
     ("SELECT pg_catalog.regexp_replace(NULL::text, ''::text, 'x'::text) AS v", None),
+    # A pattern that is not empty but matches the empty text (REQ-2236): PostgreSQL's g flag
+    # replaces each empty match and goes on one character; ClickHouse's replaceRegexpAll stops at
+    # the first. The measure's edges, then anchors and the text's ends.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text, 'g'::text) AS v",
+        "abcaabcbabccabc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text, 'g'::text) AS v",
+        "abcabcbabccabc",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text) AS v", "abcabc"),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text) AS v", "abcbc"),
+    ("SELECT pg_catalog.regexp_replace('axxb'::text, 'x*'::text, '-'::text, 'g') AS v", "-a--b-"),
+    ("SELECT pg_catalog.regexp_replace('axx'::text, 'x*'::text, '-'::text, 'g') AS v", "-a--"),
+    ("SELECT pg_catalog.regexp_replace('aab'::text, 'a|'::text, '-'::text, 'g') AS v", "---b-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^'::text, '-'::text, 'g') AS v", "-abc"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '$'::text, '-'::text, 'g') AS v", "abc-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^|$'::text, '-'::text, 'g') AS v", "-abc-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, '^a*'::text, '-'::text, 'g') AS v", "-bc"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, 'b*$'::text, '-'::text, 'g') AS v", "abc-"),
+    (
+        "SELECT pg_catalog.regexp_replace('日本x'::text, 'x*'::text, '-'::text, 'g') AS v",
+        "-日-本--",
+    ),
+    ("SELECT pg_catalog.regexp_replace(''::text, 'x*'::text, '-'::text, 'g') AS v", "-"),
+    ("SELECT pg_catalog.regexp_replace(NULL::text, 'x*'::text, '-'::text, 'g') AS v", None),
+    ("SELECT pg_catalog.regexp_replace('aBc'::text, 'b*'::text, '-'::text, 'gi') AS v", "-a--c-"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, 'b'::text, '-'::text, 'g') AS v", "a-c"),
+    ("SELECT pg_catalog.regexp_replace('abc'::text, lower('b'), '-'::text, 'g') AS v", "a-c"),
+    # The Nth match from start of a pattern that matches the empty text (REQ-2236): PostgreSQL's
+    # search copies the character past an empty match and goes on; the measure's edges first.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, lower('')::text, 'abc'::text, 3::integer, 3::integer) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, 2) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 2, 0) AS v",
+        "a-b-c-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 2, 1) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '^x*'::text, '-'::text, 2, 0) AS v",
+        "abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '^x*'::text, '-'::text, 1, 0) AS v",
+        "-abc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 4, 0) AS v",
+        "abc-",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 5, 0) AS v", "abc"),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 4, 1) AS v",
+        "abc-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, 4) AS v",
+        "abc-",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'a|'::text, '-'::text, 1, 2) AS v",
+        "a-bc",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('axxb'::text, 'x*'::text, '-'::text, 1, 3) AS v",
+        "axx-b",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('axxb'::text, 'x*'::text, '-'::text, 2, 1) AS v",
+        "a-b",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('日本x'::text, 'x*'::text, '-'::text, 2, 0) AS v",
+        "日-本--",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, '(b?)'::text, '[\\1]'::text, 1, 0) AS v",
+        "[]a[b][]c[]",
+    ),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*$'::text, '-'::text, 1, 0) AS v",
+        "abc-",
+    ),
+    ("SELECT pg_catalog.\"regexp_replace\"(''::text, 'x*'::text, '-'::text, 1, 0) AS v", "-"),
+    ("SELECT pg_catalog.\"regexp_replace\"('abc'::text, ''::text, '-'::text, 2, 2) AS v", "ab-c"),
+    ("SELECT pg_catalog.\"regexp_replace\"(NULL::text, 'x*'::text, '-'::text, 1, 0) AS v", None),
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, 'x*'::text, '-'::text, 1, NULL::integer) AS v",
+        None,
+    ),
     ("SELECT pg_catalog.regexp_like('ABC'::text, 'b'::text, 'ic') AS v", "f"),
     ("SELECT pg_catalog.regexp_split_to_array('a1b22c'::text, '[0-9]+'::text) AS v", "{a,b,c}"),
     ("SELECT pg_catalog.regexp_split_to_array('aXbxc'::text, 'x'::text, 'i') AS v", "{a,b,c}"),
@@ -738,6 +850,11 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
         "SELECT pg_catalog.float8('12345678901234567890123456789'::jsonb) AS v",
         "1.2345678901234568e+28",
     ),
+    # A class of a locale on ASCII text, and the expanded syntax (x), read as PostgreSQL reads
+    # them (provisa.transpiler.are_re2).
+    ("SELECT pg_catalog.regexp_substr('ab'::text, '\\w'::text) AS v", "a"),
+    ("SELECT pg_catalog.regexp_substr('a1'::text, '[[:digit:]]'::text) AS v", "1"),
+    ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'x') AS v", "o"),
 ]
 RAISED = [
     (
@@ -835,6 +952,17 @@ RAISED = [
     # extractAll skips an empty match too: regexp_substr('abc', 'b*') is '' on PostgreSQL.
     ("SELECT pg_catalog.regexp_substr('abc'::text, 'b*'::text) AS v", "0A000"),
     ("SELECT pg_catalog.regexp_substr('abc'::text, '^'::text) AS v", "0A000"),
+    # A pattern no form here searches as PostgreSQL does (no literal, or a replacement that is no
+    # literal) raises 0A000 where it matches the empty text.
+    (
+        "SELECT pg_catalog.\"regexp_replace\"('abc'::text, lower('')::text, 'abc'::text, 'g'::text) AS v",
+        "0A000",
+    ),
+    (
+        "SELECT pg_catalog.regexp_replace('abc'::text, 'x*'::text, c, 'g') AS v "
+        "FROM (VALUES ('a'::text)) AS t(c)",
+        "0A000",
+    ),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 1, 2) AS v", "22023"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 0) AS v", "22023"),
     ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'g') AS v", "22023"),
@@ -847,10 +975,7 @@ RAISED = [
 
 #: Calls a row refuses by name, each within its stated bound.
 REFUSED = [
-    "SELECT pg_catalog.regexp_substr('ab'::text, '\\w'::text) AS v",
-    "SELECT pg_catalog.regexp_substr('a1'::text, '[[:digit:]]'::text) AS v",
     "SELECT pg_catalog.regexp_substr('aa'::text, '(a)\\1'::text) AS v",
-    "SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'x') AS v",
     "SELECT pg_catalog.regexp_substr('foo'::text, '(o)'::text, 1, 1, '', 1) AS v",
     "SELECT pg_catalog.regexp_count(c, c, 1) AS v FROM (VALUES ('a'::text)) AS t(c)",
     # The empty pattern's replacement is read here: an escape PostgreSQL reads in it is refused.
@@ -920,14 +1045,18 @@ def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
         transpile(sql, "clickhouse", generated=False)
 
 
-def test_a_native_two_argument_regexp_like_keeps_clickhouse_s_match():
+def test_a_two_argument_regexp_like_of_a_column_pattern_is_clickhouse_s_match_as_pg_reads_it():
+    # REQ-2236: the pattern with PostgreSQL's default options as RE2 reads them, where its
+    # run-time checks pass (test_polyfill_clickhouse_regex_followups answers and raises it).
     sql = "SELECT regexp_like(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "match(a, b)" in transpile(sql, "clickhouse", generated=False)
+    assert "match(a, concat('(?s)', " in transpile(sql, "clickhouse", generated=False)
 
 
-def test_a_two_argument_regexp_count_of_a_column_pattern_keeps_clickhouse_s_count():
+def test_a_two_argument_regexp_count_of_a_column_pattern_is_refused_by_name():
+    # ClickHouse's countMatches takes a constant pattern alone: no form counts a column's.
     sql = "SELECT regexp_count(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
-    assert "countMatches(a, b)" in transpile(sql, "clickhouse", generated=False)
+    with pytest.raises(FunctionRefused, match="regexp_count.*of a pattern that is no literal"):
+        transpile(sql, "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize(

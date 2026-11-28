@@ -227,8 +227,10 @@ def _match(sql: str, match: exp.Expr, escape: exp.Expr | None) -> list[TextEdit]
     reads it, its ESCAPE gone."""
     if isinstance(match, exp.ILike):
         _no_ilike_of_bytea(match)
+    if isinstance(match, exp.SimilarTo):
+        return []  # SIMILAR TO ... ESCAPE: the polyfill grid's row reads it (polyfill.regex)
     if not isinstance(match, (exp.Like, exp.ILike)):
-        raise FunctionRefused("similar_to_escape", _DIALECT)  # SIMILAR TO ... ESCAPE
+        raise FunctionRefused("similar_to_escape", _DIALECT)
     if _of_bytea(match.this) or _of_bytea(match.expression):
         if escape is None or isinstance(match, exp.ILike):
             return []  # the bytea LIKE rows' own

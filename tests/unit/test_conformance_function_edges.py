@@ -188,6 +188,21 @@ def test_every_regexp_overload_is_called_with_an_empty_pattern(fn: Function):
     assert "''::text" in patterns, [c.sql for c in planned]
 
 
+@pytest.mark.parametrize(
+    "overload",
+    [("text", "text", "text"), ("text", "text", "text", "text")],
+    ids=lambda a: ", ".join(a),
+)
+def test_regexp_replace_is_called_with_patterns_that_match_the_empty_text(overload):
+    # REQ-2236: a pattern that is not empty but matches the empty text, and one that is no
+    # literal and the empty text when run, each in regexp_replace's pattern, first.
+    fn = Function("regexp_replace", ", ".join(overload), argtypes=overload, volatility="i")
+    planned = support.edge_calls(fn, "String")
+    assert len(planned) <= edges.EDGE_CALLS_MAX
+    patterns = [c.sql.split(", ")[1] for c in planned[:4]]
+    assert patterns == ["''::text", "'x*'::text", "'a|'::text", "lower('')::text"]
+
+
 def test_the_empty_pattern_is_the_first_edge_call_of_a_regexp():
     fn = Function(
         "regexp_instr",

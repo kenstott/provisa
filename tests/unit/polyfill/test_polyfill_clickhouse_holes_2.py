@@ -121,7 +121,8 @@ def test_an_escape_of_more_than_one_character_is_postgresql_s_error():
         ("SELECT 'a' LIKE c ESCAPE '#' AS v FROM (VALUES ('a_')) AS t(c)", "like_escape"),
         # PostgreSQL raises 22025 only where a match reaches the escape at the end.
         ("SELECT 'a' LIKE 'a#' ESCAPE '#' AS v", "like"),
-        ("SELECT 'x' SIMILAR TO 'a#_' ESCAPE '#' AS v", "similar_to_escape"),
+        # SIMILAR TO ... ESCAPE is answered by the polyfill grid's row
+        # (test_polyfill_clickhouse_regex_followups).
     ],
 )
 def test_like_escape_with_no_exact_form_is_refused_by_name(sql, function):
