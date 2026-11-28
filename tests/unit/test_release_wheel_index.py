@@ -188,20 +188,32 @@ def test_the_same_wheel_with_the_same_bytes_on_two_releases_is_one_entry_at_the_
     assert re.findall(r'href="([^"]+)"', root) == ["provisa-duckdb-ext/"]
 
 
-def test_the_same_wheel_with_different_bytes_on_two_releases_is_refused_naming_both(tmp_path):
+def test_the_same_wheel_with_different_bytes_is_listed_at_the_newest_and_hides_the_older(
+    tmp_path, capsys
+):
+    """Extension builds are not reproducible: each release's copy of one wheel name has its own
+    bytes. The name is listed once at the newest release's asset, and each older copy it hides is
+    printed with its release and sha256."""
     releases = [
-        _release("v0.1.0-alpha.512", [_DUCKDB_ARM], published_at="2026-11-25T12:26:42Z"),
+        _release(
+            "v0.1.0-alpha.511", [_DUCKDB_ARM], published_at="2026-11-23T07:22:04Z", sha="ef" * 32
+        ),
         _release(
             "v0.1.0-alpha.513", [_DUCKDB_ARM], published_at="2026-11-28T01:12:08Z", sha="cd" * 32
         ),
+        _release("v0.1.0-alpha.512", [_DUCKDB_ARM], published_at="2026-11-25T12:26:42Z"),
     ]
-    with pytest.raises(ValueError) as refused:
-        index.write_index(releases, tmp_path, projects=("provisa-duckdb-ext",))
-    message = str(refused.value)
-    assert _DUCKDB_ARM in message
-    assert "v0.1.0-alpha.513" in message
-    assert "v0.1.0-alpha.512" in message
-    assert "different sha256" in message
+    listed = index.write_index(releases, tmp_path, projects=("provisa-duckdb-ext",))
+    assert listed == [_DUCKDB_ARM]
+    page = (tmp_path / "simple" / "provisa-duckdb-ext" / "index.html").read_text()
+    assert re.findall(r'href="([^"]+)"', page) == [
+        f"{_DL}/v0.1.0-alpha.513/{_DUCKDB_ARM}#sha256={'cd' * 32}"
+    ]
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        f"hidden: {_DUCKDB_ARM} on v0.1.0-alpha.512 sha256={'ab' * 32} (listed at a newer release)",
+        f"hidden: {_DUCKDB_ARM} on v0.1.0-alpha.511 sha256={'ef' * 32} (listed at a newer release)",
+    ]
 
 
 def test_main_reads_the_slurped_paginated_listing(tmp_path, capsys):
