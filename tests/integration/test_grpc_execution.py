@@ -52,17 +52,14 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # Helpers
 # ---------------------------------------------------------------------------
 
-_TEST_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_PORT", "50151"))
-
 
 def _free_port() -> int:
     """A leased free TCP port (same convention as tests/conftest.py's own _free_port).
 
-    The fixed _TEST_GRPC_PORT+N ports below are reproducibly reused by every worktree running
-    this file concurrently (this session's swarm runs several gRPC-focused agents in parallel
-    worktrees) — confirmed live: `[::]:50153` failed with "Address already in use" identically
-    against both the pre-hardening baseline server.py and this branch's, so it is not a
-    regression, just this file's own fixed-port scheme not surviving concurrent worktree runs."""
+    Every server in this file binds a leased port. A fixed port is not free by construction: it is
+    reused by every worktree running this file at once, and it sits inside Linux's ephemeral range
+    (32768-60999), so any outbound connection an earlier test of the lane made can hold it -- the
+    old fixed ``[::]:50152`` failed to bind in a release core lane for exactly that reason."""
     from tests.port_lease import lease_port
 
     return lease_port()
@@ -211,7 +208,7 @@ class TestGrpcServerStarts:
 
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
-        server = start_grpc_server(port=_TEST_GRPC_PORT, state=_serving(state))
+        server = start_grpc_server(port=_free_port(), state=_serving(state))
         assert server is not None
         server.stop(grace=0).wait()
 
@@ -259,7 +256,7 @@ class TestGrpcServerStarts:
 
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
-        port = _TEST_GRPC_PORT + 1
+        port = _free_port()
         server = start_grpc_server(port=port, state=_serving(state))
         try:
             # Port should now be in use — verify by connecting to it
