@@ -56,7 +56,7 @@ import { domainAliasMap, SYSTEM_SCHEMA_GQL_PREFIX } from "../types/admin";
 import { localizedStreamFrame } from "./streamErrors";
 import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserStorage";
 import { useNamedDemo } from "../context/NamedDemoContext";
-import { operationNameOf } from "./graphqlOperationName";
+import { OpenFromNav } from "./graphiqlOpenFromNav";
 import { savedActiveTab } from "./graphiqlSavedTab";
 import { editorTypeOptions } from "./graphiqlEditorType";
 import { useScreenEditor } from "../mcp/screenState";
@@ -612,32 +612,6 @@ function NoQueryResponse({ saidRef }: { saidRef: RefObject<(() => void) | null> 
       saidRef.current = null;
     };
   }, [saidRef, responseEditor, updateActiveTabValues, t]);
-  return null;
-}
-
-/** Opens a new GraphiQL tab holding a query handed to the page, and runs it when asked.
- *  Mounted once per hand-off (keyed by the caller), whether the page was just opened or was
- *  already open. */
-function OpenFromNav({ query, autoRun }: { query: string; autoRun: boolean }) {
-  const { addTab, updateActiveTabValues, run } = useGraphiQLActions();
-  const queryEditor = useGraphiQL((s) => s.queryEditor);
-  const done = useRef(false);
-
-  // Wait for queryEditor to become available (it's set asynchronously by GraphiQL).
-  useEffect(() => {
-    if (!queryEditor || done.current) return;
-    done.current = true;
-    addTab();
-    // The operation name with the query: GraphiQL titles a tab by the operation name it last read
-    // from the editor, which is the name of the tab this one was opened from (REQ-2010: a demo's
-    // tour hands over one query after another, each its own titled tab).
-    updateActiveTabValues({ query, operationName: operationNameOf(query) });
-    queryEditor.setValue(query);
-    if (!autoRun) return;
-    const t = setTimeout(() => run(), 100);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount, when queryEditor becomes available (guarded by done); the caller remounts it per hand-off
-  }, [queryEditor]);
   return null;
 }
 
